@@ -1,0 +1,83 @@
+The `hifld-next-datasets` package wraps the HIFLD inventory CSV and an Agno-powered agent that looks up source download URLs for each row. It also ships a **Dagster** library (`dagster_hifld`) for downloading datasets to staging, generating **quality manifests** and **data dictionaries**, and optionally publishing derived formats.
+
+## Dagster pipeline (`dagster_hifld`)
+
+High-level flow:
+
+1. **Ingest** — One asset per dataset file (e.g. `amtrak-stations/amtrak-stations`); downloads from source URLs and stages raw geodata under the versioned path below.
+2. **Catalog** — Partitioned by **version**; reads staged data, writes `metadata/quality_manifest.json` and `metadata/data_dictionary.json`.
+3. **Publish** — Partitioned by the same version; converts and copies to the published bucket (and promotes metadata). Dataset API calls are intentionally not wired here yet.
+
+**Staging path shape** (no agency prefix, no `source/` wrapper):
+
+`{dataset_slug}/{file_slug}/{version}/{format}/...`
+
+Example: `gs://<staging-bucket>/amtrak-stations/amtrak-stations/v20260407T204046Z/shapefile/...`
+
+**Version IDs** are time-based UTC slugs derived from the Dagster run’s create timestamp: `vYYYYMMDDTHHMMSSZ` (see `download.build_version_id`).
+
+**Partitions** — Each `(dataset_slug, file_slug)` pair has its own `DynamicPartitionsDefinition`. Partition keys are version strings. The `version_discovery_sensor` scans staging for versions that have geodata but lack `metadata/quality_manifest.json`, registers the partition, and requests a catalog materialization (for pairs known to the code).
+
+**Configuration** — `StagingStorageResource` / `PublishedStorageResource` read:
+
+- `HIFLD_STAGING_BUCKET` — use GCS when set; otherwise local `HIFLD_STAGING_DIR` (default `data/staging`).
+- `HIFLD_DATASETS_BUCKET` — published bucket (or `HIFLD_DATASETS_DIR` locally).
+
+**Run Dagster** (from this repo):
+
+```bash
+uv run dagster dev -m dagster_hifld.definitions
+# or
+uv run dagster-webserver -m dagster_hifld.definitions
+```
+
+Use a persistent `DAGSTER_HOME` if you want runs and partitions to survive restarts.
+
+**Tests** — `uv run python -m unittest discover tests`
+
+**Agent-oriented detail** — Design choices, multi-file datasets (e.g. 2020 census blocks), sensor behavior, and pitfalls live in [AGENTS.md](AGENTS.md) under the Dagster subsection.
+
+## Environment
+
+1. `uv` created this project layout and installed the pinned dependencies (see `pyproject.toml`; includes `agno`, `polars`, `dagster`, geospatial stack, etc.).
+2. A persistent `.venv` lives at the project root; always run commands through `uv run` so they execute inside the managed environment.
+3. If you adjust `pyproject.toml`, run `uv sync` to re-sync the lockfile and reinstall.
+
+## Running the agent
+
+Use the exported script that drives the search workflow:
+
+```bash
+uv run find-dataset-sources --inventory HIFLD_Open_Inventory_12112025.csv --limit 12
+```
+
+- `--inventory` defaults to the CSV already checked in.
+- `--limit` can be `0` to process the entire file; pair it with `--offset` to resume from a specific row.
+- Results stream to `dataset-source-hints.jsonl` (one JSON object per dataset) and include the search query plus a short list of candidate URLs.
+
+## Configuration
+
+- Set `HIFLD_AGNO_MODEL` to lock the agent to a specific model ID (e.g., `gpt-5.1-codex-mini`).
+- Provide whatever credentials the selected Agno provider requires (e.g., `AGNO_OPENAI_API_KEY`, `AGNO_OPENAI_ORG`), ensure DuckDuckGo access is allowed from the host, and optionally set `JINA_API_KEY` if you want the reader tools to authenticate.
+
+## Output schema
+
+Each line produced by the script conforms to `src/hifld_next_datasets/core.py::DatasetSources`:
+
+- `dataset`: friendly dataset name derived from title/filename/path.
+- `publisher`: optional agency/publisher metadata from the inventory.
+- `query`: the DuckDuckGo search phrase the agent used.
+- `summary`: optional reasoning about the matched source.
+- `files`: list of `{name, format, urls}` records describing every geospatial file in the dataset; each `urls` entry mirrors a `SourceCandidate` with `label`, `url`, `confidence`, and `notes`.
+- `candidates`: optional fallback list of strong download URLs if you want to mirror the files at a higher level.
+
+Re-run the script whenever the inventory changes to refresh the source URLs or to re-target a new subset of rows.
+
+## Workflow dispatch
+
+- The workflow (`src/hifld_next_datasets/workflow.py`) constructs one `Parallel` step that spins up an agent per selected dataset row, so every agent executes concurrently instead of sequential iterations. That lets the pipeline surface file-specific URLs for multiple datasets quickly while keeping the CLI glue minimal.
+- Each agent run gets access to DuckDuckGo and the Jina Reader toolkit (search/query + read URL), so you can gather search snippets and page excerpts before choosing the highest-confidence candidates.
+
+## Prompt management
+
+- Instructions and prompt scaffolding live in Markdown under `prompts/`; `agent-instructions.md` holds the guidance, and `query-template.md` contains the metadata+query template. The workflow loader reads those files at runtime, meaning you can tune the agent behaviour without touching Python.

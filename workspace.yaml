@@ -1,0 +1,7 @@
+# Code location: HIFLD pipelines (first 10 assets).
+# Run from repo root: dagster dev  (or: dg dev)
+
+load_from:
+  - python_module:
+      module_name: dagster_hifld.definitions
+      attribute: defs
