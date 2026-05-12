@@ -37,6 +37,58 @@ Use a persistent `DAGSTER_HOME` if you want runs and partitions to survive resta
 
 **Agent-oriented detail** — Design choices, multi-file datasets (e.g. 2020 census blocks), sensor behavior, and pitfalls live in [AGENTS.md](AGENTS.md) under the Dagster subsection.
 
+### Deploying to GKE (manual)
+
+The cluster, namespace `hifld-next-datasets`, the `dagster` ServiceAccount, the `dagster-db` Secret, and the `dagster-env` ConfigMap are all provisioned by Terraform in [`hifld-next-iac/environments/prod/dagster.tf`](../hifld-next-iac/environments/prod/dagster.tf). Make sure that's applied first.
+
+[`helm/values.yaml`](helm/values.yaml) is intentionally cluster-agnostic — it pins the chart's structural choices (image, daemon, run launcher, queued coordinator) but does not assume a cloud. Cloud-specific concerns (e.g. GCS compute log persistence, Workload Identity bindings) live in `hifld-next-iac` and are layered on at install time.
+
+The standard path is the deploy script in iac:
+
+```bash
+../hifld-next-iac/scripts/deploy-dagster.sh
+```
+
+It builds and pushes the user-code image, fetches Terraform outputs, and runs `helm upgrade --install` with both the chart values from this repo and the GCP overlay [`hifld-next-iac/scripts/dagster-gcp-values.yaml`](../hifld-next-iac/scripts/dagster-gcp-values.yaml).
+
+If you need to run the steps by hand:
+
+```bash
+SHA=$(git rev-parse --short HEAD)
+gcloud auth configure-docker --quiet
+docker build --platform linux/amd64 -t gcr.io/hifld-next/dagster-user:$SHA .
+docker push gcr.io/hifld-next/dagster-user:$SHA
+
+gcloud container clusters get-credentials hifld-prod \
+  --region us-central1 --project hifld-next
+
+TFDIR=../hifld-next-iac/environments/prod
+PG_HOST=$(terraform -chdir=$TFDIR output -raw dagster_postgres_host)
+PG_USER=$(terraform -chdir=$TFDIR output -raw dagster_postgres_user)
+PG_DB=$(terraform -chdir=$TFDIR output -raw dagster_postgres_database)
+LOGS_BUCKET=$(terraform -chdir=$TFDIR output -raw dagster_logs_bucket_name)
+
+helm repo add dagster-io https://dagster-io.github.io/helm
+helm repo update
+helm upgrade --install dagster dagster-io/dagster \
+  --namespace hifld-next-datasets \
+  -f helm/values.yaml \
+  -f ../hifld-next-iac/scripts/dagster-gcp-values.yaml \
+  --set "postgresql.postgresqlHost=$PG_HOST" \
+  --set "postgresql.postgresqlUsername=$PG_USER" \
+  --set "postgresql.postgresqlDatabase=$PG_DB" \
+  --set "computeLogManager.config.gcsComputeLogManager.bucket=$LOGS_BUCKET" \
+  --set "dagsterWebserver.image.tag=$SHA" \
+  --set "dagsterDaemon.image.tag=$SHA" \
+  --set "dagster-user-deployments.deployments[0].image.tag=$SHA" \
+  --set "runLauncher.config.k8sRunLauncher.image.tag=$SHA"
+
+kubectl port-forward -n hifld-next-datasets svc/dagster-dagster-webserver 3000:80
+# open http://localhost:3000
+```
+
+Pin `--version <X>` on the `helm upgrade` command once you've verified a chart release that matches the pinned `dagster` package in [`pyproject.toml`](pyproject.toml).
+
 ## Environment
 
 1. `uv` created this project layout and installed the pinned dependencies (see `pyproject.toml`; includes `agno`, `polars`, `dagster`, geospatial stack, etc.).

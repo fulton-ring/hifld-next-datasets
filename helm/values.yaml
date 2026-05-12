@@ -1,0 +1,156 @@
+# Helm values for the Dagster chart (https://dagster-io.github.io/helm).
+#
+# This file aims to be cluster-agnostic: it pins the project's choices
+# (Dagster components, run launcher, queued coordinator, image repo) but
+# does not assume a specific cloud. Cloud-specific concerns (e.g. compute
+# log persistence, secret backends) are layered in by the deployer via an
+# additional `-f overlay.yaml` and/or `--set` flags. The reference overlay
+# for GCP/GKE lives in hifld-next-iac as scripts/dagster-gcp-values.yaml.
+#
+# Expected pre-existing resources (created by the deployer, e.g. via
+# Terraform in hifld-next-iac):
+#   - ServiceAccount: dagster (annotated for Workload Identity on GKE)
+#   - Secret:         dagster-db (key: postgresql-password)
+#   - ConfigMap:      dagster-env (env vars consumed by user code)
+#
+# Values that vary per install (postgres host/user/db, image tag) are
+# intentionally left as placeholders here and overridden via `--set`
+# from infra outputs at install time. See README for the exact command.
+
+# ---------------------------------------------------------------------------
+# Global settings shared across components
+# ---------------------------------------------------------------------------
+global:
+  serviceAccountName: dagster
+  postgresqlSecretName: dagster-db
+
+# Use the ServiceAccount Terraform created (annotated for Workload Identity);
+# don't let the chart create a new one.
+serviceAccount:
+  create: false
+  name: dagster
+
+# ---------------------------------------------------------------------------
+# Postgres: external Neon project (provisioned by Terraform)
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: false
+  # Filled in via --set at install time (terraform output dagster_postgres_*).
+  postgresqlHost: ""
+  postgresqlUsername: ""
+  postgresqlDatabase: ""
+  postgresqlScheme: postgresql
+  postgresqlParams:
+    sslmode: require
+  service:
+    port: 5432
+
+# We provide the password ourselves via global.postgresqlSecretName; don't let
+# the chart generate a new one.
+generatePostgresqlPasswordSecret: false
+
+# ---------------------------------------------------------------------------
+# Webserver (UI on port 80, internal ClusterIP)
+# ---------------------------------------------------------------------------
+dagsterWebserver:
+  replicaCount: 1
+  image:
+    repository: gcr.io/hifld-next/dagster-user
+    tag: latest
+    pullPolicy: IfNotPresent
+  envConfigMaps:
+    - name: dagster-env
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+
+# ---------------------------------------------------------------------------
+# Daemon: sensors, scheduler, run queue (single replica with leader election)
+# ---------------------------------------------------------------------------
+dagsterDaemon:
+  enabled: true
+  image:
+    repository: gcr.io/hifld-next/dagster-user
+    tag: latest
+    pullPolicy: IfNotPresent
+  envConfigMaps:
+    - name: dagster-env
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  runCoordinator:
+    enabled: true
+    type: QueuedRunCoordinator
+    config:
+      queuedRunCoordinator:
+        maxConcurrentRuns: 10
+
+# ---------------------------------------------------------------------------
+# User code: gRPC server hosting dagster_hifld.definitions:defs
+# ---------------------------------------------------------------------------
+dagster-user-deployments:
+  enabled: true
+  enableSubchart: true
+  # The subchart creates its own ServiceAccount unless told otherwise; reuse
+  # the Terraform-managed one so Workload Identity works for run pods too.
+  serviceAccount:
+    create: false
+    name: dagster
+  deployments:
+    - name: hifld
+      image:
+        repository: gcr.io/hifld-next/dagster-user
+        tag: latest
+        pullPolicy: IfNotPresent
+      dagsterApiGrpcArgs:
+        - "-m"
+        - "dagster_hifld.definitions"
+      port: 4000
+      includeConfigInLaunchedRuns:
+        enabled: true
+      envConfigMaps:
+        - name: dagster-env
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+
+# ---------------------------------------------------------------------------
+# Run launcher: spawn a per-run Pod for each Dagster run
+# ---------------------------------------------------------------------------
+runLauncher:
+  type: K8sRunLauncher
+  config:
+    k8sRunLauncher:
+      jobNamespace: hifld-next-datasets
+      loadInclusterConfig: true
+      image:
+        repository: gcr.io/hifld-next/dagster-user
+        tag: latest
+        pullPolicy: IfNotPresent
+      envConfigMaps:
+        - name: dagster-env
+      # Autopilot rejects pods without explicit requests; size for
+      # Census-blocks-class ingest (multi-GB shapefiles) by default.
+      resources:
+        requests:
+          cpu: "1"
+          memory: "4Gi"
+        limits:
+          cpu: "2"
+          memory: "8Gi"
+
+# ---------------------------------------------------------------------------
+# Compute logs: provided by the deployer's overlay (e.g. GCSComputeLogManager
+# for GKE installs, S3ComputeLogManager for EKS, LocalComputeLogManager for a
+# local dev cluster). Intentionally left unset here so this file stays
+# cluster-agnostic.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Misc
+# ---------------------------------------------------------------------------
+telemetry:
+  enabled: false

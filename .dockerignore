@@ -1,0 +1,41 @@
+# Version control
+.git/
+.gitignore
+
+# Virtual envs and caches
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+src/hifld_next_datasets.egg-info/
+
+# Local data and scraper outputs (not needed at runtime; pipelines fetch fresh)
+data/
+dataset-source-hints.jsonl
+*.csv
+
+# Tests and ad-hoc scripts (image is for production execution only)
+tests/
+test_*.py
+
+# Editor / IDE
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+
+# Dagster local home
+.dagster_home/
+
+# Plans / docs that aren't shipped
+prompts/
+dagster_expectations/
+
+# Local env
+.env
+.env.*
+!.env.example
