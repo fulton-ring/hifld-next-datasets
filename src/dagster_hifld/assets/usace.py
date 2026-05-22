@@ -16,7 +16,7 @@ _DESCRIPTION = (
 
 
 @asset(
-    key=AssetKey([_DATASET_SLUG, _FILE_SLUG]),
+    key=AssetKey(["ingest", _DATASET_SLUG, _FILE_SLUG]),
     group_name="usace",
     compute_kind="http",
     description=_DESCRIPTION,

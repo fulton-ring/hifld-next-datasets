@@ -2,14 +2,22 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+import zipfile
 
 import geopandas as gpd
+import pandas as pd
+from shapely.geometry import Polygon
 from shapely.geometry import Point
 
 from dagster_hifld.catalog import (
     generate_data_dictionary,
     generate_quality_manifest,
     load_staged_geodata,
+    summarize_staged_catalog,
+    _summarize_geospatial_source,
+    _iter_geospatial_sources,
+    _with_large_geojson_support,
     write_catalog_metadata,
 )
 from dagster_hifld.resources import StagingStorageResource
@@ -47,6 +55,32 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(columns["name"]["type"], "string")
         self.assertEqual(columns["geometry"]["type"], "geometry")
         self.assertEqual(columns["name"]["numNullValues"], 1)
+
+    def test_generate_data_dictionary_includes_resolved_source_metadata(self):
+        gdf = gpd.GeoDataFrame(
+            {"station_id": [1]},
+            geometry=[Point(0, 0)],
+            crs="EPSG:4326",
+        )
+
+        dictionary = generate_data_dictionary(
+            gdf,
+            "amtrak-stations",
+            source_metadata={
+                "title": "Amtrak Stations",
+                "description": "Passenger rail stations.",
+                "publisher": "Amtrak",
+                "keywords": ["rail", "stations"],
+                "metadata_sources": ["file"],
+                "metadata_resolved_from": {"title": "file"},
+            },
+        )
+
+        self.assertEqual(dictionary["title"], "Amtrak Stations")
+        self.assertEqual(dictionary["description"], "Passenger rail stations.")
+        self.assertEqual(dictionary["publisher"], "Amtrak")
+        self.assertEqual(dictionary["keywords"], ["rail", "stations"])
+        self.assertEqual(dictionary["metadata_sources"], ["file"])
 
     def test_generate_data_dictionary_sampling_is_deterministic(self):
         gdf = gpd.GeoDataFrame(
@@ -92,7 +126,65 @@ class CatalogTests(unittest.TestCase):
                 {"name": "amtrak-stations", "columns": []},
             )
 
-    def test_load_staged_geodata_adds_id_column_from_objectid(self):
+    def test_iter_geospatial_sources_extracts_zipped_file_geodatabase(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            fgdb_dir = version_dir / "file_geodatabase"
+            fgdb_dir.mkdir()
+            zip_path = fgdb_dir / "source.gdb.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr("source.gdb/gdb", b"")
+                zf.writestr("source.gdb/a00000001.gdbtable", b"")
+
+            with patch("dagster_hifld.catalog.fiona.listlayers", return_value=["layer_a"]):
+                sources = list(_iter_geospatial_sources(version_dir))
+
+            self.assertEqual(len(sources), 1)
+            source_path, layer = sources[0]
+            self.assertEqual(source_path.name, "source.gdb")
+            self.assertTrue(source_path.is_dir())
+            self.assertEqual(layer, "layer_a")
+
+    def test_generate_quality_manifest_supports_tabular_inputs(self):
+        df = pd.DataFrame({"station_id": [1, 2], "name": ["A", None]})
+
+        manifest = generate_quality_manifest(df)
+
+        self.assertEqual(manifest["feature_count"], 2)
+        self.assertIsNone(manifest["geometry_type"])
+        self.assertIsNone(manifest["bounds"])
+        self.assertEqual(manifest["invalid_geometry_count"], 0)
+        self.assertEqual(manifest["spatial_status"], "non_spatial_source")
+        self.assertTrue(manifest["quality_check_passed"])
+
+    def test_generate_quality_manifest_passes_all_null_geometry_as_expected_non_spatial(self):
+        gdf = gpd.GeoDataFrame(
+            {"name": ["A", "B"]},
+            geometry=[None, None],
+            crs="EPSG:4326",
+        )
+
+        manifest = generate_quality_manifest(gdf)
+
+        self.assertTrue(manifest["quality_check_passed"])
+        self.assertEqual(manifest["spatial_status"], "all_null_geometry")
+        self.assertEqual(manifest["null_geometry_count"], 2)
+
+    def test_generate_quality_manifest_fails_invalid_spatial_geometry(self):
+        invalid = Polygon([(0, 0), (1, 1), (1, 0), (0, 1), (0, 0)])
+        gdf = gpd.GeoDataFrame(
+            {"name": ["A"]},
+            geometry=[invalid],
+            crs="EPSG:4326",
+        )
+
+        manifest = generate_quality_manifest(gdf)
+
+        self.assertFalse(manifest["quality_check_passed"])
+        self.assertEqual(manifest["spatial_status"], "spatial")
+        self.assertEqual(manifest["invalid_geometry_count"], 1)
+
+    def test_load_staged_geodata_preserves_source_identifier_columns_without_synthetic_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
             version_dir = (
@@ -117,8 +209,154 @@ class CatalogTests(unittest.TestCase):
                 version="v-test",
             )
 
-            self.assertIn("id", loaded.columns)
-            self.assertEqual(loaded["id"].tolist(), [101, 102])
+            self.assertNotIn("id", loaded.columns)
+            self.assertIn("OBJECTID", loaded.columns)
+            self.assertEqual(loaded["OBJECTID"].tolist(), [101, 102])
+
+    def test_summarize_staged_catalog_handles_non_spatial_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            version_dir = Path(tmpdir) / "dataset-a" / "file-a" / "v1.0.0" / "unknown"
+            version_dir.mkdir(parents=True)
+            (version_dir / "source.csv").write_text("name,value\nA,1\nB,2\n", encoding="utf-8")
+
+            summary = summarize_staged_catalog(
+                resource,
+                dataset_slug="dataset-a",
+                file_slug="file-a",
+                version="v1.0.0",
+                dictionary_name="dataset-a",
+            )
+
+            self.assertEqual(summary.quality_manifest["feature_count"], 2)
+            self.assertIsNone(summary.quality_manifest["geometry_type"])
+            self.assertEqual(summary.quality_manifest["catalog_mode"], "tabular")
+            column_names = [column["name"] for column in summary.data_dictionary["columns"]]
+            self.assertEqual(column_names, ["name", "value"])
+
+    def test_summarize_geospatial_source_does_not_require_driver_bounds(self):
+        class BoundsFailingCollection:
+            crs = "EPSG:4326"
+            schema = {"geometry": "Point", "properties": {"name": "str"}}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __len__(self):
+                return 1
+
+            @property
+            def bounds(self):
+                raise RuntimeError("Driver was not able to calculate bounds")
+
+            def __iter__(self):
+                return iter(
+                    [
+                        {
+                            "type": "Feature",
+                            "properties": {"name": "A"},
+                            "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+                        }
+                    ]
+                )
+
+        import dagster_hifld.catalog as catalog_module
+
+        original_open = catalog_module.fiona.open
+        catalog_module.fiona.open = lambda *args, **kwargs: BoundsFailingCollection()
+        try:
+            sample, quality = _summarize_geospatial_source(Path("source.gpkg"), None)
+        finally:
+            catalog_module.fiona.open = original_open
+
+        self.assertEqual(len(sample), 1)
+        self.assertEqual(quality["feature_count"], 1)
+        self.assertEqual(quality["bounds"], [1.0, 2.0, 1.0, 2.0])
+        self.assertEqual(quality["geometry_type"], "Point")
+
+    def test_summarize_geospatial_source_passes_all_null_geometry(self):
+        class AllNullGeometryCollection:
+            crs = "EPSG:4326"
+            schema = {"geometry": "Unknown", "properties": {"name": "str"}}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __len__(self):
+                return 2
+
+            @property
+            def bounds(self):
+                return None
+
+            def __iter__(self):
+                return iter(
+                    [
+                        {"type": "Feature", "properties": {"name": "A"}, "geometry": None},
+                        {"type": "Feature", "properties": {"name": "B"}, "geometry": None},
+                    ]
+                )
+
+        import dagster_hifld.catalog as catalog_module
+
+        original_open = catalog_module.fiona.open
+        catalog_module.fiona.open = lambda *args, **kwargs: AllNullGeometryCollection()
+        try:
+            sample, quality = _summarize_geospatial_source(Path("source.geojson"), None)
+        finally:
+            catalog_module.fiona.open = original_open
+
+        self.assertEqual(len(sample), 2)
+        self.assertTrue(quality["quality_check_passed"])
+        self.assertEqual(quality["spatial_status"], "all_null_geometry")
+        self.assertEqual(quality["sampled_null_geometry_count"], 2)
+
+    def test_large_geojson_support_sets_gdal_object_size_option(self):
+        import dagster_hifld.catalog as catalog_module
+
+        calls = []
+
+        class FakeEnv:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        original_env = catalog_module.fiona.Env
+        catalog_module.fiona.Env = FakeEnv
+        try:
+            with _with_large_geojson_support():
+                pass
+        finally:
+            catalog_module.fiona.Env = original_env
+
+        self.assertEqual(calls, [{"OGR_GEOJSON_MAX_OBJ_SIZE": "0"}])
+
+    def test_catalog_error_lists_attempted_sources_when_all_readers_fail(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            version_dir = Path(tmpdir) / "dataset-a" / "file-a" / "v1.0.0" / "geojson"
+            version_dir.mkdir(parents=True)
+            (version_dir / "source.geojson").write_text("not geojson", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "source.geojson.*DriverError"):
+                summarize_staged_catalog(
+                    resource,
+                    dataset_slug="dataset-a",
+                    file_slug="file-a",
+                    version="v1.0.0",
+                    dictionary_name="dataset-a",
+                )
 
 
 if __name__ == "__main__":

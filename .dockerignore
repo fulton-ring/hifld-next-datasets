@@ -17,6 +17,7 @@ src/hifld_next_datasets.egg-info/
 data/
 dataset-source-hints.jsonl
 *.csv
+!HIFLD_Open_Inventory_12112025.csv
 
 # Tests and ad-hoc scripts (image is for production execution only)
 tests/

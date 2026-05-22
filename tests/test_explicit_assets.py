@@ -22,17 +22,20 @@ class ExplicitAssetTests(unittest.TestCase):
             len(hifld_dataset_assets),
             ingest_count + catalog_count + publish_count,
         )
+        self.assertTrue(all(asset.key.path[0] == "ingest" for asset in hifld_ingest_assets))
+        self.assertTrue(all(asset.key.path[0] == "publish" for asset in catalog_assets_module.catalog_assets))
+        self.assertTrue(all(asset.key.path[0] == "publish" for asset in publish_assets_module.publish_assets))
 
     def test_catalog_and_publish_assets_return_output_annotations_for_bts_key(self):
         catalog_asset = next(
             asset
             for asset in catalog_assets_module.catalog_assets
-            if asset.key == AssetKey(["catalog", "amtrak-stations", "amtrak-stations"])
+            if asset.key == AssetKey(["publish", "catalog"])
         )
         publish_asset = next(
             asset
             for asset in publish_assets_module.publish_assets
-            if asset.key == AssetKey(["publish", "amtrak-stations", "amtrak-stations"])
+            if asset.key == AssetKey(["publish", "formats", "geoparquet"])
         )
         catalog_hints = get_type_hints(catalog_asset.op.compute_fn.decorated_fn)
         publish_hints = get_type_hints(publish_asset.op.compute_fn.decorated_fn)

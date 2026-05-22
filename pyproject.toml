@@ -23,6 +23,7 @@ dependencies = [
     "polars>=1.38.1",
     "python-dotenv>=1.2.2",
     "pyarrow>=23.0.1",
+    "s2sphere>=0.2.5",
 ]
 
 [build-system]
@@ -38,3 +39,4 @@ include = ["hifld_next_datasets*", "dagster_hifld*"]
 
 [project.scripts]
 find-dataset-sources = "hifld_next_datasets.scraper:main"
+seed-source-manifests = "dagster_hifld.seed_source_manifests:main"

@@ -76,6 +76,20 @@ dagsterDaemon:
     pullPolicy: IfNotPresent
   envConfigMaps:
     - name: dagster-env
+  # Backfills fail hard if the daemon evaluates them while the user-code
+  # location is temporarily unreachable during a rollout. Wait for the hifld
+  # gRPC service before starting daemon loops.
+  extraPrependedInitContainers:
+    - name: wait-for-hifld-user-code
+      image: busybox:1.28
+      command:
+        - sh
+        - -c
+        - |
+          until nc -z hifld 4000; do
+            echo "waiting for hifld user-code gRPC service"
+            sleep 5
+          done
   resources:
     requests:
       cpu: "500m"
@@ -85,7 +99,9 @@ dagsterDaemon:
     type: QueuedRunCoordinator
     config:
       queuedRunCoordinator:
-        maxConcurrentRuns: 10
+        # Keep enough parallelism for bulk publishing without flooding GKE with
+        # pending per-run Jobs/PVCs during all-partition backfills.
+        maxConcurrentRuns: 8
 
 # ---------------------------------------------------------------------------
 # User code: gRPC server hosting dagster_hifld.definitions:defs
@@ -100,6 +116,13 @@ dagster-user-deployments:
     name: dagster
   deployments:
     - name: hifld
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+      deploymentStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxUnavailable: 0
+          maxSurge: 1
       image:
         repository: gcr.io/hifld-next/dagster-user
         tag: latest
@@ -109,13 +132,18 @@ dagster-user-deployments:
         - "dagster_hifld.definitions"
       port: 4000
       includeConfigInLaunchedRuns:
-        enabled: true
+        # Keep the gRPC server lightweight without copying its 500m/1Gi
+        # resource request into every launched run pod.
+        enabled: false
       envConfigMaps:
         - name: dagster-env
       resources:
         requests:
           cpu: "500m"
           memory: "1Gi"
+          ephemeral-storage: "10Gi"
+        limits:
+          ephemeral-storage: "10Gi"
 
 # ---------------------------------------------------------------------------
 # Run launcher: spawn a per-run Pod for each Dagster run
@@ -132,15 +160,27 @@ runLauncher:
         pullPolicy: IfNotPresent
       envConfigMaps:
         - name: dagster-env
-      # Autopilot rejects pods without explicit requests; size for
-      # Census-blocks-class ingest (multi-GB shapefiles) by default.
+      # The run pod is now a lightweight orchestrator; heavy publish steps run
+      # in isolated dagster_k8s step pods configured by the code location.
       resources:
         requests:
-          cpu: "1"
-          memory: "4Gi"
+          cpu: "500m"
+          memory: "2Gi"
+          # GKE Autopilot rejects container ephemeral-storage above 10Gi.
+          # Larger scratch space is provided by /tmp's generic ephemeral PVC.
+          ephemeral-storage: "10Gi"
         limits:
           cpu: "2"
-          memory: "8Gi"
+          memory: "4Gi"
+          ephemeral-storage: "10Gi"
+      runK8sConfig:
+        podTemplateSpecMetadata:
+          annotations:
+            cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+        jobSpecConfig:
+          # Run pods are lightweight orchestrators. Heavy step pods define
+          # their own scratch PVCs in the Dagster code location executor.
+          ttlSecondsAfterFinished: 120
 
 # ---------------------------------------------------------------------------
 # Compute logs: provided by the deployer's overlay (e.g. GCSComputeLogManager

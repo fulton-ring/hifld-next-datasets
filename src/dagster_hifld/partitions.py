@@ -1,30 +1,28 @@
-"""Shared dynamic partition definitions for versioned dataset assets."""
+"""Shared dynamic partition definitions for versioned publish assets."""
 
 from __future__ import annotations
 
+import re
+
 from dagster import DynamicPartitionsDefinition
 
-from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILE_PAIRS
-
-DATASET_FILE_PAIRS = SUPPORTED_DATASET_FILE_PAIRS
-
-
-def get_partition_name(dataset_slug: str, file_slug: str) -> str:
-    return f"{dataset_slug}--{file_slug}"
+SEMVER_VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
+SOURCE_FORMAT_DIRS = {"file_geodatabase", "geopackage", "geojson", "unknown"}
+PUBLISH_PARTITION_NAME = "publish_dataset_file_version"
+PUBLISH_PARTITIONS = DynamicPartitionsDefinition(name=PUBLISH_PARTITION_NAME)
 
 
-CATALOG_PARTITIONS = {
-    get_partition_name(dataset_slug, file_slug): DynamicPartitionsDefinition(
-        name=get_partition_name(dataset_slug, file_slug)
-    )
-    for dataset_slug, file_slug in DATASET_FILE_PAIRS
-}
+def build_publish_partition_key(dataset_slug: str, file_slug: str, version: str) -> str:
+    return f"{dataset_slug}/{file_slug}/{version}"
 
-PARTITIONS_BY_PAIR = {
-    (dataset_slug, file_slug): CATALOG_PARTITIONS[
-        get_partition_name(dataset_slug, file_slug)
-    ]
-    for dataset_slug, file_slug in DATASET_FILE_PAIRS
-}
 
-ALL_PARTITIONS_DEFS = list(CATALOG_PARTITIONS.values())
+def parse_publish_partition_key(partition_key: str) -> tuple[str, str, str]:
+    parts = [part for part in partition_key.split("/") if part]
+    if len(parts) != 3:
+        raise ValueError(
+            "Publish partition keys must be formatted as "
+            "'dataset_slug/file_slug/version'."
+        )
+    return parts[0], parts[1], parts[2]
+
+ALL_PARTITIONS_DEFS = [PUBLISH_PARTITIONS]

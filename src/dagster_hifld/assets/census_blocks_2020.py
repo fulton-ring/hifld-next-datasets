@@ -1,8 +1,8 @@
 """2020 Census tab blocks (TIGER/Line 2024 TABBLOCK20).
 
-Dataset-specific slugs and (dataset_slug, file_slug) pairs live here so
-`partitions.py` only merges `CENSUS_2020_DATASET_FILE_PAIRS` alongside the base
-list. Add other large multi-file datasets the same way in their own modules.
+Dataset-specific slugs and file slug helpers live here so custom ingest code can
+address the state-level source files. Publishing now discovers staged versions
+generically from `dataset_slug/file_slug/version`.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ def _make_tabblock20_ingest_asset(file_slug: str):
     compute_fn.__qualname__ = f"census_2020_blocks_{file_slug}"
 
     return asset(
-        key=AssetKey([CENSUS_2020_BLOCKS_DATASET_SLUG, file_slug]),
+        key=AssetKey(["ingest", CENSUS_2020_BLOCKS_DATASET_SLUG, file_slug]),
         group_name=_GROUP_NAME,
         compute_kind="http",
         description=_DESCRIPTION,

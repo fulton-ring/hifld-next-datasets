@@ -2,7 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from dagster import AssetCheckSeverity, build_op_context
+from dagster._core.execution.context.invocation import DirectAssetCheckExecutionContext
 from dagster_hifld.checks import hifld_asset_checks
+from dagster_hifld.checks import publish_catalog_quality_manifest
 from dagster_hifld.checks.common import (
     BASELINE_VERSION,
     read_baseline_comparison_result,
@@ -15,7 +18,7 @@ class CheckTests(unittest.TestCase):
     def test_quality_checks_target_catalog_assets(self):
         for check_def in hifld_asset_checks:
             spec = next(iter(check_def.check_specs))
-            self.assertEqual(spec.asset_key.path[0], "catalog")
+            self.assertEqual(spec.asset_key.path[:2], ["publish", "catalog"])
 
     def test_manifest_backed_checks_cover_backfill_and_census_assets(self):
         asset_paths = {
@@ -23,33 +26,8 @@ class CheckTests(unittest.TestCase):
             for check_def in hifld_asset_checks
         }
 
-        self.assertIn(
-            ("catalog", "119th-congressional-districts", "119th-congressional-districts"),
-            asset_paths,
-        )
-        self.assertIn(
-            ("catalog", "address-ranges", "address-ranges"),
-            asset_paths,
-        )
-        self.assertIn(
-            (
-                "catalog",
-                "agricultural-minerals-operations",
-                "agricultural-minerals-operations",
-            ),
-            asset_paths,
-        )
-        self.assertIn(
-            ("catalog", "2020-census-blocks-1", "tl_2024_01_tabblock20"),
-            asset_paths,
-        )
-
-        census_checks = [
-            path
-            for path in asset_paths
-            if path[1] == "2020-census-blocks-1"
-        ]
-        self.assertEqual(len(census_checks), 56)
+        self.assertEqual(asset_paths, {("publish", "catalog")})
+        self.assertEqual(len(hifld_asset_checks), 2)
 
     def test_read_quality_check_result_reads_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -76,6 +54,45 @@ class CheckTests(unittest.TestCase):
 
             self.assertTrue(result.passed)
             self.assertEqual(result.metadata["feature_count"].value, 5)
+
+    def test_publish_quality_check_reports_warning_severity_for_invalid_geometry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            metadata_dir = Path(tmpdir) / "nfhl" / "area" / "v1.0.0" / "metadata"
+            metadata_dir.mkdir(parents=True)
+            (metadata_dir / "quality_manifest.json").write_text(
+                '{"quality_check_passed": false, "invalid_geometry_count": 40}',
+                encoding="utf-8",
+            )
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            context = DirectAssetCheckExecutionContext(
+                build_op_context(partition_key="nfhl/area/v1.0.0")
+            )
+
+            result = publish_catalog_quality_manifest(context, resource)
+
+            self.assertFalse(result.passed)
+            self.assertEqual(result.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(result.metadata["invalid_geometry_count"].value, 40)
+
+    def test_read_quality_check_result_passes_expected_all_null_geometry_manifest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            metadata_dir = Path(tmpdir) / "trauma-levels" / "trauma-levels" / "v1.0.0" / "metadata"
+            metadata_dir.mkdir(parents=True)
+            (metadata_dir / "quality_manifest.json").write_text(
+                '{"quality_check_passed": true, "feature_count": 221, "spatial_status": "all_null_geometry"}',
+                encoding="utf-8",
+            )
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = read_quality_check_result(
+                resource,
+                dataset_slug="trauma-levels",
+                file_slug="trauma-levels",
+                version="v1.0.0",
+            )
+
+            self.assertTrue(result.passed)
+            self.assertEqual(result.metadata["spatial_status"].value, "all_null_geometry")
 
     def test_baseline_check_skips_when_partition_is_baseline(self):
         with tempfile.TemporaryDirectory() as tmpdir:

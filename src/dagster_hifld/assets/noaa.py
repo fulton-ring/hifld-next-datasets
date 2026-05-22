@@ -28,7 +28,7 @@ _CONTIGUOUS_ZONE_FILE_SLUG = "24nm-contiguous-zone"
 
 
 @asset(
-    key=AssetKey([_TERRITORIAL_SEA_DATASET_SLUG, _TERRITORIAL_SEA_FILE_SLUG]),
+    key=AssetKey(["ingest", _TERRITORIAL_SEA_DATASET_SLUG, _TERRITORIAL_SEA_FILE_SLUG]),
     group_name="noaa",
     compute_kind="http",
     description="12NM Territorial Sea (HIFLD inventory). Publisher: National Oceanic and Atmospheric Administration. NOAA depicts on nautical charts the limits of the 12 NM Territorial Sea, 24 NM Contiguous Zone, and 200 NM EEZ from the U.S. normal baseline. Source: maritimeboundaries.noaa.gov.",
@@ -45,7 +45,7 @@ def noaa_12nm_territorial_sea(context, staging_storage: StagingStorageResource) 
 
 
 @asset(
-    key=AssetKey([_EEZ_DATASET_SLUG, _EEZ_FILE_SLUG]),
+    key=AssetKey(["ingest", _EEZ_DATASET_SLUG, _EEZ_FILE_SLUG]),
     group_name="noaa",
     compute_kind="http",
     description="200NM EEZ and Maritime Boundaries (HIFLD inventory). Publisher: NOAA. Outer limit of the U.S. Exclusive Economic Zone and maritime boundaries with adjacent countries; from the U.S. Baseline Committee. Source: maritimeboundaries.noaa.gov.",
@@ -62,7 +62,7 @@ def noaa_200nm_eez_and_maritime_boundaries(context, staging_storage: StagingStor
 
 
 @asset(
-    key=AssetKey([_CONTIGUOUS_ZONE_DATASET_SLUG, _CONTIGUOUS_ZONE_FILE_SLUG]),
+    key=AssetKey(["ingest", _CONTIGUOUS_ZONE_DATASET_SLUG, _CONTIGUOUS_ZONE_FILE_SLUG]),
     group_name="noaa",
     compute_kind="http",
     description="24NM Contiguous Zone (HIFLD inventory). Publisher: NOAA. Maritime limits from the U.S. normal baseline; part of NOAA OCS U.S. Maritime Limits & Boundaries. Source: maritimeboundaries.noaa.gov.",

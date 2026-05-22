@@ -32,7 +32,7 @@ _AVIATION_BASE = (
 
 
 @asset(
-    key=AssetKey([_AIRSPACE_DATASET_SLUG, _AIRSPACE_FILE_SLUG]),
+    key=AssetKey(["ingest", _AIRSPACE_DATASET_SLUG, _AIRSPACE_FILE_SLUG]),
     group_name="faa",
     compute_kind="http",
     description=_AIRSPACE_DESCRIPTION,
@@ -52,7 +52,7 @@ def faa_airspace_boundaries(context, staging_storage: StagingStorageResource) ->
 
 
 @asset(
-    key=AssetKey([_AVIATION_DATASET_SLUG, _AVIATION_FILE_SLUG]),
+    key=AssetKey(["ingest", _AVIATION_DATASET_SLUG, _AVIATION_FILE_SLUG]),
     group_name="faa",
     compute_kind="http",
     description=_AVIATION_DESCRIPTION,

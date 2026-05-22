@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -96,8 +97,6 @@ class StagingStorageResource(ConfigurableResource):
         import gcsfs
         fs = gcsfs.GCSFileSystem()
         path = f"{self.bucket}/{key_prefix}"
-        if not fs.exists(path):
-            return []
         # fs.find() recurses into all subdirectories
         found = fs.find(path)
         return [p.replace(f"{self.bucket}/", "") for p in found]
@@ -135,6 +134,96 @@ class StagingStorageResource(ConfigurableResource):
 
         fs = gcsfs.GCSFileSystem()
         return bool(fs.exists(f"{self.bucket}/{key}"))
+
+    def delete_prefix(self, key_prefix: str) -> None:
+        key_prefix = self._ensure_prefixed(key_prefix).rstrip("/")
+        if not key_prefix:
+            raise ValueError("Refusing to delete an empty storage prefix.")
+
+        if self.use_local or not self.bucket:
+            root = Path(self.local_dir).resolve()
+            target = root / key_prefix
+            if target.is_dir():
+                shutil.rmtree(target)
+            elif target.exists():
+                target.unlink()
+            return
+
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        path = f"{self.bucket}/{key_prefix}"
+        if fs.exists(path):
+            fs.rm(path, recursive=True)
+
+    def copy_key_to(self, destination: "StagingStorageResource", key: str) -> str:
+        """Copy one fully-qualified relative key to another storage resource."""
+        key = self._ensure_prefixed(key)
+        destination_key = destination._ensure_prefixed(key)
+
+        if (self.use_local or not self.bucket) and (destination.use_local or not destination.bucket):
+            src = Path(self.local_dir).resolve() / key
+            dst = Path(destination.local_dir).resolve() / destination_key
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            return destination_key
+
+        import gcsfs
+
+        if not (self.use_local or not self.bucket) and not (
+            destination.use_local or not destination.bucket
+        ):
+            fs = gcsfs.GCSFileSystem()
+            fs.copy(f"{self.bucket}/{key}", f"{destination.bucket}/{destination_key}")
+            return destination_key
+
+        if self.use_local or not self.bucket:
+            fs = gcsfs.GCSFileSystem()
+            src = Path(self.local_dir).resolve() / key
+            fs.put(str(src), f"{destination.bucket}/{destination_key}")
+            return destination_key
+
+        fs = gcsfs.GCSFileSystem()
+        dst = Path(destination.local_dir).resolve() / destination_key
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        fs.get(f"{self.bucket}/{key}", str(dst))
+        return destination_key
+
+    def copy_keys_to(
+        self,
+        destination: "StagingStorageResource",
+        keys: list[str],
+        *,
+        max_workers: int | None = None,
+    ) -> list[str]:
+        """Copy many relative keys, using concurrent server-side object copies for GCS."""
+        if not keys:
+            return []
+
+        if max_workers is None:
+            max_workers = int(os.environ.get("HIFLD_PROMOTE_COPY_WORKERS", "32"))
+        max_workers = max(1, min(max_workers, len(keys)))
+
+        if max_workers == 1:
+            return [self.copy_key_to(destination, key) for key in keys]
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            return list(executor.map(lambda key: self.copy_key_to(destination, key), keys))
+
+    def key_size(self, key: str) -> int:
+        key = self._ensure_prefixed(key)
+        if self.use_local or not self.bucket:
+            path = Path(self.local_dir).resolve() / key
+            return path.stat().st_size if path.exists() else 0
+
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        try:
+            info = fs.info(f"{self.bucket}/{key}")
+        except FileNotFoundError:
+            return 0
+        return int(info.get("size", 0) or 0)
 
     def list_versions(self, dataset_slug: str, file_slug: str) -> list[str]:
         dataset_prefix = self._apply_prefix(f"{dataset_slug}/{file_slug}").rstrip("/")
@@ -190,11 +279,16 @@ class StagingStorageResource(ConfigurableResource):
                     continue
                 dest = tmp / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                data = fs.read_bytes(f"{self.bucket}/{key}")
-                dest.write_bytes(data)
+                self._copy_gcs_key_to_path(fs, key, dest)
             yield tmp
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def _copy_gcs_key_to_path(self, fs, key: str, dest: Path) -> None:
+        """Stream a GCS object to local disk without loading it all into memory."""
+        with fs.open(f"{self.bucket}/{key}", "rb") as source:
+            with dest.open("wb") as output:
+                shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 class GreatExpectationsResource(ConfigurableResource):

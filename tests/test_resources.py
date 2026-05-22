@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 import zipfile
 
 from dagster_hifld.download import _extract_zip, build_version_id, download_convert_and_stage
@@ -90,6 +90,45 @@ class StagingStorageResourceTests(unittest.TestCase):
                 resource.list_versions("amtrak-stations", "amtrak-stations"),
                 ["run_a", "run_b"],
             )
+
+    def test_gcs_list_keys_uses_recursive_find_without_prefix_exists_guard(self):
+        resource = StagingStorageResource(
+            bucket="staging-bucket",
+            use_local=False,
+        )
+        fake_fs = Mock()
+        fake_fs.find.return_value = [
+            "staging-bucket/address-ranges/address-ranges/v1.0.0/geopackage/source.gpkg",
+        ]
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            keys = resource.list_keys("address-ranges", "address-ranges", "v1.0.0")
+
+        fake_fs.exists.assert_not_called()
+        fake_fs.find.assert_called_once_with(
+            "staging-bucket/address-ranges/address-ranges/v1.0.0"
+        )
+        self.assertEqual(
+            keys,
+            ["address-ranges/address-ranges/v1.0.0/geopackage/source.gpkg"],
+        )
+
+    def test_gcs_get_local_version_dir_streams_objects_to_disk(self):
+        resource = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        key = "dataset/file/v1.0.0/geopackage/source.gpkg"
+        fake_fs = Mock()
+        fake_fs.find.return_value = [f"staging-bucket/{key}"]
+        fake_file = MagicMock()
+        fake_file.__enter__.return_value = BytesIO(b"source bytes")
+        fake_fs.open.return_value = fake_file
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            with resource.get_local_version_dir("dataset", "file", "v1.0.0") as version_dir:
+                copied = Path(version_dir) / "geopackage" / "source.gpkg"
+                self.assertEqual(copied.read_bytes(), b"source bytes")
+
+        fake_fs.read_bytes.assert_not_called()
+        fake_fs.open.assert_called_once_with(f"staging-bucket/{key}", "rb")
 
     def test_object_exists_checks_exact_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:

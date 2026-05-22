@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from dagster import AssetKey, DynamicPartitionsDefinition, MetadataValue, Output, asset
+from dagster import AssetKey, MetadataValue, Output, asset
 
 from dagster_hifld.catalog import (
-    generate_data_dictionary,
-    generate_quality_manifest,
-    load_staged_geodata,
+    summarize_staged_catalog,
     write_catalog_metadata,
 )
 from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILES
-from dagster_hifld.partitions import PARTITIONS_BY_PAIR
+from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 
 
 def _build_catalog_output_metadata(
@@ -24,11 +23,12 @@ def _build_catalog_output_metadata(
     data_dictionary: dict,
 ) -> dict:
     columns = data_dictionary.get("columns", [])
-    return {
+    metadata = {
         "dataset_slug": dataset_slug,
         "file_slug": file_slug,
         "version": version,
-        "description": description,
+        "title": data_dictionary.get("title", file_slug),
+        "description": data_dictionary.get("description", description),
         "feature_count": quality_manifest.get("feature_count"),
         "bounds": MetadataValue.json(quality_manifest.get("bounds")),
         "geometry_type": quality_manifest.get("geometry_type"),
@@ -38,59 +38,65 @@ def _build_catalog_output_metadata(
         "column_count": len(columns),
         "schema_columns": MetadataValue.json(columns),
     }
+    if data_dictionary.get("metadata_sources"):
+        metadata["metadata_sources"] = MetadataValue.json(data_dictionary["metadata_sources"])
+    if data_dictionary.get("metadata_resolved_from"):
+        metadata["metadata_resolved_from"] = MetadataValue.json(data_dictionary["metadata_resolved_from"])
+    return metadata
 
 
-def _make_catalog_asset(
-    dataset_slug: str,
-    file_slug: str,
-    ingest_asset_key: AssetKey | None,
-    description: str,
-    partitions_def: DynamicPartitionsDefinition,
-):
-    @asset(
-        key=AssetKey(["catalog", dataset_slug, file_slug]),
-        partitions_def=partitions_def,
-        group_name="catalog",
-        deps=[ingest_asset_key] if ingest_asset_key is not None else None,
-        description=f"Generate quality and data dictionary metadata for {dataset_slug}.",
+_SUPPORTED_BY_PAIR = {
+    (spec.dataset_slug, spec.file_slug): spec for spec in SUPPORTED_DATASET_FILES
+}
+
+
+@asset(
+    key=AssetKey(["publish", "catalog"]),
+    partitions_def=PUBLISH_PARTITIONS,
+    group_name="catalog",
+    description="Generate quality and data dictionary metadata for any staged dataset version.",
+)
+def publish_catalog(context, staging_storage: StagingStorageResource) -> Output[dict]:
+    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    spec = _SUPPORTED_BY_PAIR.get((dataset_slug, file_slug))
+    description = (
+        spec.description if spec else f"Staged dataset file {dataset_slug}/{file_slug}."
     )
-    def _catalog_asset(
-        context, staging_storage: StagingStorageResource
-    ) -> Output[dict]:
-        version = context.partition_key
-        gdf = load_staged_geodata(staging_storage, dataset_slug, file_slug, version)
-        quality_manifest = generate_quality_manifest(gdf)
-        data_dictionary = generate_data_dictionary(gdf, dataset_slug)
-        write_catalog_metadata(
-            staging_storage,
+    resolved_manifest = load_resolved_source_manifest(
+        staging_storage,
+        dataset_slug,
+        file_slug,
+        version,
+    )
+    summary = summarize_staged_catalog(
+        staging_storage,
+        dataset_slug,
+        file_slug,
+        version,
+        dataset_slug,
+        source_metadata=resolved_manifest.metadata,
+    )
+    quality_manifest = summary.quality_manifest
+    data_dictionary = summary.data_dictionary
+    write_catalog_metadata(
+        staging_storage,
+        dataset_slug=dataset_slug,
+        file_slug=file_slug,
+        version=version,
+        quality_dict=quality_manifest,
+        dictionary_dict=data_dictionary,
+    )
+    return Output(
+        {"version": version},
+        metadata=_build_catalog_output_metadata(
             dataset_slug=dataset_slug,
             file_slug=file_slug,
             version=version,
-            quality_dict=quality_manifest,
-            dictionary_dict=data_dictionary,
-        )
-        return Output(
-            {"version": version},
-            metadata=_build_catalog_output_metadata(
-                dataset_slug=dataset_slug,
-                file_slug=file_slug,
-                version=version,
-                description=description,
-                quality_manifest=quality_manifest,
-                data_dictionary=data_dictionary,
-            ),
-        )
-
-    return _catalog_asset
-
-
-catalog_assets = [
-    _make_catalog_asset(
-        spec.dataset_slug,
-        spec.file_slug,
-        spec.ingest_asset_key,
-        spec.description,
-        PARTITIONS_BY_PAIR[(spec.dataset_slug, spec.file_slug)],
+            description=description,
+            quality_manifest=quality_manifest,
+            data_dictionary=data_dictionary,
+        ),
     )
-    for spec in SUPPORTED_DATASET_FILES
-]
+
+
+catalog_assets = [publish_catalog]
