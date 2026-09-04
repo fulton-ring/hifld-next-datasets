@@ -1408,19 +1408,70 @@ def _canonicalize_geoparquet_batch_metadata(table: pa.Table) -> pa.Table:
 
 def _bounded_compression_sample(
     table: pa.Table,
-    max_bytes: int = DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES,
+    max_bytes: int | None = None,
 ) -> pa.Table | None:
-    sample_bytes = max(1, max_bytes)
+    sample_bytes = max(
+        1,
+        max_bytes
+        if max_bytes is not None
+        else DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES,
+    )
     if table.nbytes <= sample_bytes:
         return table
-    if len(table) <= 1:
+    if len(table) != 1:
+        sample_rows = max(
+            1,
+            min(len(table), int(len(table) * sample_bytes / max(1, table.nbytes))),
+        )
+        sample = table.slice(0, sample_rows)
+        return sample if sample.nbytes <= sample_bytes else None
+
+    fields = list(table.schema)
+    if not fields:
         return None
-    sample_rows = max(
-        1,
-        min(len(table), int(len(table) * sample_bytes / max(1, table.nbytes))),
-    )
-    sample = table.slice(0, sample_rows)
-    return sample if sample.nbytes <= sample_bytes else None
+    value_budget = max(1, sample_bytes // len(fields))
+    for _attempt in range(8):
+        arrays: list[pa.Array] = []
+        for index, field in enumerate(fields):
+            value = table.column(index).to_pylist()[0]
+            truncated = _truncate_compression_value(value, field.type, value_budget)
+            arrays.append(pa.array([truncated], type=field.type))
+        sample = pa.Table.from_arrays(arrays, schema=table.schema)
+        if sample.nbytes <= sample_bytes:
+            return sample
+        value_budget = max(1, value_budget // 2)
+    return None
+
+
+def _truncate_compression_value(
+    value: Any, data_type: pa.DataType, max_bytes: int
+) -> Any:
+    if value is None:
+        return None
+    if pa.types.is_string(data_type) or pa.types.is_large_string(data_type):
+        encoded = str(value).encode("utf-8")
+        return encoded[:max_bytes].decode("utf-8", errors="ignore")
+    if pa.types.is_binary(data_type) or pa.types.is_large_binary(data_type):
+        return bytes(value)[:max_bytes]
+    if pa.types.is_dictionary(data_type):
+        return _truncate_compression_value(value, data_type.value_type, max_bytes)
+    if pa.types.is_list(data_type) or pa.types.is_large_list(data_type):
+        if not isinstance(value, list):
+            return value
+        child_budget = max(1, max_bytes // max(1, len(value)))
+        return [
+            _truncate_compression_value(item, data_type.value_type, child_budget)
+            for item in value
+        ]
+    if pa.types.is_struct(data_type) and isinstance(value, dict):
+        child_budget = max(1, max_bytes // max(1, len(data_type)))
+        return {
+            field.name: _truncate_compression_value(
+                value.get(field.name), field.type, child_budget
+            )
+            for field in data_type
+        }
+    return value
 
 
 def _zstd_compression_ratio(
@@ -1582,9 +1633,11 @@ def _preflight_layer_with_histograms(
             feature_count += len(features)
             uncompressed_bytes += batch_bytes
             serialized_bytes += batch_serialized_bytes
-            compression_sample_seen += 1
-            sample_table = _bounded_compression_sample(table)
+            sample_table = _bounded_compression_sample(
+                table, DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
+            )
             if sample_table is not None:
+                compression_sample_seen += 1
                 sample_limit = DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLES
                 sample_bytes = sample_table.nbytes
                 if (

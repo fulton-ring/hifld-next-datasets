@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 from pathlib import Path
 import tempfile
 import unittest
@@ -24,6 +25,7 @@ from dagster_hifld.conversion import (
     _StorageAdapter,
     _allocate_feature_bytes,
     _allocate_semantic_hive_keys,
+    _bounded_compression_sample,
     _build_tippecanoe_cmd,
     _canonicalize_geoparquet_batch_metadata,
     _create_and_upload_pmtiles,
@@ -1614,6 +1616,44 @@ class ConversionTests(unittest.TestCase):
                 1_000_000,
             )
 
+    def test_oversized_singleton_uses_bounded_compression_probe(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["x" * (2 * 1024 * 1024)]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            with patch(
+                "dagster_hifld.conversion.DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES",
+                1 * 1024 * 1024,
+            ):
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(
+                            large_dataset_threshold_bytes=1_000_000,
+                            preflight_chunk_rows=1,
+                            target_file_size_bytes=10**9,
+                        ),
+                    )
+                )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["partitioning"], "single_file")
+            self.assertLess(
+                result["layout"]["thresholds"]["estimated_compressed_bytes"],
+                1_000_000,
+            )
+
     def test_s2_level_selection_receives_compressed_target_as_uncompressed_budget(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
@@ -1694,6 +1734,59 @@ class ConversionTests(unittest.TestCase):
                 sum(table.nbytes for table in sample_tables),
                 64 * 1024 * 1024,
             )
+
+    def test_compression_reservoir_counts_only_eligible_batches(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06"] * 66, "name": ["value"] * 66},
+                geometry=[Point(index, index) for index in range(66)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            sample_calls = 0
+            original_sample = _bounded_compression_sample
+
+            def sample_with_first_ineligible(table, max_bytes):
+                nonlocal sample_calls
+                sample_calls += 1
+                if sample_calls == 1:
+                    return None
+                return original_sample(table, max_bytes)
+
+            stops: list[int] = []
+            original_randrange = random.Random.randrange
+
+            def capture_randrange(self, stop, *args):
+                stops.append(stop)
+                return original_randrange(self, stop, *args)
+
+            with patch(
+                "dagster_hifld.conversion._bounded_compression_sample",
+                side_effect=sample_with_first_ineligible,
+            ), patch(
+                "dagster_hifld.conversion.random.Random.randrange",
+                autospec=True,
+                side_effect=capture_randrange,
+            ):
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(
+                            force_admin_columns=("STATEFP",),
+                            preflight_chunk_rows=1,
+                        ),
+                    )
+                )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(stops, [65])
 
     def test_compression_ratio_uses_requested_zstd_level(self):
         table = _geodataframe_to_geoparquet_arrow(
