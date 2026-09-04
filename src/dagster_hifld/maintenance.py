@@ -879,6 +879,11 @@ def _integer(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _nonnegative_integer(value: object) -> bool:
+    integer = _integer(value)
+    return integer is not None and integer >= 0
+
+
 def _layout_relative_path(path: str, identity: VersionIdentity) -> str | None:
     prefix = f"{identity.prefix}/"
     relative = path.removeprefix(prefix)
@@ -1255,27 +1260,63 @@ def _audit_version(
                 if path is None:
                     continue
                 rel = path.removeprefix(f"{identity.prefix}/")
+                declared_size = output.get("file_size_bytes")
+                if not _nonnegative_integer(declared_size):
+                    reasons.append(f"invalid file_size_bytes: {rel}")
+                declared_hash = output.get("sha256")
+                if (
+                    not isinstance(declared_hash, str)
+                    or re.fullmatch(r"[0-9a-f]{64}", declared_hash) is None
+                ):
+                    reasons.append(f"invalid sha256: {rel}")
+                declared_rows = output.get("row_counts")
+                if (
+                    not isinstance(declared_rows, list)
+                    or not declared_rows
+                    or any(
+                        not _nonnegative_integer(row_count)
+                        for row_count in declared_rows
+                    )
+                ):
+                    reasons.append(f"invalid row_counts: {rel}")
+                declared_sizes = output.get("row_group_uncompressed_sizes")
+                if (
+                    not isinstance(declared_sizes, list)
+                    or not declared_sizes
+                    or any(not _nonnegative_integer(size) for size in declared_sizes)
+                ):
+                    reasons.append(f"invalid row_group_uncompressed_sizes: {rel}")
                 entry = footer_by_relative.get(rel)
                 if entry is None:
                     continue
                 snapshot = entry[1]
-                declared_size = _integer(output.get("file_size_bytes"))
-                if declared_size is not None and declared_size != snapshot.size:
+                if (
+                    _integer(declared_size) is not None
+                    and declared_size != snapshot.size
+                ):
                     reasons.append(f"size mismatch: {rel}")
-                declared_hash = _string(output.get("sha256"))
-                if declared_hash:
+                if (
+                    isinstance(declared_hash, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", declared_hash) is not None
+                ):
                     actual_hash = snapshot.sha256 or hash_by_relative[rel]
                     if declared_hash != actual_hash:
                         reasons.append(f"hash mismatch: {rel}")
-                declared_rows = output.get("row_counts")
                 actual_rows = [
                     int(entry[0].metadata.row_group(index).num_rows)
                     for index in range(int(entry[0].metadata.num_row_groups))
                 ]
-                if isinstance(declared_rows, list) and declared_rows != actual_rows:
+                if (
+                    isinstance(declared_rows, list)
+                    and declared_rows
+                    and declared_rows != actual_rows
+                ):
                     reasons.append(f"row-group count mismatch: {rel}")
-                declared_sizes = output.get("row_group_uncompressed_sizes")
-                if isinstance(declared_sizes, list) and declared_sizes != entry[2]:
+                if (
+                    isinstance(declared_sizes, list)
+                    and declared_sizes
+                    and declared_sizes != entry[2]
+                ):
                     reasons.append(f"row-group byte-size mismatch: {rel}")
 
     return {

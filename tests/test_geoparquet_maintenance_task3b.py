@@ -74,6 +74,37 @@ class Task3BTests(unittest.TestCase):
             self.assertEqual(report["status"], "compliant")
             self.assertEqual(report["versions"][0]["dataset"], "d")
 
+    def test_audit_requires_typed_nonempty_output_integrity_fields(self):
+        invalid_fields = {
+            "file_size_bytes": (None, -1, "123"),
+            "sha256": (None, "ABCDEF" * 11, "not-a-hash"),
+            "row_counts": (None, [], [-1], ["1"]),
+            "row_group_uncompressed_sizes": (None, [], [-1], ["1"]),
+        }
+        for field, values in invalid_fields.items():
+            for value in values:
+                with (
+                    self.subTest(field=field, value=value),
+                    tempfile.TemporaryDirectory() as tmpdir,
+                ):
+                    storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+                    parquet = _parquet_bytes()
+                    storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+                    manifest = json.loads(
+                        _layout(
+                            "d/f/v/geoparquet/part.parquet",
+                            size=len(parquet),
+                            sha256=hashlib.sha256(parquet).hexdigest(),
+                        )
+                    )
+                    manifest["layers"][0]["outputs"][0][field] = value
+                    storage.write_key(
+                        "d/f/v/metadata/geoparquet_layout.json",
+                        json.dumps(manifest).encode(),
+                    )
+                    report = audit_geoparquet(storage)
+                    self.assertEqual(report["status"], "violation")
+
     def test_replace_dry_run_does_not_mutate_production(self):
         with (
             tempfile.TemporaryDirectory() as production_dir,
