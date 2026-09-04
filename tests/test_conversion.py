@@ -1,15 +1,22 @@
 import asyncio
+import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 import zipfile
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow.parquet as pq
 from shapely.geometry import Point
 
 from dagster_hifld.conversion import (
+    DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES,
+    DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES,
+    DEFAULT_GEOPARQUET_TARGET_FILE_BYTES,
+    DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES,
+    DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES,
     GeoParquetWritePolicy,
     ShapefileZipPolicy,
     _StorageAdapter,
@@ -17,6 +24,10 @@ from dagster_hifld.conversion import (
     _create_and_upload_pmtiles,
     _detect_format_from_path,
     _discover_staged_formats,
+    _hilbert_like_key,
+    _policy_s2_levels,
+    _row_group_uncompressed_sizes,
+    _select_s2_level,
     geoparquet_policy_for,
     _to_wgs84,
     _write_geodataframe_parquet,
@@ -644,6 +655,437 @@ class ConversionTests(unittest.TestCase):
                 result["geoparquet_paths"],
                 ["dataset/file/v1.0.0/geoparquet/source.parquet"],
             )
+
+    def test_geoparquet_policy_defaults_use_bounded_layout_budgets(self):
+        policy = GeoParquetWritePolicy()
+
+        self.assertEqual(DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES, 1024**3)
+        self.assertEqual(DEFAULT_GEOPARQUET_TARGET_FILE_BYTES, 1024**3)
+        self.assertEqual(DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES, 112 * 1024**2)
+        self.assertEqual(DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES, 128 * 1024**2)
+        self.assertEqual(DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES, 512 * 1024**2)
+        self.assertEqual(policy.s2_candidate_levels, tuple(range(2, 17)))
+
+    def test_streaming_writer_resolves_forced_admin_column_case_insensitively(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "12"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(force_admin_columns=("statefp",)),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["partition_columns"], ["STATEFP"])
+            self.assertTrue(
+                any("geoparquet/STATEFP=06/" in path for path in result["geoparquet_paths"])
+            )
+
+    def test_streaming_writer_rejects_missing_configured_source_column(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["A"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(derived_prefix_column="DFIRM_ID"),
+                )
+            )
+
+            self.assertIn("Configured derived_prefix_column 'DFIRM_ID'", result["error"])
+
+    def test_select_s2_level_uses_coarsest_bin_under_target_and_caps_at_16(self):
+        histograms = {
+            2: {"a": 300},
+            3: {"a": 120, "b": 180},
+            4: {"a": 80, "b": 90},
+        }
+        self.assertEqual(_select_s2_level(histograms, 100, (2, 3, 4)), 4)
+        self.assertEqual(_select_s2_level(histograms, 10, (2, 3, 4)), 4)
+
+    def test_legacy_s2_policy_fields_still_customize_candidate_levels(self):
+        policy = GeoParquetWritePolicy(s2_parent_candidates=(5, 6), s2_fine_level=14)
+
+        self.assertEqual(_policy_s2_levels(policy), (5, 6))
+        self.assertEqual(policy.s2_fine_level, 14)
+
+    def test_preflight_adds_s2_for_large_total_and_semantic_partition(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "06", "12"]},
+                geometry=[Point(0, 0), Point(0.1, 0.1), Point(30, 30)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            common = dict(
+                file_path=source,
+                format_type="geojson",
+                layer_name=None,
+                layer_filename="source",
+                dest_folder="dataset/file/v1.0.0/",
+                dest_storage=_StorageAdapter(storage),
+            )
+
+            unpartitioned = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    **common,
+                    work_dir=Path(tmpdir) / "work-total",
+                    policy=GeoParquetWritePolicy(
+                        large_dataset_threshold_bytes=1,
+                        target_file_size_bytes=10**9,
+                    ),
+                )
+            )
+            semantic = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    **common,
+                    work_dir=Path(tmpdir) / "work-semantic",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
+                        target_file_size_bytes=10**9,
+                    ),
+                )
+            )
+
+            self.assertEqual(unpartitioned["partitioning"], "s2")
+            self.assertEqual(unpartitioned["chosen_s2_level"], 2)
+            self.assertEqual(semantic["partitioning"], "admin_s2")
+            self.assertEqual(semantic["partition_columns"], ["STATEFP", "s2_parent_cell"])
+            self.assertEqual(semantic["chosen_s2_level"], 2)
+
+    def test_dense_level_16_cell_rolls_files_and_excludes_internal_columns(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["c", "a", "b"]},
+                geometry=[Point(0, 0), Point(0, 0), Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_s2=True,
+                        target_file_size_bytes=1,
+                        write_buffer_bytes=1,
+                        aggregate_buffer_bytes=1,
+                    ),
+                )
+            )
+
+            self.assertEqual(result["chosen_s2_level"], 16)
+            self.assertEqual(len(result["geoparquet_paths"]), 3)
+            for output in result["layout"]["outputs"]:
+                parquet_path = Path(tmpdir) / output["path"]
+                columns = pq.ParquetFile(parquet_path).schema_arrow.names
+                self.assertNotIn("s2_cell", columns)
+                self.assertNotIn("s2_parent_cell", columns)
+                self.assertNotIn("hilbert_cell", columns)
+
+    def test_writer_sorts_each_buffer_spatially_and_keeps_bbox_covering_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            points = [Point(120, 20), Point(-120, -20), Point(30, -10), Point(-30, 10)]
+            gpd.GeoDataFrame(
+                {"name": ["d", "a", "c", "b"]}, geometry=points, crs="EPSG:4326"
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(),
+                )
+            )
+
+            output_path = Path(tmpdir) / result["geoparquet_paths"][0]
+            written = gpd.read_parquet(output_path)
+            keys = [_hilbert_like_key(point.x, point.y) for point in written.geometry]
+            self.assertEqual(keys, sorted(keys))
+            geo = json.loads(pq.ParquetFile(output_path).schema_arrow.metadata[b"geo"])
+            self.assertIn("covering", geo["columns"][geo["primary_column"]])
+            self.assertEqual(
+                result["layout"]["outputs"][0]["relative_path"],
+                "geoparquet/source.parquet",
+            )
+
+    def test_row_group_hard_limit_rewrites_smaller_files_before_upload(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["a", "b", "c"]},
+                geometry=[Point(0, 0), Point(1, 1), Point(2, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            def simulated_sizes(path):
+                return [200] if pq.ParquetFile(path).metadata.num_rows > 1 else [50]
+
+            with patch(
+                "dagster_hifld.conversion._row_group_uncompressed_sizes",
+                side_effect=simulated_sizes,
+            ):
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(max_row_group_bytes=100),
+                    )
+                )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["feature_count"], 3)
+            self.assertEqual(len(result["geoparquet_paths"]), 3)
+            self.assertTrue(
+                all(
+                    output["row_counts"] == [1]
+                    for output in result["layout"]["outputs"]
+                )
+            )
+
+    def test_singleton_oversize_fails_without_uploading_parquet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["oversize"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            with patch(
+                "dagster_hifld.conversion._row_group_uncompressed_sizes",
+                return_value=[200],
+            ):
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(max_row_group_bytes=100),
+                    )
+                )
+
+            self.assertIn("single feature", result["error"].lower())
+            self.assertEqual(
+                list((Path(tmpdir) / "dataset/file/v1.0.0").rglob("*.parquet")), []
+            )
+
+    def test_aggregate_buffer_budget_forces_partition_flushes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "12", "06", "12"]},
+                geometry=[Point(0, 0), Point(10, 10), Point(1, 1), Point(11, 11)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",),
+                        write_buffer_bytes=10**9,
+                        aggregate_buffer_bytes=1,
+                    ),
+                )
+            )
+
+            self.assertEqual(len(result["geoparquet_paths"]), 4)
+            self.assertTrue(
+                any(
+                    "STATEFP=06/part-001.parquet" in path
+                    for path in result["geoparquet_paths"]
+                )
+            )
+            self.assertTrue(
+                any(
+                    "STATEFP=12/part-001.parquet" in path
+                    for path in result["geoparquet_paths"]
+                )
+            )
+
+    def test_preflight_and_write_feature_count_mismatch_fails_before_upload(self):
+        features = [
+            {
+                "type": "Feature",
+                "properties": {"name": name},
+                "geometry": {"type": "Point", "coordinates": [index, index]},
+            }
+            for index, name in enumerate(("a", "b"))
+        ]
+
+        class FakeCollection:
+            crs = "EPSG:4326"
+            schema = {"properties": {"name": "str"}, "geometry": "Point"}
+
+            def __init__(self, collection_features):
+                self.collection_features = collection_features
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return iter(self.collection_features)
+
+        storage = Mock()
+        storage.upload_file = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "dagster_hifld.conversion.fiona.open",
+            side_effect=[FakeCollection(features), FakeCollection(features[:1])],
+        ):
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=Path("source.geojson"),
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=storage,
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(preflight_chunk_rows=1),
+                )
+            )
+
+        self.assertIn("feature count validation failed", result["error"])
+        storage.upload_file.assert_not_called()
+
+    def test_derived_source_column_resolution_preserves_source_spelling(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"DFIRM_ID": ["29001C"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        derived_prefix_column="dfirm_id",
+                        derived_prefix_partitions=(("state_fips", 2),),
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["partitioning"], "derived_prefix")
+            self.assertIn("state_fips=29", result["geoparquet_paths"][0])
+
+    def test_spatial_sort_keeps_features_with_null_geometry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["missing", "point"]},
+                geometry=[None, Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["feature_count"], 2)
+
+    def test_manifest_hashing_does_not_read_whole_parquet_into_memory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["point"]}, geometry=[Point(1, 1)], crs="EPSG:4326"
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            with patch.object(Path, "read_bytes", side_effect=AssertionError("whole-file read")):
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(),
+                    )
+                )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(len(result["layout"]["outputs"][0]["sha256"]), 64)
 
     def test_write_shapefile_zip_skips_plain_dataframe(self):
         result = write_shapefile_zip(

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +17,7 @@ from dagster_hifld.assets.publish import (
     _preferred_remote_source_keys,
     _published_outputs_from_keys,
     _write_and_publish_geoparquet,
+    _write_geoparquet_layout_manifest,
     _write_and_publish_pmtiles,
     _write_and_publish_shapefile_zip,
     publish_assets,
@@ -787,6 +789,26 @@ class PublishTests(unittest.TestCase):
                     "partitioning": "single_file",
                     "partition_columns": [],
                     "hive_partitioned": False,
+                    "layout": {
+                        "schema_version": 1,
+                        "layer": "file-a",
+                        "source_format": "geojson",
+                        "feature_count": 1,
+                        "partition_strategy": "single_file",
+                        "partition_columns": [],
+                        "chosen_s2_level": None,
+                        "thresholds": {"write_buffer_bytes": 117440512},
+                        "outputs": [
+                            {
+                                "relative_path": "geoparquet/file-a.parquet",
+                                "file_size_bytes": 100,
+                                "sha256": "abc",
+                                "row_counts": [1],
+                                "row_group_uncompressed_sizes": [50],
+                            }
+                        ],
+                        "validation_status": "valid",
+                    },
                 }
 
                 outputs = _write_and_publish_geoparquet(
@@ -804,6 +826,59 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet")
             self.assertEqual(outputs[0].source_metadata["partitioning"], "single_file")
             self.assertNotIn("-0.zstd.parquet", outputs[0].path)
+            manifest = json.loads(
+                (
+                    Path(staging_dir)
+                    / "dataset-a/file-a/v1.0.0/metadata/geoparquet_layout.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["schema_version"], 1)
+            self.assertEqual(manifest["validation_status"], "valid")
+            self.assertEqual(manifest["layers"][0]["feature_count"], 1)
+            self.assertEqual(manifest["layers"][0]["outputs"][0]["sha256"], "abc")
+
+    def test_geoparquet_layout_manifest_merges_layers_and_replaces_matching_layer(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            first = {
+                "schema_version": 1,
+                "layer": "roads",
+                "source_format": "geopackage",
+                "feature_count": 2,
+                "outputs": [],
+                "validation_status": "valid",
+            }
+            second = {
+                "schema_version": 1,
+                "layer": "bridges",
+                "source_format": "geopackage",
+                "feature_count": 3,
+                "outputs": [],
+                "validation_status": "valid",
+            }
+            replacement = {**first, "feature_count": 4}
+
+            _write_geoparquet_layout_manifest(
+                storage, "dataset", "file", "v1", first
+            )
+            _write_geoparquet_layout_manifest(
+                storage, "dataset", "file", "v1", second
+            )
+            key = _write_geoparquet_layout_manifest(
+                storage, "dataset", "file", "v1", replacement
+            )
+
+            self.assertEqual(key, "dataset/file/v1/metadata/geoparquet_layout.json")
+            manifest = json.loads(
+                storage.read_bytes(
+                    "dataset", "file", "v1", "metadata/geoparquet_layout.json"
+                )
+            )
+            self.assertEqual(
+                [(layer["layer"], layer["feature_count"]) for layer in manifest["layers"]],
+                [("bridges", 3), ("roads", 4)],
+            )
 
 
 if __name__ == "__main__":

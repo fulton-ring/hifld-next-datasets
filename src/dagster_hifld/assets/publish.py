@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import tempfile
@@ -621,7 +622,13 @@ def _write_and_publish_geoparquet(
     version: str,
     policy: GeoParquetWritePolicy | None = None,
 ) -> list[PublishedFormatOutput]:
-    existing = _prepare_format_publish(staging_storage, dataset_slug, file_slug, version, "geoparquet")
+    existing = _prepare_format_publish(
+        staging_storage,
+        dataset_slug,
+        file_slug,
+        version,
+        "geoparquet",
+    )
     if existing:
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)
     outputs: list[PublishedFormatOutput] = []
@@ -657,12 +664,26 @@ def _write_and_publish_geoparquet(
                 if not result.get("geoparquet_paths"):
                     outputs.append(_skip_output(file_slug, "geoparquet", "non_spatial_source"))
                     continue
+                layout = result.get("layout")
+                if isinstance(layout, dict):
+                    _write_geoparquet_layout_manifest(
+                        staging_storage,
+                        dataset_slug,
+                        file_slug,
+                        version,
+                        layout,
+                    )
                 is_hive_partitioned = result.get("partitioning") != "single_file"
-                output_path = (
-                    f"{dataset_slug}/{file_slug}/{version}/geoparquet/**/*.parquet"
-                    if is_hive_partitioned
-                    else result["geoparquet_paths"][0]
-                )
+                if is_hive_partitioned:
+                    output_path = (
+                        f"{dataset_slug}/{file_slug}/{version}/geoparquet/**/*.parquet"
+                    )
+                elif len(result["geoparquet_paths"]) > 1:
+                    output_path = (
+                        f"{dataset_slug}/{file_slug}/{version}/geoparquet/*.parquet"
+                    )
+                else:
+                    output_path = result["geoparquet_paths"][0]
                 outputs.append(
                     PublishedFormatOutput(
                         file_slug=file_slug,
@@ -672,6 +693,7 @@ def _write_and_publish_geoparquet(
                             "hive_partitioned": is_hive_partitioned,
                             "partitioning": result.get("partitioning"),
                             "partition_columns": result.get("partition_columns", []),
+                            "chosen_s2_level": result.get("chosen_s2_level"),
                             "row_group_target_bytes": result.get("row_group_target_bytes"),
                             "target_file_size_bytes": result.get("target_file_size_bytes"),
                             "feature_count": result.get("feature_count"),
@@ -679,6 +701,64 @@ def _write_and_publish_geoparquet(
                     )
                 )
     return outputs
+
+
+def _write_geoparquet_layout_manifest(
+    storage: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    layer_layout: dict[str, Any],
+) -> str:
+    """Merge one validated layer layout into the version-level manifest."""
+    relative_path = "metadata/geoparquet_layout.json"
+    key = storage.build_target_location(dataset_slug, file_slug, version, relative_path)
+    layers: list[dict[str, Any]] = []
+    if storage.object_exists(key):
+        existing = json.loads(
+            storage.read_bytes(dataset_slug, file_slug, version, relative_path)
+        )
+        existing_layers = existing.get("layers", [])
+        if isinstance(existing_layers, list):
+            layers = [layer for layer in existing_layers if isinstance(layer, dict)]
+
+    layer_name = layer_layout.get("layer")
+    source_format = layer_layout.get("source_format")
+    layers = [
+        layer
+        for layer in layers
+        if not (
+            layer.get("layer") == layer_name
+            and layer.get("source_format") == source_format
+        )
+    ]
+    normalized_layout = dict(layer_layout)
+    normalized_layout.pop("schema_version", None)
+    layers.append(normalized_layout)
+    layers.sort(
+        key=lambda layer: (
+            str(layer.get("layer", "")),
+            str(layer.get("source_format", "")),
+        )
+    )
+    validation_status = (
+        "valid"
+        if layers
+        and all(layer.get("validation_status") == "valid" for layer in layers)
+        else "invalid"
+    )
+    payload = {
+        "schema_version": 1,
+        "layers": layers,
+        "validation_status": validation_status,
+    }
+    return storage.write(
+        dataset_slug,
+        file_slug,
+        version,
+        relative_path,
+        (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
 
 
 def _write_and_publish_pmtiles(
