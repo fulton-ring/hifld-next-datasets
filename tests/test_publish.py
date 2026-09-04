@@ -22,7 +22,11 @@ from dagster_hifld.assets.publish import (
     _write_and_publish_shapefile_zip,
     publish_assets,
 )
-from dagster_hifld.conversion import GeoParquetWritePolicy, ShapefileZipPolicy
+from dagster_hifld.conversion import (
+    GeoParquetWritePolicy,
+    ShapefileZipPolicy,
+    process_layer_partitioned_geoparquet,
+)
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
@@ -584,7 +588,7 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(existing, ["dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet"])
             self.assertTrue(version_root.exists())
 
-    def test_existing_multi_file_geoparquet_is_registered_as_glob(self):
+    def test_existing_multi_file_geoparquet_is_registered_as_recursive_glob(self):
         keys = [
             "dataset-a/file-a/v1.0.0/geoparquet/file-a-0.zstd.parquet",
             "dataset-a/file-a/v1.0.0/geoparquet/file-a-1.zstd.parquet",
@@ -593,7 +597,26 @@ class PublishTests(unittest.TestCase):
         outputs = _published_outputs_from_keys("dataset-a", "file-a", "v1.0.0", keys)
 
         self.assertEqual(len(outputs), 1)
-        self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/*.parquet")
+        self.assertEqual(
+            outputs[0].path,
+            "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
+        )
+        self.assertFalse(outputs[0].source_metadata["hive_partitioned"])
+
+    def test_existing_named_nested_geoparquet_is_not_marked_hive_partitioned(self):
+        keys = [
+            "dataset-a/file-a/v1.0.0/geoparquet/layer-roads/file-a.parquet"
+        ]
+
+        outputs = _published_outputs_from_keys(
+            "dataset-a", "file-a", "v1.0.0", keys
+        )
+
+        self.assertEqual(
+            outputs[0].path,
+            "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
+        )
+        self.assertFalse(outputs[0].source_metadata["hive_partitioned"])
 
     def test_prefixed_partitioned_geoparquet_is_registered_with_prefixed_glob(self):
         keys = [
@@ -1033,6 +1056,16 @@ class PublishTests(unittest.TestCase):
             )
 
             self.assertEqual(len(outputs), 2)
+            self.assertEqual(
+                {output.path for output in outputs},
+                {"dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet"},
+            )
+            self.assertTrue(
+                all(
+                    output.source_metadata["hive_partitioned"] is False
+                    for output in outputs
+                )
+            )
             self.assertEqual(len(parquet_keys), 2)
             self.assertEqual(
                 {Path(key).parent.name for key in parquet_keys},
@@ -1051,6 +1084,184 @@ class PublishTests(unittest.TestCase):
                 ),
                 2,
             )
+
+    def test_named_single_file_multichunk_publish_uses_recursive_non_hive_glob(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = (
+                Path(staging_dir)
+                / "dataset-a"
+                / "file-a"
+                / "v1.0.0"
+                / "geopackage"
+            )
+            version_dir.mkdir(parents=True)
+            source = version_dir / "source.gpkg"
+            gpd.GeoDataFrame(
+                {"name": ["one", "two"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, layer="roads", driver="GPKG")
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            outputs = _write_and_publish_geoparquet(
+                storage,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+                GeoParquetWritePolicy(
+                    target_file_size_bytes=1,
+                    write_buffer_bytes=10**9,
+                    aggregate_buffer_bytes=10**9,
+                ),
+            )
+
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(
+                outputs[0].path,
+                "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
+            )
+            self.assertFalse(outputs[0].source_metadata["hive_partitioned"])
+            matched = list(
+                Path(staging_dir).glob(
+                    "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet"
+                )
+            )
+            self.assertEqual(len(matched), 2)
+
+    def test_prefixed_geoparquet_and_manifest_paths_are_colocated(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = (
+                Path(staging_dir)
+                / "tenant-a"
+                / "dataset-a"
+                / "file-a"
+                / "v1.0.0"
+                / "geopackage"
+            )
+            version_dir.mkdir(parents=True)
+            source = version_dir / "source.gpkg"
+            gpd.GeoDataFrame(
+                {"name": ["road"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, layer="roads", driver="GPKG")
+            storage = StagingStorageResource(
+                local_dir=staging_dir,
+                prefix="tenant-a",
+                use_local=True,
+            )
+
+            _write_and_publish_geoparquet(
+                storage,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+            )
+
+            keys = storage.list_keys("dataset-a", "file-a", "v1.0.0")
+            parquet_keys = [key for key in keys if key.endswith(".parquet")]
+            manifest_key = (
+                "tenant-a/dataset-a/file-a/v1.0.0/metadata/"
+                "geoparquet_layout.json"
+            )
+            self.assertIn(manifest_key, keys)
+            self.assertEqual(len(parquet_keys), 1)
+            manifest = json.loads(
+                storage.read_bytes(
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                    "metadata/geoparquet_layout.json",
+                )
+            )
+            self.assertEqual(manifest["layers"][0]["outputs"][0]["path"], parquet_keys[0])
+
+    def test_geoparquet_overwrite_replaces_manifest_layer_set_and_source_format(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_root = (
+                Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0"
+            )
+            gpkg_dir = version_root / "geopackage"
+            gpkg_dir.mkdir(parents=True)
+            source = gpkg_dir / "source.gpkg"
+            gpd.GeoDataFrame(
+                {"name": ["road"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, layer="roads", driver="GPKG")
+            gpd.GeoDataFrame(
+                {"name": ["bridge"]}, geometry=[Point(1, 1)], crs="EPSG:4326"
+            ).to_file(source, layer="bridges", driver="GPKG", mode="a")
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            _write_and_publish_geoparquet(
+                storage, "dataset-a", "file-a", "v1.0.0"
+            )
+            source.unlink()
+            geojson_dir = version_root / "geojson"
+            geojson_dir.mkdir()
+            gpd.GeoDataFrame(
+                {"name": ["new"]}, geometry=[Point(2, 2)], crs="EPSG:4326"
+            ).to_file(geojson_dir / "source.geojson", driver="GeoJSON")
+
+            _write_and_publish_geoparquet(
+                storage, "dataset-a", "file-a", "v1.0.0"
+            )
+
+            manifest = json.loads(
+                storage.read_bytes(
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                    "metadata/geoparquet_layout.json",
+                )
+            )
+            self.assertEqual(len(manifest["layers"]), 1)
+            self.assertEqual(manifest["layers"][0]["source_format"], "geojson")
+            parquet_keys = [
+                key
+                for key in storage.list_keys("dataset-a", "file-a", "v1.0.0")
+                if key.endswith(".parquet")
+            ]
+            self.assertEqual(len(parquet_keys), 1)
+            self.assertFalse(any("layer-roads" in key for key in parquet_keys))
+            self.assertFalse(any("layer-bridges" in key for key in parquet_keys))
+
+    def test_later_layer_failure_removes_partial_geoparquet_and_manifest(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = (
+                Path(staging_dir)
+                / "dataset-a"
+                / "file-a"
+                / "v1.0.0"
+                / "geopackage"
+            )
+            version_dir.mkdir(parents=True)
+            source = version_dir / "source.gpkg"
+            gpd.GeoDataFrame(
+                {"name": ["road"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, layer="roads", driver="GPKG")
+            gpd.GeoDataFrame(
+                {"name": ["bridge"]}, geometry=[Point(1, 1)], crs="EPSG:4326"
+            ).to_file(source, layer="bridges", driver="GPKG", mode="a")
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            calls = 0
+
+            async def fail_second_layer(**kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    return {"error": "injected later-layer failure"}
+                return await process_layer_partitioned_geoparquet(**kwargs)
+
+            with patch(
+                "dagster_hifld.assets.publish.process_layer_partitioned_geoparquet",
+                new=fail_second_layer,
+            ):
+                with self.assertRaisesRegex(ValueError, "injected later-layer failure"):
+                    _write_and_publish_geoparquet(
+                        storage, "dataset-a", "file-a", "v1.0.0"
+                    )
+
+            keys = storage.list_keys("dataset-a", "file-a", "v1.0.0")
+            self.assertFalse(any(key.endswith(".parquet") for key in keys))
+            self.assertFalse(any(key.endswith("geoparquet_layout.json") for key in keys))
 
 
 if __name__ == "__main__":

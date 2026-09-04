@@ -218,6 +218,7 @@ class _StorageAdapter:
     def __init__(self, resource: StagingStorageResource | PublishedStorageResource):
         self.resource = resource
         self.bucket = resource.bucket
+        self.prefix = resource.prefix.strip("/")
         self.local_dir = Path(resource.local_dir).resolve()
         self.use_local = resource.use_local or not resource.bucket
         self.fs = None
@@ -226,7 +227,16 @@ class _StorageAdapter:
 
             self.fs = gcsfs.GCSFileSystem()
 
+    def _storage_key(self, remote_path: str) -> str:
+        normalized = remote_path.lstrip("/")
+        if not self.prefix:
+            return normalized
+        if normalized == self.prefix or normalized.startswith(f"{self.prefix}/"):
+            return normalized
+        return f"{self.prefix}/{normalized}"
+
     async def list_files(self, prefix: str) -> list[str]:
+        prefix = self._storage_key(prefix)
         if self.use_local:
             p = (self.local_dir / prefix).resolve()
             if not p.exists():
@@ -252,11 +262,13 @@ class _StorageAdapter:
             return []
 
     async def file_exists(self, remote_path: str) -> bool:
+        remote_path = self._storage_key(remote_path)
         if self.use_local:
             return (self.local_dir / remote_path).exists()
         return bool(self.fs.exists(f"{self.bucket}/{remote_path}"))
 
     async def download_file(self, remote_path: str, local_path: Path) -> None:
+        remote_path = self._storage_key(remote_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
         if self.use_local:
             src = self.local_dir / remote_path
@@ -267,16 +279,18 @@ class _StorageAdapter:
             return
         self.fs.get(f"{self.bucket}/{remote_path}", str(local_path))
 
-    async def upload_file(self, local_path: Path, remote_path: str) -> None:
-        remote_path = remote_path.lstrip("/")
+    async def upload_file(self, local_path: Path, remote_path: str) -> str:
+        remote_path = self._storage_key(remote_path)
         if self.use_local:
             dst = self.local_dir / remote_path
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(local_path, dst)
-            return
+            return remote_path
         self.fs.put(str(local_path), f"{self.bucket}/{remote_path}")
+        return remote_path
 
     async def get_file_size(self, remote_path: str) -> int:
+        remote_path = self._storage_key(remote_path)
         if self.use_local:
             p = self.local_dir / remote_path
             return p.stat().st_size if p.exists() else 0
@@ -287,13 +301,13 @@ class _StorageAdapter:
             return 0
 
     def get_public_url(self, remote_path: str) -> str:
-        remote_path = remote_path.lstrip("/")
+        remote_path = self._storage_key(remote_path)
         if self.use_local:
             return f"file://{self.local_dir / remote_path}"
         return f"https://storage.googleapis.com/{self.bucket}/{remote_path}"
 
     def path_to_storage_uri(self, path: str) -> str:
-        path = path.lstrip("/")
+        path = self._storage_key(path)
         if self.use_local:
             return str(self.local_dir / path)
         return f"gs://{self.bucket}/{path}"
@@ -898,13 +912,17 @@ class _PreflightHistogramStore:
         return self._connection
 
 
-def _safe_hive_value(value: Any) -> str:
-    if value is None or pd.isna(value):
-        return "__null__"
-    safe_value = str(value).strip()
-    if not safe_value:
-        return "__empty__"
-    return safe_value.replace("/", "-").replace("\\", "-").replace("=", "-")
+def _encoded_hive_value(value: Any) -> str:
+    if value is None or bool(pd.isna(value)):
+        return "n"
+    return f"v-{quote(str(value), safe='-._~')}"
+
+
+def _semantic_hive_key(column: str) -> str:
+    normalized = "".join(
+        character if character.isalnum() else "_" for character in column.casefold()
+    ).strip("_")
+    return f"partition_{normalized or 'value'}"
 
 
 def _layer_output_namespace(layer_filename: str) -> str:
@@ -955,6 +973,19 @@ def _resolve_source_column(names: set[str], configured: str, field_name: str) ->
     return matches[0]
 
 
+def _resolve_first_source_column(
+    names: set[str], configured_columns: tuple[str, ...]
+) -> str:
+    for configured in configured_columns:
+        if any(name.casefold() == configured.casefold() for name in names):
+            return _resolve_source_column(names, configured, "force_admin_columns")
+    alternatives = ", ".join(repr(column) for column in configured_columns)
+    raise ValueError(
+        "None of the configured force_admin_columns alternatives are present in "
+        f"source properties: {alternatives}."
+    )
+
+
 def _coerce_gdf_to_fiona_schema(
     gdf: gpd.GeoDataFrame,
     schema: dict[str, Any],
@@ -998,16 +1029,17 @@ def _select_streaming_partition_columns(
         if policy.derived_prefix_column
         else None
     )
-    forced_admin_columns = [
-        _resolve_source_column(names, column, "force_admin_columns")
-        for column in policy.force_admin_columns
-    ]
+    forced_admin_column = (
+        _resolve_first_source_column(names, policy.force_admin_columns)
+        if policy.force_admin_columns
+        else None
+    )
     if derived_huc_column and policy.derived_huc_partition_columns:
         return "derived_huc", list(policy.derived_huc_partition_columns)
     if derived_prefix_column and policy.derived_prefix_partitions:
         return "derived_prefix", [name for name, _width in policy.derived_prefix_partitions]
-    if forced_admin_columns:
-        return "admin", forced_admin_columns
+    if forced_admin_column:
+        return "admin", [forced_admin_column]
     if policy.force_s2:
         return "s2", ["s2_parent_cell"]
     return "single_file", []
@@ -1039,9 +1071,10 @@ def _resolved_policy_for_schema(
     names = _schema_property_names(schema)
     return replace(
         policy,
-        force_admin_columns=tuple(
-            _resolve_source_column(names, column, "force_admin_columns")
-            for column in policy.force_admin_columns
+        force_admin_columns=(
+            (_resolve_first_source_column(names, policy.force_admin_columns),)
+            if policy.force_admin_columns
+            else ()
         ),
         derived_huc_column=(
             _resolve_source_column(names, policy.derived_huc_column, "derived_huc_column")
@@ -1196,6 +1229,27 @@ def _semantic_partition_values(
     return tuple(properties.get(column) for column in partition_columns)
 
 
+def _allocate_feature_bytes(feature_sizes: list[int], batch_bytes: int) -> list[int]:
+    """Allocate every measured Arrow byte to one feature without zero-byte rows."""
+    if not feature_sizes:
+        return []
+    batch_bytes = max(len(feature_sizes), batch_bytes)
+    total_weight = max(1, sum(feature_sizes))
+    distributable = batch_bytes - len(feature_sizes)
+    allocations = [
+        1 + (distributable * size // total_weight) for size in feature_sizes
+    ]
+    remainder = batch_bytes - sum(allocations)
+    ranked = sorted(
+        range(len(feature_sizes)),
+        key=lambda index: (distributable * feature_sizes[index]) % total_weight,
+        reverse=True,
+    )
+    for index in ranked[:remainder]:
+        allocations[index] += 1
+    return allocations
+
+
 def _preflight_layer(
     file_path: Path,
     open_kwargs: dict[str, Any],
@@ -1255,6 +1309,7 @@ def _preflight_layer_with_histograms(
             batch_bytes = max(len(features), table.nbytes)
             feature_sizes = [max(1, _estimate_feature_size_bytes(feature)) for feature in features]
             batch_serialized_bytes = sum(feature_sizes)
+            allocated_bytes = _allocate_feature_bytes(feature_sizes, batch_bytes)
             feature_count += len(features)
             uncompressed_bytes += batch_bytes
             serialized_bytes += batch_serialized_bytes
@@ -1271,11 +1326,7 @@ def _preflight_layer_with_histograms(
                 byte_count, row_count = updates.get(key, (0, 0))
                 updates[key] = (byte_count + row_bytes, row_count + 1)
 
-            for feature, feature_size in zip(features, feature_sizes):
-                row_bytes = max(
-                    1,
-                    int(feature_size * batch_bytes / max(1, batch_serialized_bytes)),
-                )
+            for feature, row_bytes in zip(features, allocated_bytes):
                 prepared = _prepare_streaming_feature(
                     feature, base_partitioning, resolved_policy
                 )
@@ -1586,7 +1637,11 @@ async def process_layer_partitioned_geoparquet(
                     partition_dir = ""
                 else:
                     parts = [
-                        f"{column}={_safe_hive_value(value)}"
+                        (
+                            f"{column}={_encoded_hive_value(value)}"
+                            if column == "s2_parent_cell"
+                            else f"{_semantic_hive_key(column)}={_encoded_hive_value(value)}"
+                        )
                         for column, value in zip(partition_columns, values)
                     ]
                     partition_dir = Path(*parts).as_posix()
@@ -1639,11 +1694,20 @@ async def process_layer_partitioned_geoparquet(
         }
 
     remote_paths: list[str] = []
+    uploaded_paths_by_relative: dict[str, str] = {}
     for path in sorted(local_paths):
         rel = path.relative_to(geoparquet_dir).as_posix()
         remote_path = f"{dest_folder.rstrip('/')}/geoparquet/{rel}"
-        await dest_storage.upload_file(path, remote_path)
-        remote_paths.append(remote_path)
+        uploaded_path = await dest_storage.upload_file(path, remote_path)
+        remote_paths.append(uploaded_path)
+        uploaded_paths_by_relative[f"geoparquet/{rel}"] = uploaded_path
+    output_layouts = [
+        replace(
+            output,
+            path=uploaded_paths_by_relative.get(output.relative_path, output.path),
+        )
+        for output in output_layouts
+    ]
 
     layout = GeoParquetLayout(
         schema_version=1,
@@ -1827,7 +1891,9 @@ def _to_wgs84(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 def _estimate_feature_size_bytes(feature: dict[str, Any]) -> int:
     try:
-        return len(json.dumps(feature, ensure_ascii=False, default=str))
+        return len(
+            json.dumps(feature, ensure_ascii=False, default=str).encode("utf-8")
+        )
     except Exception:
         return 1024
 

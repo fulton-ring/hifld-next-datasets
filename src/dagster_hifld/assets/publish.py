@@ -631,76 +631,113 @@ def _write_and_publish_geoparquet(
     )
     if existing:
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)
+    manifest_relative_path = "metadata/geoparquet_layout.json"
+    manifest_key = staging_storage.build_target_location(
+        dataset_slug, file_slug, version, manifest_relative_path
+    )
+    staging_storage.delete_prefix(manifest_key)
     outputs: list[PublishedFormatOutput] = []
-    with staging_storage.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
-        processed = _discover_staged_formats(Path(version_dir))
-        preferred, data_file, format_type = select_processing_input(processed)
-        if not preferred or data_file is None or format_type is None:
-            return [_skip_output(file_slug, "geoparquet", "non_spatial_source")]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            out_dir = Path(tmpdir) / "geoparquet"
-            dest_storage = _StorageAdapter(staging_storage)
-            dest_folder = f"{dataset_slug}/{file_slug}/{version}/"
-            for layer_name, _geom_type in preferred["layers"]:
-                source_layer_name = layer_name if layer_name != "default" else None
-                if not _is_spatial_source_layer(data_file, format_type, source_layer_name):
-                    outputs.append(_skip_output(file_slug, "geoparquet", "non_spatial_source"))
-                    continue
-                layer_file = _layer_filename(file_slug, preferred["layers"], layer_name)
-                result = asyncio.run(
-                    process_layer_partitioned_geoparquet(
-                        file_path=data_file,
-                        format_type=format_type,
-                        layer_name=source_layer_name,
-                        layer_filename=layer_file,
-                        dest_folder=dest_folder,
-                        dest_storage=dest_storage,
-                        work_dir=out_dir,
-                        policy=policy or geoparquet_policy_for(dataset_slug, file_slug),
+    layouts: list[dict[str, Any]] = []
+    try:
+        with staging_storage.get_local_version_dir(
+            dataset_slug, file_slug, version
+        ) as version_dir:
+            processed = _discover_staged_formats(Path(version_dir))
+            preferred, data_file, format_type = select_processing_input(processed)
+            if not preferred or data_file is None or format_type is None:
+                return [_skip_output(file_slug, "geoparquet", "non_spatial_source")]
+            with tempfile.TemporaryDirectory() as tmpdir:
+                out_dir = Path(tmpdir) / "geoparquet"
+                dest_storage = _StorageAdapter(staging_storage)
+                dest_folder = f"{dataset_slug}/{file_slug}/{version}/"
+                for layer_name, _geom_type in preferred["layers"]:
+                    source_layer_name = layer_name if layer_name != "default" else None
+                    if not _is_spatial_source_layer(
+                        data_file, format_type, source_layer_name
+                    ):
+                        outputs.append(
+                            _skip_output(file_slug, "geoparquet", "non_spatial_source")
+                        )
+                        continue
+                    layer_file = _layer_filename(
+                        file_slug, preferred["layers"], layer_name
                     )
-                )
-                if result.get("error"):
-                    raise ValueError(result["error"])
-                if not result.get("geoparquet_paths"):
-                    outputs.append(_skip_output(file_slug, "geoparquet", "non_spatial_source"))
-                    continue
-                layout = result.get("layout")
-                if isinstance(layout, dict):
-                    _write_geoparquet_layout_manifest(
-                        staging_storage,
-                        dataset_slug,
-                        file_slug,
-                        version,
-                        layout,
+                    result = asyncio.run(
+                        process_layer_partitioned_geoparquet(
+                            file_path=data_file,
+                            format_type=format_type,
+                            layer_name=source_layer_name,
+                            layer_filename=layer_file,
+                            dest_folder=dest_folder,
+                            dest_storage=dest_storage,
+                            work_dir=out_dir,
+                            policy=policy
+                            or geoparquet_policy_for(dataset_slug, file_slug),
+                        )
                     )
-                is_hive_partitioned = result.get("partitioning") != "single_file"
-                if is_hive_partitioned:
-                    output_path = (
-                        f"{dataset_slug}/{file_slug}/{version}/geoparquet/**/*.parquet"
+                    if result.get("error"):
+                        raise ValueError(result["error"])
+                    geoparquet_paths = result.get("geoparquet_paths")
+                    if not geoparquet_paths:
+                        outputs.append(
+                            _skip_output(file_slug, "geoparquet", "non_spatial_source")
+                        )
+                        continue
+                    layout = result.get("layout")
+                    if isinstance(layout, dict):
+                        layouts.append(layout)
+                    output_path, is_hive_partitioned = _geoparquet_glob_and_hive_status(
+                        geoparquet_paths
                     )
-                elif len(result["geoparquet_paths"]) > 1:
-                    output_path = (
-                        f"{dataset_slug}/{file_slug}/{version}/geoparquet/*.parquet"
+                    outputs.append(
+                        PublishedFormatOutput(
+                            file_slug=file_slug,
+                            format_type="geoparquet",
+                            path=output_path,
+                            source_metadata={
+                                "hive_partitioned": is_hive_partitioned,
+                                "partitioning": result.get("partitioning"),
+                                "partition_columns": result.get(
+                                    "partition_columns", []
+                                ),
+                                "chosen_s2_level": result.get("chosen_s2_level"),
+                                "row_group_target_bytes": result.get(
+                                    "row_group_target_bytes"
+                                ),
+                                "target_file_size_bytes": result.get(
+                                    "target_file_size_bytes"
+                                ),
+                                "feature_count": result.get("feature_count"),
+                            },
+                        )
                     )
-                else:
-                    output_path = result["geoparquet_paths"][0]
-                outputs.append(
-                    PublishedFormatOutput(
-                        file_slug=file_slug,
-                        format_type="geoparquet",
-                        path=output_path,
-                        source_metadata={
-                            "hive_partitioned": is_hive_partitioned,
-                            "partitioning": result.get("partitioning"),
-                            "partition_columns": result.get("partition_columns", []),
-                            "chosen_s2_level": result.get("chosen_s2_level"),
-                            "row_group_target_bytes": result.get("row_group_target_bytes"),
-                            "target_file_size_bytes": result.get("target_file_size_bytes"),
-                            "feature_count": result.get("feature_count"),
-                        },
-                    )
-                )
+        if layouts:
+            _write_geoparquet_layout_manifest_set(
+                staging_storage, dataset_slug, file_slug, version, layouts
+            )
+    except Exception:
+        staging_storage.delete_prefix(
+            f"{dataset_slug}/{file_slug}/{version}/geoparquet"
+        )
+        staging_storage.delete_prefix(manifest_key)
+        raise
     return outputs
+
+
+def _geoparquet_glob_and_hive_status(paths: list[str]) -> tuple[str, bool]:
+    first_root, separator, _ = paths[0].partition("/geoparquet/")
+    if not separator:
+        return paths[0], False
+    relative_paths = [path.partition("/geoparquet/")[2] for path in paths]
+    is_nested = any(len(Path(relative).parts) > 1 for relative in relative_paths)
+    is_hive_partitioned = any(
+        "=" in segment
+        for relative in relative_paths
+        for segment in Path(relative).parts[:-1]
+    )
+    if is_nested or len(paths) > 1:
+        return f"{first_root}/geoparquet/**/*.parquet", is_hive_partitioned
+    return paths[0], is_hive_partitioned
 
 
 def _write_geoparquet_layout_manifest(
@@ -735,6 +772,25 @@ def _write_geoparquet_layout_manifest(
     normalized_layout = dict(layer_layout)
     normalized_layout.pop("schema_version", None)
     layers.append(normalized_layout)
+    return _write_geoparquet_layout_manifest_set(
+        storage, dataset_slug, file_slug, version, layers
+    )
+
+
+def _write_geoparquet_layout_manifest_set(
+    storage: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    layer_layouts: list[dict[str, Any]],
+) -> str:
+    """Publish one authoritative, fully validated layer set."""
+    relative_path = "metadata/geoparquet_layout.json"
+    layers = []
+    for layer_layout in layer_layouts:
+        normalized_layout = dict(layer_layout)
+        normalized_layout.pop("schema_version", None)
+        layers.append(normalized_layout)
     layers.sort(
         key=lambda layer: (
             str(layer.get("layer", "")),
@@ -962,24 +1018,22 @@ def _published_outputs_from_keys(
         outputs.append(PublishedFormatOutput(file_slug, format_type, key))
 
     if geoparquet_keys:
-        is_partitioned = any(len(Path(rel).parts) > 2 for _key, _root, rel in geoparquet_keys)
+        is_nested = any(
+            len(Path(rel).parts) > 2 for _key, _root, rel in geoparquet_keys
+        )
+        is_hive_partitioned = any(
+            "=" in segment
+            for _key, _root, rel in geoparquet_keys
+            for segment in Path(rel).parts[1:-1]
+        )
         version_root = geoparquet_keys[0][1]
-        if is_partitioned:
+        if is_nested or len(geoparquet_keys) > 1:
             outputs.append(
                 PublishedFormatOutput(
                     file_slug,
                     "geoparquet",
                     f"{version_root}/geoparquet/**/*.parquet",
-                    {"hive_partitioned": True},
-                )
-            )
-        elif len(geoparquet_keys) > 1:
-            outputs.append(
-                PublishedFormatOutput(
-                    file_slug,
-                    "geoparquet",
-                    f"{version_root}/geoparquet/*.parquet",
-                    {"hive_partitioned": False, "partitioning": "streaming_chunks"},
+                    {"hive_partitioned": is_hive_partitioned},
                 )
             )
         else:

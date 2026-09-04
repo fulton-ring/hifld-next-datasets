@@ -8,6 +8,7 @@ import zipfile
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from shapely.geometry import Point
 
@@ -21,10 +22,12 @@ from dagster_hifld.conversion import (
     ShapefileZipPolicy,
     _PreflightHistogramStore,
     _StorageAdapter,
+    _allocate_feature_bytes,
     _build_tippecanoe_cmd,
     _create_and_upload_pmtiles,
     _detect_format_from_path,
     _discover_staged_formats,
+    _estimate_feature_size_bytes,
     _hilbert_like_key,
     _layer_output_namespace,
     _policy_s2_levels,
@@ -487,11 +490,11 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "admin")
             self.assertEqual(result["partition_columns"], ["statefp"])
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/layer-source/statefp=06/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/partition_statefp=v-06/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/layer-source/statefp=12/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/partition_statefp=v-12/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertFalse(any("-0.zstd.parquet" in path for path in result["geoparquet_paths"]))
@@ -529,7 +532,7 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "derived_huc")
             self.assertEqual(result["partition_columns"], ["huc2", "huc4", "huc6"])
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/layer-source/huc2=01/huc4=0101/huc6=010100/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/partition_huc2=v-01/partition_huc4=v-0101/partition_huc6=v-010100/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertFalse(any("huc12=" in path for path in result["geoparquet_paths"]))
@@ -585,7 +588,7 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "derived_prefix")
             self.assertEqual(result["partition_columns"], ["state_fips"])
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/layer-source/state_fips=29/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/partition_state_fips=v-29/part-000.parquet",
                 result["geoparquet_paths"],
             )
 
@@ -626,7 +629,7 @@ class ConversionTests(unittest.TestCase):
                 result["geoparquet_paths"],
                 [
                     "dataset/file/v1.0.0/geoparquet/"
-                    "layer-source/statefp=06/part-000.parquet"
+                    "layer-source/partition_statefp=v-06/part-000.parquet"
                 ],
             )
 
@@ -698,10 +701,124 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partition_columns"], ["STATEFP"])
             self.assertTrue(
                 any(
-                    "geoparquet/layer-source/STATEFP=06/" in path
+                    "geoparquet/layer-source/partition_statefp=v-06/" in path
                     for path in result["geoparquet_paths"]
                 )
             )
+
+    def test_streaming_writer_uses_first_present_forced_admin_alternative(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"COUNTYFP": ["001", "003"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("STATEFP", "countyfp")
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["partition_columns"], ["COUNTYFP"])
+
+    def test_streaming_writer_rejects_when_no_forced_admin_alternative_exists(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["A"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("STATEFP", "COUNTYFP")
+                    ),
+                )
+            )
+
+            self.assertIn("force_admin_columns alternatives", result["error"])
+            self.assertIn("'STATEFP', 'COUNTYFP'", result["error"])
+
+    def test_semantic_partition_paths_are_injective_and_hive_reader_preserves_values(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            expected = ["a/b", "a-b", None, "__null__", "06", "12"]
+            gpd.GeoDataFrame(
+                {"STATEFP": expected},
+                geometry=[Point(index, index) for index in range(len(expected))],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(force_admin_columns=("statefp",)),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            partition_segments = {
+                Path(path).parent.name for path in result["geoparquet_paths"]
+            }
+            self.assertEqual(len(partition_segments), len(expected))
+            self.assertIn("partition_statefp=v-a%2Fb", partition_segments)
+            self.assertIn("partition_statefp=v-a-b", partition_segments)
+            self.assertIn("partition_statefp=n", partition_segments)
+            self.assertIn("partition_statefp=v-__null__", partition_segments)
+
+            dataset = ds.dataset(
+                Path(tmpdir) / "work" / "geoparquet" / "layer-source",
+                format="parquet",
+                partitioning="hive",
+            )
+            table = dataset.to_table()
+            self.assertIn("STATEFP", table.column_names)
+            self.assertIn("partition_statefp", table.column_names)
+            self.assertCountEqual(table.column("STATEFP").to_pylist(), expected)
+            self.assertIn("06", table.column("STATEFP").to_pylist())
+
+    def test_feature_byte_accounting_uses_utf8_and_allocates_exact_batch_total(self):
+        ascii_feature = {"type": "Feature", "properties": {"name": "a"}}
+        unicode_feature = {"type": "Feature", "properties": {"name": "é"}}
+
+        self.assertEqual(
+            _estimate_feature_size_bytes(unicode_feature)
+            - _estimate_feature_size_bytes(ascii_feature),
+            1,
+        )
+        allocations = _allocate_feature_bytes([1, 2, 10], 17)
+        self.assertEqual(sum(allocations), 17)
+        self.assertTrue(all(allocation >= 1 for allocation in allocations))
 
     def test_streaming_writer_rejects_missing_configured_source_column(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -999,13 +1116,13 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(len(result["geoparquet_paths"]), 4)
             self.assertTrue(
                 any(
-                    "STATEFP=06/part-001.parquet" in path
+                    "partition_statefp=v-06/part-001.parquet" in path
                     for path in result["geoparquet_paths"]
                 )
             )
             self.assertTrue(
                 any(
-                    "STATEFP=12/part-001.parquet" in path
+                    "partition_statefp=v-12/part-001.parquet" in path
                     for path in result["geoparquet_paths"]
                 )
             )
@@ -1084,7 +1201,9 @@ class ConversionTests(unittest.TestCase):
 
             self.assertNotIn("error", result)
             self.assertEqual(result["partitioning"], "derived_prefix")
-            self.assertIn("state_fips=29", result["geoparquet_paths"][0])
+            self.assertIn(
+                "partition_state_fips=v-29", result["geoparquet_paths"][0]
+            )
 
     def test_spatial_sort_keeps_features_with_null_geometry(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -325,7 +325,7 @@ class PipelineUpdateTests(unittest.TestCase):
             self.assertTrue(replacement_file.exists())
             self.assertNotEqual(replacement_file.read_bytes(), b"exists")
             self.assertIn(
-                "dataset-a/file-a/v1.0.0/geoparquet/layer-source/file-a.parquet",
+                "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
                 [output.path for output in result["outputs"]],
             )
 
