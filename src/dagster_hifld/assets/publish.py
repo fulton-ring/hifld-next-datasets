@@ -112,6 +112,26 @@ def _validate_geoparquet_manifest_footer_fields(
         )
 
 
+def _actual_geoparquet_footer_size(
+    storage: StagingStorageResource,
+    storage_key: str,
+) -> int:
+    from pyarrow import parquet
+
+    if storage.use_local or not storage.bucket:
+        parquet_file = parquet.ParquetFile(
+            Path(storage.local_dir).resolve() / storage_key
+        )
+        return int(parquet_file.metadata.serialized_size)
+
+    import gcsfs
+
+    fs = gcsfs.GCSFileSystem()
+    with fs.open(f"{storage.bucket}/{storage_key}", "rb") as source:
+        parquet_file = parquet.ParquetFile(source)
+        return int(parquet_file.metadata.serialized_size)
+
+
 @dataclass(frozen=True)
 class PublishedFormatOutput:
     file_slug: str
@@ -617,6 +637,27 @@ def _validate_reusable_geoparquet_layout(
             "Cannot reuse existing GeoParquet: layout manifest output set does not match "
             "current objects."
         )
+    for layer in typed_layers:
+        outputs = layer.get("outputs")
+        if not isinstance(outputs, list):
+            continue
+        for output in outputs:
+            if not isinstance(output, dict):
+                continue
+            path = output.get("path")
+            footer_size = output.get("footer_size_bytes")
+            if not isinstance(path, str) or not isinstance(footer_size, int):
+                continue
+            try:
+                actual_footer_size = _actual_geoparquet_footer_size(storage, path)
+            except (OSError, ValueError, RuntimeError) as exc:
+                raise ValueError(
+                    "Cannot reuse existing GeoParquet: output footer is unreadable."
+                ) from exc
+            if actual_footer_size < 0 or footer_size != actual_footer_size:
+                raise ValueError(
+                    "Cannot reuse existing GeoParquet: output footer size mismatch."
+                )
 
 
 def _skip_output(file_slug: str, format_type: str, reason: str) -> PublishedFormatOutput:

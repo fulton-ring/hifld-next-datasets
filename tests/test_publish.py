@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import geopandas as gpd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from shapely.geometry import Point
 
 from dagster_hifld.assets.publish import (
@@ -1072,6 +1074,44 @@ class PublishTests(unittest.TestCase):
                             storage, "dataset", "file", "v1", [actual_key]
                         )
 
+    def test_reuse_rejects_output_footer_size_mismatch_with_actual_parquet(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            actual_key = "dataset/file/v1/geoparquet/file.parquet"
+            parquet_path = Path(staging_dir) / "fixture.parquet"
+            pq.write_table(pa.table({"id": [1]}), parquet_path)
+            parquet_bytes = parquet_path.read_bytes()
+            actual_footer = pq.ParquetFile(parquet_path).metadata.serialized_size
+            storage.write_key(actual_key, parquet_bytes)
+            manifest = {
+                "schema_version": 1,
+                "validation_status": "valid",
+                "footer_metadata_bytes": 0,
+                "max_dataset_footer_bytes": 128 * 1024**2,
+                "layers": [
+                    {
+                        "layer": "default",
+                        "validation_status": "valid",
+                        "outputs": [
+                            {"path": actual_key, "footer_size_bytes": 0}
+                        ],
+                    }
+                ],
+            }
+            storage.write(
+                "dataset",
+                "file",
+                "v1",
+                "metadata/geoparquet_layout.json",
+                json.dumps(manifest).encode(),
+            )
+
+            with self.assertRaisesRegex(ValueError, "footer"):
+                _validate_reusable_geoparquet_layout(
+                    storage, "dataset", "file", "v1", [actual_key]
+                )
+            self.assertGreater(actual_footer, 0)
+
     def test_partitioned_multilayer_publish_uses_collision_proof_layer_paths(self):
         with tempfile.TemporaryDirectory() as staging_dir:
             version_dir = (
@@ -1458,7 +1498,10 @@ class PublishTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as staging_dir:
             storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
             actual_key = "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet"
-            storage.write_key(actual_key, b"valid")
+            fixture_path = Path(staging_dir) / "fixture.parquet"
+            pq.write_table(pa.table({"id": [1]}), fixture_path)
+            storage.write_key(actual_key, fixture_path.read_bytes())
+            footer_size = pq.ParquetFile(fixture_path).metadata.serialized_size
             storage.write(
                 "dataset-a",
                 "file-a",
@@ -1468,14 +1511,17 @@ class PublishTests(unittest.TestCase):
                     {
                         "schema_version": 1,
                         "validation_status": "valid",
-                        "footer_metadata_bytes": 0,
+                        "footer_metadata_bytes": footer_size,
                         "max_dataset_footer_bytes": 128 * 1024**2,
                         "layers": [
                             {
                                 "layer": "default",
                                 "validation_status": "valid",
                                 "outputs": [
-                                    {"path": actual_key, "footer_size_bytes": 0}
+                                    {
+                                        "path": actual_key,
+                                        "footer_size_bytes": footer_size,
+                                    }
                                 ],
                             }
                         ],
