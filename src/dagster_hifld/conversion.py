@@ -231,8 +231,6 @@ class _StorageAdapter:
         normalized = remote_path.lstrip("/")
         if not self.prefix:
             return normalized
-        if normalized == self.prefix or normalized.startswith(f"{self.prefix}/"):
-            return normalized
         return f"{self.prefix}/{normalized}"
 
     async def list_files(self, prefix: str) -> list[str]:
@@ -784,6 +782,7 @@ class GeoParquetLayout:
     feature_count: int
     partition_strategy: str
     partition_columns: list[str]
+    hive_partition_columns: dict[str, str]
     chosen_s2_level: int | None
     thresholds: dict[str, int]
     outputs: list[GeoParquetOutputLayout]
@@ -797,6 +796,7 @@ class _GeoParquetPreflight:
     estimate_multiplier: float
     partitioning: str
     partition_columns: list[str]
+    hive_partition_columns: dict[str, str]
     chosen_s2_level: int | None
     resolved_policy: GeoParquetWritePolicy
 
@@ -918,11 +918,27 @@ def _encoded_hive_value(value: Any) -> str:
     return f"v-{quote(str(value), safe='-._~')}"
 
 
-def _semantic_hive_key(column: str) -> str:
-    normalized = "".join(
-        character if character.isalnum() else "_" for character in column.casefold()
-    ).strip("_")
-    return f"partition_{normalized or 'value'}"
+def _allocate_semantic_hive_keys(
+    columns: list[str], source_columns: set[str]
+) -> dict[str, str]:
+    reserved = {column.casefold() for column in source_columns}
+    reserved.update({"geometry", "bbox", "s2_parent_cell"})
+    mapping: dict[str, str] = {}
+    for column in columns:
+        normalized = "".join(
+            character if character.isalnum() else "_"
+            for character in column.casefold()
+        ).strip("_")
+        digest = hashlib.sha256(column.encode("utf-8")).hexdigest()[:12]
+        base = f"partition_{normalized or 'value'}_{digest}"
+        candidate = base
+        counter = 0
+        while candidate.casefold() in reserved:
+            counter += 1
+            candidate = f"{base}_{counter}"
+        mapping[column] = candidate
+        reserved.add(candidate.casefold())
+    return mapping
 
 
 def _layer_output_namespace(layer_filename: str) -> str:
@@ -1395,7 +1411,16 @@ def _preflight_layer_with_histograms(
         measure_batch(batch)
 
     if feature_count == 0:
-        return _GeoParquetPreflight(0, 0, 1.0, "single_file", [], None, resolved_policy)
+        return _GeoParquetPreflight(
+            feature_count=0,
+            uncompressed_bytes=0,
+            estimate_multiplier=1.0,
+            partitioning="single_file",
+            partition_columns=[],
+            hive_partition_columns={},
+            chosen_s2_level=None,
+            resolved_policy=resolved_policy,
+        )
 
     selected_histogram_kind = "semantic"
     selected_histogram_name = ""
@@ -1456,12 +1481,20 @@ def _preflight_layer_with_histograms(
             partitioning = f"{base_partitioning}_s2"
             partition_columns.append("s2_parent_cell")
 
+    semantic_columns = [
+        column for column in partition_columns if column != "s2_parent_cell"
+    ]
+    hive_partition_columns = _allocate_semantic_hive_keys(semantic_columns, names)
+    if "s2_parent_cell" in partition_columns:
+        hive_partition_columns["s2_parent_cell"] = "s2_parent_cell"
+
     return _GeoParquetPreflight(
         feature_count=feature_count,
         uncompressed_bytes=uncompressed_bytes,
         estimate_multiplier=uncompressed_bytes / max(1, serialized_bytes),
         partitioning=partitioning,
         partition_columns=partition_columns,
+        hive_partition_columns=hive_partition_columns,
         chosen_s2_level=chosen_s2_level,
         resolved_policy=resolved_policy,
     )
@@ -1640,7 +1673,10 @@ async def process_layer_partitioned_geoparquet(
                         (
                             f"{column}={_encoded_hive_value(value)}"
                             if column == "s2_parent_cell"
-                            else f"{_semantic_hive_key(column)}={_encoded_hive_value(value)}"
+                            else (
+                                f"{preflight.hive_partition_columns[column]}="
+                                f"{_encoded_hive_value(value)}"
+                            )
                         )
                         for column, value in zip(partition_columns, values)
                     ]
@@ -1716,6 +1752,7 @@ async def process_layer_partitioned_geoparquet(
         feature_count=preflight.feature_count,
         partition_strategy=partitioning,
         partition_columns=partition_columns,
+        hive_partition_columns=preflight.hive_partition_columns,
         chosen_s2_level=preflight.chosen_s2_level,
         thresholds={
             "large_dataset_bytes": effective_policy.large_dataset_threshold_bytes,
@@ -1736,6 +1773,7 @@ async def process_layer_partitioned_geoparquet(
         "hive_partitioned": partitioning != "single_file",
         "partitioning": partitioning,
         "partition_columns": partition_columns,
+        "hive_partition_columns": preflight.hive_partition_columns,
         "chosen_s2_level": preflight.chosen_s2_level,
         "row_group_target_bytes": effective_policy.target_row_group_bytes,
         "target_file_size_bytes": effective_policy.target_file_size_bytes,
@@ -1778,8 +1816,7 @@ async def _upload_geoparquet_files(
     paths: list[str] = []
     for i, gp_file in enumerate(geoparquet_files):
         remote_path = f"{dest_folder}geoparquet/{layer_filename}-{i}.zstd.parquet"
-        await dest_storage.upload_file(gp_file, remote_path)
-        paths.append(remote_path)
+        paths.append(await dest_storage.upload_file(gp_file, remote_path))
     return paths
 
 
@@ -1838,8 +1875,7 @@ async def _create_and_upload_pmtiles(
             logger.warning("tippecanoe failed with exit code %s", returncode)
             return None
         remote_path = f"{dest_folder}pmtiles/{layer_filename}.pmtiles"
-        await dest_storage.upload_file(pmtiles_path, remote_path)
-        return remote_path
+        return await dest_storage.upload_file(pmtiles_path, remote_path)
     except FileNotFoundError:
         logger.warning("tippecanoe not found, skipping PMTiles creation")
         return None

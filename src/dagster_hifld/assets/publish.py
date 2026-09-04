@@ -84,7 +84,9 @@ def _copy_version_files(
     file_slug: str,
     version: str,
 ) -> list[str]:
-    published_storage.delete_prefix(f"{dataset_slug}/{file_slug}/{version}")
+    published_storage.delete_prefix(
+        published_storage.build_target_location(dataset_slug, file_slug, version, "")
+    )
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
     selected_pairs = [
         (key, relative_key)
@@ -395,8 +397,7 @@ def _upload_tree(
             continue
         rel = path.relative_to(local_root).as_posix()
         remote_path = f"{dataset_slug}/{file_slug}/{version}/{rel_root}/{rel}"
-        asyncio.run(adapter.upload_file(path, remote_path))
-        uploaded.append(remote_path)
+        uploaded.append(asyncio.run(adapter.upload_file(path, remote_path)))
     return uploaded
 
 
@@ -417,8 +418,7 @@ def _upload_paths(
         except ValueError:
             rel = path.name
         remote_path = f"{dataset_slug}/{file_slug}/{version}/{rel_root}/{rel}"
-        asyncio.run(adapter.upload_file(path, remote_path))
-        uploaded.append(remote_path)
+        uploaded.append(asyncio.run(adapter.upload_file(path, remote_path)))
     return uploaded
 
 
@@ -471,7 +471,11 @@ def _prepare_format_publish(
         return []
     if not _publish_overwrite_enabled():
         return existing
-    storage.delete_prefix(f"{dataset_slug}/{file_slug}/{version}/{format_dir}")
+    storage.delete_prefix(
+        storage.build_target_location(
+            dataset_slug, file_slug, version, format_dir
+        )
+    )
     return []
 
 
@@ -482,6 +486,70 @@ def _existing_format_outputs(
     existing_keys: list[str],
 ) -> list[PublishedFormatOutput]:
     return _published_outputs_from_keys(dataset_slug, file_slug, version, existing_keys)
+
+
+def _validate_reusable_geoparquet_layout(
+    storage: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    existing_keys: list[str],
+) -> None:
+    relative_path = "metadata/geoparquet_layout.json"
+    manifest_key = storage.build_target_location(
+        dataset_slug, file_slug, version, relative_path
+    )
+    if not storage.object_exists(manifest_key):
+        raise ValueError(
+            "Cannot reuse existing GeoParquet without an authoritative layout manifest."
+        )
+    try:
+        manifest = json.loads(
+            storage.read_bytes(dataset_slug, file_slug, version, relative_path)
+        )
+        layers = manifest["layers"]
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            "Cannot reuse existing GeoParquet: authoritative layout manifest is invalid."
+        ) from exc
+    if (
+        manifest.get("schema_version") != 1
+        or manifest.get("validation_status") != "valid"
+        or not isinstance(layers, list)
+        or not layers
+        or any(
+            not isinstance(layer, dict)
+            or layer.get("validation_status") != "valid"
+            for layer in layers
+        )
+    ):
+        raise ValueError(
+            "Cannot reuse existing GeoParquet: authoritative layout manifest is invalid."
+        )
+    declared_paths: list[str] = []
+    for layer in layers:
+        layer_outputs = layer.get("outputs")
+        if not isinstance(layer_outputs, list):
+            raise ValueError(
+                "Cannot reuse existing GeoParquet: authoritative layout manifest is invalid."
+            )
+        for output in layer_outputs:
+            if not isinstance(output, dict) or not isinstance(output.get("path"), str):
+                raise ValueError(
+                    "Cannot reuse existing GeoParquet: authoritative layout manifest is invalid."
+                )
+            declared_paths.append(output["path"])
+    existing_parquet_paths = {key for key in existing_keys if key.endswith(".parquet")}
+    if (
+        not declared_paths
+        or not existing_parquet_paths
+        or len(declared_paths) != len(set(declared_paths))
+        or set(declared_paths) != existing_parquet_paths
+    ):
+        raise ValueError(
+            "Cannot reuse existing GeoParquet: layout manifest output set does not match "
+            "current objects."
+        )
 
 
 def _skip_output(file_slug: str, format_type: str, reason: str) -> PublishedFormatOutput:
@@ -630,6 +698,9 @@ def _write_and_publish_geoparquet(
         "geoparquet",
     )
     if existing:
+        _validate_reusable_geoparquet_layout(
+            staging_storage, dataset_slug, file_slug, version, existing
+        )
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)
     manifest_relative_path = "metadata/geoparquet_layout.json"
     manifest_key = staging_storage.build_target_location(
@@ -700,6 +771,9 @@ def _write_and_publish_geoparquet(
                                 "partition_columns": result.get(
                                     "partition_columns", []
                                 ),
+                                "hive_partition_columns": result.get(
+                                    "hive_partition_columns", {}
+                                ),
                                 "chosen_s2_level": result.get("chosen_s2_level"),
                                 "row_group_target_bytes": result.get(
                                     "row_group_target_bytes"
@@ -717,7 +791,9 @@ def _write_and_publish_geoparquet(
             )
     except Exception:
         staging_storage.delete_prefix(
-            f"{dataset_slug}/{file_slug}/{version}/geoparquet"
+            staging_storage.build_target_location(
+                dataset_slug, file_slug, version, "geoparquet"
+            )
         )
         staging_storage.delete_prefix(manifest_key)
         raise
@@ -725,10 +801,10 @@ def _write_and_publish_geoparquet(
 
 
 def _geoparquet_glob_and_hive_status(paths: list[str]) -> tuple[str, bool]:
-    first_root, separator, _ = paths[0].partition("/geoparquet/")
+    first_root, separator, _ = paths[0].rpartition("/geoparquet/")
     if not separator:
         return paths[0], False
-    relative_paths = [path.partition("/geoparquet/")[2] for path in paths]
+    relative_paths = [path.rpartition("/geoparquet/")[2] for path in paths]
     is_nested = any(len(Path(relative).parts) > 1 for relative in relative_paths)
     is_hive_partitioned = any(
         "=" in segment

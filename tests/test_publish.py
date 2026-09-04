@@ -12,6 +12,7 @@ from dagster_hifld.assets.publish import (
     _copy_source_format_files,
     _copy_source_files,
     _copy_version_files,
+    _geoparquet_glob_and_hive_status,
     _is_spatial_source_layer,
     _prepare_format_publish,
     _preferred_remote_source_keys,
@@ -154,6 +155,11 @@ class PublishTests(unittest.TestCase):
         class FakePublished:
             def __init__(self):
                 self.deleted = None
+
+            def build_target_location(
+                self, dataset_slug, file_slug, version, filename
+            ):
+                return f"{dataset_slug}/{file_slug}/{version}/{filename}".rstrip("/")
 
             def delete_prefix(self, prefix):
                 self.deleted = prefix
@@ -1172,7 +1178,149 @@ class PublishTests(unittest.TestCase):
                     "metadata/geoparquet_layout.json",
                 )
             )
+            self.assertEqual(
+                manifest["layers"][0]["outputs"][0]["path"], parquet_keys[0]
+            )
+
+    def test_prefix_is_applied_once_when_dataset_slug_matches_prefix(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = (
+                Path(staging_dir)
+                / "tenant"
+                / "tenant"
+                / "file-a"
+                / "v1.0.0"
+                / "geopackage"
+            )
+            version_dir.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["road"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(version_dir / "source.gpkg", layer="roads", driver="GPKG")
+            storage = StagingStorageResource(
+                local_dir=staging_dir,
+                prefix="tenant",
+                use_local=True,
+            )
+
+            outputs = _write_and_publish_geoparquet(
+                storage, "tenant", "file-a", "v1.0.0"
+            )
+
+            keys = storage.list_keys("tenant", "file-a", "v1.0.0")
+            parquet_keys = [key for key in keys if key.endswith(".parquet")]
+            self.assertEqual(len(parquet_keys), 1)
+            self.assertTrue(parquet_keys[0].startswith("tenant/tenant/file-a/"))
+            self.assertEqual(
+                outputs[0].path,
+                "tenant/tenant/file-a/v1.0.0/geoparquet/**/*.parquet",
+            )
+            manifest = json.loads(
+                storage.read_bytes(
+                    "tenant",
+                    "file-a",
+                    "v1.0.0",
+                    "metadata/geoparquet_layout.json",
+                )
+            )
             self.assertEqual(manifest["layers"][0]["outputs"][0]["path"], parquet_keys[0])
+
+    def test_geoparquet_glob_uses_rightmost_version_format_root(self):
+        paths = [
+            "archive/geoparquet/tenant/d/f/v/geoparquet/layer-roads/file.parquet"
+        ]
+
+        glob_path, hive_partitioned = _geoparquet_glob_and_hive_status(paths)
+
+        self.assertEqual(
+            glob_path,
+            "archive/geoparquet/tenant/d/f/v/geoparquet/**/*.parquet",
+        )
+        self.assertFalse(hive_partitioned)
+
+    def test_overwrite_disabled_rejects_existing_geoparquet_without_manifest(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            key = "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet"
+            storage.write_key(key, b"legacy")
+
+            with patch.dict("os.environ", {"HIFLD_PUBLISH_OVERWRITE": "false"}):
+                with self.assertRaisesRegex(ValueError, "authoritative layout manifest"):
+                    _write_and_publish_geoparquet(
+                        storage, "dataset-a", "file-a", "v1.0.0"
+                    )
+
+            self.assertTrue(storage.object_exists(key))
+
+    def test_overwrite_disabled_rejects_stale_manifest_output_set(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            actual_key = "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet"
+            storage.write_key(actual_key, b"partial")
+            storage.write(
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+                "metadata/geoparquet_layout.json",
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "validation_status": "valid",
+                        "layers": [
+                            {
+                                "layer": "default",
+                                "validation_status": "valid",
+                                "outputs": [
+                                    {
+                                        "path": "dataset-a/file-a/v1.0.0/geoparquet/other.parquet"
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ).encode(),
+            )
+
+            with patch.dict("os.environ", {"HIFLD_PUBLISH_OVERWRITE": "false"}):
+                with self.assertRaisesRegex(ValueError, "does not match"):
+                    _write_and_publish_geoparquet(
+                        storage, "dataset-a", "file-a", "v1.0.0"
+                    )
+
+            self.assertTrue(storage.object_exists(actual_key))
+
+    def test_overwrite_disabled_reuses_exact_valid_manifest_output_set(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            actual_key = "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet"
+            storage.write_key(actual_key, b"valid")
+            storage.write(
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+                "metadata/geoparquet_layout.json",
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "validation_status": "valid",
+                        "layers": [
+                            {
+                                "layer": "default",
+                                "validation_status": "valid",
+                                "outputs": [{"path": actual_key}],
+                            }
+                        ],
+                    }
+                ).encode(),
+            )
+
+            with patch.dict("os.environ", {"HIFLD_PUBLISH_OVERWRITE": "false"}):
+                outputs = _write_and_publish_geoparquet(
+                    storage, "dataset-a", "file-a", "v1.0.0"
+                )
+
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(outputs[0].path, actual_key)
+            self.assertTrue(storage.object_exists(actual_key))
 
     def test_geoparquet_overwrite_replaces_manifest_layer_set_and_source_format(self):
         with tempfile.TemporaryDirectory() as staging_dir:
