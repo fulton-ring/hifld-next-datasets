@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -86,20 +87,30 @@ class StagingStorageResource(ConfigurableResource):
     def list_keys(self, dataset_slug: str, file_slug: str, version: str) -> list[str]:
         key_prefix = self.build_target_location(dataset_slug, file_slug, version, "").rstrip("/")
 
+        return self.list_prefix(key_prefix)
+
+    def list_prefix(self, key_prefix: str = "") -> list[str]:
+        """List object keys below a logical prefix without reading object contents."""
+        key_prefix = self._ensure_prefixed(key_prefix).rstrip("/")
+
         if self.use_local or not self.bucket:
             root = Path(self.local_dir).resolve()
-            dir_path = root / key_prefix
+            dir_path = root / key_prefix if key_prefix else root
+            if dir_path.is_file():
+                return [str(dir_path.relative_to(root))]
             if not dir_path.is_dir():
                 return []
-            # rglob to include files in format subdirectories.
-            return [str(p.relative_to(root)) for p in dir_path.rglob("*") if p.is_file()]
+            return sorted(
+                str(path.relative_to(root))
+                for path in dir_path.rglob("*")
+                if path.is_file()
+            )
 
         import gcsfs
         fs = gcsfs.GCSFileSystem()
-        path = f"{self.bucket}/{key_prefix}"
-        # fs.find() recurses into all subdirectories
+        path = f"{self.bucket}/{key_prefix}" if key_prefix else self.bucket
         found = fs.find(path)
-        return [p.replace(f"{self.bucket}/", "") for p in found]
+        return sorted(p.removeprefix(f"{self.bucket}/") for p in found)
 
     def read_bytes(
         self,
@@ -134,6 +145,46 @@ class StagingStorageResource(ConfigurableResource):
 
         fs = gcsfs.GCSFileSystem()
         return bool(fs.exists(f"{self.bucket}/{key}"))
+
+    def object_content_matches(
+        self,
+        destination: "StagingStorageResource",
+        key: str,
+        destination_key: str,
+    ) -> bool:
+        """Return whether two existing objects contain the same bytes."""
+        key = self._ensure_prefixed(key)
+        destination_key = destination._ensure_prefixed(destination_key)
+        if not self.object_exists(key) or not destination.object_exists(
+            destination_key
+        ):
+            return False
+
+        source_is_local = self.use_local or not self.bucket
+        destination_is_local = destination.use_local or not destination.bucket
+        if source_is_local and destination_is_local:
+            source_path = Path(self.local_dir).resolve() / key
+            destination_path = Path(destination.local_dir).resolve() / destination_key
+            if source_path.stat().st_size != destination_path.stat().st_size:
+                return False
+            return _file_sha256(source_path) == _file_sha256(destination_path)
+
+        if not source_is_local and not destination_is_local:
+            import gcsfs
+
+            fs = gcsfs.GCSFileSystem()
+            source_info = fs.info(f"{self.bucket}/{key}")
+            destination_info = fs.info(f"{destination.bucket}/{destination_key}")
+            if source_info.get("size") != destination_info.get("size"):
+                return False
+            for checksum_key in ("md5Hash", "md5", "crc32c"):
+                source_checksum = source_info.get(checksum_key)
+                destination_checksum = destination_info.get(checksum_key)
+                if source_checksum is not None and destination_checksum is not None:
+                    return source_checksum == destination_checksum
+            return False
+
+        return False
 
     def delete_prefix(self, key_prefix: str) -> None:
         key_prefix = self._ensure_prefixed(key_prefix).rstrip("/")
@@ -333,6 +384,14 @@ class PublishedStorageResource(StagingStorageResource):
         bucket = os.environ.get("HIFLD_DATASETS_BUCKET") or None
         local_dir = os.environ.get("HIFLD_DATASETS_DIR", "data/published")
         return cls(bucket=bucket, use_local=not bool(bucket), local_dir=local_dir)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class DatasetApiResource(ConfigurableResource):

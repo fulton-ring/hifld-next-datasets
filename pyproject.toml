@@ -40,3 +40,4 @@ include = ["hifld_next_datasets*", "dagster_hifld*"]
 [project.scripts]
 find-dataset-sources = "hifld_next_datasets.scraper:main"
 seed-source-manifests = "dagster_hifld.seed_source_manifests:main"
+hifld-geoparquet-maintenance = "dagster_hifld.maintenance:main"

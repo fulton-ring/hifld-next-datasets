@@ -18,6 +18,32 @@ from dagster_hifld.resources import StagingStorageResource
 
 
 class StagingStorageResourceTests(unittest.TestCase):
+    def test_list_prefix_returns_sorted_prefixed_keys_without_reading_contents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = StagingStorageResource(
+                local_dir=tmpdir,
+                use_local=True,
+                prefix="tenant-a",
+            )
+            storage.write_key("dataset-b/file/v1/geojson/b.geojson", b"b")
+            storage.write_key("dataset-a/file/v1/geojson/a.geojson", b"a")
+
+            self.assertEqual(
+                storage.list_prefix(),
+                [
+                    "tenant-a/dataset-a/file/v1/geojson/a.geojson",
+                    "tenant-a/dataset-b/file/v1/geojson/b.geojson",
+                ],
+            )
+            self.assertEqual(
+                storage.list_prefix("dataset-b"),
+                ["tenant-a/dataset-b/file/v1/geojson/b.geojson"],
+            )
+            self.assertEqual(
+                storage.list_prefix("dataset-a/file/v1/geojson/a.geojson"),
+                ["tenant-a/dataset-a/file/v1/geojson/a.geojson"],
+            )
+
     def test_downloader_uses_canonical_source_precedence(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -170,6 +196,26 @@ class StagingStorageResourceTests(unittest.TestCase):
             ["address-ranges/address-ranges/v1.0.0/geopackage/source.gpkg"],
         )
 
+    def test_gcs_list_prefix_lists_configured_resource_prefix(self):
+        resource = StagingStorageResource(
+            bucket="staging-bucket",
+            use_local=False,
+            prefix="tenant-a",
+        )
+        fake_fs = Mock()
+        fake_fs.find.return_value = [
+            "staging-bucket/tenant-a/dataset/file/v1/geojson/source.geojson",
+        ]
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            keys = resource.list_prefix()
+
+        fake_fs.find.assert_called_once_with("staging-bucket/tenant-a")
+        self.assertEqual(
+            keys,
+            ["tenant-a/dataset/file/v1/geojson/source.geojson"],
+        )
+
     def test_gcs_get_local_version_dir_streams_objects_to_disk(self):
         resource = StagingStorageResource(bucket="staging-bucket", use_local=False)
         key = "dataset/file/v1.0.0/geopackage/source.gpkg"
@@ -205,6 +251,27 @@ class StagingStorageResourceTests(unittest.TestCase):
                     "amtrak-stations/amtrak-stations/run_a/metadata/missing.json"
                 )
             )
+
+    def test_gcs_content_match_uses_object_checksums_without_downloading(self):
+        source = StagingStorageResource(bucket="published-bucket", use_local=False)
+        destination = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        fake_fs = Mock()
+        fake_fs.exists.return_value = True
+        fake_fs.info.side_effect = [
+            {"size": 12, "md5Hash": "same-checksum"},
+            {"size": 12, "md5Hash": "same-checksum"},
+        ]
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            matches = source.object_content_matches(
+                destination,
+                "dataset/file/v1/geojson/source.geojson",
+                "dataset/file/v1/geojson/source.geojson",
+            )
+
+        self.assertTrue(matches)
+        fake_fs.open.assert_not_called()
+        fake_fs.read_bytes.assert_not_called()
 
     def test_build_version_id_raises_if_run_record_cannot_be_resolved(self):
         context = SimpleNamespace(
