@@ -1143,7 +1143,32 @@ def _coerce_gdf_to_fiona_schema(
             continue
         fiona_type = str(raw_type).lower()
         try:
-            if fiona_type.startswith(("str", "date", "time")):
+            list_type = _fiona_list_arrow_type(fiona_type)
+            if list_type is not None:
+                values = [
+                    None
+                    if value is None or value is pd.NA
+                    else list(value)
+                    if isinstance(value, (list, tuple))
+                    else value
+                    for value in coerced[column].tolist()
+                ]
+                coerced[column] = pd.Series(
+                    pd.array(values, dtype=pd.ArrowDtype(list_type)),
+                    index=coerced.index,
+                )
+            elif fiona_type == "json":
+                values = [
+                    None
+                    if value is None or value is pd.NA
+                    else json.dumps(value, separators=(",", ":"), sort_keys=True)
+                    for value in coerced[column].tolist()
+                ]
+                coerced[column] = pd.Series(
+                    pd.array(values, dtype=pd.ArrowDtype(pa.json_())),
+                    index=coerced.index,
+                )
+            elif fiona_type.startswith(("str", "date", "time")):
                 coerced[column] = coerced[column].astype("string")
             elif fiona_type.startswith(("int", "uint")):
                 coerced[column] = pd.to_numeric(coerced[column], errors="coerce").astype("Int64")
@@ -1154,6 +1179,31 @@ def _coerce_gdf_to_fiona_schema(
         except (TypeError, ValueError):
             logger.debug("Could not coerce column %s to Fiona type %s", column, raw_type)
     return coerced
+
+
+def _fiona_list_arrow_type(fiona_type: str) -> pa.DataType | None:
+    if not (fiona_type.startswith("list[") and fiona_type.endswith("]")):
+        return None
+    item_type = fiona_type[5:-1].strip()
+    scalar_types = {
+        "str": pa.string(),
+        "string": pa.string(),
+        "int": pa.int64(),
+        "int32": pa.int32(),
+        "int64": pa.int64(),
+        "uint": pa.uint64(),
+        "uint32": pa.uint32(),
+        "uint64": pa.uint64(),
+        "float": pa.float64(),
+        "float32": pa.float32(),
+        "float64": pa.float64(),
+        "double": pa.float64(),
+        "bool": pa.bool_(),
+    }
+    arrow_item_type = scalar_types.get(item_type)
+    if arrow_item_type is None:
+        arrow_item_type = _fiona_list_arrow_type(item_type)
+    return pa.list_(arrow_item_type) if arrow_item_type is not None else None
 
 
 def _select_streaming_partition_columns(

@@ -1143,6 +1143,42 @@ class ConversionTests(unittest.TestCase):
 
             self.assertNotIn("error", result)
 
+    def test_sparse_nested_fiona_properties_stay_schema_stable_across_chunks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {
+                    "xs": [["a", "b"], None, ["c"], None],
+                    "attrs": [{"a": 1}, {"b": 2}, None, {"c": 3}],
+                },
+                geometry=[Point(index, index) for index in range(4)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        preflight_chunk_rows=1,
+                        write_buffer_bytes=1,
+                        target_file_size_bytes=10**9,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            output = next((Path(tmpdir) / "work").rglob("*.parquet"))
+            schema = pq.ParquetFile(output).schema_arrow
+            self.assertEqual(str(schema.field("xs").type), "list<element: string>")
+            self.assertEqual(str(schema.field("attrs").type), "extension<arrow.json>")
+
     def test_dense_level_16_cell_rolls_files_and_excludes_internal_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
