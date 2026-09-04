@@ -13,12 +13,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-SOURCE_FORMAT_DIRS = {
-    "file_geodatabase",
-    "geojson",
-    "geopackage",
-    "unknown",
-}
+from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
+
+SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 SEMVER_VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 

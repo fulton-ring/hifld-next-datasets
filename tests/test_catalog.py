@@ -145,6 +145,27 @@ class CatalogTests(unittest.TestCase):
             self.assertTrue(source_path.is_dir())
             self.assertEqual(layer, "layer_a")
 
+    def test_iter_geospatial_sources_prefers_canonical_shapefile_over_legacy_unknown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            canonical_dir = version_dir / "shapefile"
+            legacy_dir = version_dir / "unknown"
+            canonical_dir.mkdir()
+            legacy_dir.mkdir()
+            canonical = canonical_dir / "canonical.shp"
+            legacy = legacy_dir / "legacy.shp"
+            for path in (canonical, legacy):
+                gpd.GeoDataFrame(
+                    {"name": [path.stem]},
+                    geometry=[Point(0, 0)],
+                    crs="EPSG:4326",
+                ).to_file(path)
+
+            sources = list(_iter_geospatial_sources(version_dir))
+
+            self.assertIn((canonical, None), sources)
+            self.assertNotIn((legacy, None), sources)
+
     def test_generate_quality_manifest_supports_tabular_inputs(self):
         df = pd.DataFrame({"station_id": [1, 2], "name": ["A", None]})
 

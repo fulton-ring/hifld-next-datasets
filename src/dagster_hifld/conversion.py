@@ -29,6 +29,11 @@ from shapely.geometry import shape
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.source_formats import (
+    CANONICAL_SOURCE_FORMAT_PRECEDENCE,
+    SOURCE_FORMAT_EXTENSIONS,
+    discover_legacy_unknown_shapefile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +46,8 @@ except Exception:
 
 
 FORMAT_PRIORITY = [
-    ("file_geodatabase", ".gdb"),
-    ("geopackage", ".gpkg"),
-    ("geojson", ".geojson"),
+    (format_name, SOURCE_FORMAT_EXTENSIONS[format_name][0])
+    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE
 ]
 CHUNKED_READABLE_FORMATS = {"geopackage", "shapefile", "file_geodatabase"}
 FORMAT_SUFFIXES = [
@@ -351,18 +355,27 @@ def _extract_geospatial_from_zip(zip_file: Path, extract_dir: Path) -> Optional[
     with zipfile.ZipFile(zip_file, "r") as zf:
         zf.extractall(extract_dir)
 
-    for p in extract_dir.rglob("*"):
-        if p.is_dir() and p.suffix.lower() == ".gdb":
-            return ("file_geodatabase", p)
-
-    for ext, fmt in (
-        (".gpkg", "geopackage"),
-        (".shp", "shapefile"),
-        (".geojson", "geojson"),
-    ):
-        found = next((p for p in extract_dir.rglob(f"*{ext}") if p.is_file()), None)
-        if found:
-            return (fmt, found)
+    geodatabases = sorted(
+        path
+        for path in extract_dir.rglob("*")
+        if path.is_dir() and path.suffix.lower() == ".gdb"
+    )
+    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
+        if format_name == "file_geodatabase":
+            if geodatabases:
+                return (format_name, geodatabases[0])
+            continue
+        for extension in SOURCE_FORMAT_EXTENSIONS[format_name]:
+            found = next(
+                (
+                    path
+                    for path in sorted(extract_dir.rglob("*"))
+                    if path.is_file() and path.suffix.lower() == extension
+                ),
+                None,
+            )
+            if found:
+                return (format_name, found)
     return None
 
 
@@ -1557,10 +1570,13 @@ async def _upload_extracted_format_files(
     else:
         shutil.copy2(data_file, format_files_dir / data_file.name)
         if format_type == "shapefile":
-            base = data_file.stem
-            for ext in [".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx"]:
-                sibling = data_file.parent / f"{base}{ext}"
-                if sibling.exists():
+            sidecar_suffixes = {".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx", ".qpj"}
+            for sibling in sorted(data_file.parent.iterdir()):
+                if (
+                    sibling.is_file()
+                    and sibling.stem.casefold() == data_file.stem.casefold()
+                    and sibling.suffix.lower() in sidecar_suffixes
+                ):
                     shutil.copy2(sibling, format_files_dir / sibling.name)
 
     for file_path in format_files_dir.rglob("*"):
@@ -1729,37 +1745,34 @@ async def write_geopackage_chunked(
 def _select_best_format_for_geopackage(
     processed_formats: dict[str, dict[str, Any]],
 ) -> tuple[Optional[dict[str, Any]], Optional[Path]]:
-    for fmt_name in ("file_geodatabase", "geopackage", "geojson"):
+    for fmt_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
         if fmt_name in processed_formats:
             fmt_info = processed_formats[fmt_name]
             return fmt_info, fmt_info["data_file"]
-    if "shapefile" in processed_formats:
-        fmt_info = processed_formats["shapefile"]
-        return fmt_info, fmt_info["data_file"]
-    for _fmt_name, fmt_info in processed_formats.items():
-        return fmt_info, fmt_info["data_file"]
     return None, None
 
 
 def select_processing_input(
     processed_formats: dict[str, dict[str, Any]],
     *,
-    allow_shapefile_fallback: bool = False,
+    allow_shapefile_fallback: bool | None = None,
 ) -> tuple[Optional[dict[str, Any]], Optional[Path], Optional[str]]:
-    for format_name in ("file_geodatabase", "geopackage", "geojson"):
+    """Select the highest-precedence canonical source.
+
+    ``allow_shapefile_fallback`` remains accepted for compatibility; Shapefile
+    is now a canonical source and is always eligible.
+    """
+    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
         if format_name in processed_formats:
             fmt_info = processed_formats[format_name]
             return fmt_info, fmt_info["data_file"], fmt_info["format_type"]
-    if allow_shapefile_fallback and "shapefile" in processed_formats:
-        fmt_info = processed_formats["shapefile"]
-        return fmt_info, fmt_info["data_file"], fmt_info["format_type"]
     return None, None, None
 
 
 def _select_preferred_processing_format(
     processed_formats: dict[str, dict[str, Any]],
 ) -> tuple[Optional[dict[str, Any]], Optional[Path], Optional[str]]:
-    return select_processing_input(processed_formats, allow_shapefile_fallback=True)
+    return select_processing_input(processed_formats)
 
 
 async def _process_dataset(
@@ -1960,35 +1973,45 @@ def process_staged_dataset_version(
 
 
 def _discover_staged_formats(version_dir: Path) -> dict[str, dict[str, Any]]:
-    format_dirs = {
-        "file_geodatabase": ".gdb",
-        "geopackage": ".gpkg",
-        "unknown": ".shp",
-        "geojson": ".geojson",
-    }
     processed_formats: dict[str, dict[str, Any]] = {}
-    for format_name, extension in format_dirs.items():
+    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
         search_dir = version_dir / format_name
         if not search_dir.is_dir():
             continue
         data_file: Path | None = None
-        if extension == ".gdb":
+        if format_name == "file_geodatabase":
             data_file = next(iter(iter_file_geodatabases(search_dir)), None)
         else:
-            data_file = next(search_dir.glob(f"*{extension}"), None)
+            data_file = next(
+                (
+                    path
+                    for extension in SOURCE_FORMAT_EXTENSIONS[format_name]
+                    for path in sorted(search_dir.iterdir())
+                    if path.is_file() and path.suffix.lower() == extension
+                ),
+                None,
+            )
         if data_file is None:
             continue
-        normalized_format = "shapefile" if format_name == "unknown" else format_name
-        layers = list_layers_in_file(data_file, normalized_format)
-        processed_formats[normalized_format] = {
-            "format_type": normalized_format,
+        layers = list_layers_in_file(data_file, format_name)
+        processed_formats[format_name] = {
+            "format_type": format_name,
             "layers": layers,
             "data_file": data_file,
         }
+
+    if "shapefile" not in processed_formats:
+        legacy_shapefile = discover_legacy_unknown_shapefile(version_dir / "unknown")
+        if legacy_shapefile is not None:
+            processed_formats["shapefile"] = {
+                "format_type": "shapefile",
+                "layers": list_layers_in_file(legacy_shapefile, "shapefile"),
+                "data_file": legacy_shapefile,
+            }
     return processed_formats
 
 
 def _select_preferred_processing_input(
     processed_formats: dict[str, dict[str, Any]],
 ) -> tuple[Optional[dict[str, Any]], Optional[Path], Optional[str]]:
-    return select_processing_input(processed_formats, allow_shapefile_fallback=True)
+    return select_processing_input(processed_formats)

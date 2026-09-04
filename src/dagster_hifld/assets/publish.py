@@ -39,19 +39,13 @@ from dagster_hifld.resources import (
     StagingStorageResource,
 )
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-
-_PROMOTED_SOURCE_FORMAT_DIRS = {
-    "geojson",
-    "geopackage",
-    "file_geodatabase",
-    "unknown",
-}
-_PROCESSING_SOURCE_FORMAT_DIRS = (
-    "file_geodatabase",
-    "geopackage",
-    "geojson",
-    "unknown",
+from dagster_hifld.source_formats import (
+    CANONICAL_SOURCE_FORMAT_DIRS,
+    CANONICAL_SOURCE_FORMAT_PRECEDENCE,
 )
+
+_PROMOTED_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
+_PROCESSING_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_PRECEDENCE
 
 
 @dataclass(frozen=True)
@@ -88,7 +82,13 @@ def _copy_version_files(
 ) -> list[str]:
     published_storage.delete_prefix(f"{dataset_slug}/{file_slug}/{version}")
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
-    return sorted(staging_storage.copy_keys_to(published_storage, keys))
+    version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
+    selected_keys = [
+        key
+        for key in keys
+        if Path(key.removeprefix(version_prefix)).parts[0] != "unknown"
+    ]
+    return sorted(staging_storage.copy_keys_to(published_storage, selected_keys))
 
 
 def _copy_source_format_files(
@@ -101,7 +101,7 @@ def _copy_source_format_files(
 ) -> list[str]:
     copied: list[str] = []
     version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
-    for key in keys:
+    for key in sorted(keys):
         if "/metadata/" in key:
             continue
         rel_path = key.removeprefix(version_prefix)
@@ -531,6 +531,20 @@ def _write_and_publish_shapefile_zip(
     version: str,
     policy: ShapefileZipPolicy | None = None,
 ) -> list[PublishedFormatOutput]:
+    staged_shapefile_keys = _published_format_keys(
+        staging_storage,
+        dataset_slug,
+        file_slug,
+        version,
+        "shapefile",
+    )
+    if any(Path(key).suffix.lower() == ".shp" for key in staged_shapefile_keys):
+        return _published_outputs_from_keys(
+            dataset_slug,
+            file_slug,
+            version,
+            staged_shapefile_keys,
+        )
     existing = _prepare_format_publish(staging_storage, dataset_slug, file_slug, version, "shapefile")
     if existing:
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)

@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import geopandas as gpd
 from shapely.geometry import Point
@@ -13,6 +13,7 @@ from dagster_hifld.assets.publish import (
     _copy_version_files,
     _is_spatial_source_layer,
     _prepare_format_publish,
+    _preferred_remote_source_keys,
     _published_outputs_from_keys,
     _write_and_publish_geoparquet,
     _write_and_publish_pmtiles,
@@ -91,11 +92,15 @@ class PublishTests(unittest.TestCase):
         self.assertFalse(any(asset.key.path == ["publish", "promote", "metadata"] for asset in publish_assets))
         self.assertFalse(any(asset.key.path[:2] == ["publish", "register"] for asset in publish_assets))
 
-    def test_copy_version_files_promotes_everything_under_staged_version(self):
+    def test_copy_version_files_promotes_canonical_formats_but_not_legacy_unknown(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             version_root = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0"
             (version_root / "geopackage").mkdir(parents=True)
             (version_root / "geopackage" / "source.gpkg").write_bytes(b"gpkg")
+            (version_root / "geojson").mkdir()
+            (version_root / "geojson" / "source.geojson").write_bytes(b"geojson")
+            (version_root / "unknown").mkdir()
+            (version_root / "unknown" / "legacy.shp").write_bytes(b"legacy")
             (version_root / "geoparquet").mkdir()
             (version_root / "geoparquet" / "old.parquet").write_bytes(b"parquet")
             (version_root / "metadata").mkdir()
@@ -112,6 +117,7 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(
                 copied,
                 [
+                    "dataset-a/file-a/v1.0.0/geojson/source.geojson",
                     "dataset-a/file-a/v1.0.0/geopackage/source.gpkg",
                     "dataset-a/file-a/v1.0.0/geoparquet/old.parquet",
                     "dataset-a/file-a/v1.0.0/metadata/quality_manifest.json",
@@ -120,6 +126,8 @@ class PublishTests(unittest.TestCase):
             self.assertTrue((Path(published_dir) / "dataset-a/file-a/v1.0.0/geopackage/source.gpkg").exists())
             self.assertTrue((Path(published_dir) / "dataset-a/file-a/v1.0.0/geoparquet/old.parquet").exists())
             self.assertTrue((Path(published_dir) / "dataset-a/file-a/v1.0.0/metadata/quality_manifest.json").exists())
+            self.assertTrue((Path(published_dir) / "dataset-a/file-a/v1.0.0/geojson").exists())
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
 
     def test_copy_version_files_uses_bulk_copy(self):
         class FakeStaging:
@@ -194,9 +202,10 @@ class PublishTests(unittest.TestCase):
                 sorted(copied),
                 [
                     "amtrak-stations/amtrak-stations/run_a/file_geodatabase/stations.gdb/a00000001.gdbtable",
+                    "amtrak-stations/amtrak-stations/run_a/shapefile/stations.shp",
                 ],
             )
-            self.assertFalse(
+            self.assertTrue(
                 (
                     Path(published_dir)
                     / "amtrak-stations"
@@ -241,14 +250,97 @@ class PublishTests(unittest.TestCase):
 
             self.assertEqual(
                 copied,
-                ["dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip"],
+                [
+                    "dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip",
+                    "dataset-a/file-a/v1.0.0/shapefile/source.shp",
+                ],
             )
             self.assertTrue(
                 (Path(published_dir) / "dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip").exists()
             )
-            self.assertFalse(
+            self.assertTrue(
                 (Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.shp").exists()
             )
+
+    def test_copy_source_format_files_promotes_retained_shapefile_with_sidecars(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            version_root = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0"
+            (version_root / "shapefile").mkdir(parents=True)
+            (version_root / "unknown").mkdir()
+            (version_root / "geoparquet").mkdir()
+            for suffix in (".shp", ".shx", ".dbf", ".prj"):
+                (version_root / "shapefile" / f"source{suffix}").write_bytes(suffix.encode())
+            (version_root / "unknown" / "legacy.shp").write_bytes(b"legacy")
+            (version_root / "geoparquet" / "source.parquet").write_bytes(b"derived")
+
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            keys = staging.list_keys("dataset-a", "file-a", "v1.0.0")
+
+            copied = _copy_source_format_files(
+                staging,
+                published,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+                keys,
+            )
+
+            self.assertEqual(
+                copied,
+                [
+                    f"dataset-a/file-a/v1.0.0/shapefile/source{suffix}"
+                    for suffix in (".dbf", ".prj", ".shp", ".shx")
+                ],
+            )
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/geoparquet").exists())
+
+    def test_shapefile_publish_preserves_canonical_source_and_sidecars(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            shapefile_dir = (
+                Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "shapefile"
+            )
+            shapefile_dir.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["A"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(shapefile_dir / "source.shp")
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            original_keys = staging.list_keys("dataset-a", "file-a", "v1.0.0")
+
+            outputs = _write_and_publish_shapefile_zip(
+                staging,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+            )
+
+            self.assertEqual(
+                staging.list_keys("dataset-a", "file-a", "v1.0.0"),
+                original_keys,
+            )
+            self.assertCountEqual(
+                [output.path for output in outputs],
+                original_keys,
+            )
+
+    def test_preferred_remote_source_keys_uses_canonical_precedence(self):
+        staging = Mock()
+        staging.list_keys.return_value = [
+            "dataset/file/v1.0.0/pmtiles/source.pmtiles",
+            "dataset/file/v1.0.0/file_geodatabase/source.gdb.zip",
+            "dataset/file/v1.0.0/geopackage/source.gpkg",
+            "dataset/file/v1.0.0/geoparquet/source.parquet",
+        ]
+
+        selected_format, selected_keys = _preferred_remote_source_keys(
+            staging, "dataset", "file", "v1.0.0"
+        )
+
+        self.assertEqual(selected_format, "geopackage")
+        self.assertEqual(selected_keys, ["dataset/file/v1.0.0/geopackage/source.gpkg"])
 
     def test_existing_format_outputs_are_overwritten_by_default(self):
         with tempfile.TemporaryDirectory() as published_dir:

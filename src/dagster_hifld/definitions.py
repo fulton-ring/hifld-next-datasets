@@ -24,15 +24,9 @@ from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
 )
+from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
 
-# Staged source discovery intentionally excludes derived output folders. Shapefiles
-# are generated as zipped derived outputs, not copied as staging inputs.
-_SOURCE_FORMAT_DIRS = {
-    "file_geodatabase",
-    "geojson",
-    "geopackage",
-    "unknown",
-}
+_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 MAX_SENSOR_RUN_REQUESTS_PER_TICK = int(
     os.environ.get("HIFLD_SENSOR_MAX_RUN_REQUESTS_PER_TICK", "25")
 )

@@ -14,12 +14,14 @@ from urllib.parse import urlparse
 import httpx
 
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_formats import (
+    CANONICAL_SOURCE_FORMAT_PRECEDENCE,
+    SOURCE_FORMAT_EXTENSIONS,
+)
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
-
-_GEO_PRIORITY = [".shp", ".gpkg", ".gdb", ".geojson", ".json", ".fgb", ".parquet"]
 
 _FORMAT_NAMES: dict[str, str] = {
     ".shp": "shapefile",
@@ -27,7 +29,6 @@ _FORMAT_NAMES: dict[str, str] = {
     ".gdb": "file_geodatabase",
     ".geojson": "geojson",
     ".json": "geojson",
-    ".fgb": "flatgeobuf",
 }
 
 def get_run_id(context) -> str | None:
@@ -105,18 +106,18 @@ def _extract_zip(content: bytes, out_dir: Path) -> list[Path]:
 
 def _pick_primary_file(candidates: list[Path]) -> Path | None:
     """Pick the best primary geospatial source from extracted files."""
-    # .gdb is a directory; find the deepest one
     gdb_dirs: set[Path] = set()
     for p in candidates:
         for parent in p.parents:
             if parent.suffix.lower() == ".gdb":
                 gdb_dirs.add(parent)
-    if gdb_dirs:
-        return min(gdb_dirs, key=lambda d: len(d.parts))
-    for ext in _GEO_PRIORITY:
-        for p in candidates:
-            if p.suffix.lower() == ext and p.is_file():
-                return p
+    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
+        if format_name == "file_geodatabase" and gdb_dirs:
+            return min(gdb_dirs, key=lambda directory: len(directory.parts))
+        extensions = SOURCE_FORMAT_EXTENSIONS[format_name]
+        for path in candidates:
+            if path.is_file() and path.suffix.lower() in extensions:
+                return path
     return None
 
 
@@ -140,10 +141,14 @@ def _collect_staging_files(primary: Path) -> list[tuple[Path, str]]:
 
     files: list[tuple[Path, str]] = [(primary, primary.name)]
     if primary.suffix.lower() == ".shp":
-        for ext in [".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx", ".qpj"]:
-            sib = primary.parent / f"{primary.stem}{ext}"
-            if sib.exists():
-                files.append((sib, sib.name))
+        sidecar_suffixes = {".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx", ".qpj"}
+        for sibling in sorted(primary.parent.iterdir()):
+            if (
+                sibling.is_file()
+                and sibling.stem.casefold() == primary.stem.casefold()
+                and sibling.suffix.lower() in sidecar_suffixes
+            ):
+                files.append((sibling, sibling.name))
     return files
 
 

@@ -6,8 +6,10 @@ import re
 
 from dagster import DynamicPartitionsDefinition
 
+from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
+
 SEMVER_VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
-SOURCE_FORMAT_DIRS = {"file_geodatabase", "geopackage", "geojson", "unknown"}
+SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 PUBLISH_PARTITION_NAME = "publish_dataset_file_version"
 PUBLISH_PARTITIONS = DynamicPartitionsDefinition(name=PUBLISH_PARTITION_NAME)
 

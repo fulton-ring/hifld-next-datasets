@@ -13,9 +13,10 @@ import pandas as pd
 from shapely.geometry import shape
 from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dtype, is_hashable, is_integer_dtype
 
-from dagster_hifld.file_geodatabase import iter_file_geodatabases
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
+from dagster_hifld.file_geodatabase import iter_file_geodatabases
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_formats import discover_legacy_unknown_shapefile
 
 CATALOG_SAMPLE_FEATURE_LIMIT = 5_000
 
@@ -273,10 +274,11 @@ def write_catalog_metadata(
 
 
 def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
+    canonical_shapefiles = _files_with_suffix(version_dir / "shapefile", ".shp")
     fallback_searches: list[tuple[Path, str]] = [
-        (version_dir / "file_geodatabase", ".gdb"),
         (version_dir / "geopackage", ".gpkg"),
-        (version_dir / "unknown", ".shp"),
+        (version_dir / "file_geodatabase", ".gdb"),
+        (version_dir / "shapefile", ".shp"),
         (version_dir / "geojson", ".geojson"),
     ]
     for search_dir, ext in fallback_searches:
@@ -290,12 +292,22 @@ def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
                 except Exception:
                     continue
         else:
-            for path in search_dir.glob(f"*{ext}"):
+            for path in _files_with_suffix(search_dir, ext):
                 try:
                     with _with_large_geojson_support():
                         return gpd.read_file(str(path))
                 except Exception:
                     continue
+    unknown_dir = version_dir / "unknown"
+    legacy_shapefile = None
+    if not canonical_shapefiles and any(unknown_dir.glob("*.shp")):
+        legacy_shapefile = discover_legacy_unknown_shapefile(unknown_dir)
+    if legacy_shapefile is not None:
+        try:
+            with _with_large_geojson_support():
+                return gpd.read_file(str(legacy_shapefile))
+        except Exception:
+            return None
     return None
 
 
@@ -332,7 +344,25 @@ def _summarize_best_geospatial_file(
     return None
 
 
+def _files_with_suffix(directory: Path, suffix: str) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.suffix.lower() == suffix
+    )
+
+
 def _iter_geospatial_sources(version_dir: Path):
+    for path in _files_with_suffix(version_dir / "geopackage", ".gpkg"):
+        try:
+            with _with_large_geojson_support():
+                layers = fiona.listlayers(str(path)) or [None]
+        except Exception:
+            layers = [None]
+        for layer in layers:
+            yield path, layer
     for path in iter_file_geodatabases(version_dir / "file_geodatabase"):
         try:
             with _with_large_geojson_support():
@@ -341,18 +371,17 @@ def _iter_geospatial_sources(version_dir: Path):
             layers = [None]
         for layer in layers:
             yield path, layer
-    for path in (version_dir / "geopackage").glob("*.gpkg"):
-        try:
-            with _with_large_geojson_support():
-                layers = fiona.listlayers(str(path)) or [None]
-        except Exception:
-            layers = [None]
-        for layer in layers:
-            yield path, layer
-    for path in (version_dir / "geojson").glob("*.geojson"):
+    canonical_shapefiles = _files_with_suffix(version_dir / "shapefile", ".shp")
+    for path in canonical_shapefiles:
         yield path, None
-    for path in (version_dir / "unknown").glob("*.shp"):
+    for path in _files_with_suffix(version_dir / "geojson", ".geojson"):
         yield path, None
+    if not canonical_shapefiles:
+        unknown_dir = version_dir / "unknown"
+        if any(unknown_dir.glob("*.shp")):
+            legacy_shapefile = discover_legacy_unknown_shapefile(unknown_dir)
+            if legacy_shapefile is not None:
+                yield legacy_shapefile, None
 
 
 def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gpd.GeoDataFrame, dict]:

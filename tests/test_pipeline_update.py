@@ -21,6 +21,7 @@ from dagster_hifld.conversion import (
 from dagster_hifld.definitions import _iter_staged_version_paths
 from dagster_hifld.partitions import (
     PUBLISH_PARTITIONS,
+    SOURCE_FORMAT_DIRS,
     build_publish_partition_key,
     parse_publish_partition_key,
 )
@@ -28,23 +29,35 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 
 
 class PipelineUpdateTests(unittest.TestCase):
-    def test_staged_version_discovery_ignores_derived_and_shapefile_folders(self):
+    def test_staged_version_discovery_recognizes_shapefile_and_ignores_derived_folders(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             source = root / "dataset-a" / "file-a" / "v1.0.0" / "geopackage"
             source.mkdir(parents=True)
             (source / "file-a.gpkg").write_bytes(b"gpkg")
-            for derived in ("geoparquet", "parquet", "pmtiles", "metadata", "shapefile"):
+            shapefile = root / "dataset-b" / "file-b" / "v1.0.0" / "shapefile"
+            shapefile.mkdir(parents=True)
+            (shapefile / "file-b.shp").write_bytes(b"shp")
+            for derived in ("geoparquet", "parquet", "pmtiles", "metadata"):
                 folder = root / "dataset-b" / "file-b" / "v1.0.0" / derived
                 folder.mkdir(parents=True)
                 (folder / "artifact.bin").write_bytes(b"x")
 
             storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
 
-            self.assertEqual(
+            self.assertCountEqual(
                 list(_iter_staged_version_paths(storage)),
-                [("dataset-a", "file-a", "v1.0.0")],
+                [
+                    ("dataset-a", "file-a", "v1.0.0"),
+                    ("dataset-b", "file-b", "v1.0.0"),
+                ],
             )
+
+    def test_source_format_registry_contains_only_canonical_processing_inputs(self):
+        self.assertEqual(
+            SOURCE_FORMAT_DIRS,
+            frozenset({"geopackage", "file_geodatabase", "shapefile", "geojson"}),
+        )
 
     def test_dynamic_partitions_and_assets_include_staged_pairs(self):
         partition_key = build_publish_partition_key("dynamic-dataset", "dynamic-file", "v1.0.0")
@@ -59,11 +72,26 @@ class PipelineUpdateTests(unittest.TestCase):
         )
         self.assertFalse(any(a.key.path[:2] == ["publish", "register"] for a in publish_assets_module.publish_assets))
 
-    def test_processing_input_prefers_streamable_formats_and_excludes_shapefile(self):
+    def test_processing_input_uses_canonical_source_precedence(self):
         processed = {
             "geojson": {"format_type": "geojson", "data_file": Path("file.geojson"), "layers": []},
             "shapefile": {"format_type": "shapefile", "data_file": Path("file.shp"), "layers": []},
+            "file_geodatabase": {
+                "format_type": "file_geodatabase",
+                "data_file": Path("file.gdb"),
+                "layers": [],
+            },
             "geopackage": {"format_type": "geopackage", "data_file": Path("file.gpkg"), "layers": []},
+            "geoparquet": {
+                "format_type": "geoparquet",
+                "data_file": Path("file.parquet"),
+                "layers": [],
+            },
+            "pmtiles": {
+                "format_type": "pmtiles",
+                "data_file": Path("file.pmtiles"),
+                "layers": [],
+            },
         }
 
         selected, path, fmt = select_processing_input(processed)
@@ -71,6 +99,37 @@ class PipelineUpdateTests(unittest.TestCase):
         self.assertIs(selected, processed["geopackage"])
         self.assertEqual(path, Path("file.gpkg"))
         self.assertEqual(fmt, "geopackage")
+
+    def test_processing_input_accepts_canonical_shapefile(self):
+        processed = {
+            "shapefile": {
+                "format_type": "shapefile",
+                "data_file": Path("file.shp"),
+                "layers": [],
+            }
+        }
+
+        selected, path, fmt = select_processing_input(processed)
+
+        self.assertIs(selected, processed["shapefile"])
+        self.assertEqual(path, Path("file.shp"))
+        self.assertEqual(fmt, "shapefile")
+
+    def test_processing_input_rejects_derived_outputs(self):
+        processed = {
+            "geoparquet": {
+                "format_type": "geoparquet",
+                "data_file": Path("file.parquet"),
+                "layers": [],
+            },
+            "pmtiles": {
+                "format_type": "pmtiles",
+                "data_file": Path("file.pmtiles"),
+                "layers": [],
+            },
+        }
+
+        self.assertEqual(select_processing_input(processed), (None, None, None))
 
     def test_shapefile_zip_writes_single_zip_without_loose_sidecars(self):
         with tempfile.TemporaryDirectory() as tmpdir:

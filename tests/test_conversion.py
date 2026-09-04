@@ -30,6 +30,17 @@ from dagster_hifld.resources import StagingStorageResource
 
 
 class ConversionTests(unittest.TestCase):
+    @staticmethod
+    def _write_shapefile(path: Path, name: str) -> Path:
+        path.mkdir(parents=True, exist_ok=True)
+        shapefile = path / f"{name}.shp"
+        gpd.GeoDataFrame(
+            {"name": [name]},
+            geometry=[Point(0, 0)],
+            crs="EPSG:4326",
+        ).to_file(shapefile)
+        return shapefile
+
     def test_to_wgs84_handles_crs_to_epsg_failure(self):
         class BadCRS:
             def to_epsg(self):
@@ -93,6 +104,81 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(processed["file_geodatabase"]["format_type"], "file_geodatabase")
             self.assertEqual(processed["file_geodatabase"]["data_file"].name, "source.gdb")
             self.assertTrue(processed["file_geodatabase"]["data_file"].is_dir())
+
+    def test_discover_staged_formats_reads_canonical_shapefile_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            shapefile = self._write_shapefile(version_dir / "shapefile", "source")
+
+            processed = _discover_staged_formats(version_dir)
+
+            self.assertEqual(processed["shapefile"]["format_type"], "shapefile")
+            self.assertEqual(processed["shapefile"]["data_file"], shapefile)
+
+    def test_canonical_shapefile_wins_over_ambiguous_legacy_unknown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            canonical = self._write_shapefile(version_dir / "shapefile", "canonical")
+            unknown = version_dir / "unknown"
+            self._write_shapefile(unknown, "legacy-a")
+            self._write_shapefile(unknown, "legacy-b")
+
+            processed = _discover_staged_formats(version_dir)
+
+            self.assertEqual(processed["shapefile"]["data_file"], canonical)
+
+    def test_discover_staged_formats_reads_one_complete_readable_legacy_shapefile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            unknown = version_dir / "unknown"
+            shapefile = self._write_shapefile(unknown, "legacy")
+
+            processed = _discover_staged_formats(version_dir)
+
+            self.assertEqual(processed["shapefile"]["data_file"], shapefile)
+
+    def test_discover_staged_formats_rejects_multiple_legacy_shapefiles(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            unknown = version_dir / "unknown"
+            self._write_shapefile(unknown, "legacy-a")
+            self._write_shapefile(unknown, "legacy-b")
+
+            with self.assertRaisesRegex(ValueError, "multiple Shapefile datasets"):
+                _discover_staged_formats(version_dir)
+
+    def test_discover_staged_formats_rejects_incomplete_legacy_unknown_contents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            unknown = version_dir / "unknown"
+            unknown.mkdir()
+            (unknown / "legacy.shp").write_bytes(b"not a shapefile")
+            (unknown / "notes.txt").write_text("ambiguous", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "complete readable Shapefile"):
+                _discover_staged_formats(version_dir)
+
+    def test_discover_staged_formats_rejects_non_shapefile_legacy_unknown_contents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            unknown = version_dir / "unknown"
+            unknown.mkdir()
+            (unknown / "notes.txt").write_text("ambiguous", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "complete readable Shapefile"):
+                _discover_staged_formats(version_dir)
+
+    def test_discover_staged_formats_ignores_derived_output_directories(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            geoparquet = version_dir / "geoparquet"
+            pmtiles = version_dir / "pmtiles"
+            geoparquet.mkdir()
+            pmtiles.mkdir()
+            (geoparquet / "source.parquet").write_bytes(b"parquet")
+            (pmtiles / "source.pmtiles").write_bytes(b"pmtiles")
+
+            self.assertEqual(_discover_staged_formats(version_dir), {})
 
     def test_process_layer_chunked_creates_nested_work_dirs(self):
         with tempfile.TemporaryDirectory() as tmpdir:

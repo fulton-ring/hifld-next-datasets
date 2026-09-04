@@ -7,11 +7,58 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 import zipfile
 
-from dagster_hifld.download import _extract_zip, build_version_id, download_convert_and_stage
+from dagster_hifld.download import (
+    _collect_staging_files,
+    _extract_zip,
+    _pick_primary_file,
+    build_version_id,
+    download_convert_and_stage,
+)
 from dagster_hifld.resources import StagingStorageResource
 
 
 class StagingStorageResourceTests(unittest.TestCase):
+    def test_downloader_uses_canonical_source_precedence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            shapefile = root / "source.shp"
+            shapefile.write_bytes(b"shp")
+            geodatabase_file = root / "source.gdb" / "a00000001.gdbtable"
+            geodatabase_file.parent.mkdir()
+            geodatabase_file.write_bytes(b"gdb")
+            geopackage = root / "source.gpkg"
+            geopackage.write_bytes(b"gpkg")
+
+            self.assertEqual(
+                _pick_primary_file([shapefile, geodatabase_file, geopackage]),
+                geopackage,
+            )
+
+    def test_downloader_does_not_select_derived_outputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            geoparquet = root / "source.parquet"
+            pmtiles = root / "source.pmtiles"
+            geoparquet.write_bytes(b"parquet")
+            pmtiles.write_bytes(b"pmtiles")
+
+            self.assertIsNone(_pick_primary_file([geoparquet, pmtiles]))
+
+    def test_downloader_collects_case_insensitive_shapefile_sidecars(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            shapefile = root / "SOURCE.SHP"
+            shapefile.write_bytes(b"shp")
+            (root / "SOURCE.SHX").write_bytes(b"shx")
+            (root / "SOURCE.DBF").write_bytes(b"dbf")
+
+            collected = _collect_staging_files(shapefile)
+
+            self.assertCountEqual(
+                [relative_key for _path, relative_key in collected],
+                ["SOURCE.SHP", "SOURCE.SHX", "SOURCE.DBF"],
+            )
+
     def test_build_version_id_uses_run_create_timestamp(self):
         run_record = SimpleNamespace(
             create_timestamp=datetime(2026, 4, 7, 20, 40, 46, tzinfo=timezone.utc)
