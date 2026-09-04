@@ -9,6 +9,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 import zipfile
 
+import google_crc32c
+
+from dagster_hifld import resources
 from dagster_hifld.download import (
     _collect_staging_files,
     _extract_zip,
@@ -164,9 +167,9 @@ class StagingStorageResourceTests(unittest.TestCase):
             (root / "amtrak-stations" / "amtrak-stations" / "run_a" / "metadata").mkdir(
                 parents=True
             )
-            (root / "amtrak-stations" / "amtrak-stations" / "run_b" / "shapefile").mkdir(
-                parents=True
-            )
+            (
+                root / "amtrak-stations" / "amtrak-stations" / "run_b" / "shapefile"
+            ).mkdir(parents=True)
             (root / "amtrak-stations" / "other-file" / "run_c").mkdir(parents=True)
 
             resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
@@ -228,7 +231,9 @@ class StagingStorageResourceTests(unittest.TestCase):
         fake_fs.open.return_value = fake_file
 
         with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
-            with resource.get_local_version_dir("dataset", "file", "v1.0.0") as version_dir:
+            with resource.get_local_version_dir(
+                "dataset", "file", "v1.0.0"
+            ) as version_dir:
                 copied = Path(version_dir) / "geopackage" / "source.gpkg"
                 self.assertEqual(copied.read_bytes(), b"source bytes")
 
@@ -238,9 +243,7 @@ class StagingStorageResourceTests(unittest.TestCase):
     def test_object_exists_checks_exact_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            key = (
-                "amtrak-stations/amtrak-stations/run_a/metadata/quality_manifest.json"
-            )
+            key = "amtrak-stations/amtrak-stations/run_a/metadata/quality_manifest.json"
             path = root / key
             path.parent.mkdir(parents=True)
             path.write_text("{}", encoding="utf-8")
@@ -284,7 +287,9 @@ class StagingStorageResourceTests(unittest.TestCase):
                 bucket="staging-bucket",
                 use_local=False,
             )
-            checksum = base64.b64encode(hashlib.md5(b"candidate bytes").digest()).decode()
+            checksum = base64.b64encode(
+                hashlib.md5(b"candidate bytes").digest()
+            ).decode()
             fake_fs = Mock()
             fake_fs.exists.return_value = True
             fake_fs.info.return_value = {
@@ -298,6 +303,274 @@ class StagingStorageResourceTests(unittest.TestCase):
             self.assertTrue(matches)
             fake_fs.open.assert_not_called()
             fake_fs.read_bytes.assert_not_called()
+
+    def test_local_candidate_matches_crc32c_only_gcs_object(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key = "dataset/file/v1/geojson/source.geojson"
+            data = b"candidate bytes"
+            source = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            source.write_key(key, data)
+            destination = StagingStorageResource(
+                bucket="staging-bucket",
+                use_local=False,
+            )
+            checksum = base64.b64encode(
+                google_crc32c.value(data).to_bytes(4, "big")
+            ).decode()
+            fake_fs = Mock()
+            fake_fs.exists.return_value = True
+            fake_fs.info.return_value = {
+                "size": len(data),
+                "crc32c": checksum,
+            }
+
+            with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+                matches = source.object_content_matches(destination, key, key)
+
+            self.assertTrue(matches)
+            fake_fs.open.assert_not_called()
+            fake_fs.read_bytes.assert_not_called()
+
+    def test_gcs_listing_captures_generation_checksum_and_size_in_one_call(self):
+        storage = StagingStorageResource(
+            bucket="published-bucket",
+            prefix="production",
+            use_local=False,
+        )
+        key = "production/dataset/file/v1/geojson/source.geojson"
+        fake_fs = Mock()
+        fake_fs.find.return_value = {
+            f"published-bucket/{key}": {
+                "name": f"published-bucket/{key}",
+                "size": 12,
+                "generation": "123",
+                "md5Hash": "md5-value",
+                "crc32c": "crc-value",
+            }
+        }
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            snapshots = storage.list_object_snapshots("dataset")
+
+        fake_fs.find.assert_called_once_with(
+            "published-bucket/production/dataset",
+            detail=True,
+        )
+        self.assertEqual(
+            snapshots,
+            (
+                resources.StorageObjectSnapshot(
+                    key=key,
+                    size=12,
+                    generation="123",
+                    md5="md5-value",
+                    crc32c="crc-value",
+                ),
+            ),
+        )
+
+    def test_gcs_conditional_copy_uses_source_and_destination_generations(self):
+        source = StagingStorageResource(bucket="published-bucket", use_local=False)
+        destination = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        source_snapshot = resources.StorageObjectSnapshot(
+            key="dataset/file/v1/geojson/source.geojson",
+            size=12,
+            generation="101",
+            md5="source-md5",
+            crc32c=None,
+        )
+        destination_snapshot = resources.StorageObjectSnapshot(
+            key="dataset/file/v1/geojson/source.geojson",
+            size=8,
+            generation="202",
+            md5="old-md5",
+            crc32c=None,
+        )
+        fake_fs = Mock()
+        fake_fs.call.return_value = {"done": True}
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            source.copy_key_to_if_unchanged(
+                destination,
+                source_snapshot.key,
+                destination_snapshot.key,
+                source_snapshot=source_snapshot,
+                destination_snapshot=destination_snapshot,
+            )
+
+        fake_fs.call.assert_called_once()
+        _args, kwargs = fake_fs.call.call_args
+        self.assertEqual(kwargs["ifSourceGenerationMatch"], "101")
+        self.assertEqual(kwargs["ifGenerationMatch"], "202")
+
+    def test_gcs_conditional_create_copy_uses_zero_destination_generation(self):
+        source = StagingStorageResource(bucket="published-bucket", use_local=False)
+        destination = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        source_snapshot = resources.StorageObjectSnapshot(
+            key="dataset/file/v1/geojson/source.geojson",
+            size=12,
+            generation="101",
+            md5="source-md5",
+            crc32c=None,
+        )
+        fake_fs = Mock()
+        fake_fs.call.return_value = {"done": True}
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            source.copy_key_to_if_unchanged(
+                destination,
+                source_snapshot.key,
+                source_snapshot.key,
+                source_snapshot=source_snapshot,
+                destination_snapshot=None,
+            )
+
+        _args, kwargs = fake_fs.call.call_args
+        self.assertEqual(kwargs["ifSourceGenerationMatch"], "101")
+        self.assertEqual(kwargs["ifGenerationMatch"], "0")
+
+    def test_gcs_conditional_delete_uses_expected_generation(self):
+        storage = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        snapshot = resources.StorageObjectSnapshot(
+            key="dataset/file/v1/geojson/source.geojson",
+            size=12,
+            generation="303",
+            md5="source-md5",
+            crc32c=None,
+        )
+        fake_fs = Mock()
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            storage.delete_key_if_unchanged(snapshot.key, snapshot)
+
+        fake_fs.call.assert_called_once()
+        _args, kwargs = fake_fs.call.call_args
+        self.assertEqual(kwargs["ifGenerationMatch"], "303")
+
+    def test_gcs_conditional_write_uses_expected_generation(self):
+        storage = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        snapshot = resources.StorageObjectSnapshot(
+            key="dataset/file/v1/metadata/source_manifest.json",
+            size=2,
+            generation="404",
+            md5="old-md5",
+            crc32c=None,
+        )
+        fake_fs = Mock()
+        fake_fs._location = "https://storage.googleapis.test"
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            storage.write_key_if_unchanged(snapshot.key, b"{}", snapshot)
+
+        fake_fs.call.assert_called_once()
+        _args, kwargs = fake_fs.call.call_args
+        self.assertEqual(kwargs["ifGenerationMatch"], "404")
+
+    def test_gcs_conditional_write_rejects_snapshot_for_another_key(self):
+        storage = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        snapshot = resources.StorageObjectSnapshot(
+            key="dataset/file/v1/metadata/other.json",
+            size=2,
+            generation="404",
+            md5="old-md5",
+            crc32c=None,
+        )
+        fake_fs = Mock()
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            with self.assertRaisesRegex(ValueError, "snapshot key"):
+                storage.write_key_if_unchanged(
+                    "dataset/file/v1/metadata/source_manifest.json",
+                    b"{}",
+                    snapshot,
+                )
+
+        fake_fs.call.assert_not_called()
+
+    def test_gcs_conditional_mutations_reject_missing_generations(self):
+        source = StagingStorageResource(bucket="published-bucket", use_local=False)
+        destination = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        source_snapshot = resources.StorageObjectSnapshot(
+            key="dataset/file/v1/geojson/source.geojson",
+            size=12,
+            generation="101",
+            md5="source-md5",
+            crc32c=None,
+        )
+        destination_snapshot = resources.StorageObjectSnapshot(
+            key=source_snapshot.key,
+            size=12,
+            generation=None,
+            md5="old-md5",
+            crc32c=None,
+        )
+        fake_fs = Mock()
+        fake_fs._location = "https://storage.googleapis.test"
+        fake_fs.call.return_value = {"done": True}
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            with self.assertRaisesRegex(RuntimeError, "no generation"):
+                source.copy_key_to_if_unchanged(
+                    destination,
+                    source_snapshot.key,
+                    destination_snapshot.key,
+                    source_snapshot=source_snapshot,
+                    destination_snapshot=destination_snapshot,
+                )
+            with self.assertRaisesRegex(RuntimeError, "no generation"):
+                destination.write_key_if_unchanged(
+                    destination_snapshot.key,
+                    b"new",
+                    destination_snapshot,
+                )
+
+        fake_fs.call.assert_not_called()
+
+    def test_local_conditional_copy_rejects_changed_source_or_destination(self):
+        with (
+            tempfile.TemporaryDirectory() as source_dir,
+            tempfile.TemporaryDirectory() as destination_dir,
+        ):
+            source = StagingStorageResource(local_dir=source_dir, use_local=True)
+            destination = StagingStorageResource(
+                local_dir=destination_dir,
+                use_local=True,
+            )
+            key = "dataset/file/v1/geojson/source.geojson"
+            source.write_key(key, b"source one")
+            destination.write_key(key, b"destination one")
+            source_snapshot = source.object_snapshot(key)
+            destination_snapshot = destination.object_snapshot(key)
+            self.assertIsNotNone(source_snapshot)
+            self.assertIsNotNone(destination_snapshot)
+
+            source.write_key(key, b"source changed")
+            with self.assertRaisesRegex(RuntimeError, "source changed"):
+                source.copy_key_to_if_unchanged(
+                    destination,
+                    key,
+                    key,
+                    source_snapshot=source_snapshot,
+                    destination_snapshot=destination_snapshot,
+                )
+            self.assertEqual(
+                destination.read_bytes("dataset", "file", "v1", key), b"destination one"
+            )
+
+            current_source = source.object_snapshot(key)
+            destination.write_key(key, b"destination changed")
+            with self.assertRaisesRegex(RuntimeError, "destination changed"):
+                source.copy_key_to_if_unchanged(
+                    destination,
+                    key,
+                    key,
+                    source_snapshot=current_source,
+                    destination_snapshot=destination_snapshot,
+                )
+            self.assertEqual(
+                destination.read_bytes("dataset", "file", "v1", key),
+                b"destination changed",
+            )
 
     def test_build_version_id_raises_if_run_record_cannot_be_resolved(self):
         context = SimpleNamespace(
@@ -327,7 +600,9 @@ class StagingStorageResourceTests(unittest.TestCase):
                     resource,
                 )
 
-            version_root = Path(tmpdir) / "amtrak-stations" / "amtrak-stations" / "run_test"
+            version_root = (
+                Path(tmpdir) / "amtrak-stations" / "amtrak-stations" / "run_test"
+            )
             self.assertTrue((version_root / "shapefile" / "stations.shp").exists())
             self.assertTrue((version_root / "shapefile" / "stations.dbf").exists())
             self.assertFalse((version_root / "parquet").exists())

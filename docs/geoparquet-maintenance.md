@@ -38,3 +38,15 @@ preserved there as `metadata/upstream_source_manifest.json`; the durable
 dataset/file manifests and that current version override, with inventory as the
 fallback. Final promotion backs up affected staging objects and restores them if
 any copy fails.
+
+The restore command refuses to start when published and staging resolve to the
+same or nested local directory, or to the same GCS bucket with equal or nested
+prefixes. Same-bucket sibling prefixes are allowed. Inventory records object
+generation, size, and available checksums; apply uses those snapshots as GCS
+generation preconditions and local identity checks so a concurrent source or
+destination change fails instead of being overwritten.
+
+If final promotion fails, the command restores preexisting objects from its
+operation backup. If that rollback is incomplete, it removes only the candidate,
+retains the backup, reports its stable `<operation>/backup` location, and exits
+nonzero for operator recovery.

@@ -4,18 +4,41 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import os
 import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
+import google_crc32c
 import httpx
 from dagster import ConfigurableResource
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class StorageObjectSnapshot:
+    key: str
+    size: int
+    generation: str | None
+    md5: str | None
+    crc32c: str | None
+    sha256: str | None = None
+
+    def to_dict(self) -> dict[str, str | int | None]:
+        return {
+            "key": self.key,
+            "size": self.size,
+            "generation": self.generation,
+            "md5": self.md5,
+            "crc32c": self.crc32c,
+            "sha256": self.sha256,
+        }
 
 
 class StagingStorageResource(ConfigurableResource):
@@ -61,18 +84,7 @@ class StagingStorageResource(ConfigurableResource):
 
     def write_key(self, key: str, data: bytes) -> str:
         key = self._ensure_prefixed(key)
-        if self.use_local or not self.bucket:
-            root = Path(self.local_dir).resolve()
-            full = root / key
-            full.parent.mkdir(parents=True, exist_ok=True)
-            full.write_bytes(data)
-            return key
-
-        import gcsfs
-        fs = gcsfs.GCSFileSystem()
-        path = f"{self.bucket}/{key}"
-        fs.write_bytes(path, data)
-        return key
+        return self.write_key_if_unchanged(key, data, self.object_snapshot(key))
 
     def write(
         self,
@@ -86,7 +98,9 @@ class StagingStorageResource(ConfigurableResource):
         return self.write_key(key, data)
 
     def list_keys(self, dataset_slug: str, file_slug: str, version: str) -> list[str]:
-        key_prefix = self.build_target_location(dataset_slug, file_slug, version, "").rstrip("/")
+        key_prefix = self.build_target_location(
+            dataset_slug, file_slug, version, ""
+        ).rstrip("/")
 
         return self.list_prefix(key_prefix)
 
@@ -108,10 +122,59 @@ class StagingStorageResource(ConfigurableResource):
             )
 
         import gcsfs
+
         fs = gcsfs.GCSFileSystem()
         path = f"{self.bucket}/{key_prefix}" if key_prefix else self.bucket
         found = fs.find(path)
         return sorted(p.removeprefix(f"{self.bucket}/") for p in found)
+
+    def list_object_snapshots(
+        self,
+        key_prefix: str = "",
+    ) -> tuple[StorageObjectSnapshot, ...]:
+        """List immutable object identities below a prefix in one traversal."""
+        key_prefix = self._ensure_prefixed(key_prefix).rstrip("/")
+        if self.use_local or not self.bucket:
+            root = Path(self.local_dir).resolve()
+            target = root / key_prefix if key_prefix else root
+            if target.is_file():
+                return (_local_snapshot(root, target),)
+            if not target.is_dir():
+                return ()
+            return tuple(
+                _local_snapshot(root, path)
+                for path in sorted(target.rglob("*"))
+                if path.is_file()
+            )
+
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        path = f"{self.bucket}/{key_prefix}" if key_prefix else self.bucket
+        details = fs.find(path, detail=True)
+        if not isinstance(details, dict):
+            raise RuntimeError("GCS detailed listing did not return object metadata.")
+        return tuple(
+            _gcs_snapshot(self.bucket, object_path, info)
+            for object_path, info in sorted(details.items())
+        )
+
+    def object_snapshot(self, key: str) -> StorageObjectSnapshot | None:
+        key = self._ensure_prefixed(key)
+        if self.use_local or not self.bucket:
+            root = Path(self.local_dir).resolve()
+            path = root / key
+            return _local_snapshot(root, path) if path.is_file() else None
+
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        object_path = f"{self.bucket}/{key}"
+        try:
+            info = fs.info(object_path)
+        except FileNotFoundError:
+            return None
+        return _gcs_snapshot(self.bucket, object_path, info)
 
     def read_bytes(
         self,
@@ -120,7 +183,9 @@ class StagingStorageResource(ConfigurableResource):
         version: str,
         key_or_filename: str,
     ) -> bytes:
-        key_prefix = self.build_target_location(dataset_slug, file_slug, version, "").rstrip("/")
+        key_prefix = self.build_target_location(
+            dataset_slug, file_slug, version, ""
+        ).rstrip("/")
         if key_or_filename.startswith(f"{key_prefix}/"):
             key = key_or_filename
         else:
@@ -132,6 +197,7 @@ class StagingStorageResource(ConfigurableResource):
             return full.read_bytes()
 
         import gcsfs
+
         fs = gcsfs.GCSFileSystem()
         path = f"{self.bucket}/{key}"
         return fs.read_bytes(path)
@@ -198,10 +264,72 @@ class StagingStorageResource(ConfigurableResource):
         if local_path.stat().st_size != remote_info.get("size"):
             return False
         local_md5_base64, local_md5_hex = _file_md5(local_path)
-        return any(
+        if any(
             checksum in {local_md5_base64, local_md5_hex}
             for checksum_key in ("md5Hash", "md5")
             if (checksum := remote_info.get(checksum_key)) is not None
+        ):
+            return True
+        remote_crc32c = remote_info.get("crc32c")
+        return remote_crc32c is not None and remote_crc32c in _file_crc32c(local_path)
+
+    def write_key_if_unchanged(
+        self,
+        key: str,
+        data: bytes,
+        expected_snapshot: StorageObjectSnapshot | None,
+    ) -> str:
+        """Atomically create or replace one key only at the expected identity."""
+        key = self._ensure_prefixed(key)
+        if expected_snapshot is not None and expected_snapshot.key != key:
+            raise ValueError("Expected snapshot key does not match write key.")
+        if self.use_local or not self.bucket:
+            root = Path(self.local_dir).resolve()
+            destination = root / key
+            _atomic_local_write(destination, data, expected_snapshot, root)
+            return key
+
+        import gcsfs
+
+        if expected_snapshot is not None and expected_snapshot.generation is None:
+            raise RuntimeError(f"GCS snapshot has no generation: {key}")
+        fs = gcsfs.GCSFileSystem()
+        _gcs_conditional_write(
+            fs,
+            self.bucket,
+            key,
+            data,
+            expected_snapshot.generation if expected_snapshot is not None else "0",
+        )
+        return key
+
+    def delete_key_if_unchanged(
+        self,
+        key: str,
+        expected_snapshot: StorageObjectSnapshot,
+    ) -> None:
+        """Delete one exact object only if its identity is unchanged."""
+        key = self._ensure_prefixed(key)
+        if expected_snapshot.key != key:
+            raise ValueError("Expected snapshot key does not match delete key.")
+        if self.use_local or not self.bucket:
+            current = self.object_snapshot(key)
+            if current != expected_snapshot:
+                raise RuntimeError(f"Destination changed before delete: {key}")
+            (Path(self.local_dir).resolve() / key).unlink()
+            return
+
+        if expected_snapshot.generation is None:
+            raise RuntimeError(f"GCS snapshot has no generation: {key}")
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        fs.call(
+            "DELETE",
+            "b/{}/o/{}",
+            self.bucket,
+            key,
+            ifGenerationMatch=expected_snapshot.generation,
         )
 
     def delete_prefix(self, key_prefix: str) -> None:
@@ -235,7 +363,9 @@ class StagingStorageResource(ConfigurableResource):
         key = self._ensure_prefixed(key)
         destination_key = destination._ensure_prefixed(destination_key or key)
 
-        if (self.use_local or not self.bucket) and (destination.use_local or not destination.bucket):
+        if (self.use_local or not self.bucket) and (
+            destination.use_local or not destination.bucket
+        ):
             src = Path(self.local_dir).resolve() / key
             dst = Path(destination.local_dir).resolve() / destination_key
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -261,6 +391,113 @@ class StagingStorageResource(ConfigurableResource):
         dst = Path(destination.local_dir).resolve() / destination_key
         dst.parent.mkdir(parents=True, exist_ok=True)
         fs.get(f"{self.bucket}/{key}", str(dst))
+        return destination_key
+
+    def copy_key_to_if_unchanged(
+        self,
+        destination: "StagingStorageResource",
+        key: str,
+        destination_key: str,
+        *,
+        source_snapshot: StorageObjectSnapshot,
+        destination_snapshot: StorageObjectSnapshot | None,
+    ) -> str:
+        """Copy one object with source and destination identity preconditions."""
+        key = self._ensure_prefixed(key)
+        destination_key = destination._ensure_prefixed(destination_key)
+        if source_snapshot.key != key:
+            raise ValueError("Source snapshot key does not match copy key.")
+        if (
+            destination_snapshot is not None
+            and destination_snapshot.key != destination_key
+        ):
+            raise ValueError("Destination snapshot key does not match copy key.")
+
+        source_is_local = self.use_local or not self.bucket
+        destination_is_local = destination.use_local or not destination.bucket
+        if source_is_local:
+            source_path = Path(self.local_dir).resolve() / key
+            if self.object_snapshot(key) != source_snapshot:
+                raise RuntimeError(f"source changed before copy: {key}")
+            if destination_is_local:
+                destination_root = Path(destination.local_dir).resolve()
+                destination_path = destination_root / destination_key
+                destination_path.parent.mkdir(parents=True, exist_ok=True)
+                temp_path = _copy_local_source_to_temp(source_path, destination_path)
+                try:
+                    if self.object_snapshot(key) != source_snapshot:
+                        raise RuntimeError(f"source changed during copy: {key}")
+                    _commit_local_temp(
+                        temp_path,
+                        destination_path,
+                        destination_snapshot,
+                        destination_root,
+                    )
+                finally:
+                    temp_path.unlink(missing_ok=True)
+                return destination_key
+
+            if destination_snapshot is not None:
+                raise RuntimeError(
+                    "Conditional replacement from local storage to GCS is unsupported."
+                )
+            import gcsfs
+
+            fs = gcsfs.GCSFileSystem()
+            with source_path.open("rb") as source_file:
+                with fs.open(f"{destination.bucket}/{destination_key}", "xb") as output:
+                    shutil.copyfileobj(source_file, output, length=1024 * 1024)
+            if self.object_snapshot(key) != source_snapshot:
+                raise RuntimeError(f"source changed during copy: {key}")
+            return destination_key
+
+        if source_snapshot.generation is None:
+            raise RuntimeError(f"GCS snapshot has no generation: {key}")
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        if not destination_is_local:
+            if (
+                destination_snapshot is not None
+                and destination_snapshot.generation is None
+            ):
+                raise RuntimeError(f"GCS snapshot has no generation: {destination_key}")
+            _gcs_conditional_copy(
+                fs,
+                self.bucket,
+                key,
+                destination.bucket,
+                destination_key,
+                source_snapshot.generation,
+                (
+                    destination_snapshot.generation
+                    if destination_snapshot is not None
+                    else "0"
+                ),
+            )
+            return destination_key
+
+        destination_root = Path(destination.local_dir).resolve()
+        destination_path = destination_root / destination_key
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(dir=destination_path.parent)
+        os.close(fd)
+        temp_path = Path(temp_name)
+        try:
+            with fs.open(
+                f"{self.bucket}/{key}#{source_snapshot.generation}",
+                "rb",
+            ) as source_file:
+                with temp_path.open("wb") as output:
+                    shutil.copyfileobj(source_file, output, length=1024 * 1024)
+            _commit_local_temp(
+                temp_path,
+                destination_path,
+                destination_snapshot,
+                destination_root,
+            )
+        finally:
+            temp_path.unlink(missing_ok=True)
         return destination_key
 
     def copy_keys_to(
@@ -348,7 +585,9 @@ class StagingStorageResource(ConfigurableResource):
         """Yield a local directory path containing the version's files (for fiona/chunked read).
         For local storage returns the actual path; for GCS materializes to a temp dir and cleans up on exit.
         """
-        key_prefix = self.build_target_location(dataset_slug, file_slug, version, "").rstrip("/")
+        key_prefix = self.build_target_location(
+            dataset_slug, file_slug, version, ""
+        ).rstrip("/")
         if self.use_local or not self.bucket:
             root = Path(self.local_dir).resolve()
             yield root / key_prefix
@@ -356,8 +595,11 @@ class StagingStorageResource(ConfigurableResource):
         tmp = Path(tempfile.mkdtemp(prefix="hifld_staging_"))
         try:
             import gcsfs
+
             fs = gcsfs.GCSFileSystem()
-            key_prefix = self.build_target_location(dataset_slug, file_slug, version, "").rstrip("/")
+            key_prefix = self.build_target_location(
+                dataset_slug, file_slug, version, ""
+            ).rstrip("/")
             prefix_with_slash = key_prefix + "/"
             keys = self.list_keys(dataset_slug, file_slug, version)
             for key in keys:
@@ -385,6 +627,7 @@ class GreatExpectationsResource(ConfigurableResource):
     def get_validator(self, df, expectation_suite_name: str = "asset_check_suite"):
         """Return a GX Validator for the given DataFrame (e.g. GeoDataFrame or first chunk)."""
         import great_expectations as gx
+
         ctx = gx.get_context(mode="ephemeral")
         ds = ctx.data_sources.add_pandas("pandas_ds")
         batch = ds.read_dataframe(df, asset_name="df_asset")
@@ -404,6 +647,159 @@ class PublishedStorageResource(StagingStorageResource):
         return cls(bucket=bucket, use_local=not bool(bucket), local_dir=local_dir)
 
 
+def _local_snapshot(root: Path, path: Path) -> StorageObjectSnapshot:
+    stat = path.stat()
+    sha256, md5, crc32c = _file_checksums(path)
+    return StorageObjectSnapshot(
+        key=str(path.relative_to(root)),
+        size=stat.st_size,
+        generation=(
+            f"local:{stat.st_dev}:{stat.st_ino}:{stat.st_mtime_ns}:{stat.st_ctime_ns}"
+        ),
+        md5=md5,
+        crc32c=crc32c,
+        sha256=sha256,
+    )
+
+
+def _gcs_snapshot(
+    bucket: str,
+    object_path: str,
+    info: dict[str, object],
+) -> StorageObjectSnapshot:
+    key = object_path.removeprefix(f"{bucket}/")
+    generation = info.get("generation")
+    md5 = info.get("md5Hash", info.get("md5"))
+    crc32c = info.get("crc32c")
+    return StorageObjectSnapshot(
+        key=key,
+        size=int(info.get("size", 0) or 0),
+        generation=str(generation) if generation is not None else None,
+        md5=str(md5) if md5 is not None else None,
+        crc32c=str(crc32c) if crc32c is not None else None,
+    )
+
+
+def _copy_local_source_to_temp(source: Path, destination: Path) -> Path:
+    fd, temp_name = tempfile.mkstemp(dir=destination.parent)
+    os.close(fd)
+    temp_path = Path(temp_name)
+    with source.open("rb") as source_file:
+        with temp_path.open("wb") as output:
+            shutil.copyfileobj(source_file, output, length=1024 * 1024)
+    return temp_path
+
+
+def _atomic_local_write(
+    destination: Path,
+    data: bytes,
+    expected_snapshot: StorageObjectSnapshot | None,
+    root: Path,
+) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(dir=destination.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(data)
+            output.flush()
+            os.fsync(output.fileno())
+        _commit_local_temp(temp_path, destination, expected_snapshot, root)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _commit_local_temp(
+    temp_path: Path,
+    destination: Path,
+    expected_snapshot: StorageObjectSnapshot | None,
+    root: Path,
+) -> None:
+    current = _local_snapshot(root, destination) if destination.is_file() else None
+    if current != expected_snapshot:
+        state = "created" if expected_snapshot is None else "changed"
+        raise RuntimeError(
+            f"destination {state} before copy: {destination.relative_to(root)}"
+        )
+    if expected_snapshot is None:
+        try:
+            os.link(temp_path, destination)
+        except FileExistsError as exc:
+            raise RuntimeError(
+                f"destination created during copy: {destination.relative_to(root)}"
+            ) from exc
+        return
+    os.replace(temp_path, destination)
+
+
+def _gcs_conditional_copy(
+    fs,
+    source_bucket: str,
+    source_key: str,
+    destination_bucket: str,
+    destination_key: str,
+    source_generation: str,
+    destination_generation: str,
+) -> None:
+    request = {
+        "headers": {"Content-Type": "application/json"},
+        "ifSourceGenerationMatch": source_generation,
+        "ifGenerationMatch": destination_generation,
+        "json_out": True,
+    }
+    result = fs.call(
+        "POST",
+        "b/{}/o/{}/rewriteTo/b/{}/o/{}",
+        source_bucket,
+        source_key,
+        destination_bucket,
+        destination_key,
+        **request,
+    )
+    while result["done"] is not True:
+        result = fs.call(
+            "POST",
+            "b/{}/o/{}/rewriteTo/b/{}/o/{}",
+            source_bucket,
+            source_key,
+            destination_bucket,
+            destination_key,
+            rewriteToken=result["rewriteToken"],
+            **request,
+        )
+
+
+def _gcs_conditional_write(
+    fs,
+    bucket: str,
+    key: str,
+    data: bytes,
+    expected_generation: str,
+) -> None:
+    boundary = "hifld-conditional-upload"
+    metadata = json.dumps({"name": key}, separators=(",", ":"))
+    payload = (
+        (
+            f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
+            f"{metadata}\r\n--{boundary}\r\n"
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).encode()
+        + data
+        + f"\r\n--{boundary}--".encode()
+    )
+    location = fs._location
+    fs.call(
+        "POST",
+        f"{location}/upload/storage/v1/b/{{}}/o",
+        bucket,
+        uploadType="multipart",
+        ifGenerationMatch=expected_generation,
+        headers={"Content-Type": f'multipart/related; boundary="{boundary}"'},
+        data=payload,
+        json_out=True,
+    )
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as file_obj:
@@ -412,12 +808,53 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _file_checksums(path: Path) -> tuple[str, str, str]:
+    sha256 = hashlib.sha256()
+    md5 = hashlib.md5(usedforsecurity=False)
+    crc32c = google_crc32c.Checksum()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            sha256.update(chunk)
+            md5.update(chunk)
+            crc32c.update(chunk)
+    return (
+        sha256.hexdigest(),
+        base64.b64encode(md5.digest()).decode("ascii"),
+        base64.b64encode(crc32c.digest()).decode("ascii"),
+    )
+
+
 def _file_md5(path: Path) -> tuple[str, str]:
     digest = hashlib.md5(usedforsecurity=False)
     with path.open("rb") as file_obj:
         for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
             digest.update(chunk)
     return base64.b64encode(digest.digest()).decode("ascii"), digest.hexdigest()
+
+
+def _file_crc32c(path: Path) -> tuple[str, str]:
+    checksum = google_crc32c.Checksum()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    digest = checksum.digest()
+    return base64.b64encode(digest).decode("ascii"), digest.hex()
+
+
+def snapshots_content_match(
+    source: StorageObjectSnapshot,
+    destination: StorageObjectSnapshot,
+) -> bool:
+    if source.size != destination.size:
+        return False
+    for source_checksum, destination_checksum in (
+        (source.sha256, destination.sha256),
+        (source.md5, destination.md5),
+        (source.crc32c, destination.crc32c),
+    ):
+        if source_checksum is not None and destination_checksum is not None:
+            return source_checksum == destination_checksum
+    return False
 
 
 class DatasetApiResource(ConfigurableResource):
@@ -471,7 +908,9 @@ class DatasetApiResource(ConfigurableResource):
             "files": files,
             "overwrite_existing": overwrite_existing,
         }
-        with httpx.Client(timeout=self.timeout_seconds, headers=self._headers()) as client:
+        with httpx.Client(
+            timeout=self.timeout_seconds, headers=self._headers()
+        ) as client:
             resp = client.post(url, json=payload)
             resp.raise_for_status()
             return resp.json()
@@ -493,7 +932,9 @@ class DatasetApiResource(ConfigurableResource):
         }
         if file_slug:
             params["file_slug"] = file_slug
-        with httpx.Client(timeout=self.timeout_seconds, headers=self._headers()) as client:
+        with httpx.Client(
+            timeout=self.timeout_seconds, headers=self._headers()
+        ) as client:
             resp = client.get(url, params=params)
             resp.raise_for_status()
             return resp.json()

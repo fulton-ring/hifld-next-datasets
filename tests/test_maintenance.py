@@ -12,6 +12,7 @@ from unittest.mock import patch
 import geopandas as gpd
 from shapely.geometry import Point
 
+from dagster_hifld import maintenance
 from dagster_hifld.maintenance import inventory_published, main, restore_staging
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
@@ -91,6 +92,9 @@ class MaintenanceInventoryTests(unittest.TestCase):
                 report["versions"][0]["destination_keys"],
                 ["dataset-a/file-a/v1/geopackage/source.gpkg"],
             )
+            source_snapshot = report["versions"][0]["source_snapshots"][0]
+            self.assertEqual(source_snapshot["size"], len(b"source"))
+            self.assertTrue(source_snapshot["generation"].startswith("local:"))
 
     def test_inventory_groups_file_geodatabase_and_shapefile_sidecars(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -230,8 +234,210 @@ class MaintenanceInventoryTests(unittest.TestCase):
                 [("dataset-a", "file-a", "v2")],
             )
 
+    def test_explicit_filter_matching_no_versions_is_blocking(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+
+            report = inventory_published(
+                published,
+                dataset="missing-dataset",
+                file="missing-file",
+                version="v9",
+            )
+
+            self.assertTrue(report.has_failures)
+            self.assertIn("matched no published versions", " ".join(report.errors))
+            self.assertEqual(report.versions, ())
+
+    def test_unfiltered_empty_inventory_is_successful(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report = inventory_published(
+                PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            )
+
+            self.assertFalse(report.has_failures)
+            self.assertEqual(report.errors, ())
+
+    def test_inventory_lists_selected_dataset_once_and_groups_in_linear_pass(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            version_count = 40
+            _write(published, "dataset-a/metadata/source_manifest.json", b"{}")
+            _write(published, "dataset-a/file-a/metadata/source_manifest.json", b"{}")
+            for index in range(version_count):
+                _write(
+                    published,
+                    f"dataset-a/file-a/v{index}/geojson/source.geojson",
+                )
+            original_list = published.list_object_snapshots
+            original_logical_key = maintenance._logical_key
+
+            with (
+                patch.object(
+                    PublishedStorageResource,
+                    "list_object_snapshots",
+                    autospec=True,
+                    side_effect=lambda _storage, key_prefix="": original_list(
+                        key_prefix
+                    ),
+                ) as listing,
+                patch(
+                    "dagster_hifld.maintenance._logical_key",
+                    wraps=original_logical_key,
+                ) as logical_key,
+            ):
+                report = inventory_published(published, dataset="dataset-a")
+
+            self.assertEqual(len(report.versions), version_count)
+            listing.assert_called_once_with(published, "dataset-a")
+            self.assertLessEqual(logical_key.call_count, version_count + 2)
+
+    def test_inventory_pushes_full_selector_prefix_and_fetches_ancestor_manifests(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            for key in (
+                "dataset-a/metadata/source_manifest.json",
+                "dataset-a/file-a/metadata/source_manifest.json",
+                "dataset-a/file-a/v1/metadata/source_manifest.json",
+                "dataset-a/file-a/v1/geojson/source.geojson",
+            ):
+                _write(published, key, b"{}")
+            original_list = published.list_object_snapshots
+
+            with patch.object(
+                PublishedStorageResource,
+                "list_object_snapshots",
+                autospec=True,
+                side_effect=lambda _storage, key_prefix="": original_list(key_prefix),
+            ) as listing:
+                report = inventory_published(
+                    published,
+                    dataset="dataset-a",
+                    file="file-a",
+                    version="v1",
+                ).to_dict()
+
+            listing.assert_called_once_with(published, "dataset-a/file-a/v1")
+            self.assertEqual(
+                report["versions"][0]["metadata_keys"],
+                [
+                    "dataset-a/metadata/source_manifest.json",
+                    "dataset-a/file-a/metadata/source_manifest.json",
+                    "dataset-a/file-a/v1/metadata/source_manifest.json",
+                ],
+            )
+
 
 class RestoreStagingTests(unittest.TestCase):
+    def test_restore_rejects_overlapping_local_namespaces_before_inventory(self):
+        with tempfile.TemporaryDirectory() as root:
+            configurations = (
+                ("published", "published"),
+                ("published", "published/staging"),
+                ("published/archive", "published"),
+            )
+            for published_prefix, staging_prefix in configurations:
+                with self.subTest(
+                    published_prefix=published_prefix,
+                    staging_prefix=staging_prefix,
+                ):
+                    published = PublishedStorageResource(
+                        local_dir=root,
+                        prefix=published_prefix,
+                        use_local=True,
+                    )
+                    staging = StagingStorageResource(
+                        local_dir=root,
+                        prefix=staging_prefix,
+                        use_local=True,
+                    )
+                    with patch(
+                        "dagster_hifld.maintenance.inventory_published"
+                    ) as inventory:
+                        report = restore_staging(
+                            published,
+                            staging,
+                            apply=True,
+                        )
+
+                    inventory.assert_not_called()
+                    self.assertTrue(report.has_failures)
+                    self.assertIn("overlap", " ".join(report.errors).lower())
+
+    def test_restore_rejects_overlapping_gcs_namespaces_but_allows_siblings(self):
+        configurations = (
+            ("production", "production", False),
+            ("production", "production/staging", False),
+            ("production/archive", "production", False),
+            ("production", "staging", True),
+        )
+        for published_prefix, staging_prefix, allowed in configurations:
+            with self.subTest(
+                published_prefix=published_prefix,
+                staging_prefix=staging_prefix,
+            ):
+                published = PublishedStorageResource(
+                    bucket="shared-bucket",
+                    prefix=published_prefix,
+                    use_local=False,
+                )
+                staging = StagingStorageResource(
+                    bucket="shared-bucket",
+                    prefix=staging_prefix,
+                    use_local=False,
+                )
+                empty_inventory = SimpleNamespace(versions=(), errors=())
+                with patch(
+                    "dagster_hifld.maintenance.inventory_published",
+                    return_value=empty_inventory,
+                ) as inventory:
+                    report = restore_staging(published, staging)
+
+                if allowed:
+                    inventory.assert_called_once()
+                    self.assertFalse(report.has_failures)
+                else:
+                    inventory.assert_not_called()
+                    self.assertTrue(report.has_failures)
+
+    def test_restore_filter_matching_no_versions_returns_nonzero_without_writes(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            stdout = io.StringIO()
+            with (
+                patch(
+                    "dagster_hifld.maintenance.PublishedStorageResource.from_env",
+                    return_value=published,
+                ),
+                patch(
+                    "dagster_hifld.maintenance.StagingStorageResource.from_env",
+                    return_value=staging,
+                ),
+                redirect_stdout(stdout),
+            ):
+                exit_code = main(
+                    [
+                        "restore-staging",
+                        "--dataset",
+                        "missing",
+                        "--apply",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(staging.list_prefix(), [])
+            self.assertIn(
+                "matched no published versions",
+                " ".join(json.loads(stdout.getvalue())["errors"]),
+            )
+
     def test_restore_defaults_to_dry_run_without_writes(self):
         with (
             tempfile.TemporaryDirectory() as published_dir,
@@ -666,6 +872,94 @@ class RestoreStagingTests(unittest.TestCase):
                 b"old",
             )
 
+    def test_source_change_after_inventory_blocks_candidate_copy(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            source = Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["original"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            original_build = maintenance._build_candidate
+
+            def mutate_source_then_build(published_storage, candidate, item):
+                gpd.GeoDataFrame(
+                    {"name": ["changed"]},
+                    geometry=[Point(3, 4)],
+                    crs="EPSG:4326",
+                ).to_file(source, driver="GeoJSON")
+                return original_build(published_storage, candidate, item)
+
+            with patch(
+                "dagster_hifld.maintenance._build_candidate",
+                side_effect=mutate_source_then_build,
+            ):
+                report = restore_staging(
+                    published,
+                    staging,
+                    apply=True,
+                ).to_dict()
+
+            self.assertEqual(report["versions"][0]["status"], "failed")
+            self.assertIn(
+                "source changed",
+                " ".join(report["versions"][0]["errors"]).lower(),
+            )
+            self.assertEqual(staging.list_prefix(), [])
+
+    def test_destination_change_after_preflight_is_not_overwritten(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            source = Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["new"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            destination_key = "dataset-a/file-a/v1/geojson/source.geojson"
+            _write(staging, destination_key, b"old")
+            destination = Path(staging_dir) / destination_key
+            original_promote = maintenance._promote_candidate
+
+            def mutate_destination_then_promote(candidate, staging_storage, plan):
+                destination.write_bytes(b"concurrent")
+                return original_promote(candidate, staging_storage, plan)
+
+            with patch(
+                "dagster_hifld.maintenance._promote_candidate",
+                side_effect=mutate_destination_then_promote,
+            ):
+                report = restore_staging(
+                    published,
+                    staging,
+                    apply=True,
+                    overwrite=True,
+                ).to_dict()
+
+            self.assertEqual(report["versions"][0]["status"], "failed")
+            self.assertIn(
+                "changed",
+                " ".join(report["versions"][0]["errors"]).lower(),
+            )
+            self.assertEqual(destination.read_bytes(), b"concurrent")
+
     def test_apply_reports_partial_catalog_failure_and_nonzero_cli_exit(self):
         with (
             tempfile.TemporaryDirectory() as published_dir,
@@ -788,13 +1082,16 @@ class RestoreStagingTests(unittest.TestCase):
             )
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
             _write(staging, "dataset-a/file-a/v1/geojson/source.geojson", b"old")
-            original_copy = StagingStorageResource.copy_key_to
+            original_copy = StagingStorageResource.copy_key_to_if_unchanged
 
             def fail_backup_copy(
                 source_storage,
                 destination_storage,
                 key,
                 destination_key=None,
+                *,
+                source_snapshot,
+                destination_snapshot,
             ):
                 if destination_storage.prefix.endswith("/backup"):
                     raise RuntimeError(
@@ -806,11 +1103,13 @@ class RestoreStagingTests(unittest.TestCase):
                     destination_storage,
                     key,
                     destination_key,
+                    source_snapshot=source_snapshot,
+                    destination_snapshot=destination_snapshot,
                 )
 
             with patch.object(
                 StagingStorageResource,
-                "copy_key_to",
+                "copy_key_to_if_unchanged",
                 new=fail_backup_copy,
             ):
                 reports = [
@@ -913,34 +1212,40 @@ class RestoreStagingTests(unittest.TestCase):
             )
             before = _storage_snapshot(Path(staging_dir))
 
-            original_copy = StagingStorageResource.copy_key_to
-            promoted = False
+            original_copy = StagingStorageResource.copy_key_to_if_unchanged
+            promoted_count = 0
 
             def fail_after_first_promoted_object(
                 source_storage,
                 destination_storage,
                 key,
                 destination_key=None,
+                *,
+                source_snapshot,
+                destination_snapshot,
             ):
-                nonlocal promoted
+                nonlocal promoted_count
+                is_promotion = (
+                    source_storage.prefix.endswith("/candidate")
+                    and destination_storage is staging
+                )
+                if is_promotion and promoted_count == 1:
+                    raise RuntimeError("injected final promotion failure")
                 result = original_copy(
                     source_storage,
                     destination_storage,
                     key,
                     destination_key,
+                    source_snapshot=source_snapshot,
+                    destination_snapshot=destination_snapshot,
                 )
-                if (
-                    source_storage.prefix.endswith("/candidate")
-                    and destination_storage is staging
-                    and not promoted
-                ):
-                    promoted = True
-                    raise RuntimeError("injected final promotion failure")
+                if is_promotion:
+                    promoted_count += 1
                 return result
 
             with patch.object(
                 StagingStorageResource,
-                "copy_key_to",
+                "copy_key_to_if_unchanged",
                 new=fail_after_first_promoted_object,
             ):
                 report = restore_staging(
@@ -957,6 +1262,89 @@ class RestoreStagingTests(unittest.TestCase):
             )
             self.assertEqual(_storage_snapshot(Path(staging_dir)), before)
             self.assertFalse(any("_temporary" in key for key in staging.list_prefix()))
+
+    def test_incomplete_rollback_retains_backup_and_reports_recovery_location(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published_source = (
+                Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            )
+            published_source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["new"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(published_source, driver="GeoJSON")
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            _write(staging, "dataset-a/file-a/v1/geojson/source.geojson", b"old")
+            original_copy = StagingStorageResource.copy_key_to_if_unchanged
+            promotion_count = 0
+
+            def fail_promotion_then_restore(
+                source_storage,
+                destination_storage,
+                key,
+                destination_key=None,
+                *,
+                source_snapshot,
+                destination_snapshot,
+            ):
+                nonlocal promotion_count
+                if (
+                    source_storage.prefix.endswith("/backup")
+                    and destination_storage is staging
+                ):
+                    raise RuntimeError(
+                        f"injected restore failure from {source_storage.prefix}"
+                    )
+                is_promotion = (
+                    source_storage.prefix.endswith("/candidate")
+                    and destination_storage is staging
+                )
+                if is_promotion and promotion_count == 1:
+                    raise RuntimeError("injected promotion failure")
+                result = original_copy(
+                    source_storage,
+                    destination_storage,
+                    key,
+                    destination_key,
+                    source_snapshot=source_snapshot,
+                    destination_snapshot=destination_snapshot,
+                )
+                if is_promotion:
+                    promotion_count += 1
+                return result
+
+            with patch.object(
+                StagingStorageResource,
+                "copy_key_to_if_unchanged",
+                new=fail_promotion_then_restore,
+            ):
+                report = restore_staging(
+                    published,
+                    staging,
+                    apply=True,
+                    overwrite=True,
+                ).to_dict()
+
+            self.assertEqual(report["versions"][0]["status"], "failed")
+            errors = " ".join(report["versions"][0]["errors"])
+            self.assertIn("rollback also failed", errors)
+            self.assertIn("Recovery backup retained at <operation>/backup", errors)
+            staging_keys = staging.list_prefix()
+            self.assertTrue(
+                any(
+                    "/backup/dataset-a/file-a/v1/geojson/source.geojson" in key
+                    for key in staging_keys
+                )
+            )
+            self.assertFalse(any("/candidate/" in key for key in staging_keys))
 
 
 def _storage_snapshot(root: Path) -> dict[str, bytes]:

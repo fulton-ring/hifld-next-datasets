@@ -13,7 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import (
+    PublishedStorageResource,
+    StagingStorageResource,
+    StorageObjectSnapshot,
+    snapshots_content_match,
+)
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
@@ -55,6 +60,8 @@ class VersionMaintenanceResult:
     destination_keys: tuple[str, ...] = ()
     metadata_keys: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    source_snapshots: tuple[StorageObjectSnapshot, ...] = ()
+    metadata_snapshots: tuple[StorageObjectSnapshot, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -67,6 +74,12 @@ class VersionMaintenanceResult:
             "destination_keys": list(self.destination_keys),
             "metadata_keys": list(self.metadata_keys),
             "errors": list(self.errors),
+            "source_snapshots": [
+                snapshot.to_dict() for snapshot in self.source_snapshots
+            ],
+            "metadata_snapshots": [
+                snapshot.to_dict() for snapshot in self.metadata_snapshots
+            ],
         }
 
 
@@ -76,10 +89,13 @@ class MaintenanceReport:
     apply: bool
     overwrite: bool
     versions: tuple[VersionMaintenanceResult, ...]
+    errors: tuple[str, ...] = ()
 
     @property
     def has_failures(self) -> bool:
-        return any(item.status in {"blocked", "failed"} for item in self.versions)
+        return bool(self.errors) or any(
+            item.status in {"blocked", "failed"} for item in self.versions
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -87,14 +103,33 @@ class MaintenanceReport:
             "apply": self.apply,
             "overwrite": self.overwrite,
             "versions": [item.to_dict() for item in self.versions],
+            "errors": list(self.errors),
         }
 
 
 @dataclass(frozen=True)
+class PromotionCopy:
+    source_snapshot: StorageObjectSnapshot
+    destination_key: str
+    destination_snapshot: StorageObjectSnapshot | None
+
+
+@dataclass(frozen=True)
 class PromotionPlan:
-    candidate_pairs: tuple[tuple[str, str], ...]
-    stale_destination_keys: tuple[str, ...]
+    copies: tuple[PromotionCopy, ...]
+    stale_destination_snapshots: tuple[StorageObjectSnapshot, ...]
     conflicting_destination_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PromotionMutation:
+    destination_key: str
+    previous_snapshot: StorageObjectSnapshot | None
+    promoted_snapshot: StorageObjectSnapshot | None
+
+
+class IncompleteRollbackError(RuntimeError):
+    """Raised when canonical state could not be fully restored from backup."""
 
 
 def inventory_published(
@@ -105,29 +140,69 @@ def inventory_published(
     version: str | None = None,
 ) -> MaintenanceReport:
     """Inventory published object names and select one coherent source per version."""
-    all_keys = published.list_prefix()
+    listing_parts: list[str] = []
+    if dataset is not None:
+        listing_parts.append(dataset)
+        if file is not None:
+            listing_parts.append(file)
+            if version is not None:
+                listing_parts.append(version)
+    listing_prefix = "/".join(listing_parts)
+    snapshots_by_key = {
+        snapshot.key: snapshot
+        for snapshot in published.list_object_snapshots(listing_prefix)
+    }
+    ancestor_manifest_keys: list[str] = []
+    if dataset is not None and file is not None:
+        ancestor_manifest_keys.extend(
+            (
+                f"{dataset}/metadata/source_manifest.json",
+                f"{dataset}/{file}/metadata/source_manifest.json",
+            )
+        )
+    for logical_key in ancestor_manifest_keys:
+        storage_key = _storage_key(published, logical_key)
+        if storage_key not in snapshots_by_key:
+            snapshot = published.object_snapshot(storage_key)
+            if snapshot is not None:
+                snapshots_by_key[storage_key] = snapshot
+    all_snapshots = tuple(snapshots_by_key[key] for key in sorted(snapshots_by_key))
+    all_keys = [snapshot.key for snapshot in all_snapshots]
+    snapshot_by_key = snapshots_by_key
     logical_by_key = {key: _logical_key(published, key) for key in all_keys}
-    identities = sorted(
-        {
-            identity
-            for logical_key in logical_by_key.values()
-            if (identity := _version_identity(logical_key)) is not None
+    version_keys_by_identity: dict[VersionIdentity, list[str]] = {}
+    metadata_key_by_logical: dict[str, str] = {}
+    for key, logical_key in logical_by_key.items():
+        if logical_key.endswith("/metadata/source_manifest.json"):
+            metadata_key_by_logical[logical_key] = key
+        identity = _version_identity(logical_key)
+        if (
+            identity is not None
             and (dataset is None or identity.dataset == dataset)
             and (file is None or identity.file == file)
             and (version is None or identity.version == version)
-        }
-    )
+        ):
+            version_keys_by_identity.setdefault(identity, []).append(key)
+
+    identities = sorted(version_keys_by_identity)
     results: list[VersionMaintenanceResult] = []
     for identity in identities:
-        version_keys = tuple(
-            sorted(
-                key
-                for key, logical_key in logical_by_key.items()
-                if logical_key.startswith(f"{identity.prefix}/")
-            )
+        version_keys = tuple(sorted(version_keys_by_identity[identity]))
+        selected, error = _select_source(
+            published,
+            identity,
+            version_keys,
+            logical_by_key=logical_by_key,
         )
-        selected, error = _select_source(published, identity, version_keys)
-        metadata_keys = _metadata_keys(published, identity, all_keys)
+        metadata_keys = tuple(
+            key
+            for logical_key in (
+                f"{identity.dataset}/metadata/source_manifest.json",
+                f"{identity.dataset}/{identity.file}/metadata/source_manifest.json",
+                f"{identity.prefix}/metadata/source_manifest.json",
+            )
+            if (key := metadata_key_by_logical.get(logical_key)) is not None
+        )
         if error is not None:
             results.append(
                 VersionMaintenanceResult(
@@ -137,6 +212,9 @@ def inventory_published(
                     "blocked",
                     metadata_keys=metadata_keys,
                     errors=(error,),
+                    metadata_snapshots=tuple(
+                        snapshot_by_key[key] for key in metadata_keys
+                    ),
                 )
             )
             continue
@@ -151,6 +229,9 @@ def inventory_published(
                     errors=(
                         "No allowed processing source exists; derived data is not eligible.",
                     ),
+                    metadata_snapshots=tuple(
+                        snapshot_by_key[key] for key in metadata_keys
+                    ),
                 )
             )
             continue
@@ -164,9 +245,29 @@ def inventory_published(
                 selected.source_keys,
                 selected.destination_keys,
                 metadata_keys,
+                source_snapshots=tuple(
+                    snapshot_by_key[key] for key in selected.source_keys
+                ),
+                metadata_snapshots=tuple(snapshot_by_key[key] for key in metadata_keys),
             )
         )
-    return MaintenanceReport("inventory", False, False, tuple(results))
+    errors: tuple[str, ...] = ()
+    if not results and any(
+        selector is not None for selector in (dataset, file, version)
+    ):
+        selected_filters = ", ".join(
+            f"{name}={value}"
+            for name, value in (
+                ("dataset", dataset),
+                ("file", file),
+                ("version", version),
+            )
+            if value is not None
+        )
+        errors = (
+            f"Explicit filters matched no published versions: {selected_filters}.",
+        )
+    return MaintenanceReport("inventory", False, False, tuple(results), errors)
 
 
 def restore_staging(
@@ -180,12 +281,29 @@ def restore_staging(
     overwrite: bool = False,
 ) -> MaintenanceReport:
     """Restore selected published sources to staging; dry-run unless ``apply``."""
+    namespace_error = _storage_namespace_error(published, staging)
+    if namespace_error is not None:
+        return MaintenanceReport(
+            "restore-staging",
+            apply,
+            overwrite,
+            (),
+            (namespace_error,),
+        )
     inventory = inventory_published(
         published,
         dataset=dataset,
         file=file,
         version=version,
     )
+    if inventory.errors:
+        return MaintenanceReport(
+            "restore-staging",
+            apply,
+            overwrite,
+            (),
+            inventory.errors,
+        )
     results: list[VersionMaintenanceResult] = []
     for item in inventory.versions:
         if item.status == "blocked":
@@ -220,6 +338,8 @@ def restore_staging(
                     item.source_keys,
                     item.destination_keys,
                     item.metadata_keys,
+                    source_snapshots=item.source_snapshots,
+                    metadata_snapshots=item.metadata_snapshots,
                 )
             )
         except Exception as exc:
@@ -234,6 +354,8 @@ def restore_staging(
                     item.destination_keys,
                     item.metadata_keys,
                     (_stable_restore_error(exc, candidate),),
+                    item.source_snapshots,
+                    item.metadata_snapshots,
                 )
             )
     return MaintenanceReport(
@@ -241,6 +363,41 @@ def restore_staging(
         apply,
         overwrite,
         tuple(results),
+    )
+
+
+def _storage_namespace_error(
+    published: PublishedStorageResource,
+    staging: StagingStorageResource,
+) -> str | None:
+    published_is_local = published.use_local or not published.bucket
+    staging_is_local = staging.use_local or not staging.bucket
+    if published_is_local != staging_is_local:
+        return None
+
+    if published_is_local:
+        published_root = (
+            Path(published.local_dir).resolve() / published.prefix
+        ).resolve()
+        staging_root = (Path(staging.local_dir).resolve() / staging.prefix).resolve()
+        overlaps = (
+            published_root == staging_root
+            or published_root in staging_root.parents
+            or staging_root in published_root.parents
+        )
+    else:
+        if published.bucket != staging.bucket:
+            return None
+        published_parts = PurePosixPath(published.prefix.strip("/")).parts
+        staging_parts = PurePosixPath(staging.prefix.strip("/")).parts
+        common_length = min(len(published_parts), len(staging_parts))
+        overlaps = published_parts[:common_length] == staging_parts[:common_length]
+
+    if not overlaps:
+        return None
+    return (
+        "Published and staging storage namespaces overlap; refusing inventory or "
+        "restoration to protect published objects."
     )
 
 
@@ -303,7 +460,18 @@ def _candidate_storage(
     )
     try:
         yield candidate
-    finally:
+    except IncompleteRollbackError as rollback_error:
+        try:
+            staging.delete_prefix(candidate.prefix)
+        except Exception as cleanup_error:
+            raise IncompleteRollbackError(
+                f"{rollback_error} Candidate cleanup also failed ({cleanup_error})."
+            ) from rollback_error
+        raise
+    except Exception:
+        staging.delete_prefix(operation_prefix)
+        raise
+    else:
         staging.delete_prefix(operation_prefix)
 
 
@@ -317,6 +485,7 @@ def _build_candidate(
         candidate,
         item.source_keys,
         item.destination_keys,
+        item.source_snapshots,
     )
     metadata_destinations = tuple(
         _candidate_metadata_destination(published, item, key)
@@ -327,6 +496,7 @@ def _build_candidate(
         candidate,
         item.metadata_keys,
         metadata_destinations,
+        item.metadata_snapshots,
     )
 
     version_manifest_key = (
@@ -411,25 +581,21 @@ def _copy_missing_or_changed(
     destination: StagingStorageResource,
     source_keys: tuple[str, ...],
     destination_keys: tuple[str, ...],
+    source_snapshots: tuple[StorageObjectSnapshot, ...],
 ) -> None:
-    pending = [
-        (source_key, destination_key)
-        for source_key, destination_key in zip(
-            source_keys,
-            destination_keys,
-            strict=True,
-        )
-        if not source.object_content_matches(
+    for source_key, destination_key, source_snapshot in zip(
+        source_keys,
+        destination_keys,
+        source_snapshots,
+        strict=True,
+    ):
+        source.copy_key_to_if_unchanged(
             destination,
             source_key,
             destination_key,
+            source_snapshot=source_snapshot,
+            destination_snapshot=None,
         )
-    ]
-    source.copy_keys_to(
-        destination,
-        [source_key for source_key, _destination_key in pending],
-        destination_keys=[destination_key for _source_key, destination_key in pending],
-    )
 
 
 def _plan_promotion(
@@ -438,44 +604,50 @@ def _plan_promotion(
     item: VersionMaintenanceResult,
     candidate_logical_keys: tuple[str, ...],
 ) -> PromotionPlan:
-    candidate_pairs = tuple(
-        sorted(
-            (
-                _storage_key(candidate, logical_key),
-                _storage_key(staging, logical_key),
+    existing_snapshots = _managed_destination_snapshots(staging, item)
+    existing_by_key = {snapshot.key: snapshot for snapshot in existing_snapshots}
+    copies: list[PromotionCopy] = []
+    candidate_destination_keys: set[str] = set()
+    conflicting_keys: set[str] = set()
+    for logical_key in sorted(candidate_logical_keys):
+        candidate_key = _storage_key(candidate, logical_key)
+        destination_key = _storage_key(staging, logical_key)
+        candidate_snapshot = candidate.object_snapshot(candidate_key)
+        if candidate_snapshot is None:
+            raise RuntimeError(
+                f"Candidate object disappeared before preflight: {logical_key}"
             )
-            for logical_key in candidate_logical_keys
+        destination_snapshot = existing_by_key.get(destination_key)
+        copies.append(
+            PromotionCopy(
+                candidate_snapshot,
+                destination_key,
+                destination_snapshot,
+            )
         )
-    )
-    candidate_by_destination = {
-        destination_key: candidate_key
-        for candidate_key, destination_key in candidate_pairs
-    }
-    existing_keys = _managed_destination_keys(staging, item)
-    stale_keys = tuple(
-        sorted(key for key in existing_keys if key not in candidate_by_destination)
-    )
-    conflicting_keys = set(stale_keys)
-    for destination_key, candidate_key in candidate_by_destination.items():
-        if staging.object_exists(
-            destination_key
-        ) and not candidate.object_content_matches(
-            staging,
-            candidate_key,
-            destination_key,
+        candidate_destination_keys.add(destination_key)
+        if destination_snapshot is not None and not snapshots_content_match(
+            candidate_snapshot,
+            destination_snapshot,
         ):
             conflicting_keys.add(destination_key)
+    stale_snapshots = tuple(
+        snapshot
+        for snapshot in existing_snapshots
+        if snapshot.key not in candidate_destination_keys
+    )
+    conflicting_keys.update(snapshot.key for snapshot in stale_snapshots)
     return PromotionPlan(
-        candidate_pairs,
-        stale_keys,
+        tuple(copies),
+        stale_snapshots,
         tuple(sorted(conflicting_keys)),
     )
 
 
-def _managed_destination_keys(
+def _managed_destination_snapshots(
     staging: StagingStorageResource,
     item: VersionMaintenanceResult,
-) -> tuple[str, ...]:
+) -> tuple[StorageObjectSnapshot, ...]:
     version_prefix = f"{item.dataset}/{item.file}/{item.version}"
     managed_metadata = {
         f"{item.dataset}/metadata/source_manifest.json",
@@ -485,22 +657,23 @@ def _managed_destination_keys(
         f"{version_prefix}/metadata/quality_manifest.json",
         f"{version_prefix}/metadata/data_dictionary.json",
     }
-    keys = {
-        key
-        for key in staging.list_keys(item.dataset, item.file, item.version)
+    snapshots_by_key = {
+        snapshot.key: snapshot
+        for snapshot in staging.list_object_snapshots(version_prefix)
         if (
-            _logical_key(staging, key)
+            _logical_key(staging, snapshot.key)
             .removeprefix(f"{version_prefix}/")
             .split("/", 1)[0]
             in CANONICAL_SOURCE_FORMAT_PRECEDENCE
-            or _logical_key(staging, key) in managed_metadata
+            or _logical_key(staging, snapshot.key) in managed_metadata
         )
     }
     for logical_key in managed_metadata:
         storage_key = _storage_key(staging, logical_key)
-        if staging.object_exists(storage_key):
-            keys.add(storage_key)
-    return tuple(sorted(keys))
+        snapshot = staging.object_snapshot(storage_key)
+        if snapshot is not None:
+            snapshots_by_key[storage_key] = snapshot
+    return tuple(snapshots_by_key[key] for key in sorted(snapshots_by_key))
 
 
 def _promote_candidate(
@@ -508,27 +681,35 @@ def _promote_candidate(
     staging: StagingStorageResource,
     plan: PromotionPlan,
 ) -> None:
-    candidate_by_destination = {
-        destination_key: candidate_key
-        for candidate_key, destination_key in plan.candidate_pairs
-    }
-    promote_pairs = tuple(
-        (candidate_key, destination_key)
-        for destination_key, candidate_key in sorted(candidate_by_destination.items())
-        if not candidate.object_content_matches(
-            staging,
-            candidate_key,
-            destination_key,
+    for copy in plan.copies:
+        if staging.object_snapshot(copy.destination_key) != copy.destination_snapshot:
+            raise RuntimeError(
+                f"Destination changed after conflict preflight: {copy.destination_key}"
+            )
+    for stale_snapshot in plan.stale_destination_snapshots:
+        if staging.object_snapshot(stale_snapshot.key) != stale_snapshot:
+            raise RuntimeError(
+                f"Destination changed after conflict preflight: {stale_snapshot.key}"
+            )
+
+    promotion_copies = tuple(
+        copy
+        for copy in plan.copies
+        if copy.destination_snapshot is None
+        or not snapshots_content_match(
+            copy.source_snapshot,
+            copy.destination_snapshot,
         )
     )
     affected_existing = tuple(
         sorted(
             {
-                destination_key
-                for _candidate_key, destination_key in promote_pairs
-                if staging.object_exists(destination_key)
+                copy.destination_snapshot
+                for copy in promotion_copies
+                if copy.destination_snapshot is not None
             }
-            | set(plan.stale_destination_keys)
+            | set(plan.stale_destination_snapshots),
+            key=lambda snapshot: snapshot.key,
         )
     )
     operation_prefix = candidate.prefix.rsplit("/candidate", 1)[0]
@@ -538,50 +719,115 @@ def _promote_candidate(
         use_local=staging.use_local,
         local_dir=staging.local_dir,
     )
-    backup_logical_keys = tuple(_logical_key(staging, key) for key in affected_existing)
-    staging.copy_keys_to(
-        backup,
-        list(affected_existing),
-        destination_keys=list(backup_logical_keys),
-        max_workers=1,
-    )
-    mutated_destination_keys = tuple(
-        sorted(
-            set(plan.stale_destination_keys)
-            | {destination_key for _candidate_key, destination_key in promote_pairs}
+    backup_snapshots_by_destination: dict[str, StorageObjectSnapshot] = {}
+    for existing_snapshot in affected_existing:
+        backup_key = _logical_key(staging, existing_snapshot.key)
+        staging.copy_key_to_if_unchanged(
+            backup,
+            existing_snapshot.key,
+            backup_key,
+            source_snapshot=existing_snapshot,
+            destination_snapshot=None,
         )
-    )
+        backup_snapshot = backup.object_snapshot(backup_key)
+        if backup_snapshot is None:
+            raise RuntimeError(f"Backup copy disappeared: {backup_key}")
+        backup_snapshots_by_destination[existing_snapshot.key] = backup_snapshot
+
+    mutations: list[PromotionMutation] = []
     try:
-        for stale_key in plan.stale_destination_keys:
-            staging.delete_prefix(stale_key)
-        candidate.copy_keys_to(
-            staging,
-            [candidate_key for candidate_key, _destination_key in promote_pairs],
-            destination_keys=[
-                _logical_key(staging, destination_key)
-                for _candidate_key, destination_key in promote_pairs
-            ],
-            max_workers=1,
-        )
+        for stale_snapshot in plan.stale_destination_snapshots:
+            try:
+                staging.delete_key_if_unchanged(stale_snapshot.key, stale_snapshot)
+            except Exception as delete_error:
+                current = staging.object_snapshot(stale_snapshot.key)
+                if current != stale_snapshot:
+                    raise IncompleteRollbackError(
+                        "Conditional delete failed and the destination no longer matches "
+                        f"preflight: {stale_snapshot.key}. Recovery backup retained at "
+                        f"{operation_prefix}/backup."
+                    ) from delete_error
+                raise
+            mutations.append(
+                PromotionMutation(stale_snapshot.key, stale_snapshot, None)
+            )
+        for copy in promotion_copies:
+            try:
+                candidate.copy_key_to_if_unchanged(
+                    staging,
+                    copy.source_snapshot.key,
+                    _logical_key(staging, copy.destination_key),
+                    source_snapshot=copy.source_snapshot,
+                    destination_snapshot=copy.destination_snapshot,
+                )
+            except Exception as copy_error:
+                current = staging.object_snapshot(copy.destination_key)
+                if current != copy.destination_snapshot:
+                    raise IncompleteRollbackError(
+                        "Conditional copy failed and the destination no longer matches "
+                        f"preflight: {copy.destination_key}. Recovery backup retained at "
+                        f"{operation_prefix}/backup."
+                    ) from copy_error
+                raise
+            promoted_snapshot = staging.object_snapshot(copy.destination_key)
+            if promoted_snapshot is None:
+                raise RuntimeError(
+                    f"Promoted object disappeared: {copy.destination_key}"
+                )
+            mutations.append(
+                PromotionMutation(
+                    copy.destination_key,
+                    copy.destination_snapshot,
+                    promoted_snapshot,
+                )
+            )
     except Exception as promotion_error:
         try:
-            for destination_key in mutated_destination_keys:
-                staging.delete_prefix(destination_key)
-            backup_keys = backup.list_prefix()
-            backup.copy_keys_to(
+            _rollback_promotions(
+                backup,
                 staging,
-                backup_keys,
-                destination_keys=[
-                    _logical_key(backup, backup_key) for backup_key in backup_keys
-                ],
-                max_workers=1,
+                mutations,
+                backup_snapshots_by_destination,
             )
         except Exception as rollback_error:
-            raise RuntimeError(
+            raise IncompleteRollbackError(
                 f"Final promotion failed ({promotion_error}); rollback also failed "
-                f"({rollback_error})."
+                f"({rollback_error}). Recovery backup retained at "
+                f"{operation_prefix}/backup."
             ) from promotion_error
         raise
+
+
+def _rollback_promotions(
+    backup: StagingStorageResource,
+    staging: StagingStorageResource,
+    mutations: list[PromotionMutation],
+    backup_snapshots_by_destination: dict[str, StorageObjectSnapshot],
+) -> None:
+    for mutation in reversed(mutations):
+        current = staging.object_snapshot(mutation.destination_key)
+        if mutation.promoted_snapshot is None:
+            if current is not None:
+                raise RuntimeError(
+                    f"Destination recreated during rollback: {mutation.destination_key}"
+                )
+        else:
+            if current != mutation.promoted_snapshot:
+                raise RuntimeError(
+                    f"Destination changed before rollback: {mutation.destination_key}"
+                )
+            staging.delete_key_if_unchanged(mutation.destination_key, current)
+
+        if mutation.previous_snapshot is None:
+            continue
+        backup_snapshot = backup_snapshots_by_destination[mutation.destination_key]
+        backup.copy_key_to_if_unchanged(
+            staging,
+            backup_snapshot.key,
+            _logical_key(staging, mutation.destination_key),
+            source_snapshot=backup_snapshot,
+            destination_snapshot=None,
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -652,27 +898,17 @@ def _version_identity(logical_key: str) -> VersionIdentity | None:
     return VersionIdentity(parts[0], parts[1], parts[2])
 
 
-def _metadata_keys(
-    storage: PublishedStorageResource,
-    identity: VersionIdentity,
-    keys: list[str],
-) -> tuple[str, ...]:
-    expected = {
-        f"{identity.dataset}/metadata/source_manifest.json",
-        f"{identity.dataset}/{identity.file}/metadata/source_manifest.json",
-        f"{identity.prefix}/metadata/source_manifest.json",
-    }
-    return tuple(sorted(key for key in keys if _logical_key(storage, key) in expected))
-
-
 def _select_source(
     storage: PublishedStorageResource,
     identity: VersionIdentity,
     keys: tuple[str, ...],
+    *,
+    logical_by_key: dict[str, str] | None = None,
 ) -> tuple[SelectedSource | None, str | None]:
+    if logical_by_key is None:
+        logical_by_key = {key: _logical_key(storage, key) for key in keys}
     relative_by_key = {
-        key: _logical_key(storage, key).removeprefix(f"{identity.prefix}/")
-        for key in keys
+        key: logical_by_key[key].removeprefix(f"{identity.prefix}/") for key in keys
     }
     for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
         format_keys = tuple(
