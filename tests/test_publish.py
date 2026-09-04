@@ -22,7 +22,7 @@ from dagster_hifld.assets.publish import (
     _write_and_publish_shapefile_zip,
     publish_assets,
 )
-from dagster_hifld.conversion import ShapefileZipPolicy
+from dagster_hifld.conversion import GeoParquetWritePolicy, ShapefileZipPolicy
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
@@ -879,6 +879,59 @@ class PublishTests(unittest.TestCase):
                 [(layer["layer"], layer["feature_count"]) for layer in manifest["layers"]],
                 [("bridges", 3), ("roads", 4)],
             )
+
+    def test_partitioned_multilayer_publish_uses_collision_proof_layer_paths(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = (
+                Path(staging_dir)
+                / "dataset-a"
+                / "file-a"
+                / "v1.0.0"
+                / "geopackage"
+            )
+            version_dir.mkdir(parents=True)
+            source = version_dir / "source.gpkg"
+            gpd.GeoDataFrame(
+                {"name": ["road"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, layer="roads", driver="GPKG")
+            gpd.GeoDataFrame(
+                {"name": ["bridge"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, layer="bridges", driver="GPKG", mode="a")
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            outputs = _write_and_publish_geoparquet(
+                storage,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+                GeoParquetWritePolicy(force_s2=True),
+            )
+
+            parquet_keys = sorted(
+                key
+                for key in storage.list_keys("dataset-a", "file-a", "v1.0.0")
+                if key.endswith(".parquet")
+            )
+            manifest = json.loads(
+                storage.read_bytes(
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                    "metadata/geoparquet_layout.json",
+                )
+            )
+            layer_outputs = [layer["outputs"][0] for layer in manifest["layers"]]
+
+            self.assertEqual(len(outputs), 2)
+            self.assertEqual(
+                {output.path for output in outputs},
+                {"dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet"},
+            )
+            self.assertEqual(len(parquet_keys), 2)
+            self.assertEqual(len({output["relative_path"] for output in layer_outputs}), 2)
+            self.assertEqual([layer["feature_count"] for layer in manifest["layers"]], [1, 1])
+            self.assertTrue(all(output["row_counts"] == [1] for output in layer_outputs))
+            self.assertEqual(len({output["sha256"] for output in layer_outputs}), 2)
 
 
 if __name__ == "__main__":

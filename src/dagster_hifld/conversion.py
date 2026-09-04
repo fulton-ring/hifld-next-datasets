@@ -12,13 +12,16 @@ import json
 import logging
 import os
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import warnings
 import zipfile
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Optional
+from types import TracebackType
+from typing import Any, Iterable, Optional
+from urllib.parse import quote
 
 import fiona
 import geopandas as gpd
@@ -797,6 +800,104 @@ class _FeatureBuffer:
     last_used: int = 0
 
 
+class _PreflightHistogramStore:
+    """Exact SQLite-backed histograms with memory independent of bin count."""
+
+    def __init__(self) -> None:
+        self._temporary_directory = tempfile.TemporaryDirectory(
+            prefix="geoparquet-preflight-"
+        )
+        self.database_path = Path(self._temporary_directory.name) / "histograms.sqlite3"
+        self._connection: sqlite3.Connection | None = sqlite3.connect(self.database_path)
+        self._connection.execute(
+            """
+            CREATE TABLE histogram (
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                bin TEXT NOT NULL,
+                byte_count INTEGER NOT NULL,
+                row_count INTEGER NOT NULL,
+                PRIMARY KEY (kind, name, level, bin)
+            ) WITHOUT ROWID
+            """
+        )
+
+    def __enter__(self) -> _PreflightHistogramStore:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def add_many(
+        self,
+        rows: Iterable[tuple[str, str, int, str, int, int]],
+    ) -> None:
+        connection = self._require_connection()
+        connection.executemany(
+            """
+            INSERT INTO histogram (
+                kind, name, level, bin, byte_count, row_count
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (kind, name, level, bin) DO UPDATE SET
+                byte_count = byte_count + excluded.byte_count,
+                row_count = row_count + excluded.row_count
+            """,
+            rows,
+        )
+        connection.commit()
+
+    def cardinality(self, kind: str, name: str = "") -> int:
+        row = self._require_connection().execute(
+            "SELECT COUNT(*) FROM histogram WHERE kind = ? AND name = ?",
+            (kind, name),
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def max_bytes(self, kind: str, name: str = "", level: int | None = None) -> int:
+        if level is None:
+            row = self._require_connection().execute(
+                "SELECT MAX(byte_count) FROM histogram WHERE kind = ? AND name = ?",
+                (kind, name),
+            ).fetchone()
+        else:
+            row = self._require_connection().execute(
+                """
+                SELECT MAX(byte_count) FROM histogram
+                WHERE kind = ? AND name = ? AND level = ?
+                """,
+                (kind, name, level),
+            ).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def level_maxima(
+        self,
+        kind: str,
+        name: str,
+        levels: tuple[int, ...],
+    ) -> dict[int, dict[str, int]]:
+        return {
+            level: {"largest": self.max_bytes(kind, name, level)}
+            for level in levels
+        }
+
+    def close(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+        self._temporary_directory.cleanup()
+
+    def _require_connection(self) -> sqlite3.Connection:
+        if self._connection is None:
+            raise RuntimeError("Preflight histogram store is closed.")
+        return self._connection
+
+
 def _safe_hive_value(value: Any) -> str:
     if value is None or pd.isna(value):
         return "__null__"
@@ -804,6 +905,10 @@ def _safe_hive_value(value: Any) -> str:
     if not safe_value:
         return "__empty__"
     return safe_value.replace("/", "-").replace("\\", "-").replace("=", "-")
+
+
+def _layer_output_namespace(layer_filename: str) -> str:
+    return f"layer-{quote(layer_filename, safe='-._~')}"
 
 
 def _feature_properties(feature: Any) -> dict[str, Any]:
@@ -1098,20 +1203,31 @@ def _preflight_layer(
     layer_filename: str,
     policy: GeoParquetWritePolicy,
 ) -> _GeoParquetPreflight:
+    with _PreflightHistogramStore() as histogram_store:
+        return _preflight_layer_with_histograms(
+            file_path,
+            open_kwargs,
+            format_type,
+            layer_filename,
+            policy,
+            histogram_store,
+        )
+
+
+def _preflight_layer_with_histograms(
+    file_path: Path,
+    open_kwargs: dict[str, Any],
+    format_type: str,
+    layer_filename: str,
+    policy: GeoParquetWritePolicy,
+    histogram_store: _PreflightHistogramStore,
+) -> _GeoParquetPreflight:
     del format_type, layer_filename
     feature_count = 0
     uncompressed_bytes = 0
     s2_levels = _policy_s2_levels(policy)
-    s2_histograms: dict[int, dict[str, int]] = {level: {} for level in s2_levels}
-    semantic_s2_histograms: dict[int, dict[str, int]] = {
-        level: {} for level in s2_levels
-    }
-    candidate_s2_histograms: dict[str, dict[int, dict[str, int]]] = {}
-    semantic_histogram: dict[str, int] = {}
-    candidate_histograms: dict[str, dict[str, int]] = {}
     serialized_bytes = 0
     candidate_non_null: dict[str, int] = {}
-    candidate_values: dict[str, set[str]] = {}
 
     with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
         source_schema = src.schema or {}
@@ -1126,12 +1242,6 @@ def _preflight_layer(
             if any(name.casefold() == column.casefold() for name in names)
         ]
         candidate_non_null = {column: 0 for column in resolved_candidates}
-        candidate_values = {column: set() for column in resolved_candidates}
-        candidate_histograms = {column: {} for column in resolved_candidates}
-        candidate_s2_histograms = {
-            column: {level: {} for level in s2_levels}
-            for column in resolved_candidates
-        }
         current_crs = src.crs if src.crs else "EPSG:4326"
         transformer = _source_transformer(current_crs)
         batch: list[dict[str, Any]] = []
@@ -1148,6 +1258,19 @@ def _preflight_layer(
             feature_count += len(features)
             uncompressed_bytes += batch_bytes
             serialized_bytes += batch_serialized_bytes
+            updates: dict[tuple[str, str, int, str], tuple[int, int]] = {}
+
+            def add_update(
+                kind: str,
+                name: str,
+                level: int,
+                bin_value: str,
+                row_bytes: int,
+            ) -> None:
+                key = (kind, name, level, bin_value)
+                byte_count, row_count = updates.get(key, (0, 0))
+                updates[key] = (byte_count + row_bytes, row_count + 1)
+
             for feature, feature_size in zip(features, feature_sizes):
                 row_bytes = max(
                     1,
@@ -1160,35 +1283,53 @@ def _preflight_layer(
                 semantic_values = _semantic_partition_values(
                     properties, base_partitioning, base_columns
                 )
-                semantic_key = "|".join(str(value) for value in semantic_values)
+                semantic_key = json.dumps(semantic_values, default=str)
                 if semantic_values:
-                    semantic_histogram[semantic_key] = (
-                        semantic_histogram.get(semantic_key, 0) + row_bytes
-                    )
+                    add_update("semantic", "", -1, semantic_key, row_bytes)
                 for column in resolved_candidates:
                     value = properties.get(column)
                     if value is not None and not pd.isna(value):
                         candidate_non_null[column] += 1
-                        candidate_values[column].add(str(value))
-                        candidate_key = str(value)
-                        histogram = candidate_histograms[column]
-                        histogram[candidate_key] = histogram.get(candidate_key, 0) + row_bytes
+                        add_update("candidate", column, -1, str(value), row_bytes)
                 point = _representative_point(_feature_geometry(feature), transformer)
                 for level in s2_levels:
                     cell = str(_s2_cell_for_point(point, level))
-                    histogram = s2_histograms[level]
-                    histogram[cell] = histogram.get(cell, 0) + row_bytes
+                    add_update("s2", "", level, cell, row_bytes)
                     if semantic_values:
                         combined_key = f"{semantic_key}|{cell}"
-                        combined = semantic_s2_histograms[level]
-                        combined[combined_key] = combined.get(combined_key, 0) + row_bytes
+                        add_update(
+                            "semantic_s2",
+                            "",
+                            level,
+                            combined_key,
+                            row_bytes,
+                        )
                     for column in resolved_candidates:
                         candidate_value = properties.get(column)
                         if candidate_value is None or pd.isna(candidate_value):
                             continue
                         combined_key = f"{candidate_value}|{cell}"
-                        combined = candidate_s2_histograms[column][level]
-                        combined[combined_key] = combined.get(combined_key, 0) + row_bytes
+                        add_update(
+                            "candidate_s2",
+                            column,
+                            level,
+                            combined_key,
+                            row_bytes,
+                        )
+            histogram_store.add_many(
+                (
+                    kind,
+                    name,
+                    level,
+                    bin_value,
+                    byte_count,
+                    row_count,
+                )
+                for (kind, name, level, bin_value), (
+                    byte_count,
+                    row_count,
+                ) in updates.items()
+            )
 
         for source_feature in src:
             batch.append(
@@ -1205,28 +1346,35 @@ def _preflight_layer(
     if feature_count == 0:
         return _GeoParquetPreflight(0, 0, 1.0, "single_file", [], None, resolved_policy)
 
-    selected_histogram = semantic_histogram
-    selection_s2_histograms = semantic_s2_histograms
+    selected_histogram_kind = "semantic"
+    selected_histogram_name = ""
+    selection_s2_kind = "semantic_s2"
+    selection_s2_name = ""
     if (
         base_partitioning == "single_file"
         and uncompressed_bytes >= policy.large_dataset_threshold_bytes
     ):
         for column in candidate_non_null:
-            cardinality = len(candidate_values[column])
+            cardinality = histogram_store.cardinality("candidate", column)
             if (
                 candidate_non_null[column] / feature_count >= 0.95
                 and 1 < cardinality <= max(1, feature_count // 2)
             ):
                 base_partitioning = "admin"
                 base_columns = [column]
-                selected_histogram = candidate_histograms[column]
-                selection_s2_histograms = candidate_s2_histograms[column]
+                selected_histogram_kind = "candidate"
+                selected_histogram_name = column
+                selection_s2_kind = "candidate_s2"
+                selection_s2_name = column
                 break
 
     needs_s2 = (
         policy.force_s2
         or uncompressed_bytes >= policy.large_dataset_threshold_bytes
-        or max(selected_histogram.values(), default=0)
+        or histogram_store.max_bytes(
+            selected_histogram_kind,
+            selected_histogram_name,
+        )
         >= policy.large_dataset_threshold_bytes
     )
     chosen_s2_level = None
@@ -1234,10 +1382,18 @@ def _preflight_layer(
     partition_columns = list(base_columns)
     if needs_s2:
         chosen_s2_level = _select_s2_level(
-            (
-                selection_s2_histograms
-                if base_partitioning not in {"single_file", "s2"}
-                else s2_histograms
+            histogram_store.level_maxima(
+                (
+                    selection_s2_kind
+                    if base_partitioning not in {"single_file", "s2"}
+                    else "s2"
+                ),
+                (
+                    selection_s2_name
+                    if base_partitioning not in {"single_file", "s2"}
+                    else ""
+                ),
+                s2_levels,
             ),
             policy.target_file_size_bytes,
             s2_levels,
@@ -1310,7 +1466,12 @@ async def process_layer_partitioned_geoparquet(
 
     partitioning = preflight.partitioning
     partition_columns = preflight.partition_columns
+    file_buffer_bytes = min(
+        effective_policy.write_buffer_bytes,
+        effective_policy.target_file_size_bytes,
+    )
     source_schema: dict[str, Any] = {}
+    partitioned_layer_dir = _layer_output_namespace(layer_filename)
 
     def output_path(partition_dir: str) -> Path:
         index = next_part_index.get(partition_dir, 0)
@@ -1323,7 +1484,12 @@ async def process_layer_partitioned_geoparquet(
             )
         else:
             filename = f"part-{index:03d}.parquet"
-        path = geoparquet_dir / partition_dir / filename
+        path_root = (
+            geoparquet_dir
+            if partitioning == "single_file"
+            else geoparquet_dir / partitioned_layer_dir
+        )
+        path = path_root / partition_dir / filename
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -1438,7 +1604,7 @@ async def process_layer_partitioned_geoparquet(
                 aggregate_estimated_bytes += feature_estimated_bytes
                 buffer.last_used = access_counter
                 if (
-                    buffer.estimated_bytes >= effective_policy.write_buffer_bytes
+                    buffer.estimated_bytes >= file_buffer_bytes
                     or len(buffer.features) >= effective_policy.max_row_group_rows
                 ):
                     flush_partition(partition_dir)
@@ -1489,6 +1655,7 @@ async def process_layer_partitioned_geoparquet(
             "write_buffer_bytes": effective_policy.write_buffer_bytes,
             "max_row_group_bytes": effective_policy.max_row_group_bytes,
             "target_file_bytes": effective_policy.target_file_size_bytes,
+            "effective_file_buffer_bytes": file_buffer_bytes,
             "aggregate_buffer_bytes": effective_policy.aggregate_buffer_bytes,
         },
         outputs=output_layouts,

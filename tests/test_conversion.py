@@ -19,12 +19,14 @@ from dagster_hifld.conversion import (
     DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES,
     GeoParquetWritePolicy,
     ShapefileZipPolicy,
+    _PreflightHistogramStore,
     _StorageAdapter,
     _build_tippecanoe_cmd,
     _create_and_upload_pmtiles,
     _detect_format_from_path,
     _discover_staged_formats,
     _hilbert_like_key,
+    _layer_output_namespace,
     _policy_s2_levels,
     _row_group_uncompressed_sizes,
     _select_s2_level,
@@ -485,11 +487,11 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "admin")
             self.assertEqual(result["partition_columns"], ["statefp"])
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/statefp=06/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/statefp=06/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/statefp=12/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/statefp=12/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertFalse(any("-0.zstd.parquet" in path for path in result["geoparquet_paths"]))
@@ -527,7 +529,7 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "derived_huc")
             self.assertEqual(result["partition_columns"], ["huc2", "huc4", "huc6"])
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/huc2=01/huc4=0101/huc6=010100/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/huc2=01/huc4=0101/huc6=010100/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertFalse(any("huc12=" in path for path in result["geoparquet_paths"]))
@@ -583,7 +585,7 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "derived_prefix")
             self.assertEqual(result["partition_columns"], ["state_fips"])
             self.assertIn(
-                "dataset/file/v1.0.0/geoparquet/state_fips=29/part-000.parquet",
+                "dataset/file/v1.0.0/geoparquet/layer-source/state_fips=29/part-000.parquet",
                 result["geoparquet_paths"],
             )
 
@@ -622,7 +624,10 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "admin")
             self.assertEqual(
                 result["geoparquet_paths"],
-                ["dataset/file/v1.0.0/geoparquet/statefp=06/part-000.parquet"],
+                [
+                    "dataset/file/v1.0.0/geoparquet/"
+                    "layer-source/statefp=06/part-000.parquet"
+                ],
             )
 
     def test_streaming_geoparquet_writer_keeps_small_layers_unpartitioned(self):
@@ -692,7 +697,10 @@ class ConversionTests(unittest.TestCase):
             self.assertNotIn("error", result)
             self.assertEqual(result["partition_columns"], ["STATEFP"])
             self.assertTrue(
-                any("geoparquet/STATEFP=06/" in path for path in result["geoparquet_paths"])
+                any(
+                    "geoparquet/layer-source/STATEFP=06/" in path
+                    for path in result["geoparquet_paths"]
+                )
             )
 
     def test_streaming_writer_rejects_missing_configured_source_column(self):
@@ -815,6 +823,48 @@ class ConversionTests(unittest.TestCase):
                 self.assertNotIn("s2_cell", columns)
                 self.assertNotIn("s2_parent_cell", columns)
                 self.assertNotIn("hilbert_cell", columns)
+
+    def test_dense_s2_cell_rolls_at_target_file_size_with_large_memory_budgets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["a", "b", "c"]},
+                geometry=[Point(0, 0), Point(0, 0), Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_s2=True,
+                        target_file_size_bytes=1,
+                        write_buffer_bytes=10**9,
+                        aggregate_buffer_bytes=10**9,
+                    ),
+                )
+            )
+
+            self.assertEqual(result["chosen_s2_level"], 16)
+            self.assertEqual(len(result["geoparquet_paths"]), 3)
+            self.assertTrue(result["geoparquet_paths"][0].endswith("part-000.parquet"))
+            self.assertTrue(result["geoparquet_paths"][1].endswith("part-001.parquet"))
+            self.assertTrue(result["geoparquet_paths"][2].endswith("part-002.parquet"))
+
+    def test_partitioned_layer_namespace_is_non_hive_and_collision_proof(self):
+        slash_name = _layer_output_namespace("roads/east")
+        dash_name = _layer_output_namespace("roads-east")
+
+        self.assertNotEqual(slash_name, dash_name)
+        self.assertNotIn("/", slash_name)
+        self.assertNotIn("=", slash_name)
 
     def test_writer_sorts_each_buffer_spatially_and_keeps_bbox_covering_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1086,6 +1136,34 @@ class ConversionTests(unittest.TestCase):
 
             self.assertNotIn("error", result)
             self.assertEqual(len(result["layout"]["outputs"][0]["sha256"]), 64)
+
+    def test_preflight_histograms_spill_many_distinct_bins_to_disk(self):
+        store = _PreflightHistogramStore()
+        try:
+            for batch_start in range(0, 1_000, 100):
+                store.add_many(
+                    (
+                        "candidate",
+                        "STATEFP",
+                        -1,
+                        str(value),
+                        10,
+                        1,
+                    )
+                    for value in range(batch_start, batch_start + 100)
+                )
+
+            self.assertEqual(store.cardinality("candidate", "STATEFP"), 1_000)
+            self.assertEqual(store.max_bytes("candidate", "STATEFP"), 10)
+            self.assertFalse(
+                any(isinstance(value, (dict, set)) for value in vars(store).values())
+            )
+            self.assertTrue(store.database_path.exists())
+        finally:
+            database_path = store.database_path
+            store.close()
+
+        self.assertFalse(database_path.exists())
 
     def test_write_shapefile_zip_skips_plain_dataframe(self):
         result = write_shapefile_zip(
