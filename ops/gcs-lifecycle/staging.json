@@ -6,6 +6,7 @@
       },
       "condition": {
         "age": 7,
+        "isLive": true,
         "matchesPrefix": [
           "_temporary/"
         ]

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 class LifecyclePolicyTests(unittest.TestCase):
-    def test_staging_policy_only_expires_temporary_objects_after_seven_days(self):
+    def test_staging_policy_only_expires_live_temporary_objects(self):
         policy = self._load("staging.json")
 
         self.assertEqual(
@@ -15,6 +15,7 @@ class LifecyclePolicyTests(unittest.TestCase):
                         "action": {"type": "Delete"},
                         "condition": {
                             "age": 7,
+                            "isLive": True,
                             "matchesPrefix": ["_temporary/"],
                         },
                     }
@@ -22,7 +23,7 @@ class LifecyclePolicyTests(unittest.TestCase):
             },
         )
 
-    def test_production_policy_only_expires_rollback_objects_after_seven_days(self):
+    def test_production_policy_only_expires_live_rollback_objects(self):
         policy = self._load("production.json")
 
         self.assertEqual(
@@ -33,6 +34,7 @@ class LifecyclePolicyTests(unittest.TestCase):
                         "action": {"type": "Delete"},
                         "condition": {
                             "age": 7,
+                            "isLive": True,
                             "matchesPrefix": ["_rollback/"],
                         },
                     }
