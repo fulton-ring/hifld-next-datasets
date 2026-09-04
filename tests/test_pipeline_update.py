@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -205,7 +206,9 @@ class PipelineUpdateTests(unittest.TestCase):
                 gdf,
                 Path(tmpdir) / "admin",
                 "layer",
-                GeoParquetWritePolicy(force_admin_columns=["statefp"]),
+                GeoParquetWritePolicy(
+                    force_admin_columns=["statefp"], large_dataset_threshold_bytes=1
+                ),
             )
 
             self.assertEqual(default_result.glob_path, "layer.parquet")
@@ -213,20 +216,10 @@ class PipelineUpdateTests(unittest.TestCase):
             self.assertEqual(admin_result.glob_path, "**/*.parquet")
             hive_key = admin_result.source_metadata["hive_partition_columns"]["statefp"]
             self.assertTrue(
-                (
-                    Path(tmpdir)
-                    / "admin"
-                    / f"{hive_key}=v-06"
-                    / "part-000.parquet"
-                ).exists()
+                any(f"{hive_key}=v-06/" in str(path) for path in admin_result.paths)
             )
             self.assertTrue(
-                (
-                    Path(tmpdir)
-                    / "admin"
-                    / f"{hive_key}=v-12"
-                    / "part-000.parquet"
-                ).exists()
+                any(f"{hive_key}=v-12/" in str(path) for path in admin_result.paths)
             )
 
     def test_large_dataset_policy_registry_uses_admin_candidates(self):
@@ -253,11 +246,13 @@ class PipelineUpdateTests(unittest.TestCase):
                 ),
                 Path(tmpdir),
                 "census-block-groups-3",
-                policy,
+                replace(policy, large_dataset_threshold_bytes=1),
             )
 
-        self.assertEqual(result.partition_columns, ["STATE"])
-        self.assertEqual(result.source_metadata["partition_columns"], ["STATE"])
+        self.assertEqual(result.partition_columns, ["STATE", "s2_parent_cell"])
+        self.assertEqual(
+            result.source_metadata["partition_columns"], ["STATE", "s2_parent_cell"]
+        )
 
     def test_api_register_payload_uses_glob_for_partitioned_geoparquet(self):
         api = Mock()

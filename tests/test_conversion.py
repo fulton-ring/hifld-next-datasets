@@ -526,7 +526,9 @@ class ConversionTests(unittest.TestCase):
                     dest_folder="dataset/file/v1.0.0/",
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
-                    policy=GeoParquetWritePolicy(force_admin_columns=("statefp",)),
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                    ),
                 )
             )
 
@@ -569,6 +571,7 @@ class ConversionTests(unittest.TestCase):
                     policy=GeoParquetWritePolicy(
                         derived_huc_column="huc12",
                         derived_huc_partition_columns=("huc2", "huc4", "huc6"),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -628,6 +631,7 @@ class ConversionTests(unittest.TestCase):
                     policy=GeoParquetWritePolicy(
                         derived_prefix_column="DFIRM_ID",
                         derived_prefix_partitions=(("state_fips", 2),),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -665,6 +669,7 @@ class ConversionTests(unittest.TestCase):
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
                         force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                         target_row_group_bytes=1,
                     ),
                 )
@@ -706,6 +711,37 @@ class ConversionTests(unittest.TestCase):
                 )
             )
 
+            self.assertEqual(result["partitioning"], "single_file")
+            self.assertEqual(result["partition_columns"], [])
+            self.assertEqual(
+                result["geoparquet_paths"],
+                ["dataset/file/v1.0.0/geoparquet/source.parquet"],
+            )
+
+    def test_streaming_writer_size_gates_forced_admin_partitioning(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "12"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(force_admin_columns=("STATEFP",)),
+                )
+            )
+
+            self.assertNotIn("error", result)
             self.assertEqual(result["partitioning"], "single_file")
             self.assertEqual(result["partition_columns"], [])
             self.assertEqual(
@@ -774,7 +810,9 @@ class ConversionTests(unittest.TestCase):
                     dest_folder="dataset/file/v1.0.0/",
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
-                    policy=GeoParquetWritePolicy(force_admin_columns=("statefp",)),
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                    ),
                 )
             )
 
@@ -808,7 +846,8 @@ class ConversionTests(unittest.TestCase):
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
-                        force_admin_columns=("STATEFP", "countyfp")
+                        force_admin_columns=("STATEFP", "countyfp"),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -834,7 +873,8 @@ class ConversionTests(unittest.TestCase):
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
-                        force_admin_columns=("STATEFP", "COUNTYFP")
+                        force_admin_columns=("STATEFP", "COUNTYFP"),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -864,7 +904,9 @@ class ConversionTests(unittest.TestCase):
                     dest_folder="dataset/file/v1.0.0/",
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
-                    policy=GeoParquetWritePolicy(force_admin_columns=("statefp",)),
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                    ),
                 )
             )
 
@@ -932,7 +974,9 @@ class ConversionTests(unittest.TestCase):
                     dest_folder="dataset/file/v1.0.0/",
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
-                    policy=GeoParquetWritePolicy(force_admin_columns=("statefp",)),
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                    ),
                 )
             )
 
@@ -1169,6 +1213,7 @@ class ConversionTests(unittest.TestCase):
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
                         force_admin_columns=("STATEFP",),
+                        large_dataset_threshold_bytes=1,
                         preflight_chunk_rows=1,
                     ),
                 )
@@ -1555,6 +1600,7 @@ class ConversionTests(unittest.TestCase):
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
                         force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                         write_buffer_bytes=10**9,
                         aggregate_buffer_bytes=1,
                     ),
@@ -1601,6 +1647,7 @@ class ConversionTests(unittest.TestCase):
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
                         force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                         write_buffer_bytes=1,
                         aggregate_buffer_bytes=10**9,
                         target_file_size_bytes=10**9,
@@ -1840,6 +1887,7 @@ class ConversionTests(unittest.TestCase):
                         work_dir=Path(tmpdir) / "work",
                         policy=GeoParquetWritePolicy(
                             force_admin_columns=("STATEFP",),
+                            large_dataset_threshold_bytes=1,
                             preflight_chunk_rows=1,
                         ),
                     )
@@ -2003,6 +2051,7 @@ class ConversionTests(unittest.TestCase):
                     policy=GeoParquetWritePolicy(
                         derived_prefix_column="dfirm_id",
                         derived_prefix_partitions=(("state_fips", 2),),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )

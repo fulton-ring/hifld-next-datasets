@@ -598,11 +598,11 @@ def _select_admin_column(
     policy: GeoParquetWritePolicy,
     estimated_size: int,
 ) -> Optional[str]:
+    if estimated_size < policy.large_dataset_threshold_bytes:
+        return None
     for column in policy.force_admin_columns:
         if column in gdf.columns:
             return column
-    if estimated_size < policy.large_dataset_threshold_bytes:
-        return None
     for column in policy.candidate_admin_columns:
         if _is_usable_admin_column(gdf, column):
             return column
@@ -1687,11 +1687,15 @@ def _preflight_layer_with_histograms(
     with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
         source_schema = src.schema or {}
         resolved_policy = _resolved_policy_for_schema(source_schema, policy)
-        base_partitioning, base_columns = _select_streaming_partition_columns(
+        configured_partitioning, configured_columns = _select_streaming_partition_columns(
             source_schema, resolved_policy
         )
+        base_partitioning = (
+            "s2" if configured_partitioning == "s2" else "single_file"
+        )
+        base_columns = ["s2_parent_cell"] if base_partitioning == "s2" else []
         collect_s2_histograms = (
-            base_partitioning in {"single_file", "s2"} or policy.force_s2
+            configured_partitioning in {"single_file", "s2"} or policy.force_s2
         )
         names = _schema_property_names(source_schema)
         resolved_candidates = [
@@ -1867,6 +1871,25 @@ def _preflight_layer_with_histograms(
 
     selection_s2_kind = "semantic_s2"
     selection_s2_name = ""
+    if (
+        base_partitioning == "single_file"
+        and estimated_compressed_bytes >= policy.large_dataset_threshold_bytes
+    ):
+        if configured_partitioning not in {"single_file", "s2"}:
+            base_partitioning = configured_partitioning
+            base_columns = configured_columns
+        else:
+            forced_admin_column = (
+                _resolve_first_source_column(names, resolved_policy.force_admin_columns)
+                if resolved_policy.force_admin_columns
+                else None
+            )
+            if forced_admin_column is not None:
+                base_partitioning = "admin"
+                base_columns = [forced_admin_column]
+                selection_s2_kind = "candidate_s2"
+                selection_s2_name = forced_admin_column
+
     if (
         base_partitioning == "single_file"
         and estimated_compressed_bytes >= policy.large_dataset_threshold_bytes
