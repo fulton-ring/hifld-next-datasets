@@ -770,6 +770,115 @@ class RestoreStagingTests(unittest.TestCase):
                     self.assertNotIn("hifld_restore_candidate_", errors)
                     self.assertNotIn("/_temporary/restore-", errors)
 
+    def test_repeated_backup_copy_failure_reports_are_deterministic(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            source = Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["new"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            _write(staging, "dataset-a/file-a/v1/geojson/source.geojson", b"old")
+            original_copy = StagingStorageResource.copy_key_to
+
+            def fail_backup_copy(
+                source_storage,
+                destination_storage,
+                key,
+                destination_key=None,
+            ):
+                if destination_storage.prefix.endswith("/backup"):
+                    raise RuntimeError(
+                        "injected backup copy failure: "
+                        f"{destination_storage.prefix}/{destination_key or key}"
+                    )
+                return original_copy(
+                    source_storage,
+                    destination_storage,
+                    key,
+                    destination_key,
+                )
+
+            with patch.object(
+                StagingStorageResource,
+                "copy_key_to",
+                new=fail_backup_copy,
+            ):
+                reports = [
+                    restore_staging(
+                        published,
+                        staging,
+                        apply=True,
+                        overwrite=True,
+                    ).to_dict()
+                    for _ in range(2)
+                ]
+
+            self.assertEqual(
+                json.dumps(reports[0], sort_keys=True),
+                json.dumps(reports[1], sort_keys=True),
+            )
+            errors = " ".join(reports[0]["versions"][0]["errors"])
+            self.assertIn("<operation>/backup/dataset-a/file-a/v1", errors)
+            self.assertNotIn("_temporary/restore-", errors)
+
+    def test_repeated_cleanup_failure_reports_are_deterministic(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            source = Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["new"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            original_delete = StagingStorageResource.delete_prefix
+
+            def fail_operation_cleanup(storage, key_prefix):
+                if storage is staging and "_temporary/restore-" in key_prefix:
+                    raise RuntimeError(
+                        f"injected operation cleanup failure: {key_prefix}"
+                    )
+                return original_delete(storage, key_prefix)
+
+            with patch.object(
+                StagingStorageResource,
+                "delete_prefix",
+                new=fail_operation_cleanup,
+            ):
+                reports = [
+                    restore_staging(
+                        published,
+                        staging,
+                        apply=True,
+                    ).to_dict()
+                    for _ in range(2)
+                ]
+
+            self.assertEqual(
+                json.dumps(reports[0], sort_keys=True),
+                json.dumps(reports[1], sort_keys=True),
+            )
+            errors = " ".join(reports[0]["versions"][0]["errors"])
+            self.assertIn("injected operation cleanup failure: <operation>", errors)
+            self.assertNotIn("_temporary/restore-", errors)
+
     def test_injected_final_promotion_failure_restores_preexisting_state(self):
         with (
             tempfile.TemporaryDirectory() as published_dir,

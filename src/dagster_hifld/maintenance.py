@@ -250,23 +250,27 @@ def _stable_restore_error(
 ) -> str:
     message = f"{type(error).__name__}: {error}"
     if candidate is not None:
-        candidate_roots: list[str] = []
-        if candidate.use_local or not candidate.bucket:
-            candidate_root = Path(candidate.local_dir).resolve()
-            if candidate.prefix:
-                candidate_root /= candidate.prefix
-            candidate_roots.append(str(candidate_root))
-        elif candidate.bucket and candidate.prefix:
-            candidate_roots.extend(
-                (
-                    f"gs://{candidate.bucket}/{candidate.prefix}",
-                    f"{candidate.bucket}/{candidate.prefix}",
+        operation_prefix = candidate.prefix.removesuffix("/candidate")
+        if operation_prefix != candidate.prefix:
+            operation_roots = [operation_prefix]
+            if candidate.use_local or not candidate.bucket:
+                operation_roots.append(
+                    str(Path(candidate.local_dir).resolve() / operation_prefix)
                 )
+            elif candidate.bucket:
+                operation_roots.extend(
+                    (
+                        f"gs://{candidate.bucket}/{operation_prefix}",
+                        f"{candidate.bucket}/{operation_prefix}",
+                    )
+                )
+            for root in sorted(operation_roots, key=len, reverse=True):
+                message = message.replace(root.rstrip("/"), "<operation>")
+        elif candidate.use_local or not candidate.bucket:
+            message = message.replace(
+                str(Path(candidate.local_dir).resolve()).rstrip("/"),
+                "<candidate>",
             )
-        if candidate.prefix:
-            candidate_roots.append(candidate.prefix)
-        for root in sorted(candidate_roots, key=len, reverse=True):
-            message = message.replace(root.rstrip("/"), "<candidate>")
 
     system_temp_root = re.escape(str(Path(tempfile.gettempdir()).resolve()))
     return re.sub(
