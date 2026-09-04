@@ -40,6 +40,7 @@ from dagster_hifld.conversion import (
     geoparquet_policy_for,
     _to_wgs84,
     _write_geodataframe_parquet,
+    _zstd_compression_ratio,
     process_layer_partitioned_geoparquet,
     process_layer_chunked,
     process_staged_dataset_version,
@@ -1079,6 +1080,66 @@ class ConversionTests(unittest.TestCase):
             self.assertNotIn("s2", {row[0] for row in captured})
             self.assertNotIn("semantic_s2", {row[0] for row in captured})
 
+    def test_semantic_preflight_skips_representative_s2_cells(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "12"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            with patch(
+                "dagster_hifld.conversion._s2_cells_for_point",
+                wraps=_s2_cells_for_point,
+            ) as calculate_cells:
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(
+                            force_admin_columns=("STATEFP",),
+                        ),
+                    )
+                )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(calculate_cells.call_count, 0)
+
+    def test_preflight_coerces_sparse_batches_to_source_schema(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "12"], "name": [None, "present"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("STATEFP",),
+                        preflight_chunk_rows=1,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+
     def test_dense_level_16_cell_rolls_files_and_excludes_internal_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
@@ -1361,6 +1422,46 @@ class ConversionTests(unittest.TestCase):
                 list((Path(tmpdir) / "dataset/file/v1.0.0").rglob("*.parquet")), []
             )
 
+    def test_rollover_reserves_footer_budget_for_many_small_row_groups(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06"] * 100, "name": ["x"] * 100},
+                geometry=[Point(index, index) for index in range(100)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            target_file_size_bytes = 20 * 1024
+            max_row_group_bytes = 2 * 1024
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("STATEFP",),
+                        write_buffer_bytes=1,
+                        aggregate_buffer_bytes=10**9,
+                        target_file_size_bytes=target_file_size_bytes,
+                        max_row_group_bytes=max_row_group_bytes,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertTrue(result["layout"]["outputs"])
+            for output in result["layout"]["outputs"]:
+                if len(output["row_counts"]) > 1:
+                    self.assertLessEqual(
+                        output["file_size_bytes"],
+                        target_file_size_bytes + max_row_group_bytes,
+                    )
+
     def test_aggregate_buffer_budget_forces_partition_flushes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
@@ -1512,6 +1613,69 @@ class ConversionTests(unittest.TestCase):
 
             self.assertNotIn("error", result)
             self.assertGreater(select_level.call_args.args[1], target_file_size_bytes)
+
+    def test_compression_sample_reservoir_includes_late_batches(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {
+                    "STATEFP": ["06"] * 128,
+                    "name": ["early"] * 64 + ["late"] * 64,
+                },
+                geometry=[Point(index, index) for index in range(128)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            with patch(
+                "dagster_hifld.conversion._zstd_compression_ratio",
+                wraps=_zstd_compression_ratio,
+            ) as estimate_ratio:
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(
+                            force_admin_columns=("STATEFP",),
+                            preflight_chunk_rows=1,
+                        ),
+                    )
+                )
+
+            self.assertNotIn("error", result)
+            sample_tables = estimate_ratio.call_args.args[0]
+            sample_values = [
+                value
+                for table in sample_tables
+                for value in table.column("name").to_pylist()
+            ]
+            self.assertIn("early", sample_values)
+            self.assertIn("late", sample_values)
+            self.assertLessEqual(
+                sum(table.nbytes for table in sample_tables),
+                64 * 1024 * 1024,
+            )
+
+    def test_compression_ratio_uses_requested_zstd_level(self):
+        table = _geodataframe_to_geoparquet_arrow(
+            gpd.GeoDataFrame(
+                {"name": ["value"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            )
+        )
+        with patch(
+            "dagster_hifld.conversion.pq.write_table",
+            wraps=pq.write_table,
+        ) as write_table:
+            _zstd_compression_ratio([table], compression_level=3)
+
+        self.assertEqual(write_table.call_args.kwargs["compression_level"], 3)
 
     def test_preflight_and_write_feature_count_mismatch_fails_before_upload(self):
         features = [
