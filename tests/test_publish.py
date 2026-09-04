@@ -933,6 +933,62 @@ class PublishTests(unittest.TestCase):
             self.assertTrue(all(output["row_counts"] == [1] for output in layer_outputs))
             self.assertEqual(len({output["sha256"] for output in layer_outputs}), 2)
 
+    def test_partitioned_multilayer_publish_uses_original_layer_names_for_namespaces(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = (
+                Path(staging_dir)
+                / "dataset-a"
+                / "file-a"
+                / "v1.0.0"
+                / "geopackage"
+            )
+            version_dir.mkdir(parents=True)
+            source = version_dir / "source.gpkg"
+            gpd.GeoDataFrame(
+                {"name": ["slash"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, layer="roads/east", driver="GPKG")
+            gpd.GeoDataFrame(
+                {"name": ["dash"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, layer="roads-east", driver="GPKG", mode="a")
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            _write_and_publish_geoparquet(
+                storage,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+                GeoParquetWritePolicy(force_s2=True),
+            )
+
+            parquet_keys = sorted(
+                key
+                for key in storage.list_keys("dataset-a", "file-a", "v1.0.0")
+                if key.endswith(".parquet")
+            )
+            manifest = json.loads(
+                storage.read_bytes(
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                    "metadata/geoparquet_layout.json",
+                )
+            )
+
+            self.assertEqual(len(parquet_keys), 2)
+            self.assertEqual(
+                {layer["layer"] for layer in manifest["layers"]},
+                {"roads/east", "roads-east"},
+            )
+            self.assertEqual(
+                len(
+                    {
+                        layer["outputs"][0]["relative_path"]
+                        for layer in manifest["layers"]
+                    }
+                ),
+                2,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

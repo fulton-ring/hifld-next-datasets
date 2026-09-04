@@ -1471,7 +1471,10 @@ async def process_layer_partitioned_geoparquet(
         effective_policy.target_file_size_bytes,
     )
     source_schema: dict[str, Any] = {}
-    partitioned_layer_dir = _layer_output_namespace(layer_filename)
+    layout_layer_name = (
+        layer_filename if not layer_name or layer_name == "default" else layer_name
+    )
+    partitioned_layer_dir = _layer_output_namespace(layout_layer_name)
 
     def output_path(partition_dir: str) -> Path:
         index = next_part_index.get(partition_dir, 0)
@@ -1643,7 +1646,7 @@ async def process_layer_partitioned_geoparquet(
 
     layout = GeoParquetLayout(
         schema_version=1,
-        layer=layer_filename,
+        layer=layout_layer_name,
         source_format=format_type,
         feature_count=preflight.feature_count,
         partition_strategy=partitioning,
