@@ -296,6 +296,84 @@ class PublishTests(unittest.TestCase):
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/geoparquet").exists())
 
+    def test_copy_source_format_files_canonicalizes_valid_legacy_unknown_shapefile(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            unknown = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "unknown"
+            unknown.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["A"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(unknown / "source.shp")
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            keys = staging.list_keys("dataset-a", "file-a", "v1.0.0")
+
+            copied = _copy_source_format_files(
+                staging,
+                published,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+                keys,
+            )
+
+            self.assertTrue(copied)
+            self.assertTrue(all("/shapefile/source." in key for key in copied))
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
+            self.assertTrue(
+                (Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.shp").exists()
+            )
+
+    def test_copy_version_files_canonicalizes_legacy_unknown_without_copying_unknown(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            version_root = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0"
+            unknown = version_root / "unknown"
+            unknown.mkdir(parents=True)
+            (version_root / "metadata").mkdir()
+            (version_root / "metadata" / "quality_manifest.json").write_bytes(b"{}")
+            gpd.GeoDataFrame(
+                {"name": ["A"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(unknown / "source.shp")
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+
+            copied = _copy_version_files(staging, published, "dataset-a", "file-a", "v1.0.0")
+
+            self.assertIn("dataset-a/file-a/v1.0.0/shapefile/source.shp", copied)
+            self.assertIn("dataset-a/file-a/v1.0.0/metadata/quality_manifest.json", copied)
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
+
+    def test_copy_source_format_files_reports_and_skips_ambiguous_legacy_unknown(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            unknown = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "unknown"
+            unknown.mkdir(parents=True)
+            for name in ("source-a", "source-b"):
+                gpd.GeoDataFrame(
+                    {"name": [name]},
+                    geometry=[Point(0, 0)],
+                    crs="EPSG:4326",
+                ).to_file(unknown / f"{name}.shp")
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            keys = staging.list_keys("dataset-a", "file-a", "v1.0.0")
+
+            with self.assertLogs("dagster_hifld.assets.publish", level="WARNING") as logs:
+                copied = _copy_source_format_files(
+                    staging,
+                    published,
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                    keys,
+                )
+
+            self.assertEqual(copied, [])
+            self.assertIn("multiple Shapefile datasets", " ".join(logs.output))
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0").exists())
+
     def test_shapefile_publish_preserves_canonical_source_and_sidecars(self):
         with tempfile.TemporaryDirectory() as staging_dir:
             shapefile_dir = (

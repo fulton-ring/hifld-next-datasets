@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
+import geopandas as gpd
 from dagster import AssetKey, DagsterInstance, DynamicPartitionsDefinition, build_sensor_context
+from shapely.geometry import Point
 
 from dagster_hifld.assets import catalog as catalog_assets_module
 from dagster_hifld.assets import publish as publish_assets_module
@@ -25,6 +27,15 @@ from dagster_hifld.resources import StagingStorageResource
 
 
 class DynamicPartitionTests(unittest.TestCase):
+    @staticmethod
+    def _write_shapefile(path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        gpd.GeoDataFrame(
+            {"name": [path.stem]},
+            geometry=[Point(0, 0)],
+            crs="EPSG:4326",
+        ).to_file(path)
+
     def test_k8s_step_executor_requests_one_hundred_gib_scratch_pvc(self):
         definitions_source = (
             Path(__file__).resolve().parents[1] / "src" / "dagster_hifld" / "definitions.py"
@@ -150,6 +161,66 @@ class DynamicPartitionTests(unittest.TestCase):
             partition_key,
             result.dynamic_partitions_requests[0].partition_keys,
         )
+
+    def test_version_discovery_sensor_discovers_valid_legacy_unknown_shapefile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            legacy = (
+                Path(tmpdir)
+                / "legacy-dataset"
+                / "legacy-file"
+                / "v1.0.0"
+                / "unknown"
+                / "source.shp"
+            )
+            self._write_shapefile(legacy)
+            staging_storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            context = build_sensor_context(instance=DagsterInstance.ephemeral())
+
+            with patch(
+                "dagster_hifld.definitions.StagingStorageResource.from_env",
+                return_value=staging_storage,
+            ):
+                result = version_discovery_sensor(context)
+
+        self.assertTrue(result.dynamic_partitions_requests)
+        self.assertIn(
+            "legacy-dataset/legacy-file/v1.0.0",
+            result.dynamic_partitions_requests[0].partition_keys,
+        )
+
+    def test_version_discovery_sensor_reports_and_skips_ambiguous_legacy_unknown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            unknown = Path(tmpdir) / "legacy-dataset" / "legacy-file" / "v1.0.0" / "unknown"
+            self._write_shapefile(unknown / "source-a.shp")
+            self._write_shapefile(unknown / "source-b.shp")
+            staging_storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            context = build_sensor_context(instance=DagsterInstance.ephemeral())
+
+            with self.assertLogs("dagster_hifld.definitions", level="WARNING") as logs, patch(
+                "dagster_hifld.definitions.StagingStorageResource.from_env",
+                return_value=staging_storage,
+            ):
+                result = version_discovery_sensor(context)
+
+        self.assertEqual(result.dynamic_partitions_requests, [])
+        self.assertIn("multiple Shapefile datasets", " ".join(logs.output))
+
+    def test_version_discovery_sensor_reports_and_skips_incomplete_legacy_unknown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            unknown = Path(tmpdir) / "legacy-dataset" / "legacy-file" / "v1.0.0" / "unknown"
+            unknown.mkdir(parents=True)
+            (unknown / "source.shp").write_bytes(b"incomplete")
+            staging_storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            context = build_sensor_context(instance=DagsterInstance.ephemeral())
+
+            with self.assertLogs("dagster_hifld.definitions", level="WARNING") as logs, patch(
+                "dagster_hifld.definitions.StagingStorageResource.from_env",
+                return_value=staging_storage,
+            ):
+                result = version_discovery_sensor(context)
+
+        self.assertEqual(result.dynamic_partitions_requests, [])
+        self.assertIn("requires .shp, .shx, and .dbf sidecars", " ".join(logs.output))
 
     def test_version_discovery_sensor_registers_partition_when_catalog_metadata_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -285,6 +356,35 @@ class DynamicPartitionTests(unittest.TestCase):
                     "v1.0.0",
                 )
             ],
+        )
+
+    def test_iter_staged_version_paths_detects_complete_gcs_legacy_shapefile(self):
+        class FakeBlob:
+            def __init__(self, name):
+                self.name = name
+
+        class FakeStorageClient:
+            def list_blobs(self, bucket, prefix=None, match_glob=None):
+                if "/unknown/" not in match_glob:
+                    return []
+                root = "legacy-dataset/legacy-file/v1.0.0/unknown/source"
+                return [FakeBlob(f"{root}{suffix}") for suffix in (".SHP", ".SHX", ".DBF")]
+
+        storage = StagingStorageResource(
+            bucket="hifld-next-staging-prod",
+            use_local=False,
+            local_dir="data/staging",
+        )
+
+        with patch.dict(
+            "sys.modules",
+            {"google.cloud.storage": SimpleNamespace(Client=FakeStorageClient)},
+        ):
+            versions = list(_iter_staged_version_paths(storage) or [])
+
+        self.assertEqual(
+            versions,
+            [("legacy-dataset", "legacy-file", "v1.0.0")],
         )
 
 

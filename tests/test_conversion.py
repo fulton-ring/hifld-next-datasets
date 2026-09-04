@@ -158,15 +158,18 @@ class ConversionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "complete readable Shapefile"):
                 _discover_staged_formats(version_dir)
 
-    def test_discover_staged_formats_rejects_non_shapefile_legacy_unknown_contents(self):
+    def test_discover_staged_formats_ignores_non_shapefile_legacy_unknown_contents(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             version_dir = Path(tmpdir)
             unknown = version_dir / "unknown"
             unknown.mkdir()
             (unknown / "notes.txt").write_text("ambiguous", encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "complete readable Shapefile"):
-                _discover_staged_formats(version_dir)
+            try:
+                processed = _discover_staged_formats(version_dir)
+            except ValueError as exc:
+                self.fail(f"CSV-only unknown contents should not raise: {exc}")
+            self.assertEqual(processed, {})
 
     def test_discover_staged_formats_ignores_derived_output_directories(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -166,6 +166,24 @@ class CatalogTests(unittest.TestCase):
             self.assertIn((canonical, None), sources)
             self.assertNotIn((legacy, None), sources)
 
+    def test_iter_geospatial_sources_reads_nested_uppercase_legacy_shapefile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            legacy = version_dir / "unknown" / "nested" / "LEGACY.SHP"
+            legacy.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["legacy"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(legacy)
+            for generated in list(legacy.parent.iterdir()):
+                temporary = generated.with_name(f"{generated.name}.rename")
+                uppercase = generated.with_suffix(generated.suffix.upper())
+                generated.rename(temporary)
+                temporary.rename(uppercase)
+
+            self.assertEqual(list(_iter_geospatial_sources(version_dir)), [(legacy, None)])
+
     def test_generate_quality_manifest_supports_tabular_inputs(self):
         df = pd.DataFrame({"station_id": [1, 2], "name": ["A", None]})
 

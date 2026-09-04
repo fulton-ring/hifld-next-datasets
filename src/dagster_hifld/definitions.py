@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Iterable
 
 from dagster import (
     Definitions,
@@ -24,9 +26,15 @@ from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
 )
-from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
+from dagster_hifld.source_formats import (
+    CANONICAL_SOURCE_FORMAT_DIRS,
+    discover_legacy_unknown_shapefile,
+    discover_legacy_unknown_shapefile_keys,
+)
 
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
+_STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown"}
+logger = logging.getLogger(__name__)
 MAX_SENSOR_RUN_REQUESTS_PER_TICK = int(
     os.environ.get("HIFLD_SENSOR_MAX_RUN_REQUESTS_PER_TICK", "25")
 )
@@ -126,23 +134,63 @@ def _iter_staged_version_paths(storage: StagingStorageResource):
                     }
                     if format_dirs & _SOURCE_FORMAT_DIRS:
                         yield dataset_dir.name, file_dir.name, version_dir.name
+                        continue
+                    if "unknown" in format_dirs:
+                        try:
+                            legacy_source = discover_legacy_unknown_shapefile(
+                                version_dir / "unknown"
+                            )
+                        except ValueError as exc:
+                            logger.warning(
+                                "Skipping invalid legacy source %s: %s",
+                                version_dir / "unknown",
+                                exc,
+                            )
+                            continue
+                        if legacy_source is not None:
+                            yield dataset_dir.name, file_dir.name, version_dir.name
         return
 
-    seen: set[tuple[str, str, str]] = set()
-    for rel in _iter_gcs_staged_source_object_names(storage.bucket, prefix):
+    yield from _iter_validated_gcs_staged_versions(
+        _iter_gcs_staged_source_object_names(storage.bucket, prefix)
+    )
+
+
+def _iter_validated_gcs_staged_versions(
+    object_names: Iterable[str],
+):
+    keys_by_version: dict[tuple[str, str, str], list[str]] = {}
+    formats_by_version: dict[tuple[str, str, str], set[str]] = {}
+    for rel in object_names:
         parts = [part for part in rel.split("/") if part]
         if len(parts) < 5:
             continue
         dataset_slug, file_slug, version, format_dir = parts[:4]
         if not SEMVER_VERSION_RE.match(version):
             continue
-        if format_dir not in _SOURCE_FORMAT_DIRS:
+        if format_dir not in _STAGED_DISCOVERY_FORMAT_DIRS:
             continue
         candidate = (dataset_slug, file_slug, version)
-        if candidate in seen:
+        keys_by_version.setdefault(candidate, []).append(rel)
+        formats_by_version.setdefault(candidate, set()).add(format_dir)
+
+    for candidate, formats in formats_by_version.items():
+        if formats & _SOURCE_FORMAT_DIRS:
+            yield candidate
             continue
-        seen.add(candidate)
-        yield candidate
+        try:
+            legacy_keys = discover_legacy_unknown_shapefile_keys(
+                key for key in keys_by_version[candidate] if "/unknown/" in key
+            )
+        except ValueError as exc:
+            logger.warning(
+                "Skipping invalid legacy source %s/%s/%s/unknown: %s",
+                *candidate,
+                exc,
+            )
+            continue
+        if legacy_keys:
+            yield candidate
 
 
 def _iter_gcs_staged_source_object_names(bucket: str, prefix: str):
@@ -152,7 +200,7 @@ def _iter_gcs_staged_source_object_names(bucket: str, prefix: str):
 
         client = gcs_storage.Client()
         prefix_arg = f"{prefix.rstrip('/')}/" if prefix else None
-        for format_dir in sorted(_SOURCE_FORMAT_DIRS):
+        for format_dir in sorted(_STAGED_DISCOVERY_FORMAT_DIRS):
             glob = f"{prefix_arg or ''}*/*/v*.*.*/{format_dir}/**"
             for blob in client.list_blobs(
                 bucket,
@@ -232,7 +280,7 @@ def _iter_gcs_staged_source_object_names_for_dataset(
 ):
     prefix_arg = f"{prefix.rstrip('/')}/" if prefix else ""
     dataset_prefix = f"{prefix_arg}{dataset_slug}/"
-    for format_dir in sorted(_SOURCE_FORMAT_DIRS):
+    for format_dir in sorted(_STAGED_DISCOVERY_FORMAT_DIRS):
         glob = f"{dataset_prefix}*/v*.*.*/{format_dir}/**"
         for blob in client.list_blobs(
             bucket,
@@ -260,24 +308,15 @@ def _iter_staged_version_paths_for_gcs_tick(
     next_cursor = "0" if end >= len(dataset_slugs) else str(end)
     selected_slugs = dataset_slugs[start:end]
 
-    seen: set[tuple[str, str, str]] = set()
-    versions: list[tuple[str, str, str]] = []
-    for rel in _iter_gcs_staged_source_object_names_for_datasets(
-        storage.bucket or "",
-        prefix,
-        selected_slugs,
-    ):
-        parts = [part for part in rel.split("/") if part]
-        if len(parts) < 5:
-            continue
-        dataset_slug, file_slug, version, format_dir = parts[:4]
-        if not SEMVER_VERSION_RE.match(version) or format_dir not in _SOURCE_FORMAT_DIRS:
-            continue
-        candidate = (dataset_slug, file_slug, version)
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        versions.append(candidate)
+    versions = list(
+        _iter_validated_gcs_staged_versions(
+            _iter_gcs_staged_source_object_names_for_datasets(
+                storage.bucket or "",
+                prefix,
+                selected_slugs,
+            )
+        )
+    )
     return versions, next_cursor
 
 

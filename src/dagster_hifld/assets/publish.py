@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import tempfile
 from dataclasses import dataclass
@@ -42,10 +43,13 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
+    discover_legacy_unknown_shapefile,
+    shapefile_dataset_files,
 )
 
 _PROMOTED_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _PROCESSING_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_PRECEDENCE
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -88,7 +92,18 @@ def _copy_version_files(
         for key in keys
         if Path(key.removeprefix(version_prefix)).parts[0] != "unknown"
     ]
-    return sorted(staging_storage.copy_keys_to(published_storage, selected_keys))
+    copied = list(staging_storage.copy_keys_to(published_storage, selected_keys))
+    copied.extend(
+        _copy_legacy_unknown_shapefile(
+            staging_storage,
+            published_storage,
+            dataset_slug,
+            file_slug,
+            version,
+            keys,
+        )
+    )
+    return sorted(copied)
 
 
 def _copy_source_format_files(
@@ -114,7 +129,66 @@ def _copy_source_format_files(
         copied.append(
             published_storage.write(dataset_slug, file_slug, version, rel_path, contents)
         )
+    copied.extend(
+        _copy_legacy_unknown_shapefile(
+            staging_storage,
+            published_storage,
+            dataset_slug,
+            file_slug,
+            version,
+            keys,
+        )
+    )
     return copied
+
+
+def _copy_legacy_unknown_shapefile(
+    staging_storage: StagingStorageResource,
+    published_storage: PublishedStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    keys: list[str],
+) -> list[str]:
+    version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
+    if any(
+        key.startswith(f"{version_prefix}shapefile/")
+        and Path(key).suffix.lower() == ".shp"
+        for key in keys
+    ):
+        return []
+    if not any(key.startswith(f"{version_prefix}unknown/") for key in keys):
+        return []
+
+    with staging_storage.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
+        unknown_dir = Path(version_dir) / "unknown"
+        try:
+            legacy_shapefile = discover_legacy_unknown_shapefile(unknown_dir)
+        except ValueError as exc:
+            logger.warning(
+                "Skipping invalid legacy source %s/%s/%s/unknown: %s",
+                dataset_slug,
+                file_slug,
+                version,
+                exc,
+            )
+            return []
+        if legacy_shapefile is None:
+            return []
+
+        copied: list[str] = []
+        for source_file in shapefile_dataset_files(legacy_shapefile):
+            relative_source = source_file.relative_to(unknown_dir).as_posix()
+            copied.append(
+                published_storage.write(
+                    dataset_slug,
+                    file_slug,
+                    version,
+                    f"shapefile/{relative_source}",
+                    source_file.read_bytes(),
+                )
+            )
+        return copied
 
 
 def _copy_source_files(

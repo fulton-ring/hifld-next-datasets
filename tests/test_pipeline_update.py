@@ -115,6 +115,37 @@ class PipelineUpdateTests(unittest.TestCase):
         self.assertEqual(path, Path("file.shp"))
         self.assertEqual(fmt, "shapefile")
 
+    def test_processing_input_uses_each_step_of_the_canonical_fallback_chain(self):
+        formats = {
+            format_name: {
+                "format_type": format_name,
+                "data_file": Path(filename),
+                "layers": [],
+            }
+            for format_name, filename in (
+                ("file_geodatabase", "file.gdb"),
+                ("shapefile", "file.shp"),
+                ("geojson", "file.geojson"),
+            )
+        }
+        cases = (
+            (("file_geodatabase", "shapefile", "geojson"), "file_geodatabase"),
+            (("shapefile", "geojson"), "shapefile"),
+            (("geojson",), "geojson"),
+        )
+
+        for available_formats, expected_format in cases:
+            with self.subTest(available_formats=available_formats):
+                processed = {
+                    format_name: formats[format_name]
+                    for format_name in available_formats
+                }
+                selected, path, format_type = select_processing_input(processed)
+
+                self.assertIs(selected, formats[expected_format])
+                self.assertEqual(path, formats[expected_format]["data_file"])
+                self.assertEqual(format_type, expected_format)
+
     def test_processing_input_rejects_derived_outputs(self):
         processed = {
             "geoparquet": {

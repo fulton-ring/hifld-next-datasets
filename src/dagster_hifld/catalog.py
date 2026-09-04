@@ -298,10 +298,9 @@ def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
                         return gpd.read_file(str(path))
                 except Exception:
                     continue
-    unknown_dir = version_dir / "unknown"
     legacy_shapefile = None
-    if not canonical_shapefiles and any(unknown_dir.glob("*.shp")):
-        legacy_shapefile = discover_legacy_unknown_shapefile(unknown_dir)
+    if not canonical_shapefiles:
+        legacy_shapefile = discover_legacy_unknown_shapefile(version_dir / "unknown")
     if legacy_shapefile is not None:
         try:
             with _with_large_geojson_support():
@@ -377,11 +376,9 @@ def _iter_geospatial_sources(version_dir: Path):
     for path in _files_with_suffix(version_dir / "geojson", ".geojson"):
         yield path, None
     if not canonical_shapefiles:
-        unknown_dir = version_dir / "unknown"
-        if any(unknown_dir.glob("*.shp")):
-            legacy_shapefile = discover_legacy_unknown_shapefile(unknown_dir)
-            if legacy_shapefile is not None:
-                yield legacy_shapefile, None
+        legacy_shapefile = discover_legacy_unknown_shapefile(version_dir / "unknown")
+        if legacy_shapefile is not None:
+            yield legacy_shapefile, None
 
 
 def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gpd.GeoDataFrame, dict]:
