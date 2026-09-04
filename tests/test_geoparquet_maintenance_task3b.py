@@ -194,6 +194,130 @@ class Task3BTests(unittest.TestCase):
         self.assertEqual(client.headers["X-HIFLD-Query-Token"], "secret-token")
         self.assertNotIn("secret-token", json.dumps(report))
 
+    def test_audit_file_only_filter_scans_root_then_filters_in_memory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                ),
+            )
+            original_list = PublishedStorageResource.list_object_snapshots
+            with patch.object(
+                PublishedStorageResource,
+                "list_object_snapshots",
+                autospec=True,
+                side_effect=lambda storage, key_prefix="": original_list(
+                    storage, key_prefix
+                ),
+            ) as listing:
+                report = audit_geoparquet(storage, file="f")
+            self.assertEqual(report["status"], "compliant")
+            listing.assert_called_once_with(storage, "")
+
+    def test_audit_version_only_filter_scans_root_then_filters_in_memory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                ),
+            )
+            original_list = PublishedStorageResource.list_object_snapshots
+            with patch.object(
+                PublishedStorageResource,
+                "list_object_snapshots",
+                autospec=True,
+                side_effect=lambda storage, key_prefix="": original_list(
+                    storage, key_prefix
+                ),
+            ) as listing:
+                report = audit_geoparquet(storage, version="v")
+            self.assertEqual(report["status"], "compliant")
+            listing.assert_called_once_with(storage, "")
+
+    def test_audit_does_not_use_read_bytes_for_parquet_objects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                ),
+            )
+            original_read = PublishedStorageResource.read_bytes
+            with patch.object(
+                PublishedStorageResource,
+                "read_bytes",
+                autospec=True,
+                side_effect=lambda storage, dataset, file, version, key: original_read(
+                    storage, dataset, file, version, key
+                ),
+            ) as read:
+                report = audit_geoparquet(storage)
+            self.assertEqual(report["status"], "compliant")
+            self.assertEqual(read.call_count, 1)
+
+    def test_replace_rejects_candidate_parquet_outside_canonical_directory(self):
+        with (
+            tempfile.TemporaryDirectory() as production_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            production = PublishedStorageResource(
+                local_dir=production_dir, use_local=True
+            )
+            staging = StagingStorageResource(
+                local_dir=staging_dir, use_local=True, prefix="stage"
+            )
+            parquet = _parquet_bytes()
+            staging.write_key(
+                "_temporary/repack/run/d/f/v/geoparquet/part.parquet", parquet
+            )
+            staging.write_key(
+                "_temporary/repack/run/d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                ),
+            )
+            staging.write_key("_temporary/repack/run/d/f/v/stray.parquet", parquet)
+            report = replace_geoparquet(production, staging, "d", "f", "v", "run")
+            self.assertEqual(report["status"], "blocked")
+            self.assertIn("outside", " ".join(report["errors"]).lower())
+
+    def test_benchmark_rejects_non_mvt_success_and_hides_request_errors(self):
+        class Client:
+            def get(self, url, *, headers, timeout):
+                raise RuntimeError("request failed secret-token")
+
+        with patch.dict(os.environ, {"TILE_TOKEN": "secret-token"}):
+            report = benchmark_tiles(
+                "https://example.test",
+                "q1",
+                "TILE_TOKEN",
+                [(1, 2, 3)],
+                repetitions=1,
+                client=Client(),
+                clock=iter([0.0]).__next__,
+            )
+        self.assertEqual(report["status"], "violation")
+        self.assertNotIn("secret-token", json.dumps(report))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -920,6 +920,59 @@ def _footer_for_snapshot(
     return cast(_ParquetFile, cast(object, parquet.ParquetFile(io.BytesIO(data)))), data
 
 
+@contextmanager
+def _inspect_parquet_snapshot(
+    storage: StagingStorageResource,
+    snapshot: StorageObjectSnapshot,
+) -> Iterator[tuple[_ParquetFile, str]]:
+    """Open a footer while hashing in bounded chunks.
+
+    Local objects are opened in place. Remote objects are streamed once into a
+    temporary file so Parquet never requires a whole-object ``read_bytes`` call.
+    """
+    digest = hashlib.sha256()
+    if storage.use_local or not storage.bucket:
+        path = Path(storage.local_dir).resolve() / snapshot.key
+        with path.open("rb") as source:
+            while chunk := source.read(8 * 1024 * 1024):
+                digest.update(chunk)
+        from pyarrow import parquet
+
+        yield (
+            cast(_ParquetFile, cast(object, parquet.ParquetFile(path))),
+            digest.hexdigest(),
+        )
+        return
+
+    import gcsfs
+
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix="hifld_parquet_", suffix=".parquet", delete=False
+        ) as target:
+            temporary_path = Path(target.name)
+            fs = gcsfs.GCSFileSystem()
+            with fs.open(f"{storage.bucket}/{snapshot.key}", "rb") as source:
+                while chunk := source.read(8 * 1024 * 1024):
+                    if not isinstance(chunk, bytes):
+                        raise TypeError("GCS returned a non-byte Parquet chunk")
+                    digest.update(chunk)
+                    target.write(chunk)
+        from pyarrow import parquet
+
+        yield (
+            cast(
+                _ParquetFile,
+                cast(object, parquet.ParquetFile(temporary_path)),
+            ),
+            digest.hexdigest(),
+        )
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
 def _schema_fingerprint(parquet_file: _ParquetFile) -> str:
     schema_arrow = getattr(parquet_file, "schema_arrow", None)
     if schema_arrow is not None:
@@ -1062,32 +1115,33 @@ def _audit_version(
     hash_by_relative: dict[str, str] = {}
     for snapshot, relative in zip(parquet_snapshots, parquet_relative, strict=True):
         try:
-            footer, _data = _footer_for_snapshot(storage, snapshot)
-            metadata = footer.metadata
-            row_group_sizes: list[int] = []
-            row_count = 0
-            for index in range(metadata.num_row_groups):
-                row_group = metadata.row_group(index)
-                size = int(row_group.total_byte_size)
-                row_group_sizes.append(size)
-                total_uncompressed += size
-                total_row_groups += 1
-                row_count += int(row_group.num_rows)
-                if size > row_group_limit_bytes:
-                    reasons.append(
-                        f"row group exceeds {row_group_limit_bytes} bytes: {relative}"
-                    )
-            total_features += row_count
-            partition = "/".join(
-                part
-                for part in PurePosixPath(relative).parts[1:-1]
-                if "=" in part and not part.split("=", 1)[0].endswith("s2_parent_cell")
-            )
-            partition_bytes[partition] = partition_bytes.get(partition, 0) + sum(
-                row_group_sizes
-            )
-            footer_by_relative[relative] = (footer, snapshot, row_group_sizes)
-            hash_by_relative[relative] = hashlib.sha256(_data).hexdigest()
+            with _inspect_parquet_snapshot(storage, snapshot) as (footer, content_hash):
+                metadata = footer.metadata
+                row_group_sizes: list[int] = []
+                row_count = 0
+                for index in range(metadata.num_row_groups):
+                    row_group = metadata.row_group(index)
+                    size = int(row_group.total_byte_size)
+                    row_group_sizes.append(size)
+                    total_uncompressed += size
+                    total_row_groups += 1
+                    row_count += int(row_group.num_rows)
+                    if size > row_group_limit_bytes:
+                        reasons.append(
+                            f"row group exceeds {row_group_limit_bytes} bytes: {relative}"
+                        )
+                total_features += row_count
+                partition = "/".join(
+                    part
+                    for part in PurePosixPath(relative).parts[1:-1]
+                    if "=" in part
+                    and not part.split("=", 1)[0].endswith("s2_parent_cell")
+                )
+                partition_bytes[partition] = partition_bytes.get(partition, 0) + sum(
+                    row_group_sizes
+                )
+                footer_by_relative[relative] = (footer, snapshot, row_group_sizes)
+                hash_by_relative[relative] = content_hash
         except (OSError, ValueError, TypeError, RuntimeError) as exc:
             reasons.append(
                 f"unreadable parquet footer: {relative} ({type(exc).__name__})"
@@ -1249,7 +1303,15 @@ def audit_geoparquet(
 ) -> dict[str, object]:
     """Audit canonical GeoParquet without changing storage."""
     selector_parts = [part for part in (dataset, file, version) if part is not None]
-    listing_prefix = "/".join(selector_parts)
+    listing_prefix = (
+        dataset
+        if dataset is not None and file is None
+        else f"{dataset}/{file}"
+        if dataset is not None and file is not None and version is None
+        else f"{dataset}/{file}/{version}"
+        if dataset is not None and file is not None and version is not None
+        else ""
+    )
     snapshots = published.list_object_snapshots(listing_prefix)
     grouped: dict[VersionIdentity, list[StorageObjectSnapshot]] = {}
     for snapshot in snapshots:
@@ -1342,7 +1404,31 @@ def replace_geoparquet(
                 "errors": [namespace_error],
             }
         )
+    identity = VersionIdentity(dataset, file, version)
     candidate = _candidate_storage_for_repack(staging, run_id)
+    candidate_version_prefix = f"{dataset}/{file}/{version}/"
+    stray_candidate_parquet = tuple(
+        sorted(
+            _logical_key(candidate, snapshot.key)
+            for snapshot in candidate.list_object_snapshots(identity.prefix)
+            if (logical := _logical_key(candidate, snapshot.key)).startswith(
+                candidate_version_prefix
+            )
+            and logical.endswith(".parquet")
+            and not logical.startswith(f"{candidate_version_prefix}geoparquet/")
+        )
+    )
+    if stray_candidate_parquet:
+        return MaintenanceJsonReport(
+            {
+                "action": "replace-geoparquet",
+                "status": "blocked",
+                "errors": [
+                    "Candidate Parquet object outside geoparquet/: "
+                    + ", ".join(stray_candidate_parquet)
+                ],
+            }
+        )
     candidate_report = audit_geoparquet(
         candidate,
         dataset=dataset,
@@ -1360,7 +1446,6 @@ def replace_geoparquet(
                 "errors": ["Candidate GeoParquet failed audit."],
             }
         )
-    identity = VersionIdentity(dataset, file, version)
     production_snapshots = {
         _logical_key(published, snapshot.key): snapshot
         for snapshot in published.list_object_snapshots(identity.prefix)
@@ -1561,7 +1646,7 @@ def benchmark_tiles(
                         headers={"X-HIFLD-Query-Token": token},
                         timeout=hard_timeout_seconds,
                     )
-                except (OSError, ValueError, RuntimeError) as exc:
+                except (httpx.HTTPError, OSError, ValueError, RuntimeError) as exc:
                     errors.append(f"HTTP error for {z}/{x}/{y}: {type(exc).__name__}")
                     continue
                 duration = round(clock() - started, 3)
@@ -1572,6 +1657,18 @@ def benchmark_tiles(
                     errors.append(
                         f"HTTP failure for {z}/{x}/{y}: status {response.status_code}"
                     )
+                if response.status_code == 200:
+                    response_headers = getattr(response, "headers", {})
+                    content_type = (
+                        str(response_headers.get("content-type", ""))
+                        .split(";", 1)[0]
+                        .strip()
+                        .lower()
+                    )
+                    if content_type != "application/vnd.mapbox-vector-tile":
+                        errors.append(
+                            f"Invalid MVT content type for {z}/{x}/{y}: {content_type or 'missing'}"
+                        )
                 if duration >= hard_timeout_seconds:
                     errors.append(f"Hard timeout exceeded for {z}/{x}/{y}")
             median = round(statistics.median(durations), 3) if durations else None
