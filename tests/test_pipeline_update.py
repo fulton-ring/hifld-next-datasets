@@ -278,7 +278,14 @@ class PipelineUpdateTests(unittest.TestCase):
             version_root = Path(published_dir) / "dataset-a" / "file-a" / "v1.0.0"
             self.assertTrue((Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "metadata" / "quality_manifest.json").exists())
             self.assertTrue((version_root / "geopackage" / "source.gpkg").exists())
-            self.assertTrue((version_root / "geoparquet" / "file-a.parquet").exists())
+            self.assertTrue(
+                (
+                    version_root
+                    / "geoparquet"
+                    / "layer-source"
+                    / "file-a.parquet"
+                ).exists()
+            )
             self.assertTrue((version_root / "metadata" / "data_dictionary.json").exists())
             self.assertTrue(any(path.suffix == ".zip" for path in (version_root / "shapefile").iterdir()))
             self.assertTrue(result["api_payload"]["files"])
@@ -313,10 +320,12 @@ class PipelineUpdateTests(unittest.TestCase):
                 storage_location_name="Local published",
             )
 
-            self.assertTrue(existing_file.exists())
-            self.assertNotEqual(existing_file.read_bytes(), b"exists")
+            replacement_file = existing / "layer-source" / "file-a.parquet"
+            self.assertFalse(existing_file.exists())
+            self.assertTrue(replacement_file.exists())
+            self.assertNotEqual(replacement_file.read_bytes(), b"exists")
             self.assertIn(
-                "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet",
+                "dataset-a/file-a/v1.0.0/geoparquet/layer-source/file-a.parquet",
                 [output.path for output in result["outputs"]],
             )
 

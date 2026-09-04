@@ -1471,6 +1471,7 @@ async def process_layer_partitioned_geoparquet(
         effective_policy.target_file_size_bytes,
     )
     source_schema: dict[str, Any] = {}
+    has_named_source_layer = bool(layer_name and layer_name != "default")
     layout_layer_name = (
         layer_filename if not layer_name or layer_name == "default" else layer_name
     )
@@ -1488,9 +1489,9 @@ async def process_layer_partitioned_geoparquet(
         else:
             filename = f"part-{index:03d}.parquet"
         path_root = (
-            geoparquet_dir
-            if partitioning == "single_file"
-            else geoparquet_dir / partitioned_layer_dir
+            geoparquet_dir / partitioned_layer_dir
+            if partitioning != "single_file" or has_named_source_layer
+            else geoparquet_dir
         )
         path = path_root / partition_dir / filename
         path.parent.mkdir(parents=True, exist_ok=True)
