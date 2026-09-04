@@ -158,7 +158,8 @@ GEOPARQUET_POLICY_REGISTRY: dict[tuple[str, str], GeoParquetWritePolicy] = {
         derived_prefix_partitions=(("state_fips", 2),),
     ),
     ("census-block-groups-3", "census-block-groups-3"): GeoParquetWritePolicy(
-        force_admin_columns=("STATEFP",)
+        # TIGER/Line source metadata uses STATE; retain STATEFP for older inputs.
+        force_admin_columns=("STATEFP", "STATE")
     ),
     ("voting-districts", "voting-districts"): GeoParquetWritePolicy(
         force_admin_columns=("STATE",)

@@ -240,6 +240,25 @@ class PipelineUpdateTests(unittest.TestCase):
         self.assertFalse(generic_policy.force_s2)
         self.assertEqual(small_census_policy.force_admin_columns, ())
 
+    def test_census_block_groups_policy_accepts_live_state_column(self):
+        policy = geoparquet_policy_for("census-block-groups-3", "census-block-groups-3")
+        self.assertEqual(policy.force_admin_columns, ("STATEFP", "STATE"))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = write_geoparquet_dataset(
+                gpd.GeoDataFrame(
+                    {"STATE": ["06", "12"]},
+                    geometry=[Point(-120, 35), Point(-80, 28)],
+                    crs="EPSG:4326",
+                ),
+                Path(tmpdir),
+                "census-block-groups-3",
+                policy,
+            )
+
+        self.assertEqual(result.partition_columns, ["STATE"])
+        self.assertEqual(result.source_metadata["partition_columns"], ["STATE"])
+
     def test_api_register_payload_uses_glob_for_partitioned_geoparquet(self):
         api = Mock()
         api.enabled = True
