@@ -1269,7 +1269,13 @@ class ConversionTests(unittest.TestCase):
             storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
 
             def simulated_sizes(path):
-                return [200] if pq.ParquetFile(path).metadata.num_rows > 1 else [50]
+                metadata = pq.ParquetFile(path).metadata
+                if path.name.startswith(".candidate-"):
+                    return [2_000] if metadata.num_rows > 1 else [50]
+                return [
+                    metadata.row_group(index).total_byte_size
+                    for index in range(metadata.num_row_groups)
+                ]
 
             with patch(
                 "dagster_hifld.conversion._row_group_uncompressed_sizes",
@@ -1284,7 +1290,7 @@ class ConversionTests(unittest.TestCase):
                         dest_folder="dataset/file/v1.0.0/",
                         dest_storage=_StorageAdapter(storage),
                         work_dir=Path(tmpdir) / "work",
-                        policy=GeoParquetWritePolicy(max_row_group_bytes=100),
+                        policy=GeoParquetWritePolicy(max_row_group_bytes=1_000),
                     )
                 )
 
@@ -1319,6 +1325,38 @@ class ConversionTests(unittest.TestCase):
                 )
 
             self.assertIn("single feature", result["error"].lower())
+            self.assertEqual(
+                list((Path(tmpdir) / "dataset/file/v1.0.0").rglob("*.parquet")), []
+            )
+
+    def test_finalization_rechecks_closed_row_group_sizes_before_upload(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["feature"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            with patch(
+                "dagster_hifld.conversion._row_group_uncompressed_sizes",
+                side_effect=[[50], [200]],
+            ):
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(max_row_group_bytes=100),
+                    )
+                )
+
+            self.assertIn("row group", result["error"].lower())
             self.assertEqual(
                 list((Path(tmpdir) / "dataset/file/v1.0.0").rglob("*.parquet")), []
             )
@@ -1403,6 +1441,77 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(output["row_counts"], [1, 1, 1])
             parquet_path = Path(tmpdir) / output["path"]
             self.assertEqual(pq.ParquetFile(parquet_path).metadata.num_row_groups, 3)
+            self.assertEqual(
+                output["row_group_uncompressed_sizes"],
+                _row_group_uncompressed_sizes(parquet_path),
+            )
+
+    def test_compressible_large_uncompressed_layer_stays_single_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["repeated-value"] * 2_000},
+                geometry=[Point(index, index) for index in range(2_000)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        large_dataset_threshold_bytes=100_000,
+                        target_file_size_bytes=10**9,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["partitioning"], "single_file")
+            self.assertLess(
+                result["layout"]["thresholds"]["estimated_compressed_bytes"],
+                100_000,
+            )
+
+    def test_s2_level_selection_receives_compressed_target_as_uncompressed_budget(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["repeated-value"] * 2_000},
+                geometry=[Point(index, index) for index in range(2_000)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            target_file_size_bytes = 1_000_000_000
+
+            with patch(
+                "dagster_hifld.conversion._select_s2_level",
+                wraps=_select_s2_level,
+            ) as select_level:
+                result = asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(
+                            force_s2=True,
+                            target_file_size_bytes=target_file_size_bytes,
+                        ),
+                    )
+                )
+
+            self.assertNotIn("error", result)
+            self.assertGreater(select_level.call_args.args[1], target_file_size_bytes)
 
     def test_preflight_and_write_feature_count_mismatch_fails_before_upload(self):
         features = [

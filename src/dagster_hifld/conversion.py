@@ -77,6 +77,7 @@ DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES = 128 * 1024 * 1024
 DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES = 512 * 1024 * 1024
 DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_GEOPARQUET_TARGET_FILE_BYTES = 2 * 1024 * 1024 * 1024
+DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES = 64 * 1024 * 1024
 DEFAULT_S2_CANDIDATE_LEVELS = tuple(range(2, 17))
 
 
@@ -871,7 +872,7 @@ class GeoParquetLayout:
     partition_columns: list[str]
     hive_partition_columns: dict[str, str]
     chosen_s2_level: int | None
-    thresholds: dict[str, int]
+    thresholds: dict[str, int | float]
     outputs: list[GeoParquetOutputLayout]
     validation_status: str
 
@@ -880,6 +881,8 @@ class GeoParquetLayout:
 class _GeoParquetPreflight:
     feature_count: int
     uncompressed_bytes: int
+    estimated_compressed_bytes: int
+    compression_ratio: float
     estimate_multiplier: float
     partitioning: str
     partition_columns: list[str]
@@ -905,8 +908,6 @@ class _FeatureBuffer:
 class _ParquetWriterState:
     path: Path
     writer: pq.ParquetWriter
-    row_counts: list[int]
-    row_group_uncompressed_sizes: list[int]
 
 
 class _PreflightHistogramStore:
@@ -1195,6 +1196,15 @@ def _select_s2_level(
     return candidate_levels[-1]
 
 
+def _s2_uncompressed_target_bytes(
+    compressed_target_bytes: int, compression_ratio: float
+) -> int:
+    """Translate a compressed file target into an uncompressed histogram budget."""
+    if compression_ratio <= 0:
+        return compressed_target_bytes
+    return max(1, int(compressed_target_bytes / compression_ratio))
+
+
 def _policy_s2_levels(policy: GeoParquetWritePolicy) -> tuple[int, ...]:
     if policy.s2_candidate_levels != DEFAULT_S2_CANDIDATE_LEVELS:
         return policy.s2_candidate_levels
@@ -1393,6 +1403,30 @@ def _canonicalize_geoparquet_batch_metadata(table: pa.Table) -> pa.Table:
     return table.replace_schema_metadata(canonical_metadata)
 
 
+def _zstd_compression_ratio(sample_tables: list[pa.Table]) -> float:
+    """Estimate compressed bytes per Arrow byte from one bounded sample."""
+    if not sample_tables:
+        return 1.0
+    schema_metadata = sample_tables[0].schema.metadata
+    tables = [
+        table.replace_schema_metadata(schema_metadata)
+        for table in sample_tables
+    ]
+    sample = tables[0] if len(tables) == 1 else pa.concat_tables(tables)
+    uncompressed_bytes = max(1, sample.nbytes)
+    sink = pa.BufferOutputStream()
+    pq.write_table(
+        sample,
+        sink,
+        compression="zstd",
+        compression_level=15,
+        data_page_size=DEFAULT_DATA_PAGE_SIZE_BYTES,
+        row_group_size=max(1, len(sample)),
+    )
+    compressed_bytes = sink.getvalue().size
+    return max(0.01, compressed_bytes / uncompressed_bytes)
+
+
 def _row_group_uncompressed_sizes(path: Path) -> list[int]:
     metadata = pq.ParquetFile(path).metadata
     return [
@@ -1481,6 +1515,8 @@ def _preflight_layer_with_histograms(
     s2_levels = _policy_s2_levels(policy)
     finest_s2_level = max(s2_levels, default=0)
     serialized_bytes = 0
+    compression_sample_tables: list[pa.Table] = []
+    compression_sample_bytes = 0
     candidate_non_null: dict[str, int] = {}
 
     with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
@@ -1501,11 +1537,14 @@ def _preflight_layer_with_histograms(
         batch: list[dict[str, Any]] = []
 
         def measure_batch(features: list[dict[str, Any]]) -> None:
+            nonlocal compression_sample_bytes
             nonlocal feature_count, serialized_bytes, uncompressed_bytes
             if not features:
                 return
             gdf = gpd.GeoDataFrame.from_features(features, crs=current_crs)
-            table = _geodataframe_to_geoparquet_arrow(gdf)
+            table = _canonicalize_geoparquet_batch_metadata(
+                _geodataframe_to_geoparquet_arrow(gdf)
+            )
             batch_bytes = max(len(features), table.nbytes)
             feature_sizes = [max(1, _estimate_feature_size_bytes(feature)) for feature in features]
             batch_serialized_bytes = sum(feature_sizes)
@@ -1513,6 +1552,24 @@ def _preflight_layer_with_histograms(
             feature_count += len(features)
             uncompressed_bytes += batch_bytes
             serialized_bytes += batch_serialized_bytes
+            if compression_sample_bytes < DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES:
+                remaining = (
+                    DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
+                    - compression_sample_bytes
+                )
+                sample_table = table
+                if table.nbytes > remaining and len(table) > 1:
+                    sample_rows = max(
+                        1,
+                        min(
+                            len(table),
+                            int(len(table) * remaining / max(1, table.nbytes)),
+                        ),
+                    )
+                    sample_table = table.slice(0, sample_rows)
+                if sample_table.nbytes <= remaining:
+                    compression_sample_tables.append(sample_table)
+                    compression_sample_bytes += sample_table.nbytes
             updates: dict[tuple[str, str, int, str], tuple[int, int]] = {}
 
             def add_update(
@@ -1611,6 +1668,8 @@ def _preflight_layer_with_histograms(
         return _GeoParquetPreflight(
             feature_count=0,
             uncompressed_bytes=0,
+            estimated_compressed_bytes=0,
+            compression_ratio=1.0,
             estimate_multiplier=1.0,
             partitioning="single_file",
             partition_columns=[],
@@ -1619,11 +1678,16 @@ def _preflight_layer_with_histograms(
             resolved_policy=resolved_policy,
         )
 
+    compression_ratio = _zstd_compression_ratio(compression_sample_tables)
+    estimated_compressed_bytes = max(
+        1, int(uncompressed_bytes * compression_ratio)
+    )
+
     selection_s2_kind = "semantic_s2"
     selection_s2_name = ""
     if (
         base_partitioning == "single_file"
-        and uncompressed_bytes >= policy.large_dataset_threshold_bytes
+        and estimated_compressed_bytes >= policy.large_dataset_threshold_bytes
     ):
         for column in candidate_non_null:
             cardinality = histogram_store.cardinality("candidate", column)
@@ -1639,7 +1703,7 @@ def _preflight_layer_with_histograms(
 
     needs_s2 = policy.force_s2 or (
         base_partitioning == "single_file"
-        and uncompressed_bytes >= policy.large_dataset_threshold_bytes
+        and estimated_compressed_bytes >= policy.large_dataset_threshold_bytes
     )
     chosen_s2_level = None
     partitioning = base_partitioning
@@ -1659,7 +1723,9 @@ def _preflight_layer_with_histograms(
                 ),
                 s2_levels,
             ),
-            policy.target_file_size_bytes,
+            _s2_uncompressed_target_bytes(
+                policy.target_file_size_bytes, compression_ratio
+            ),
             s2_levels,
         )
         if base_partitioning == "single_file":
@@ -1674,6 +1740,8 @@ def _preflight_layer_with_histograms(
     return _GeoParquetPreflight(
         feature_count=feature_count,
         uncompressed_bytes=uncompressed_bytes,
+        estimated_compressed_bytes=estimated_compressed_bytes,
+        compression_ratio=compression_ratio,
         estimate_multiplier=uncompressed_bytes / max(1, serialized_bytes),
         partitioning=partitioning,
         partition_columns=partition_columns,
@@ -1771,6 +1839,15 @@ async def process_layer_partitioned_geoparquet(
             return
         state.writer.close()
         metadata = pq.ParquetFile(state.path).metadata
+        row_group_uncompressed_sizes = _row_group_uncompressed_sizes(state.path)
+        if any(
+            size > effective_policy.max_row_group_bytes
+            for size in row_group_uncompressed_sizes
+        ):
+            raise ValueError(
+                "A GeoParquet row group exceeds the hard limit of "
+                f"{effective_policy.max_row_group_bytes} uncompressed bytes."
+            )
         row_counts = [
             metadata.row_group(index).num_rows
             for index in range(metadata.num_row_groups)
@@ -1786,7 +1863,7 @@ async def process_layer_partitioned_geoparquet(
                 file_size_bytes=state.path.stat().st_size,
                 sha256=_sha256_file(state.path),
                 row_counts=row_counts,
-                row_group_uncompressed_sizes=state.row_group_uncompressed_sizes,
+                row_group_uncompressed_sizes=row_group_uncompressed_sizes,
             )
         )
 
@@ -1816,8 +1893,11 @@ async def process_layer_partitioned_geoparquet(
                 data_page_size=DEFAULT_DATA_PAGE_SIZE_BYTES,
                 row_group_size=max(1, len(prepared)),
             )
-            row_group_sizes = _row_group_uncompressed_sizes(candidate)
-            if max(row_group_sizes, default=0) > effective_policy.max_row_group_bytes:
+            probe_row_group_sizes = _row_group_uncompressed_sizes(candidate)
+            if (
+                max(probe_row_group_sizes, default=0)
+                > effective_policy.max_row_group_bytes
+            ):
                 if len(buffered) == 1:
                     raise ValueError(
                         "A single feature exceeds the GeoParquet row-group hard limit "
@@ -1832,7 +1912,11 @@ async def process_layer_partitioned_geoparquet(
             candidate_size = candidate.stat().st_size
             if (
                 state is not None
-                and state.path.stat().st_size + candidate_size
+                and (
+                    state.path.stat().st_size
+                    + candidate_size
+                    + effective_policy.max_row_group_bytes
+                )
                 > effective_policy.target_file_size_bytes
             ):
                 finalize_writer(partition_dir)
@@ -1848,13 +1932,9 @@ async def process_layer_partitioned_geoparquet(
                         compression_level=effective_policy.compression_level,
                         data_page_size=DEFAULT_DATA_PAGE_SIZE_BYTES,
                     ),
-                    row_counts=[],
-                    row_group_uncompressed_sizes=[],
                 )
                 writers[partition_dir] = state
             state.writer.write_table(table, row_group_size=max(1, len(prepared)))
-            state.row_counts.append(len(prepared))
-            state.row_group_uncompressed_sizes.extend(row_group_sizes)
             written_feature_count += len(prepared)
         finally:
             candidate.unlink(missing_ok=True)
@@ -1985,6 +2065,8 @@ async def process_layer_partitioned_geoparquet(
         chosen_s2_level=preflight.chosen_s2_level,
         thresholds={
             "large_dataset_bytes": effective_policy.large_dataset_threshold_bytes,
+            "estimated_compressed_bytes": preflight.estimated_compressed_bytes,
+            "compression_ratio": preflight.compression_ratio,
             "row_group_target_bytes": effective_policy.target_row_group_bytes,
             "write_buffer_bytes": effective_policy.write_buffer_bytes,
             "max_row_group_bytes": effective_policy.max_row_group_bytes,
