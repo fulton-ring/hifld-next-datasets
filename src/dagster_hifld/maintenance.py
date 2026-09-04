@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import re
+import statistics
 import tempfile
+import time
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Protocol, cast
 
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.resources import (
@@ -19,16 +24,56 @@ from dagster_hifld.resources import (
     StorageObjectSnapshot,
     snapshots_content_match,
 )
-from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     SHAPEFILE_DATASET_SUFFIXES,
     SOURCE_FORMAT_EXTENSIONS,
     discover_legacy_unknown_shapefile_keys,
 )
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 
 _IGNORED_ROOTS = frozenset({"_temporary", "_rollback"})
 _REQUIRED_SHAPEFILE_SUFFIXES = frozenset({".shp", ".shx", ".dbf"})
+_DEFAULT_ROW_GROUP_LIMIT = 128 * 1024 * 1024
+_DEFAULT_S2_LIMIT = 1024 * 1024 * 1024
+
+
+class _TileResponse(Protocol):
+    status_code: int
+    content: bytes
+
+
+class _TileClient(Protocol):
+    def get(
+        self, url: str, *, headers: Mapping[str, str], timeout: float
+    ) -> _TileResponse: ...
+
+
+class _ParquetRowGroup(Protocol):
+    num_rows: int
+    total_byte_size: int
+
+
+class _ParquetMetadata(Protocol):
+    num_row_groups: int
+
+    def row_group(self, index: int) -> _ParquetRowGroup: ...
+
+
+class _ParquetFile(Protocol):
+    metadata: _ParquetMetadata
+    schema_arrow: object
+
+
+class MaintenanceJsonReport(dict[str, object]):
+    """Mapping report with the same ``to_dict`` convenience as legacy reports."""
+
+    def to_dict(self) -> dict[str, object]:
+        return dict(self)
+
+    @property
+    def has_failures(self) -> bool:
+        return self.get("status") != "compliant"
 
 
 @dataclass(frozen=True, order=True)
@@ -342,7 +387,7 @@ def restore_staging(
                     metadata_snapshots=item.metadata_snapshots,
                 )
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             results.append(
                 VersionMaintenanceResult(
                     item.dataset,
@@ -463,7 +508,7 @@ def _candidate_storage(
     except IncompleteRollbackError as rollback_error:
         try:
             staging.delete_prefix(candidate.prefix)
-        except Exception as cleanup_error:
+        except Exception as cleanup_error:  # noqa: BLE001
             raise IncompleteRollbackError(
                 f"{rollback_error} Candidate cleanup also failed ({cleanup_error})."
             ) from rollback_error
@@ -781,7 +826,7 @@ def _promote_candidate(
                 mutations,
                 backup_snapshots_by_destination,
             )
-        except Exception as rollback_error:
+        except Exception as rollback_error:  # noqa: BLE001
             raise IncompleteRollbackError(
                 f"Final promotion failed ({promotion_error}); rollback also failed "
                 f"({rollback_error}). Recovery backup retained at "
@@ -822,12 +867,750 @@ def _rollback_promotions(
         )
 
 
+def _mapping(value: object) -> Mapping[str, object] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _string(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _integer(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _layout_relative_path(path: str, identity: VersionIdentity) -> str | None:
+    prefix = f"{identity.prefix}/"
+    relative = path.removeprefix(prefix)
+    if relative == path or not relative.startswith("geoparquet/"):
+        return None
+    return relative
+
+
+def _read_snapshot_bytes(
+    storage: StagingStorageResource, snapshot: StorageObjectSnapshot
+) -> bytes:
+    logical = _logical_key(storage, snapshot.key)
+    parts = PurePosixPath(logical).parts
+    if len(parts) >= 4:
+        data = storage.read_bytes(parts[0], parts[1], parts[2], "/".join(parts[3:]))
+    elif storage.use_local or not storage.bucket:
+        data = (Path(storage.local_dir).resolve() / snapshot.key).read_bytes()
+    else:
+        import gcsfs
+
+        data = gcsfs.GCSFileSystem().read_bytes(f"{storage.bucket}/{snapshot.key}")
+    if not isinstance(data, bytes):
+        raise TypeError(f"Storage returned non-bytes content: {logical}")
+    return data
+
+
+def _footer_for_snapshot(
+    storage: StagingStorageResource,
+    snapshot: StorageObjectSnapshot,
+) -> tuple[_ParquetFile, bytes]:
+    """Read one footer, materializing at most one object per call.
+
+    The returned ParquetFile is intentionally typed as object because pyarrow's
+    stubs do not expose a stable common protocol across supported versions.
+    """
+    from pyarrow import parquet
+
+    data = _read_snapshot_bytes(storage, snapshot)
+    return cast(_ParquetFile, cast(object, parquet.ParquetFile(io.BytesIO(data)))), data
+
+
+def _schema_fingerprint(parquet_file: _ParquetFile) -> str:
+    schema_arrow = getattr(parquet_file, "schema_arrow", None)
+    if schema_arrow is not None:
+        metadata = getattr(schema_arrow, "metadata", None)
+        if metadata is not None:
+            schema_arrow = schema_arrow.remove_metadata()
+        return str(schema_arrow)
+    schema = getattr(parquet_file, "schema", None)
+    return str(schema)
+
+
+def _geo_crs_fingerprint(parquet_file: _ParquetFile) -> str | None:
+    schema_arrow = getattr(parquet_file, "schema_arrow", None)
+    metadata = getattr(schema_arrow, "metadata", None)
+    if not isinstance(metadata, Mapping):
+        return None
+    raw = metadata.get(b"geo")
+    if not isinstance(raw, bytes):
+        return None
+    try:
+        geo = _mapping(json.loads(raw))
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if geo is None:
+        return None
+    primary = _string(geo.get("primary_column"))
+    columns = _mapping(geo.get("columns"))
+    if primary is None or columns is None:
+        return None
+    primary_meta = _mapping(columns.get(primary))
+    if primary_meta is None:
+        return None
+    crs = primary_meta.get("crs")
+    return json.dumps(crs, sort_keys=True, default=str)
+
+
+def _audit_version(
+    storage: StagingStorageResource,
+    identity: VersionIdentity,
+    snapshots: tuple[StorageObjectSnapshot, ...],
+    *,
+    row_group_limit_bytes: int,
+    s2_limit_bytes: int,
+) -> dict[str, object]:
+    reasons: list[str] = []
+    version_prefix = f"{identity.prefix}/"
+    logical = {
+        snapshot.key: _logical_key(storage, snapshot.key) for snapshot in snapshots
+    }
+    parquet_snapshots = tuple(
+        sorted(
+            (
+                snapshot
+                for snapshot in snapshots
+                if (
+                    relative := logical[snapshot.key].removeprefix(version_prefix)
+                ).startswith("geoparquet/")
+                and relative.endswith(".parquet")
+            ),
+            key=lambda snapshot: logical[snapshot.key],
+        )
+    )
+    parquet_relative = tuple(
+        logical[snapshot.key].removeprefix(version_prefix)
+        for snapshot in parquet_snapshots
+    )
+    manifest_key = _storage_key(
+        storage, f"{identity.prefix}/metadata/geoparquet_layout.json"
+    )
+    manifest_snapshot = storage.object_snapshot(manifest_key)
+    manifest: Mapping[str, object] | None = None
+    if manifest_snapshot is None:
+        reasons.append("missing layout manifest")
+    else:
+        try:
+            manifest = _mapping(
+                json.loads(_read_snapshot_bytes(storage, manifest_snapshot))
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            reasons.append("unreadable layout manifest")
+        if manifest is None:
+            reasons.append("layout manifest is not an object")
+
+    layers_value = manifest.get("layers") if manifest is not None else None
+    layers = (
+        tuple(layer for layer in layers_value if _mapping(layer) is not None)
+        if isinstance(layers_value, list)
+        else ()
+    )
+    if manifest is not None and (
+        manifest.get("schema_version") != 1
+        or manifest.get("validation_status") != "valid"
+        or not isinstance(layers_value, list)
+        or not layers
+    ):
+        reasons.append("invalid layout manifest schema or status")
+
+    declared_relative: list[str] = []
+    declared_by_layer: list[tuple[Mapping[str, object], tuple[str, ...]]] = []
+    for raw_layer in layers:
+        layer = _mapping(raw_layer)
+        if layer is None or layer.get("validation_status") != "valid":
+            reasons.append("invalid layer layout status")
+            continue
+        outputs_value = layer.get("outputs")
+        if not isinstance(outputs_value, list):
+            reasons.append("layer outputs are missing or invalid")
+            continue
+        layer_paths: list[str] = []
+        for raw_output in outputs_value:
+            output = _mapping(raw_output)
+            path = _string(output.get("path")) if output is not None else None
+            relative = (
+                path.removeprefix(f"{identity.prefix}/") if path is not None else None
+            )
+            if relative is None or not relative.startswith("geoparquet/"):
+                reasons.append("layout output path is invalid")
+                continue
+            declared_relative.append(relative)
+            layer_paths.append(relative)
+        declared_by_layer.append((layer, tuple(layer_paths)))
+    if len(declared_relative) != len(set(declared_relative)):
+        reasons.append("duplicate declared parquet output paths")
+    if set(declared_relative) != set(parquet_relative) or len(declared_relative) != len(
+        parquet_relative
+    ):
+        reasons.append("layout output set does not match current parquet objects")
+    flat = [path for path in parquet_relative if len(PurePosixPath(path).parts) == 2]
+    nested = [path for path in parquet_relative if len(PurePosixPath(path).parts) > 2]
+    if flat and nested:
+        reasons.append("mixed monolith and nested GeoParquet representations")
+
+    total_uncompressed = 0
+    total_row_groups = 0
+    total_features = 0
+    partition_bytes: dict[str, int] = {}
+    footer_by_relative: dict[
+        str, tuple[_ParquetFile, StorageObjectSnapshot, list[int]]
+    ] = {}
+    hash_by_relative: dict[str, str] = {}
+    for snapshot, relative in zip(parquet_snapshots, parquet_relative, strict=True):
+        try:
+            footer, _data = _footer_for_snapshot(storage, snapshot)
+            metadata = footer.metadata
+            row_group_sizes: list[int] = []
+            row_count = 0
+            for index in range(metadata.num_row_groups):
+                row_group = metadata.row_group(index)
+                size = int(row_group.total_byte_size)
+                row_group_sizes.append(size)
+                total_uncompressed += size
+                total_row_groups += 1
+                row_count += int(row_group.num_rows)
+                if size > row_group_limit_bytes:
+                    reasons.append(
+                        f"row group exceeds {row_group_limit_bytes} bytes: {relative}"
+                    )
+            total_features += row_count
+            partition = "/".join(
+                part
+                for part in PurePosixPath(relative).parts[1:-1]
+                if "=" in part and not part.split("=", 1)[0].endswith("s2_parent_cell")
+            )
+            partition_bytes[partition] = partition_bytes.get(partition, 0) + sum(
+                row_group_sizes
+            )
+            footer_by_relative[relative] = (footer, snapshot, row_group_sizes)
+            hash_by_relative[relative] = hashlib.sha256(_data).hexdigest()
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            reasons.append(
+                f"unreadable parquet footer: {relative} ({type(exc).__name__})"
+            )
+
+    if total_uncompressed > s2_limit_bytes:
+        strategy = None
+        hive_s2 = None
+        if declared_by_layer:
+            layer = declared_by_layer[0][0]
+            strategy = _string(layer.get("partition_strategy"))
+            hive = _mapping(layer.get("hive_partition_columns"))
+            hive_s2 = _string(hive.get("s2_parent_cell")) if hive else None
+        if strategy not in {"s2", "admin_s2"}:
+            reasons.append("S2 partition required for dataset")
+        elif not hive_s2:
+            reasons.append("S2 partition declares no S2 Hive key")
+        elif not all(f"{hive_s2}=" in path for path in parquet_relative):
+            reasons.append(f"declared S2 Hive key missing: {hive_s2}=")
+    for partition, measured in partition_bytes.items():
+        if measured <= s2_limit_bytes:
+            continue
+        strategy = None
+        hive_s2 = None
+        for layer, paths in declared_by_layer:
+            if partition and not any(
+                path.startswith(f"geoparquet/{partition}") for path in paths
+            ):
+                continue
+            strategy = _string(layer.get("partition_strategy"))
+            hive = _mapping(layer.get("hive_partition_columns"))
+            hive_s2 = _string(hive.get("s2_parent_cell")) if hive else None
+            break
+        if strategy not in {"s2", "admin_s2"}:
+            reasons.append(f"S2 partition required for {partition or 'dataset'}")
+        elif not hive_s2:
+            reasons.append(
+                f"S2 partition declares no S2 Hive key: {partition or 'dataset'}"
+            )
+        elif not all(
+            f"{hive_s2}=" in path
+            for path in parquet_relative
+            if not partition or path.startswith(f"geoparquet/{partition}")
+        ):
+            reasons.append(f"declared S2 Hive key missing: {hive_s2}=")
+
+    expected_feature_count = sum(
+        _integer(layer.get("feature_count")) or 0 for layer, _paths in declared_by_layer
+    )
+    if declared_by_layer and expected_feature_count != total_features:
+        reasons.append(
+            f"feature count mismatch: manifest={expected_feature_count}, current={total_features}"
+        )
+    expected_file_count = sum(len(paths) for _layer, paths in declared_by_layer)
+    if declared_by_layer and expected_file_count != len(parquet_relative):
+        reasons.append(
+            f"file count mismatch: manifest={expected_file_count}, current={len(parquet_relative)}"
+        )
+    expected_row_groups = 0
+    for footer, _snapshot, _sizes in footer_by_relative.values():
+        expected_row_groups += int(footer.metadata.num_row_groups)
+    for field_name, actual_count, label in (
+        ("feature_count", total_features, "feature"),
+        ("file_count", len(parquet_relative), "file"),
+        ("row_group_count", expected_row_groups, "row-group"),
+    ):
+        declared_count = (
+            _integer(manifest.get(field_name)) if manifest is not None else None
+        )
+        if declared_count is not None and declared_count != actual_count:
+            reasons.append(
+                f"{label} count mismatch: manifest={declared_count}, current={actual_count}"
+            )
+
+    for layer, paths in declared_by_layer:
+        declared_files = _integer(layer.get("file_count"))
+        if declared_files is not None and declared_files != len(paths):
+            reasons.append(
+                f"layer file count mismatch: manifest={declared_files}, current={len(paths)}"
+            )
+        declared_groups = _integer(layer.get("row_group_count"))
+        current_groups = sum(
+            len(footer_by_relative[path][2])
+            for path in paths
+            if path in footer_by_relative
+        )
+        if declared_groups is not None and declared_groups != current_groups:
+            reasons.append(
+                f"layer row-group count mismatch: manifest={declared_groups}, current={current_groups}"
+            )
+
+    for layer, paths in declared_by_layer:
+        fingerprints: set[tuple[str, str | None]] = set()
+        for path in paths:
+            entry = footer_by_relative.get(path)
+            if entry is not None:
+                fingerprints.add(
+                    (_schema_fingerprint(entry[0]), _geo_crs_fingerprint(entry[0]))
+                )
+        if len(fingerprints) > 1:
+            reasons.append(
+                f"schema/CRS incompatibility in layer {_string(layer.get('layer')) or ''}"
+            )
+        outputs_value = layer.get("outputs")
+        if isinstance(outputs_value, list):
+            for raw_output in outputs_value:
+                output = _mapping(raw_output)
+                if output is None:
+                    continue
+                path = _string(output.get("path"))
+                if path is None:
+                    continue
+                rel = path.removeprefix(f"{identity.prefix}/")
+                entry = footer_by_relative.get(rel)
+                if entry is None:
+                    continue
+                snapshot = entry[1]
+                declared_size = _integer(output.get("file_size_bytes"))
+                if declared_size is not None and declared_size != snapshot.size:
+                    reasons.append(f"size mismatch: {rel}")
+                declared_hash = _string(output.get("sha256"))
+                if declared_hash:
+                    actual_hash = snapshot.sha256 or hash_by_relative[rel]
+                    if declared_hash != actual_hash:
+                        reasons.append(f"hash mismatch: {rel}")
+                declared_rows = output.get("row_counts")
+                actual_rows = [
+                    int(entry[0].metadata.row_group(index).num_rows)
+                    for index in range(int(entry[0].metadata.num_row_groups))
+                ]
+                if isinstance(declared_rows, list) and declared_rows != actual_rows:
+                    reasons.append(f"row-group count mismatch: {rel}")
+                declared_sizes = output.get("row_group_uncompressed_sizes")
+                if isinstance(declared_sizes, list) and declared_sizes != entry[2]:
+                    reasons.append(f"row-group byte-size mismatch: {rel}")
+
+    return {
+        "dataset": identity.dataset,
+        "file": identity.file,
+        "version": identity.version,
+        "status": "compliant" if not reasons else "violation",
+        "reasons": sorted(set(reasons)),
+        "parquet_keys": list(parquet_relative),
+        "feature_count": total_features,
+        "file_count": len(parquet_relative),
+        "row_group_count": total_row_groups,
+        "uncompressed_bytes": total_uncompressed,
+    }
+
+
+def audit_geoparquet(
+    published: StagingStorageResource,
+    *,
+    dataset: str | None = None,
+    file: str | None = None,
+    version: str | None = None,
+    row_group_limit_bytes: int = _DEFAULT_ROW_GROUP_LIMIT,
+    s2_limit_bytes: int = _DEFAULT_S2_LIMIT,
+) -> dict[str, object]:
+    """Audit canonical GeoParquet without changing storage."""
+    selector_parts = [part for part in (dataset, file, version) if part is not None]
+    listing_prefix = "/".join(selector_parts)
+    snapshots = published.list_object_snapshots(listing_prefix)
+    grouped: dict[VersionIdentity, list[StorageObjectSnapshot]] = {}
+    for snapshot in snapshots:
+        logical = _logical_key(published, snapshot.key)
+        identity = _version_identity(logical)
+        if (
+            identity is None
+            or (dataset and identity.dataset != dataset)
+            or (file and identity.file != file)
+            or (version and identity.version != version)
+        ):
+            continue
+        relative = logical.removeprefix(f"{identity.prefix}/")
+        if (
+            relative.startswith("geoparquet/")
+            or relative == "metadata/geoparquet_layout.json"
+        ):
+            grouped.setdefault(identity, []).append(snapshot)
+    versions = tuple(
+        _audit_version(
+            published,
+            identity,
+            tuple(items),
+            row_group_limit_bytes=row_group_limit_bytes,
+            s2_limit_bytes=s2_limit_bytes,
+        )
+        for identity, items in sorted(grouped.items())
+    )
+    errors: list[str] = []
+    if not versions and selector_parts:
+        errors.append("Explicit filters matched no GeoParquet versions.")
+    has_violation = bool(errors) or any(
+        item["status"] != "compliant" for item in versions
+    )
+    return MaintenanceJsonReport(
+        {
+            "action": "audit-geoparquet",
+            "status": "violation" if has_violation else "compliant",
+            "filters": {"dataset": dataset, "file": file, "version": version},
+            "versions": list(versions),
+            "errors": errors,
+        }
+    )
+
+
+def _candidate_storage_for_repack(
+    staging: StagingStorageResource, run_id: str
+) -> StagingStorageResource:
+    prefix = f"{staging.prefix.strip('/')}/_temporary/repack/{run_id}".strip("/")
+    return StagingStorageResource(
+        bucket=staging.bucket,
+        prefix=prefix,
+        use_local=staging.use_local,
+        local_dir=staging.local_dir,
+    )
+
+
+def replace_geoparquet(
+    published: PublishedStorageResource,
+    staging: StagingStorageResource,
+    dataset: str,
+    file: str,
+    version: str,
+    run_id: str,
+    *,
+    apply: bool = False,
+    row_group_limit_bytes: int = _DEFAULT_ROW_GROUP_LIMIT,
+    s2_limit_bytes: int = _DEFAULT_S2_LIMIT,
+) -> dict[str, object]:
+    """Validate and optionally atomically promote one staged GeoParquet repack."""
+    if any(
+        not value or "/" in value or value in {".", ".."}
+        for value in (dataset, file, version, run_id)
+    ):
+        return MaintenanceJsonReport(
+            {
+                "action": "replace-geoparquet",
+                "status": "blocked",
+                "errors": [
+                    "dataset, file, version, and run_id must be exact path components"
+                ],
+            }
+        )
+    namespace_error = _storage_namespace_error(published, staging)
+    if namespace_error is not None:
+        return MaintenanceJsonReport(
+            {
+                "action": "replace-geoparquet",
+                "status": "blocked",
+                "errors": [namespace_error],
+            }
+        )
+    candidate = _candidate_storage_for_repack(staging, run_id)
+    candidate_report = audit_geoparquet(
+        candidate,
+        dataset=dataset,
+        file=file,
+        version=version,
+        row_group_limit_bytes=row_group_limit_bytes,
+        s2_limit_bytes=s2_limit_bytes,
+    )
+    if candidate_report["status"] != "compliant":
+        return MaintenanceJsonReport(
+            {
+                "action": "replace-geoparquet",
+                "status": "blocked",
+                "candidate": candidate_report,
+                "errors": ["Candidate GeoParquet failed audit."],
+            }
+        )
+    identity = VersionIdentity(dataset, file, version)
+    production_snapshots = {
+        _logical_key(published, snapshot.key): snapshot
+        for snapshot in published.list_object_snapshots(identity.prefix)
+        if (
+            _logical_key(published, snapshot.key).startswith(
+                f"{identity.prefix}/geoparquet/"
+            )
+            and _logical_key(published, snapshot.key).endswith(".parquet")
+        )
+    }
+    manifest_logical = f"{identity.prefix}/metadata/geoparquet_layout.json"
+    manifest_snapshot = published.object_snapshot(
+        _storage_key(published, manifest_logical)
+    )
+    if manifest_snapshot is not None:
+        production_snapshots[manifest_logical] = manifest_snapshot
+    candidate_snapshots = {
+        _logical_key(candidate, snapshot.key): snapshot
+        for snapshot in candidate.list_object_snapshots(identity.prefix)
+        if _logical_key(candidate, snapshot.key).startswith(f"{identity.prefix}/")
+        and (
+            _logical_key(candidate, snapshot.key).endswith(".parquet")
+            or _logical_key(candidate, snapshot.key) == manifest_logical
+        )
+    }
+    candidate_paths = tuple(sorted(candidate_snapshots))
+    canonical_paths = tuple(sorted(production_snapshots))
+    backup_prefix = f"_rollback/geoparquet/{run_id}"
+    backup = PublishedStorageResource(
+        bucket=published.bucket,
+        prefix=f"{published.prefix.rstrip('/')}/{backup_prefix}".strip("/"),
+        use_local=published.use_local,
+        local_dir=published.local_dir,
+    )
+    backup_keys = tuple(f"{backup_prefix}/{logical}" for logical in canonical_paths)
+    promoted_keys = candidate_paths
+    result: MaintenanceJsonReport = MaintenanceJsonReport(
+        {
+            "action": "replace-geoparquet",
+            "status": "planned" if not apply else "promoted",
+            "dataset": dataset,
+            "file": file,
+            "version": version,
+            "run_id": run_id,
+            "discovery_prefix": dataset,
+            "intentional_deletion_gap": "Production GeoParquet is deleted before candidate copy; CAS rollback restores it on failure.",
+            "backup_keys": list(backup_keys),
+            "promoted_keys": list(promoted_keys),
+            "snapshots": [
+                production_snapshots[key].to_dict()
+                for key in sorted(production_snapshots)
+            ],
+        }
+    )
+    if apply and (
+        set(canonical_paths) == set(candidate_paths)
+        and all(
+            snapshots_content_match(
+                production_snapshots[path], candidate_snapshots[path]
+            )
+            for path in canonical_paths
+        )
+    ):
+        return MaintenanceJsonReport({**result, "status": "already-applied"})
+    if not apply:
+        return result
+    # Re-check all production identities immediately before the mutation.
+    for logical, snapshot in production_snapshots.items():
+        if published.object_snapshot(_storage_key(published, logical)) != snapshot:
+            return MaintenanceJsonReport(
+                {
+                    **result,
+                    "status": "blocked",
+                    "errors": [f"Generation race: {logical}"],
+                }
+            )
+    backup_snapshots: dict[str, StorageObjectSnapshot] = {}
+    promoted_snapshots: dict[str, StorageObjectSnapshot] = {}
+    try:
+        for logical, snapshot in sorted(production_snapshots.items()):
+            backup_logical = f"{backup_prefix}/{logical}"
+            existing_backup = backup.object_snapshot(backup_logical)
+            if existing_backup is not None and not snapshots_content_match(
+                snapshot, existing_backup
+            ):
+                raise RuntimeError(f"Conflicting rollback backup: {backup_logical}")
+            if existing_backup is None:
+                backup_snapshots[logical] = published.copy_key_to_if_unchanged(
+                    backup,
+                    snapshot.key,
+                    backup_logical,
+                    source_snapshot=snapshot,
+                    destination_snapshot=None,
+                )
+            else:
+                backup_snapshots[logical] = existing_backup
+        for logical, snapshot in production_snapshots.items():
+            published.delete_key_if_unchanged(snapshot.key, snapshot)
+        for logical in candidate_paths:
+            source_snapshot = candidate_snapshots[logical]
+            promoted_snapshots[logical] = candidate.copy_key_to_if_unchanged(
+                published,
+                source_snapshot.key,
+                logical,
+                source_snapshot=source_snapshot,
+                destination_snapshot=None,
+            )
+        result["promoted_snapshots"] = [
+            promoted_snapshots[key].to_dict() for key in sorted(promoted_snapshots)
+        ]
+        return result
+    except (OSError, ValueError, RuntimeError) as promotion_error:
+        rollback_error: Exception | None = None
+        try:
+            for logical in candidate_paths:
+                current = published.object_snapshot(_storage_key(published, logical))
+                promoted = promoted_snapshots.get(logical)
+                if current is not None and promoted is not None and current == promoted:
+                    published.delete_key_if_unchanged(current.key, current)
+            for logical, backup_snapshot in backup_snapshots.items():
+                backup.copy_key_to_if_unchanged(
+                    published,
+                    backup_snapshot.key,
+                    logical,
+                    source_snapshot=backup_snapshot,
+                    destination_snapshot=None,
+                )
+        except (OSError, ValueError, RuntimeError) as exc:
+            rollback_error = exc
+        if rollback_error is not None:
+            return MaintenanceJsonReport(
+                {
+                    **result,
+                    "status": "blocked",
+                    "errors": [
+                        f"Promotion failed: {promotion_error}",
+                        f"Rollback failed; backup retained: {rollback_error}",
+                    ],
+                    "backup_retained": True,
+                }
+            )
+        return MaintenanceJsonReport(
+            {
+                **result,
+                "status": "blocked",
+                "errors": [f"Promotion failed and was rolled back: {promotion_error}"],
+            }
+        )
+
+
+def benchmark_tiles(
+    base_url: str,
+    query_id: str,
+    token_env: str,
+    tiles: Sequence[tuple[int, int, int]],
+    *,
+    repetitions: int = 3,
+    client: _TileClient | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    median_target_seconds: float = 8.0,
+    hard_timeout_seconds: float = 10.0,
+) -> dict[str, object]:
+    """Benchmark query tile endpoints; token values never enter the report."""
+    import httpx
+
+    token = __import__("os").environ.get(token_env)
+    if not token:
+        return MaintenanceJsonReport(
+            {
+                "action": "benchmark-tiles",
+                "status": "violation",
+                "errors": [f"Missing token environment variable: {token_env}"],
+            }
+        )
+    if repetitions < 1:
+        return MaintenanceJsonReport(
+            {
+                "action": "benchmark-tiles",
+                "status": "violation",
+                "errors": ["repetitions must be positive"],
+            }
+        )
+    owned_client = client is None
+    actual_client: _TileClient = client or cast(
+        _TileClient, cast(object, httpx.Client())
+    )
+    cases: list[dict[str, object]] = []
+    errors: list[str] = []
+    try:
+        for z, x, y in tiles:
+            durations: list[float] = []
+            url = f"{base_url.rstrip('/')}/api/queries/{query_id}/tiles/{z}/{x}/{y}.mvt"
+            for _index in range(repetitions):
+                started = clock()
+                try:
+                    response = actual_client.get(
+                        url,
+                        headers={"X-HIFLD-Query-Token": token},
+                        timeout=hard_timeout_seconds,
+                    )
+                except (OSError, ValueError, RuntimeError) as exc:
+                    errors.append(f"HTTP error for {z}/{x}/{y}: {type(exc).__name__}")
+                    continue
+                duration = round(clock() - started, 3)
+                durations.append(duration)
+                if response.status_code not in {200, 204} or (
+                    response.status_code == 200 and not response.content
+                ):
+                    errors.append(
+                        f"HTTP failure for {z}/{x}/{y}: status {response.status_code}"
+                    )
+                if duration >= hard_timeout_seconds:
+                    errors.append(f"Hard timeout exceeded for {z}/{x}/{y}")
+            median = round(statistics.median(durations), 3) if durations else None
+            maximum = round(max(durations), 3) if durations else None
+            cases.append(
+                {
+                    "tile": f"{z}/{x}/{y}",
+                    "durations_seconds": durations,
+                    "median_seconds": median,
+                    "max_seconds": maximum,
+                }
+            )
+            if median is None or median > median_target_seconds:
+                errors.append(f"Median target missed for {z}/{x}/{y}")
+    finally:
+        if owned_client:
+            close = getattr(actual_client, "close", None)
+            if callable(close):
+                close()
+    return MaintenanceJsonReport(
+        {
+            "action": "benchmark-tiles",
+            "status": "compliant" if not errors else "violation",
+            "query_id": query_id,
+            "repetitions": repetitions,
+            "median_target_seconds": median_target_seconds,
+            "hard_timeout_seconds": hard_timeout_seconds,
+            "cases": cases,
+            "errors": sorted(set(errors)),
+        }
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Inventory published processing sources or restore them to staging."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("inventory", "restore-staging"):
+    for command in ("inventory", "restore-staging", "audit-geoparquet"):
         command_parser = subparsers.add_parser(command)
         command_parser.add_argument("--dataset")
         command_parser.add_argument("--file")
@@ -842,11 +1625,31 @@ def build_parser() -> argparse.ArgumentParser:
                     "provenance, and metadata objects."
                 ),
             )
+    replace_parser = subparsers.add_parser("replace-geoparquet")
+    replace_parser.add_argument("--dataset", required=True)
+    replace_parser.add_argument("--file", required=True)
+    replace_parser.add_argument("--version", required=True)
+    replace_parser.add_argument("--run-id", required=True)
+    replace_parser.add_argument("--apply", action="store_true")
+    benchmark_parser = subparsers.add_parser("benchmark-tiles")
+    benchmark_parser.add_argument("--base-url", required=True)
+    benchmark_parser.add_argument("--query-id", required=True)
+    benchmark_parser.add_argument(
+        "--token-env",
+        "--token-env-var",
+        dest="token_env",
+        required=True,
+    )
+    benchmark_parser.add_argument(
+        "--tile", action="append", required=True, metavar="Z/X/Y"
+    )
+    benchmark_parser.add_argument("--repetitions", type=int, default=3)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    cli_parser = build_parser()
+    args = cli_parser.parse_args(argv)
     published = PublishedStorageResource.from_env()
     if args.command == "inventory":
         report = inventory_published(
@@ -855,7 +1658,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=args.file,
             version=args.version,
         )
-    else:
+    elif args.command == "restore-staging":
         report = restore_staging(
             published,
             StagingStorageResource.from_env(),
@@ -865,8 +1668,47 @@ def main(argv: Sequence[str] | None = None) -> int:
             apply=args.apply,
             overwrite=args.overwrite_existing_sources,
         )
-    print(json.dumps(report.to_dict(), sort_keys=True, indent=2))
-    return 1 if report.has_failures else 0
+    elif args.command == "audit-geoparquet":
+        report = audit_geoparquet(
+            published,
+            dataset=args.dataset,
+            file=args.file,
+            version=args.version,
+        )
+    elif args.command == "replace-geoparquet":
+        report = replace_geoparquet(
+            published,
+            StagingStorageResource.from_env(),
+            args.dataset,
+            args.file,
+            args.version,
+            args.run_id,
+            apply=args.apply,
+        )
+    else:
+        try:
+            tiles = tuple(
+                tuple(int(part) for part in tile.split("/")) for tile in args.tile
+            )
+            if any(len(tile) != 3 for tile in tiles):
+                raise ValueError
+        except ValueError:
+            cli_parser.error("--tile must be Z/X/Y")
+        report = benchmark_tiles(
+            args.base_url,
+            args.query_id,
+            args.token_env,
+            cast(Sequence[tuple[int, int, int]], tiles),
+            repetitions=args.repetitions,
+        )
+    payload = report.to_dict() if isinstance(report, MaintenanceReport) else report
+    print(json.dumps(payload, sort_keys=True, indent=2))
+    failed = (
+        report.has_failures
+        if isinstance(report, MaintenanceReport)
+        else payload.get("status") != "compliant"
+    )
+    return 1 if failed else 0
 
 
 def _logical_key(storage: StagingStorageResource, key: str) -> str:
