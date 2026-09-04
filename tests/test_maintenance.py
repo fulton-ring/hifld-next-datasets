@@ -14,7 +14,11 @@ from shapely.geometry import Point
 
 from dagster_hifld import maintenance
 from dagster_hifld.maintenance import inventory_published, main, restore_staging
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import (
+    PublishedStorageResource,
+    StagingStorageResource,
+    StorageObjectSnapshot,
+)
 
 
 def _write(storage: StagingStorageResource, key: str, data: bytes = b"source") -> None:
@@ -591,6 +595,50 @@ class RestoreStagingTests(unittest.TestCase):
             )
             self.assertEqual((metadata_root / "quality_manifest.json").read_bytes(), quality)
             self.assertEqual((metadata_root / "data_dictionary.json").read_bytes(), dictionary)
+
+    def test_local_candidate_can_summarize_when_remote_catalog_metadata_is_missing(
+        self,
+    ):
+        published = PublishedStorageResource(bucket="published-bucket", use_local=False)
+        with tempfile.TemporaryDirectory() as staging_dir:
+            candidate = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            source_key = "dataset-a/file-a/v1/geojson/source.geojson"
+            item = maintenance.VersionMaintenanceResult(
+                "dataset-a",
+                "file-a",
+                "v1",
+                "ready",
+                "geojson",
+                (source_key,),
+                (source_key,),
+                source_snapshots=(
+                    StorageObjectSnapshot(
+                        source_key, 1, "101", None, None
+                    ),
+                ),
+            )
+            summary = SimpleNamespace(
+                quality_manifest={"feature_count": 1},
+                data_dictionary={"columns": []},
+            )
+
+            def copy_source(_source, destination, source_keys, destination_keys, _snapshots):
+                if source_keys == (source_key,):
+                    destination.write_key(destination_keys[0], b"source")
+
+            with (
+                patch(
+                    "dagster_hifld.maintenance._copy_missing_or_changed",
+                    side_effect=copy_source,
+                ),
+                patch(
+                    "dagster_hifld.maintenance.summarize_staged_catalog",
+                    return_value=summary,
+                ) as summarize,
+            ):
+                maintenance._build_candidate(published, candidate, item)
+
+            summarize.assert_called_once()
 
     def test_apply_preserves_raw_version_override_separately_and_writes_resolved_manifest(
         self,

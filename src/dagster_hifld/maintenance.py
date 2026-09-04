@@ -595,7 +595,7 @@ def _build_candidate(
         # Catalog metadata is already published and was copied with GCS rewrite;
         # do not materialize the selected source merely to regenerate these files.
         pass
-    elif published.use_local or not published.bucket:
+    elif candidate.use_local or not candidate.bucket:
         summary = summarize_staged_catalog(
             candidate,
             item.dataset,
