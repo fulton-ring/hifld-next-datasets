@@ -921,6 +921,7 @@ class _PreflightHistogramStore:
             ) WITHOUT ROWID
             """
         )
+        self._connection.create_function("s2_parent_bin", 2, _s2_parent_bin)
 
     def __enter__(self) -> _PreflightHistogramStore:
         return self
@@ -949,6 +950,29 @@ class _PreflightHistogramStore:
             """,
             rows,
         )
+
+    def roll_up_s2(self, kind: str, name: str, levels: tuple[int, ...]) -> None:
+        """Derive coarser S2 histograms from the finest level."""
+        connection = self._require_connection()
+        if not levels:
+            return
+        source_level = max(levels)
+        for level in sorted(
+            (candidate for candidate in levels if candidate != source_level),
+            reverse=True,
+        ):
+            connection.execute(
+                """
+                INSERT INTO histogram (kind, name, level, bin, byte_count, row_count)
+                SELECT kind, name, ?, s2_parent_bin(bin, ?),
+                       SUM(byte_count), SUM(row_count)
+                FROM histogram
+                WHERE kind = ? AND name = ? AND level = ?
+                GROUP BY kind, name, s2_parent_bin(bin, ?)
+                """,
+                (level, level, kind, name, source_level, level),
+            )
+            source_level = level
         connection.commit()
 
     def cardinality(self, kind: str, name: str = "") -> int:
@@ -987,6 +1011,7 @@ class _PreflightHistogramStore:
 
     def close(self) -> None:
         if self._connection is not None:
+            self._connection.commit()
             self._connection.close()
             self._connection = None
         self._temporary_directory.cleanup()
@@ -1213,6 +1238,38 @@ def _s2_cell_for_point(point: Any, level: int) -> int:
         return 0
 
 
+def _s2_cells_for_point(point: Any, levels: tuple[int, ...]) -> dict[int, int]:
+    """Return S2 parent cells for all levels using one lat/lng conversion."""
+    try:
+        import s2sphere
+
+        cell = s2sphere.CellId.from_lat_lng(
+            s2sphere.LatLng.from_degrees(float(point.y), float(point.x))
+        )
+    except Exception:
+        return {level: 0 for level in levels}
+    return {
+        level: cell.parent(level).id()
+        if 0 <= level <= 30
+        else 0
+        for level in levels
+    }
+
+
+def _s2_parent_bin(bin_value: str, level: int) -> str:
+    prefix, separator, raw_cell = bin_value.rpartition("|")
+    try:
+        import s2sphere
+
+        cell_id = int(raw_cell if separator else bin_value)
+        if cell_id == 0 or not 0 <= level <= 30:
+            return f"{prefix}|0" if separator else "0"
+        parent = str(s2sphere.CellId(cell_id).parent(level).id())
+        return f"{prefix}|{parent}" if separator else parent
+    except Exception:
+        return f"{prefix}|0" if separator else "0"
+
+
 def _huc_prefix_values(
     properties: dict[str, Any],
     source_column: str | None,
@@ -1381,6 +1438,7 @@ def _preflight_layer_with_histograms(
     feature_count = 0
     uncompressed_bytes = 0
     s2_levels = _policy_s2_levels(policy)
+    finest_s2_level = max(s2_levels, default=0)
     serialized_bytes = 0
     candidate_non_null: dict[str, int] = {}
 
@@ -1444,18 +1502,24 @@ def _preflight_layer_with_histograms(
                         candidate_non_null[column] += 1
                         add_update("candidate", column, -1, str(value), row_bytes)
                 point = _representative_point(_feature_geometry(feature), transformer)
-                for level in s2_levels:
-                    cell = str(_s2_cell_for_point(point, level))
+                cell = str(
+                    _s2_cells_for_point(point, (finest_s2_level,)).get(
+                        finest_s2_level, 0
+                    )
+                )
+                level = finest_s2_level
+                if base_partitioning in {"single_file", "s2"}:
                     add_update("s2", "", level, cell, row_bytes)
-                    if semantic_values:
-                        combined_key = f"{semantic_key}|{cell}"
-                        add_update(
-                            "semantic_s2",
-                            "",
-                            level,
-                            combined_key,
-                            row_bytes,
-                        )
+                if semantic_values:
+                    combined_key = f"{semantic_key}|{cell}"
+                    add_update(
+                        "semantic_s2",
+                        "",
+                        level,
+                        combined_key,
+                        row_bytes,
+                    )
+                if base_partitioning == "single_file":
                     for column in resolved_candidates:
                         candidate_value = properties.get(column)
                         if candidate_value is None or pd.isna(candidate_value):
@@ -1494,6 +1558,13 @@ def _preflight_layer_with_histograms(
                 measure_batch(batch)
                 batch = []
         measure_batch(batch)
+
+    if base_partitioning in {"single_file", "s2"}:
+        histogram_store.roll_up_s2("s2", "", s2_levels)
+    else:
+        histogram_store.roll_up_s2("semantic_s2", "", s2_levels)
+    for column in resolved_candidates:
+        histogram_store.roll_up_s2("candidate_s2", column, s2_levels)
 
     if feature_count == 0:
         return _GeoParquetPreflight(

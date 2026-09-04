@@ -33,6 +33,7 @@ from dagster_hifld.conversion import (
     _layer_output_namespace,
     _policy_s2_levels,
     _row_group_uncompressed_sizes,
+    _s2_cells_for_point,
     _select_s2_level,
     geoparquet_policy_for,
     _to_wgs84,
@@ -1010,6 +1011,72 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(semantic["partition_columns"], ["STATEFP", "s2_parent_cell"])
             self.assertEqual(semantic["chosen_s2_level"], 2)
 
+    def test_preflight_calculates_s2_cell_once_per_feature_for_all_candidate_levels(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["a", "b"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            with patch(
+                "dagster_hifld.conversion._s2_cells_for_point",
+                wraps=_s2_cells_for_point,
+            ) as calculate_cells:
+                asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(force_s2=True),
+                    )
+                )
+
+            self.assertEqual(calculate_cells.call_count, 2)
+
+    def test_preflight_does_not_store_unused_standalone_s2_histograms(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "12"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            captured: list[tuple[str, str, int, str, int, int]] = []
+            original_add_many = _PreflightHistogramStore.add_many
+
+            def capture_add_many(store, rows):
+                materialized = list(rows)
+                captured.extend(materialized)
+                original_add_many(store, materialized)
+
+            with patch.object(_PreflightHistogramStore, "add_many", capture_add_many):
+                asyncio.run(
+                    process_layer_partitioned_geoparquet(
+                        file_path=source,
+                        format_type="geojson",
+                        layer_name=None,
+                        layer_filename="source",
+                        dest_folder="dataset/file/v1.0.0/",
+                        dest_storage=_StorageAdapter(storage),
+                        work_dir=Path(tmpdir) / "work",
+                        policy=GeoParquetWritePolicy(
+                            force_admin_columns=("STATEFP",),
+                            large_dataset_threshold_bytes=1,
+                        ),
+                    )
+                )
+
+            self.assertNotIn("s2", {row[0] for row in captured})
+            self.assertIn("semantic_s2", {row[0] for row in captured})
+
     def test_dense_level_16_cell_rolls_files_and_excludes_internal_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
@@ -1434,6 +1501,30 @@ class ConversionTests(unittest.TestCase):
             store.close()
 
         self.assertFalse(database_path.exists())
+
+    def test_preflight_s2_rollup_preserves_prefixed_bins_and_aggregates_counts(self):
+        import s2sphere
+
+        fine_cell = s2sphere.CellId.from_lat_lng(
+            s2sphere.LatLng.from_degrees(38.9, -77.0)
+        ).parent(16)
+        parent_cell = fine_cell.parent(2).id()
+        store = _PreflightHistogramStore()
+        try:
+            store.add_many(
+                [
+                    ("semantic_s2", "", 16, f'["v"]|{fine_cell.id()}', 40, 2),
+                    ("semantic_s2", "", 16, f'["v"]|{fine_cell.next().id()}', 60, 3),
+                ]
+            )
+            store.roll_up_s2("semantic_s2", "", (2, 16))
+            self.assertEqual(store.max_bytes("semantic_s2", "", 2), 100)
+            row = store._require_connection().execute(
+                "SELECT bin, row_count FROM histogram WHERE kind = 'semantic_s2' AND level = 2"
+            ).fetchone()
+            self.assertEqual(row, (f'["v"]|{parent_cell}', 5))
+        finally:
+            store.close()
 
     def test_write_shapefile_zip_skips_plain_dataframe(self):
         result = write_shapefile_zip(
