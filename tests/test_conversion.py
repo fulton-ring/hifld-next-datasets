@@ -1580,6 +1580,40 @@ class ConversionTests(unittest.TestCase):
                 100_000,
             )
 
+    def test_compressible_large_singleton_is_sampled_for_preflight_estimate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["x" * (2 * 1024 * 1024)]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        large_dataset_threshold_bytes=1_000_000,
+                        preflight_chunk_rows=1,
+                        target_file_size_bytes=10**9,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["partitioning"], "single_file")
+            self.assertLess(
+                result["layout"]["thresholds"]["estimated_compressed_bytes"],
+                1_000_000,
+            )
+
     def test_s2_level_selection_receives_compressed_target_as_uncompressed_budget(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"

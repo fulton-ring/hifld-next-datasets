@@ -1406,12 +1406,11 @@ def _canonicalize_geoparquet_batch_metadata(table: pa.Table) -> pa.Table:
     return table.replace_schema_metadata(canonical_metadata)
 
 
-def _bounded_compression_sample(table: pa.Table) -> pa.Table | None:
-    sample_bytes = max(
-        1,
-        DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
-        // DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLES,
-    )
+def _bounded_compression_sample(
+    table: pa.Table,
+    max_bytes: int = DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES,
+) -> pa.Table | None:
+    sample_bytes = max(1, max_bytes)
     if table.nbytes <= sample_bytes:
         return table
     if len(table) <= 1:
@@ -1429,7 +1428,7 @@ def _zstd_compression_ratio(
 ) -> float:
     """Estimate compressed bytes per Arrow byte from one bounded sample."""
     if not sample_tables:
-        return 1.0
+        raise ValueError("Unable to retain a bounded GeoParquet compression sample.")
     schema_metadata = sample_tables[0].schema.metadata
     tables = [
         table.replace_schema_metadata(schema_metadata)
@@ -1539,6 +1538,7 @@ def _preflight_layer_with_histograms(
     finest_s2_level = max(s2_levels, default=0)
     serialized_bytes = 0
     compression_sample_tables: list[pa.Table] = []
+    compression_sample_bytes = 0
     compression_sample_seen = 0
     compression_sample_rng = random.Random(0)
     candidate_non_null: dict[str, int] = {}
@@ -1566,7 +1566,7 @@ def _preflight_layer_with_histograms(
         batch: list[dict[str, Any]] = []
 
         def measure_batch(features: list[dict[str, Any]]) -> None:
-            nonlocal compression_sample_seen
+            nonlocal compression_sample_bytes, compression_sample_seen
             nonlocal feature_count, serialized_bytes, uncompressed_bytes
             if not features:
                 return
@@ -1586,14 +1586,28 @@ def _preflight_layer_with_histograms(
             sample_table = _bounded_compression_sample(table)
             if sample_table is not None:
                 sample_limit = DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLES
-                if len(compression_sample_tables) < sample_limit:
+                sample_bytes = sample_table.nbytes
+                if (
+                    len(compression_sample_tables) < sample_limit
+                    and compression_sample_bytes + sample_bytes
+                    <= DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
+                ):
                     compression_sample_tables.append(sample_table)
+                    compression_sample_bytes += sample_bytes
                 else:
                     replacement = compression_sample_rng.randrange(
                         compression_sample_seen
                     )
-                    if replacement < sample_limit:
-                        compression_sample_tables[replacement] = sample_table
+                    if replacement < len(compression_sample_tables):
+                        replaced_bytes = compression_sample_tables[replacement].nbytes
+                        if (
+                            compression_sample_bytes
+                            - replaced_bytes
+                            + sample_bytes
+                            <= DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
+                        ):
+                            compression_sample_tables[replacement] = sample_table
+                            compression_sample_bytes += sample_bytes - replaced_bytes
             updates: dict[tuple[str, str, int, str], tuple[int, int]] = {}
 
             def add_update(
