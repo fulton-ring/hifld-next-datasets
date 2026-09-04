@@ -173,7 +173,13 @@ class Task3BTests(unittest.TestCase):
     def test_audit_requires_exact_typed_manifest_footer_budget_fields(self):
         for field, values in {
             "footer_metadata_bytes": (None, -1, True, 0),
-            "max_dataset_footer_bytes": (None, -1, True, 128 * 1024**2 - 1),
+            "max_dataset_footer_bytes": (
+                None,
+                -1,
+                True,
+                128 * 1024**2 - 1,
+                float(128 * 1024**2),
+            ),
         }.items():
             for value in values:
                 with (

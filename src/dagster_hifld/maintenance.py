@@ -1183,7 +1183,7 @@ def _audit_version(
     manifest_footer_limit = (
         manifest.get("max_dataset_footer_bytes") if manifest else None
     )
-    if manifest_footer_limit != _DEFAULT_METADATA_LIMIT:
+    if _integer(manifest_footer_limit) != _DEFAULT_METADATA_LIMIT:
         reasons.append("invalid manifest max_dataset_footer_bytes")
 
     declared_relative: list[str] = []
