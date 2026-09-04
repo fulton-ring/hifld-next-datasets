@@ -249,10 +249,38 @@ class PipelineUpdateTests(unittest.TestCase):
                 replace(policy, large_dataset_threshold_bytes=1),
             )
 
-        self.assertEqual(result.partition_columns, ["STATE", "s2_parent_cell"])
+        self.assertEqual(result.partition_columns, ["STATE"])
         self.assertEqual(
-            result.source_metadata["partition_columns"], ["STATE", "s2_parent_cell"]
+            result.source_metadata["partition_columns"], ["STATE"]
         )
+
+    def test_legacy_writer_size_gates_force_s2_and_keeps_large_admin_semantic(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gdf = gpd.GeoDataFrame(
+                {"statefp": ["06", "12"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            )
+            small = write_geoparquet_dataset(
+                gdf,
+                Path(tmpdir) / "small",
+                "layer",
+                GeoParquetWritePolicy(force_s2=True),
+            )
+            large = write_geoparquet_dataset(
+                gdf,
+                Path(tmpdir) / "large",
+                "layer",
+                GeoParquetWritePolicy(
+                    force_s2=True,
+                    force_admin_columns=("statefp",),
+                    large_dataset_threshold_bytes=1,
+                ),
+            )
+
+        self.assertEqual(small.partitioning, "single_file")
+        self.assertEqual(large.partitioning, "admin")
+        self.assertEqual(large.partition_columns, ["statefp"])
 
     def test_api_register_payload_uses_glob_for_partitioned_geoparquet(self):
         api = Mock()

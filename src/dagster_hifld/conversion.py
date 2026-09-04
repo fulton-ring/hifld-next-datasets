@@ -709,7 +709,10 @@ def write_geoparquet_dataset(
     admin_column = _select_admin_column(gdf, policy, estimated_size)
     source_columns = {str(column) for column in gdf.columns}
 
-    if policy.force_s2 or (estimated_size >= policy.large_dataset_threshold_bytes and admin_column is None):
+    if (
+        estimated_size >= policy.large_dataset_threshold_bytes
+        and admin_column is None
+    ):
         sorted_gdf, internal_columns = _annotate_s2_and_hilbert(gdf, policy)
         hive_columns = _allocate_semantic_hive_keys(
             ["s2_parent_cell"], source_columns | set(internal_columns.values())
@@ -741,53 +744,6 @@ def write_geoparquet_dataset(
         )
 
     if admin_column:
-        partition_sizes = [
-            _estimated_parquet_size(part)
-            for _value, part in gdf.groupby(admin_column, dropna=False, sort=True)
-        ]
-        if partition_sizes and max(partition_sizes) >= policy.large_dataset_threshold_bytes:
-            sorted_gdf, internal_columns = _annotate_s2_and_hilbert(gdf, policy)
-            sorted_gdf = sorted_gdf.sort_values(
-                [
-                    admin_column,
-                    internal_columns["s2_parent_cell"],
-                    internal_columns["hilbert_cell"],
-                ],
-                kind="stable",
-            )
-            hive_columns = _allocate_semantic_hive_keys(
-                [admin_column, "s2_parent_cell"],
-                source_columns | set(internal_columns.values()),
-            )
-            paths = _write_partitioned_parquet(
-                sorted_gdf,
-                output_dir,
-                [admin_column, internal_columns["s2_parent_cell"]],
-                row_group_size,
-                hive_partition_columns={
-                    admin_column: hive_columns[admin_column],
-                    internal_columns["s2_parent_cell"]: hive_columns[
-                        "s2_parent_cell"
-                    ],
-                },
-                generated_columns=set(internal_columns.values()),
-            )
-            return GeoParquetWriteResult(
-                paths=paths,
-                glob_path="**/*.parquet",
-                partitioning="admin_s2",
-                partition_columns=[admin_column, "s2_parent_cell"],
-                source_metadata={
-                    "hive_partitioned": True,
-                    "partitioning": "admin_s2",
-                    "partition_columns": [admin_column, "s2_parent_cell"],
-                    "hive_partition_columns": hive_columns,
-                    "row_group_target_bytes": policy.target_row_group_bytes,
-                    "s2_columns": list(internal_columns.values()),
-                    "s2_column_mapping": internal_columns,
-                },
-            )
-
         sorted_gdf = gdf.sort_values(admin_column, kind="stable").reset_index(drop=True)
         hive_columns = _allocate_semantic_hive_keys([admin_column], source_columns)
         paths = _write_partitioned_parquet(
@@ -1213,31 +1169,48 @@ def _fiona_list_arrow_type(fiona_type: str) -> pa.DataType | None:
 def _select_streaming_partition_columns(
     schema: dict[str, Any],
     policy: GeoParquetWritePolicy,
+    *,
+    strict: bool = True,
 ) -> tuple[str, list[str]]:
     names = _schema_property_names(schema)
-    derived_huc_column = (
-        _resolve_source_column(names, policy.derived_huc_column, "derived_huc_column")
-        if policy.derived_huc_column
-        else None
-    )
-    derived_prefix_column = (
-        _resolve_source_column(names, policy.derived_prefix_column, "derived_prefix_column")
-        if policy.derived_prefix_column
-        else None
-    )
-    forced_admin_column = (
-        _resolve_first_source_column(names, policy.force_admin_columns)
-        if policy.force_admin_columns
-        else None
-    )
+    derived_huc_column = None
+    if policy.derived_huc_column and (
+        strict
+        or any(
+            name.casefold() == policy.derived_huc_column.casefold() for name in names
+        )
+    ):
+        derived_huc_column = _resolve_source_column(
+            names, policy.derived_huc_column, "derived_huc_column"
+        )
+    derived_prefix_column = None
+    if policy.derived_prefix_column and (
+        strict
+        or any(
+            name.casefold() == policy.derived_prefix_column.casefold() for name in names
+        )
+    ):
+        derived_prefix_column = _resolve_source_column(
+            names, policy.derived_prefix_column, "derived_prefix_column"
+        )
+    forced_admin_column = None
+    if policy.force_admin_columns and (
+        strict
+        or any(
+            name.casefold() == configured.casefold()
+            for name in names
+            for configured in policy.force_admin_columns
+        )
+    ):
+        forced_admin_column = _resolve_first_source_column(
+            names, policy.force_admin_columns
+        )
     if derived_huc_column and policy.derived_huc_partition_columns:
         return "derived_huc", list(policy.derived_huc_partition_columns)
     if derived_prefix_column and policy.derived_prefix_partitions:
         return "derived_prefix", [name for name, _width in policy.derived_prefix_partitions]
     if forced_admin_column:
         return "admin", [forced_admin_column]
-    if policy.force_s2:
-        return "s2", ["s2_parent_cell"]
     return "single_file", []
 
 
@@ -1271,24 +1244,35 @@ def _policy_s2_levels(policy: GeoParquetWritePolicy) -> tuple[int, ...]:
 
 
 def _resolved_policy_for_schema(
-    schema: dict[str, Any], policy: GeoParquetWritePolicy
+    schema: dict[str, Any], policy: GeoParquetWritePolicy, *, strict: bool = True
 ) -> GeoParquetWritePolicy:
     names = _schema_property_names(schema)
+    has_admin_column = any(
+        name.casefold() == configured.casefold()
+        for name in names
+        for configured in policy.force_admin_columns
+    )
+    has_huc_column = policy.derived_huc_column and any(
+        name.casefold() == policy.derived_huc_column.casefold() for name in names
+    )
+    has_prefix_column = policy.derived_prefix_column and any(
+        name.casefold() == policy.derived_prefix_column.casefold() for name in names
+    )
     return replace(
         policy,
         force_admin_columns=(
             (_resolve_first_source_column(names, policy.force_admin_columns),)
-            if policy.force_admin_columns
+            if policy.force_admin_columns and (strict or has_admin_column)
             else ()
         ),
         derived_huc_column=(
             _resolve_source_column(names, policy.derived_huc_column, "derived_huc_column")
-            if policy.derived_huc_column
+            if policy.derived_huc_column and (strict or has_huc_column)
             else None
         ),
         derived_prefix_column=(
             _resolve_source_column(names, policy.derived_prefix_column, "derived_prefix_column")
-            if policy.derived_prefix_column
+            if policy.derived_prefix_column and (strict or has_prefix_column)
             else None
         ),
     )
@@ -1686,7 +1670,7 @@ def _preflight_layer_with_histograms(
 
     with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
         source_schema = src.schema or {}
-        resolved_policy = _resolved_policy_for_schema(source_schema, policy)
+        resolved_policy = _resolved_policy_for_schema(source_schema, policy, strict=False)
         configured_partitioning, configured_columns = _select_streaming_partition_columns(
             source_schema, resolved_policy
         )
@@ -1875,6 +1859,10 @@ def _preflight_layer_with_histograms(
         base_partitioning == "single_file"
         and estimated_compressed_bytes >= policy.large_dataset_threshold_bytes
     ):
+        resolved_policy = _resolved_policy_for_schema(source_schema, policy)
+        configured_partitioning, configured_columns = _select_streaming_partition_columns(
+            source_schema, resolved_policy
+        )
         if configured_partitioning not in {"single_file", "s2"}:
             base_partitioning = configured_partitioning
             base_columns = configured_columns
@@ -1906,7 +1894,7 @@ def _preflight_layer_with_histograms(
                 selection_s2_name = column
                 break
 
-    needs_s2 = policy.force_s2 or (
+    needs_s2 = (
         base_partitioning == "single_file"
         and estimated_compressed_bytes >= policy.large_dataset_threshold_bytes
     )
