@@ -852,6 +852,7 @@ def _write_and_publish_geoparquet(
                             work_dir=out_dir,
                             policy=policy
                             or geoparquet_policy_for(dataset_slug, file_slug),
+                            multi_layer=len(preferred["layers"]) > 1,
                         )
                     )
                     if result.get("error"):

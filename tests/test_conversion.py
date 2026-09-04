@@ -545,6 +545,46 @@ class ConversionTests(unittest.TestCase):
             )
             self.assertFalse(any("-0.zstd.parquet" in path for path in result["geoparquet_paths"]))
 
+    def test_single_layer_partitioned_geoparquet_stays_at_dataset_root(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gdf = gpd.GeoDataFrame(
+                {"statefp": ["06", "12"], "name": ["A", "B"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            )
+            gdf.to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name="source",
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                    ),
+                    multi_layer=False,
+                )
+            )
+
+            self.assertEqual(result["partitioning"], "admin")
+            self.assertTrue(
+                all(
+                    path.startswith(
+                        "dataset/file/v1.0.0/geoparquet/partition_statefp_"
+                    )
+                    for path in result["geoparquet_paths"]
+                )
+            )
+            self.assertFalse(
+                any("/geoparquet/layer-source/" in path for path in result["geoparquet_paths"])
+            )
+
     def test_partitioned_geoparquet_writer_derives_nested_huc_prefixes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"

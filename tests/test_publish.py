@@ -1415,7 +1415,7 @@ class PublishTests(unittest.TestCase):
             self.assertTrue(parquet_keys[0].startswith("tenant/tenant/file-a/"))
             self.assertEqual(
                 outputs[0].path,
-                "tenant/tenant/file-a/v1.0.0/geoparquet/**/*.parquet",
+                parquet_keys[0],
             )
             manifest = json.loads(
                 storage.read_bytes(

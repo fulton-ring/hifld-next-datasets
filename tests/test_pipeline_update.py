@@ -339,7 +339,6 @@ class PipelineUpdateTests(unittest.TestCase):
                 (
                     version_root
                     / "geoparquet"
-                    / "layer-source"
                     / "file-a.parquet"
                 ).exists()
             )
@@ -363,8 +362,8 @@ class PipelineUpdateTests(unittest.TestCase):
             )
             gdf.to_file(source_dir / "source.gpkg", driver="GPKG")
             existing = Path(published_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geoparquet"
-            existing.mkdir(parents=True)
-            existing_file = existing / "file-a.parquet"
+            existing_file = existing / "layer-source" / "file-a.parquet"
+            existing_file.parent.mkdir(parents=True)
             existing_file.write_bytes(b"exists")
 
             result = publish_assets_module.run_local_version_pipeline(
@@ -377,12 +376,12 @@ class PipelineUpdateTests(unittest.TestCase):
                 storage_location_name="Local published",
             )
 
-            replacement_file = existing / "layer-source" / "file-a.parquet"
+            replacement_file = existing / "file-a.parquet"
             self.assertFalse(existing_file.exists())
             self.assertTrue(replacement_file.exists())
             self.assertNotEqual(replacement_file.read_bytes(), b"exists")
             self.assertIn(
-                "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
+                "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet",
                 [output.path for output in result["outputs"]],
             )
 

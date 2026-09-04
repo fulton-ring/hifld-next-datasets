@@ -1956,8 +1956,14 @@ async def process_layer_partitioned_geoparquet(
     policy: GeoParquetWritePolicy,
     *,
     target_file_size_bytes: int | None = None,
+    multi_layer: bool | None = None,
 ) -> dict[str, Any]:
-    """Preflight and stream one layer to bounded, validated Hive GeoParquet files."""
+    """Preflight and stream one layer to bounded, validated Hive GeoParquet files.
+
+    ``multi_layer`` lets callers that know the source layer count keep a
+    single-layer dataset at the stable GeoParquet root. ``None`` preserves
+    the historical namespace behavior for direct callers.
+    """
     driver = _get_fiona_driver(format_type)
     if not driver:
         return {"error": f"Unsupported format for streaming: {format_type}"}
@@ -2006,6 +2012,11 @@ async def process_layer_partitioned_geoparquet(
         layer_filename if not layer_name or layer_name == "default" else layer_name
     )
     partitioned_layer_dir = _layer_output_namespace(layout_layer_name)
+    use_layer_namespace = (
+        multi_layer
+        if multi_layer is not None
+        else partitioning != "single_file" or has_named_source_layer
+    )
 
     def output_path(partition_dir: str) -> Path:
         index = next_part_index.get(partition_dir, 0)
@@ -2020,7 +2031,7 @@ async def process_layer_partitioned_geoparquet(
             filename = f"part-{index:03d}.parquet"
         path_root = (
             geoparquet_dir / partitioned_layer_dir
-            if partitioning != "single_file" or has_named_source_layer
+            if use_layer_namespace
             else geoparquet_dir
         )
         path = path_root / partition_dir / filename
@@ -3090,6 +3101,7 @@ async def _process_dataset(
                     policy=GeoParquetWritePolicy(
                         candidate_admin_columns=DEFAULT_ADMIN_PARTITION_CANDIDATES
                     ),
+                    multi_layer=len(layers) > 1,
                 )
             pmtiles_result = await process_layer_chunked(
                 file_path=preferred_data_file,
