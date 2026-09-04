@@ -27,6 +27,7 @@ import fiona
 import geopandas as gpd
 import geopandas.io.arrow as geopandas_arrow
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS, Transformer
 from shapely.geometry import Point, shape
@@ -74,8 +75,8 @@ DEFAULT_GEOPARQUET_ROW_GROUP_TARGET_BYTES = 128 * 1024 * 1024
 DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES = 112 * 1024 * 1024
 DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES = 128 * 1024 * 1024
 DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES = 512 * 1024 * 1024
-DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES = 1024 * 1024 * 1024
-DEFAULT_GEOPARQUET_TARGET_FILE_BYTES = 1024 * 1024 * 1024
+DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024
+DEFAULT_GEOPARQUET_TARGET_FILE_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_S2_CANDIDATE_LEVELS = tuple(range(2, 17))
 
 
@@ -900,6 +901,14 @@ class _FeatureBuffer:
     last_used: int = 0
 
 
+@dataclass
+class _ParquetWriterState:
+    path: Path
+    writer: pq.ParquetWriter
+    row_counts: list[int]
+    row_group_uncompressed_sizes: list[int]
+
+
 class _PreflightHistogramStore:
     """Exact SQLite-backed histograms with memory independent of bin count."""
 
@@ -1333,7 +1342,7 @@ def _prepare_streaming_feature(
     return _feature_with_properties(feature, properties)
 
 
-def _geodataframe_to_geoparquet_arrow(gdf: gpd.GeoDataFrame) -> Any:
+def _geodataframe_to_geoparquet_arrow(gdf: gpd.GeoDataFrame) -> pa.Table:
     attempts = [
         {"schema_version": "1.1.0", "write_covering_bbox": True},
         {"write_covering_bbox": True},
@@ -1351,6 +1360,37 @@ def _geodataframe_to_geoparquet_arrow(gdf: gpd.GeoDataFrame) -> Any:
             last_error = exc
     if last_error is not None:
         raise last_error
+
+
+def _canonicalize_geoparquet_batch_metadata(table: pa.Table) -> pa.Table:
+    """Remove batch-specific file bbox metadata while preserving covering bbox."""
+    metadata = table.schema.metadata
+    if not metadata or b"geo" not in metadata:
+        return table
+    try:
+        geo_metadata = json.loads(metadata[b"geo"])
+    except (TypeError, ValueError):
+        return table
+    if not isinstance(geo_metadata, dict):
+        return table
+    primary_column = geo_metadata.get("primary_column")
+    columns = geo_metadata.get("columns")
+    if not isinstance(primary_column, str) or not isinstance(columns, dict):
+        return table
+    primary_metadata = columns.get(primary_column)
+    if not isinstance(primary_metadata, dict) or "bbox" not in primary_metadata:
+        return table
+    primary_metadata = dict(primary_metadata)
+    primary_metadata.pop("bbox")
+    canonical_columns = dict(columns)
+    canonical_columns[primary_column] = primary_metadata
+    geo_metadata = dict(geo_metadata)
+    geo_metadata["columns"] = canonical_columns
+    canonical_metadata = dict(metadata)
+    canonical_metadata[b"geo"] = json.dumps(
+        geo_metadata, separators=(",", ":")
+    ).encode("utf-8")
+    return table.replace_schema_metadata(canonical_metadata)
 
 
 def _row_group_uncompressed_sizes(path: Path) -> list[int]:
@@ -1511,7 +1551,7 @@ def _preflight_layer_with_histograms(
                 level = finest_s2_level
                 if base_partitioning in {"single_file", "s2"}:
                     add_update("s2", "", level, cell, row_bytes)
-                if semantic_values:
+                if semantic_values and policy.force_s2:
                     combined_key = f"{semantic_key}|{cell}"
                     add_update(
                         "semantic_s2",
@@ -1562,7 +1602,7 @@ def _preflight_layer_with_histograms(
 
     if base_partitioning in {"single_file", "s2"}:
         histogram_store.roll_up_s2("s2", "", s2_levels)
-    else:
+    elif policy.force_s2:
         histogram_store.roll_up_s2("semantic_s2", "", s2_levels)
     for column in resolved_candidates:
         histogram_store.roll_up_s2("candidate_s2", column, s2_levels)
@@ -1579,8 +1619,6 @@ def _preflight_layer_with_histograms(
             resolved_policy=resolved_policy,
         )
 
-    selected_histogram_kind = "semantic"
-    selected_histogram_name = ""
     selection_s2_kind = "semantic_s2"
     selection_s2_name = ""
     if (
@@ -1595,20 +1633,13 @@ def _preflight_layer_with_histograms(
             ):
                 base_partitioning = "admin"
                 base_columns = [column]
-                selected_histogram_kind = "candidate"
-                selected_histogram_name = column
                 selection_s2_kind = "candidate_s2"
                 selection_s2_name = column
                 break
 
-    needs_s2 = (
-        policy.force_s2
-        or uncompressed_bytes >= policy.large_dataset_threshold_bytes
-        or histogram_store.max_bytes(
-            selected_histogram_kind,
-            selected_histogram_name,
-        )
-        >= policy.large_dataset_threshold_bytes
+    needs_s2 = policy.force_s2 or (
+        base_partitioning == "single_file"
+        and uncompressed_bytes >= policy.large_dataset_threshold_bytes
     )
     chosen_s2_level = None
     partitioning = base_partitioning
@@ -1681,6 +1712,7 @@ async def process_layer_partitioned_geoparquet(
     geoparquet_dir = work_dir / "geoparquet"
     geoparquet_dir.mkdir(parents=True, exist_ok=True)
     buffers: dict[str, _FeatureBuffer] = {}
+    writers: dict[str, _ParquetWriterState] = {}
     next_part_index: dict[str, int] = {}
     local_paths: list[Path] = []
     output_layouts: list[GeoParquetOutputLayout] = []
@@ -1733,6 +1765,35 @@ async def process_layer_partitioned_geoparquet(
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
+    def finalize_writer(partition_dir: str) -> None:
+        state = writers.pop(partition_dir, None)
+        if state is None:
+            return
+        state.writer.close()
+        metadata = pq.ParquetFile(state.path).metadata
+        row_counts = [
+            metadata.row_group(index).num_rows
+            for index in range(metadata.num_row_groups)
+        ]
+        local_paths.append(state.path)
+        relative_path = (
+            f"geoparquet/{state.path.relative_to(geoparquet_dir).as_posix()}"
+        )
+        output_layouts.append(
+            GeoParquetOutputLayout(
+                path=f"{dest_folder.rstrip('/')}/{relative_path}",
+                relative_path=relative_path,
+                file_size_bytes=state.path.stat().st_size,
+                sha256=_sha256_file(state.path),
+                row_counts=row_counts,
+                row_group_uncompressed_sizes=state.row_group_uncompressed_sizes,
+            )
+        )
+
+    def close_writers() -> None:
+        for partition_dir in list(writers):
+            finalize_writer(partition_dir)
+
     def write_validated(partition_dir: str, buffered: list[_BufferedFeature]) -> None:
         nonlocal candidate_counter, written_feature_count
         if not buffered:
@@ -1741,48 +1802,62 @@ async def process_layer_partitioned_geoparquet(
         features = [item.feature for item in ordered]
         gdf = gpd.GeoDataFrame.from_features(features, crs=current_crs)
         prepared = _coerce_gdf_to_fiona_schema(gdf.reset_index(drop=True), source_schema)
-        table = _geodataframe_to_geoparquet_arrow(prepared)
+        table = _canonicalize_geoparquet_batch_metadata(
+            _geodataframe_to_geoparquet_arrow(prepared)
+        )
         candidate_counter += 1
         candidate = geoparquet_dir / f".candidate-{candidate_counter:06d}.parquet"
-        pq.write_table(
-            table,
-            candidate,
-            compression="zstd",
-            compression_level=effective_policy.compression_level,
-            data_page_size=DEFAULT_DATA_PAGE_SIZE_BYTES,
-            row_group_size=max(1, len(prepared)),
-        )
-        row_group_sizes = _row_group_uncompressed_sizes(candidate)
-        if max(row_group_sizes, default=0) > effective_policy.max_row_group_bytes:
-            candidate.unlink(missing_ok=True)
-            if len(buffered) == 1:
-                raise ValueError(
-                    "A single feature exceeds the GeoParquet row-group hard limit "
-                    f"of {effective_policy.max_row_group_bytes} uncompressed bytes."
-                )
-            midpoint = len(buffered) // 2
-            write_validated(partition_dir, ordered[:midpoint])
-            write_validated(partition_dir, ordered[midpoint:])
-            return
-        final_path = output_path(partition_dir)
-        candidate.replace(final_path)
-        metadata = pq.ParquetFile(final_path).metadata
-        row_counts = [
-            metadata.row_group(i).num_rows for i in range(metadata.num_row_groups)
-        ]
-        local_paths.append(final_path)
-        written_feature_count += len(prepared)
-        relative_path = f"geoparquet/{final_path.relative_to(geoparquet_dir).as_posix()}"
-        output_layouts.append(
-            GeoParquetOutputLayout(
-                path=f"{dest_folder.rstrip('/')}/{relative_path}",
-                relative_path=relative_path,
-                file_size_bytes=final_path.stat().st_size,
-                sha256=_sha256_file(final_path),
-                row_counts=row_counts,
-                row_group_uncompressed_sizes=row_group_sizes,
+        try:
+            pq.write_table(
+                table,
+                candidate,
+                compression="zstd",
+                compression_level=effective_policy.compression_level,
+                data_page_size=DEFAULT_DATA_PAGE_SIZE_BYTES,
+                row_group_size=max(1, len(prepared)),
             )
-        )
+            row_group_sizes = _row_group_uncompressed_sizes(candidate)
+            if max(row_group_sizes, default=0) > effective_policy.max_row_group_bytes:
+                if len(buffered) == 1:
+                    raise ValueError(
+                        "A single feature exceeds the GeoParquet row-group hard limit "
+                        f"of {effective_policy.max_row_group_bytes} uncompressed bytes."
+                    )
+                midpoint = len(buffered) // 2
+                write_validated(partition_dir, ordered[:midpoint])
+                write_validated(partition_dir, ordered[midpoint:])
+                return
+
+            state = writers.get(partition_dir)
+            candidate_size = candidate.stat().st_size
+            if (
+                state is not None
+                and state.path.stat().st_size + candidate_size
+                > effective_policy.target_file_size_bytes
+            ):
+                finalize_writer(partition_dir)
+                state = None
+            if state is None:
+                final_path = output_path(partition_dir)
+                state = _ParquetWriterState(
+                    path=final_path,
+                    writer=pq.ParquetWriter(
+                        final_path,
+                        table.schema,
+                        compression="zstd",
+                        compression_level=effective_policy.compression_level,
+                        data_page_size=DEFAULT_DATA_PAGE_SIZE_BYTES,
+                    ),
+                    row_counts=[],
+                    row_group_uncompressed_sizes=[],
+                )
+                writers[partition_dir] = state
+            state.writer.write_table(table, row_group_size=max(1, len(prepared)))
+            state.row_counts.append(len(prepared))
+            state.row_group_uncompressed_sizes.extend(row_group_sizes)
+            written_feature_count += len(prepared)
+        finally:
+            candidate.unlink(missing_ok=True)
 
     def flush_partition(partition_dir: str) -> None:
         nonlocal aggregate_estimated_bytes
@@ -1863,7 +1938,15 @@ async def process_layer_partitioned_geoparquet(
                     flush_partition(largest_partition)
             for partition_dir in list(buffers):
                 flush_partition(partition_dir)
+            close_writers()
     except Exception as e:
+        for state in list(writers.values()):
+            try:
+                state.writer.close()
+            except Exception:
+                logger.exception("Error closing GeoParquet writer %s", state.path)
+        for candidate in geoparquet_dir.glob(".candidate-*.parquet"):
+            candidate.unlink(missing_ok=True)
         logger.error("Error in partitioned GeoParquet processing: %s", e)
         return {"error": str(e)}
 

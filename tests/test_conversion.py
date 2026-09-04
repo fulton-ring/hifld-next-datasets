@@ -25,10 +25,12 @@ from dagster_hifld.conversion import (
     _allocate_feature_bytes,
     _allocate_semantic_hive_keys,
     _build_tippecanoe_cmd,
+    _canonicalize_geoparquet_batch_metadata,
     _create_and_upload_pmtiles,
     _detect_format_from_path,
     _discover_staged_formats,
     _estimate_feature_size_bytes,
+    _geodataframe_to_geoparquet_arrow,
     _hilbert_like_key,
     _layer_output_namespace,
     _policy_s2_levels,
@@ -709,8 +711,8 @@ class ConversionTests(unittest.TestCase):
     def test_geoparquet_policy_defaults_use_bounded_layout_budgets(self):
         policy = GeoParquetWritePolicy()
 
-        self.assertEqual(DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES, 1024**3)
-        self.assertEqual(DEFAULT_GEOPARQUET_TARGET_FILE_BYTES, 1024**3)
+        self.assertEqual(DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES, 2 * 1024**3)
+        self.assertEqual(DEFAULT_GEOPARQUET_TARGET_FILE_BYTES, 2 * 1024**3)
         self.assertEqual(DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES, 112 * 1024**2)
         self.assertEqual(DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES, 128 * 1024**2)
         self.assertEqual(DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES, 512 * 1024**2)
@@ -965,7 +967,7 @@ class ConversionTests(unittest.TestCase):
         self.assertEqual(_policy_s2_levels(policy), (5, 6))
         self.assertEqual(policy.s2_fine_level, 14)
 
-    def test_preflight_adds_s2_for_large_total_and_semantic_partition(self):
+    def test_preflight_adds_s2_for_large_total_but_keeps_semantic_partition(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
             gpd.GeoDataFrame(
@@ -1007,9 +1009,9 @@ class ConversionTests(unittest.TestCase):
 
             self.assertEqual(unpartitioned["partitioning"], "s2")
             self.assertEqual(unpartitioned["chosen_s2_level"], 2)
-            self.assertEqual(semantic["partitioning"], "admin_s2")
-            self.assertEqual(semantic["partition_columns"], ["STATEFP", "s2_parent_cell"])
-            self.assertEqual(semantic["chosen_s2_level"], 2)
+            self.assertEqual(semantic["partitioning"], "admin")
+            self.assertEqual(semantic["partition_columns"], ["STATEFP"])
+            self.assertIsNone(semantic["chosen_s2_level"])
 
     def test_preflight_calculates_s2_cell_once_per_feature_for_all_candidate_levels(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1075,7 +1077,7 @@ class ConversionTests(unittest.TestCase):
                 )
 
             self.assertNotIn("s2", {row[0] for row in captured})
-            self.assertIn("semantic_s2", {row[0] for row in captured})
+            self.assertNotIn("semantic_s2", {row[0] for row in captured})
 
     def test_dense_level_16_cell_rolls_files_and_excludes_internal_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1232,6 +1234,30 @@ class ConversionTests(unittest.TestCase):
                 "geoparquet/source.parquet",
             )
 
+    def test_batch_metadata_canonicalization_preserves_covering_and_schema(self):
+        first = _geodataframe_to_geoparquet_arrow(
+            gpd.GeoDataFrame(
+                {"name": ["a"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            )
+        )
+        second = _geodataframe_to_geoparquet_arrow(
+            gpd.GeoDataFrame(
+                {"name": ["b"]},
+                geometry=[Point(10, 20)],
+                crs="EPSG:4326",
+            )
+        )
+
+        first_canonical = _canonicalize_geoparquet_batch_metadata(first)
+        second_canonical = _canonicalize_geoparquet_batch_metadata(second)
+        first_geo = json.loads(first_canonical.schema.metadata[b"geo"])
+
+        self.assertTrue(first_canonical.schema.equals(second_canonical.schema))
+        self.assertNotIn("bbox", first_geo["columns"]["geometry"])
+        self.assertIn("covering", first_geo["columns"]["geometry"])
+
     def test_row_group_hard_limit_rewrites_smaller_files_before_upload(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
@@ -1264,13 +1290,8 @@ class ConversionTests(unittest.TestCase):
 
             self.assertNotIn("error", result)
             self.assertEqual(result["feature_count"], 3)
-            self.assertEqual(len(result["geoparquet_paths"]), 3)
-            self.assertTrue(
-                all(
-                    output["row_counts"] == [1]
-                    for output in result["layout"]["outputs"]
-                )
-            )
+            self.assertEqual(len(result["geoparquet_paths"]), 1)
+            self.assertEqual(result["layout"]["outputs"][0]["row_counts"], [1, 1, 1])
 
     def test_singleton_oversize_fails_without_uploading_parquet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1329,20 +1350,59 @@ class ConversionTests(unittest.TestCase):
                 )
             )
 
-            self.assertEqual(len(result["geoparquet_paths"]), 4)
+            self.assertEqual(len(result["geoparquet_paths"]), 2)
             hive_key = result["hive_partition_columns"]["STATEFP"]
             self.assertTrue(
                 any(
-                    f"{hive_key}=v-06/part-001.parquet" in path
+                    f"{hive_key}=v-06/part-000.parquet" in path
                     for path in result["geoparquet_paths"]
                 )
             )
             self.assertTrue(
                 any(
-                    f"{hive_key}=v-12/part-001.parquet" in path
+                    f"{hive_key}=v-12/part-000.parquet" in path
                     for path in result["geoparquet_paths"]
                 )
             )
+            self.assertCountEqual(
+                [output["row_counts"] for output in result["layout"]["outputs"]],
+                [[1, 1], [1, 1]],
+            )
+
+    def test_multiple_buffer_flushes_append_row_groups_to_one_partition_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "06", "06"]},
+                geometry=[Point(0, 0), Point(1, 1), Point(2, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",),
+                        write_buffer_bytes=1,
+                        aggregate_buffer_bytes=10**9,
+                        target_file_size_bytes=10**9,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(len(result["geoparquet_paths"]), 1)
+            output = result["layout"]["outputs"][0]
+            self.assertEqual(output["row_counts"], [1, 1, 1])
+            parquet_path = Path(tmpdir) / output["path"]
+            self.assertEqual(pq.ParquetFile(parquet_path).metadata.num_row_groups, 3)
 
     def test_preflight_and_write_feature_count_mismatch_fails_before_upload(self):
         features = [
