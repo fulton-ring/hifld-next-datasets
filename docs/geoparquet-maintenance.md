@@ -61,6 +61,20 @@ The report checks the manifest's declared object set, hashes, sizes, feature/fil
 row-group counts, footer schemas and CRS, row-group limits, and the S2 layout
 rule. A non-compliant report exits nonzero.
 
+GeoParquet files target approximately 2 GiB compressed physical size. The audit
+allows multiple numbered sibling files for semantic layouts (`admin`,
+`derived_huc`, and `derived_prefix`) regardless of their aggregate compressed
+size or file count. An unpartitioned `single_file` layer whose compressed
+snapshot size exceeds 2 GiB must use the S2 fallback; legacy `_s2` strategies
+must declare the S2 Hive key and include it in every declared output path.
+
+Each row group remains bounded to 128 MiB uncompressed. Every output manifest
+entry records its exact serialized Parquet footer, and the combined footer
+metadata for a dataset version must not exceed 128 MiB. Semantic partitioning
+takes precedence over the S2 fallback: S2 is a fallback for a large
+unpartitioned layer, not a requirement caused by dataset-wide uncompressed or
+semantic size.
+
 ```bash
 uv run hifld-geoparquet-maintenance audit-geoparquet
 uv run hifld-geoparquet-maintenance audit-geoparquet --dataset DATASET --file FILE --version VERSION

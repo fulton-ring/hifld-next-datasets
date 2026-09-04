@@ -24,7 +24,14 @@ def _parquet_bytes(value: int = 1) -> bytes:
         return path.read_bytes()
 
 
-def _layout(path: str, *, size: int = 0, sha256: str = "") -> bytes:
+def _layout(
+    path: str,
+    *,
+    size: int = 0,
+    sha256: str = "",
+    footer_size: int = 545,
+    strategy: str = "single_file",
+) -> bytes:
     return json.dumps(
         {
             "schema_version": 1,
@@ -35,7 +42,7 @@ def _layout(path: str, *, size: int = 0, sha256: str = "") -> bytes:
                     "source_format": "geojson",
                     "validation_status": "valid",
                     "feature_count": 1,
-                    "partition_strategy": "single_file",
+                    "partition_strategy": strategy,
                     "partition_columns": [],
                     "hive_partition_columns": {},
                     "outputs": [
@@ -43,6 +50,7 @@ def _layout(path: str, *, size: int = 0, sha256: str = "") -> bytes:
                             "path": path,
                             "relative_path": "geoparquet/part.parquet",
                             "file_size_bytes": size,
+                            "footer_size_bytes": footer_size,
                             "sha256": sha256,
                             "row_counts": [1],
                             "row_group_uncompressed_sizes": [151],
@@ -73,10 +81,14 @@ class Task3BTests(unittest.TestCase):
 
             self.assertEqual(report["status"], "compliant")
             self.assertEqual(report["versions"][0]["dataset"], "d")
+            self.assertEqual(
+                report["versions"][0]["footer_metadata_bytes"], 545
+            )
 
     def test_audit_requires_typed_nonempty_output_integrity_fields(self):
         invalid_fields = {
             "file_size_bytes": (None, -1, "123"),
+            "footer_size_bytes": (None, -1, "525"),
             "sha256": (None, "ABCDEF" * 11, "not-a-hash"),
             "row_counts": (None, [], [-1], ["1"]),
             "row_group_uncompressed_sizes": (None, [], [-1], ["1"]),
@@ -104,6 +116,84 @@ class Task3BTests(unittest.TestCase):
                     )
                     report = audit_geoparquet(storage)
                     self.assertEqual(report["status"], "violation")
+
+    def test_audit_rejects_declared_footer_size_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                    footer_size=524,
+                ),
+            )
+            report = audit_geoparquet(storage)
+            self.assertEqual(report["status"], "violation")
+            self.assertIn(
+                "footer size mismatch",
+                " ".join(report["versions"][0]["reasons"]),
+            )
+
+    def test_audit_rejects_aggregate_footer_budget_overage(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                ),
+            )
+            report = audit_geoparquet(storage, metadata_limit_bytes=524)
+            self.assertEqual(report["status"], "violation")
+            self.assertIn(
+                "combined footer metadata exceeds",
+                " ".join(report["versions"][0]["reasons"]),
+            )
+
+    def test_audit_accepts_large_semantic_layout_without_s2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/state=06/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/state=06/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                    strategy="admin",
+                ),
+            )
+            report = audit_geoparquet(storage, s2_limit_bytes=1)
+            self.assertEqual(report["status"], "compliant")
+
+    def test_audit_rejects_large_single_file_without_s2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "d/f/v/geoparquet/part.parquet",
+                    size=len(parquet),
+                    sha256=hashlib.sha256(parquet).hexdigest(),
+                ),
+            )
+            report = audit_geoparquet(storage, s2_limit_bytes=1)
+            self.assertEqual(report["status"], "violation")
+            self.assertIn(
+                "S2 partition required",
+                " ".join(report["versions"][0]["reasons"]),
+            )
 
     def test_audit_rejects_output_paths_without_exact_version_identity(self):
         invalid_paths = (

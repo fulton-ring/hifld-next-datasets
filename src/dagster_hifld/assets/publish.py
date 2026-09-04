@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from dagster_hifld.catalog import (
     write_catalog_metadata,
 )
 from dagster_hifld.conversion import (
+    DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES,
     GeoParquetWritePolicy,
     ShapefileZipPolicy,
     _build_layer_filename,
@@ -50,6 +52,38 @@ from dagster_hifld.source_formats import (
 _PROMOTED_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _PROCESSING_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_PRECEDENCE
 logger = logging.getLogger(__name__)
+
+
+def _validate_geoparquet_footer_budget(
+    layers: Sequence[Mapping[str, object]],
+) -> int:
+    total = 0
+    for layer in layers:
+        outputs = layer.get("outputs")
+        if not isinstance(outputs, list):
+            raise ValueError(
+                "GeoParquet layout layer outputs are missing or invalid."
+            )
+        for output in outputs:
+            if not isinstance(output, Mapping):
+                raise ValueError("GeoParquet layout output is invalid.")
+            footer_size = output.get("footer_size_bytes")
+            if (
+                not isinstance(footer_size, int)
+                or isinstance(footer_size, bool)
+                or footer_size < 0
+            ):
+                raise ValueError(
+                    "GeoParquet layout output footer_size_bytes must be a "
+                    "nonnegative integer."
+                )
+            total += footer_size
+    if total > DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES:
+        raise ValueError(
+            "GeoParquet dataset footer metadata exceeds the limit of "
+            f"{DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES} bytes."
+        )
+    return total
 
 
 @dataclass(frozen=True)
@@ -526,6 +560,13 @@ def _validate_reusable_geoparquet_layout(
         raise ValueError(
             "Cannot reuse existing GeoParquet: authoritative layout manifest is invalid."
         )
+    typed_layers = [layer for layer in layers if isinstance(layer, dict)]
+    try:
+        _validate_geoparquet_footer_budget(typed_layers)
+    except ValueError as exc:
+        raise ValueError(
+            "Cannot reuse existing GeoParquet: authoritative layout manifest is invalid."
+        ) from exc
     declared_paths: list[str] = []
     for layer in layers:
         layer_outputs = layer.get("outputs")
@@ -873,6 +914,7 @@ def _write_geoparquet_layout_manifest_set(
             str(layer.get("source_format", "")),
         )
     )
+    footer_metadata_bytes = _validate_geoparquet_footer_budget(layers)
     validation_status = (
         "valid"
         if layers
@@ -882,6 +924,8 @@ def _write_geoparquet_layout_manifest_set(
     payload = {
         "schema_version": 1,
         "layers": layers,
+        "footer_metadata_bytes": footer_metadata_bytes,
+        "max_dataset_footer_bytes": DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES,
         "validation_status": validation_status,
     }
     return storage.write(

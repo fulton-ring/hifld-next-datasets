@@ -75,6 +75,7 @@ DEFAULT_MEMORY_ESTIMATE_MULTIPLIER = 5.0
 DEFAULT_GEOPARQUET_ROW_GROUP_TARGET_BYTES = 128 * 1024 * 1024
 DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES = 112 * 1024 * 1024
 DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES = 128 * 1024 * 1024
+DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES = 128 * 1024 * 1024
 DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES = 512 * 1024 * 1024
 DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_GEOPARQUET_TARGET_FILE_BYTES = 2 * 1024 * 1024 * 1024
@@ -98,6 +99,7 @@ class GeoParquetWritePolicy:
     target_row_group_bytes: int = DEFAULT_GEOPARQUET_ROW_GROUP_TARGET_BYTES
     write_buffer_bytes: int = DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES
     max_row_group_bytes: int = DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES
+    max_dataset_footer_bytes: int = DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES
     target_file_size_bytes: int = DEFAULT_GEOPARQUET_TARGET_FILE_BYTES
     aggregate_buffer_bytes: int = DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES
     preflight_chunk_rows: int = 1_000
@@ -860,6 +862,7 @@ class GeoParquetOutputLayout:
     path: str
     relative_path: str
     file_size_bytes: int
+    footer_size_bytes: int
     sha256: str
     row_counts: list[int]
     row_group_uncompressed_sizes: list[int]
@@ -875,6 +878,7 @@ class GeoParquetLayout:
     partition_columns: list[str]
     hive_partition_columns: dict[str, str]
     chosen_s2_level: int | None
+    footer_size_bytes: int
     thresholds: dict[str, int | float | str]
     outputs: list[GeoParquetOutputLayout]
     validation_status: str
@@ -2031,6 +2035,7 @@ async def process_layer_partitioned_geoparquet(
             metadata.row_group(index).num_rows
             for index in range(metadata.num_row_groups)
         ]
+        footer_size_bytes = max(0, int(metadata.serialized_size))
         local_paths.append(state.path)
         relative_path = (
             f"geoparquet/{state.path.relative_to(geoparquet_dir).as_posix()}"
@@ -2040,6 +2045,7 @@ async def process_layer_partitioned_geoparquet(
                 path=f"{dest_folder.rstrip('/')}/{relative_path}",
                 relative_path=relative_path,
                 file_size_bytes=state.path.stat().st_size,
+                footer_size_bytes=footer_size_bytes,
                 sha256=_sha256_file(state.path),
                 row_counts=row_counts,
                 row_group_uncompressed_sizes=row_group_uncompressed_sizes,
@@ -2206,6 +2212,14 @@ async def process_layer_partitioned_geoparquet(
             for partition_dir in list(buffers):
                 flush_partition(partition_dir)
             close_writers()
+            footer_size_bytes = sum(
+                output.footer_size_bytes for output in output_layouts
+            )
+            if footer_size_bytes > effective_policy.max_dataset_footer_bytes:
+                raise ValueError(
+                    "GeoParquet dataset footer metadata exceeds the limit of "
+                    f"{effective_policy.max_dataset_footer_bytes} bytes."
+                )
     except Exception as e:
         for state in list(writers.values()):
             try:
@@ -2250,6 +2264,9 @@ async def process_layer_partitioned_geoparquet(
         partition_columns=partition_columns,
         hive_partition_columns=preflight.hive_partition_columns,
         chosen_s2_level=preflight.chosen_s2_level,
+        footer_size_bytes=sum(
+            output.footer_size_bytes for output in output_layouts
+        ),
         thresholds={
             "large_dataset_bytes": effective_policy.large_dataset_threshold_bytes,
             "estimated_compressed_bytes": preflight.estimated_compressed_bytes,
@@ -2261,6 +2278,10 @@ async def process_layer_partitioned_geoparquet(
             "target_file_bytes": effective_policy.target_file_size_bytes,
             "effective_file_buffer_bytes": file_buffer_bytes,
             "aggregate_buffer_bytes": effective_policy.aggregate_buffer_bytes,
+            "max_dataset_footer_bytes": effective_policy.max_dataset_footer_bytes,
+            "footer_size_bytes": sum(
+                output.footer_size_bytes for output in output_layouts
+            ),
         },
         outputs=output_layouts,
         validation_status="valid",

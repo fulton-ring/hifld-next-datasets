@@ -36,7 +36,8 @@ _IGNORED_ROOTS = frozenset({"_temporary", "_rollback"})
 _REQUIRED_SHAPEFILE_SUFFIXES = frozenset({".shp", ".shx", ".dbf"})
 _CATALOG_METADATA_FILENAMES = ("quality_manifest.json", "data_dictionary.json")
 _DEFAULT_ROW_GROUP_LIMIT = 128 * 1024 * 1024
-_DEFAULT_S2_LIMIT = 1024 * 1024 * 1024
+_DEFAULT_METADATA_LIMIT = 128 * 1024 * 1024
+_DEFAULT_S2_LIMIT = 2 * 1024 * 1024 * 1024
 
 
 class _TileResponse(Protocol):
@@ -57,6 +58,7 @@ class _ParquetRowGroup(Protocol):
 
 class _ParquetMetadata(Protocol):
     num_row_groups: int
+    serialized_size: int
 
     def row_group(self, index: int) -> _ParquetRowGroup: ...
 
@@ -1113,6 +1115,7 @@ def _audit_version(
     *,
     row_group_limit_bytes: int,
     s2_limit_bytes: int,
+    metadata_limit_bytes: int,
     allow_storage_prefixed_paths: bool = False,
 ) -> dict[str, object]:
     reasons: list[str] = []
@@ -1213,7 +1216,6 @@ def _audit_version(
     total_uncompressed = 0
     total_row_groups = 0
     total_features = 0
-    partition_bytes: dict[str, int] = {}
     footer_by_relative: dict[
         str, tuple[_ParquetFile, StorageObjectSnapshot, list[int]]
     ] = {}
@@ -1236,15 +1238,6 @@ def _audit_version(
                             f"row group exceeds {row_group_limit_bytes} bytes: {relative}"
                         )
                 total_features += row_count
-                partition = "/".join(
-                    part
-                    for part in PurePosixPath(relative).parts[1:-1]
-                    if "=" in part
-                    and not part.split("=", 1)[0].endswith("s2_parent_cell")
-                )
-                partition_bytes[partition] = partition_bytes.get(partition, 0) + sum(
-                    row_group_sizes
-                )
                 footer_by_relative[relative] = (footer, snapshot, row_group_sizes)
                 hash_by_relative[relative] = content_hash
         except (OSError, ValueError, TypeError, RuntimeError) as exc:
@@ -1252,46 +1245,37 @@ def _audit_version(
                 f"unreadable parquet footer: {relative} ({type(exc).__name__})"
             )
 
-    if total_uncompressed > s2_limit_bytes:
-        strategy = None
-        hive_s2 = None
-        if declared_by_layer:
-            layer = declared_by_layer[0][0]
-            strategy = _string(layer.get("partition_strategy"))
-            hive = _mapping(layer.get("hive_partition_columns"))
-            hive_s2 = _string(hive.get("s2_parent_cell")) if hive else None
-        if strategy not in {"s2", "admin_s2"}:
-            reasons.append("S2 partition required for dataset")
-        elif not hive_s2:
-            reasons.append("S2 partition declares no S2 Hive key")
-        elif not all(f"{hive_s2}=" in path for path in parquet_relative):
-            reasons.append(f"declared S2 Hive key missing: {hive_s2}=")
-    for partition, measured in partition_bytes.items():
-        if measured <= s2_limit_bytes:
-            continue
-        strategy = None
-        hive_s2 = None
-        for layer, paths in declared_by_layer:
-            if partition and not any(
-                path.startswith(f"geoparquet/{partition}") for path in paths
-            ):
-                continue
-            strategy = _string(layer.get("partition_strategy"))
-            hive = _mapping(layer.get("hive_partition_columns"))
-            hive_s2 = _string(hive.get("s2_parent_cell")) if hive else None
-            break
-        if strategy not in {"s2", "admin_s2"}:
-            reasons.append(f"S2 partition required for {partition or 'dataset'}")
-        elif not hive_s2:
+    snapshot_by_relative = {
+        relative: snapshot
+        for snapshot, relative in zip(
+            parquet_snapshots, parquet_relative, strict=True
+        )
+    }
+    for layer, paths in declared_by_layer:
+        strategy = _string(layer.get("partition_strategy"))
+        compressed_bytes = sum(
+            snapshot_by_relative[path].size
+            for path in paths
+            if path in snapshot_by_relative
+        )
+        if strategy == "single_file" and compressed_bytes > s2_limit_bytes:
             reasons.append(
-                f"S2 partition declares no S2 Hive key: {partition or 'dataset'}"
+                "S2 partition required for single_file layer: "
+                f"compressed size exceeds {s2_limit_bytes} bytes"
             )
-        elif not all(
-            f"{hive_s2}=" in path
-            for path in parquet_relative
-            if not partition or path.startswith(f"geoparquet/{partition}")
-        ):
-            reasons.append(f"declared S2 Hive key missing: {hive_s2}=")
+        if strategy == "s2" or (strategy is not None and strategy.endswith("_s2")):
+            hive = _mapping(layer.get("hive_partition_columns"))
+            hive_s2 = _string(hive.get("s2_parent_cell")) if hive else None
+            if not hive_s2:
+                reasons.append("S2 partition declares no S2 Hive key")
+            elif not all(
+                any(
+                    segment.startswith(f"{hive_s2}=")
+                    for segment in PurePosixPath(path).parts
+                )
+                for path in paths
+            ):
+                reasons.append(f"declared S2 Hive key missing: {hive_s2}=")
 
     expected_feature_count = sum(
         _integer(layer.get("feature_count")) or 0 for layer, _paths in declared_by_layer
@@ -1386,6 +1370,9 @@ def _audit_version(
                     or any(not _nonnegative_integer(size) for size in declared_sizes)
                 ):
                     reasons.append(f"invalid row_group_uncompressed_sizes: {rel}")
+                declared_footer = output.get("footer_size_bytes")
+                if not _nonnegative_integer(declared_footer):
+                    reasons.append(f"invalid footer_size_bytes: {rel}")
                 entry = footer_by_relative.get(rel)
                 if entry is None:
                     continue
@@ -1418,6 +1405,21 @@ def _audit_version(
                     and declared_sizes != entry[2]
                 ):
                     reasons.append(f"row-group byte-size mismatch: {rel}")
+                if (
+                    _integer(declared_footer) is not None
+                    and declared_footer != int(entry[0].metadata.serialized_size)
+                ):
+                    reasons.append(f"footer size mismatch: {rel}")
+
+    footer_metadata_bytes = sum(
+        int(footer.metadata.serialized_size)
+        for footer, _snapshot, _sizes in footer_by_relative.values()
+    )
+    if footer_metadata_bytes > metadata_limit_bytes:
+        reasons.append(
+            "combined footer metadata exceeds "
+            f"{metadata_limit_bytes} bytes"
+        )
 
     return {
         "dataset": identity.dataset,
@@ -1430,6 +1432,7 @@ def _audit_version(
         "file_count": len(parquet_relative),
         "row_group_count": total_row_groups,
         "uncompressed_bytes": total_uncompressed,
+        "footer_metadata_bytes": footer_metadata_bytes,
     }
 
 
@@ -1441,6 +1444,7 @@ def audit_geoparquet(
     version: str | None = None,
     row_group_limit_bytes: int = _DEFAULT_ROW_GROUP_LIMIT,
     s2_limit_bytes: int = _DEFAULT_S2_LIMIT,
+    metadata_limit_bytes: int = _DEFAULT_METADATA_LIMIT,
     allow_storage_prefixed_paths: bool = False,
 ) -> dict[str, object]:
     """Audit canonical GeoParquet without changing storage."""
@@ -1479,6 +1483,7 @@ def audit_geoparquet(
             tuple(items),
             row_group_limit_bytes=row_group_limit_bytes,
             s2_limit_bytes=s2_limit_bytes,
+            metadata_limit_bytes=metadata_limit_bytes,
             allow_storage_prefixed_paths=allow_storage_prefixed_paths,
         )
         for identity, items in sorted(grouped.items())
@@ -1523,6 +1528,7 @@ def replace_geoparquet(
     apply: bool = False,
     row_group_limit_bytes: int = _DEFAULT_ROW_GROUP_LIMIT,
     s2_limit_bytes: int = _DEFAULT_S2_LIMIT,
+    metadata_limit_bytes: int = _DEFAULT_METADATA_LIMIT,
 ) -> dict[str, object]:
     """Validate and optionally atomically promote one staged GeoParquet repack."""
     if any(
@@ -1579,6 +1585,7 @@ def replace_geoparquet(
         version=version,
         row_group_limit_bytes=row_group_limit_bytes,
         s2_limit_bytes=s2_limit_bytes,
+        metadata_limit_bytes=metadata_limit_bytes,
         allow_storage_prefixed_paths=True,
     )
     if candidate_report["status"] != "compliant":

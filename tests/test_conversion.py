@@ -16,6 +16,7 @@ from shapely.geometry import Point
 
 from dagster_hifld.conversion import (
     DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES,
+    DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES,
     DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES,
     DEFAULT_GEOPARQUET_TARGET_FILE_BYTES,
     DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES,
@@ -712,6 +713,36 @@ class ConversionTests(unittest.TestCase):
                 ["dataset/file/v1.0.0/geoparquet/source.parquet"],
             )
 
+    def test_streaming_writer_records_exact_parquet_footer_size(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["A"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(),
+                )
+            )
+
+            output = result["layout"]["outputs"][0]
+            local_path = Path(tmpdir) / "work" / output["relative_path"]
+            actual_footer = pq.ParquetFile(local_path).metadata.serialized_size
+            self.assertEqual(output["footer_size_bytes"], actual_footer)
+            self.assertEqual(result["layout"]["footer_size_bytes"], actual_footer)
+            self.assertEqual(
+                result["layout"]["thresholds"]["footer_size_bytes"], actual_footer
+            )
+
     def test_geoparquet_policy_defaults_use_bounded_layout_budgets(self):
         policy = GeoParquetWritePolicy()
 
@@ -720,6 +751,8 @@ class ConversionTests(unittest.TestCase):
         self.assertEqual(DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES, 112 * 1024**2)
         self.assertEqual(DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES, 128 * 1024**2)
         self.assertEqual(DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES, 512 * 1024**2)
+        self.assertEqual(DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES, 128 * 1024**2)
+        self.assertEqual(policy.max_dataset_footer_bytes, 128 * 1024**2)
         self.assertEqual(policy.s2_candidate_levels, tuple(range(2, 17)))
 
     def test_streaming_writer_resolves_forced_admin_column_case_insensitively(self):

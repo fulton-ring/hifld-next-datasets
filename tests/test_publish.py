@@ -19,6 +19,7 @@ from dagster_hifld.assets.publish import (
     _published_outputs_from_keys,
     _write_and_publish_geoparquet,
     _write_geoparquet_layout_manifest,
+    _write_geoparquet_layout_manifest_set,
     _write_and_publish_pmtiles,
     _write_and_publish_shapefile_zip,
     publish_assets,
@@ -831,6 +832,7 @@ class PublishTests(unittest.TestCase):
                             {
                                 "relative_path": "geoparquet/file-a.parquet",
                                 "file_size_bytes": 100,
+                                "footer_size_bytes": 10,
                                 "sha256": "abc",
                                 "row_counts": [1],
                                 "row_group_uncompressed_sizes": [50],
@@ -907,6 +909,95 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(
                 [(layer["layer"], layer["feature_count"]) for layer in manifest["layers"]],
                 [("bridges", 3), ("roads", 4)],
+            )
+
+    def test_geoparquet_layout_manifest_accepts_footer_budget_under_cap(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            layout = {
+                "layer": "roads",
+                "source_format": "geojson",
+                "validation_status": "valid",
+                "outputs": [{"footer_size_bytes": 128 * 1024**2}],
+            }
+            key = _write_geoparquet_layout_manifest_set(
+                storage, "dataset", "file", "v1", [layout]
+            )
+            self.assertEqual(key, "dataset/file/v1/metadata/geoparquet_layout.json")
+
+    def test_geoparquet_layout_manifest_rejects_aggregate_footer_budget_over_cap(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            layout = {
+                "layer": "roads",
+                "source_format": "geojson",
+                "validation_status": "valid",
+                "outputs": [{"footer_size_bytes": 128 * 1024**2 + 1}],
+            }
+            with self.assertRaisesRegex(ValueError, "footer"):
+                _write_geoparquet_layout_manifest_set(
+                    storage, "dataset", "file", "v1", [layout]
+                )
+
+    def test_geoparquet_footer_budget_failure_cleans_version_outputs(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = (
+                Path(staging_dir)
+                / "dataset"
+                / "file"
+                / "v1"
+                / "geojson"
+            )
+            version_dir.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["road"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(version_dir / "source.geojson", driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            output_path = "dataset/file/v1/geoparquet/file.parquet"
+            layout = {
+                "schema_version": 1,
+                "layer": "file",
+                "source_format": "geojson",
+                "feature_count": 1,
+                "partition_strategy": "single_file",
+                "partition_columns": [],
+                "hive_partition_columns": {},
+                "chosen_s2_level": None,
+                "thresholds": {},
+                "outputs": [
+                    {
+                        "path": output_path,
+                        "relative_path": "geoparquet/file.parquet",
+                        "file_size_bytes": 1,
+                        "footer_size_bytes": 128 * 1024**2 + 1,
+                        "sha256": "a" * 64,
+                        "row_counts": [1],
+                        "row_group_uncompressed_sizes": [1],
+                    }
+                ],
+                "validation_status": "valid",
+            }
+            with patch(
+                "dagster_hifld.assets.publish.process_layer_partitioned_geoparquet",
+                new_callable=AsyncMock,
+            ) as writer:
+                writer.return_value = {
+                    "geoparquet_paths": [output_path],
+                    "feature_count": 1,
+                    "partitioning": "single_file",
+                    "partition_columns": [],
+                    "hive_partitioned": False,
+                    "layout": layout,
+                }
+                with self.assertRaisesRegex(ValueError, "footer"):
+                    _write_and_publish_geoparquet(storage, "dataset", "file", "v1")
+
+            self.assertFalse(
+                any(
+                    key.startswith("dataset/file/v1/geoparquet/")
+                    or key.endswith("geoparquet_layout.json")
+                    for key in storage.list_keys("dataset", "file", "v1")
+                )
             )
 
     def test_partitioned_multilayer_publish_uses_collision_proof_layer_paths(self):
@@ -1271,7 +1362,8 @@ class PublishTests(unittest.TestCase):
                                 "validation_status": "valid",
                                 "outputs": [
                                     {
-                                        "path": "dataset-a/file-a/v1.0.0/geoparquet/other.parquet"
+                                        "path": "dataset-a/file-a/v1.0.0/geoparquet/other.parquet",
+                                        "footer_size_bytes": 0,
                                     }
                                 ],
                             }
@@ -1306,7 +1398,9 @@ class PublishTests(unittest.TestCase):
                             {
                                 "layer": "default",
                                 "validation_status": "valid",
-                                "outputs": [{"path": actual_key}],
+                                "outputs": [
+                                    {"path": actual_key, "footer_size_bytes": 0}
+                                ],
                             }
                         ],
                     }
