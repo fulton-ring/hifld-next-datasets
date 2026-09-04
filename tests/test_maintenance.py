@@ -734,6 +734,42 @@ class RestoreStagingTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertTrue(json.loads(stdout.getvalue())["versions"])
 
+    def test_repeated_invalid_source_reports_are_deterministic(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            _write(
+                published,
+                "dataset-a/bad/v1/geojson/source.geojson",
+                b"not geojson",
+            )
+
+            for apply in (False, True):
+                with self.subTest(apply=apply):
+                    reports = [
+                        restore_staging(
+                            published,
+                            staging,
+                            apply=apply,
+                        ).to_dict()
+                        for _ in range(2)
+                    ]
+
+                    self.assertEqual(
+                        json.dumps(reports[0], sort_keys=True),
+                        json.dumps(reports[1], sort_keys=True),
+                    )
+                    errors = " ".join(reports[0]["versions"][0]["errors"])
+                    self.assertIn("geojson/source.geojson", errors)
+                    self.assertNotIn("hifld_restore_candidate_", errors)
+                    self.assertNotIn("/_temporary/restore-", errors)
+
     def test_injected_final_promotion_failure_restores_preexisting_state(self):
         with (
             tempfile.TemporaryDirectory() as published_dir,

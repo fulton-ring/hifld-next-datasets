@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import tempfile
 import uuid
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -190,6 +191,7 @@ def restore_staging(
         if item.status == "blocked":
             results.append(item)
             continue
+        candidate: StagingStorageResource | None = None
         try:
             with _candidate_storage(staging, apply=apply) as candidate:
                 candidate_logical_keys = _build_candidate(published, candidate, item)
@@ -231,7 +233,7 @@ def restore_staging(
                     item.source_keys,
                     item.destination_keys,
                     item.metadata_keys,
-                    (f"{type(exc).__name__}: {exc}",),
+                    (_stable_restore_error(exc, candidate),),
                 )
             )
     return MaintenanceReport(
@@ -239,6 +241,38 @@ def restore_staging(
         apply,
         overwrite,
         tuple(results),
+    )
+
+
+def _stable_restore_error(
+    error: Exception,
+    candidate: StagingStorageResource | None,
+) -> str:
+    message = f"{type(error).__name__}: {error}"
+    if candidate is not None:
+        candidate_roots: list[str] = []
+        if candidate.use_local or not candidate.bucket:
+            candidate_root = Path(candidate.local_dir).resolve()
+            if candidate.prefix:
+                candidate_root /= candidate.prefix
+            candidate_roots.append(str(candidate_root))
+        elif candidate.bucket and candidate.prefix:
+            candidate_roots.extend(
+                (
+                    f"gs://{candidate.bucket}/{candidate.prefix}",
+                    f"{candidate.bucket}/{candidate.prefix}",
+                )
+            )
+        if candidate.prefix:
+            candidate_roots.append(candidate.prefix)
+        for root in sorted(candidate_roots, key=len, reverse=True):
+            message = message.replace(root.rstrip("/"), "<candidate>")
+
+    system_temp_root = re.escape(str(Path(tempfile.gettempdir()).resolve()))
+    return re.sub(
+        rf"{system_temp_root}/hifld_staging_[^/\s:;'\"]+",
+        "<candidate>",
+        message,
     )
 
 
