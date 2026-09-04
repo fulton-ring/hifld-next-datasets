@@ -18,7 +18,15 @@ class LifecyclePolicyTests(unittest.TestCase):
                             "isLive": True,
                             "matchesPrefix": ["_temporary/"],
                         },
-                    }
+                    },
+                    {
+                        "action": {"type": "Delete"},
+                        "condition": {
+                            "daysSinceNoncurrentTime": 7,
+                            "isLive": False,
+                            "matchesPrefix": ["_temporary/"],
+                        },
+                    },
                 ]
             },
         )
@@ -37,7 +45,15 @@ class LifecyclePolicyTests(unittest.TestCase):
                             "isLive": True,
                             "matchesPrefix": ["_rollback/"],
                         },
-                    }
+                    },
+                    {
+                        "action": {"type": "Delete"},
+                        "condition": {
+                            "daysSinceNoncurrentTime": 7,
+                            "isLive": False,
+                            "matchesPrefix": ["_rollback/"],
+                        },
+                    },
                 ]
             },
         )

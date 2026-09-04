@@ -2,8 +2,10 @@
 
 The checked-in policies expire only short-lived maintenance namespaces. Staging
 deletes live `_temporary/` objects after seven days; production deletes live
-`_rollback/` objects after seven days. Neither policy expires live canonical
-dataset or metadata objects, and neither policy deletes noncurrent generations.
+`_rollback/` objects after seven days. Archived generations in those same
+temporary namespaces expire seven days after becoming noncurrent. Neither policy
+expires live canonical dataset or metadata objects, and neither policy deletes
+noncurrent generations under canonical dataset prefixes.
 
 Bucket Object Versioning must be enabled (and is enabled by the IAC) so replacing
 a live object creates a recoverable prior generation. The maintenance asset is

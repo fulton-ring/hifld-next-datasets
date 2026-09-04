@@ -11,6 +11,18 @@
           "_rollback/"
         ]
       }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "daysSinceNoncurrentTime": 7,
+        "isLive": false,
+        "matchesPrefix": [
+          "_rollback/"
+        ]
+      }
     }
   ]
 }
