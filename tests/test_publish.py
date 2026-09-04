@@ -140,8 +140,9 @@ class PublishTests(unittest.TestCase):
                     f"{dataset_slug}/{file_slug}/{version}/geoparquet/source.parquet",
                 ]
 
-            def copy_keys_to(self, destination, keys):
+            def copy_keys_to(self, destination, keys, *, destination_keys=None):
                 self.bulk_keys = list(keys)
+                self.destination_keys = list(destination_keys or keys)
                 return [f"copied/{Path(key).name}" for key in keys]
 
         class FakePublished:
@@ -346,6 +347,128 @@ class PublishTests(unittest.TestCase):
             self.assertIn("dataset-a/file-a/v1.0.0/metadata/quality_manifest.json", copied)
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
 
+    def test_copy_version_files_normalizes_different_storage_prefixes(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(
+                local_dir=staging_dir,
+                use_local=True,
+                prefix="staged-prefix",
+            )
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+                prefix="published-prefix",
+            )
+            staging.write("dataset-a", "file-a", "v1.0.0", "geopackage/source.gpkg", b"gpkg")
+            staging.write("dataset-a", "file-a", "v1.0.0", "unknown/leak.txt", b"legacy")
+
+            copied = _copy_version_files(staging, published, "dataset-a", "file-a", "v1.0.0")
+
+            self.assertEqual(
+                copied,
+                ["published-prefix/dataset-a/file-a/v1.0.0/geopackage/source.gpkg"],
+            )
+            self.assertTrue(
+                (
+                    Path(published_dir)
+                    / "published-prefix/dataset-a/file-a/v1.0.0/geopackage/source.gpkg"
+                ).exists()
+            )
+            self.assertFalse((Path(published_dir) / "published-prefix/staged-prefix").exists())
+            self.assertFalse(
+                (Path(published_dir) / "published-prefix/dataset-a/file-a/v1.0.0/unknown").exists()
+            )
+
+    def test_copy_source_files_normalizes_prefixed_canonical_shapefile_outputs(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(
+                local_dir=staging_dir,
+                use_local=True,
+                prefix="staged-prefix",
+            )
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+                prefix="published-prefix",
+            )
+            for suffix in (".shp", ".shx", ".dbf"):
+                staging.write(
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                    f"shapefile/source{suffix}",
+                    suffix.encode(),
+                )
+
+            outputs = _copy_source_files(
+                staging,
+                published,
+                "dataset-a",
+                "file-a",
+                "v1.0.0",
+            )
+
+            self.assertEqual({output.format_type for output in outputs}, {"shapefile"})
+            self.assertTrue(
+                all(
+                    output.path.startswith(
+                        "published-prefix/dataset-a/file-a/v1.0.0/shapefile/"
+                    )
+                    for output in outputs
+                )
+            )
+            self.assertFalse((Path(published_dir) / "published-prefix/staged-prefix").exists())
+
+    def test_legacy_canonicalization_copies_only_listed_sidecars_without_materializing_version(self):
+        class FakeStaging:
+            prefix = "staged-prefix"
+
+            def copy_keys_to(self, destination, keys, *, destination_keys=None):
+                self.copied_keys = list(keys)
+                self.destination_keys = list(destination_keys or [])
+                if any("geoparquet" in key or "pmtiles" in key for key in keys):
+                    raise AssertionError("derived artifacts must not be copied as legacy sidecars")
+                return [f"published-prefix/{key}" for key in self.destination_keys]
+
+            def get_local_version_dir(self, *args, **kwargs):
+                raise AssertionError("legacy canonicalization must not materialize the version")
+
+            def read_bytes(self, *args, **kwargs):
+                raise AssertionError("legacy canonicalization must use storage-side copies")
+
+        staging = FakeStaging()
+        published = Mock(prefix="published-prefix")
+        keys = [
+            "staged-prefix/dataset-a/file-a/v1.0.0/unknown/nested/source.shp",
+            "staged-prefix/dataset-a/file-a/v1.0.0/unknown/nested/source.shx",
+            "staged-prefix/dataset-a/file-a/v1.0.0/unknown/nested/source.dbf",
+            "staged-prefix/dataset-a/file-a/v1.0.0/geoparquet/part.parquet",
+            "staged-prefix/dataset-a/file-a/v1.0.0/pmtiles/source.pmtiles",
+        ]
+
+        copied = _copy_source_format_files(
+            staging,
+            published,
+            "dataset-a",
+            "file-a",
+            "v1.0.0",
+            keys,
+        )
+
+        self.assertEqual(
+            getattr(staging, "copied_keys", []),
+            [keys[2], keys[0], keys[1]],
+        )
+        self.assertEqual(
+            staging.destination_keys,
+            [
+                "dataset-a/file-a/v1.0.0/shapefile/nested/source.dbf",
+                "dataset-a/file-a/v1.0.0/shapefile/nested/source.shp",
+                "dataset-a/file-a/v1.0.0/shapefile/nested/source.shx",
+            ],
+        )
+        self.assertEqual(len(copied), 3)
+
     def test_copy_source_format_files_reports_and_skips_ambiguous_legacy_unknown(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             unknown = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "unknown"
@@ -469,6 +592,20 @@ class PublishTests(unittest.TestCase):
 
         self.assertEqual(len(outputs), 1)
         self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/*.parquet")
+
+    def test_prefixed_partitioned_geoparquet_is_registered_with_prefixed_glob(self):
+        keys = [
+            "published-prefix/dataset-a/file-a/v1.0.0/geoparquet/state=MD/part.parquet",
+            "published-prefix/dataset-a/file-a/v1.0.0/geoparquet/state=VA/part.parquet",
+        ]
+
+        outputs = _published_outputs_from_keys("dataset-a", "file-a", "v1.0.0", keys)
+
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(
+            outputs[0].path,
+            "published-prefix/dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
+        )
 
     def test_overwrite_deletes_only_selected_format_prefix(self):
         with tempfile.TemporaryDirectory() as published_dir:

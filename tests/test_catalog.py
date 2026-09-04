@@ -184,6 +184,39 @@ class CatalogTests(unittest.TestCase):
 
             self.assertEqual(list(_iter_geospatial_sources(version_dir)), [(legacy, None)])
 
+    def test_summarize_staged_catalog_reads_nested_canonical_json_geojson(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            source = (
+                Path(tmpdir)
+                / "dataset-a"
+                / "file-a"
+                / "v1.0.0"
+                / "geojson"
+                / "nested"
+                / "SOURCE.JSON"
+            )
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["A"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+
+            try:
+                summary = summarize_staged_catalog(
+                    resource,
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                    "dataset-a",
+                )
+            except ValueError as exc:
+                self.fail(f"nested canonical JSON GeoJSON was not discovered: {exc}")
+
+            self.assertEqual(summary.quality_manifest["feature_count"], 1)
+            self.assertEqual(summary.quality_manifest["geometry_type"], "Point")
+
     def test_generate_quality_manifest_supports_tabular_inputs(self):
         df = pd.DataFrame({"station_id": [1, 2], "name": ["A", None]})
 

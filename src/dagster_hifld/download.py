@@ -17,6 +17,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     SOURCE_FORMAT_EXTENSIONS,
+    shapefile_dataset_files,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,14 +142,7 @@ def _collect_staging_files(primary: Path) -> list[tuple[Path, str]]:
 
     files: list[tuple[Path, str]] = [(primary, primary.name)]
     if primary.suffix.lower() == ".shp":
-        sidecar_suffixes = {".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx", ".qpj"}
-        for sibling in sorted(primary.parent.iterdir()):
-            if (
-                sibling.is_file()
-                and sibling.stem.casefold() == primary.stem.casefold()
-                and sibling.suffix.lower() in sidecar_suffixes
-            ):
-                files.append((sibling, sibling.name))
+        files = [(path, path.name) for path in shapefile_dataset_files(primary)]
     return files
 
 

@@ -43,8 +43,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
-    discover_legacy_unknown_shapefile,
-    shapefile_dataset_files,
+    discover_legacy_unknown_shapefile_keys,
 )
 
 _PROMOTED_SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
@@ -86,13 +85,28 @@ def _copy_version_files(
 ) -> list[str]:
     published_storage.delete_prefix(f"{dataset_slug}/{file_slug}/{version}")
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
-    version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
-    selected_keys = [
-        key
+    selected_pairs = [
+        (key, relative_key)
         for key in keys
-        if Path(key.removeprefix(version_prefix)).parts[0] != "unknown"
+        if (relative_key := _relative_version_key(
+            staging_storage,
+            dataset_slug,
+            file_slug,
+            version,
+            key,
+        ))
+        and Path(relative_key).parts[0] != "unknown"
     ]
-    copied = list(staging_storage.copy_keys_to(published_storage, selected_keys))
+    copied = list(
+        staging_storage.copy_keys_to(
+            published_storage,
+            [key for key, _relative_key in selected_pairs],
+            destination_keys=[
+                _logical_version_key(dataset_slug, file_slug, version, relative_key)
+                for _key, relative_key in selected_pairs
+            ],
+        )
+    )
     copied.extend(
         _copy_legacy_unknown_shapefile(
             staging_storage,
@@ -114,21 +128,33 @@ def _copy_source_format_files(
     version: str,
     keys: list[str],
 ) -> list[str]:
-    copied: list[str] = []
-    version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
+    source_pairs: list[tuple[str, str]] = []
     for key in sorted(keys):
-        if "/metadata/" in key:
-            continue
-        rel_path = key.removeprefix(version_prefix)
+        rel_path = _relative_version_key(
+            staging_storage,
+            dataset_slug,
+            file_slug,
+            version,
+            key,
+        )
         if not rel_path:
             continue
         format_dir = Path(rel_path).parts[0]
         if format_dir not in _PROMOTED_SOURCE_FORMAT_DIRS:
             continue
-        contents = staging_storage.read_bytes(dataset_slug, file_slug, version, key)
-        copied.append(
-            published_storage.write(dataset_slug, file_slug, version, rel_path, contents)
+        source_pairs.append(
+            (
+                key,
+                _logical_version_key(dataset_slug, file_slug, version, rel_path),
+            )
         )
+    copied = list(
+        staging_storage.copy_keys_to(
+            published_storage,
+            [key for key, _destination_key in source_pairs],
+            destination_keys=[destination_key for _key, destination_key in source_pairs],
+        )
+    )
     copied.extend(
         _copy_legacy_unknown_shapefile(
             staging_storage,
@@ -150,45 +176,119 @@ def _copy_legacy_unknown_shapefile(
     version: str,
     keys: list[str],
 ) -> list[str]:
-    version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
-    if any(
-        key.startswith(f"{version_prefix}shapefile/")
-        and Path(key).suffix.lower() == ".shp"
+    relative_keys = {
+        key: relative_key
         for key in keys
+        if (relative_key := _relative_version_key(
+            staging_storage,
+            dataset_slug,
+            file_slug,
+            version,
+            key,
+        ))
+    }
+    if any(
+        relative_key.startswith("shapefile/") and Path(key).suffix.lower() == ".shp"
+        for key, relative_key in relative_keys.items()
     ):
         return []
-    if not any(key.startswith(f"{version_prefix}unknown/") for key in keys):
+    unknown_keys = [
+        key for key, relative_key in relative_keys.items() if relative_key.startswith("unknown/")
+    ]
+    if not unknown_keys:
         return []
 
-    with staging_storage.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
-        unknown_dir = Path(version_dir) / "unknown"
-        try:
-            legacy_shapefile = discover_legacy_unknown_shapefile(unknown_dir)
-        except ValueError as exc:
-            logger.warning(
-                "Skipping invalid legacy source %s/%s/%s/unknown: %s",
-                dataset_slug,
-                file_slug,
-                version,
-                exc,
-            )
-            return []
-        if legacy_shapefile is None:
-            return []
+    try:
+        legacy_keys = discover_legacy_unknown_shapefile_keys(unknown_keys)
+    except ValueError as exc:
+        logger.warning(
+            "Skipping invalid legacy source %s/%s/%s/unknown: %s",
+            dataset_slug,
+            file_slug,
+            version,
+            exc,
+        )
+        return []
+    if not legacy_keys:
+        return []
 
-        copied: list[str] = []
-        for source_file in shapefile_dataset_files(legacy_shapefile):
-            relative_source = source_file.relative_to(unknown_dir).as_posix()
-            copied.append(
-                published_storage.write(
-                    dataset_slug,
-                    file_slug,
-                    version,
-                    f"shapefile/{relative_source}",
-                    source_file.read_bytes(),
-                )
-            )
-        return copied
+    destination_keys = [
+        _logical_version_key(
+            dataset_slug,
+            file_slug,
+            version,
+            f"shapefile/{relative_keys[key].removeprefix('unknown/')}",
+        )
+        for key in legacy_keys
+    ]
+    return list(
+        staging_storage.copy_keys_to(
+            published_storage,
+            list(legacy_keys),
+            destination_keys=destination_keys,
+        )
+    )
+
+
+def _storage_version_prefix(
+    storage: StagingStorageResource | PublishedStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+) -> str:
+    logical_prefix = f"{dataset_slug}/{file_slug}/{version}"
+    configured_prefix = getattr(storage, "prefix", "")
+    storage_prefix = configured_prefix.strip("/") if isinstance(configured_prefix, str) else ""
+    if storage_prefix:
+        return f"{storage_prefix}/{logical_prefix}/"
+    return f"{logical_prefix}/"
+
+
+def _relative_version_key(
+    storage: StagingStorageResource | PublishedStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    key: str,
+) -> str | None:
+    version_prefix = _storage_version_prefix(
+        storage,
+        dataset_slug,
+        file_slug,
+        version,
+    )
+    normalized_key = key.lstrip("/")
+    if not normalized_key.startswith(version_prefix):
+        return None
+    return normalized_key.removeprefix(version_prefix)
+
+
+def _logical_version_key(
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    relative_key: str,
+) -> str:
+    return f"{dataset_slug}/{file_slug}/{version}/{relative_key.lstrip('/')}"
+
+
+def _split_version_key(
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    key: str,
+) -> tuple[str, str] | None:
+    """Return a key's version root and version-relative path, preserving storage prefix."""
+    normalized_key = key.lstrip("/")
+    marker = f"{dataset_slug}/{file_slug}/{version}/"
+    marker_start = normalized_key.rfind(marker)
+    if marker_start < 0 or (marker_start > 0 and normalized_key[marker_start - 1] != "/"):
+        return None
+    relative_key = normalized_key[marker_start + len(marker) :]
+    if not relative_key:
+        return None
+    version_root = normalized_key[: marker_start + len(marker)].rstrip("/")
+    return version_root, relative_key
 
 
 def _copy_source_files(
@@ -207,14 +307,22 @@ def _copy_source_files(
         version,
         keys,
     )
-    version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
     return [
         PublishedFormatOutput(
             file_slug=file_slug,
-            format_type=Path(key.removeprefix(version_prefix)).parts[0],
+            format_type=Path(relative_key).parts[0],
             path=key,
         )
         for key in copied
+        if (
+            relative_key := _relative_version_key(
+                published_storage,
+                dataset_slug,
+                file_slug,
+                version,
+                key,
+            )
+        )
     ]
 
 
@@ -320,11 +428,19 @@ def _published_format_keys(
     version: str,
     format_dir: str,
 ) -> list[str]:
-    prefix = f"{dataset_slug}/{file_slug}/{version}/{format_dir}/"
     return [
         key
         for key in storage.list_keys(dataset_slug, file_slug, version)
-        if key.startswith(prefix)
+        if (
+            relative_key := _relative_version_key(
+                storage,
+                dataset_slug,
+                file_slug,
+                version,
+                key,
+            )
+        )
+        and relative_key.startswith(f"{format_dir}/")
     ]
 
 
@@ -388,11 +504,22 @@ def _preferred_remote_source_keys(
     file_slug: str,
     version: str,
 ) -> tuple[str | None, list[str]]:
-    version_prefix = f"{dataset_slug}/{file_slug}/{version}/"
     keys = storage.list_keys(dataset_slug, file_slug, version)
     for format_dir in _PROCESSING_SOURCE_FORMAT_DIRS:
-        prefix = f"{version_prefix}{format_dir}/"
-        format_keys = [key for key in keys if key.startswith(prefix)]
+        format_keys = [
+            key
+            for key in keys
+            if (
+                relative_key := _relative_version_key(
+                    storage,
+                    dataset_slug,
+                    file_slug,
+                    version,
+                    key,
+                )
+            )
+            and relative_key.startswith(f"{format_dir}/")
+        ]
         if format_keys:
             return format_dir, format_keys
     return None, []
@@ -420,7 +547,16 @@ def _copy_or_generate_geopackage(
     staged_geopackage_keys = [
         key
         for key in keys
-        if f"/{version}/geopackage/" in key
+        if (
+            relative_key := _relative_version_key(
+                staging_storage,
+                dataset_slug,
+                file_slug,
+                version,
+                key,
+            )
+        )
+        and relative_key.startswith("geopackage/")
     ]
     if staged_geopackage_keys:
         return [
@@ -729,33 +865,31 @@ def _published_outputs_from_keys(
     version: str,
     keys: list[str],
 ) -> list[PublishedFormatOutput]:
-    prefix = f"{dataset_slug}/{file_slug}/{version}/"
     outputs: list[PublishedFormatOutput] = []
-    geoparquet_keys: list[str] = []
+    geoparquet_keys: list[tuple[str, str, str]] = []
     for key in sorted(keys):
-        if not key.startswith(prefix):
+        split_key = _split_version_key(dataset_slug, file_slug, version, key)
+        if split_key is None:
             continue
-        rel = key.removeprefix(prefix)
+        version_root, rel = split_key
         parts = Path(rel).parts
         if not parts:
             continue
         format_type = parts[0]
         if format_type == "geoparquet" and key.endswith(".parquet"):
-            geoparquet_keys.append(key)
+            geoparquet_keys.append((key, version_root, rel))
             continue
         outputs.append(PublishedFormatOutput(file_slug, format_type, key))
 
     if geoparquet_keys:
-        is_partitioned = any(
-            len(Path(key.removeprefix(prefix)).parts) > 2
-            for key in geoparquet_keys
-        )
+        is_partitioned = any(len(Path(rel).parts) > 2 for _key, _root, rel in geoparquet_keys)
+        version_root = geoparquet_keys[0][1]
         if is_partitioned:
             outputs.append(
                 PublishedFormatOutput(
                     file_slug,
                     "geoparquet",
-                    f"{dataset_slug}/{file_slug}/{version}/geoparquet/**/*.parquet",
+                    f"{version_root}/geoparquet/**/*.parquet",
                     {"hive_partitioned": True},
                 )
             )
@@ -764,14 +898,14 @@ def _published_outputs_from_keys(
                 PublishedFormatOutput(
                     file_slug,
                     "geoparquet",
-                    f"{dataset_slug}/{file_slug}/{version}/geoparquet/*.parquet",
+                    f"{version_root}/geoparquet/*.parquet",
                     {"hive_partitioned": False, "partitioning": "streaming_chunks"},
                 )
             )
         else:
             outputs.extend(
                 PublishedFormatOutput(file_slug, "geoparquet", key)
-                for key in geoparquet_keys
+                for key, _root, _rel in geoparquet_keys
             )
     return outputs
 
@@ -820,16 +954,18 @@ def run_local_version_pipeline(
     outputs.extend(_write_and_publish_geoparquet(staging_storage, dataset_slug, file_slug, version))
     outputs.extend(_write_and_publish_pmtiles(staging_storage, dataset_slug, file_slug, version))
     outputs.extend(_write_and_publish_shapefile_zip(staging_storage, dataset_slug, file_slug, version))
-    promoted = [
-        PublishedFormatOutput(file_slug, Path(key.removeprefix(f"{dataset_slug}/{file_slug}/{version}/")).parts[0], key)
-        for key in _copy_version_files(
+    promoted = _published_outputs_from_keys(
+        dataset_slug,
+        file_slug,
+        version,
+        _copy_version_files(
             staging_storage,
             published_storage,
             dataset_slug,
             file_slug,
             version,
-        )
-    ]
+        ),
+    )
     outputs.extend(promoted)
 
     api_payload = register_published_outputs(

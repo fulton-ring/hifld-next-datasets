@@ -156,10 +156,15 @@ class StagingStorageResource(ConfigurableResource):
         if fs.exists(path):
             fs.rm(path, recursive=True)
 
-    def copy_key_to(self, destination: "StagingStorageResource", key: str) -> str:
+    def copy_key_to(
+        self,
+        destination: "StagingStorageResource",
+        key: str,
+        destination_key: str | None = None,
+    ) -> str:
         """Copy one fully-qualified relative key to another storage resource."""
         key = self._ensure_prefixed(key)
-        destination_key = destination._ensure_prefixed(key)
+        destination_key = destination._ensure_prefixed(destination_key or key)
 
         if (self.use_local or not self.bucket) and (destination.use_local or not destination.bucket):
             src = Path(self.local_dir).resolve() / key
@@ -194,21 +199,35 @@ class StagingStorageResource(ConfigurableResource):
         destination: "StagingStorageResource",
         keys: list[str],
         *,
+        destination_keys: list[str] | None = None,
         max_workers: int | None = None,
     ) -> list[str]:
         """Copy many relative keys, using concurrent server-side object copies for GCS."""
         if not keys:
             return []
+        if destination_keys is None:
+            destination_keys = keys
+        if len(destination_keys) != len(keys):
+            raise ValueError("Source and destination key counts must match.")
+        key_pairs = list(zip(keys, destination_keys, strict=True))
 
         if max_workers is None:
             max_workers = int(os.environ.get("HIFLD_PROMOTE_COPY_WORKERS", "32"))
         max_workers = max(1, min(max_workers, len(keys)))
 
         if max_workers == 1:
-            return [self.copy_key_to(destination, key) for key in keys]
+            return [
+                self.copy_key_to(destination, key, destination_key)
+                for key, destination_key in key_pairs
+            ]
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            return list(executor.map(lambda key: self.copy_key_to(destination, key), keys))
+            return list(
+                executor.map(
+                    lambda pair: self.copy_key_to(destination, pair[0], pair[1]),
+                    key_pairs,
+                )
+            )
 
     def key_size(self, key: str) -> int:
         key = self._ensure_prefixed(key)

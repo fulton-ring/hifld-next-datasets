@@ -16,7 +16,11 @@ from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dt
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.source_formats import discover_legacy_unknown_shapefile
+from dagster_hifld.source_formats import (
+    CANONICAL_SOURCE_FORMAT_PRECEDENCE,
+    discover_canonical_source_file,
+    discover_legacy_unknown_shapefile,
+)
 
 CATALOG_SAMPLE_FEATURE_LIMIT = 5_000
 
@@ -274,17 +278,10 @@ def write_catalog_metadata(
 
 
 def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
-    canonical_shapefiles = _files_with_suffix(version_dir / "shapefile", ".shp")
-    fallback_searches: list[tuple[Path, str]] = [
-        (version_dir / "geopackage", ".gpkg"),
-        (version_dir / "file_geodatabase", ".gdb"),
-        (version_dir / "shapefile", ".shp"),
-        (version_dir / "geojson", ".geojson"),
-    ]
-    for search_dir, ext in fallback_searches:
-        if not search_dir.is_dir():
-            continue
-        if ext == ".gdb":
+    canonical_shapefile: Path | None = None
+    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
+        search_dir = version_dir / format_name
+        if format_name == "file_geodatabase":
             for path in iter_file_geodatabases(search_dir):
                 try:
                     with _with_large_geojson_support():
@@ -292,14 +289,18 @@ def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
                 except Exception:
                     continue
         else:
-            for path in _files_with_suffix(search_dir, ext):
-                try:
-                    with _with_large_geojson_support():
-                        return gpd.read_file(str(path))
-                except Exception:
-                    continue
+            path = discover_canonical_source_file(search_dir, format_name)
+            if path is None:
+                continue
+            if format_name == "shapefile":
+                canonical_shapefile = path
+            try:
+                with _with_large_geojson_support():
+                    return gpd.read_file(str(path))
+            except Exception:
+                continue
     legacy_shapefile = None
-    if not canonical_shapefiles:
+    if canonical_shapefile is None:
         legacy_shapefile = discover_legacy_unknown_shapefile(version_dir / "unknown")
     if legacy_shapefile is not None:
         try:
@@ -343,39 +344,28 @@ def _summarize_best_geospatial_file(
     return None
 
 
-def _files_with_suffix(directory: Path, suffix: str) -> list[Path]:
-    if not directory.is_dir():
-        return []
-    return sorted(
-        path
-        for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() == suffix
-    )
-
-
 def _iter_geospatial_sources(version_dir: Path):
-    for path in _files_with_suffix(version_dir / "geopackage", ".gpkg"):
-        try:
-            with _with_large_geojson_support():
-                layers = fiona.listlayers(str(path)) or [None]
-        except Exception:
-            layers = [None]
-        for layer in layers:
-            yield path, layer
-    for path in iter_file_geodatabases(version_dir / "file_geodatabase"):
-        try:
-            with _with_large_geojson_support():
-                layers = fiona.listlayers(str(path)) or [None]
-        except Exception:
-            layers = [None]
-        for layer in layers:
-            yield path, layer
-    canonical_shapefiles = _files_with_suffix(version_dir / "shapefile", ".shp")
-    for path in canonical_shapefiles:
-        yield path, None
-    for path in _files_with_suffix(version_dir / "geojson", ".geojson"):
-        yield path, None
-    if not canonical_shapefiles:
+    canonical_shapefile: Path | None = None
+    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
+        if format_name == "file_geodatabase":
+            paths = iter_file_geodatabases(version_dir / format_name)
+        else:
+            path = discover_canonical_source_file(version_dir / format_name, format_name)
+            paths = [path] if path is not None else []
+        if format_name == "shapefile" and paths:
+            canonical_shapefile = paths[0]
+        for path in paths:
+            if format_name in {"geopackage", "file_geodatabase"}:
+                try:
+                    with _with_large_geojson_support():
+                        layers = fiona.listlayers(str(path)) or [None]
+                except Exception:
+                    layers = [None]
+                for layer in layers:
+                    yield path, layer
+            else:
+                yield path, None
+    if canonical_shapefile is None:
         legacy_shapefile = discover_legacy_unknown_shapefile(version_dir / "unknown")
         if legacy_shapefile is not None:
             yield legacy_shapefile, None

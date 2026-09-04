@@ -51,12 +51,22 @@ class StagingStorageResourceTests(unittest.TestCase):
             shapefile.write_bytes(b"shp")
             (root / "SOURCE.SHX").write_bytes(b"shx")
             (root / "SOURCE.DBF").write_bytes(b"dbf")
+            (root / "SOURCE.QIX").write_bytes(b"qix")
+            (root / "SOURCE.NAME.ATX").write_bytes(b"atx")
+            (root / "SOURCE.SHP.XML").write_bytes(b"xml")
 
             collected = _collect_staging_files(shapefile)
 
             self.assertCountEqual(
                 [relative_key for _path, relative_key in collected],
-                ["SOURCE.SHP", "SOURCE.SHX", "SOURCE.DBF"],
+                [
+                    "SOURCE.SHP",
+                    "SOURCE.SHX",
+                    "SOURCE.DBF",
+                    "SOURCE.QIX",
+                    "SOURCE.NAME.ATX",
+                    "SOURCE.SHP.XML",
+                ],
             )
 
     def test_build_version_id_uses_run_create_timestamp(self):

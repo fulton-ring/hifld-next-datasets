@@ -24,7 +24,7 @@ SOURCE_FORMAT_EXTENSIONS: dict[str, tuple[str, ...]] = {
 }
 
 _REQUIRED_SHAPEFILE_SUFFIXES = frozenset({".shp", ".shx", ".dbf"})
-_SHAPEFILE_DATASET_SUFFIXES = frozenset(
+SHAPEFILE_DATASET_SUFFIXES = frozenset(
     {
         ".aih",
         ".ain",
@@ -51,9 +51,11 @@ _SHAPEFILE_DATASET_SUFFIXES = frozenset(
 def _is_shapefile_dataset_filename(filename: str, stem: str) -> bool:
     normalized_name = filename.casefold()
     normalized_stem = stem.casefold()
+    if normalized_name.startswith(f"{normalized_stem}.") and normalized_name.endswith(".atx"):
+        return True
     return any(
         normalized_name == f"{normalized_stem}{suffix}"
-        for suffix in _SHAPEFILE_DATASET_SUFFIXES
+        for suffix in SHAPEFILE_DATASET_SUFFIXES
     )
 
 
@@ -65,6 +67,26 @@ def shapefile_dataset_files(shapefile: Path) -> list[Path]:
         if path.is_file()
         and _is_shapefile_dataset_filename(path.name, shapefile.stem)
     )
+
+
+def discover_canonical_source_file(
+    format_dir: Path,
+    format_name: str,
+) -> Path | None:
+    """Return one recursively discovered canonical single-file source."""
+    extensions = SOURCE_FORMAT_EXTENSIONS[format_name]
+    if not format_dir.is_dir():
+        return None
+    candidates = sorted(
+        path
+        for path in format_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() in extensions
+    )
+    if len(candidates) > 1:
+        raise ValueError(
+            f"Found multiple canonical {format_name} sources under {format_dir}."
+        )
+    return candidates[0] if candidates else None
 
 
 def discover_legacy_unknown_shapefile(unknown_dir: Path) -> Path | None:

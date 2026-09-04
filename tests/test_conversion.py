@@ -115,6 +115,45 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(processed["shapefile"]["format_type"], "shapefile")
             self.assertEqual(processed["shapefile"]["data_file"], shapefile)
 
+    def test_discover_staged_formats_reads_nested_case_insensitive_canonical_sources(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            expected = {
+                "geopackage": version_dir / "geopackage" / "nested" / "SOURCE.GPKG",
+                "shapefile": version_dir / "shapefile" / "nested" / "SOURCE.SHP",
+                "geojson": version_dir / "geojson" / "nested" / "SOURCE.JSON",
+            }
+            geodatabase = (
+                version_dir
+                / "file_geodatabase"
+                / "nested"
+                / "SOURCE.GDB"
+            )
+            for path in expected.values():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"source")
+            geodatabase.mkdir(parents=True)
+            (geodatabase / "a00000001.gdbtable").write_bytes(b"gdb")
+
+            processed = _discover_staged_formats(version_dir)
+
+            self.assertEqual(set(processed), set(expected) | {"file_geodatabase"})
+            self.assertEqual(processed["geopackage"]["data_file"], expected["geopackage"])
+            self.assertEqual(processed["file_geodatabase"]["data_file"], geodatabase)
+            self.assertEqual(processed["shapefile"]["data_file"], expected["shapefile"])
+            self.assertEqual(processed["geojson"]["data_file"], expected["geojson"])
+
+    def test_discover_staged_formats_rejects_ambiguous_nested_canonical_shapefiles(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            shapefile_dir = Path(tmpdir) / "shapefile"
+            for name in ("first", "second"):
+                path = shapefile_dir / name / f"{name}.shp"
+                path.parent.mkdir(parents=True)
+                path.write_bytes(b"shape")
+
+            with self.assertRaisesRegex(ValueError, "multiple canonical shapefile"):
+                _discover_staged_formats(Path(tmpdir))
+
     def test_canonical_shapefile_wins_over_ambiguous_legacy_unknown(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             version_dir = Path(tmpdir)

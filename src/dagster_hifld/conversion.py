@@ -32,7 +32,9 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     SOURCE_FORMAT_EXTENSIONS,
+    discover_canonical_source_file,
     discover_legacy_unknown_shapefile,
+    shapefile_dataset_files,
 )
 
 logger = logging.getLogger(__name__)
@@ -1108,9 +1110,8 @@ def write_shapefile_zip(
         shp_path = shp_dir / f"{layer_filename}.shp"
         gdf.to_file(shp_path, driver="ESRI Shapefile")
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for path in sorted(shp_dir.iterdir()):
-                if path.suffix.lower() in {".shp", ".shx", ".dbf", ".prj", ".cpg"}:
-                    zf.write(path, arcname=path.name)
+            for path in shapefile_dataset_files(shp_path):
+                zf.write(path, arcname=path.name)
     return ShapefileZipResult(True, zip_path)
 
 
@@ -1570,13 +1571,8 @@ async def _upload_extracted_format_files(
     else:
         shutil.copy2(data_file, format_files_dir / data_file.name)
         if format_type == "shapefile":
-            sidecar_suffixes = {".shx", ".dbf", ".prj", ".cpg", ".sbn", ".sbx", ".qpj"}
-            for sibling in sorted(data_file.parent.iterdir()):
-                if (
-                    sibling.is_file()
-                    and sibling.stem.casefold() == data_file.stem.casefold()
-                    and sibling.suffix.lower() in sidecar_suffixes
-                ):
+            for sibling in shapefile_dataset_files(data_file):
+                if sibling != data_file:
                     shutil.copy2(sibling, format_files_dir / sibling.name)
 
     for file_path in format_files_dir.rglob("*"):
@@ -1980,17 +1976,14 @@ def _discover_staged_formats(version_dir: Path) -> dict[str, dict[str, Any]]:
             continue
         data_file: Path | None = None
         if format_name == "file_geodatabase":
-            data_file = next(iter(iter_file_geodatabases(search_dir)), None)
+            geodatabases = iter_file_geodatabases(search_dir)
+            if len(geodatabases) > 1:
+                raise ValueError(
+                    f"Found multiple canonical {format_name} sources under {search_dir}."
+                )
+            data_file = geodatabases[0] if geodatabases else None
         else:
-            data_file = next(
-                (
-                    path
-                    for extension in SOURCE_FORMAT_EXTENSIONS[format_name]
-                    for path in sorted(search_dir.iterdir())
-                    if path.is_file() and path.suffix.lower() == extension
-                ),
-                None,
-            )
+            data_file = discover_canonical_source_file(search_dir, format_name)
         if data_file is None:
             continue
         layers = list_layers_in_file(data_file, format_name)

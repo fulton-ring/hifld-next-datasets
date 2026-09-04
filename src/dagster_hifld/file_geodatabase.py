@@ -13,11 +13,19 @@ def iter_file_geodatabases(search_dir: Path) -> list[Path]:
 
     geodatabases = [
         path
-        for path in sorted(search_dir.iterdir())
-        if path.is_dir() and path.suffix.lower() == ".gdb"
+        for path in sorted(search_dir.rglob("*"))
+        if path.is_dir()
+        and path.suffix.lower() == ".gdb"
+        and ".extracted" not in path.relative_to(search_dir).parts
     ]
     extract_root = search_dir / ".extracted"
-    for zip_path in sorted(search_dir.glob("*.zip")):
+    for zip_path in sorted(
+        path
+        for path in search_dir.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() == ".zip"
+        and ".extracted" not in path.relative_to(search_dir).parts
+    ):
         extracted_dir = extract_root / zip_path.stem
         _extract_zip_once(zip_path, extracted_dir)
         geodatabases.extend(
