@@ -80,6 +80,7 @@ DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_GEOPARQUET_TARGET_FILE_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES = 64 * 1024 * 1024
 DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLES = 64
+DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLE_BYTES = 1 * 1024 * 1024
 DEFAULT_S2_CANDIDATE_LEVELS = tuple(range(2, 17))
 
 
@@ -874,7 +875,7 @@ class GeoParquetLayout:
     partition_columns: list[str]
     hive_partition_columns: dict[str, str]
     chosen_s2_level: int | None
-    thresholds: dict[str, int | float]
+    thresholds: dict[str, int | float | str]
     outputs: list[GeoParquetOutputLayout]
     validation_status: str
 
@@ -885,6 +886,7 @@ class _GeoParquetPreflight:
     uncompressed_bytes: int
     estimated_compressed_bytes: int
     compression_ratio: float
+    compression_estimation_method: str
     estimate_multiplier: float
     partitioning: str
     partition_columns: list[str]
@@ -1423,20 +1425,34 @@ def _bounded_compression_sample(
             1,
             min(len(table), int(len(table) * sample_bytes / max(1, table.nbytes))),
         )
-        sample = table.slice(0, sample_rows)
-        return sample if sample.nbytes <= sample_bytes else None
+        while sample_rows > 1:
+            sample = table.slice(0, sample_rows)
+            if sample.nbytes <= sample_bytes:
+                return sample
+            sample_rows = max(1, sample_rows // 2)
+        singleton = table.slice(0, 1)
+        if singleton.nbytes <= sample_bytes:
+            return singleton
+        table = singleton
 
     fields = list(table.schema)
     if not fields:
         return None
+    row_values = [
+        table.column(index).to_pylist()[0] for index in range(len(fields))
+    ]
     value_budget = max(1, sample_bytes // len(fields))
     for _attempt in range(8):
-        arrays: list[pa.Array] = []
-        for index, field in enumerate(fields):
-            value = table.column(index).to_pylist()[0]
-            truncated = _truncate_compression_value(value, field.type, value_budget)
-            arrays.append(pa.array([truncated], type=field.type))
-        sample = pa.Table.from_arrays(arrays, schema=table.schema)
+        try:
+            arrays: list[pa.Array] = []
+            for field, value in zip(fields, row_values):
+                truncated = _truncate_compression_value(
+                    value, field.type, value_budget
+                )
+                arrays.append(pa.array([truncated], type=field.type))
+            sample = pa.Table.from_arrays(arrays, schema=table.schema)
+        except (TypeError, ValueError, pa.ArrowException):
+            return None
         if sample.nbytes <= sample_bytes:
             return sample
         value_budget = max(1, value_budget // 2)
@@ -1448,20 +1464,41 @@ def _truncate_compression_value(
 ) -> Any:
     if value is None:
         return None
-    if pa.types.is_string(data_type) or pa.types.is_large_string(data_type):
+    if (
+        pa.types.is_string(data_type)
+        or pa.types.is_large_string(data_type)
+        or pa.types.is_string_view(data_type)
+    ):
         encoded = str(value).encode("utf-8")
         return encoded[:max_bytes].decode("utf-8", errors="ignore")
-    if pa.types.is_binary(data_type) or pa.types.is_large_binary(data_type):
+    if (
+        pa.types.is_binary(data_type)
+        or pa.types.is_large_binary(data_type)
+        or pa.types.is_binary_view(data_type)
+    ):
         return bytes(value)[:max_bytes]
     if pa.types.is_dictionary(data_type):
         return _truncate_compression_value(value, data_type.value_type, max_bytes)
+    if pa.types.is_map(data_type) and isinstance(value, list):
+        item_count = min(len(value), max(1, max_bytes // 16))
+        child_budget = max(1, max_bytes // max(1, item_count))
+        return [
+            (
+                _truncate_compression_value(key, data_type.key_type, child_budget),
+                _truncate_compression_value(
+                    item, data_type.item_type, child_budget
+                ),
+            )
+            for key, item in value[:item_count]
+        ]
     if pa.types.is_list(data_type) or pa.types.is_large_list(data_type):
         if not isinstance(value, list):
             return value
-        child_budget = max(1, max_bytes // max(1, len(value)))
+        item_count = min(len(value), max(1, max_bytes // 8))
+        child_budget = max(1, max_bytes // max(1, item_count))
         return [
             _truncate_compression_value(item, data_type.value_type, child_budget)
-            for item in value
+            for item in value[:item_count]
         ]
     if pa.types.is_struct(data_type) and isinstance(value, dict):
         child_budget = max(1, max_bytes // max(1, len(data_type)))
@@ -1476,10 +1513,10 @@ def _truncate_compression_value(
 
 def _zstd_compression_ratio(
     sample_tables: list[pa.Table], compression_level: int = 15
-) -> float:
+) -> float | None:
     """Estimate compressed bytes per Arrow byte from one bounded sample."""
     if not sample_tables:
-        raise ValueError("Unable to retain a bounded GeoParquet compression sample.")
+        return None
     schema_metadata = sample_tables[0].schema.metadata
     tables = [
         table.replace_schema_metadata(schema_metadata)
@@ -1589,7 +1626,6 @@ def _preflight_layer_with_histograms(
     finest_s2_level = max(s2_levels, default=0)
     serialized_bytes = 0
     compression_sample_tables: list[pa.Table] = []
-    compression_sample_bytes = 0
     compression_sample_seen = 0
     compression_sample_rng = random.Random(0)
     candidate_non_null: dict[str, int] = {}
@@ -1617,7 +1653,7 @@ def _preflight_layer_with_histograms(
         batch: list[dict[str, Any]] = []
 
         def measure_batch(features: list[dict[str, Any]]) -> None:
-            nonlocal compression_sample_bytes, compression_sample_seen
+            nonlocal compression_sample_seen
             nonlocal feature_count, serialized_bytes, uncompressed_bytes
             if not features:
                 return
@@ -1634,33 +1670,19 @@ def _preflight_layer_with_histograms(
             uncompressed_bytes += batch_bytes
             serialized_bytes += batch_serialized_bytes
             sample_table = _bounded_compression_sample(
-                table, DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
+                table, DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLE_BYTES
             )
             if sample_table is not None:
                 compression_sample_seen += 1
                 sample_limit = DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLES
-                sample_bytes = sample_table.nbytes
-                if (
-                    len(compression_sample_tables) < sample_limit
-                    and compression_sample_bytes + sample_bytes
-                    <= DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
-                ):
+                if len(compression_sample_tables) < sample_limit:
                     compression_sample_tables.append(sample_table)
-                    compression_sample_bytes += sample_bytes
                 else:
                     replacement = compression_sample_rng.randrange(
                         compression_sample_seen
                     )
                     if replacement < len(compression_sample_tables):
-                        replaced_bytes = compression_sample_tables[replacement].nbytes
-                        if (
-                            compression_sample_bytes
-                            - replaced_bytes
-                            + sample_bytes
-                            <= DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES
-                        ):
-                            compression_sample_tables[replacement] = sample_table
-                            compression_sample_bytes += sample_bytes - replaced_bytes
+                        compression_sample_tables[replacement] = sample_table
             updates: dict[tuple[str, str, int, str], tuple[int, int]] = {}
 
             def add_update(
@@ -1763,6 +1785,7 @@ def _preflight_layer_with_histograms(
             uncompressed_bytes=0,
             estimated_compressed_bytes=0,
             compression_ratio=1.0,
+            compression_estimation_method="conservative_uncompressed",
             estimate_multiplier=1.0,
             partitioning="single_file",
             partition_columns=[],
@@ -1771,9 +1794,19 @@ def _preflight_layer_with_histograms(
             resolved_policy=resolved_policy,
         )
 
-    compression_ratio = _zstd_compression_ratio(
+    sampled_compression_ratio = _zstd_compression_ratio(
         compression_sample_tables, policy.compression_level
     )
+    if sampled_compression_ratio is None:
+        logger.warning(
+            "Unable to retain a bounded GeoParquet compression sample; "
+            "using a conservative uncompressed estimate."
+        )
+        compression_ratio = 1.0
+        compression_estimation_method = "conservative_uncompressed"
+    else:
+        compression_ratio = sampled_compression_ratio
+        compression_estimation_method = "sampled_zstd"
     estimated_compressed_bytes = max(
         1, int(uncompressed_bytes * compression_ratio)
     )
@@ -1837,6 +1870,7 @@ def _preflight_layer_with_histograms(
         uncompressed_bytes=uncompressed_bytes,
         estimated_compressed_bytes=estimated_compressed_bytes,
         compression_ratio=compression_ratio,
+        compression_estimation_method=compression_estimation_method,
         estimate_multiplier=uncompressed_bytes / max(1, serialized_bytes),
         partitioning=partitioning,
         partition_columns=partition_columns,
@@ -2170,6 +2204,7 @@ async def process_layer_partitioned_geoparquet(
             "large_dataset_bytes": effective_policy.large_dataset_threshold_bytes,
             "estimated_compressed_bytes": preflight.estimated_compressed_bytes,
             "compression_ratio": preflight.compression_ratio,
+            "compression_estimation_method": preflight.compression_estimation_method,
             "row_group_target_bytes": effective_policy.target_row_group_bytes,
             "write_buffer_bytes": effective_policy.write_buffer_bytes,
             "max_row_group_bytes": effective_policy.max_row_group_bytes,
