@@ -117,6 +117,57 @@ Run `uv run python -m unittest tests.test_maintenance tests.test_resources tests
 
 Run Ruff check/format for touched Python, `uv run python -m compileall -q src tests`, and `git diff --check`; expect zero failures.
 
-- [ ] **Step 3: Review and commit**
+- [x] **Step 3: Review and commit**
 
 Review `git diff`, stage only planned files, and commit with `git commit -m "harden staging recovery concurrency safety"`.
+
+### Task 6: Exact committed mutation identities
+
+**Files:**
+- Modify: `src/dagster_hifld/resources.py`
+- Modify: `src/dagster_hifld/maintenance.py`
+- Test: `tests/test_resources.py`
+- Test: `tests/test_maintenance.py`
+
+- [x] **Step 1: Write failing generation-addressing and mutation-result tests**
+
+Add a GCS-to-local copy test that asserts `GCSFileSystem(version_aware=True)` opens `bucket/key#captured-generation`. Change conditional copy/write tests to require a returned `StorageObjectSnapshot` created directly from the JSON API response, and add a promotion test that injects a concurrent destination generation after the atomic result is returned.
+
+- [x] **Step 2: Run the focused tests and verify the unsafe behavior**
+
+Run the exact new unittest methods and confirm version-aware construction and returned committed snapshots are absent, and that promotion currently discovers the destination identity through a later lookup.
+
+- [x] **Step 3: Return committed snapshots from atomic primitives**
+
+Make local atomic create/replace return the snapshot captured immediately after the atomic operation. Parse the object resource returned by GCS rewrite/multipart upload into `StorageObjectSnapshot`; make conditional copy/write return that value. Instantiate generation-aware gcsfs for GCS-to-local reads. Thread returned snapshots into promotion mutations and backup bookkeeping without a post-copy identity lookup.
+
+- [x] **Step 4: Protect rollback from the post-commit concurrency gap**
+
+Use the mutation result snapshot as rollback's exact expected generation. If another writer replaces it before rollback, leave that generation untouched, retain the operation backup, and emit a stable failure report.
+
+- [x] **Step 5: Run focused tests and verify they pass**
+
+Run `uv run python -m unittest tests.test_resources tests.test_maintenance` and expect all tests to pass.
+
+### Task 7: Preserve generic streaming writes and clear scoped static findings
+
+**Files:**
+- Modify: `src/dagster_hifld/resources.py`
+- Modify: `src/dagster_hifld/maintenance.py`
+- Test: `tests/test_resources.py`
+
+- [x] **Step 1: Write a failing generic GCS write regression test**
+
+Assert `write_key()` uses `gcsfs.GCSFileSystem().open(path, "wb")` and writes through the file object, while `write_key_if_unchanged()` remains generation-conditional and returns the upload response snapshot.
+
+- [x] **Step 2: Restore the ingestion write path**
+
+Restore local `Path.write_bytes` and GCS streaming `fs.open(..., "wb")` behavior in `write_key()`. Keep the buffered conditional JSON upload private to the maintenance-only `write_key_if_unchanged()` path.
+
+- [x] **Step 3: Fix findings introduced by the maintenance changes**
+
+Narrow optional values before calls, assign intentionally unused results, type JSON-boundary parsing with narrow unions/protocols, and remove new broad-exception/import-order findings without changing unrelated APIs.
+
+- [x] **Step 4: Run full verification and commit**
+
+Run focused and full unittest discovery, scoped Ruff check/format, scoped Pyright/BasedPyright with the project interpreter where available, compileall, and `git diff --check`. Commit the reviewed change as `close storage mutation generation gaps`.

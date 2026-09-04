@@ -1263,6 +1263,81 @@ class RestoreStagingTests(unittest.TestCase):
             self.assertEqual(_storage_snapshot(Path(staging_dir)), before)
             self.assertFalse(any("_temporary" in key for key in staging.list_prefix()))
 
+    def test_concurrent_generation_after_atomic_copy_is_not_rolled_back(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published_source = (
+                Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            )
+            published_source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["new"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(published_source, driver="GeoJSON")
+            published = PublishedStorageResource(
+                local_dir=published_dir,
+                use_local=True,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            destination_key = "dataset-a/file-a/v1/geojson/source.geojson"
+            _write(staging, destination_key, b"old")
+            destination_path = Path(staging_dir) / destination_key
+            original_copy = StagingStorageResource.copy_key_to_if_unchanged
+            promoted_count = 0
+
+            def inject_concurrent_generation_then_fail(
+                source_storage,
+                destination_storage,
+                key,
+                destination_key=None,
+                *,
+                source_snapshot,
+                destination_snapshot,
+            ):
+                nonlocal promoted_count
+                is_promotion = (
+                    source_storage.prefix.endswith("/candidate")
+                    and destination_storage is staging
+                )
+                if is_promotion and promoted_count == 1:
+                    raise RuntimeError("injected later promotion failure")
+                result = original_copy(
+                    source_storage,
+                    destination_storage,
+                    key,
+                    destination_key,
+                    source_snapshot=source_snapshot,
+                    destination_snapshot=destination_snapshot,
+                )
+                if is_promotion:
+                    promoted_count += 1
+                    destination_path.write_bytes(b"concurrent generation")
+                return result
+
+            with patch.object(
+                StagingStorageResource,
+                "copy_key_to_if_unchanged",
+                new=inject_concurrent_generation_then_fail,
+            ):
+                report = restore_staging(
+                    published,
+                    staging,
+                    apply=True,
+                    overwrite=True,
+                ).to_dict()
+
+            self.assertEqual(report["versions"][0]["status"], "failed")
+            errors = " ".join(report["versions"][0]["errors"])
+            self.assertIn("rollback also failed", errors)
+            self.assertIn("Recovery backup retained at <operation>/backup", errors)
+            self.assertEqual(destination_path.read_bytes(), b"concurrent generation")
+            self.assertTrue(
+                any("/backup/" in key for key in staging.list_prefix("_temporary"))
+            )
+
     def test_incomplete_rollback_retains_backup_and_reports_recovery_location(self):
         with (
             tempfile.TemporaryDirectory() as published_dir,

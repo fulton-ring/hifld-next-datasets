@@ -722,16 +722,13 @@ def _promote_candidate(
     backup_snapshots_by_destination: dict[str, StorageObjectSnapshot] = {}
     for existing_snapshot in affected_existing:
         backup_key = _logical_key(staging, existing_snapshot.key)
-        staging.copy_key_to_if_unchanged(
+        backup_snapshot = staging.copy_key_to_if_unchanged(
             backup,
             existing_snapshot.key,
             backup_key,
             source_snapshot=existing_snapshot,
             destination_snapshot=None,
         )
-        backup_snapshot = backup.object_snapshot(backup_key)
-        if backup_snapshot is None:
-            raise RuntimeError(f"Backup copy disappeared: {backup_key}")
         backup_snapshots_by_destination[existing_snapshot.key] = backup_snapshot
 
     mutations: list[PromotionMutation] = []
@@ -753,7 +750,7 @@ def _promote_candidate(
             )
         for copy in promotion_copies:
             try:
-                candidate.copy_key_to_if_unchanged(
+                promoted_snapshot = candidate.copy_key_to_if_unchanged(
                     staging,
                     copy.source_snapshot.key,
                     _logical_key(staging, copy.destination_key),
@@ -769,11 +766,6 @@ def _promote_candidate(
                         f"{operation_prefix}/backup."
                     ) from copy_error
                 raise
-            promoted_snapshot = staging.object_snapshot(copy.destination_key)
-            if promoted_snapshot is None:
-                raise RuntimeError(
-                    f"Promoted object disappeared: {copy.destination_key}"
-                )
             mutations.append(
                 PromotionMutation(
                     copy.destination_key,
@@ -812,7 +804,7 @@ def _rollback_promotions(
                     f"Destination recreated during rollback: {mutation.destination_key}"
                 )
         else:
-            if current != mutation.promoted_snapshot:
+            if current is None or current != mutation.promoted_snapshot:
                 raise RuntimeError(
                     f"Destination changed before rollback: {mutation.destination_key}"
                 )

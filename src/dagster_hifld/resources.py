@@ -11,14 +11,43 @@ import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from types import TracebackType
+from typing import BinaryIO, Protocol, cast
 
 import google_crc32c
 import httpx
 from dagster import ConfigurableResource
 
 logger = logging.getLogger(__name__)
+
+
+class _GCSWritable(Protocol):
+    generation: str | int | None
+
+    def write(self, data: bytes) -> int: ...
+
+    def __enter__(self) -> "_GCSWritable": ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
+
+
+class _GCSJsonClient(Protocol):
+    _location: str
+
+    def call(
+        self,
+        method: str,
+        path: str,
+        *args: str,
+        **kwargs: object,
+    ) -> dict[str, object]: ...
 
 
 @dataclass(frozen=True)
@@ -84,7 +113,22 @@ class StagingStorageResource(ConfigurableResource):
 
     def write_key(self, key: str, data: bytes) -> str:
         key = self._ensure_prefixed(key)
-        return self.write_key_if_unchanged(key, data, self.object_snapshot(key))
+        if self.use_local or not self.bucket:
+            root = Path(self.local_dir).resolve()
+            full = root / key
+            full.parent.mkdir(parents=True, exist_ok=True)
+            full.write_bytes(data)
+            return key
+
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        with cast(
+            BinaryIO,
+            cast(object, fs.open(f"{self.bucket}/{key}", "wb")),
+        ) as output:
+            _ = output.write(data)
+        return key
 
     def write(
         self,
@@ -174,7 +218,11 @@ class StagingStorageResource(ConfigurableResource):
             info = fs.info(object_path)
         except FileNotFoundError:
             return None
-        return _gcs_snapshot(self.bucket, object_path, info)
+        return _gcs_snapshot(
+            self.bucket,
+            object_path,
+            _require_string_object_mapping(cast(object, info), "GCS object metadata"),
+        )
 
     def read_bytes(
         self,
@@ -200,7 +248,10 @@ class StagingStorageResource(ConfigurableResource):
 
         fs = gcsfs.GCSFileSystem()
         path = f"{self.bucket}/{key}"
-        return fs.read_bytes(path)
+        data = fs.read_bytes(path)
+        if not isinstance(data, bytes):
+            raise RuntimeError(f"GCS returned non-bytes content for {key}.")
+        return data
 
     def object_exists(self, key: str) -> bool:
         key = self._ensure_prefixed(key)
@@ -278,7 +329,7 @@ class StagingStorageResource(ConfigurableResource):
         key: str,
         data: bytes,
         expected_snapshot: StorageObjectSnapshot | None,
-    ) -> str:
+    ) -> StorageObjectSnapshot:
         """Atomically create or replace one key only at the expected identity."""
         key = self._ensure_prefixed(key)
         if expected_snapshot is not None and expected_snapshot.key != key:
@@ -286,22 +337,24 @@ class StagingStorageResource(ConfigurableResource):
         if self.use_local or not self.bucket:
             root = Path(self.local_dir).resolve()
             destination = root / key
-            _atomic_local_write(destination, data, expected_snapshot, root)
-            return key
+            return _atomic_local_write(destination, data, expected_snapshot, root)
 
         import gcsfs
 
-        if expected_snapshot is not None and expected_snapshot.generation is None:
-            raise RuntimeError(f"GCS snapshot has no generation: {key}")
         fs = gcsfs.GCSFileSystem()
-        _gcs_conditional_write(
-            fs,
+        expected_generation = "0"
+        if expected_snapshot is not None:
+            if expected_snapshot.generation is None:
+                raise RuntimeError(f"GCS snapshot has no generation: {key}")
+            expected_generation = expected_snapshot.generation
+        result = _gcs_conditional_write(
+            cast(_GCSJsonClient, cast(object, fs)),
             self.bucket,
             key,
             data,
-            expected_snapshot.generation if expected_snapshot is not None else "0",
+            expected_generation,
         )
-        return key
+        return _gcs_snapshot(self.bucket, f"{self.bucket}/{key}", result)
 
     def delete_key_if_unchanged(
         self,
@@ -401,7 +454,7 @@ class StagingStorageResource(ConfigurableResource):
         *,
         source_snapshot: StorageObjectSnapshot,
         destination_snapshot: StorageObjectSnapshot | None,
-    ) -> str:
+    ) -> StorageObjectSnapshot:
         """Copy one object with source and destination identity preconditions."""
         key = self._ensure_prefixed(key)
         destination_key = destination._ensure_prefixed(destination_key)
@@ -427,7 +480,7 @@ class StagingStorageResource(ConfigurableResource):
                 try:
                     if self.object_snapshot(key) != source_snapshot:
                         raise RuntimeError(f"source changed during copy: {key}")
-                    _commit_local_temp(
+                    return _commit_local_temp(
                         temp_path,
                         destination_path,
                         destination_snapshot,
@@ -435,7 +488,6 @@ class StagingStorageResource(ConfigurableResource):
                     )
                 finally:
                     temp_path.unlink(missing_ok=True)
-                return destination_key
 
             if destination_snapshot is not None:
                 raise RuntimeError(
@@ -445,52 +497,81 @@ class StagingStorageResource(ConfigurableResource):
 
             fs = gcsfs.GCSFileSystem()
             with source_path.open("rb") as source_file:
-                with fs.open(f"{destination.bucket}/{destination_key}", "xb") as output:
+                with cast(
+                    _GCSWritable,
+                    cast(
+                        object,
+                        fs.open(f"{destination.bucket}/{destination_key}", "xb"),
+                    ),
+                ) as output:
                     shutil.copyfileobj(source_file, output, length=1024 * 1024)
             if self.object_snapshot(key) != source_snapshot:
                 raise RuntimeError(f"source changed during copy: {key}")
-            return destination_key
+            if not isinstance(output.generation, (str, int)):
+                raise RuntimeError(
+                    f"GCS create returned no generation: {destination_key}"
+                )
+            return replace(
+                source_snapshot,
+                key=destination_key,
+                generation=str(output.generation),
+            )
 
         if source_snapshot.generation is None:
             raise RuntimeError(f"GCS snapshot has no generation: {key}")
+        source_bucket = self.bucket
+        if source_bucket is None:
+            raise RuntimeError("GCS source bucket is not configured.")
         import gcsfs
 
-        fs = gcsfs.GCSFileSystem()
         if not destination_is_local:
-            if (
-                destination_snapshot is not None
-                and destination_snapshot.generation is None
-            ):
-                raise RuntimeError(f"GCS snapshot has no generation: {destination_key}")
-            _gcs_conditional_copy(
-                fs,
-                self.bucket,
+            fs = gcsfs.GCSFileSystem()
+            destination_bucket = destination.bucket
+            if destination_bucket is None:
+                raise RuntimeError("GCS destination bucket is not configured.")
+            destination_generation = "0"
+            if destination_snapshot is not None:
+                if destination_snapshot.generation is None:
+                    raise RuntimeError(
+                        f"GCS snapshot has no generation: {destination_key}"
+                    )
+                destination_generation = destination_snapshot.generation
+            result = _gcs_conditional_copy(
+                cast(_GCSJsonClient, cast(object, fs)),
+                source_bucket,
                 key,
-                destination.bucket,
+                destination_bucket,
                 destination_key,
                 source_snapshot.generation,
-                (
-                    destination_snapshot.generation
-                    if destination_snapshot is not None
-                    else "0"
-                ),
+                destination_generation,
             )
-            return destination_key
+            return _gcs_snapshot(
+                destination_bucket,
+                f"{destination_bucket}/{destination_key}",
+                result,
+            )
 
         destination_root = Path(destination.local_dir).resolve()
+        fs = gcsfs.GCSFileSystem(version_aware=True)
         destination_path = destination_root / destination_key
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         fd, temp_name = tempfile.mkstemp(dir=destination_path.parent)
         os.close(fd)
         temp_path = Path(temp_name)
         try:
-            with fs.open(
-                f"{self.bucket}/{key}#{source_snapshot.generation}",
-                "rb",
+            with cast(
+                BinaryIO,
+                cast(
+                    object,
+                    fs.open(
+                        f"{source_bucket}/{key}#{source_snapshot.generation}",
+                        "rb",
+                    ),
+                ),
             ) as source_file:
                 with temp_path.open("wb") as output:
                     shutil.copyfileobj(source_file, output, length=1024 * 1024)
-            _commit_local_temp(
+            return _commit_local_temp(
                 temp_path,
                 destination_path,
                 destination_snapshot,
@@ -498,7 +579,6 @@ class StagingStorageResource(ConfigurableResource):
             )
         finally:
             temp_path.unlink(missing_ok=True)
-        return destination_key
 
     def copy_keys_to(
         self,
@@ -653,9 +733,7 @@ def _local_snapshot(root: Path, path: Path) -> StorageObjectSnapshot:
     return StorageObjectSnapshot(
         key=str(path.relative_to(root)),
         size=stat.st_size,
-        generation=(
-            f"local:{stat.st_dev}:{stat.st_ino}:{stat.st_mtime_ns}:{stat.st_ctime_ns}"
-        ),
+        generation=(f"local:{stat.st_dev}:{stat.st_ino}:{stat.st_mtime_ns}"),
         md5=md5,
         crc32c=crc32c,
         sha256=sha256,
@@ -668,12 +746,15 @@ def _gcs_snapshot(
     info: dict[str, object],
 ) -> StorageObjectSnapshot:
     key = object_path.removeprefix(f"{bucket}/")
+    size_value = info.get("size", 0)
+    if not isinstance(size_value, (str, int)):
+        raise RuntimeError(f"GCS object has invalid size metadata: {key}")
     generation = info.get("generation")
     md5 = info.get("md5Hash", info.get("md5"))
     crc32c = info.get("crc32c")
     return StorageObjectSnapshot(
         key=key,
-        size=int(info.get("size", 0) or 0),
+        size=int(size_value or 0),
         generation=str(generation) if generation is not None else None,
         md5=str(md5) if md5 is not None else None,
         crc32c=str(crc32c) if crc32c is not None else None,
@@ -695,7 +776,7 @@ def _atomic_local_write(
     data: bytes,
     expected_snapshot: StorageObjectSnapshot | None,
     root: Path,
-) -> None:
+) -> StorageObjectSnapshot:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(dir=destination.parent)
     temp_path = Path(temp_name)
@@ -704,7 +785,7 @@ def _atomic_local_write(
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
-        _commit_local_temp(temp_path, destination, expected_snapshot, root)
+        return _commit_local_temp(temp_path, destination, expected_snapshot, root)
     finally:
         temp_path.unlink(missing_ok=True)
 
@@ -714,13 +795,17 @@ def _commit_local_temp(
     destination: Path,
     expected_snapshot: StorageObjectSnapshot | None,
     root: Path,
-) -> None:
+) -> StorageObjectSnapshot:
     current = _local_snapshot(root, destination) if destination.is_file() else None
     if current != expected_snapshot:
         state = "created" if expected_snapshot is None else "changed"
         raise RuntimeError(
             f"destination {state} before copy: {destination.relative_to(root)}"
         )
+    committed = replace(
+        _local_snapshot(root, temp_path),
+        key=str(destination.relative_to(root)),
+    )
     if expected_snapshot is None:
         try:
             os.link(temp_path, destination)
@@ -728,19 +813,20 @@ def _commit_local_temp(
             raise RuntimeError(
                 f"destination created during copy: {destination.relative_to(root)}"
             ) from exc
-        return
+        return committed
     os.replace(temp_path, destination)
+    return committed
 
 
 def _gcs_conditional_copy(
-    fs,
+    fs: _GCSJsonClient,
     source_bucket: str,
     source_key: str,
     destination_bucket: str,
     destination_key: str,
     source_generation: str,
     destination_generation: str,
-) -> None:
+) -> dict[str, object]:
     request = {
         "headers": {"Content-Type": "application/json"},
         "ifSourceGenerationMatch": source_generation,
@@ -767,15 +853,17 @@ def _gcs_conditional_copy(
             rewriteToken=result["rewriteToken"],
             **request,
         )
+    resource = result.get("resource")
+    return _require_string_object_mapping(resource, "GCS rewrite resource")
 
 
 def _gcs_conditional_write(
-    fs,
+    fs: _GCSJsonClient,
     bucket: str,
     key: str,
     data: bytes,
     expected_generation: str,
-) -> None:
+) -> dict[str, object]:
     boundary = "hifld-conditional-upload"
     metadata = json.dumps({"name": key}, separators=(",", ":"))
     payload = (
@@ -788,7 +876,7 @@ def _gcs_conditional_write(
         + f"\r\n--{boundary}--".encode()
     )
     location = fs._location
-    fs.call(
+    result = fs.call(
         "POST",
         f"{location}/upload/storage/v1/b/{{}}/o",
         bucket,
@@ -798,6 +886,16 @@ def _gcs_conditional_write(
         data=payload,
         json_out=True,
     )
+    return _require_string_object_mapping(result, "GCS upload resource")
+
+
+def _require_string_object_mapping(
+    value: object,
+    context: str,
+) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise RuntimeError(f"{context} was not an object.")
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def _file_sha256(path: Path) -> str:
