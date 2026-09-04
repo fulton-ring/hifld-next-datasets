@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 import os
@@ -184,7 +185,24 @@ class StagingStorageResource(ConfigurableResource):
                     return source_checksum == destination_checksum
             return False
 
-        return False
+        local_storage = self if source_is_local else destination
+        remote_storage = destination if source_is_local else self
+        local_key = key if source_is_local else destination_key
+        remote_key = destination_key if source_is_local else key
+        local_path = Path(local_storage.local_dir).resolve() / local_key
+
+        import gcsfs
+
+        fs = gcsfs.GCSFileSystem()
+        remote_info = fs.info(f"{remote_storage.bucket}/{remote_key}")
+        if local_path.stat().st_size != remote_info.get("size"):
+            return False
+        local_md5_base64, local_md5_hex = _file_md5(local_path)
+        return any(
+            checksum in {local_md5_base64, local_md5_hex}
+            for checksum_key in ("md5Hash", "md5")
+            if (checksum := remote_info.get(checksum_key)) is not None
+        )
 
     def delete_prefix(self, key_prefix: str) -> None:
         key_prefix = self._ensure_prefixed(key_prefix).rstrip("/")
@@ -392,6 +410,14 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _file_md5(path: Path) -> tuple[str, str]:
+    digest = hashlib.md5(usedforsecurity=False)
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return base64.b64encode(digest.digest()).decode("ascii"), digest.hexdigest()
 
 
 class DatasetApiResource(ConfigurableResource):

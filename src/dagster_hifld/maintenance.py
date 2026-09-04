@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
+import uuid
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Sequence
 
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -84,6 +87,13 @@ class MaintenanceReport:
             "overwrite": self.overwrite,
             "versions": [item.to_dict() for item in self.versions],
         }
+
+
+@dataclass(frozen=True)
+class PromotionPlan:
+    candidate_pairs: tuple[tuple[str, str], ...]
+    stale_destination_keys: tuple[str, ...]
+    conflicting_destination_keys: tuple[str, ...]
 
 
 def inventory_published(
@@ -181,44 +191,29 @@ def restore_staging(
             results.append(item)
             continue
         try:
-            conflict_formats = _conflicting_canonical_formats(
-                published,
-                staging,
-                item,
-            )
-            if conflict_formats and not overwrite:
-                joined = ", ".join(sorted(conflict_formats))
-                raise ValueError(
-                    f"Staging contains conflicting canonical source objects in: {joined}. "
-                    "Use --overwrite-existing-sources to replace only those format paths."
+            with _candidate_storage(staging, apply=apply) as candidate:
+                candidate_logical_keys = _build_candidate(published, candidate, item)
+                plan = _plan_promotion(
+                    candidate,
+                    staging,
+                    item,
+                    candidate_logical_keys,
                 )
-            if not apply:
-                results.append(
-                    VersionMaintenanceResult(
-                        item.dataset,
-                        item.file,
-                        item.version,
-                        "planned",
-                        item.selected_format,
-                        item.source_keys,
-                        item.destination_keys,
-                        item.metadata_keys,
+                if plan.conflicting_destination_keys and not overwrite:
+                    joined = ", ".join(plan.conflicting_destination_keys)
+                    raise ValueError(
+                        f"Staging contains conflicting managed destination objects: {joined}. "
+                        "Use --overwrite-existing-sources to replace only the selected "
+                        "source and its managed manifests."
                     )
-                )
-                continue
-            _apply_restore(
-                published,
-                staging,
-                item,
-                conflict_formats=conflict_formats,
-                overwrite=overwrite,
-            )
+                if apply:
+                    _promote_candidate(candidate, staging, plan)
             results.append(
                 VersionMaintenanceResult(
                     item.dataset,
                     item.file,
                     item.version,
-                    "restored",
+                    "restored" if apply else "planned",
                     item.selected_format,
                     item.source_keys,
                     item.destination_keys,
@@ -247,37 +242,51 @@ def restore_staging(
     )
 
 
-def _apply_restore(
-    published: PublishedStorageResource,
+@contextmanager
+def _candidate_storage(
     staging: StagingStorageResource,
-    item: VersionMaintenanceResult,
     *,
-    conflict_formats: set[str],
-    overwrite: bool,
-) -> None:
-    if overwrite:
-        for format_name in sorted(conflict_formats):
-            staging.delete_prefix(
-                staging.build_target_location(
-                    item.dataset,
-                    item.file,
-                    item.version,
-                    format_name,
-                )
-            )
+    apply: bool,
+) -> Iterator[StagingStorageResource]:
+    if not apply:
+        with tempfile.TemporaryDirectory(prefix="hifld_restore_candidate_") as tmpdir:
+            yield StagingStorageResource(local_dir=tmpdir, use_local=True)
+        return
 
+    operation_prefix = _storage_key(
+        staging,
+        f"_temporary/restore-{uuid.uuid4().hex}",
+    )
+    candidate = StagingStorageResource(
+        bucket=staging.bucket,
+        prefix=f"{operation_prefix}/candidate",
+        use_local=staging.use_local,
+        local_dir=staging.local_dir,
+    )
+    try:
+        yield candidate
+    finally:
+        staging.delete_prefix(operation_prefix)
+
+
+def _build_candidate(
+    published: PublishedStorageResource,
+    candidate: StagingStorageResource,
+    item: VersionMaintenanceResult,
+) -> tuple[str, ...]:
     _copy_missing_or_changed(
         published,
-        staging,
+        candidate,
         item.source_keys,
         item.destination_keys,
     )
     metadata_destinations = tuple(
-        _logical_key(published, key) for key in item.metadata_keys
+        _candidate_metadata_destination(published, item, key)
+        for key in item.metadata_keys
     )
     _copy_missing_or_changed(
         published,
-        staging,
+        candidate,
         item.metadata_keys,
         metadata_destinations,
     )
@@ -285,46 +294,78 @@ def _apply_restore(
     version_manifest_key = (
         f"{item.dataset}/{item.file}/{item.version}/metadata/source_manifest.json"
     )
-    published_has_version_manifest = any(
-        _logical_key(published, key) == version_manifest_key
-        for key in item.metadata_keys
+    upstream_manifest_key = (
+        f"{item.dataset}/{item.file}/{item.version}/metadata/"
+        "upstream_source_manifest.json"
     )
-    if not published_has_version_manifest and not staging.object_exists(
-        version_manifest_key
-    ):
-        resolved = load_resolved_source_manifest(
-            staging,
+    if candidate.object_exists(upstream_manifest_key):
+        raw_version_manifest = candidate.read_bytes(
             item.dataset,
             item.file,
             item.version,
+            "metadata/upstream_source_manifest.json",
         )
-        staging.write_key(
-            version_manifest_key,
-            json.dumps(resolved.metadata, sort_keys=True, indent=2).encode("utf-8"),
-        )
+        candidate.write_key(version_manifest_key, raw_version_manifest)
 
     resolved = load_resolved_source_manifest(
-        staging,
+        candidate,
         item.dataset,
         item.file,
         item.version,
     )
+    resolved_metadata = dict(resolved.metadata)
+    resolved_metadata["manifest_keys"] = list(metadata_destinations)
+    resolved_metadata["manifest_role"] = "resolved_version"
+    resolved_metadata["schema_version"] = "v1"
+    candidate.write_key(
+        version_manifest_key,
+        json.dumps(resolved_metadata, sort_keys=True, indent=2).encode("utf-8"),
+    )
+
     summary = summarize_staged_catalog(
-        staging,
+        candidate,
         item.dataset,
         item.file,
         item.version,
         item.dataset,
-        source_metadata=resolved.metadata,
+        source_metadata=resolved_metadata,
     )
     write_catalog_metadata(
-        staging,
+        candidate,
         item.dataset,
         item.file,
         item.version,
         summary.quality_manifest,
         summary.data_dictionary,
     )
+    return tuple(
+        sorted(
+            set(item.destination_keys)
+            | set(metadata_destinations)
+            | {
+                version_manifest_key,
+                f"{item.dataset}/{item.file}/{item.version}/metadata/quality_manifest.json",
+                f"{item.dataset}/{item.file}/{item.version}/metadata/data_dictionary.json",
+            }
+        )
+    )
+
+
+def _candidate_metadata_destination(
+    published: PublishedStorageResource,
+    item: VersionMaintenanceResult,
+    source_key: str,
+) -> str:
+    logical_key = _logical_key(published, source_key)
+    version_manifest_key = (
+        f"{item.dataset}/{item.file}/{item.version}/metadata/source_manifest.json"
+    )
+    if logical_key == version_manifest_key:
+        return (
+            f"{item.dataset}/{item.file}/{item.version}/metadata/"
+            "upstream_source_manifest.json"
+        )
+    return logical_key
 
 
 def _copy_missing_or_changed(
@@ -353,34 +394,156 @@ def _copy_missing_or_changed(
     )
 
 
-def _conflicting_canonical_formats(
-    published: PublishedStorageResource,
+def _plan_promotion(
+    candidate: StagingStorageResource,
     staging: StagingStorageResource,
     item: VersionMaintenanceResult,
-) -> set[str]:
-    expected_by_destination = {
-        staging._ensure_prefixed(destination_key): source_key
-        for source_key, destination_key in zip(
-            item.source_keys,
-            item.destination_keys,
-            strict=True,
+    candidate_logical_keys: tuple[str, ...],
+) -> PromotionPlan:
+    candidate_pairs = tuple(
+        sorted(
+            (
+                _storage_key(candidate, logical_key),
+                _storage_key(staging, logical_key),
+            )
+            for logical_key in candidate_logical_keys
+        )
+    )
+    candidate_by_destination = {
+        destination_key: candidate_key
+        for candidate_key, destination_key in candidate_pairs
+    }
+    existing_keys = _managed_destination_keys(staging, item)
+    stale_keys = tuple(
+        sorted(key for key in existing_keys if key not in candidate_by_destination)
+    )
+    conflicting_keys = set(stale_keys)
+    for destination_key, candidate_key in candidate_by_destination.items():
+        if staging.object_exists(
+            destination_key
+        ) and not candidate.object_content_matches(
+            staging,
+            candidate_key,
+            destination_key,
+        ):
+            conflicting_keys.add(destination_key)
+    return PromotionPlan(
+        candidate_pairs,
+        stale_keys,
+        tuple(sorted(conflicting_keys)),
+    )
+
+
+def _managed_destination_keys(
+    staging: StagingStorageResource,
+    item: VersionMaintenanceResult,
+) -> tuple[str, ...]:
+    version_prefix = f"{item.dataset}/{item.file}/{item.version}"
+    managed_metadata = {
+        f"{item.dataset}/metadata/source_manifest.json",
+        f"{item.dataset}/{item.file}/metadata/source_manifest.json",
+        f"{version_prefix}/metadata/source_manifest.json",
+        f"{version_prefix}/metadata/upstream_source_manifest.json",
+        f"{version_prefix}/metadata/quality_manifest.json",
+        f"{version_prefix}/metadata/data_dictionary.json",
+    }
+    keys = {
+        key
+        for key in staging.list_keys(item.dataset, item.file, item.version)
+        if (
+            _logical_key(staging, key)
+            .removeprefix(f"{version_prefix}/")
+            .split("/", 1)[0]
+            in CANONICAL_SOURCE_FORMAT_PRECEDENCE
+            or _logical_key(staging, key) in managed_metadata
         )
     }
-    conflicts: set[str] = set()
-    for existing_key in staging.list_keys(item.dataset, item.file, item.version):
-        logical = _logical_key(staging, existing_key)
-        relative = logical.removeprefix(f"{item.dataset}/{item.file}/{item.version}/")
-        format_name = PurePosixPath(relative).parts[0]
-        if format_name not in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
-            continue
-        source_key = expected_by_destination.get(existing_key)
-        if source_key is None or not published.object_content_matches(
+    for logical_key in managed_metadata:
+        storage_key = _storage_key(staging, logical_key)
+        if staging.object_exists(storage_key):
+            keys.add(storage_key)
+    return tuple(sorted(keys))
+
+
+def _promote_candidate(
+    candidate: StagingStorageResource,
+    staging: StagingStorageResource,
+    plan: PromotionPlan,
+) -> None:
+    candidate_by_destination = {
+        destination_key: candidate_key
+        for candidate_key, destination_key in plan.candidate_pairs
+    }
+    promote_pairs = tuple(
+        (candidate_key, destination_key)
+        for destination_key, candidate_key in sorted(candidate_by_destination.items())
+        if not candidate.object_content_matches(
             staging,
-            source_key,
-            existing_key,
-        ):
-            conflicts.add(format_name)
-    return conflicts
+            candidate_key,
+            destination_key,
+        )
+    )
+    affected_existing = tuple(
+        sorted(
+            {
+                destination_key
+                for _candidate_key, destination_key in promote_pairs
+                if staging.object_exists(destination_key)
+            }
+            | set(plan.stale_destination_keys)
+        )
+    )
+    operation_prefix = candidate.prefix.rsplit("/candidate", 1)[0]
+    backup = StagingStorageResource(
+        bucket=staging.bucket,
+        prefix=f"{operation_prefix}/backup",
+        use_local=staging.use_local,
+        local_dir=staging.local_dir,
+    )
+    backup_logical_keys = tuple(_logical_key(staging, key) for key in affected_existing)
+    staging.copy_keys_to(
+        backup,
+        list(affected_existing),
+        destination_keys=list(backup_logical_keys),
+        max_workers=1,
+    )
+    mutated_destination_keys = tuple(
+        sorted(
+            set(plan.stale_destination_keys)
+            | {destination_key for _candidate_key, destination_key in promote_pairs}
+        )
+    )
+    try:
+        for stale_key in plan.stale_destination_keys:
+            staging.delete_prefix(stale_key)
+        candidate.copy_keys_to(
+            staging,
+            [candidate_key for candidate_key, _destination_key in promote_pairs],
+            destination_keys=[
+                _logical_key(staging, destination_key)
+                for _candidate_key, destination_key in promote_pairs
+            ],
+            max_workers=1,
+        )
+    except Exception as promotion_error:
+        try:
+            for destination_key in mutated_destination_keys:
+                staging.delete_prefix(destination_key)
+            backup_keys = backup.list_prefix()
+            backup.copy_keys_to(
+                staging,
+                backup_keys,
+                destination_keys=[
+                    _logical_key(backup, backup_key) for backup_key in backup_keys
+                ],
+                max_workers=1,
+            )
+        except Exception as rollback_error:
+            raise RuntimeError(
+                f"Final promotion failed ({promotion_error}); rollback also failed "
+                f"({rollback_error})."
+            ) from promotion_error
+        raise
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -398,7 +561,10 @@ def build_parser() -> argparse.ArgumentParser:
             command_parser.add_argument(
                 "--overwrite-existing-sources",
                 action="store_true",
-                help="Replace only conflicting canonical staging source format paths.",
+                help=(
+                    "Replace only the selected versions' conflicting managed source, "
+                    "provenance, and metadata objects."
+                ),
             )
     return parser
 
@@ -433,6 +599,12 @@ def _logical_key(storage: StagingStorageResource, key: str) -> str:
     if not prefix:
         return normalized
     return normalized.removeprefix(f"{prefix}/")
+
+
+def _storage_key(storage: StagingStorageResource, logical_key: str) -> str:
+    prefix = storage.prefix.strip("/")
+    normalized = logical_key.lstrip("/")
+    return f"{prefix}/{normalized}" if prefix else normalized
 
 
 def _version_identity(logical_key: str) -> VersionIdentity | None:

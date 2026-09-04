@@ -6,6 +6,7 @@ import tomllib
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import geopandas as gpd
@@ -240,7 +241,13 @@ class RestoreStagingTests(unittest.TestCase):
                 local_dir=published_dir, use_local=True
             )
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
-            _write(published, "dataset-a/file-a/v1/geojson/source.geojson")
+            source = Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["A"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
 
             report = restore_staging(published, staging).to_dict()
 
@@ -335,7 +342,9 @@ class RestoreStagingTests(unittest.TestCase):
                 ).is_file()
             )
 
-    def test_apply_preserves_published_version_manifest_and_is_idempotent(self):
+    def test_apply_preserves_raw_version_override_separately_and_writes_resolved_manifest(
+        self,
+    ):
         with (
             tempfile.TemporaryDirectory() as published_dir,
             tempfile.TemporaryDirectory() as staging_dir,
@@ -348,7 +357,17 @@ class RestoreStagingTests(unittest.TestCase):
                 geometry=[Point(1, 2)],
                 crs="EPSG:4326",
             ).to_file(source, driver="GeoJSON")
-            manifest_bytes = json.dumps({"title": "Published version title"}).encode()
+            _write(
+                PublishedStorageResource(local_dir=published_dir, use_local=True),
+                "dataset-a/metadata/source_manifest.json",
+                json.dumps({"publisher": "Publisher A"}).encode(),
+            )
+            _write(
+                PublishedStorageResource(local_dir=published_dir, use_local=True),
+                "dataset-a/file-a/metadata/source_manifest.json",
+                json.dumps({"title": "File title"}).encode(),
+            )
+            manifest_bytes = json.dumps({"description": "Version description"}).encode()
             _write(
                 PublishedStorageResource(local_dir=published_dir, use_local=True),
                 "dataset-a/file-a/v1/metadata/source_manifest.json",
@@ -374,11 +393,141 @@ class RestoreStagingTests(unittest.TestCase):
             self.assertEqual(first["versions"][0]["status"], "restored")
             self.assertEqual(second["versions"][0]["status"], "restored")
             self.assertEqual(
-                staged_manifest.read_bytes(),
+                (staged_manifest.parent / "upstream_source_manifest.json").read_bytes(),
                 manifest_bytes,
             )
+            resolved = json.loads(staged_manifest.read_text())
+            self.assertEqual(resolved["publisher"], "Publisher A")
+            self.assertEqual(resolved["title"], "File title")
+            self.assertEqual(resolved["description"], "Version description")
+            self.assertEqual(resolved["manifest_role"], "resolved_version")
+            self.assertEqual(resolved["schema_version"], "v1")
             self.assertEqual(staged_source.stat().st_mtime, preserved_timestamp)
             self.assertEqual(staged_manifest.stat().st_mtime, preserved_timestamp)
+
+    def test_changed_hierarchical_metadata_blocks_then_overwrite_refreshes_resolved_outputs(
+        self,
+    ):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published = PublishedStorageResource(
+                local_dir=published_dir, use_local=True
+            )
+            source = Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["A"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            _write(
+                published,
+                "dataset-a/metadata/source_manifest.json",
+                json.dumps({"publisher": "Publisher One"}).encode(),
+            )
+            _write(
+                published,
+                "dataset-a/file-a/metadata/source_manifest.json",
+                json.dumps({"title": "Title One"}).encode(),
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            first = restore_staging(published, staging, apply=True).to_dict()
+            self.assertEqual(first["versions"][0]["status"], "restored")
+            before = _storage_snapshot(Path(staging_dir))
+
+            _write(
+                published,
+                "dataset-a/metadata/source_manifest.json",
+                json.dumps({"publisher": "Publisher Two"}).encode(),
+            )
+            _write(
+                published,
+                "dataset-a/file-a/metadata/source_manifest.json",
+                json.dumps({"title": "Title Two"}).encode(),
+            )
+
+            blocked = restore_staging(published, staging, apply=True).to_dict()
+
+            self.assertEqual(blocked["versions"][0]["status"], "failed")
+            self.assertIn(
+                "conflicting managed destination",
+                " ".join(blocked["versions"][0]["errors"]),
+            )
+            self.assertEqual(_storage_snapshot(Path(staging_dir)), before)
+
+            refreshed = restore_staging(
+                published,
+                staging,
+                apply=True,
+                overwrite=True,
+            ).to_dict()
+
+            self.assertEqual(refreshed["versions"][0]["status"], "restored")
+            metadata_root = Path(staging_dir) / "dataset-a/file-a/v1/metadata"
+            resolved = json.loads((metadata_root / "source_manifest.json").read_text())
+            dictionary = json.loads(
+                (metadata_root / "data_dictionary.json").read_text()
+            )
+            self.assertEqual(resolved["publisher"], "Publisher Two")
+            self.assertEqual(resolved["title"], "Title Two")
+            self.assertEqual(dictionary["publisher"], "Publisher Two")
+            self.assertEqual(dictionary["title"], "Title Two")
+
+    def test_changed_upstream_version_override_conflicts_before_write(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published = PublishedStorageResource(
+                local_dir=published_dir, use_local=True
+            )
+            source = Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["A"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            raw_key = "dataset-a/file-a/v1/metadata/source_manifest.json"
+            _write(
+                published,
+                raw_key,
+                json.dumps({"description": "Version one"}).encode(),
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            first = restore_staging(published, staging, apply=True).to_dict()
+            self.assertEqual(first["versions"][0]["status"], "restored")
+            before = _storage_snapshot(Path(staging_dir))
+
+            updated_raw = json.dumps({"description": "Version two"}).encode()
+            _write(published, raw_key, updated_raw)
+
+            blocked = restore_staging(published, staging, apply=True).to_dict()
+
+            self.assertEqual(blocked["versions"][0]["status"], "failed")
+            self.assertEqual(_storage_snapshot(Path(staging_dir)), before)
+
+            restored = restore_staging(
+                published,
+                staging,
+                apply=True,
+                overwrite=True,
+            ).to_dict()
+
+            self.assertEqual(restored["versions"][0]["status"], "restored")
+            metadata_root = Path(staging_dir) / "dataset-a/file-a/v1/metadata"
+            self.assertEqual(
+                (metadata_root / "upstream_source_manifest.json").read_bytes(),
+                updated_raw,
+            )
+            self.assertEqual(
+                json.loads((metadata_root / "source_manifest.json").read_text())[
+                    "description"
+                ],
+                "Version two",
+            )
 
     def test_apply_persists_inventory_fallback_as_version_manifest(self):
         with (
@@ -416,6 +565,44 @@ class RestoreStagingTests(unittest.TestCase):
                 "2020 Census Blocks - tl_2024_01_tabblock20",
             )
 
+    def test_candidate_catalog_scratch_files_are_not_promoted(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published = PublishedStorageResource(
+                local_dir=published_dir, use_local=True
+            )
+            _write(
+                published,
+                "dataset-a/file-a/v1/file_geodatabase/source.gdb.zip",
+                b"zip",
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            def summarize_with_scratch(candidate, *args, **kwargs):
+                candidate.write_key(
+                    "dataset-a/file-a/v1/file_geodatabase/.extracted/leak.gdb/a.gdbtable",
+                    b"scratch",
+                )
+                return SimpleNamespace(
+                    quality_manifest={"feature_count": 1},
+                    data_dictionary={"name": "dataset-a", "columns": []},
+                )
+
+            with patch(
+                "dagster_hifld.maintenance.summarize_staged_catalog",
+                side_effect=summarize_with_scratch,
+            ):
+                report = restore_staging(published, staging, apply=True).to_dict()
+
+            self.assertEqual(report["versions"][0]["status"], "restored")
+            version_root = Path(staging_dir) / "dataset-a/file-a/v1"
+            self.assertTrue(
+                (version_root / "file_geodatabase/source.gdb.zip").is_file()
+            )
+            self.assertFalse((version_root / "file_geodatabase/.extracted").exists())
+
     def test_conflicting_canonical_source_requires_overwrite_and_overwrite_is_narrow(
         self,
     ):
@@ -446,7 +633,8 @@ class RestoreStagingTests(unittest.TestCase):
             self.assertEqual(dry_run["versions"][0]["status"], "blocked")
             self.assertEqual(blocked["versions"][0]["status"], "failed")
             self.assertIn(
-                "conflicting canonical", " ".join(blocked["versions"][0]["errors"])
+                "conflicting managed destination",
+                " ".join(blocked["versions"][0]["errors"]),
             )
             self.assertEqual(
                 (
@@ -464,7 +652,7 @@ class RestoreStagingTests(unittest.TestCase):
 
             self.assertEqual(restored["versions"][0]["status"], "restored")
             self.assertFalse(
-                (Path(staging_dir) / "dataset-a/file-a/v1/shapefile").exists()
+                (Path(staging_dir) / "dataset-a/file-a/v1/shapefile/old.shp").exists()
             )
             self.assertTrue(
                 (
@@ -500,13 +688,30 @@ class RestoreStagingTests(unittest.TestCase):
                 local_dir=published_dir, use_local=True
             )
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            _write(staging, "dataset-a/bad/v1/geojson/good-old.geojson", b"old source")
+            _write(
+                staging,
+                "dataset-a/bad/v1/metadata/quality_manifest.json",
+                b'{"old": true}',
+            )
+            before_bad = _storage_snapshot(Path(staging_dir) / "dataset-a/bad/v1")
 
-            report = restore_staging(published, staging, apply=True).to_dict()
+            report = restore_staging(
+                published,
+                staging,
+                apply=True,
+                overwrite=True,
+            ).to_dict()
 
             by_file = {item["file"]: item for item in report["versions"]}
             self.assertEqual(by_file["good"]["status"], "restored")
             self.assertEqual(by_file["bad"]["status"], "failed")
             self.assertTrue(by_file["bad"]["errors"])
+            self.assertEqual(
+                _storage_snapshot(Path(staging_dir) / "dataset-a/bad/v1"),
+                before_bad,
+            )
+            self.assertFalse(any("_temporary" in key for key in staging.list_prefix()))
             stdout = io.StringIO()
             with (
                 patch(
@@ -519,9 +724,104 @@ class RestoreStagingTests(unittest.TestCase):
                 ),
                 redirect_stdout(stdout),
             ):
-                exit_code = main(["restore-staging", "--apply"])
+                exit_code = main(
+                    [
+                        "restore-staging",
+                        "--apply",
+                        "--overwrite-existing-sources",
+                    ]
+                )
             self.assertEqual(exit_code, 1)
             self.assertTrue(json.loads(stdout.getvalue())["versions"])
+
+    def test_injected_final_promotion_failure_restores_preexisting_state(self):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published_source = (
+                Path(published_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            )
+            published_source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["new"]},
+                geometry=[Point(1, 2)],
+                crs="EPSG:4326",
+            ).to_file(published_source, driver="GeoJSON")
+            published = PublishedStorageResource(
+                local_dir=published_dir, use_local=True
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            old_source = (
+                Path(staging_dir) / "dataset-a/file-a/v1/geojson/source.geojson"
+            )
+            old_source.parent.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["old"]},
+                geometry=[Point(9, 9)],
+                crs="EPSG:4326",
+            ).to_file(old_source, driver="GeoJSON")
+            _write(
+                staging,
+                "dataset-a/file-a/v1/metadata/quality_manifest.json",
+                b'{"old": true}',
+            )
+            before = _storage_snapshot(Path(staging_dir))
+
+            original_copy = StagingStorageResource.copy_key_to
+            promoted = False
+
+            def fail_after_first_promoted_object(
+                source_storage,
+                destination_storage,
+                key,
+                destination_key=None,
+            ):
+                nonlocal promoted
+                result = original_copy(
+                    source_storage,
+                    destination_storage,
+                    key,
+                    destination_key,
+                )
+                if (
+                    source_storage.prefix.endswith("/candidate")
+                    and destination_storage is staging
+                    and not promoted
+                ):
+                    promoted = True
+                    raise RuntimeError("injected final promotion failure")
+                return result
+
+            with patch.object(
+                StagingStorageResource,
+                "copy_key_to",
+                new=fail_after_first_promoted_object,
+            ):
+                report = restore_staging(
+                    published,
+                    staging,
+                    apply=True,
+                    overwrite=True,
+                ).to_dict()
+
+            self.assertEqual(report["versions"][0]["status"], "failed")
+            self.assertIn(
+                "injected final promotion failure",
+                " ".join(report["versions"][0]["errors"]),
+            )
+            self.assertEqual(_storage_snapshot(Path(staging_dir)), before)
+            self.assertFalse(any("_temporary" in key for key in staging.list_prefix()))
+
+
+def _storage_snapshot(root: Path) -> dict[str, bytes]:
+    if not root.is_dir():
+        return {}
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and "_temporary" not in path.parts
+    }
 
 
 if __name__ == "__main__":

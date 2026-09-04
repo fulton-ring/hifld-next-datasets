@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -272,6 +274,30 @@ class StagingStorageResourceTests(unittest.TestCase):
         self.assertTrue(matches)
         fake_fs.open.assert_not_called()
         fake_fs.read_bytes.assert_not_called()
+
+    def test_local_candidate_matches_gcs_destination_by_md5_without_downloading(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key = "dataset/file/v1/geojson/source.geojson"
+            source = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            source.write_key(key, b"candidate bytes")
+            destination = StagingStorageResource(
+                bucket="staging-bucket",
+                use_local=False,
+            )
+            checksum = base64.b64encode(hashlib.md5(b"candidate bytes").digest()).decode()
+            fake_fs = Mock()
+            fake_fs.exists.return_value = True
+            fake_fs.info.return_value = {
+                "size": len(b"candidate bytes"),
+                "md5Hash": checksum,
+            }
+
+            with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+                matches = source.object_content_matches(destination, key, key)
+
+            self.assertTrue(matches)
+            fake_fs.open.assert_not_called()
+            fake_fs.read_bytes.assert_not_called()
 
     def test_build_version_id_raises_if_run_record_cannot_be_resolved(self):
         context = SimpleNamespace(
