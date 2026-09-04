@@ -34,6 +34,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 
 _IGNORED_ROOTS = frozenset({"_temporary", "_rollback"})
 _REQUIRED_SHAPEFILE_SUFFIXES = frozenset({".shp", ".shx", ".dbf"})
+_CATALOG_METADATA_FILENAMES = ("quality_manifest.json", "data_dictionary.json")
 _DEFAULT_ROW_GROUP_LIMIT = 128 * 1024 * 1024
 _DEFAULT_S2_LIMIT = 1024 * 1024 * 1024
 
@@ -218,7 +219,10 @@ def inventory_published(
     version_keys_by_identity: dict[VersionIdentity, list[str]] = {}
     metadata_key_by_logical: dict[str, str] = {}
     for key, logical_key in logical_by_key.items():
-        if logical_key.endswith("/metadata/source_manifest.json"):
+        if logical_key.endswith("/metadata/source_manifest.json") or any(
+            logical_key.endswith(f"/metadata/{filename}")
+            for filename in _CATALOG_METADATA_FILENAMES
+        ):
             metadata_key_by_logical[logical_key] = key
         identity = _version_identity(logical_key)
         if (
@@ -245,6 +249,10 @@ def inventory_published(
                 f"{identity.dataset}/metadata/source_manifest.json",
                 f"{identity.dataset}/{identity.file}/metadata/source_manifest.json",
                 f"{identity.prefix}/metadata/source_manifest.json",
+                *(
+                    f"{identity.prefix}/metadata/{filename}"
+                    for filename in _CATALOG_METADATA_FILENAMES
+                ),
             )
             if (key := metadata_key_by_logical.get(logical_key)) is not None
         )
@@ -536,6 +544,13 @@ def _build_candidate(
         _candidate_metadata_destination(published, item, key)
         for key in item.metadata_keys
     )
+    source_manifest_destinations = tuple(
+        destination
+        for source_key, destination in zip(
+            item.metadata_keys, metadata_destinations, strict=True
+        )
+        if source_key.endswith("/metadata/source_manifest.json")
+    )
     _copy_missing_or_changed(
         published,
         candidate,
@@ -567,7 +582,7 @@ def _build_candidate(
         item.version,
     )
     resolved_metadata = dict(resolved.metadata)
-    resolved_metadata["manifest_keys"] = list(metadata_destinations)
+    resolved_metadata["manifest_keys"] = list(source_manifest_destinations)
     resolved_metadata["manifest_role"] = "resolved_version"
     resolved_metadata["schema_version"] = "v1"
     candidate.write_key(
@@ -575,22 +590,30 @@ def _build_candidate(
         json.dumps(resolved_metadata, sort_keys=True, indent=2).encode("utf-8"),
     )
 
-    summary = summarize_staged_catalog(
-        candidate,
-        item.dataset,
-        item.file,
-        item.version,
-        item.dataset,
-        source_metadata=resolved_metadata,
-    )
-    write_catalog_metadata(
-        candidate,
-        item.dataset,
-        item.file,
-        item.version,
-        summary.quality_manifest,
-        summary.data_dictionary,
-    )
+    catalog_metadata_error = _catalog_metadata_error(candidate, item)
+    if catalog_metadata_error is None:
+        # Catalog metadata is already published and was copied with GCS rewrite;
+        # do not materialize the selected source merely to regenerate these files.
+        pass
+    elif published.use_local or not published.bucket:
+        summary = summarize_staged_catalog(
+            candidate,
+            item.dataset,
+            item.file,
+            item.version,
+            item.dataset,
+            source_metadata=resolved_metadata,
+        )
+        write_catalog_metadata(
+            candidate,
+            item.dataset,
+            item.file,
+            item.version,
+            summary.quality_manifest,
+            summary.data_dictionary,
+        )
+    else:
+        raise ValueError(catalog_metadata_error)
     return tuple(
         sorted(
             set(item.destination_keys)
@@ -601,6 +624,54 @@ def _build_candidate(
                 f"{item.dataset}/{item.file}/{item.version}/metadata/data_dictionary.json",
             }
         )
+    )
+
+
+def _catalog_metadata_error(
+    candidate: StagingStorageResource,
+    item: VersionMaintenanceResult,
+) -> str | None:
+    """Return a restore-safe error when published catalog metadata is unusable."""
+    version_prefix = f"{item.dataset}/{item.file}/{item.version}/metadata"
+    missing: list[str] = []
+    invalid: list[str] = []
+    for filename in _CATALOG_METADATA_FILENAMES:
+        key = f"{version_prefix}/{filename}"
+        if not candidate.object_exists(key):
+            missing.append(filename)
+            continue
+        try:
+            parsed = json.loads(
+                candidate.read_bytes(
+                    item.dataset,
+                    item.file,
+                    item.version,
+                    f"metadata/{filename}",
+                ).decode("utf-8")
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, OSError, ValueError):
+            invalid.append(filename)
+            continue
+        if not isinstance(parsed, dict):
+            invalid.append(filename)
+            continue
+        required_key = (
+            "feature_count" if filename == "quality_manifest.json" else "columns"
+        )
+        if required_key not in parsed:
+            invalid.append(filename)
+
+    if not missing and not invalid:
+        return None
+    details: list[str] = []
+    if missing:
+        details.append(f"missing {', '.join(missing)}")
+    if invalid:
+        details.append(f"invalid {', '.join(invalid)}")
+    return (
+        "Published catalog metadata is unavailable or unusable ("
+        + "; ".join(details)
+        + "); refusing to materialize the source during remote staging restore."
     )
 
 

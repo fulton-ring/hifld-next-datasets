@@ -548,6 +548,50 @@ class RestoreStagingTests(unittest.TestCase):
                 ).is_file()
             )
 
+    def test_restore_reuses_published_catalog_metadata_without_summarizing_source(
+        self,
+    ):
+        with (
+            tempfile.TemporaryDirectory() as published_dir,
+            tempfile.TemporaryDirectory() as staging_dir,
+        ):
+            published = PublishedStorageResource(
+                local_dir=published_dir, use_local=True
+            )
+            _write(
+                published,
+                "dataset-a/file-a/v1/geojson/source.geojson",
+                b"large source bytes",
+            )
+            quality = b'{"feature_count": 42, "quality_check_passed": true}'
+            dictionary = b'{"title": "File A", "columns": []}'
+            _write(
+                published,
+                "dataset-a/file-a/v1/metadata/quality_manifest.json",
+                quality,
+            )
+            _write(
+                published,
+                "dataset-a/file-a/v1/metadata/data_dictionary.json",
+                dictionary,
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            with patch(
+                "dagster_hifld.maintenance.summarize_staged_catalog",
+                side_effect=AssertionError(
+                    "restore must not summarize a source when catalog metadata exists"
+                ),
+            ):
+                report = restore_staging(published, staging, apply=True).to_dict()
+
+            self.assertEqual(report["versions"][0]["status"], "restored")
+            metadata_root = (
+                Path(staging_dir) / "dataset-a/file-a/v1/metadata"
+            )
+            self.assertEqual((metadata_root / "quality_manifest.json").read_bytes(), quality)
+            self.assertEqual((metadata_root / "data_dictionary.json").read_bytes(), dictionary)
+
     def test_apply_preserves_raw_version_override_separately_and_writes_resolved_manifest(
         self,
     ):
