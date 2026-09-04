@@ -18,6 +18,7 @@ from dagster_hifld.assets.publish import (
     _preferred_remote_source_keys,
     _published_outputs_from_keys,
     _write_and_publish_geoparquet,
+    _validate_reusable_geoparquet_layout,
     _write_geoparquet_layout_manifest,
     _write_geoparquet_layout_manifest_set,
     _write_and_publish_pmtiles,
@@ -1000,6 +1001,77 @@ class PublishTests(unittest.TestCase):
                 )
             )
 
+    def test_missing_geoparquet_layout_failure_cleans_version_outputs(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = Path(staging_dir) / "dataset" / "file" / "v1" / "geojson"
+            version_dir.mkdir(parents=True)
+            gpd.GeoDataFrame(
+                {"name": ["road"]}, geometry=[Point(0, 0)], crs="EPSG:4326"
+            ).to_file(version_dir / "source.geojson", driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            with patch(
+                "dagster_hifld.assets.publish.process_layer_partitioned_geoparquet",
+                new_callable=AsyncMock,
+            ) as writer:
+                writer.return_value = {
+                    "geoparquet_paths": ["dataset/file/v1/geoparquet/file.parquet"],
+                    "feature_count": 1,
+                    "partitioning": "single_file",
+                    "partition_columns": [],
+                }
+                with self.assertRaisesRegex(ValueError, "layout"):
+                    _write_and_publish_geoparquet(storage, "dataset", "file", "v1")
+            self.assertFalse(
+                any(
+                    key.startswith("dataset/file/v1/geoparquet/")
+                    or key.endswith("geoparquet_layout.json")
+                    for key in storage.list_keys("dataset", "file", "v1")
+                )
+            )
+
+    def test_reuse_rejects_missing_or_wrong_manifest_footer_fields(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            actual_key = "dataset/file/v1/geoparquet/file.parquet"
+            storage.write_key(actual_key, b"valid")
+            base = {
+                "schema_version": 1,
+                "validation_status": "valid",
+                "footer_metadata_bytes": 0,
+                "max_dataset_footer_bytes": 128 * 1024**2,
+                "layers": [
+                    {
+                        "layer": "default",
+                        "validation_status": "valid",
+                        "outputs": [
+                            {"path": actual_key, "footer_size_bytes": 0}
+                        ],
+                    }
+                ],
+            }
+            for field, value in (
+                ("footer_metadata_bytes", None),
+                ("footer_metadata_bytes", True),
+                ("footer_metadata_bytes", 1),
+                ("max_dataset_footer_bytes", None),
+                ("max_dataset_footer_bytes", True),
+                ("max_dataset_footer_bytes", 128 * 1024**2 - 1),
+            ):
+                with self.subTest(field=field, value=value):
+                    manifest = dict(base)
+                    manifest[field] = value
+                    storage.write(
+                        "dataset",
+                        "file",
+                        "v1",
+                        "metadata/geoparquet_layout.json",
+                        json.dumps(manifest).encode(),
+                    )
+                    with self.assertRaisesRegex(ValueError, "invalid"):
+                        _validate_reusable_geoparquet_layout(
+                            storage, "dataset", "file", "v1", [actual_key]
+                        )
+
     def test_partitioned_multilayer_publish_uses_collision_proof_layer_paths(self):
         with tempfile.TemporaryDirectory() as staging_dir:
             version_dir = (
@@ -1356,6 +1428,8 @@ class PublishTests(unittest.TestCase):
                     {
                         "schema_version": 1,
                         "validation_status": "valid",
+                        "footer_metadata_bytes": 0,
+                        "max_dataset_footer_bytes": 128 * 1024**2,
                         "layers": [
                             {
                                 "layer": "default",
@@ -1394,6 +1468,8 @@ class PublishTests(unittest.TestCase):
                     {
                         "schema_version": 1,
                         "validation_status": "valid",
+                        "footer_metadata_bytes": 0,
+                        "max_dataset_footer_bytes": 128 * 1024**2,
                         "layers": [
                             {
                                 "layer": "default",

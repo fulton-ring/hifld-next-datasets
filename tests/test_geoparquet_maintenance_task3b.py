@@ -31,11 +31,19 @@ def _layout(
     sha256: str = "",
     footer_size: int = 545,
     strategy: str = "single_file",
+    manifest_footer: int | str | None = None,
+    manifest_limit: int | str | None = None,
 ) -> bytes:
+    if manifest_footer is None:
+        manifest_footer = footer_size
+    if manifest_limit is None:
+        manifest_limit = 128 * 1024**2
     return json.dumps(
         {
             "schema_version": 1,
             "validation_status": "valid",
+            "footer_metadata_bytes": manifest_footer,
+            "max_dataset_footer_bytes": manifest_limit,
             "layers": [
                 {
                     "layer": "roads",
@@ -137,6 +145,90 @@ class Task3BTests(unittest.TestCase):
                 "footer size mismatch",
                 " ".join(report["versions"][0]["reasons"]),
             )
+
+    def test_audit_compares_prefixed_output_integrity_to_actual_footer(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(
+                local_dir=tmpdir, use_local=True, prefix="stage"
+            )
+            parquet = _parquet_bytes()
+            storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+            storage.write_key(
+                "d/f/v/metadata/geoparquet_layout.json",
+                _layout(
+                    "stage/d/f/v/geoparquet/part.parquet",
+                    size=1,
+                    sha256="0" * 64,
+                    footer_size=0,
+                    manifest_footer=0,
+                ),
+            )
+            report = audit_geoparquet(storage, allow_storage_prefixed_paths=True)
+            self.assertEqual(report["status"], "violation")
+            reasons = " ".join(report["versions"][0]["reasons"])
+            self.assertIn("size mismatch", reasons)
+            self.assertIn("hash mismatch", reasons)
+            self.assertIn("footer size mismatch", reasons)
+
+    def test_audit_requires_exact_typed_manifest_footer_budget_fields(self):
+        for field, values in {
+            "footer_metadata_bytes": (None, -1, True, 0),
+            "max_dataset_footer_bytes": (None, -1, True, 128 * 1024**2 - 1),
+        }.items():
+            for value in values:
+                with (
+                    self.subTest(field=field, value=value),
+                    tempfile.TemporaryDirectory() as tmpdir,
+                ):
+                    storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+                    parquet = _parquet_bytes()
+                    storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+                    manifest = json.loads(
+                        _layout(
+                            "d/f/v/geoparquet/part.parquet",
+                            size=len(parquet),
+                            sha256=hashlib.sha256(parquet).hexdigest(),
+                        )
+                    )
+                    manifest[field] = value
+                    storage.write_key(
+                        "d/f/v/metadata/geoparquet_layout.json",
+                        json.dumps(manifest).encode(),
+                    )
+                    self.assertEqual(audit_geoparquet(storage)["status"], "violation")
+
+    def test_audit_rejects_missing_or_unknown_partition_strategy(self):
+        for strategy in (None, "bogus", "bogus_s2"):
+            with self.subTest(strategy=strategy), tempfile.TemporaryDirectory() as tmpdir:
+                storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+                parquet = _parquet_bytes()
+                storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+                manifest = json.loads(
+                    _layout(
+                        "d/f/v/geoparquet/part.parquet",
+                        size=len(parquet),
+                        sha256=hashlib.sha256(parquet).hexdigest(),
+                        strategy="single_file",
+                    )
+                )
+                if strategy is None:
+                    del manifest["layers"][0]["partition_strategy"]
+                else:
+                    manifest["layers"][0]["partition_strategy"] = strategy
+                storage.write_key(
+                    "d/f/v/metadata/geoparquet_layout.json",
+                    json.dumps(manifest).encode(),
+                )
+                report = audit_geoparquet(storage, s2_limit_bytes=1)
+                self.assertEqual(report["status"], "violation")
+                self.assertIn(
+                    "partition strategy",
+                    " ".join(report["versions"][0]["reasons"]).lower(),
+                )
+                self.assertIn(
+                    "s2 partition required",
+                    " ".join(report["versions"][0]["reasons"]).lower(),
+                )
 
     def test_audit_rejects_aggregate_footer_budget_overage(self):
         with tempfile.TemporaryDirectory() as tmpdir:

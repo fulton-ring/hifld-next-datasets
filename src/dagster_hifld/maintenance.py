@@ -38,6 +38,12 @@ _CATALOG_METADATA_FILENAMES = ("quality_manifest.json", "data_dictionary.json")
 _DEFAULT_ROW_GROUP_LIMIT = 128 * 1024 * 1024
 _DEFAULT_METADATA_LIMIT = 128 * 1024 * 1024
 _DEFAULT_S2_LIMIT = 2 * 1024 * 1024 * 1024
+_KNOWN_SEMANTIC_STRATEGIES = frozenset(
+    {"admin", "derived_huc", "derived_prefix"}
+)
+_KNOWN_S2_STRATEGIES = frozenset(
+    {"s2"} | {f"{strategy}_s2" for strategy in _KNOWN_SEMANTIC_STRATEGIES}
+)
 
 
 class _TileResponse(Protocol):
@@ -1171,6 +1177,15 @@ def _audit_version(
     ):
         reasons.append("invalid layout manifest schema or status")
 
+    manifest_footer_total = manifest.get("footer_metadata_bytes") if manifest else None
+    if not _nonnegative_integer(manifest_footer_total):
+        reasons.append("invalid manifest footer_metadata_bytes")
+    manifest_footer_limit = (
+        manifest.get("max_dataset_footer_bytes") if manifest else None
+    )
+    if manifest_footer_limit != _DEFAULT_METADATA_LIMIT:
+        reasons.append("invalid manifest max_dataset_footer_bytes")
+
     declared_relative: list[str] = []
     declared_by_layer: list[tuple[Mapping[str, object], tuple[str, ...]]] = []
     for raw_layer in layers:
@@ -1216,6 +1231,7 @@ def _audit_version(
     total_uncompressed = 0
     total_row_groups = 0
     total_features = 0
+    declared_footer_total = 0
     footer_by_relative: dict[
         str, tuple[_ParquetFile, StorageObjectSnapshot, list[int]]
     ] = {}
@@ -1253,6 +1269,11 @@ def _audit_version(
     }
     for layer, paths in declared_by_layer:
         strategy = _string(layer.get("partition_strategy"))
+        known_strategy = strategy in (
+            _KNOWN_SEMANTIC_STRATEGIES | _KNOWN_S2_STRATEGIES | {"single_file"}
+        )
+        if not known_strategy:
+            reasons.append("invalid partition strategy")
         compressed_bytes = sum(
             snapshot_by_relative[path].size
             for path in paths
@@ -1263,7 +1284,12 @@ def _audit_version(
                 "S2 partition required for single_file layer: "
                 f"compressed size exceeds {s2_limit_bytes} bytes"
             )
-        if strategy == "s2" or (strategy is not None and strategy.endswith("_s2")):
+        elif not known_strategy and compressed_bytes > s2_limit_bytes:
+            reasons.append(
+                "S2 partition required for unrecognized partition strategy: "
+                f"compressed size exceeds {s2_limit_bytes} bytes"
+            )
+        if strategy in _KNOWN_S2_STRATEGIES:
             hive = _mapping(layer.get("hive_partition_columns"))
             hive_s2 = _string(hive.get("s2_parent_cell")) if hive else None
             if not hive_s2:
@@ -1340,10 +1366,22 @@ def _audit_version(
                 output = _mapping(raw_output)
                 if output is None:
                     continue
+                declared_footer = output.get("footer_size_bytes")
+                if _nonnegative_integer(declared_footer):
+                    declared_footer_total += int(declared_footer)
                 path = _string(output.get("path"))
                 if path is None:
+                    if not _nonnegative_integer(declared_footer):
+                        reasons.append("invalid footer_size_bytes: <invalid path>")
                     continue
-                rel = path.removeprefix(f"{identity.prefix}/")
+                rel = _declared_output_relative_path(
+                    path,
+                    identity,
+                    storage,
+                    allow_storage_prefixed_path=allow_storage_prefixed_paths,
+                )
+                if rel is None:
+                    continue
                 declared_size = output.get("file_size_bytes")
                 if not _nonnegative_integer(declared_size):
                     reasons.append(f"invalid file_size_bytes: {rel}")
@@ -1370,7 +1408,6 @@ def _audit_version(
                     or any(not _nonnegative_integer(size) for size in declared_sizes)
                 ):
                     reasons.append(f"invalid row_group_uncompressed_sizes: {rel}")
-                declared_footer = output.get("footer_size_bytes")
                 if not _nonnegative_integer(declared_footer):
                     reasons.append(f"invalid footer_size_bytes: {rel}")
                 entry = footer_by_relative.get(rel)
@@ -1415,6 +1452,11 @@ def _audit_version(
         int(footer.metadata.serialized_size)
         for footer, _snapshot, _sizes in footer_by_relative.values()
     )
+    if _nonnegative_integer(manifest_footer_total):
+        if int(manifest_footer_total) != declared_footer_total:
+            reasons.append("manifest footer_metadata_bytes does not match outputs")
+        if int(manifest_footer_total) != footer_metadata_bytes:
+            reasons.append("manifest footer_metadata_bytes does not match actual footers")
     if footer_metadata_bytes > metadata_limit_bytes:
         reasons.append(
             "combined footer metadata exceeds "

@@ -86,6 +86,32 @@ def _validate_geoparquet_footer_budget(
     return total
 
 
+def _validate_geoparquet_manifest_footer_fields(
+    manifest: Mapping[str, object],
+    layers: Sequence[Mapping[str, object]],
+) -> None:
+    footer_total = _validate_geoparquet_footer_budget(layers)
+    declared_total = manifest.get("footer_metadata_bytes")
+    if (
+        not isinstance(declared_total, int)
+        or isinstance(declared_total, bool)
+        or declared_total < 0
+        or declared_total != footer_total
+    ):
+        raise ValueError(
+            "GeoParquet layout manifest footer_metadata_bytes is invalid."
+        )
+    declared_limit = manifest.get("max_dataset_footer_bytes")
+    if (
+        not isinstance(declared_limit, int)
+        or isinstance(declared_limit, bool)
+        or declared_limit != DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES
+    ):
+        raise ValueError(
+            "GeoParquet layout manifest max_dataset_footer_bytes is invalid."
+        )
+
+
 @dataclass(frozen=True)
 class PublishedFormatOutput:
     file_slug: str
@@ -562,7 +588,7 @@ def _validate_reusable_geoparquet_layout(
         )
     typed_layers = [layer for layer in layers if isinstance(layer, dict)]
     try:
-        _validate_geoparquet_footer_budget(typed_layers)
+        _validate_geoparquet_manifest_footer_fields(manifest, typed_layers)
     except ValueError as exc:
         raise ValueError(
             "Cannot reuse existing GeoParquet: authoritative layout manifest is invalid."
@@ -796,8 +822,11 @@ def _write_and_publish_geoparquet(
                         )
                         continue
                     layout = result.get("layout")
-                    if isinstance(layout, dict):
-                        layouts.append(layout)
+                    if not isinstance(layout, dict):
+                        raise ValueError(
+                            "GeoParquet writer returned files without an authoritative layout."
+                        )
+                    layouts.append(layout)
                     output_path, is_hive_partitioned = _geoparquet_glob_and_hive_status(
                         geoparquet_paths
                     )
