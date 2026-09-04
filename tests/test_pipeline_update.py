@@ -211,8 +211,23 @@ class PipelineUpdateTests(unittest.TestCase):
             self.assertEqual(default_result.glob_path, "layer.parquet")
             self.assertTrue((Path(tmpdir) / "default" / "layer.parquet").exists())
             self.assertEqual(admin_result.glob_path, "**/*.parquet")
-            self.assertTrue((Path(tmpdir) / "admin" / "statefp=06" / "part-000.parquet").exists())
-            self.assertTrue((Path(tmpdir) / "admin" / "statefp=12" / "part-000.parquet").exists())
+            hive_key = admin_result.source_metadata["hive_partition_columns"]["statefp"]
+            self.assertTrue(
+                (
+                    Path(tmpdir)
+                    / "admin"
+                    / f"{hive_key}=v-06"
+                    / "part-000.parquet"
+                ).exists()
+            )
+            self.assertTrue(
+                (
+                    Path(tmpdir)
+                    / "admin"
+                    / f"{hive_key}=v-12"
+                    / "part-000.parquet"
+                ).exists()
+            )
 
     def test_large_dataset_policy_registry_uses_admin_candidates(self):
         census_policy = geoparquet_policy_for("2020-census-blocks-1", "tl_2024_48_tabblock20")

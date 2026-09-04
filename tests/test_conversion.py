@@ -73,6 +73,40 @@ class ConversionTests(unittest.TestCase):
         self.assertIs(result, converted)
         gdf.to_crs.assert_called_once_with("EPSG:4326")
 
+    def test_storage_adapter_roundtrips_logical_upload_and_qualified_reads(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.bin"
+            source.write_bytes(b"payload")
+            resource = StagingStorageResource(
+                local_dir=tmpdir,
+                prefix="tenant",
+                use_local=True,
+            )
+            adapter = _StorageAdapter(resource)
+            logical_key = "tenant/file/v1/geoparquet/file.parquet"
+
+            qualified_key = asyncio.run(adapter.upload_file(source, logical_key))
+
+            self.assertEqual(
+                qualified_key,
+                "tenant/tenant/file/v1/geoparquet/file.parquet",
+            )
+            self.assertEqual(adapter.qualify_key(logical_key), qualified_key)
+            self.assertEqual(adapter.logical_key(qualified_key), logical_key)
+            self.assertEqual(
+                asyncio.run(adapter.list_files("tenant/file/v1/geoparquet")),
+                [qualified_key],
+            )
+            self.assertTrue(asyncio.run(adapter.file_exists(qualified_key)))
+            self.assertEqual(asyncio.run(adapter.read_bytes(qualified_key)), b"payload")
+            downloaded = Path(tmpdir) / "downloaded.bin"
+            asyncio.run(adapter.download_file(qualified_key, downloaded))
+            self.assertEqual(downloaded.read_bytes(), b"payload")
+            self.assertEqual(
+                adapter.path_to_storage_uri(qualified_key),
+                str(Path(tmpdir).resolve() / qualified_key),
+            )
+
     def test_process_staged_dataset_version_uses_single_asyncio_run(self):
         staging_storage = Mock()
         published_storage = Mock()
@@ -1012,6 +1046,49 @@ class ConversionTests(unittest.TestCase):
                 self.assertNotIn("s2_cell", columns)
                 self.assertNotIn("s2_parent_cell", columns)
                 self.assertNotIn("hilbert_cell", columns)
+
+    def test_force_s2_hive_reader_preserves_source_internal_like_columns(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            expected_columns = {
+                "s2_parent_cell": ["original-parent-a", "original-parent-b"],
+                "s2_cell": ["original-cell-a", "original-cell-b"],
+                "hilbert_cell": ["original-hilbert-a", "original-hilbert-b"],
+            }
+            gpd.GeoDataFrame(
+                expected_columns,
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(force_s2=True),
+                )
+            )
+
+            hive_key = result["hive_partition_columns"]["s2_parent_cell"]
+            self.assertNotIn(
+                hive_key.casefold(),
+                {column.casefold() for column in expected_columns},
+            )
+            dataset = ds.dataset(
+                Path(tmpdir) / "work" / "geoparquet" / "layer-source",
+                format="parquet",
+                partitioning="hive",
+            )
+            table = dataset.to_table()
+            self.assertIn(hive_key, table.column_names)
+            for column, expected in expected_columns.items():
+                self.assertCountEqual(table.column(column).to_pylist(), expected)
 
     def test_dense_s2_cell_rolls_at_target_file_size_with_large_memory_budgets(self):
         with tempfile.TemporaryDirectory() as tmpdir:

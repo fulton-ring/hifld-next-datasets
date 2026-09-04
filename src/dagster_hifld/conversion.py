@@ -213,7 +213,11 @@ class ShapefileZipResult:
 
 
 class _StorageAdapter:
-    """Async storage adapter over Dagster resources (GCS or local)."""
+    """Storage adapter with logical writes and storage-qualified reads.
+
+    Upload/list inputs are logical keys. Upload/list outputs and every read-like
+    input are storage-qualified keys.
+    """
 
     def __init__(self, resource: StagingStorageResource | PublishedStorageResource):
         self.resource = resource
@@ -227,14 +231,27 @@ class _StorageAdapter:
 
             self.fs = gcsfs.GCSFileSystem()
 
-    def _storage_key(self, remote_path: str) -> str:
-        normalized = remote_path.lstrip("/")
+    def qualify_key(self, logical_path: str) -> str:
+        """Convert one logical unprefixed key to a storage-qualified key."""
+        normalized = logical_path.lstrip("/")
         if not self.prefix:
             return normalized
         return f"{self.prefix}/{normalized}"
 
-    async def list_files(self, prefix: str) -> list[str]:
-        prefix = self._storage_key(prefix)
+    def logical_key(self, qualified_path: str) -> str:
+        """Remove this adapter's configured prefix from a qualified key."""
+        normalized = qualified_path.lstrip("/")
+        if not self.prefix:
+            return normalized
+        qualified_prefix = f"{self.prefix}/"
+        if not normalized.startswith(qualified_prefix):
+            raise ValueError(
+                f"Storage key '{qualified_path}' is not qualified by '{self.prefix}'."
+            )
+        return normalized.removeprefix(qualified_prefix)
+
+    async def list_files(self, logical_prefix: str) -> list[str]:
+        prefix = self.qualify_key(logical_prefix)
         if self.use_local:
             p = (self.local_dir / prefix).resolve()
             if not p.exists():
@@ -259,14 +276,14 @@ class _StorageAdapter:
         except Exception:
             return []
 
-    async def file_exists(self, remote_path: str) -> bool:
-        remote_path = self._storage_key(remote_path)
+    async def file_exists(self, qualified_path: str) -> bool:
+        remote_path = qualified_path.lstrip("/")
         if self.use_local:
             return (self.local_dir / remote_path).exists()
         return bool(self.fs.exists(f"{self.bucket}/{remote_path}"))
 
-    async def download_file(self, remote_path: str, local_path: Path) -> None:
-        remote_path = self._storage_key(remote_path)
+    async def download_file(self, qualified_path: str, local_path: Path) -> None:
+        remote_path = qualified_path.lstrip("/")
         local_path.parent.mkdir(parents=True, exist_ok=True)
         if self.use_local:
             src = self.local_dir / remote_path
@@ -277,8 +294,8 @@ class _StorageAdapter:
             return
         self.fs.get(f"{self.bucket}/{remote_path}", str(local_path))
 
-    async def upload_file(self, local_path: Path, remote_path: str) -> str:
-        remote_path = self._storage_key(remote_path)
+    async def upload_file(self, local_path: Path, logical_path: str) -> str:
+        remote_path = self.qualify_key(logical_path)
         if self.use_local:
             dst = self.local_dir / remote_path
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -287,8 +304,8 @@ class _StorageAdapter:
         self.fs.put(str(local_path), f"{self.bucket}/{remote_path}")
         return remote_path
 
-    async def get_file_size(self, remote_path: str) -> int:
-        remote_path = self._storage_key(remote_path)
+    async def get_file_size(self, qualified_path: str) -> int:
+        remote_path = qualified_path.lstrip("/")
         if self.use_local:
             p = self.local_dir / remote_path
             return p.stat().st_size if p.exists() else 0
@@ -298,17 +315,23 @@ class _StorageAdapter:
         except Exception:
             return 0
 
-    def get_public_url(self, remote_path: str) -> str:
-        remote_path = self._storage_key(remote_path)
+    def get_public_url(self, qualified_path: str) -> str:
+        remote_path = qualified_path.lstrip("/")
         if self.use_local:
             return f"file://{self.local_dir / remote_path}"
         return f"https://storage.googleapis.com/{self.bucket}/{remote_path}"
 
-    def path_to_storage_uri(self, path: str) -> str:
-        path = self._storage_key(path)
+    def path_to_storage_uri(self, qualified_path: str) -> str:
+        path = qualified_path.lstrip("/")
         if self.use_local:
             return str(self.local_dir / path)
         return f"gs://{self.bucket}/{path}"
+
+    async def read_bytes(self, qualified_path: str) -> bytes:
+        remote_path = qualified_path.lstrip("/")
+        if self.use_local:
+            return (self.local_dir / remote_path).read_bytes()
+        return self.fs.read_bytes(f"{self.bucket}/{remote_path}")
 
 
 def _detect_format_from_path(path: str) -> str:
@@ -578,19 +601,34 @@ def _select_admin_column(
     return None
 
 
-def _annotate_s2_and_hilbert(gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolicy) -> gpd.GeoDataFrame:
+def _annotate_s2_and_hilbert(
+    gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolicy
+) -> tuple[gpd.GeoDataFrame, dict[str, str]]:
+    internal_columns = _allocate_semantic_hive_keys(
+        ["s2_cell", "s2_parent_cell", "hilbert_cell"],
+        {str(column) for column in gdf.columns},
+    )
     try:
         import s2sphere
     except Exception:
         out = gdf.copy()
         reps = out.geometry.representative_point()
-        out["s2_cell"] = [0 for _ in reps]
-        out["s2_parent_cell"] = [0 for _ in reps]
-        out["hilbert_cell"] = [
+        out[internal_columns["s2_cell"]] = [0 for _ in reps]
+        out[internal_columns["s2_parent_cell"]] = [0 for _ in reps]
+        out[internal_columns["hilbert_cell"]] = [
             int((point.x + 180.0) * 1_000_000) + int((point.y + 90.0) * 1_000)
             for point in reps
         ]
-        return out.sort_values(["s2_parent_cell", "hilbert_cell"], kind="stable")
+        return (
+            out.sort_values(
+                [
+                    internal_columns["s2_parent_cell"],
+                    internal_columns["hilbert_cell"],
+                ],
+                kind="stable",
+            ),
+            internal_columns,
+        )
 
     out = _to_wgs84(gdf.copy())
     reps = out.geometry.representative_point()
@@ -606,10 +644,19 @@ def _annotate_s2_and_hilbert(gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolic
         parent = cell.parent(parent_level)
         parent_cells.append(parent.id())
         hilbert_cells.append(_hilbert_like_key(point.x, point.y))
-    out["s2_cell"] = fine_cells
-    out["s2_parent_cell"] = parent_cells
-    out["hilbert_cell"] = hilbert_cells
-    return out.sort_values(["s2_parent_cell", "hilbert_cell"], kind="stable").reset_index(drop=True)
+    out[internal_columns["s2_cell"]] = fine_cells
+    out[internal_columns["s2_parent_cell"]] = parent_cells
+    out[internal_columns["hilbert_cell"]] = hilbert_cells
+    return (
+        out.sort_values(
+            [
+                internal_columns["s2_parent_cell"],
+                internal_columns["hilbert_cell"],
+            ],
+            kind="stable",
+        ).reset_index(drop=True),
+        internal_columns,
+    )
 
 
 def _pick_s2_parent_level(points: gpd.GeoSeries, policy: GeoParquetWritePolicy) -> int:
@@ -652,14 +699,22 @@ def write_geoparquet_dataset(
     estimated_size = _estimated_parquet_size(gdf)
     row_group_size = _row_group_size_for_policy(gdf, policy)
     admin_column = _select_admin_column(gdf, policy, estimated_size)
+    source_columns = {str(column) for column in gdf.columns}
 
     if policy.force_s2 or (estimated_size >= policy.large_dataset_threshold_bytes and admin_column is None):
-        sorted_gdf = _annotate_s2_and_hilbert(gdf, policy)
+        sorted_gdf, internal_columns = _annotate_s2_and_hilbert(gdf, policy)
+        hive_columns = _allocate_semantic_hive_keys(
+            ["s2_parent_cell"], source_columns | set(internal_columns.values())
+        )
         paths = _write_partitioned_parquet(
             sorted_gdf,
             output_dir,
-            "s2_parent_cell",
+            internal_columns["s2_parent_cell"],
             row_group_size,
+            hive_partition_columns={
+                internal_columns["s2_parent_cell"]: hive_columns["s2_parent_cell"]
+            },
+            generated_columns=set(internal_columns.values()),
         )
         return GeoParquetWriteResult(
             paths=paths,
@@ -670,8 +725,10 @@ def write_geoparquet_dataset(
                 "hive_partitioned": True,
                 "partitioning": "s2",
                 "partition_columns": ["s2_parent_cell"],
+                "hive_partition_columns": hive_columns,
                 "row_group_target_bytes": policy.target_row_group_bytes,
-                "s2_columns": ["s2_cell", "s2_parent_cell", "hilbert_cell"],
+                "s2_columns": list(internal_columns.values()),
+                "s2_column_mapping": internal_columns,
             },
         )
 
@@ -681,15 +738,31 @@ def write_geoparquet_dataset(
             for _value, part in gdf.groupby(admin_column, dropna=False, sort=True)
         ]
         if partition_sizes and max(partition_sizes) >= policy.large_dataset_threshold_bytes:
-            sorted_gdf = _annotate_s2_and_hilbert(gdf, policy).sort_values(
-                [admin_column, "s2_parent_cell", "hilbert_cell"],
+            sorted_gdf, internal_columns = _annotate_s2_and_hilbert(gdf, policy)
+            sorted_gdf = sorted_gdf.sort_values(
+                [
+                    admin_column,
+                    internal_columns["s2_parent_cell"],
+                    internal_columns["hilbert_cell"],
+                ],
                 kind="stable",
+            )
+            hive_columns = _allocate_semantic_hive_keys(
+                [admin_column, "s2_parent_cell"],
+                source_columns | set(internal_columns.values()),
             )
             paths = _write_partitioned_parquet(
                 sorted_gdf,
                 output_dir,
-                [admin_column, "s2_parent_cell"],
+                [admin_column, internal_columns["s2_parent_cell"]],
                 row_group_size,
+                hive_partition_columns={
+                    admin_column: hive_columns[admin_column],
+                    internal_columns["s2_parent_cell"]: hive_columns[
+                        "s2_parent_cell"
+                    ],
+                },
+                generated_columns=set(internal_columns.values()),
             )
             return GeoParquetWriteResult(
                 paths=paths,
@@ -700,13 +773,22 @@ def write_geoparquet_dataset(
                     "hive_partitioned": True,
                     "partitioning": "admin_s2",
                     "partition_columns": [admin_column, "s2_parent_cell"],
+                    "hive_partition_columns": hive_columns,
                     "row_group_target_bytes": policy.target_row_group_bytes,
-                    "s2_columns": ["s2_cell", "s2_parent_cell", "hilbert_cell"],
+                    "s2_columns": list(internal_columns.values()),
+                    "s2_column_mapping": internal_columns,
                 },
             )
 
         sorted_gdf = gdf.sort_values(admin_column, kind="stable").reset_index(drop=True)
-        paths = _write_partitioned_parquet(sorted_gdf, output_dir, admin_column, row_group_size)
+        hive_columns = _allocate_semantic_hive_keys([admin_column], source_columns)
+        paths = _write_partitioned_parquet(
+            sorted_gdf,
+            output_dir,
+            admin_column,
+            row_group_size,
+            hive_partition_columns={admin_column: hive_columns[admin_column]},
+        )
         return GeoParquetWriteResult(
             paths=paths,
             glob_path="**/*.parquet",
@@ -716,6 +798,7 @@ def write_geoparquet_dataset(
                 "hive_partitioned": True,
                 "partitioning": "admin",
                 "partition_columns": [admin_column],
+                "hive_partition_columns": hive_columns,
                 "row_group_target_bytes": policy.target_row_group_bytes,
             },
         )
@@ -740,6 +823,8 @@ def _write_partitioned_parquet(
     output_dir: Path,
     partition_column: str | list[str],
     row_group_size: int,
+    hive_partition_columns: dict[str, str] | None = None,
+    generated_columns: set[str] | None = None,
 ) -> list[Path]:
     partition_columns = [partition_column] if isinstance(partition_column, str) else partition_column
     paths: list[Path] = []
@@ -748,11 +833,11 @@ def _write_partitioned_parquet(
         values = value if isinstance(value, tuple) else (value,)
         part_dir = output_dir
         for column, raw_value in zip(partition_columns, values):
-            safe_value = str(raw_value).replace("/", "-").replace("\\", "-")
-            part_dir = part_dir / f"{column}={safe_value}"
+            hive_column = (hive_partition_columns or {}).get(column, column)
+            part_dir = part_dir / f"{hive_column}={_encoded_hive_value(raw_value)}"
         part_path = part_dir / "part-000.parquet"
         published_part = part.drop(
-            columns=["s2_cell", "s2_parent_cell", "hilbert_cell"],
+            columns=list(generated_columns or ()),
             errors="ignore",
         )
         _write_geodataframe_parquet(
@@ -1481,12 +1566,7 @@ def _preflight_layer_with_histograms(
             partitioning = f"{base_partitioning}_s2"
             partition_columns.append("s2_parent_cell")
 
-    semantic_columns = [
-        column for column in partition_columns if column != "s2_parent_cell"
-    ]
-    hive_partition_columns = _allocate_semantic_hive_keys(semantic_columns, names)
-    if "s2_parent_cell" in partition_columns:
-        hive_partition_columns["s2_parent_cell"] = "s2_parent_cell"
+    hive_partition_columns = _allocate_semantic_hive_keys(partition_columns, names)
 
     return _GeoParquetPreflight(
         feature_count=feature_count,
@@ -1670,14 +1750,8 @@ async def process_layer_partitioned_geoparquet(
                     partition_dir = ""
                 else:
                     parts = [
-                        (
-                            f"{column}={_encoded_hive_value(value)}"
-                            if column == "s2_parent_cell"
-                            else (
-                                f"{preflight.hive_partition_columns[column]}="
-                                f"{_encoded_hive_value(value)}"
-                            )
-                        )
+                        f"{preflight.hive_partition_columns[column]}="
+                        f"{_encoded_hive_value(value)}"
                         for column, value in zip(partition_columns, values)
                     ]
                     partition_dir = Path(*parts).as_posix()
@@ -2469,10 +2543,13 @@ async def _process_dataset(
     dest_storage: _StorageAdapter,
     skip_format_existing: bool = False,
 ) -> dict[str, Any]:
-    path_parts = [p for p in source_rel_path.split("/") if p]
-    zip_stem = Path(path_parts[-1]).stem if path_parts else Path(source_rel_path).stem
+    logical_source_path = source_storage.logical_key(source_rel_path)
+    path_parts = [p for p in logical_source_path.split("/") if p]
+    zip_stem = (
+        Path(path_parts[-1]).stem if path_parts else Path(logical_source_path).stem
+    )
     base_filename = _strip_format_suffix(zip_stem)
-    dest_folder = _build_dest_folder(source_rel_path)
+    dest_folder = _build_dest_folder(logical_source_path)
     format_variants = {_detect_format_from_path(source_rel_path): source_rel_path}
 
     processed_formats: dict[str, dict[str, Any]] = {}
@@ -2585,7 +2662,8 @@ async def _process_staged_dataset_version_async(
         return {"success": False, "error": "No source keys to process", "layers": []}
 
     dest_storage = _StorageAdapter(published_storage)
-    parts = source_keys[0].split("/")
+    logical_source_key = _StorageAdapter(staging_storage).logical_key(source_keys[0])
+    parts = logical_source_key.split("/")
     if len(parts) < 4:
         return {"success": False, "error": "Source keys do not match dataset/file/version layout", "layers": []}
 
