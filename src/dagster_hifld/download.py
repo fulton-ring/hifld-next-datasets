@@ -28,7 +28,9 @@ _FORMAT_NAMES: dict[str, str] = {
     ".geojson": "geojson",
     ".json": "geojson",
     ".fgb": "flatgeobuf",
+    ".parquet": "geoparquet",
 }
+
 
 def get_run_id(context) -> str | None:
     """Get run_id from OpExecutionContext or AssetCheckExecutionContext."""
@@ -72,7 +74,7 @@ def _key_prefix(
 def _filename_from_response(url: str, response: httpx.Response, suggested: str | None) -> str:
     cd = response.headers.get("content-disposition")
     if cd and "filename=" in cd:
-        part = cd.split("filename=")[-1].strip().strip('"\'')
+        part = cd.split("filename=")[-1].strip().strip("\"'")
         if part:
             return part
     path = urlparse(url).path
@@ -86,11 +88,7 @@ def _extract_zip(content: bytes, out_dir: Path) -> list[Path]:
     with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
         for info in zf.infolist():
             member_path = Path(info.filename)
-            if (
-                member_path.is_absolute()
-                or ".." in member_path.parts
-                or info.filename.startswith(("/", "\\"))
-            ):
+            if member_path.is_absolute() or ".." in member_path.parts or info.filename.startswith(("/", "\\")):
                 raise ValueError(f"Unsafe zip member path: {info.filename}")
             if info.is_dir():
                 (out_dir / member_path).mkdir(parents=True, exist_ok=True)
@@ -151,6 +149,7 @@ def _safe_layer_name(name: str) -> str:
     """Sanitise a layer name for use in file names (matches process_gcs_datasets._safe_layer_suffix)."""
     return name.replace("/", "-").replace("\\", "-").replace(" ", "_")
 
+
 def download_convert_and_stage(
     urls_and_names: list[tuple[str, str | None]],
     dataset_slug: str,
@@ -201,9 +200,7 @@ def download_convert_and_stage(
                     logger.info("Staged %s", key)
 
         if not written:
-            raise ValueError(
-                f"No readable geospatial file found for {dataset_slug}/{file_slug}."
-            )
+            raise ValueError(f"No readable geospatial file found for {dataset_slug}/{file_slug}.")
 
         return {
             "dataset_slug": dataset_slug,

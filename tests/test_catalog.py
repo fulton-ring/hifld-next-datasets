@@ -110,13 +110,7 @@ class CatalogTests(unittest.TestCase):
                 dictionary_dict={"name": "amtrak-stations", "columns": []},
             )
 
-            metadata_dir = (
-                Path(tmpdir)
-                / "amtrak-stations"
-                / "amtrak-stations"
-                / "run_test"
-                / "metadata"
-            )
+            metadata_dir = Path(tmpdir) / "amtrak-stations" / "amtrak-stations" / "run_test" / "metadata"
             self.assertEqual(
                 json.loads((metadata_dir / "quality_manifest.json").read_text()),
                 {"feature_count": 2},
@@ -145,6 +139,51 @@ class CatalogTests(unittest.TestCase):
             self.assertTrue(source_path.is_dir())
             self.assertEqual(layer, "layer_a")
 
+    def test_summarize_staged_catalog_uses_geoparquet_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            version_dir = Path(tmpdir) / "dataset-a" / "file-a" / "v1.0.0" / "geoparquet"
+            version_dir.mkdir(parents=True)
+            gdf = gpd.GeoDataFrame(
+                {"name": ["A", "B"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            )
+            gdf.to_parquet(version_dir / "file-a.parquet")
+
+            summary = summarize_staged_catalog(
+                resource,
+                dataset_slug="dataset-a",
+                file_slug="file-a",
+                version="v1.0.0",
+                dictionary_name="dataset-a",
+            )
+
+            self.assertEqual(summary.quality_manifest["feature_count"], 2)
+            self.assertEqual(summary.quality_manifest["geometry_type"], "Point")
+            column_names = [column["name"] for column in summary.data_dictionary["columns"]]
+            self.assertIn("geometry", column_names)
+
+    def test_summarize_staged_catalog_treats_plain_parquet_geoparquet_source_as_tabular(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            version_dir = Path(tmpdir) / "dataset-a" / "file-a" / "v1.0.0" / "geoparquet"
+            version_dir.mkdir(parents=True)
+            pd.DataFrame({"name": ["A"], "value": [1]}).to_parquet(version_dir / "file-a.parquet")
+
+            summary = summarize_staged_catalog(
+                resource,
+                dataset_slug="dataset-a",
+                file_slug="file-a",
+                version="v1.0.0",
+                dictionary_name="dataset-a",
+            )
+
+            self.assertEqual(summary.quality_manifest["catalog_mode"], "tabular")
+            self.assertEqual(summary.quality_manifest["spatial_status"], "non_spatial_source")
+
     def test_generate_quality_manifest_supports_tabular_inputs(self):
         df = pd.DataFrame({"station_id": [1, 2], "name": ["A", None]})
 
@@ -157,7 +196,9 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(manifest["spatial_status"], "non_spatial_source")
         self.assertTrue(manifest["quality_check_passed"])
 
-    def test_generate_quality_manifest_passes_all_null_geometry_as_expected_non_spatial(self):
+    def test_generate_quality_manifest_passes_all_null_geometry_as_expected_non_spatial(
+        self,
+    ):
         gdf = gpd.GeoDataFrame(
             {"name": ["A", "B"]},
             geometry=[None, None],
@@ -184,16 +225,12 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(manifest["spatial_status"], "spatial")
         self.assertEqual(manifest["invalid_geometry_count"], 1)
 
-    def test_load_staged_geodata_preserves_source_identifier_columns_without_synthetic_id(self):
+    def test_load_staged_geodata_preserves_source_identifier_columns_without_synthetic_id(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
-            version_dir = (
-                Path(tmpdir)
-                / "12nm-territorial-sea"
-                / "12nm-territorial-sea"
-                / "v-test"
-                / "geojson"
-            )
+            version_dir = Path(tmpdir) / "12nm-territorial-sea" / "12nm-territorial-sea" / "v-test" / "geojson"
             version_dir.mkdir(parents=True)
             gdf = gpd.GeoDataFrame(
                 {"OBJECTID": [101, 102], "name": ["A", "B"]},
@@ -298,8 +335,16 @@ class CatalogTests(unittest.TestCase):
             def __iter__(self):
                 return iter(
                     [
-                        {"type": "Feature", "properties": {"name": "A"}, "geometry": None},
-                        {"type": "Feature", "properties": {"name": "B"}, "geometry": None},
+                        {
+                            "type": "Feature",
+                            "properties": {"name": "A"},
+                            "geometry": None,
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": {"name": "B"},
+                            "geometry": None,
+                        },
                     ]
                 )
 

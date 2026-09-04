@@ -11,10 +11,17 @@ import fiona
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import shape
-from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dtype, is_hashable, is_integer_dtype
+from pandas.api.types import (
+    is_bool_dtype,
+    is_datetime64_any_dtype,
+    is_float_dtype,
+    is_hashable,
+    is_integer_dtype,
+)
 
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
+from dagster_hifld.conversion import read_geoparquet_source
 from dagster_hifld.resources import StagingStorageResource
 
 CATALOG_SAMPLE_FEATURE_LIMIT = 5_000
@@ -36,9 +43,7 @@ def load_staged_geodata(
         version_path = Path(version_dir)
         gdf = _load_best_file(version_path)
         if gdf is None:
-            raise ValueError(
-                f"No loadable geodata found for {dataset_slug}/{file_slug}/{version}"
-            )
+            raise ValueError(f"No loadable geodata found for {dataset_slug}/{file_slug}/{version}")
         return gdf
 
 
@@ -70,8 +75,7 @@ def summarize_staged_catalog(
     if reader_errors:
         attempted = "; ".join(reader_errors)
         raise ValueError(
-            f"No loadable source files found for {dataset_slug}/{file_slug}/{version}. "
-            f"Attempted sources: {attempted}"
+            f"No loadable source files found for {dataset_slug}/{file_slug}/{version}. Attempted sources: {attempted}"
         )
     raise ValueError(f"No source files found for {dataset_slug}/{file_slug}/{version}")
 
@@ -93,9 +97,7 @@ def generate_quality_manifest(gdf: pd.DataFrame, *, catalog_mode: str | None = N
             geometry_type = "Mixed"
         else:
             geometry_type = None
-        invalid_geometry_count = (
-            int((~geom_col[non_empty_mask].is_valid).sum()) if spatial_feature_count else 0
-        )
+        invalid_geometry_count = int((~geom_col[non_empty_mask].is_valid).sum()) if spatial_feature_count else 0
         null_geometry_count = row_count - spatial_feature_count
         spatial_status = "spatial" if spatial_feature_count else "all_null_geometry"
     else:
@@ -114,9 +116,7 @@ def generate_quality_manifest(gdf: pd.DataFrame, *, catalog_mode: str | None = N
 
     geometry_name = gdf.geometry.name if has_geometry else None
     columns = [column for column in gdf.columns if column != geometry_name]
-    columns_hash = hashlib.sha256(
-        json.dumps(columns, sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    columns_hash = hashlib.sha256(json.dumps(columns, sort_keys=True).encode("utf-8")).hexdigest()
 
     manifest = {
         "version": "v1",
@@ -189,11 +189,7 @@ def generate_data_dictionary(
         }
 
         if column_type in {"integer", "float"} and len(non_null) > 0:
-            sample_col = (
-                non_null.sample(min(sample_size, len(non_null)), random_state=0)
-                if use_sampling
-                else non_null
-            )
+            sample_col = non_null.sample(min(sample_size, len(non_null)), random_state=0) if use_sampling else non_null
             entry["min"] = float(sample_col.min())
             entry["max"] = float(sample_col.max())
 
@@ -201,17 +197,13 @@ def generate_data_dictionary(
             try:
                 if len(non_null) > 0:
                     sample_col = (
-                        non_null.sample(min(sample_size, len(non_null)), random_state=0)
-                        if use_sampling
-                        else non_null
+                        non_null.sample(min(sample_size, len(non_null)), random_state=0) if use_sampling else non_null
                     )
                     entry["length"] = int(sample_col.astype(str).str.len().max())
                     if df_len < 50_000:
                         value_counts = sample_col.value_counts()
                         if len(value_counts) <= 20:
-                            entry["possibleValues"] = sorted(
-                                value_counts.index.astype(str).tolist()
-                            )
+                            entry["possibleValues"] = sorted(value_counts.index.astype(str).tolist())
             except Exception:
                 entry["length"] = None
 
@@ -239,7 +231,12 @@ def generate_data_dictionary(
             "inventory_match_type",
             "manifest_keys",
         ):
-            if key in source_metadata and source_metadata[key] not in (None, "", [], {}):
+            if key in source_metadata and source_metadata[key] not in (
+                None,
+                "",
+                [],
+                {},
+            ):
                 dictionary[key] = source_metadata[key]
     return dictionary
 
@@ -274,6 +271,7 @@ def write_catalog_metadata(
 
 def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
     fallback_searches: list[tuple[Path, str]] = [
+        (version_dir / "geoparquet", ".parquet"),
         (version_dir / "file_geodatabase", ".gdb"),
         (version_dir / "geopackage", ".gpkg"),
         (version_dir / "unknown", ".shp"),
@@ -289,6 +287,11 @@ def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
                         return gpd.read_file(str(path), engine="pyogrio")
                 except Exception:
                     continue
+        elif ext == ".parquet":
+            try:
+                return read_geoparquet_source(search_dir)
+            except Exception:
+                continue
         else:
             for path in search_dir.glob(f"*{ext}"):
                 try:
@@ -317,9 +320,7 @@ def _summarize_best_geospatial_file(
             if reader_errors is not None:
                 rel_path = source_path.relative_to(version_dir)
                 layer_label = layer_name or "default"
-                reader_errors.append(
-                    f"{rel_path} ({layer_label}): {type(exc).__name__}: {exc}"
-                )
+                reader_errors.append(f"{rel_path} ({layer_label}): {type(exc).__name__}: {exc}")
             continue
         return CatalogSummary(
             quality_manifest=quality,
@@ -333,6 +334,9 @@ def _summarize_best_geospatial_file(
 
 
 def _iter_geospatial_sources(version_dir: Path):
+    geoparquet_dir = version_dir / "geoparquet"
+    if geoparquet_dir.is_dir() and list(geoparquet_dir.rglob("*.parquet")):
+        yield geoparquet_dir, None
     for path in iter_file_geodatabases(version_dir / "file_geodatabase"):
         try:
             with _with_large_geojson_support():
@@ -356,6 +360,11 @@ def _iter_geospatial_sources(version_dir: Path):
 
 
 def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gpd.GeoDataFrame, dict]:
+    if path.is_dir() and path.name == "geoparquet" or path.suffix.lower() == ".parquet":
+        sample = read_geoparquet_source(path)
+        quality = generate_quality_manifest(sample)
+        return sample, quality
+
     open_kwargs: dict[str, object] = {}
     if layer_name:
         open_kwargs["layer"] = layer_name
@@ -425,9 +434,7 @@ def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gp
         "geometry_type": geometry_type,
         "invalid_geometry_count": int(invalid_geometry_count),
         "quality_check_passed": quality_check_passed,
-        "columns_hash": hashlib.sha256(
-            json.dumps(columns, sort_keys=True).encode("utf-8")
-        ).hexdigest(),
+        "columns_hash": hashlib.sha256(json.dumps(columns, sort_keys=True).encode("utf-8")).hexdigest(),
         "catalog_mode": "streaming_geospatial",
         "spatial_status": spatial_status,
         "sampled_feature_count": len(sample),
@@ -469,7 +476,11 @@ def _summarize_best_tabular_file(
     dictionary_name: str,
     source_metadata: dict | None,
 ) -> CatalogSummary | None:
-    for path in sorted((version_dir / "unknown").glob("*")):
+    candidate_paths = [
+        *sorted((version_dir / "unknown").glob("*")),
+        *sorted((version_dir / "geoparquet").rglob("*.parquet")),
+    ]
+    for path in candidate_paths:
         if not path.is_file():
             continue
         suffix = path.suffix.lower()

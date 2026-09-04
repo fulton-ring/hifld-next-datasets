@@ -1,0 +1,25 @@
+{
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "scripts",
+    "tests"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": false,
+  "reportAssignmentType": false,
+  "reportExplicitAny": "error",
+  "reportAny": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownParameterType": "error",
+  "reportMissingTypeArgument": "error",
+  "reportUntypedFunctionDecorator": "error",
+  "reportUntypedBaseClass": "error",
+  "reportIgnoreCommentWithoutRule": "error"
+}

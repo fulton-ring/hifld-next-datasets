@@ -13,9 +13,7 @@ from dagster_hifld.resources import StagingStorageResource
 
 class StagingStorageResourceTests(unittest.TestCase):
     def test_build_version_id_uses_run_create_timestamp(self):
-        run_record = SimpleNamespace(
-            create_timestamp=datetime(2026, 4, 7, 20, 40, 46, tzinfo=timezone.utc)
-        )
+        run_record = SimpleNamespace(create_timestamp=datetime(2026, 4, 7, 20, 40, 46, tzinfo=timezone.utc))
         context = SimpleNamespace(
             run_id="fa8b8d5b-a72c-4bbe-9c16-5efd0b9a5095",
             instance=SimpleNamespace(get_run_record_by_id=lambda _: run_record),
@@ -76,12 +74,8 @@ class StagingStorageResourceTests(unittest.TestCase):
     def test_list_versions_returns_immediate_version_directories(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            (root / "amtrak-stations" / "amtrak-stations" / "run_a" / "metadata").mkdir(
-                parents=True
-            )
-            (root / "amtrak-stations" / "amtrak-stations" / "run_b" / "shapefile").mkdir(
-                parents=True
-            )
+            (root / "amtrak-stations" / "amtrak-stations" / "run_a" / "metadata").mkdir(parents=True)
+            (root / "amtrak-stations" / "amtrak-stations" / "run_b" / "shapefile").mkdir(parents=True)
             (root / "amtrak-stations" / "other-file" / "run_c").mkdir(parents=True)
 
             resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
@@ -105,13 +99,26 @@ class StagingStorageResourceTests(unittest.TestCase):
             keys = resource.list_keys("address-ranges", "address-ranges", "v1.0.0")
 
         fake_fs.exists.assert_not_called()
-        fake_fs.find.assert_called_once_with(
-            "staging-bucket/address-ranges/address-ranges/v1.0.0"
-        )
+        fake_fs.find.assert_called_once_with("staging-bucket/address-ranges/address-ranges/v1.0.0")
         self.assertEqual(
             keys,
             ["address-ranges/address-ranges/v1.0.0/geopackage/source.gpkg"],
         )
+
+    def test_gcs_list_keys_skips_prefix_marker_objects(self):
+        resource = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        key = "dataset/file/v1.0.0/geoparquet/source.parquet"
+        fake_fs = Mock()
+        fake_fs.find.return_value = [
+            "staging-bucket/dataset/file/v1.0.0/",
+            "staging-bucket/dataset/file/v1.0.0/geoparquet/",
+            f"staging-bucket/{key}",
+        ]
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            keys = resource.list_keys("dataset", "file", "v1.0.0")
+
+        self.assertEqual(keys, [key])
 
     def test_gcs_get_local_version_dir_streams_objects_to_disk(self):
         resource = StagingStorageResource(bucket="staging-bucket", use_local=False)
@@ -130,12 +137,29 @@ class StagingStorageResourceTests(unittest.TestCase):
         fake_fs.read_bytes.assert_not_called()
         fake_fs.open.assert_called_once_with(f"staging-bucket/{key}", "rb")
 
+    def test_gcs_get_local_version_dir_skips_prefix_marker_objects(self):
+        resource = StagingStorageResource(bucket="staging-bucket", use_local=False)
+        key = "dataset/file/v1.0.0/geoparquet/source.parquet"
+        fake_fs = Mock()
+        fake_fs.find.return_value = [
+            "staging-bucket/dataset/file/v1.0.0/geoparquet",
+            f"staging-bucket/{key}",
+        ]
+        fake_file = MagicMock()
+        fake_file.__enter__.return_value = BytesIO(b"source bytes")
+        fake_fs.open.return_value = fake_file
+
+        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            with resource.get_local_version_dir("dataset", "file", "v1.0.0") as version_dir:
+                copied = Path(version_dir) / "geoparquet" / "source.parquet"
+                self.assertEqual(copied.read_bytes(), b"source bytes")
+
+        fake_fs.open.assert_called_once_with(f"staging-bucket/{key}", "rb")
+
     def test_object_exists_checks_exact_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            key = (
-                "amtrak-stations/amtrak-stations/run_a/metadata/quality_manifest.json"
-            )
+            key = "amtrak-stations/amtrak-stations/run_a/metadata/quality_manifest.json"
             path = root / key
             path.parent.mkdir(parents=True)
             path.write_text("{}", encoding="utf-8")
@@ -143,11 +167,7 @@ class StagingStorageResourceTests(unittest.TestCase):
             resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
 
             self.assertTrue(resource.object_exists(key))
-            self.assertFalse(
-                resource.object_exists(
-                    "amtrak-stations/amtrak-stations/run_a/metadata/missing.json"
-                )
-            )
+            self.assertFalse(resource.object_exists("amtrak-stations/amtrak-stations/run_a/metadata/missing.json"))
 
     def test_build_version_id_raises_if_run_record_cannot_be_resolved(self):
         context = SimpleNamespace(

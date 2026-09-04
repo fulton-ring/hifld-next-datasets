@@ -41,6 +41,7 @@ except Exception:
 
 
 FORMAT_PRIORITY = [
+    ("geoparquet", ".parquet"),
     ("file_geodatabase", ".gdb"),
     ("geopackage", ".gpkg"),
     ("geojson", ".geojson"),
@@ -49,6 +50,7 @@ CHUNKED_READABLE_FORMATS = {"geopackage", "shapefile", "file_geodatabase"}
 FORMAT_SUFFIXES = [
     "-file_geodatabase",
     "-file-geodatabase",
+    "-geoparquet",
     "-geopackage",
     "-shapefile",
     "-geojson",
@@ -117,11 +119,17 @@ GEOPARQUET_POLICY_REGISTRY: dict[tuple[str, str], GeoParquetWritePolicy] = {
         derived_prefix_column="DFIRM_ID",
         derived_prefix_partitions=(("state_fips", 2),),
     ),
-    ("nfhl", "national-flood-hazard-layer-nfhl-geopackage-area-1-east"): GeoParquetWritePolicy(
+    (
+        "nfhl",
+        "national-flood-hazard-layer-nfhl-geopackage-area-1-east",
+    ): GeoParquetWritePolicy(
         derived_prefix_column="DFIRM_ID",
         derived_prefix_partitions=(("state_fips", 2),),
     ),
-    ("nfhl", "national-flood-hazard-layer-nfhl-geopackage-area-1-west"): GeoParquetWritePolicy(
+    (
+        "nfhl",
+        "national-flood-hazard-layer-nfhl-geopackage-area-1-west",
+    ): GeoParquetWritePolicy(
         derived_prefix_column="DFIRM_ID",
         derived_prefix_partitions=(("state_fips", 2),),
     ),
@@ -134,12 +142,8 @@ GEOPARQUET_POLICY_REGISTRY: dict[tuple[str, str], GeoParquetWritePolicy] = {
         derived_prefix_column="DFIRM_ID",
         derived_prefix_partitions=(("state_fips", 2),),
     ),
-    ("census-block-groups-3", "census-block-groups-3"): GeoParquetWritePolicy(
-        force_admin_columns=("STATEFP",)
-    ),
-    ("voting-districts", "voting-districts"): GeoParquetWritePolicy(
-        force_admin_columns=("STATE",)
-    ),
+    ("census-block-groups-3", "census-block-groups-3"): GeoParquetWritePolicy(force_admin_columns=("STATEFP",)),
+    ("voting-districts", "voting-districts"): GeoParquetWritePolicy(force_admin_columns=("STATE",)),
     ("nhd", "flowline-large-scale-2"): GeoParquetWritePolicy(
         derived_prefix_column="REACHCODE",
         derived_prefix_partitions=(("huc2", 2),),
@@ -210,11 +214,7 @@ class _StorageAdapter:
                 return []
             if p.is_file():
                 return [str(p.relative_to(self.local_dir))]
-            return [
-                str(x.relative_to(self.local_dir))
-                for x in p.rglob("*")
-                if x.is_file()
-            ]
+            return [str(x.relative_to(self.local_dir)) for x in p.rglob("*") if x.is_file()]
         path = f"{self.bucket}/{prefix.strip('/')}"
         try:
             items = self.fs.ls(path)
@@ -287,6 +287,8 @@ def _detect_format_from_path(path: str) -> str:
         return "geojson"
     if path_lower.endswith(".gpkg"):
         return "geopackage"
+    if path_lower.endswith(".parquet"):
+        return "geoparquet"
     if path_lower.endswith(".shp"):
         return "shapefile"
     if path_lower.endswith(".gdb"):
@@ -347,6 +349,34 @@ def list_layers_in_file(file_path: Path, format_type: str) -> list[tuple[str, Op
     return [("default", None)]
 
 
+def _geoparquet_files(path: Path) -> list[Path]:
+    if path.is_file() and path.suffix.lower() == ".parquet":
+        return [path]
+    if path.is_dir():
+        return sorted(child for child in path.rglob("*.parquet") if child.is_file())
+    return []
+
+
+def read_geoparquet_source(path: Path) -> gpd.GeoDataFrame:
+    """Read a single GeoParquet file or directory tree into one GeoDataFrame."""
+    if path.is_file():
+        return gpd.read_parquet(path)
+
+    parquet_files = _geoparquet_files(path)
+    if not parquet_files:
+        raise FileNotFoundError(f"No parquet files found under {path}")
+
+    try:
+        return gpd.read_parquet(path)
+    except Exception:
+        frames = [gpd.read_parquet(parquet_file) for parquet_file in parquet_files]
+        if not frames:
+            raise FileNotFoundError(f"No parquet files found under {path}")
+        crs = frames[0].crs
+        combined = pd.concat(frames, ignore_index=True)
+        return gpd.GeoDataFrame(combined, geometry=frames[0].geometry.name, crs=crs)
+
+
 def _extract_geospatial_from_zip(zip_file: Path, extract_dir: Path) -> Optional[tuple[str, Path]]:
     with zipfile.ZipFile(zip_file, "r") as zf:
         zf.extractall(extract_dir)
@@ -357,6 +387,7 @@ def _extract_geospatial_from_zip(zip_file: Path, extract_dir: Path) -> Optional[
 
     for ext, fmt in (
         (".gpkg", "geopackage"),
+        (".parquet", "geoparquet"),
         (".shp", "shapefile"),
         (".geojson", "geojson"),
     ):
@@ -374,9 +405,14 @@ async def unzip_from_storage(
     await storage.download_file(remote_path, local_file)
 
     suffix = local_file.suffix.lower()
-    if suffix in {".geojson", ".gpkg", ".shp"}:
+    if suffix in {".geojson", ".gpkg", ".parquet", ".shp"}:
         return (
-            {".geojson": "geojson", ".gpkg": "geopackage", ".shp": "shapefile"}[suffix],
+            {
+                ".geojson": "geojson",
+                ".gpkg": "geopackage",
+                ".parquet": "geoparquet",
+                ".shp": "shapefile",
+            }[suffix],
             local_file,
         )
 
@@ -539,10 +575,7 @@ def _annotate_s2_and_hilbert(gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolic
         reps = out.geometry.representative_point()
         out["s2_cell"] = [0 for _ in reps]
         out["s2_parent_cell"] = [0 for _ in reps]
-        out["hilbert_cell"] = [
-            int((point.x + 180.0) * 1_000_000) + int((point.y + 90.0) * 1_000)
-            for point in reps
-        ]
+        out["hilbert_cell"] = [int((point.x + 180.0) * 1_000_000) + int((point.y + 90.0) * 1_000) for point in reps]
         return out.sort_values(["s2_parent_cell", "hilbert_cell"], kind="stable")
 
     out = _to_wgs84(gdf.copy())
@@ -552,9 +585,7 @@ def _annotate_s2_and_hilbert(gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolic
     parent_cells: list[int] = []
     hilbert_cells: list[int] = []
     for point in reps:
-        cell = s2sphere.CellId.from_lat_lng(
-            s2sphere.LatLng.from_degrees(float(point.y), float(point.x))
-        )
+        cell = s2sphere.CellId.from_lat_lng(s2sphere.LatLng.from_degrees(float(point.y), float(point.x)))
         fine_cells.append(cell.parent(policy.s2_fine_level).id())
         parent = cell.parent(parent_level)
         parent_cells.append(parent.id())
@@ -576,9 +607,11 @@ def _pick_s2_parent_level(points: gpd.GeoSeries, policy: GeoParquetWritePolicy) 
     for level in policy.s2_parent_candidates:
         counts: dict[int, int] = {}
         for point in points:
-            cell_id = s2sphere.CellId.from_lat_lng(
-                s2sphere.LatLng.from_degrees(float(point.y), float(point.x))
-            ).parent(level).id()
+            cell_id = (
+                s2sphere.CellId.from_lat_lng(s2sphere.LatLng.from_degrees(float(point.y), float(point.x)))
+                .parent(level)
+                .id()
+            )
             counts[cell_id] = counts.get(cell_id, 0) + 1
         median = float(pd.Series(list(counts.values())).median()) if counts else 1.0
         distance = abs(median - target_rows)
@@ -630,8 +663,7 @@ def write_geoparquet_dataset(
 
     if admin_column:
         partition_sizes = [
-            _estimated_parquet_size(part)
-            for _value, part in gdf.groupby(admin_column, dropna=False, sort=True)
+            _estimated_parquet_size(part) for _value, part in gdf.groupby(admin_column, dropna=False, sort=True)
         ]
         if partition_sizes and max(partition_sizes) >= policy.large_dataset_threshold_bytes:
             sorted_gdf = _annotate_s2_and_hilbert(gdf, policy).sort_values(
@@ -791,17 +823,9 @@ def _select_streaming_partition_columns(
     names = _schema_property_names(schema)
     if policy.force_s2:
         return "s2", ["s2_parent_cell"]
-    if (
-        policy.derived_huc_column
-        and policy.derived_huc_column in names
-        and policy.derived_huc_partition_columns
-    ):
+    if policy.derived_huc_column and policy.derived_huc_column in names and policy.derived_huc_partition_columns:
         return "derived_huc", list(policy.derived_huc_partition_columns)
-    if (
-        policy.derived_prefix_column
-        and policy.derived_prefix_column in names
-        and policy.derived_prefix_partitions
-    ):
+    if policy.derived_prefix_column and policy.derived_prefix_column in names and policy.derived_prefix_partitions:
         return "derived_prefix", [name for name, _width in policy.derived_prefix_partitions]
     for column in policy.force_admin_columns:
         if column in names:
@@ -815,9 +839,7 @@ def _s2_values_for_geometry(geometry: Any, policy: GeoParquetWritePolicy) -> dic
 
         geom = shape(geometry)
         point = geom.representative_point()
-        cell = s2sphere.CellId.from_lat_lng(
-            s2sphere.LatLng.from_degrees(float(point.y), float(point.x))
-        )
+        cell = s2sphere.CellId.from_lat_lng(s2sphere.LatLng.from_degrees(float(point.y), float(point.x)))
         parent_level = policy.s2_parent_candidates[min(2, len(policy.s2_parent_candidates) - 1)]
         parent = cell.parent(parent_level)
         return {
@@ -927,6 +949,27 @@ async def process_layer_partitioned_geoparquet(
     target_file_size_bytes: int = DEFAULT_GEOPARQUET_TARGET_FILE_BYTES,
 ) -> dict[str, Any]:
     """Stream one layer to policy-driven Hive GeoParquet with large files and row groups."""
+    if format_type == "geoparquet":
+        source_paths = await _upload_geoparquet_source_files(
+            dest_storage=dest_storage,
+            source_path=file_path,
+            dest_folder=dest_folder,
+        )
+        try:
+            feature_count = len(read_geoparquet_source(file_path))
+        except Exception:
+            feature_count = 0
+        geoparquet_prefix = f"{dest_folder.rstrip('/')}/geoparquet/"
+        return {
+            "geoparquet_paths": source_paths,
+            "feature_count": feature_count,
+            "hive_partitioned": any("/" in path.removeprefix(geoparquet_prefix) for path in source_paths),
+            "partitioning": "source_geoparquet",
+            "partition_columns": [],
+            "row_group_target_bytes": policy.target_row_group_bytes,
+            "target_file_size_bytes": target_file_size_bytes,
+        }
+
     driver = _get_fiona_driver(format_type)
     if not driver:
         return {"error": f"Unsupported format for streaming: {format_type}"}
@@ -966,8 +1009,7 @@ async def process_layer_partitioned_geoparquet(
         estimated_bytes = int(max(1, len(part)) * bytes_per_row)
         if (
             partitioning != "single_file"
-            and
-            state.writer is not None
+            and state.writer is not None
             and state.estimated_bytes > 0
             and state.estimated_bytes + estimated_bytes > target_file_size_bytes
         ):
@@ -1013,7 +1055,10 @@ async def process_layer_partitioned_geoparquet(
             write_partition(part_dir.as_posix(), part)
 
     try:
-        with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+        with (
+            _with_large_geojson_support(),
+            fiona.open(str(file_path), **open_kwargs) as src,
+        ):
             current_crs = src.crs if src.crs else "EPSG:4326"
             source_schema = src.schema or {}
             partitioning, partition_columns = _select_streaming_partition_columns(source_schema, policy)
@@ -1021,9 +1066,7 @@ async def process_layer_partitioned_geoparquet(
             sample_features: list[dict[str, Any]] = []
             for _ in range(25):
                 try:
-                    sample_features.append(
-                        _prepare_streaming_feature(next(src_iter), partitioning, policy)
-                    )
+                    sample_features.append(_prepare_streaming_feature(next(src_iter), partitioning, policy))
                 except StopIteration:
                     break
             if not sample_features:
@@ -1115,9 +1158,23 @@ async def _upload_geoparquet_files(
     return paths
 
 
-def _build_tippecanoe_cmd(
-    pmtiles_path: Path, layer_filename: str, fgb_files: list[Path]
+async def _upload_geoparquet_source_files(
+    dest_storage: _StorageAdapter,
+    source_path: Path,
+    dest_folder: str,
 ) -> list[str]:
+    paths: list[str] = []
+    source_files = _geoparquet_files(source_path)
+    source_root = source_path if source_path.is_dir() else source_path.parent
+    for source_file in source_files:
+        rel_path = source_file.relative_to(source_root)
+        remote_path = f"{dest_folder.rstrip('/')}/geoparquet/{rel_path.as_posix()}"
+        await dest_storage.upload_file(source_file, remote_path)
+        paths.append(remote_path)
+    return paths
+
+
+def _build_tippecanoe_cmd(pmtiles_path: Path, layer_filename: str, fgb_files: list[Path]) -> list[str]:
     pmtiles_path.parent.mkdir(parents=True, exist_ok=True)
     base = [
         "tippecanoe",
@@ -1197,11 +1254,7 @@ def _repair_geometries_for_fgb(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             return repaired.iloc[0:0]
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
-        repaired = repaired[
-            repaired.geometry.notna()
-            & ~repaired.geometry.is_empty
-            & repaired.geometry.is_valid
-        ].copy()
+        repaired = repaired[repaired.geometry.notna() & ~repaired.geometry.is_empty & repaired.geometry.is_valid].copy()
     return repaired
 
 
@@ -1246,6 +1299,17 @@ async def process_layer_chunked(
     """Streaming reader/writer path with adaptive chunk sizing and geometry repair."""
     if skip_parquet and skip_pmtiles:
         return {"geoparquet_paths": [], "pmtiles_path": None, "feature_count": 0}
+
+    if format_type == "geoparquet":
+        return await _process_geoparquet_layer_chunked(
+            file_path=file_path,
+            layer_filename=layer_filename,
+            dest_folder=dest_folder,
+            dest_storage=dest_storage,
+            work_dir=work_dir,
+            skip_parquet=skip_parquet,
+            skip_pmtiles=skip_pmtiles,
+        )
 
     mem_before = get_memory_usage_mb()
     driver = _get_fiona_driver(format_type)
@@ -1339,7 +1403,11 @@ async def process_layer_chunked(
             gdf_valid.to_file(fgb_path, driver="FlatGeobuf", engine="pyogrio")
             fgb_files.append(fgb_path)
         except Exception as e:
-            logger.warning("FGB write failed for chunk %s (%s). Retrying with repaired geometries.", idx, e)
+            logger.warning(
+                "FGB write failed for chunk %s (%s). Retrying with repaired geometries.",
+                idx,
+                e,
+            )
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
                 valid_mask = gdf_valid.geometry.is_valid
@@ -1365,7 +1433,10 @@ async def process_layer_chunked(
 
     try:
         if not skip_parquet:
-            with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+            with (
+                _with_large_geojson_support(),
+                fiona.open(str(file_path), **open_kwargs) as src,
+            ):
                 crs = src.crs if src.crs else "EPSG:4326"
                 src_iter = iter(src)
                 sample_features: list[dict[str, Any]] = []
@@ -1375,7 +1446,11 @@ async def process_layer_chunked(
                     except StopIteration:
                         break
                 if not sample_features:
-                    return {"geoparquet_paths": [], "pmtiles_path": None, "feature_count": 0}
+                    return {
+                        "geoparquet_paths": [],
+                        "pmtiles_path": None,
+                        "feature_count": 0,
+                    }
 
                 sample = _ensure_id_column(gpd.GeoDataFrame.from_features(sample_features, crs=crs), start_id=1)
                 sample_path = geoparquet_dir / "_estimate.parquet"
@@ -1420,7 +1495,10 @@ async def process_layer_chunked(
                     processed_count = flush_parquet_chunk(crs, chunk_features, chunk_num, features_processed + 1)
                     features_processed += processed_count
         else:
-            with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+            with (
+                _with_large_geojson_support(),
+                fiona.open(str(file_path), **open_kwargs) as src,
+            ):
                 src_iter = iter(src)
                 sample_features: list[dict[str, Any]] = []
                 for _ in range(estimate_sample_size):
@@ -1429,7 +1507,11 @@ async def process_layer_chunked(
                     except StopIteration:
                         break
                 if not sample_features:
-                    return {"geoparquet_paths": [], "pmtiles_path": None, "feature_count": 0}
+                    return {
+                        "geoparquet_paths": [],
+                        "pmtiles_path": None,
+                        "feature_count": 0,
+                    }
                 sample_bytes = sum(_estimate_feature_size_bytes(f) for f in sample_features)
                 bytes_per_feature = max(1.0, sample_bytes / max(1, len(sample_features)))
                 current_chunk_size = max(1, int(compressed_target_bytes / max(bytes_per_feature, 1)))
@@ -1441,7 +1523,10 @@ async def process_layer_chunked(
             fgb_target_rows = max(1, int(fgb_compressed_target_bytes / max(fgb_bytes_per_feature, 1)))
             fgb_target_bytes = int(fgb_compressed_target_bytes * current_memory_multiplier)
 
-            with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+            with (
+                _with_large_geojson_support(),
+                fiona.open(str(file_path), **open_kwargs) as src,
+            ):
                 crs = src.crs if src.crs else "EPSG:4326"
                 src_iter = iter(src)
                 chunk_features = []
@@ -1509,6 +1594,80 @@ async def process_layer_chunked(
     except Exception as e:
         logger.error("Error in chunked processing: %s", e)
         return {"error": str(e)}
+
+
+async def _process_geoparquet_layer_chunked(
+    file_path: Path,
+    layer_filename: str,
+    dest_folder: str,
+    dest_storage: _StorageAdapter,
+    work_dir: Path,
+    *,
+    skip_parquet: bool,
+    skip_pmtiles: bool,
+) -> dict[str, Any]:
+    pmtiles_dir = work_dir / "pmtiles"
+    pmtiles_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        gdf = read_geoparquet_source(file_path)
+    except Exception as e:
+        logger.error("Error reading GeoParquet source: %s", e)
+        return {"error": str(e)}
+
+    geoparquet_paths = []
+    if not skip_parquet:
+        geoparquet_paths = await _upload_geoparquet_source_files(
+            dest_storage=dest_storage,
+            source_path=file_path,
+            dest_folder=dest_folder,
+        )
+
+    pmtiles_path = None
+    invalid_geometry_count = 0
+    invalid_geometry_count_after_repair = 0
+    dropped_for_pmtiles_count = 0
+
+    if not skip_pmtiles and _has_spatial_features(gdf):
+        gdf_valid = _filter_valid_geometries(gdf)
+        gdf_valid = _to_wgs84(gdf_valid)
+        fgb_path = pmtiles_dir / f"{layer_filename}-chunk-0.fgb"
+        fgb_files: list[Path] = []
+        try:
+            gdf_valid.to_file(fgb_path, driver="FlatGeobuf", engine="pyogrio")
+            fgb_files.append(fgb_path)
+        except Exception as e:
+            logger.warning(
+                "FGB write failed for GeoParquet source (%s). Retrying with repaired geometries.",
+                e,
+            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
+                valid_mask = gdf_valid.geometry.is_valid
+            invalid_geometry_count = int((~valid_mask).sum())
+            repaired = _repair_geometries_for_fgb(gdf_valid)
+            if len(repaired) == 0:
+                invalid_geometry_count_after_repair = invalid_geometry_count
+                dropped_for_pmtiles_count = len(gdf_valid)
+            else:
+                repaired.to_file(fgb_path, driver="FlatGeobuf", engine="pyogrio")
+                fgb_files.append(fgb_path)
+                dropped_for_pmtiles_count = max(0, len(gdf_valid) - len(repaired))
+        pmtiles_path = await _create_and_upload_pmtiles(
+            dest_storage=dest_storage,
+            fgb_files=fgb_files,
+            pmtiles_path=pmtiles_dir / f"{layer_filename}.pmtiles",
+            dest_folder=dest_folder,
+            layer_filename=layer_filename,
+        )
+
+    return {
+        "geoparquet_paths": geoparquet_paths,
+        "pmtiles_path": pmtiles_path,
+        "feature_count": len(gdf),
+        "invalid_geometry_count": invalid_geometry_count,
+        "invalid_geometry_count_after_repair": invalid_geometry_count_after_repair,
+        "dropped_for_pmtiles_count": dropped_for_pmtiles_count,
+    }
 
 
 async def check_format_folder_exists(
@@ -1628,6 +1787,20 @@ async def write_geopackage_chunked(
     geoparquet_chunk_size_mb: int = 250,
 ) -> None:
     """Chunked geopackage writer with schema-aware geometry detection."""
+    if format_type == "geoparquet":
+        gdf = read_geoparquet_source(file_path)
+        if not _has_spatial_features(gdf):
+            return
+        output_gpkg.parent.mkdir(parents=True, exist_ok=True)
+        gdf = _sanitize_geopackage_columns(gdf)
+        gdf.to_file(
+            str(output_gpkg),
+            driver="GPKG",
+            layer=layer_name if layer_name else None,
+            mode="w",
+        )
+        return
+
     driver = _get_fiona_driver(format_type)
     if not driver:
         raise ValueError(f"Unsupported format for geopackage conversion: {format_type}")
@@ -1640,7 +1813,10 @@ async def write_geopackage_chunked(
     chunk_features: list[dict[str, Any]] = []
     chunk_uncompressed_bytes = 0
 
-    with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+    with (
+        _with_large_geojson_support(),
+        fiona.open(str(file_path), **open_kwargs) as src,
+    ):
         output_crs = src.crs if src.crs else "EPSG:4326"
         src_iter = iter(src)
 
@@ -1653,9 +1829,7 @@ async def write_geopackage_chunked(
         if not sample_features:
             return
 
-        sample_gdf = _sanitize_geopackage_columns(
-            gpd.GeoDataFrame.from_features(sample_features, crs=output_crs)
-        )
+        sample_gdf = _sanitize_geopackage_columns(gpd.GeoDataFrame.from_features(sample_features, crs=output_crs))
         sample_path = output_gpkg.parent / f"{output_gpkg.stem}_sample.gpkg"
         sample_gdf.to_file(str(sample_path), driver="GPKG", layer=layer_name if layer_name else None)
         bytes_per_feature = sample_path.stat().st_size / max(1, len(sample_features))
@@ -1729,7 +1903,7 @@ async def write_geopackage_chunked(
 def _select_best_format_for_geopackage(
     processed_formats: dict[str, dict[str, Any]],
 ) -> tuple[Optional[dict[str, Any]], Optional[Path]]:
-    for fmt_name in ("file_geodatabase", "geopackage", "geojson"):
+    for fmt_name in ("geoparquet", "file_geodatabase", "geopackage", "geojson"):
         if fmt_name in processed_formats:
             fmt_info = processed_formats[fmt_name]
             return fmt_info, fmt_info["data_file"]
@@ -1746,7 +1920,7 @@ def select_processing_input(
     *,
     allow_shapefile_fallback: bool = False,
 ) -> tuple[Optional[dict[str, Any]], Optional[Path], Optional[str]]:
-    for format_name in ("file_geodatabase", "geopackage", "geojson"):
+    for format_name in ("geoparquet", "file_geodatabase", "geopackage", "geojson"):
         if format_name in processed_formats:
             fmt_info = processed_formats[format_name]
             return fmt_info, fmt_info["data_file"], fmt_info["format_type"]
@@ -1834,7 +2008,11 @@ async def _process_dataset(
             processed_formats
         )
         if not preferred_format:
-            return {"success": False, "error": "No processable format found", "layers": []}
+            return {
+                "success": False,
+                "error": "No processable format found",
+                "layers": [],
+            }
 
         layers = preferred_format["layers"]
         skip_parquet_upload = existing_outputs["parquet"]
@@ -1852,9 +2030,7 @@ async def _process_dataset(
                     dest_folder=dest_folder,
                     dest_storage=dest_storage,
                     work_dir=work_dir,
-                    policy=GeoParquetWritePolicy(
-                        candidate_admin_columns=DEFAULT_ADMIN_PARTITION_CANDIDATES
-                    ),
+                    policy=GeoParquetWritePolicy(candidate_admin_columns=DEFAULT_ADMIN_PARTITION_CANDIDATES),
                 )
             pmtiles_result = await process_layer_chunked(
                 file_path=preferred_data_file,
@@ -1886,7 +2062,11 @@ async def _process_staged_dataset_version_async(
     dest_storage = _StorageAdapter(published_storage)
     parts = source_keys[0].split("/")
     if len(parts) < 4:
-        return {"success": False, "error": "Source keys do not match dataset/file/version layout", "layers": []}
+        return {
+            "success": False,
+            "error": "Source keys do not match dataset/file/version layout",
+            "layers": [],
+        }
 
     dataset_slug, file_slug, version = parts[:3]
     dest_folder = f"{dataset_slug}/{file_slug}/{version}/"
@@ -1898,7 +2078,11 @@ async def _process_staged_dataset_version_async(
             processed_formats
         )
         if not preferred_format or preferred_data_file is None or preferred_format_type is None:
-            return {"success": False, "error": "No processable staged format found", "layers": []}
+            return {
+                "success": False,
+                "error": "No processable staged format found",
+                "layers": [],
+            }
 
         all_layers: list[dict[str, Any]] = []
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1961,6 +2145,7 @@ def process_staged_dataset_version(
 
 def _discover_staged_formats(version_dir: Path) -> dict[str, dict[str, Any]]:
     format_dirs = {
+        "geoparquet": ".parquet",
         "file_geodatabase": ".gdb",
         "geopackage": ".gpkg",
         "unknown": ".shp",
@@ -1976,6 +2161,10 @@ def _discover_staged_formats(version_dir: Path) -> dict[str, dict[str, Any]]:
             data_file = next(iter(iter_file_geodatabases(search_dir)), None)
         else:
             data_file = next(search_dir.glob(f"*{extension}"), None)
+        if data_file is None:
+            parquet_files = sorted(search_dir.rglob("*.parquet")) if extension == ".parquet" else []
+            if parquet_files:
+                data_file = search_dir
         if data_file is None:
             continue
         normalized_format = "shapefile" if format_name == "unknown" else format_name

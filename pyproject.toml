@@ -26,6 +26,32 @@ dependencies = [
     "s2sphere>=0.2.5",
 ]
 
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.5",
+    "pyright>=1.1.409",
+    "ruff>=0.9.0",
+]
+
+[tool.pyright]
+include = [
+    "src",
+]
+exclude = [
+    "**/__pycache__",
+    ".venv",
+    "scripts",
+    "tests",
+]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false
+reportAssignmentType = false
+reportUnknownParameterType = "error"
+reportMissingTypeArgument = "error"
+reportUntypedFunctionDecorator = "error"
+reportUntypedBaseClass = "error"
+
 [build-system]
 requires = ["setuptools>=70.0", "wheel"]
 build-backend = "setuptools.build_meta"

@@ -82,7 +82,10 @@ def _manifest_lookup_keys(
     return [
         ("dataset", f"{dataset_slug}/metadata/source_manifest.json"),
         ("file", f"{dataset_slug}/{file_slug}/metadata/source_manifest.json"),
-        ("version", f"{dataset_slug}/{file_slug}/{version}/metadata/source_manifest.json"),
+        (
+            "version",
+            f"{dataset_slug}/{file_slug}/{version}/metadata/source_manifest.json",
+        ),
     ]
 
 
@@ -100,15 +103,11 @@ def _read_optional_key(staging: StagingStorageResource, key: str) -> bytes | Non
 
 
 def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in manifest.items()
-        if value not in (None, "", [], {})
-    }
+    return {key: value for key, value in manifest.items() if value not in (None, "", [], {})}
 
 
 def _merge_manifest_layers(
-    layers: list[tuple[str, str, dict[str, Any]]]
+    layers: list[tuple[str, str, dict[str, Any]]],
 ) -> ResolvedSourceManifest:
     merged: dict[str, Any] = {}
     resolved_from: dict[str, str] = {}
@@ -224,7 +223,11 @@ def _slug(value: str) -> str:
 
 
 def _strip_format_words(value: str) -> str:
-    return re.sub(r"-(geopackage|shapefile|geojson|file-geodatabase|file_geodatabase)(-.*)?$", "", value)
+    return re.sub(
+        r"-(geopackage|geoparquet|shapefile|geojson|file-geodatabase|file_geodatabase)(-.*)?$",
+        "",
+        value,
+    )
 
 
 def _parse_keywords(value: str | None) -> list[str]:

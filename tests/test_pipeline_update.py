@@ -12,7 +12,6 @@ from dagster_hifld.assets import publish as publish_assets_module
 from dagster_hifld.conversion import (
     GeoParquetWritePolicy,
     ShapefileZipPolicy,
-    _discover_staged_formats,
     geoparquet_policy_for,
     select_processing_input,
     write_geoparquet_dataset,
@@ -28,13 +27,16 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 
 
 class PipelineUpdateTests(unittest.TestCase):
-    def test_staged_version_discovery_ignores_derived_and_shapefile_folders(self):
+    def test_staged_version_discovery_includes_geoparquet_sources(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             source = root / "dataset-a" / "file-a" / "v1.0.0" / "geopackage"
             source.mkdir(parents=True)
             (source / "file-a.gpkg").write_bytes(b"gpkg")
-            for derived in ("geoparquet", "parquet", "pmtiles", "metadata", "shapefile"):
+            geoparquet_source = root / "dataset-c" / "file-c" / "v1.0.0" / "geoparquet"
+            geoparquet_source.mkdir(parents=True)
+            (geoparquet_source / "file-c.parquet").write_bytes(b"parquet")
+            for derived in ("parquet", "pmtiles", "metadata", "shapefile"):
                 folder = root / "dataset-b" / "file-b" / "v1.0.0" / derived
                 folder.mkdir(parents=True)
                 (folder / "artifact.bin").write_bytes(b"x")
@@ -42,8 +44,11 @@ class PipelineUpdateTests(unittest.TestCase):
             storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
 
             self.assertEqual(
-                list(_iter_staged_version_paths(storage)),
-                [("dataset-a", "file-a", "v1.0.0")],
+                sorted(_iter_staged_version_paths(storage)),
+                [
+                    ("dataset-a", "file-a", "v1.0.0"),
+                    ("dataset-c", "file-c", "v1.0.0"),
+                ],
             )
 
     def test_dynamic_partitions_and_assets_include_staged_pairs(self):
@@ -61,16 +66,33 @@ class PipelineUpdateTests(unittest.TestCase):
 
     def test_processing_input_prefers_streamable_formats_and_excludes_shapefile(self):
         processed = {
-            "geojson": {"format_type": "geojson", "data_file": Path("file.geojson"), "layers": []},
-            "shapefile": {"format_type": "shapefile", "data_file": Path("file.shp"), "layers": []},
-            "geopackage": {"format_type": "geopackage", "data_file": Path("file.gpkg"), "layers": []},
+            "geojson": {
+                "format_type": "geojson",
+                "data_file": Path("file.geojson"),
+                "layers": [],
+            },
+            "shapefile": {
+                "format_type": "shapefile",
+                "data_file": Path("file.shp"),
+                "layers": [],
+            },
+            "geopackage": {
+                "format_type": "geopackage",
+                "data_file": Path("file.gpkg"),
+                "layers": [],
+            },
+            "geoparquet": {
+                "format_type": "geoparquet",
+                "data_file": Path("file.parquet"),
+                "layers": [],
+            },
         }
 
         selected, path, fmt = select_processing_input(processed)
 
-        self.assertIs(selected, processed["geopackage"])
-        self.assertEqual(path, Path("file.gpkg"))
-        self.assertEqual(fmt, "geopackage")
+        self.assertIs(selected, processed["geoparquet"])
+        self.assertEqual(path, Path("file.parquet"))
+        self.assertEqual(fmt, "geoparquet")
 
     def test_shapefile_zip_writes_single_zip_without_loose_sidecars(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -157,11 +179,17 @@ class PipelineUpdateTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["version"], "v1.0.0")
-        self.assertEqual(payload["files"][0]["path"], "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet")
+        self.assertEqual(
+            payload["files"][0]["path"],
+            "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
+        )
         api.upsert_dataset_version.assert_called_once()
 
     def test_local_e2e_converts_and_registers_version(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+        with (
+            tempfile.TemporaryDirectory() as staging_dir,
+            tempfile.TemporaryDirectory() as published_dir,
+        ):
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
             published = PublishedStorageResource(local_dir=published_dir, use_local=True)
             source_dir = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geopackage"
@@ -186,7 +214,9 @@ class PipelineUpdateTests(unittest.TestCase):
             )
 
             version_root = Path(published_dir) / "dataset-a" / "file-a" / "v1.0.0"
-            self.assertTrue((Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "metadata" / "quality_manifest.json").exists())
+            self.assertTrue(
+                (Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "metadata" / "quality_manifest.json").exists()
+            )
             self.assertTrue((version_root / "geopackage" / "source.gpkg").exists())
             self.assertTrue((version_root / "geoparquet" / "file-a.parquet").exists())
             self.assertTrue((version_root / "metadata" / "data_dictionary.json").exists())
@@ -197,7 +227,10 @@ class PipelineUpdateTests(unittest.TestCase):
             api.upsert_dataset_version.assert_called_once()
 
     def test_local_e2e_overwrites_existing_published_format_outputs(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+        with (
+            tempfile.TemporaryDirectory() as staging_dir,
+            tempfile.TemporaryDirectory() as published_dir,
+        ):
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
             published = PublishedStorageResource(local_dir=published_dir, use_local=True)
             source_dir = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geopackage"

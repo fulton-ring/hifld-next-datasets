@@ -15,6 +15,7 @@ from typing import Any, Iterable
 
 SOURCE_FORMAT_DIRS = {
     "file_geodatabase",
+    "geoparquet",
     "geojson",
     "geopackage",
     "unknown",
@@ -153,11 +154,7 @@ def build_manifest_for_staged_dataset(
     if exact_row:
         return _manifest_from_dataset_row(exact_row, fallback_title=dataset_slug)
 
-    rows = [
-        row
-        for file_slug in file_slugs
-        if (row := _match_dataset_row(dataset_slug, file_slug, dataset_index))
-    ]
+    rows = [row for file_slug in file_slugs if (row := _match_dataset_row(dataset_slug, file_slug, dataset_index))]
     if not rows:
         return {}
 
@@ -276,11 +273,7 @@ def _iter_staged_files(storage: "_ManifestStorage") -> Iterable[tuple[str, str]]
 
 
 def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in manifest.items()
-        if value not in (None, "", [], {})
-    }
+    return {key: value for key, value in manifest.items() if value not in (None, "", [], {})}
 
 
 def _most_common_non_empty(values: Iterable[Any]) -> Any:
@@ -308,7 +301,7 @@ def _slug(value: str) -> str:
 
 def _strip_format_words(value: str) -> str:
     return re.sub(
-        r"-(geopackage|shapefile|geojson|file-geodatabase|file_geodatabase)(-.*)?$",
+        r"-(geopackage|geoparquet|shapefile|geojson|file-geodatabase|file_geodatabase)(-.*)?$",
         "",
         value,
     )
@@ -370,9 +363,7 @@ class _ManifestStorage:
                 yield path.relative_to(root).as_posix()
 
     def write_json(self, key: str, data: dict[str, Any]) -> None:
-        payload = json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2).encode(
-            "utf-8"
-        )
+        payload = json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8")
         if self.is_gcs:
             with tempfile.NamedTemporaryFile(suffix=".json") as tmp:
                 tmp.write(payload)
@@ -434,10 +425,7 @@ def _iter_gcs_json_api_object_keys_with_token(
             query["prefix"] = prefix
         if page_token:
             query["pageToken"] = page_token
-        url = (
-            f"https://storage.googleapis.com/storage/v1/b/{bucket}/o?"
-            f"{urllib.parse.urlencode(query)}"
-        )
+        url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o?{urllib.parse.urlencode(query)}"
         request = urllib.request.Request(
             url,
             headers={"Authorization": f"Bearer {token}"},
@@ -448,7 +436,7 @@ def _iter_gcs_json_api_object_keys_with_token(
         for item in payload.get("items", []):
             name = item.get("name", "")
             if prefix and name.startswith(prefix):
-                name = name[len(prefix):]
+                name = name[len(prefix) :]
             if name:
                 yield name.strip("/")
 
@@ -503,10 +491,7 @@ def _run_gcloud(
             stderr = exc.stderr.decode("utf-8", errors="replace").strip()
         if allow_no_matches and _is_gcloud_no_match_error(stderr):
             return subprocess.CompletedProcess(exc.args, exc.returncode, stdout="", stderr=stderr)
-        raise RuntimeError(
-            f"gcloud command failed: {' '.join(args)}"
-            + (f"\n{stderr}" if stderr else "")
-        ) from exc
+        raise RuntimeError(f"gcloud command failed: {' '.join(args)}" + (f"\n{stderr}" if stderr else "")) from exc
 
 
 def _is_gcloud_no_match_error(stderr: str) -> bool:
@@ -515,9 +500,7 @@ def _is_gcloud_no_match_error(stderr: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Seed source_manifest.json files for staged HIFLD dataset files."
-    )
+    parser = argparse.ArgumentParser(description="Seed source_manifest.json files for staged HIFLD dataset files.")
     parser.add_argument(
         "--staging-root",
         default="gs://hifld-next-staging-prod",
@@ -550,11 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    seed_fn = (
-        seed_dataset_source_manifests
-        if args.level == "dataset"
-        else seed_source_manifests
-    )
+    seed_fn = seed_dataset_source_manifests if args.level == "dataset" else seed_source_manifests
     result = seed_fn(
         args.staging_root,
         args.datasets_jsonl,

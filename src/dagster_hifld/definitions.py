@@ -29,19 +29,14 @@ from dagster_hifld.resources import (
 # are generated as zipped derived outputs, not copied as staging inputs.
 _SOURCE_FORMAT_DIRS = {
     "file_geodatabase",
+    "geoparquet",
     "geojson",
     "geopackage",
     "unknown",
 }
-MAX_SENSOR_RUN_REQUESTS_PER_TICK = int(
-    os.environ.get("HIFLD_SENSOR_MAX_RUN_REQUESTS_PER_TICK", "25")
-)
-MAX_SENSOR_DATASETS_PER_TICK = int(
-    os.environ.get("HIFLD_SENSOR_MAX_DATASETS_PER_TICK", "100")
-)
-MAX_SENSOR_GCS_LIST_WORKERS = int(
-    os.environ.get("HIFLD_SENSOR_GCS_LIST_WORKERS", "32")
-)
+MAX_SENSOR_RUN_REQUESTS_PER_TICK = int(os.environ.get("HIFLD_SENSOR_MAX_RUN_REQUESTS_PER_TICK", "25"))
+MAX_SENSOR_DATASETS_PER_TICK = int(os.environ.get("HIFLD_SENSOR_MAX_DATASETS_PER_TICK", "100"))
+MAX_SENSOR_GCS_LIST_WORKERS = int(os.environ.get("HIFLD_SENSOR_GCS_LIST_WORKERS", "32"))
 
 
 def _default_executor():
@@ -72,7 +67,7 @@ def _default_executor():
                             "memory": "64Gi",
                             "ephemeral-storage": "10Gi",
                         },
-                    }
+                    },
                 },
                 "pod_spec_config": {
                     "volumes": [
@@ -122,14 +117,9 @@ def _iter_staged_version_paths(storage: StagingStorageResource):
                 if not file_dir.is_dir():
                     continue
                 for version_dir in file_dir.iterdir():
-                    if (
-                        not version_dir.is_dir()
-                        or not SEMVER_VERSION_RE.match(version_dir.name)
-                    ):
+                    if not version_dir.is_dir() or not SEMVER_VERSION_RE.match(version_dir.name):
                         continue
-                    format_dirs = {
-                        child.name for child in version_dir.iterdir() if child.is_dir()
-                    }
+                    format_dirs = {child.name for child in version_dir.iterdir() if child.is_dir()}
                     if format_dirs & _SOURCE_FORMAT_DIRS:
                         yield dataset_dir.name, file_dir.name, version_dir.name
         return
@@ -167,7 +157,7 @@ def _iter_gcs_staged_source_object_names(bucket: str, prefix: str):
             ):
                 name = blob.name
                 if prefix_arg and name.startswith(prefix_arg):
-                    name = name[len(prefix_arg):]
+                    name = name[len(prefix_arg) :]
                 yield name.strip("/")
         return
     except TypeError:
@@ -182,7 +172,7 @@ def _iter_gcs_staged_source_object_names(bucket: str, prefix: str):
     for path in fs.find(root, maxdepth=5):
         rel = path.replace(f"{bucket}/", "", 1).strip("/")
         if prefix and rel.startswith(prefix):
-            rel = rel[len(prefix):].strip("/")
+            rel = rel[len(prefix) :].strip("/")
         yield rel
 
 
@@ -197,7 +187,7 @@ def _gcs_dataset_slugs(bucket: str, prefix: str) -> list[str]:
         for child_prefix in page.prefixes:
             rel = child_prefix
             if prefix_arg and rel.startswith(prefix_arg):
-                rel = rel[len(prefix_arg):]
+                rel = rel[len(prefix_arg) :]
             slug = rel.strip("/").split("/", 1)[0]
             if slug:
                 slugs.add(slug)
@@ -247,7 +237,7 @@ def _iter_gcs_staged_source_object_names_for_dataset(
         ):
             name = blob.name
             if prefix_arg and name.startswith(prefix_arg):
-                name = name[len(prefix_arg):]
+                name = name[len(prefix_arg) :]
             yield name.strip("/")
 
 
@@ -299,9 +289,7 @@ def version_discovery_sensor(context):
         staged_versions = list(_iter_staged_version_paths(staging_storage) or [])
         next_cursor = context.cursor
 
-    existing_partition_keys = set(
-        context.instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME)
-    )
+    existing_partition_keys = set(context.instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME))
     partition_keys_to_add: list[str] = []
     for dataset_slug, file_slug, version in staged_versions:
         partition_key = build_publish_partition_key(dataset_slug, file_slug, version)
@@ -309,9 +297,7 @@ def version_discovery_sensor(context):
             partition_keys_to_add.append(partition_key)
 
     dynamic_partitions_requests = (
-        [PUBLISH_PARTITIONS.build_add_request(partition_keys_to_add)]
-        if partition_keys_to_add
-        else []
+        [PUBLISH_PARTITIONS.build_add_request(partition_keys_to_add)] if partition_keys_to_add else []
     )
     return SensorResult(
         skip_reason=f"Discovered {len(partition_keys_to_add)} new publish partitions.",

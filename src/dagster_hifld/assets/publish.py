@@ -28,6 +28,7 @@ from dagster_hifld.conversion import (
     geoparquet_policy_for,
     process_layer_partitioned_geoparquet,
     process_layer_chunked,
+    read_geoparquet_source,
     select_processing_input,
     write_geopackage_chunked,
     write_shapefile_zip,
@@ -42,11 +43,13 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 
 _PROMOTED_SOURCE_FORMAT_DIRS = {
     "geojson",
+    "geoparquet",
     "geopackage",
     "file_geodatabase",
     "unknown",
 }
 _PROCESSING_SOURCE_FORMAT_DIRS = (
+    "geoparquet",
     "file_geodatabase",
     "geopackage",
     "geojson",
@@ -73,9 +76,7 @@ def _copy_metadata_files(
     for filename in ("quality_manifest.json", "data_dictionary.json"):
         rel_path = f"metadata/{filename}"
         contents = staging_storage.read_bytes(dataset_slug, file_slug, version, rel_path)
-        copied.append(
-            published_storage.write(dataset_slug, file_slug, version, rel_path, contents)
-        )
+        copied.append(published_storage.write(dataset_slug, file_slug, version, rel_path, contents))
     return copied
 
 
@@ -111,9 +112,7 @@ def _copy_source_format_files(
         if format_dir not in _PROMOTED_SOURCE_FORMAT_DIRS:
             continue
         contents = staging_storage.read_bytes(dataset_slug, file_slug, version, key)
-        copied.append(
-            published_storage.write(dataset_slug, file_slug, version, rel_path, contents)
-        )
+        copied.append(published_storage.write(dataset_slug, file_slug, version, rel_path, contents))
     return copied
 
 
@@ -145,6 +144,8 @@ def _copy_source_files(
 
 
 def _read_layer(path: Path, format_type: str, layer_name: str | None) -> gpd.GeoDataFrame:
+    if format_type == "geoparquet":
+        return read_geoparquet_source(path)
     with _with_large_geojson_support():
         if format_type in {"geopackage", "file_geodatabase"} and layer_name:
             return gpd.read_file(path, layer=layer_name)
@@ -167,10 +168,26 @@ def _is_spatial_source_layer(
     *,
     sample_limit: int = 1_000,
 ) -> bool:
+    if format_type == "geoparquet":
+        try:
+            gdf = read_geoparquet_source(path)
+        except Exception:
+            return False
+        try:
+            geom = gdf.geometry
+        except AttributeError:
+            return False
+        sample = geom.head(sample_limit)
+        try:
+            return bool((sample.notna() & ~sample.is_empty).any())
+        except Exception:
+            return bool(sample.notna().any())
+
     try:
-        with _with_large_geojson_support(), fiona.open(
-            str(path), **_fiona_open_kwargs(format_type, layer_name)
-        ) as src:
+        with (
+            _with_large_geojson_support(),
+            fiona.open(str(path), **_fiona_open_kwargs(format_type, layer_name)) as src,
+        ):
             schema = src.schema or {}
             geometry_type = str(schema.get("geometry") or "").lower()
             if geometry_type in {"", "none"}:
@@ -247,11 +264,7 @@ def _published_format_keys(
     format_dir: str,
 ) -> list[str]:
     prefix = f"{dataset_slug}/{file_slug}/{version}/{format_dir}/"
-    return [
-        key
-        for key in storage.list_keys(dataset_slug, file_slug, version)
-        if key.startswith(prefix)
-    ]
+    return [key for key in storage.list_keys(dataset_slug, file_slug, version) if key.startswith(prefix)]
 
 
 def _publish_overwrite_enabled() -> bool:
@@ -343,11 +356,7 @@ def _copy_or_generate_geopackage(
     version: str,
 ) -> list[PublishedFormatOutput]:
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
-    staged_geopackage_keys = [
-        key
-        for key in keys
-        if f"/{version}/geopackage/" in key
-    ]
+    staged_geopackage_keys = [key for key in keys if f"/{version}/geopackage/" in key]
     if staged_geopackage_keys:
         return [
             PublishedFormatOutput(
@@ -411,6 +420,16 @@ def _write_and_publish_geoparquet(
     version: str,
     policy: GeoParquetWritePolicy | None = None,
 ) -> list[PublishedFormatOutput]:
+    keys = staging_storage.list_keys(dataset_slug, file_slug, version)
+    staged_geoparquet_keys = [key for key in keys if f"/{version}/geoparquet/" in key and key.endswith(".parquet")]
+    if staged_geoparquet_keys:
+        return _published_outputs_from_keys(
+            dataset_slug,
+            file_slug,
+            version,
+            staged_geoparquet_keys,
+        )
+
     existing = _prepare_format_publish(staging_storage, dataset_slug, file_slug, version, "geoparquet")
     if existing:
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)
@@ -538,10 +557,7 @@ def _write_and_publish_shapefile_zip(
     if dataset_slug in shapefile_policy.disabled_dataset_families:
         return [_skip_output(file_slug, "shapefile", "disabled_dataset_family")]
     remote_source_size = _remote_source_size_bytes(staging_storage, dataset_slug, file_slug, version)
-    if (
-        remote_source_size is not None
-        and remote_source_size > shapefile_policy.max_estimated_zip_bytes
-    ):
+    if remote_source_size is not None and remote_source_size > shapefile_policy.max_estimated_zip_bytes:
         return [_skip_output(file_slug, "shapefile", "estimated_size_exceeds_limit")]
     outputs: list[PublishedFormatOutput] = []
     with staging_storage.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
@@ -573,8 +589,7 @@ def _write_and_publish_shapefile_zip(
                         "shapefile",
                     )
                     outputs.extend(
-                        PublishedFormatOutput(file_slug, "shapefile", remote_path)
-                        for remote_path in remote_paths
+                        PublishedFormatOutput(file_slug, "shapefile", remote_path) for remote_path in remote_paths
                     )
     return outputs
 
@@ -658,11 +673,8 @@ def _published_outputs_from_keys(
         outputs.append(PublishedFormatOutput(file_slug, format_type, key))
 
     if geoparquet_keys:
-        is_partitioned = any(
-            len(Path(key.removeprefix(prefix)).parts) > 2
-            for key in geoparquet_keys
-        )
-        if is_partitioned:
+        is_partitioned = any(len(Path(key.removeprefix(prefix)).parts) > 2 for key in geoparquet_keys)
+        if is_partitioned or len(geoparquet_keys) > 1:
             outputs.append(
                 PublishedFormatOutput(
                     file_slug,
@@ -671,20 +683,8 @@ def _published_outputs_from_keys(
                     {"hive_partitioned": True},
                 )
             )
-        elif len(geoparquet_keys) > 1:
-            outputs.append(
-                PublishedFormatOutput(
-                    file_slug,
-                    "geoparquet",
-                    f"{dataset_slug}/{file_slug}/{version}/geoparquet/*.parquet",
-                    {"hive_partitioned": False, "partitioning": "streaming_chunks"},
-                )
-            )
         else:
-            outputs.extend(
-                PublishedFormatOutput(file_slug, "geoparquet", key)
-                for key in geoparquet_keys
-            )
+            outputs.extend(PublishedFormatOutput(file_slug, "geoparquet", key) for key in geoparquet_keys)
     return outputs
 
 
@@ -733,7 +733,11 @@ def run_local_version_pipeline(
     outputs.extend(_write_and_publish_pmtiles(staging_storage, dataset_slug, file_slug, version))
     outputs.extend(_write_and_publish_shapefile_zip(staging_storage, dataset_slug, file_slug, version))
     promoted = [
-        PublishedFormatOutput(file_slug, Path(key.removeprefix(f"{dataset_slug}/{file_slug}/{version}/")).parts[0], key)
+        PublishedFormatOutput(
+            file_slug,
+            Path(key.removeprefix(f"{dataset_slug}/{file_slug}/{version}/")).parts[0],
+            key,
+        )
         for key in _copy_version_files(
             staging_storage,
             published_storage,
@@ -845,7 +849,10 @@ def publish_geopackage(
     key=AssetKey(["publish", "formats", "geoparquet"]),
     partitions_def=PUBLISH_PARTITIONS,
     group_name="publish",
-    deps=[AssetKey(["publish", "catalog"]), AssetKey(["publish", "formats", "geopackage"])],
+    deps=[
+        AssetKey(["publish", "catalog"]),
+        AssetKey(["publish", "formats", "geopackage"]),
+    ],
     description="Generate optimized GeoParquet for any staged dataset version.",
 )
 def publish_geoparquet(
@@ -887,7 +894,10 @@ def publish_pmtiles(
     key=AssetKey(["publish", "formats", "shapefile_zip"]),
     partitions_def=PUBLISH_PARTITIONS,
     group_name="publish",
-    deps=[AssetKey(["publish", "catalog"]), AssetKey(["publish", "formats", "geopackage"])],
+    deps=[
+        AssetKey(["publish", "catalog"]),
+        AssetKey(["publish", "formats", "geopackage"]),
+    ],
     description="Generate zipped shapefile output for small staged dataset versions.",
 )
 def publish_shapefile_zip(

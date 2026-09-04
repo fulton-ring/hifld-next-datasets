@@ -8,8 +8,8 @@ from shapely.geometry import Point
 
 from dagster_hifld.assets.publish import (
     _copy_metadata_files,
+    _copy_or_generate_geopackage,
     _copy_source_format_files,
-    _copy_source_files,
     _copy_version_files,
     _is_spatial_source_layer,
     _prepare_format_publish,
@@ -25,18 +25,13 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 
 class PublishTests(unittest.TestCase):
     def test_copy_metadata_files_promotes_catalog_outputs(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
-            metadata_root = (
-                Path(staging_dir)
-                / "amtrak-stations"
-                / "amtrak-stations"
-                / "run_a"
-                / "metadata"
-            )
+        with (
+            tempfile.TemporaryDirectory() as staging_dir,
+            tempfile.TemporaryDirectory() as published_dir,
+        ):
+            metadata_root = Path(staging_dir) / "amtrak-stations" / "amtrak-stations" / "run_a" / "metadata"
             metadata_root.mkdir(parents=True)
-            (metadata_root / "quality_manifest.json").write_text(
-                '{"quality_check_passed": true}', encoding="utf-8"
-            )
+            (metadata_root / "quality_manifest.json").write_text('{"quality_check_passed": true}', encoding="utf-8")
             (metadata_root / "data_dictionary.json").write_text(
                 '{"name": "amtrak-stations", "columns": []}', encoding="utf-8"
             )
@@ -81,18 +76,17 @@ class PublishTests(unittest.TestCase):
             )
 
     def test_build_format_assets_includes_promote_assets(self):
-        self.assertTrue(
-            any(asset.key.path == ["publish", "promote"] for asset in publish_assets)
-        )
-        self.assertTrue(
-            any(asset.key.path == ["publish", "formats", "geoparquet"] for asset in publish_assets)
-        )
+        self.assertTrue(any(asset.key.path == ["publish", "promote"] for asset in publish_assets))
+        self.assertTrue(any(asset.key.path == ["publish", "formats", "geoparquet"] for asset in publish_assets))
         self.assertFalse(any(asset.key.path == ["publish", "promote", "source_files"] for asset in publish_assets))
         self.assertFalse(any(asset.key.path == ["publish", "promote", "metadata"] for asset in publish_assets))
         self.assertFalse(any(asset.key.path[:2] == ["publish", "register"] for asset in publish_assets))
 
     def test_copy_version_files_promotes_everything_under_staged_version(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+        with (
+            tempfile.TemporaryDirectory() as staging_dir,
+            tempfile.TemporaryDirectory() as published_dir,
+        ):
             version_root = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0"
             (version_root / "geopackage").mkdir(parents=True)
             (version_root / "geopackage" / "source.gpkg").write_bytes(b"gpkg")
@@ -158,24 +152,22 @@ class PublishTests(unittest.TestCase):
         )
         self.assertEqual(copied, ["copied/quality_manifest.json", "copied/source.parquet"])
 
-    def test_copy_source_format_files_promotes_only_canonical_staged_source_formats(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
-            version_root = (
-                Path(staging_dir)
-                / "amtrak-stations"
-                / "amtrak-stations"
-                / "run_a"
-            )
+    def test_copy_source_format_files_promotes_only_canonical_staged_source_formats(
+        self,
+    ):
+        with (
+            tempfile.TemporaryDirectory() as staging_dir,
+            tempfile.TemporaryDirectory() as published_dir,
+        ):
+            version_root = Path(staging_dir) / "amtrak-stations" / "amtrak-stations" / "run_a"
             (version_root / "shapefile").mkdir(parents=True)
+            (version_root / "geoparquet").mkdir(parents=True)
             (version_root / "file_geodatabase" / "stations.gdb").mkdir(parents=True)
             (version_root / "metadata").mkdir(parents=True)
             (version_root / "shapefile" / "stations.shp").write_bytes(b"shape")
-            (version_root / "file_geodatabase" / "stations.gdb" / "a00000001.gdbtable").write_bytes(
-                b"gdb"
-            )
-            (version_root / "metadata" / "quality_manifest.json").write_text(
-                "{}", encoding="utf-8"
-            )
+            (version_root / "geoparquet" / "stations.parquet").write_bytes(b"parquet")
+            (version_root / "file_geodatabase" / "stations.gdb" / "a00000001.gdbtable").write_bytes(b"gdb")
+            (version_root / "metadata" / "quality_manifest.json").write_text("{}", encoding="utf-8")
 
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
             published = PublishedStorageResource(local_dir=published_dir, use_local=True)
@@ -194,16 +186,22 @@ class PublishTests(unittest.TestCase):
                 sorted(copied),
                 [
                     "amtrak-stations/amtrak-stations/run_a/file_geodatabase/stations.gdb/a00000001.gdbtable",
+                    "amtrak-stations/amtrak-stations/run_a/geoparquet/stations.parquet",
                 ],
             )
             self.assertFalse(
+                (
+                    Path(published_dir) / "amtrak-stations" / "amtrak-stations" / "run_a" / "shapefile" / "stations.shp"
+                ).exists()
+            )
+            self.assertTrue(
                 (
                     Path(published_dir)
                     / "amtrak-stations"
                     / "amtrak-stations"
                     / "run_a"
-                    / "shapefile"
-                    / "stations.shp"
+                    / "geoparquet"
+                    / "stations.parquet"
                 ).exists()
             )
             self.assertTrue(
@@ -219,7 +217,10 @@ class PublishTests(unittest.TestCase):
             )
 
     def test_copy_source_format_files_promotes_zipped_file_geodatabase(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+        with (
+            tempfile.TemporaryDirectory() as staging_dir,
+            tempfile.TemporaryDirectory() as published_dir,
+        ):
             version_root = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0"
             (version_root / "file_geodatabase").mkdir(parents=True)
             (version_root / "file_geodatabase" / "source.gdb.zip").write_bytes(b"zip")
@@ -243,12 +244,8 @@ class PublishTests(unittest.TestCase):
                 copied,
                 ["dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip"],
             )
-            self.assertTrue(
-                (Path(published_dir) / "dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip").exists()
-            )
-            self.assertFalse(
-                (Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.shp").exists()
-            )
+            self.assertTrue((Path(published_dir) / "dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip").exists())
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.shp").exists())
 
     def test_existing_format_outputs_are_overwritten_by_default(self):
         with tempfile.TemporaryDirectory() as published_dir:
@@ -298,7 +295,18 @@ class PublishTests(unittest.TestCase):
         outputs = _published_outputs_from_keys("dataset-a", "file-a", "v1.0.0", keys)
 
         self.assertEqual(len(outputs), 1)
-        self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/*.parquet")
+        self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet")
+
+    def test_existing_partitioned_geoparquet_is_registered_as_recursive_glob(self):
+        keys = [
+            "dataset-a/file-a/v1.0.0/geoparquet/statefp=06/part-000.parquet",
+            "dataset-a/file-a/v1.0.0/geoparquet/statefp=12/part-000.parquet",
+        ]
+
+        outputs = _published_outputs_from_keys("dataset-a", "file-a", "v1.0.0", keys)
+
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet")
 
     def test_overwrite_deletes_only_selected_format_prefix(self):
         with tempfile.TemporaryDirectory() as published_dir:
@@ -332,13 +340,12 @@ class PublishTests(unittest.TestCase):
             self.assertFalse(_is_spatial_source_layer(path, "geojson", None))
 
     def test_geospatial_format_assets_skip_all_null_geometry_source(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+        with tempfile.TemporaryDirectory() as staging_dir:
             version_dir = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geojson"
             version_dir.mkdir(parents=True)
             gdf = gpd.GeoDataFrame({"name": ["A"]}, geometry=[None], crs="EPSG:4326")
             gdf.to_file(version_dir / "source.geojson", driver="GeoJSON")
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
-            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
 
             self.assertEqual(
                 _write_and_publish_geoparquet(staging, "dataset-a", "file-a", "v1.0.0")[0].source_metadata,
@@ -354,7 +361,7 @@ class PublishTests(unittest.TestCase):
             )
 
     def test_shapefile_zip_skips_disabled_dataset_family_before_full_read(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+        with tempfile.TemporaryDirectory() as staging_dir:
             version_dir = Path(staging_dir) / "nfhl" / "file-a" / "v1.0.0" / "geojson"
             version_dir.mkdir(parents=True)
             (version_dir / "source.geojson").write_text(
@@ -362,7 +369,6 @@ class PublishTests(unittest.TestCase):
                 encoding="utf-8",
             )
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
-            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
 
             with patch("dagster_hifld.assets.publish._read_layer") as read_layer:
                 output = _write_and_publish_shapefile_zip(
@@ -408,13 +414,16 @@ class PublishTests(unittest.TestCase):
             gdf.to_file(version_dir / "source.geojson", driver="GeoJSON")
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
 
-            with patch(
-                "dagster_hifld.assets.publish._remote_source_size_bytes",
-                return_value=10 * 1024 * 1024 * 1024,
-            ), patch(
-                "dagster_hifld.assets.publish.process_layer_chunked",
-                new_callable=AsyncMock,
-            ) as chunked:
+            with (
+                patch(
+                    "dagster_hifld.assets.publish._remote_source_size_bytes",
+                    return_value=10 * 1024 * 1024 * 1024,
+                ),
+                patch(
+                    "dagster_hifld.assets.publish.process_layer_chunked",
+                    new_callable=AsyncMock,
+                ) as chunked,
+            ):
                 chunked.return_value = {
                     "pmtiles_path": "dataset-a/file-a/v1.0.0/pmtiles/file-a.pmtiles",
                     "feature_count": 1,
@@ -460,22 +469,19 @@ class PublishTests(unittest.TestCase):
         self.assertNotEqual(output.source_metadata, {"skip_reason": "disabled_dataset_file"})
 
     def test_geoparquet_publish_always_uses_streaming_hive_writer(self):
-        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+        with tempfile.TemporaryDirectory() as staging_dir:
             version_dir = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geojson"
             version_dir.mkdir(parents=True)
             gdf = gpd.GeoDataFrame({"name": ["A"]}, geometry=[Point(0, 0)], crs="EPSG:4326")
             gdf.to_file(version_dir / "source.geojson", driver="GeoJSON")
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
-            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
 
             with patch(
                 "dagster_hifld.assets.publish.process_layer_partitioned_geoparquet",
                 new_callable=AsyncMock,
             ) as hive_writer:
                 hive_writer.return_value = {
-                    "geoparquet_paths": [
-                        "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet"
-                    ],
+                    "geoparquet_paths": ["dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet"],
                     "feature_count": 1,
                     "partitioning": "single_file",
                     "partition_columns": [],
@@ -497,6 +503,67 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet")
             self.assertEqual(outputs[0].source_metadata["partitioning"], "single_file")
             self.assertNotIn("-0.zstd.parquet", outputs[0].path)
+
+    def test_geoparquet_source_publish_registers_staged_file_without_rewriting(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geoparquet"
+            version_dir.mkdir(parents=True)
+            gdf = gpd.GeoDataFrame({"name": ["A"]}, geometry=[Point(0, 0)], crs="EPSG:4326")
+            gdf.to_parquet(version_dir / "file-a.parquet")
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            with patch(
+                "dagster_hifld.assets.publish.process_layer_partitioned_geoparquet",
+                new_callable=AsyncMock,
+            ) as hive_writer:
+                outputs = _write_and_publish_geoparquet(
+                    staging,
+                    "dataset-a",
+                    "file-a",
+                    "v1.0.0",
+                )
+
+            hive_writer.assert_not_called()
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(outputs[0].format_type, "geoparquet")
+            self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet")
+
+    def test_geoparquet_source_generates_geopackage(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geoparquet"
+            version_dir.mkdir(parents=True)
+            gdf = gpd.GeoDataFrame({"name": ["A"]}, geometry=[Point(0, 0)], crs="EPSG:4326")
+            gdf.to_parquet(version_dir / "file-a.parquet")
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            outputs = _copy_or_generate_geopackage(staging, "dataset-a", "file-a", "v1.0.0")
+
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(outputs[0].format_type, "geopackage")
+            self.assertEqual(outputs[0].path, "dataset-a/file-a/v1.0.0/geopackage/file-a.gpkg")
+            self.assertTrue((Path(staging_dir) / "dataset-a/file-a/v1.0.0/geopackage/file-a.gpkg").exists())
+
+    def test_non_spatial_geoparquet_source_skips_spatial_outputs(self):
+        with tempfile.TemporaryDirectory() as staging_dir:
+            version_dir = Path(staging_dir) / "dataset-a" / "file-a" / "v1.0.0" / "geoparquet"
+            version_dir.mkdir(parents=True)
+            gpd.GeoDataFrame({"name": ["A"]}, geometry=[None], crs="EPSG:4326").to_parquet(
+                version_dir / "file-a.parquet"
+            )
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+
+            self.assertEqual(
+                _copy_or_generate_geopackage(staging, "dataset-a", "file-a", "v1.0.0")[0].source_metadata,
+                {"skip_reason": "non_spatial_source"},
+            )
+            self.assertEqual(
+                _write_and_publish_pmtiles(staging, "dataset-a", "file-a", "v1.0.0")[0].source_metadata,
+                {"skip_reason": "non_spatial_source"},
+            )
+            self.assertEqual(
+                _write_and_publish_shapefile_zip(staging, "dataset-a", "file-a", "v1.0.0")[0].source_metadata,
+                {"skip_reason": "non_spatial_source"},
+            )
 
 
 if __name__ == "__main__":

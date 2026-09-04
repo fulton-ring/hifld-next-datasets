@@ -67,6 +67,7 @@ class StagingStorageResource(ConfigurableResource):
             return key
 
         import gcsfs
+
         fs = gcsfs.GCSFileSystem()
         path = f"{self.bucket}/{key}"
         fs.write_bytes(path, data)
@@ -95,11 +96,22 @@ class StagingStorageResource(ConfigurableResource):
             return [str(p.relative_to(root)) for p in dir_path.rglob("*") if p.is_file()]
 
         import gcsfs
+
         fs = gcsfs.GCSFileSystem()
         path = f"{self.bucket}/{key_prefix}"
         # fs.find() recurses into all subdirectories
         found = fs.find(path)
-        return [p.replace(f"{self.bucket}/", "") for p in found]
+        prefix_with_slash = f"{key_prefix}/"
+        keys: list[str] = []
+        for path in found:
+            key = path.replace(f"{self.bucket}/", "", 1).strip("/")
+            if key == key_prefix:
+                continue
+            rel = key.removeprefix(prefix_with_slash).strip("/")
+            if not rel or "/" not in rel:
+                continue
+            keys.append(key)
+        return keys
 
     def read_bytes(
         self,
@@ -120,6 +132,7 @@ class StagingStorageResource(ConfigurableResource):
             return full.read_bytes()
 
         import gcsfs
+
         fs = gcsfs.GCSFileSystem()
         path = f"{self.bucket}/{key}"
         return fs.read_bytes(path)
@@ -170,9 +183,7 @@ class StagingStorageResource(ConfigurableResource):
 
         import gcsfs
 
-        if not (self.use_local or not self.bucket) and not (
-            destination.use_local or not destination.bucket
-        ):
+        if not (self.use_local or not self.bucket) and not (destination.use_local or not destination.bucket):
             fs = gcsfs.GCSFileSystem()
             fs.copy(f"{self.bucket}/{key}", f"{destination.bucket}/{destination_key}")
             return destination_key
@@ -268,14 +279,15 @@ class StagingStorageResource(ConfigurableResource):
         tmp = Path(tempfile.mkdtemp(prefix="hifld_staging_"))
         try:
             import gcsfs
+
             fs = gcsfs.GCSFileSystem()
             key_prefix = self.build_target_location(dataset_slug, file_slug, version, "").rstrip("/")
             prefix_with_slash = key_prefix + "/"
             keys = self.list_keys(dataset_slug, file_slug, version)
             for key in keys:
                 # Preserve subdir structure (e.g. shapefile/, metadata/, pmtiles/)
-                rel = key.removeprefix(prefix_with_slash)
-                if not rel:
+                rel = key.removeprefix(prefix_with_slash).strip("/")
+                if not rel or "/" not in rel:
                     continue
                 dest = tmp / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
@@ -297,6 +309,7 @@ class GreatExpectationsResource(ConfigurableResource):
     def get_validator(self, df, expectation_suite_name: str = "asset_check_suite"):
         """Return a GX Validator for the given DataFrame (e.g. GeoDataFrame or first chunk)."""
         import great_expectations as gx
+
         ctx = gx.get_context(mode="ephemeral")
         ds = ctx.data_sources.add_pandas("pandas_ds")
         batch = ds.read_dataframe(df, asset_name="df_asset")
@@ -357,10 +370,7 @@ class DatasetApiResource(ConfigurableResource):
     ) -> dict | None:
         if not self.enabled:
             return None
-        url = (
-            f"{self.base_url}/api/collections/{self.collection_id}/datasets/"
-            f"by-slug/{dataset_slug}/versions"
-        )
+        url = f"{self.base_url}/api/collections/{self.collection_id}/datasets/by-slug/{dataset_slug}/versions"
         payload = {
             "version": version,
             "storage_location_name": storage_location_name,
@@ -380,10 +390,7 @@ class DatasetApiResource(ConfigurableResource):
     ) -> dict | None:
         if not self.enabled:
             return None
-        url = (
-            f"{self.base_url}/api/collections/{self.collection_id}/datasets/"
-            f"by-slug/{dataset_slug}/quality"
-        )
+        url = f"{self.base_url}/api/collections/{self.collection_id}/datasets/by-slug/{dataset_slug}/quality"
         params: dict[str, str] = {
             "compute_if_missing": "true" if compute_if_missing else "false",
         }
