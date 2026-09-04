@@ -892,6 +892,27 @@ def _layout_relative_path(path: str, identity: VersionIdentity) -> str | None:
     return relative
 
 
+def _declared_output_relative_path(
+    path: str,
+    identity: VersionIdentity,
+    storage: StagingStorageResource,
+    *,
+    allow_storage_prefixed_path: bool,
+) -> str | None:
+    expected_prefix = f"{identity.prefix}/"
+    if path.startswith(expected_prefix):
+        relative = path.removeprefix(expected_prefix)
+    elif allow_storage_prefixed_path and storage.prefix:
+        candidate_prefix = f"{storage.prefix.strip('/')}/{expected_prefix}"
+        if not path.startswith(candidate_prefix):
+            return None
+        relative = path.removeprefix(f"{storage.prefix.strip('/')}/")
+        relative = relative.removeprefix(expected_prefix)
+    else:
+        return None
+    return relative if relative.startswith("geoparquet/") else None
+
+
 def _read_snapshot_bytes(
     storage: StagingStorageResource, snapshot: StorageObjectSnapshot
 ) -> bytes:
@@ -1021,6 +1042,7 @@ def _audit_version(
     *,
     row_group_limit_bytes: int,
     s2_limit_bytes: int,
+    allow_storage_prefixed_paths: bool = False,
 ) -> dict[str, object]:
     reasons: list[str] = []
     version_prefix = f"{identity.prefix}/"
@@ -1091,9 +1113,16 @@ def _audit_version(
             output = _mapping(raw_output)
             path = _string(output.get("path")) if output is not None else None
             relative = (
-                path.removeprefix(f"{identity.prefix}/") if path is not None else None
+                _declared_output_relative_path(
+                    path,
+                    identity,
+                    storage,
+                    allow_storage_prefixed_path=allow_storage_prefixed_paths,
+                )
+                if path is not None
+                else None
             )
-            if relative is None or not relative.startswith("geoparquet/"):
+            if relative is None:
                 reasons.append("layout output path is invalid")
                 continue
             declared_relative.append(relative)
@@ -1341,6 +1370,7 @@ def audit_geoparquet(
     version: str | None = None,
     row_group_limit_bytes: int = _DEFAULT_ROW_GROUP_LIMIT,
     s2_limit_bytes: int = _DEFAULT_S2_LIMIT,
+    allow_storage_prefixed_paths: bool = False,
 ) -> dict[str, object]:
     """Audit canonical GeoParquet without changing storage."""
     selector_parts = [part for part in (dataset, file, version) if part is not None]
@@ -1378,6 +1408,7 @@ def audit_geoparquet(
             tuple(items),
             row_group_limit_bytes=row_group_limit_bytes,
             s2_limit_bytes=s2_limit_bytes,
+            allow_storage_prefixed_paths=allow_storage_prefixed_paths,
         )
         for identity, items in sorted(grouped.items())
     )
@@ -1477,6 +1508,7 @@ def replace_geoparquet(
         version=version,
         row_group_limit_bytes=row_group_limit_bytes,
         s2_limit_bytes=s2_limit_bytes,
+        allow_storage_prefixed_paths=True,
     )
     if candidate_report["status"] != "compliant":
         return MaintenanceJsonReport(

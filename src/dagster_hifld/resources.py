@@ -496,26 +496,49 @@ class StagingStorageResource(ConfigurableResource):
             import gcsfs
 
             fs = gcsfs.GCSFileSystem()
-            with source_path.open("rb") as source_file:
-                with cast(
-                    _GCSWritable,
+            created_snapshot: StorageObjectSnapshot | None = None
+            output_ref: _GCSWritable | None = None
+            try:
+                with (
+                    source_path.open("rb") as source_file,
                     cast(
-                        object,
-                        fs.open(f"{destination.bucket}/{destination_key}", "xb"),
-                    ),
-                ) as output:
+                        _GCSWritable,
+                        cast(
+                            object,
+                            fs.open(f"{destination.bucket}/{destination_key}", "xb"),
+                        ),
+                    ) as output,
+                ):
+                    output_ref = output
                     shutil.copyfileobj(source_file, output, length=1024 * 1024)
-            if self.object_snapshot(key) != source_snapshot:
-                raise RuntimeError(f"source changed during copy: {key}")
-            if not isinstance(output.generation, (str, int)):
-                raise RuntimeError(
-                    f"GCS create returned no generation: {destination_key}"
-                )
-            return replace(
-                source_snapshot,
-                key=destination_key,
-                generation=str(output.generation),
-            )
+                if output_ref is not None and isinstance(
+                    output_ref.generation, (str, int)
+                ):
+                    created_snapshot = replace(
+                        source_snapshot,
+                        key=destination_key,
+                        generation=str(output_ref.generation),
+                    )
+                if created_snapshot is None:
+                    raise RuntimeError(
+                        f"GCS create returned no generation: {destination_key}"
+                    )
+                if self.object_snapshot(key) != source_snapshot:
+                    raise RuntimeError(f"source changed during copy: {key}")
+                return created_snapshot
+            except Exception as copy_error:
+                if created_snapshot is None:
+                    raise
+                try:
+                    destination.delete_key_if_unchanged(
+                        destination_key, created_snapshot
+                    )
+                except Exception as cleanup_error:
+                    raise RuntimeError(
+                        f"Source changed after GCS copy and cleanup failed for "
+                        f"{destination_key}: {cleanup_error}"
+                    ) from copy_error
+                raise
 
         if source_snapshot.generation is None:
             raise RuntimeError(f"GCS snapshot has no generation: {key}")

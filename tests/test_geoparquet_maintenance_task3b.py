@@ -105,6 +105,31 @@ class Task3BTests(unittest.TestCase):
                     report = audit_geoparquet(storage)
                     self.assertEqual(report["status"], "violation")
 
+    def test_audit_rejects_output_paths_without_exact_version_identity(self):
+        invalid_paths = (
+            "geoparquet/part.parquet",
+            "d/f/v2/geoparquet/part.parquet",
+            "d/f/v-extra/geoparquet/part.parquet",
+            "d/f/v/geoparquet-other/part.parquet",
+        )
+        for invalid_path in invalid_paths:
+            with (
+                self.subTest(path=invalid_path),
+                tempfile.TemporaryDirectory() as tmpdir,
+            ):
+                storage = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+                parquet = _parquet_bytes()
+                storage.write_key("d/f/v/geoparquet/part.parquet", parquet)
+                storage.write_key(
+                    "d/f/v/metadata/geoparquet_layout.json",
+                    _layout(
+                        invalid_path,
+                        size=len(parquet),
+                        sha256=hashlib.sha256(parquet).hexdigest(),
+                    ),
+                )
+                self.assertEqual(audit_geoparquet(storage)["status"], "violation")
+
     def test_replace_dry_run_does_not_mutate_production(self):
         with (
             tempfile.TemporaryDirectory() as production_dir,

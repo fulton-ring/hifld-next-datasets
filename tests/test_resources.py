@@ -720,6 +720,50 @@ class StagingStorageResourceTests(unittest.TestCase):
             self.assertIsInstance(committed, resources.StorageObjectSnapshot)
             self.assertEqual(committed, destination.object_snapshot(key))
 
+    def test_local_to_gcs_copy_cleans_up_created_generation_when_source_races(self):
+        with tempfile.TemporaryDirectory() as source_dir:
+            source = StagingStorageResource(local_dir=source_dir, use_local=True)
+            destination = StagingStorageResource(
+                bucket="staging-bucket", use_local=False
+            )
+            key = "dataset/file/v1/geojson/source.geojson"
+            source.write_key(key, b"source")
+            source_snapshot = source.object_snapshot(key)
+            self.assertIsNotNone(source_snapshot)
+            output = Mock()
+            output.generation = "900"
+            output.__enter__ = Mock(return_value=output)
+            output.__exit__ = Mock(return_value=False)
+            fake_fs = Mock()
+            fake_fs.open.return_value = output
+
+            def copy_and_race(source_file, destination_file, length):
+                destination_file.write(source_file.read())
+                source.write_key(key, b"changed")
+
+            with (
+                patch("gcsfs.GCSFileSystem", return_value=fake_fs),
+                patch.object(
+                    resources.shutil, "copyfileobj", side_effect=copy_and_race
+                ),
+                self.assertRaisesRegex(RuntimeError, "source changed"),
+            ):
+                source.copy_key_to_if_unchanged(
+                    destination,
+                    key,
+                    key,
+                    source_snapshot=source_snapshot,
+                    destination_snapshot=None,
+                )
+
+            calls = [
+                call
+                for call in fake_fs.call.call_args_list
+                if call.args[:2] == ("DELETE", "b/{}/o/{}")
+            ]
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0].kwargs["ifGenerationMatch"], "900")
+
     def test_build_version_id_raises_if_run_record_cannot_be_resolved(self):
         context = SimpleNamespace(
             run_id="fa8b8d5b-a72c-4bbe-9c16-5efd0b9a5095",
