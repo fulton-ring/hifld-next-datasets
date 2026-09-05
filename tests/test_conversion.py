@@ -1711,6 +1711,45 @@ class ConversionTests(unittest.TestCase):
                         target_file_size_bytes + max_row_group_bytes,
                     )
 
+    def test_compact_row_groups_fit_without_uncompressed_row_group_reserve(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["06", "06"], "name": ["a", "b"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("STATEFP",),
+                        write_buffer_bytes=1,
+                        aggregate_buffer_bytes=10**9,
+                        target_file_size_bytes=16 * 1024,
+                        max_row_group_bytes=16 * 1024,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(len(result["geoparquet_paths"]), 1)
+            output = result["layout"]["outputs"][0]
+            self.assertEqual(output["row_counts"], [1, 1])
+            self.assertLess(output["file_size_bytes"], 16 * 1024)
+            self.assertGreater(
+                output["file_size_bytes"] + 16 * 1024,
+                16 * 1024,
+            )
+
     def test_aggregate_buffer_budget_forces_partition_flushes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"

@@ -2124,9 +2124,7 @@ async def process_layer_partitioned_geoparquet(
                 and (
                     state.path.stat().st_size
                     + candidate_size
-                    + effective_policy.max_row_group_bytes
                     + state.footer_estimate_bytes
-                    + candidate_footer_size
                     + 8
                 )
                 > effective_policy.target_file_size_bytes
