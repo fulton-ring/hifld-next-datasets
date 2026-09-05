@@ -2078,6 +2078,31 @@ async def process_layer_partitioned_geoparquet(
         for partition_dir in list(writers):
             finalize_writer(partition_dir)
 
+    def normalize_single_file_paths() -> None:
+        if partitioning != "single_file" or not local_paths:
+            return
+        filenames = (
+            [f"{layer_filename}.parquet"]
+            if len(local_paths) == 1
+            else [
+                f"{layer_filename}-{index:03d}.parquet"
+                for index in range(len(local_paths))
+            ]
+        )
+        for index, (path, filename) in enumerate(zip(local_paths, filenames)):
+            normalized_path = path.with_name(filename)
+            if path != normalized_path:
+                path.rename(normalized_path)
+            local_paths[index] = normalized_path
+            relative_path = (
+                f"geoparquet/{normalized_path.relative_to(geoparquet_dir).as_posix()}"
+            )
+            output_layouts[index] = replace(
+                output_layouts[index],
+                relative_path=relative_path,
+                path=f"{dest_folder.rstrip('/')}/{relative_path}",
+            )
+
     def write_validated(partition_dir: str, buffered: list[_BufferedFeature]) -> None:
         nonlocal candidate_counter, written_feature_count
         if not buffered:
@@ -2232,6 +2257,7 @@ async def process_layer_partitioned_geoparquet(
             for partition_dir in list(buffers):
                 flush_partition(partition_dir)
             close_writers()
+            normalize_single_file_paths()
             footer_size_bytes = sum(
                 output.footer_size_bytes for output in output_layouts
             )

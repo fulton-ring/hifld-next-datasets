@@ -1750,6 +1750,60 @@ class ConversionTests(unittest.TestCase):
                 16 * 1024,
             )
 
+    def test_single_file_outputs_use_canonical_names_when_rolled(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"name": ["a", "b"]},
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            rolled = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="rolled/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "rolled-work",
+                    policy=GeoParquetWritePolicy(
+                        write_buffer_bytes=1,
+                        aggregate_buffer_bytes=10**9,
+                        target_file_size_bytes=1,
+                    ),
+                )
+            )
+            single = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="single/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "single-work",
+                    policy=GeoParquetWritePolicy(
+                        write_buffer_bytes=10**9,
+                        aggregate_buffer_bytes=10**9,
+                        target_file_size_bytes=10**9,
+                    ),
+                )
+            )
+
+            self.assertNotIn("error", rolled)
+            self.assertEqual(
+                [Path(path).name for path in rolled["geoparquet_paths"]],
+                ["source-000.parquet", "source-001.parquet"],
+            )
+            self.assertNotIn("error", single)
+            self.assertEqual(
+                [Path(path).name for path in single["geoparquet_paths"]],
+                ["source.parquet"],
+            )
+
     def test_aggregate_buffer_budget_forces_partition_flushes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
