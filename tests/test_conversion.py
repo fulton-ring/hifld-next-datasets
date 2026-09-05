@@ -536,11 +536,11 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partition_columns"], ["statefp"])
             hive_key = result["hive_partition_columns"]["statefp"]
             self.assertIn(
-                f"dataset/file/v1.0.0/geoparquet/layer-source/{hive_key}=v-06/part-000.parquet",
+                f"dataset/file/v1.0.0/geoparquet/layer-source/{hive_key}=06/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertIn(
-                f"dataset/file/v1.0.0/geoparquet/layer-source/{hive_key}=v-12/part-000.parquet",
+                f"dataset/file/v1.0.0/geoparquet/layer-source/{hive_key}=12/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertFalse(any("-0.zstd.parquet" in path for path in result["geoparquet_paths"]))
@@ -576,7 +576,7 @@ class ConversionTests(unittest.TestCase):
             self.assertTrue(
                 all(
                     path.startswith(
-                        "dataset/file/v1.0.0/geoparquet/partition_statefp_"
+                        "dataset/file/v1.0.0/geoparquet/statefp="
                     )
                     for path in result["geoparquet_paths"]
                 )
@@ -621,8 +621,8 @@ class ConversionTests(unittest.TestCase):
             hive_keys = result["hive_partition_columns"]
             self.assertIn(
                 "dataset/file/v1.0.0/geoparquet/layer-source/"
-                f"{hive_keys['huc2']}=v-01/{hive_keys['huc4']}=v-0101/"
-                f"{hive_keys['huc6']}=v-010100/part-000.parquet",
+                f"{hive_keys['huc2']}=01/{hive_keys['huc4']}=0101/"
+                f"{hive_keys['huc6']}=010100/part-000.parquet",
                 result["geoparquet_paths"],
             )
             self.assertFalse(any("huc12=" in path for path in result["geoparquet_paths"]))
@@ -680,9 +680,42 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partition_columns"], ["state_fips"])
             hive_key = result["hive_partition_columns"]["state_fips"]
             self.assertIn(
-                f"dataset/file/v1.0.0/geoparquet/layer-source/{hive_key}=v-29/part-000.parquet",
+                f"dataset/file/v1.0.0/geoparquet/layer-source/{hive_key}=29/part-000.parquet",
                 result["geoparquet_paths"],
             )
+
+    def test_derived_partition_rejects_mismatched_physical_column(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {
+                    "DFIRM_ID": ["29001C", "30001C"],
+                    "state_fips": ["29", "99"],
+                },
+                geometry=[Point(0, 0), Point(1, 1)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        derived_prefix_column="DFIRM_ID",
+                        derived_prefix_partitions=(("state_fips", 2),),
+                        large_dataset_threshold_bytes=1,
+                    ),
+                )
+            )
+
+            self.assertIn("does not match its derived partition value", result["error"])
+            self.assertFalse(result.get("geoparquet_paths"))
 
     def test_streaming_geoparquet_writer_keeps_schema_stable_for_sparse_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -723,7 +756,7 @@ class ConversionTests(unittest.TestCase):
                 result["geoparquet_paths"],
                 [
                     "dataset/file/v1.0.0/geoparquet/"
-                    f"layer-source/{hive_key}=v-06/part-000.parquet"
+                    f"layer-source/{hive_key}=06/part-000.parquet"
                 ],
             )
 
@@ -944,7 +977,7 @@ class ConversionTests(unittest.TestCase):
             hive_key = result["hive_partition_columns"]["STATEFP"]
             self.assertTrue(
                 any(
-                    f"geoparquet/layer-source/{hive_key}=v-06/" in path
+                    f"geoparquet/layer-source/{hive_key}=06/" in path
                     for path in result["geoparquet_paths"]
                 )
             )
@@ -1010,7 +1043,7 @@ class ConversionTests(unittest.TestCase):
     ):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
-            expected = ["a/b", "a-b", None, "__null__", "06", "12"]
+            expected = ["a/b", "a-b", None, "06", "12"]
             gpd.GeoDataFrame(
                 {"STATEFP": expected},
                 geometry=[Point(index, index) for index in range(len(expected))],
@@ -1038,16 +1071,18 @@ class ConversionTests(unittest.TestCase):
                 Path(path).parent.name for path in result["geoparquet_paths"]
             }
             hive_key = result["hive_partition_columns"]["STATEFP"]
+            self.assertEqual(hive_key, "STATEFP")
             self.assertEqual(len(partition_segments), len(expected))
-            self.assertIn(f"{hive_key}=v-a%2Fb", partition_segments)
-            self.assertIn(f"{hive_key}=v-a-b", partition_segments)
-            self.assertIn(f"{hive_key}=n", partition_segments)
-            self.assertIn(f"{hive_key}=v-__null__", partition_segments)
+            self.assertIn(f"{hive_key}=a%2Fb", partition_segments)
+            self.assertIn(f"{hive_key}=a-b", partition_segments)
+            self.assertIn(f"{hive_key}=__HIVE_DEFAULT_PARTITION__", partition_segments)
 
             dataset = ds.dataset(
                 Path(tmpdir) / "work" / "geoparquet" / "layer-source",
                 format="parquet",
-                partitioning="hive",
+                partitioning=ds.partitioning(
+                    pa.schema([("STATEFP", pa.string())]), flavor="hive"
+                ),
             )
             table = dataset.to_table()
             self.assertIn("STATEFP", table.column_names)
@@ -1055,24 +1090,50 @@ class ConversionTests(unittest.TestCase):
             self.assertCountEqual(table.column("STATEFP").to_pylist(), expected)
             self.assertIn("06", table.column("STATEFP").to_pylist())
 
-    def test_semantic_hive_keys_avoid_source_and_normalized_name_collisions(self):
+    def test_hive_null_sentinel_literal_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            gpd.GeoDataFrame(
+                {"STATEFP": ["__HIVE_DEFAULT_PARTITION__"]},
+                geometry=[Point(0, 0)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
+                    ),
+                )
+            )
+
+            self.assertIn("collides with the null sentinel", result["error"])
+            self.assertFalse(result.get("geoparquet_paths"))
+
+    def test_semantic_hive_keys_use_escaped_column_names(self):
         source_columns = {"STATEFP", "partition_statefp", "a-b", "a_b"}
 
         mapping = _allocate_semantic_hive_keys(
-            ["STATEFP", "a-b", "a_b"], source_columns
+            ["STATEFP", "a-b", "a_b", "a/b", "a=b"], source_columns
         )
 
-        self.assertEqual(len({value.casefold() for value in mapping.values()}), 3)
-        self.assertTrue(
-            all(
-                value.casefold()
-                not in {column.casefold() for column in source_columns}
-                for value in mapping.values()
-            )
-        )
+        self.assertEqual(mapping["STATEFP"], "STATEFP")
+        self.assertEqual(mapping["a-b"], "a-b")
+        self.assertEqual(mapping["a_b"], "a_b")
+        self.assertEqual(mapping["a/b"], "a%2Fb")
+        self.assertEqual(mapping["a=b"], "a%3Db")
         self.assertNotEqual(mapping["a-b"], mapping["a_b"])
 
-    def test_hive_reader_preserves_source_column_that_matches_synthetic_key_prefix(self):
+    def test_hive_reader_preserves_source_columns_with_direct_partition_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
             expected_columns = {
@@ -1104,17 +1165,16 @@ class ConversionTests(unittest.TestCase):
             )
 
             hive_key = result["hive_partition_columns"]["STATEFP"]
-            self.assertNotIn(
-                hive_key.casefold(),
-                {name.casefold() for name in expected_columns},
-            )
+            self.assertEqual(hive_key, "STATEFP")
             self.assertEqual(
                 result["layout"]["hive_partition_columns"]["STATEFP"], hive_key
             )
             dataset = ds.dataset(
                 Path(tmpdir) / "work" / "geoparquet" / "layer-source",
                 format="parquet",
-                partitioning="hive",
+                partitioning=ds.partitioning(
+                    pa.schema([("STATEFP", pa.string())]), flavor="hive"
+                ),
             )
             table = dataset.to_table()
             for column, expected in expected_columns.items():
@@ -1453,20 +1513,8 @@ class ConversionTests(unittest.TestCase):
                 )
             )
 
-            hive_key = result["hive_partition_columns"]["s2_parent_cell"]
-            self.assertNotIn(
-                hive_key.casefold(),
-                {column.casefold() for column in expected_columns},
-            )
-            dataset = ds.dataset(
-                Path(tmpdir) / "work" / "geoparquet" / "layer-source",
-                format="parquet",
-                partitioning="hive",
-            )
-            table = dataset.to_table()
-            self.assertIn(hive_key, table.column_names)
-            for column, expected in expected_columns.items():
-                self.assertCountEqual(table.column(column).to_pylist(), expected)
+            self.assertIn("does not match its semantic partition value", result["error"])
+            self.assertFalse(result.get("geoparquet_paths"))
 
     def test_dense_s2_cell_rolls_at_target_file_size_with_large_memory_budgets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1836,13 +1884,13 @@ class ConversionTests(unittest.TestCase):
             hive_key = result["hive_partition_columns"]["STATEFP"]
             self.assertTrue(
                 any(
-                    f"{hive_key}=v-06/part-000.parquet" in path
+                    f"{hive_key}=06/part-000.parquet" in path
                     for path in result["geoparquet_paths"]
                 )
             )
             self.assertTrue(
                 any(
-                    f"{hive_key}=v-12/part-000.parquet" in path
+                    f"{hive_key}=12/part-000.parquet" in path
                     for path in result["geoparquet_paths"]
                 )
             )
@@ -2286,7 +2334,7 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "derived_prefix")
             hive_key = result["hive_partition_columns"]["state_fips"]
             self.assertIn(
-                f"{hive_key}=v-29", result["geoparquet_paths"][0]
+                f"{hive_key}=29", result["geoparquet_paths"][0]
             )
 
     def test_spatial_sort_keeps_features_with_null_geometry(self):

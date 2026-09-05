@@ -612,7 +612,7 @@ def _select_admin_column(
 def _annotate_s2_and_hilbert(
     gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolicy
 ) -> tuple[gpd.GeoDataFrame, dict[str, str]]:
-    internal_columns = _allocate_semantic_hive_keys(
+    internal_columns = _allocate_generated_columns(
         ["s2_cell", "s2_parent_cell", "hilbert_cell"],
         {str(column) for column in gdf.columns},
     )
@@ -998,25 +998,61 @@ class _PreflightHistogramStore:
         return self._connection
 
 
+HIVE_NULL_SENTINEL = "__HIVE_DEFAULT_PARTITION__"
+HIVE_ESCAPE_SAFE = "-._~"
+
+
+def _is_missing_scalar(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        missing = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    try:
+        return bool(missing)
+    except (TypeError, ValueError):
+        return False
+
+
 def _encoded_hive_value(value: Any) -> str:
-    if value is None or bool(pd.isna(value)):
-        return "n"
-    return f"v-{quote(str(value), safe='-._~')}"
+    if _is_missing_scalar(value):
+        return HIVE_NULL_SENTINEL
+    raw_value = str(value)
+    if raw_value.casefold() == HIVE_NULL_SENTINEL.casefold():
+        raise ValueError(
+            f"Hive partition value {raw_value!r} collides with the null sentinel "
+            f"{HIVE_NULL_SENTINEL!r}."
+        )
+    return quote(raw_value, safe=HIVE_ESCAPE_SAFE)
 
 
 def _allocate_semantic_hive_keys(
+    columns: list[str], _source_columns: set[str]
+) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    allocated: dict[str, str] = {}
+    for column in columns:
+        candidate = quote(column, safe=HIVE_ESCAPE_SAFE)
+        previous = allocated.get(candidate.casefold())
+        if previous is not None and previous != column:
+            raise ValueError(
+                "Hive partition columns collide after escaping: "
+                f"{previous!r} and {column!r}."
+            )
+        mapping[column] = candidate
+        allocated[candidate.casefold()] = column
+    return mapping
+
+
+def _allocate_generated_columns(
     columns: list[str], source_columns: set[str]
 ) -> dict[str, str]:
+    """Allocate private physical names for generated sort columns."""
     reserved = {column.casefold() for column in source_columns}
-    reserved.update({"geometry", "bbox", "s2_parent_cell"})
     mapping: dict[str, str] = {}
     for column in columns:
-        normalized = "".join(
-            character if character.isalnum() else "_"
-            for character in column.casefold()
-        ).strip("_")
-        digest = hashlib.sha256(column.encode("utf-8")).hexdigest()[:12]
-        base = f"partition_{normalized or 'value'}_{digest}"
+        base = f"__hifld_{column}"
         candidate = base
         counter = 0
         while candidate.casefold() in reserved:
@@ -1370,6 +1406,56 @@ def _prefix_partition_values(
     return values
 
 
+def _partition_values_equal(left: Any, right: Any) -> bool:
+    if _is_missing_scalar(left) or _is_missing_scalar(right):
+        return _is_missing_scalar(left) and _is_missing_scalar(right)
+    return str(left) == str(right)
+
+
+def _matching_property_name(properties: dict[str, Any], column: str) -> str | None:
+    if column in properties:
+        return column
+    folded = column.casefold()
+    return next(
+        (name for name in properties if name.casefold() == folded),
+        None,
+    )
+
+
+def _validate_partition_value_collisions(
+    properties: dict[str, Any],
+    partition_columns: list[str],
+    partition_values: list[Any],
+) -> None:
+    for column, partition_value in zip(partition_columns, partition_values):
+        source_column = _matching_property_name(properties, column)
+        if source_column is None:
+            continue
+        source_value = properties[source_column]
+        if _partition_values_equal(source_value, partition_value):
+            continue
+        raise ValueError(
+            f"Physical source column {column!r} does not match its semantic "
+            f"partition value ({source_value!r} != {partition_value!r})."
+        )
+
+
+def _merge_derived_partition_values(
+    properties: dict[str, Any], derived_values: dict[str, str | None]
+) -> None:
+    for column, derived_value in derived_values.items():
+        source_column = _matching_property_name(properties, column)
+        if source_column is not None and not _partition_values_equal(
+            properties[source_column], derived_value
+        ):
+            raise ValueError(
+                f"Physical source column {column!r} does not match its derived "
+                f"partition value ({properties[source_column]!r} != {derived_value!r})."
+            )
+        if source_column is None:
+            properties[column] = derived_value
+
+
 def _prepare_streaming_feature(
     feature: Any,
     partitioning: str,
@@ -1377,7 +1463,8 @@ def _prepare_streaming_feature(
 ) -> dict[str, Any]:
     properties = _feature_properties(feature)
     if partitioning.startswith("derived_huc"):
-        properties.update(
+        _merge_derived_partition_values(
+            properties,
             _huc_prefix_values(
                 properties,
                 policy.derived_huc_column,
@@ -1385,7 +1472,8 @@ def _prepare_streaming_feature(
             )
         )
     elif partitioning.startswith("derived_prefix"):
-        properties.update(
+        _merge_derived_partition_values(
+            properties,
             _prefix_partition_values(
                 properties,
                 policy.derived_prefix_column,
@@ -1607,7 +1695,10 @@ def _semantic_partition_values(
 ) -> tuple[Any, ...]:
     if partitioning in {"single_file", "s2"}:
         return ()
-    return tuple(properties.get(column) for column in partition_columns)
+    return tuple(
+        properties.get(_matching_property_name(properties, column), None)
+        for column in partition_columns
+    )
 
 
 def _allocate_feature_bytes(feature_sizes: list[int], batch_bytes: int) -> list[int]:
@@ -2211,6 +2302,9 @@ async def process_layer_partitioned_geoparquet(
                     values.append(
                         _s2_cell_for_point(point, preflight.chosen_s2_level)
                     )
+                _validate_partition_value_collisions(
+                    properties, partition_columns, values
+                )
                 if partitioning == "single_file":
                     partition_dir = ""
                 else:

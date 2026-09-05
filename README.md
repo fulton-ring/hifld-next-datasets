@@ -37,6 +37,39 @@ Use a persistent `DAGSTER_HOME` if you want runs and partitions to survive resta
 
 **Agent-oriented detail** — Design choices, multi-file datasets (e.g. 2020 census blocks), sensor behavior, and pitfalls live in [AGENTS.md](AGENTS.md) under the Dagster subsection.
 
+### GeoParquet Hive partitions
+
+Partitioned GeoParquet uses normal semantic Hive paths such as
+`state_fips=06/part-000.parquet`. Source columns are retained in the Parquet
+files; partition keys are not replaced by synthetic names. Hive keys and values
+are percent-escaped (`a/b` becomes `a%2Fb`). Null values use Hive's standard
+`__HIVE_DEFAULT_PARTITION__` sentinel, and a literal value equal to that
+sentinel is rejected because it would be ambiguous.
+
+Readers should provide partition types when numeric-looking values represent
+strings. For DuckDB, use for example:
+
+```sql
+SELECT * FROM read_parquet(
+  '.../geoparquet/**/*.parquet',
+  hive_partitioning = true,
+  hive_types = {'state_fips': 'VARCHAR'}
+);
+```
+
+For PyArrow, use an explicit Hive partition schema:
+
+```python
+partitioning = ds.partitioning(
+    pa.schema([("state_fips", pa.string())]), flavor="hive"
+)
+dataset = ds.dataset(path, format="parquet", partitioning=partitioning)
+```
+
+`pyarrow.parquet.ParquetFile` reads one file's physical columns only; it does
+not parse partition values from the parent directory. Use a dataset reader when
+you need path-derived Hive fields.
+
 ### Deploying to GKE (manual)
 
 The cluster, namespace `hifld-next-datasets`, the `dagster` ServiceAccount, the `dagster-db` Secret, and the `dagster-env` ConfigMap are all provisioned by Terraform in [`hifld-next-iac/environments/prod/dagster.tf`](../hifld-next-iac/environments/prod/dagster.tf). Make sure that's applied first.

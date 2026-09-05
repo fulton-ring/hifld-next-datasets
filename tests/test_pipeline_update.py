@@ -216,10 +216,10 @@ class PipelineUpdateTests(unittest.TestCase):
             self.assertEqual(admin_result.glob_path, "**/*.parquet")
             hive_key = admin_result.source_metadata["hive_partition_columns"]["statefp"]
             self.assertTrue(
-                any(f"{hive_key}=v-06/" in str(path) for path in admin_result.paths)
+                any(f"{hive_key}=06/" in str(path) for path in admin_result.paths)
             )
             self.assertTrue(
-                any(f"{hive_key}=v-12/" in str(path) for path in admin_result.paths)
+                any(f"{hive_key}=12/" in str(path) for path in admin_result.paths)
             )
 
     def test_large_dataset_policy_registry_uses_admin_candidates(self):
