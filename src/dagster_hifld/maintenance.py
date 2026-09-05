@@ -35,12 +35,10 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 _IGNORED_ROOTS = frozenset({"_temporary", "_rollback"})
 _REQUIRED_SHAPEFILE_SUFFIXES = frozenset({".shp", ".shx", ".dbf"})
 _CATALOG_METADATA_FILENAMES = ("quality_manifest.json", "data_dictionary.json")
-_DEFAULT_ROW_GROUP_LIMIT = 128 * 1024 * 1024
+_DEFAULT_ROW_GROUP_LIMIT = 160 * 1024 * 1024
 _DEFAULT_METADATA_LIMIT = 128 * 1024 * 1024
 _DEFAULT_S2_LIMIT = 2 * 1024 * 1024 * 1024
-_KNOWN_SEMANTIC_STRATEGIES = frozenset(
-    {"admin", "derived_huc", "derived_prefix"}
-)
+_KNOWN_SEMANTIC_STRATEGIES = frozenset({"admin", "derived_huc", "derived_prefix"})
 _KNOWN_S2_STRATEGIES = frozenset(
     {"s2"} | {f"{strategy}_s2" for strategy in _KNOWN_SEMANTIC_STRATEGIES}
 )
@@ -1263,9 +1261,7 @@ def _audit_version(
 
     snapshot_by_relative = {
         relative: snapshot
-        for snapshot, relative in zip(
-            parquet_snapshots, parquet_relative, strict=True
-        )
+        for snapshot, relative in zip(parquet_snapshots, parquet_relative, strict=True)
     }
     for layer, paths in declared_by_layer:
         strategy = _string(layer.get("partition_strategy"))
@@ -1442,9 +1438,8 @@ def _audit_version(
                     and declared_sizes != entry[2]
                 ):
                     reasons.append(f"row-group byte-size mismatch: {rel}")
-                if (
-                    _integer(declared_footer) is not None
-                    and declared_footer != int(entry[0].metadata.serialized_size)
+                if _integer(declared_footer) is not None and declared_footer != int(
+                    entry[0].metadata.serialized_size
                 ):
                     reasons.append(f"footer size mismatch: {rel}")
 
@@ -1456,12 +1451,11 @@ def _audit_version(
         if int(manifest_footer_total) != declared_footer_total:
             reasons.append("manifest footer_metadata_bytes does not match outputs")
         if int(manifest_footer_total) != footer_metadata_bytes:
-            reasons.append("manifest footer_metadata_bytes does not match actual footers")
+            reasons.append(
+                "manifest footer_metadata_bytes does not match actual footers"
+            )
     if footer_metadata_bytes > metadata_limit_bytes:
-        reasons.append(
-            "combined footer metadata exceeds "
-            f"{metadata_limit_bytes} bytes"
-        )
+        reasons.append(f"combined footer metadata exceeds {metadata_limit_bytes} bytes")
 
     return {
         "dataset": identity.dataset,

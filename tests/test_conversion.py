@@ -120,13 +120,16 @@ class ConversionTests(unittest.TestCase):
         published_storage = Mock()
         keys = ["dataset/file/v1/shapefile/example.shp"]
 
-        with patch(
-            "dagster_hifld.conversion._process_staged_dataset_version_async",
-            new=Mock(return_value="sentinel-coro"),
-        ) as async_impl, patch(
-            "dagster_hifld.conversion.asyncio.run",
-            return_value={"success": True, "layers": []},
-        ) as asyncio_run:
+        with (
+            patch(
+                "dagster_hifld.conversion._process_staged_dataset_version_async",
+                new=Mock(return_value="sentinel-coro"),
+            ) as async_impl,
+            patch(
+                "dagster_hifld.conversion.asyncio.run",
+                return_value={"success": True, "layers": []},
+            ) as asyncio_run,
+        ):
             result = process_staged_dataset_version(
                 staging_storage=staging_storage,
                 published_storage=published_storage,
@@ -143,7 +146,9 @@ class ConversionTests(unittest.TestCase):
 
     def test_detect_format_treats_gdb_zip_as_file_geodatabase(self):
         self.assertEqual(
-            _detect_format_from_path("dataset/file/v1.0.0/file_geodatabase/source.gdb.zip"),
+            _detect_format_from_path(
+                "dataset/file/v1.0.0/file_geodatabase/source.gdb.zip"
+            ),
             "file_geodatabase",
         )
 
@@ -160,8 +165,12 @@ class ConversionTests(unittest.TestCase):
             processed = _discover_staged_formats(version_dir)
 
             self.assertIn("file_geodatabase", processed)
-            self.assertEqual(processed["file_geodatabase"]["format_type"], "file_geodatabase")
-            self.assertEqual(processed["file_geodatabase"]["data_file"].name, "source.gdb")
+            self.assertEqual(
+                processed["file_geodatabase"]["format_type"], "file_geodatabase"
+            )
+            self.assertEqual(
+                processed["file_geodatabase"]["data_file"].name, "source.gdb"
+            )
             self.assertTrue(processed["file_geodatabase"]["data_file"].is_dir())
 
     def test_discover_staged_formats_reads_canonical_shapefile_directory(self):
@@ -174,7 +183,9 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(processed["shapefile"]["format_type"], "shapefile")
             self.assertEqual(processed["shapefile"]["data_file"], shapefile)
 
-    def test_discover_staged_formats_reads_nested_case_insensitive_canonical_sources(self):
+    def test_discover_staged_formats_reads_nested_case_insensitive_canonical_sources(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             version_dir = Path(tmpdir)
             expected = {
@@ -182,12 +193,7 @@ class ConversionTests(unittest.TestCase):
                 "shapefile": version_dir / "shapefile" / "nested" / "SOURCE.SHP",
                 "geojson": version_dir / "geojson" / "nested" / "SOURCE.JSON",
             }
-            geodatabase = (
-                version_dir
-                / "file_geodatabase"
-                / "nested"
-                / "SOURCE.GDB"
-            )
+            geodatabase = version_dir / "file_geodatabase" / "nested" / "SOURCE.GDB"
             for path in expected.values():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"source")
@@ -197,12 +203,16 @@ class ConversionTests(unittest.TestCase):
             processed = _discover_staged_formats(version_dir)
 
             self.assertEqual(set(processed), set(expected) | {"file_geodatabase"})
-            self.assertEqual(processed["geopackage"]["data_file"], expected["geopackage"])
+            self.assertEqual(
+                processed["geopackage"]["data_file"], expected["geopackage"]
+            )
             self.assertEqual(processed["file_geodatabase"]["data_file"], geodatabase)
             self.assertEqual(processed["shapefile"]["data_file"], expected["shapefile"])
             self.assertEqual(processed["geojson"]["data_file"], expected["geojson"])
 
-    def test_discover_staged_formats_rejects_ambiguous_nested_canonical_shapefiles(self):
+    def test_discover_staged_formats_rejects_ambiguous_nested_canonical_shapefiles(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             shapefile_dir = Path(tmpdir) / "shapefile"
             for name in ("first", "second"):
@@ -256,7 +266,9 @@ class ConversionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "complete readable Shapefile"):
                 _discover_staged_formats(version_dir)
 
-    def test_discover_staged_formats_ignores_non_shapefile_legacy_unknown_contents(self):
+    def test_discover_staged_formats_ignores_non_shapefile_legacy_unknown_contents(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             version_dir = Path(tmpdir)
             unknown = version_dir / "unknown"
@@ -321,9 +333,12 @@ class ConversionTests(unittest.TestCase):
                 return False
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(conversion_module.fiona, "Env", FakeEnv), patch(
-                "dagster_hifld.conversion.fiona.open",
-                side_effect=RuntimeError("stop before real I/O"),
+            with (
+                patch.object(conversion_module.fiona, "Env", FakeEnv),
+                patch(
+                    "dagster_hifld.conversion.fiona.open",
+                    side_effect=RuntimeError("stop before real I/O"),
+                ),
             ):
                 result = asyncio.run(
                     process_layer_chunked(
@@ -357,14 +372,18 @@ class ConversionTests(unittest.TestCase):
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-        with patch("dagster_hifld.gdal.fiona.Env", FakeEnv), patch.object(
-            pyogrio,
-            "get_gdal_config_option",
-            return_value="12",
-        ) as get_config, patch.object(
-            pyogrio,
-            "set_gdal_config_options",
-        ) as set_config:
+        with (
+            patch("dagster_hifld.gdal.fiona.Env", FakeEnv),
+            patch.object(
+                pyogrio,
+                "get_gdal_config_option",
+                return_value="12",
+            ) as get_config,
+            patch.object(
+                pyogrio,
+                "set_gdal_config_options",
+            ) as set_config,
+        ):
             with with_large_geojson_support():
                 pass
 
@@ -389,9 +408,12 @@ class ConversionTests(unittest.TestCase):
                 return False
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(conversion_module.fiona, "Env", FakeEnv), patch(
-                "dagster_hifld.conversion.fiona.open",
-                side_effect=RuntimeError("stop before real I/O"),
+            with (
+                patch.object(conversion_module.fiona, "Env", FakeEnv),
+                patch(
+                    "dagster_hifld.conversion.fiona.open",
+                    side_effect=RuntimeError("stop before real I/O"),
+                ),
             ):
                 result = asyncio.run(
                     process_layer_chunked(
@@ -425,9 +447,12 @@ class ConversionTests(unittest.TestCase):
                 return False
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(conversion_module.fiona, "Env", FakeEnv), patch(
-                "dagster_hifld.conversion.fiona.open",
-                side_effect=RuntimeError("stop before real I/O"),
+            with (
+                patch.object(conversion_module.fiona, "Env", FakeEnv),
+                patch(
+                    "dagster_hifld.conversion.fiona.open",
+                    side_effect=RuntimeError("stop before real I/O"),
+                ),
             ):
                 with self.assertRaisesRegex(RuntimeError, "stop before real I/O"):
                     asyncio.run(
@@ -441,7 +466,9 @@ class ConversionTests(unittest.TestCase):
 
         self.assertIn({"OGR_GEOJSON_MAX_OBJ_SIZE": "0"}, env_calls)
 
-    def test_write_geodataframe_parquet_retries_without_unsupported_schema_version(self):
+    def test_write_geodataframe_parquet_retries_without_unsupported_schema_version(
+        self,
+    ):
         gdf = gpd.GeoDataFrame(
             {"name": ["A"]},
             geometry=[Point(0, 0)],
@@ -452,7 +479,9 @@ class ConversionTests(unittest.TestCase):
         def fake_to_parquet(path, **kwargs):
             calls.append(kwargs.copy())
             if "schema_version" in kwargs:
-                raise TypeError("__cinit__() got an unexpected keyword argument 'schema_version'")
+                raise TypeError(
+                    "__cinit__() got an unexpected keyword argument 'schema_version'"
+                )
 
         gdf.to_parquet = fake_to_parquet
 
@@ -486,10 +515,18 @@ class ConversionTests(unittest.TestCase):
                 return iter(features)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("dagster_hifld.conversion.fiona.open", return_value=FakeCollection()), patch(
-                "dagster_hifld.conversion._write_geodataframe_parquet"
-            ) as writer, patch("dagster_hifld.conversion._upload_geoparquet_files", return_value=[]):
-                writer.side_effect = lambda _gdf, path, **_kwargs: path.write_bytes(b"parquet")
+            with (
+                patch(
+                    "dagster_hifld.conversion.fiona.open", return_value=FakeCollection()
+                ),
+                patch("dagster_hifld.conversion._write_geodataframe_parquet") as writer,
+                patch(
+                    "dagster_hifld.conversion._upload_geoparquet_files", return_value=[]
+                ),
+            ):
+                writer.side_effect = lambda _gdf, path, **_kwargs: path.write_bytes(
+                    b"parquet"
+                )
                 result = asyncio.run(
                     process_layer_chunked(
                         file_path=Path("source.gpkg"),
@@ -506,7 +543,9 @@ class ConversionTests(unittest.TestCase):
         self.assertGreaterEqual(writer.call_count, 1)
         self.assertEqual(result["feature_count"], 1)
 
-    def test_partitioned_geoparquet_writer_uploads_hive_paths_without_chunk_suffixes(self):
+    def test_partitioned_geoparquet_writer_uploads_hive_paths_without_chunk_suffixes(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
             gdf = gpd.GeoDataFrame(
@@ -527,7 +566,8 @@ class ConversionTests(unittest.TestCase):
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
-                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                        force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -543,7 +583,9 @@ class ConversionTests(unittest.TestCase):
                 f"dataset/file/v1.0.0/geoparquet/layer-source/{hive_key}=12/part-000.parquet",
                 result["geoparquet_paths"],
             )
-            self.assertFalse(any("-0.zstd.parquet" in path for path in result["geoparquet_paths"]))
+            self.assertFalse(
+                any("-0.zstd.parquet" in path for path in result["geoparquet_paths"])
+            )
 
     def test_single_layer_partitioned_geoparquet_stays_at_dataset_root(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -566,7 +608,8 @@ class ConversionTests(unittest.TestCase):
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
-                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                        force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                     ),
                     multi_layer=False,
                 )
@@ -575,14 +618,15 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result["partitioning"], "admin")
             self.assertTrue(
                 all(
-                    path.startswith(
-                        "dataset/file/v1.0.0/geoparquet/statefp="
-                    )
+                    path.startswith("dataset/file/v1.0.0/geoparquet/statefp=")
                     for path in result["geoparquet_paths"]
                 )
             )
             self.assertFalse(
-                any("/geoparquet/layer-source/" in path for path in result["geoparquet_paths"])
+                any(
+                    "/geoparquet/layer-source/" in path
+                    for path in result["geoparquet_paths"]
+                )
             )
 
     def test_partitioned_geoparquet_writer_derives_nested_huc_prefixes(self):
@@ -625,7 +669,9 @@ class ConversionTests(unittest.TestCase):
                 f"{hive_keys['huc6']}=010100/part-000.parquet",
                 result["geoparquet_paths"],
             )
-            self.assertFalse(any("huc12=" in path for path in result["geoparquet_paths"]))
+            self.assertFalse(
+                any("huc12=" in path for path in result["geoparquet_paths"])
+            )
 
     def test_geoparquet_policy_registry_uses_coarser_wbd_huc_partitions(self):
         wbd12 = geoparquet_policy_for("wbd", "12-digit-hu-subwatershed")
@@ -940,8 +986,8 @@ class ConversionTests(unittest.TestCase):
 
         self.assertEqual(DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES, 2 * 1024**3)
         self.assertEqual(DEFAULT_GEOPARQUET_TARGET_FILE_BYTES, 2 * 1024**3)
-        self.assertEqual(DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES, 112 * 1024**2)
-        self.assertEqual(DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES, 128 * 1024**2)
+        self.assertEqual(DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES, 128 * 1024**2)
+        self.assertEqual(DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES, 160 * 1024**2)
         self.assertEqual(DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES, 512 * 1024**2)
         self.assertEqual(DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES, 128 * 1024**2)
         self.assertEqual(policy.max_dataset_footer_bytes, 128 * 1024**2)
@@ -967,7 +1013,8 @@ class ConversionTests(unittest.TestCase):
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
-                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                        force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -1061,7 +1108,8 @@ class ConversionTests(unittest.TestCase):
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
-                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                        force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -1159,7 +1207,8 @@ class ConversionTests(unittest.TestCase):
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
                     policy=GeoParquetWritePolicy(
-                        force_admin_columns=("statefp",), large_dataset_threshold_bytes=1
+                        force_admin_columns=("statefp",),
+                        large_dataset_threshold_bytes=1,
                     ),
                 )
             )
@@ -1217,7 +1266,9 @@ class ConversionTests(unittest.TestCase):
                 )
             )
 
-            self.assertIn("Configured derived_prefix_column 'DFIRM_ID'", result["error"])
+            self.assertIn(
+                "Configured derived_prefix_column 'DFIRM_ID'", result["error"]
+            )
 
     def test_select_s2_level_uses_coarsest_bin_under_target_and_caps_at_16(self):
         histograms = {
@@ -1280,7 +1331,9 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(semantic["partition_columns"], ["STATEFP"])
             self.assertIsNone(semantic["chosen_s2_level"])
 
-    def test_preflight_calculates_s2_cell_once_per_feature_for_all_candidate_levels(self):
+    def test_preflight_calculates_s2_cell_once_per_feature_for_all_candidate_levels(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
             gpd.GeoDataFrame(
@@ -1513,7 +1566,9 @@ class ConversionTests(unittest.TestCase):
                 )
             )
 
-            self.assertIn("does not match its semantic partition value", result["error"])
+            self.assertIn(
+                "does not match its semantic partition value", result["error"]
+            )
             self.assertFalse(result.get("geoparquet_paths"))
 
     def test_dense_s2_cell_rolls_at_target_file_size_with_large_memory_budgets(self):
@@ -1559,13 +1614,23 @@ class ConversionTests(unittest.TestCase):
         self.assertNotIn("/", slash_name)
         self.assertNotIn("=", slash_name)
 
-    def test_writer_sorts_each_buffer_spatially_and_keeps_bbox_covering_metadata(self):
+    def test_writer_globally_sorts_across_tiny_buffers_and_keeps_bbox_covering_metadata(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.geojson"
-            points = [Point(120, 20), Point(-120, -20), Point(30, -10), Point(-30, 10)]
-            gpd.GeoDataFrame(
-                {"name": ["d", "a", "c", "b"]}, geometry=points, crs="EPSG:4326"
-            ).to_file(source, driver="GeoJSON")
+            points = [
+                Point(120, 20),
+                Point(-120, -20),
+                Point(30, -10),
+                Point(-30, 10),
+                Point(30, -10),
+                Point(30, -10),
+            ]
+            names = ["d", "a", "c-first", "b", "c-second", "c-third"]
+            gpd.GeoDataFrame({"name": names}, geometry=points, crs="EPSG:4326").to_file(
+                source, driver="GeoJSON"
+            )
             storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
 
             result = asyncio.run(
@@ -1577,7 +1642,11 @@ class ConversionTests(unittest.TestCase):
                     dest_folder="dataset/file/v1.0.0/",
                     dest_storage=_StorageAdapter(storage),
                     work_dir=Path(tmpdir) / "work",
-                    policy=GeoParquetWritePolicy(),
+                    policy=GeoParquetWritePolicy(
+                        write_buffer_bytes=1,
+                        aggregate_buffer_bytes=1,
+                        max_row_group_rows=1,
+                    ),
                 )
             )
 
@@ -1585,6 +1654,34 @@ class ConversionTests(unittest.TestCase):
             written = gpd.read_parquet(output_path)
             keys = [_hilbert_like_key(point.x, point.y) for point in written.geometry]
             self.assertEqual(keys, sorted(keys))
+            expected_names = [
+                names[index]
+                for index in sorted(
+                    range(len(points)),
+                    key=lambda index: _hilbert_like_key(
+                        points[index].x, points[index].y
+                    ),
+                )
+            ]
+            self.assertEqual(written["name"].tolist(), expected_names)
+            parquet = pq.ParquetFile(output_path)
+            self.assertEqual(parquet.metadata.num_row_groups, 6)
+            column_paths = [
+                parquet.metadata.row_group(0).column(index).path_in_schema
+                for index in range(parquet.metadata.row_group(0).num_columns)
+            ]
+            bbox_indexes = [
+                column_paths.index(f"bbox.{axis}")
+                for axis in ("xmin", "ymin", "xmax", "ymax")
+            ]
+            row_group_bboxes = [
+                tuple(
+                    parquet.metadata.row_group(group).column(index).statistics.min
+                    for index in bbox_indexes
+                )
+                for group in range(parquet.metadata.num_row_groups)
+            ]
+            self.assertEqual(len(set(row_group_bboxes)), 4)
             geo = json.loads(pq.ParquetFile(output_path).schema_arrow.metadata[b"geo"])
             self.assertIn("covering", geo["columns"][geo["primary_column"]])
             self.assertEqual(
@@ -1615,6 +1712,52 @@ class ConversionTests(unittest.TestCase):
         self.assertTrue(first_canonical.schema.equals(second_canonical.schema))
         self.assertNotIn("bbox", first_geo["columns"]["geometry"])
         self.assertIn("covering", first_geo["columns"]["geometry"])
+
+    def test_global_spatial_sort_keeps_row_group_bboxes_locally_prunable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.geojson"
+            points = [
+                point
+                for offset in range(4)
+                for point in (Point(-120 + offset, 35), Point(120 + offset, 35))
+            ]
+            gpd.GeoDataFrame(
+                {"name": [str(index) for index in range(len(points))]},
+                geometry=points,
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON")
+            storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
+
+            result = asyncio.run(
+                process_layer_partitioned_geoparquet(
+                    file_path=source,
+                    format_type="geojson",
+                    layer_name=None,
+                    layer_filename="source",
+                    dest_folder="dataset/file/v1.0.0/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=Path(tmpdir) / "work",
+                    policy=GeoParquetWritePolicy(
+                        write_buffer_bytes=10**9,
+                        max_row_group_rows=4,
+                    ),
+                )
+            )
+
+            parquet = pq.ParquetFile(Path(tmpdir) / result["geoparquet_paths"][0])
+            paths = [
+                parquet.metadata.row_group(0).column(index).path_in_schema
+                for index in range(parquet.metadata.row_group(0).num_columns)
+            ]
+            xmin = paths.index("bbox.xmin")
+            xmax = paths.index("bbox.xmax")
+            longitude_spans = [
+                parquet.metadata.row_group(group).column(xmax).statistics.max
+                - parquet.metadata.row_group(group).column(xmin).statistics.min
+                for group in range(parquet.metadata.num_row_groups)
+            ]
+            self.assertEqual(parquet.metadata.num_row_groups, 2)
+            self.assertTrue(all(span < 10 for span in longitude_spans))
 
     def test_row_group_hard_limit_rewrites_smaller_files_before_upload(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2214,13 +2357,16 @@ class ConversionTests(unittest.TestCase):
                 stops.append(stop)
                 return original_randrange(self, stop, *args)
 
-            with patch(
-                "dagster_hifld.conversion._bounded_compression_sample",
-                side_effect=sample_with_first_ineligible,
-            ), patch(
-                "dagster_hifld.conversion.random.Random.randrange",
-                autospec=True,
-                side_effect=capture_randrange,
+            with (
+                patch(
+                    "dagster_hifld.conversion._bounded_compression_sample",
+                    side_effect=sample_with_first_ineligible,
+                ),
+                patch(
+                    "dagster_hifld.conversion.random.Random.randrange",
+                    autospec=True,
+                    side_effect=capture_randrange,
+                ),
             ):
                 result = asyncio.run(
                     process_layer_partitioned_geoparquet(
@@ -2285,9 +2431,12 @@ class ConversionTests(unittest.TestCase):
 
         storage = Mock()
         storage.upload_file = AsyncMock()
-        with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "dagster_hifld.conversion.fiona.open",
-            side_effect=[FakeCollection(features), FakeCollection(features[:1])],
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch(
+                "dagster_hifld.conversion.fiona.open",
+                side_effect=[FakeCollection(features), FakeCollection(features[:1])],
+            ),
         ):
             result = asyncio.run(
                 process_layer_partitioned_geoparquet(
@@ -2333,9 +2482,7 @@ class ConversionTests(unittest.TestCase):
             self.assertNotIn("error", result)
             self.assertEqual(result["partitioning"], "derived_prefix")
             hive_key = result["hive_partition_columns"]["state_fips"]
-            self.assertIn(
-                f"{hive_key}=29", result["geoparquet_paths"][0]
-            )
+            self.assertIn(f"{hive_key}=29", result["geoparquet_paths"][0])
 
     def test_spatial_sort_keeps_features_with_null_geometry(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2371,7 +2518,9 @@ class ConversionTests(unittest.TestCase):
             ).to_file(source, driver="GeoJSON")
             storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
 
-            with patch.object(Path, "read_bytes", side_effect=AssertionError("whole-file read")):
+            with patch.object(
+                Path, "read_bytes", side_effect=AssertionError("whole-file read")
+            ):
                 result = asyncio.run(
                     process_layer_partitioned_geoparquet(
                         file_path=source,
@@ -2433,9 +2582,13 @@ class ConversionTests(unittest.TestCase):
             )
             store.roll_up_s2("semantic_s2", "", (2, 16))
             self.assertEqual(store.max_bytes("semantic_s2", "", 2), 100)
-            row = store._require_connection().execute(
-                "SELECT bin, row_count FROM histogram WHERE kind = 'semantic_s2' AND level = 2"
-            ).fetchone()
+            row = (
+                store._require_connection()
+                .execute(
+                    "SELECT bin, row_count FROM histogram WHERE kind = 'semantic_s2' AND level = 2"
+                )
+                .fetchone()
+            )
             self.assertEqual(row, (f'["v"]|{parent_cell}', 5))
         finally:
             store.close()
@@ -2475,7 +2628,9 @@ class ConversionTests(unittest.TestCase):
 
             proc = Mock()
             proc.wait.return_value = 0
-            with patch("dagster_hifld.conversion.subprocess.Popen", return_value=proc) as popen:
+            with patch(
+                "dagster_hifld.conversion.subprocess.Popen", return_value=proc
+            ) as popen:
                 result = asyncio.run(
                     _create_and_upload_pmtiles(
                         dest_storage=FakeStorage(),

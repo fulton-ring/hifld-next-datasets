@@ -68,7 +68,8 @@ size or file count. An unpartitioned `single_file` layer whose compressed
 snapshot size exceeds 2 GiB must use the S2 fallback; legacy `_s2` strategies
 must declare the S2 Hive key and include it in every declared output path.
 
-Each row group remains bounded to 128 MiB uncompressed. Every output manifest
+Each row group targets 128 MiB and remains bounded to 160 MiB uncompressed.
+Every output manifest
 entry records its exact serialized Parquet footer, and the combined footer
 metadata for a dataset version must not exceed 128 MiB. Semantic partitioning
 takes precedence over the S2 fallback: S2 is a fallback for a large

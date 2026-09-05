@@ -5,7 +5,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import geopandas as gpd
-from dagster import AssetKey, DagsterInstance, DynamicPartitionsDefinition, build_sensor_context
+from dagster import (
+    AssetKey,
+    DagsterInstance,
+    DynamicPartitionsDefinition,
+    build_sensor_context,
+)
 from shapely.geometry import Point
 
 from dagster_hifld.assets import catalog as catalog_assets_module
@@ -15,7 +20,11 @@ from dagster_hifld.assets.census_blocks_2020 import (
     CENSUS_2020_TABBLOCK20_FILE_SLUGS,
 )
 import dagster_hifld.definitions as definitions_module
-from dagster_hifld.definitions import _iter_staged_version_paths, defs, version_discovery_sensor
+from dagster_hifld.definitions import (
+    _iter_staged_version_paths,
+    defs,
+    version_discovery_sensor,
+)
 from dagster_hifld.partitions import (
     ALL_PARTITIONS_DEFS,
     PUBLISH_PARTITION_NAME,
@@ -36,17 +45,25 @@ class DynamicPartitionTests(unittest.TestCase):
             crs="EPSG:4326",
         ).to_file(path)
 
-    def test_k8s_step_executor_requests_one_hundred_gib_scratch_pvc(self):
+    def test_k8s_step_executor_requests_two_hundred_fifty_gib_scratch_pvc(self):
         definitions_source = (
-            Path(__file__).resolve().parents[1] / "src" / "dagster_hifld" / "definitions.py"
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "dagster_hifld"
+            / "definitions.py"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('"storage": "100Gi"', definitions_source)
+        self.assertIn('"storage": "250Gi"', definitions_source)
         self.assertIn('"max_concurrent": 1', definitions_source)
         self.assertIn('"pod_template_spec_metadata"', definitions_source)
-        self.assertIn('"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"', definitions_source)
+        self.assertIn(
+            '"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"',
+            definitions_source,
+        )
 
-    def test_version_discovery_sensor_scans_one_hundred_dataset_slugs_per_tick_by_default(self):
+    def test_version_discovery_sensor_scans_one_hundred_dataset_slugs_per_tick_by_default(
+        self,
+    ):
         self.assertEqual(definitions_module.MAX_SENSOR_DATASETS_PER_TICK, 100)
 
     def test_catalog_and_publish_assets_use_dynamic_version_partitions(self):
@@ -94,13 +111,17 @@ class DynamicPartitionTests(unittest.TestCase):
         self.assertEqual(catalog_keys, {AssetKey(["publish", "catalog"])})
         self.assertIn(AssetKey(["publish", "formats", "geoparquet"]), publish_keys)
         self.assertIn(AssetKey(["publish", "promote"]), publish_keys)
-        self.assertFalse(any(key.path[:2] == ["publish", "register"] for key in publish_keys))
+        self.assertFalse(
+            any(key.path[:2] == ["publish", "register"] for key in publish_keys)
+        )
 
     def test_supported_assets_do_not_drive_publish_asset_count(self):
         self.assertEqual(len(catalog_assets_module.catalog_assets), 1)
         self.assertEqual(len(publish_assets_module.publish_assets), 5)
 
-    def test_version_discovery_sensor_discovers_missing_catalog_version_without_requesting_run(self):
+    def test_version_discovery_sensor_discovers_missing_catalog_version_without_requesting_run(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             version_root = (
                 Path(tmpdir)
@@ -190,15 +211,20 @@ class DynamicPartitionTests(unittest.TestCase):
 
     def test_version_discovery_sensor_reports_and_skips_ambiguous_legacy_unknown(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            unknown = Path(tmpdir) / "legacy-dataset" / "legacy-file" / "v1.0.0" / "unknown"
+            unknown = (
+                Path(tmpdir) / "legacy-dataset" / "legacy-file" / "v1.0.0" / "unknown"
+            )
             self._write_shapefile(unknown / "source-a.shp")
             self._write_shapefile(unknown / "source-b.shp")
             staging_storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
             context = build_sensor_context(instance=DagsterInstance.ephemeral())
 
-            with self.assertLogs("dagster_hifld.definitions", level="WARNING") as logs, patch(
-                "dagster_hifld.definitions.StagingStorageResource.from_env",
-                return_value=staging_storage,
+            with (
+                self.assertLogs("dagster_hifld.definitions", level="WARNING") as logs,
+                patch(
+                    "dagster_hifld.definitions.StagingStorageResource.from_env",
+                    return_value=staging_storage,
+                ),
             ):
                 result = version_discovery_sensor(context)
 
@@ -207,28 +233,32 @@ class DynamicPartitionTests(unittest.TestCase):
 
     def test_version_discovery_sensor_reports_and_skips_incomplete_legacy_unknown(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            unknown = Path(tmpdir) / "legacy-dataset" / "legacy-file" / "v1.0.0" / "unknown"
+            unknown = (
+                Path(tmpdir) / "legacy-dataset" / "legacy-file" / "v1.0.0" / "unknown"
+            )
             unknown.mkdir(parents=True)
             (unknown / "source.shp").write_bytes(b"incomplete")
             staging_storage = StagingStorageResource(local_dir=tmpdir, use_local=True)
             context = build_sensor_context(instance=DagsterInstance.ephemeral())
 
-            with self.assertLogs("dagster_hifld.definitions", level="WARNING") as logs, patch(
-                "dagster_hifld.definitions.StagingStorageResource.from_env",
-                return_value=staging_storage,
+            with (
+                self.assertLogs("dagster_hifld.definitions", level="WARNING") as logs,
+                patch(
+                    "dagster_hifld.definitions.StagingStorageResource.from_env",
+                    return_value=staging_storage,
+                ),
             ):
                 result = version_discovery_sensor(context)
 
         self.assertEqual(result.dynamic_partitions_requests, [])
         self.assertIn("requires .shp, .shx, and .dbf sidecars", " ".join(logs.output))
 
-    def test_version_discovery_sensor_registers_partition_when_catalog_metadata_exists(self):
+    def test_version_discovery_sensor_registers_partition_when_catalog_metadata_exists(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             version_root = (
-                Path(tmpdir)
-                / "already-cataloged"
-                / "already-cataloged"
-                / "v1.0.0"
+                Path(tmpdir) / "already-cataloged" / "already-cataloged" / "v1.0.0"
             )
             source_root = version_root / "geopackage"
             metadata_root = version_root / "metadata"
@@ -257,7 +287,9 @@ class DynamicPartitionTests(unittest.TestCase):
             "Discovered 1 new publish partitions.",
         )
 
-    def test_version_discovery_sensor_evaluates_without_target_job_or_run_requests(self):
+    def test_version_discovery_sensor_evaluates_without_target_job_or_run_requests(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             version_root = (
                 Path(tmpdir)
@@ -288,7 +320,9 @@ class DynamicPartitionTests(unittest.TestCase):
             result.dynamic_partitions_requests[0].partition_keys,
         )
 
-    def test_version_discovery_sensor_discovers_all_partitions_without_run_request_cap(self):
+    def test_version_discovery_sensor_discovers_all_partitions_without_run_request_cap(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "amtrak-stations" / "amtrak-stations"
             for version in ("v1.0.0", "v1.0.1", "v1.0.2"):
@@ -329,8 +363,12 @@ class DynamicPartitionTests(unittest.TestCase):
                 if "geopackage" not in match_glob:
                     return []
                 return [
-                    FakeBlob("119th-congressional-districts/119th-congressional-districts/v20260214/geopackage/legacy.gpkg"),
-                    FakeBlob("119th-congressional-districts/119th-congressional-districts/v1.0.0/geopackage/119th-congressional-districts.gpkg"),
+                    FakeBlob(
+                        "119th-congressional-districts/119th-congressional-districts/v20260214/geopackage/legacy.gpkg"
+                    ),
+                    FakeBlob(
+                        "119th-congressional-districts/119th-congressional-districts/v1.0.0/geopackage/119th-congressional-districts.gpkg"
+                    ),
                 ]
 
         storage = StagingStorageResource(
@@ -368,7 +406,9 @@ class DynamicPartitionTests(unittest.TestCase):
                 if "/unknown/" not in match_glob:
                     return []
                 root = "legacy-dataset/legacy-file/v1.0.0/unknown/source"
-                return [FakeBlob(f"{root}{suffix}") for suffix in (".SHP", ".SHX", ".DBF")]
+                return [
+                    FakeBlob(f"{root}{suffix}") for suffix in (".SHP", ".SHX", ".DBF")
+                ]
 
         storage = StagingStorageResource(
             bucket="hifld-next-staging-prod",

@@ -11,6 +11,7 @@ import hashlib
 import json
 import logging
 import os
+import pickle
 import random
 import shutil
 import sqlite3
@@ -18,6 +19,7 @@ import subprocess
 import tempfile
 import warnings
 import zipfile
+import zlib
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from types import TracebackType
@@ -30,6 +32,7 @@ import geopandas.io.arrow as geopandas_arrow
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import s2sphere
 from pyproj import CRS, Transformer
 from shapely.geometry import Point, shape
 from shapely.ops import transform as transform_geometry
@@ -73,8 +76,8 @@ DEFAULT_DATA_PAGE_SIZE_BYTES = 1024 * 1024
 DEFAULT_FGB_CHUNK_SIZE_MB = 100
 DEFAULT_MEMORY_ESTIMATE_MULTIPLIER = 5.0
 DEFAULT_GEOPARQUET_ROW_GROUP_TARGET_BYTES = 128 * 1024 * 1024
-DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES = 112 * 1024 * 1024
-DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES = 128 * 1024 * 1024
+DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES = 128 * 1024 * 1024
+DEFAULT_GEOPARQUET_MAX_ROW_GROUP_BYTES = 160 * 1024 * 1024
 DEFAULT_GEOPARQUET_MAX_DATASET_FOOTER_BYTES = 128 * 1024 * 1024
 DEFAULT_GEOPARQUET_AGGREGATE_BUFFER_BYTES = 512 * 1024 * 1024
 DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024
@@ -147,11 +150,17 @@ GEOPARQUET_POLICY_REGISTRY: dict[tuple[str, str], GeoParquetWritePolicy] = {
         derived_prefix_column="DFIRM_ID",
         derived_prefix_partitions=(("state_fips", 2),),
     ),
-    ("nfhl", "national-flood-hazard-layer-nfhl-geopackage-area-1-east"): GeoParquetWritePolicy(
+    (
+        "nfhl",
+        "national-flood-hazard-layer-nfhl-geopackage-area-1-east",
+    ): GeoParquetWritePolicy(
         derived_prefix_column="DFIRM_ID",
         derived_prefix_partitions=(("state_fips", 2),),
     ),
-    ("nfhl", "national-flood-hazard-layer-nfhl-geopackage-area-1-west"): GeoParquetWritePolicy(
+    (
+        "nfhl",
+        "national-flood-hazard-layer-nfhl-geopackage-area-1-west",
+    ): GeoParquetWritePolicy(
         derived_prefix_column="DFIRM_ID",
         derived_prefix_partitions=(("state_fips", 2),),
     ),
@@ -267,9 +276,7 @@ class _StorageAdapter:
             if p.is_file():
                 return [str(p.relative_to(self.local_dir))]
             return [
-                str(x.relative_to(self.local_dir))
-                for x in p.rglob("*")
-                if x.is_file()
+                str(x.relative_to(self.local_dir)) for x in p.rglob("*") if x.is_file()
             ]
         path = f"{self.bucket}/{prefix.strip('/')}"
         try:
@@ -403,7 +410,9 @@ def _safe_layer_suffix(layer_name: str) -> str:
     return layer_name.replace("/", "-").replace("\\", "-")
 
 
-def list_layers_in_file(file_path: Path, format_type: str) -> list[tuple[str, Optional[str]]]:
+def list_layers_in_file(
+    file_path: Path, format_type: str
+) -> list[tuple[str, Optional[str]]]:
     if format_type in {"geopackage", "file_geodatabase"}:
         try:
             layers = fiona.listlayers(str(file_path))
@@ -413,7 +422,9 @@ def list_layers_in_file(file_path: Path, format_type: str) -> list[tuple[str, Op
     return [("default", None)]
 
 
-def _extract_geospatial_from_zip(zip_file: Path, extract_dir: Path) -> Optional[tuple[str, Path]]:
+def _extract_geospatial_from_zip(
+    zip_file: Path, extract_dir: Path
+) -> Optional[tuple[str, Path]]:
     with zipfile.ZipFile(zip_file, "r") as zf:
         zf.extractall(extract_dir)
 
@@ -569,7 +580,9 @@ def _estimate_parquet_bytes_per_row(gdf: gpd.GeoDataFrame) -> float:
         return max(1.0, sample_path.stat().st_size / max(1, len(sample)))
 
 
-def _row_group_size_for_policy(gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolicy) -> int:
+def _row_group_size_for_policy(
+    gdf: gpd.GeoDataFrame, policy: GeoParquetWritePolicy
+) -> int:
     bytes_per_row = _estimate_parquet_bytes_per_row(gdf)
     return max(1, int(policy.target_row_group_bytes / bytes_per_row))
 
@@ -678,9 +691,13 @@ def _pick_s2_parent_level(points: gpd.GeoSeries, policy: GeoParquetWritePolicy) 
     for level in policy.s2_parent_candidates:
         counts: dict[int, int] = {}
         for point in points:
-            cell_id = s2sphere.CellId.from_lat_lng(
-                s2sphere.LatLng.from_degrees(float(point.y), float(point.x))
-            ).parent(level).id()
+            cell_id = (
+                s2sphere.CellId.from_lat_lng(
+                    s2sphere.LatLng.from_degrees(float(point.y), float(point.x))
+                )
+                .parent(level)
+                .id()
+            )
             counts[cell_id] = counts.get(cell_id, 0) + 1
         median = float(pd.Series(list(counts.values())).median()) if counts else 1.0
         distance = abs(median - target_rows)
@@ -691,10 +708,12 @@ def _pick_s2_parent_level(points: gpd.GeoSeries, policy: GeoParquetWritePolicy) 
 
 
 def _hilbert_like_key(x: float, y: float) -> int:
-    # Lightweight spatial sort key. DuckDB ST_Hilbert can replace this where available.
-    nx = max(0, min((float(x) + 180.0) / 360.0, 1.0))
-    ny = max(0, min((float(y) + 90.0) / 180.0, 1.0))
-    return (int(nx * 4_294_967_295) << 32) | int(ny * 4_294_967_295)
+    """Return the unsigned leaf-cell ID from S2's Hilbert space-filling curve."""
+    longitude = max(-180.0, min(float(x), 180.0))
+    latitude = max(-90.0, min(float(y), 90.0))
+    return s2sphere.CellId.from_lat_lng(
+        s2sphere.LatLng.from_degrees(latitude, longitude)
+    ).id()
 
 
 def write_geoparquet_dataset(
@@ -709,10 +728,7 @@ def write_geoparquet_dataset(
     admin_column = _select_admin_column(gdf, policy, estimated_size)
     source_columns = {str(column) for column in gdf.columns}
 
-    if (
-        estimated_size >= policy.large_dataset_threshold_bytes
-        and admin_column is None
-    ):
+    if estimated_size >= policy.large_dataset_threshold_bytes and admin_column is None:
         sorted_gdf, internal_columns = _annotate_s2_and_hilbert(gdf, policy)
         hive_columns = _allocate_semantic_hive_keys(
             ["s2_parent_cell"], source_columns | set(internal_columns.values())
@@ -768,7 +784,9 @@ def write_geoparquet_dataset(
         )
 
     output_path = output_dir / f"{layer_filename}.parquet"
-    _write_geodataframe_parquet(gdf.reset_index(drop=True), output_path, row_group_size=row_group_size)
+    _write_geodataframe_parquet(
+        gdf.reset_index(drop=True), output_path, row_group_size=row_group_size
+    )
     return GeoParquetWriteResult(
         paths=[output_path],
         glob_path=output_path.name,
@@ -790,10 +808,16 @@ def _write_partitioned_parquet(
     hive_partition_columns: dict[str, str] | None = None,
     generated_columns: set[str] | None = None,
 ) -> list[Path]:
-    partition_columns = [partition_column] if isinstance(partition_column, str) else partition_column
+    partition_columns = (
+        [partition_column] if isinstance(partition_column, str) else partition_column
+    )
     paths: list[Path] = []
-    group_key = partition_columns[0] if len(partition_columns) == 1 else partition_columns
-    for _idx, (value, part) in enumerate(gdf.groupby(group_key, dropna=False, sort=True)):
+    group_key = (
+        partition_columns[0] if len(partition_columns) == 1 else partition_columns
+    )
+    for _idx, (value, part) in enumerate(
+        gdf.groupby(group_key, dropna=False, sort=True)
+    ):
         values = value if isinstance(value, tuple) else (value,)
         part_dir = output_dir
         for column, raw_value in zip(partition_columns, values):
@@ -855,24 +879,105 @@ class _GeoParquetPreflight:
     resolved_policy: GeoParquetWritePolicy
 
 
-@dataclass(frozen=True)
-class _BufferedFeature:
-    feature: dict[str, Any]
-    hilbert_key: int
-
-
-@dataclass
-class _FeatureBuffer:
-    features: list[_BufferedFeature]
-    estimated_bytes: int = 0
-    last_used: int = 0
-
-
 @dataclass
 class _ParquetWriterState:
     path: Path
     writer: pq.ParquetWriter
     footer_estimate_bytes: int
+
+
+class _SpatialFeatureSpool:
+    """Disk-backed feature spool providing a global sort per final partition."""
+
+    _COMMIT_INTERVAL = 1_000
+
+    def __init__(self) -> None:
+        self._temporary_directory = tempfile.TemporaryDirectory(
+            prefix="geoparquet-spatial-sort-"
+        )
+        database_path = Path(self._temporary_directory.name) / "features.sqlite3"
+        self._connection: sqlite3.Connection | None = sqlite3.connect(database_path)
+        self._connection.execute("PRAGMA temp_store=FILE")
+        self._connection.execute("PRAGMA cache_size=-32768")
+        self._connection.execute(
+            """
+            CREATE TABLE features (
+                partition_dir TEXT NOT NULL,
+                sort_key TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                estimated_bytes INTEGER NOT NULL,
+                feature BLOB NOT NULL
+            )
+            """
+        )
+        self._pending = 0
+
+    def add(
+        self,
+        partition_dir: str,
+        hilbert_key: int,
+        ordinal: int,
+        estimated_bytes: int,
+        feature: dict[str, Any],
+    ) -> None:
+        if self._connection is None:
+            raise RuntimeError("Spatial feature spool is closed.")
+        self._connection.execute(
+            "INSERT INTO features VALUES (?, ?, ?, ?, ?)",
+            (
+                partition_dir,
+                f"{hilbert_key:016x}",
+                ordinal,
+                estimated_bytes,
+                zlib.compress(
+                    pickle.dumps(feature, protocol=pickle.HIGHEST_PROTOCOL), level=1
+                ),
+            ),
+        )
+        self._pending += 1
+        if self._pending >= self._COMMIT_INTERVAL:
+            self._connection.commit()
+            self._pending = 0
+
+    def prepare(self) -> None:
+        if self._connection is None:
+            raise RuntimeError("Spatial feature spool is closed.")
+        self._connection.commit()
+        self._connection.execute(
+            "CREATE INDEX feature_order ON features(partition_dir, sort_key, ordinal)"
+        )
+        self._connection.commit()
+
+    def partitions(self) -> Iterable[str]:
+        if self._connection is None:
+            raise RuntimeError("Spatial feature spool is closed.")
+        rows = self._connection.execute(
+            "SELECT DISTINCT partition_dir FROM features ORDER BY partition_dir"
+        )
+        return (str(row[0]) for row in rows)
+
+    def sorted_features(
+        self, partition_dir: str
+    ) -> Iterable[tuple[dict[str, Any], int]]:
+        if self._connection is None:
+            raise RuntimeError("Spatial feature spool is closed.")
+        rows = self._connection.execute(
+            """
+            SELECT feature, estimated_bytes FROM features
+            WHERE partition_dir = ? ORDER BY sort_key, ordinal
+            """,
+            (partition_dir,),
+        )
+        return (
+            (pickle.loads(zlib.decompress(bytes(blob))), int(estimated_bytes))
+            for blob, estimated_bytes in rows
+        )
+
+    def close(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+        self._temporary_directory.cleanup()
 
 
 class _PreflightHistogramStore:
@@ -883,7 +988,9 @@ class _PreflightHistogramStore:
             prefix="geoparquet-preflight-"
         )
         self.database_path = Path(self._temporary_directory.name) / "histograms.sqlite3"
-        self._connection: sqlite3.Connection | None = sqlite3.connect(self.database_path)
+        self._connection: sqlite3.Connection | None = sqlite3.connect(
+            self.database_path
+        )
         self._connection.execute(
             """
             CREATE TABLE histogram (
@@ -952,26 +1059,38 @@ class _PreflightHistogramStore:
         connection.commit()
 
     def cardinality(self, kind: str, name: str = "") -> int:
-        row = self._require_connection().execute(
-            "SELECT COUNT(*) FROM histogram WHERE kind = ? AND name = ?",
-            (kind, name),
-        ).fetchone()
+        row = (
+            self._require_connection()
+            .execute(
+                "SELECT COUNT(*) FROM histogram WHERE kind = ? AND name = ?",
+                (kind, name),
+            )
+            .fetchone()
+        )
         return int(row[0]) if row else 0
 
     def max_bytes(self, kind: str, name: str = "", level: int | None = None) -> int:
         if level is None:
-            row = self._require_connection().execute(
-                "SELECT MAX(byte_count) FROM histogram WHERE kind = ? AND name = ?",
-                (kind, name),
-            ).fetchone()
+            row = (
+                self._require_connection()
+                .execute(
+                    "SELECT MAX(byte_count) FROM histogram WHERE kind = ? AND name = ?",
+                    (kind, name),
+                )
+                .fetchone()
+            )
         else:
-            row = self._require_connection().execute(
-                """
+            row = (
+                self._require_connection()
+                .execute(
+                    """
                 SELECT MAX(byte_count) FROM histogram
                 WHERE kind = ? AND name = ? AND level = ?
                 """,
-                (kind, name, level),
-            ).fetchone()
+                    (kind, name, level),
+                )
+                .fetchone()
+            )
         return int(row[0]) if row and row[0] is not None else 0
 
     def level_maxima(
@@ -981,8 +1100,7 @@ class _PreflightHistogramStore:
         levels: tuple[int, ...],
     ) -> dict[int, dict[str, int]]:
         return {
-            level: {"largest": self.max_bytes(kind, name, level)}
-            for level in levels
+            level: {"largest": self.max_bytes(kind, name, level)} for level in levels
         }
 
     def close(self) -> None:
@@ -1081,7 +1199,9 @@ def _feature_geometry(feature: Any) -> Any:
         return feature["geometry"]
 
 
-def _feature_with_properties(feature: Any, properties: dict[str, Any]) -> dict[str, Any]:
+def _feature_with_properties(
+    feature: Any, properties: dict[str, Any]
+) -> dict[str, Any]:
     return {
         "type": "Feature",
         "properties": properties,
@@ -1167,13 +1287,19 @@ def _coerce_gdf_to_fiona_schema(
             elif fiona_type.startswith(("str", "date", "time")):
                 coerced[column] = coerced[column].astype("string")
             elif fiona_type.startswith(("int", "uint")):
-                coerced[column] = pd.to_numeric(coerced[column], errors="coerce").astype("Int64")
+                coerced[column] = pd.to_numeric(
+                    coerced[column], errors="coerce"
+                ).astype("Int64")
             elif fiona_type.startswith(("float", "real", "double")):
-                coerced[column] = pd.to_numeric(coerced[column], errors="coerce").astype("Float64")
+                coerced[column] = pd.to_numeric(
+                    coerced[column], errors="coerce"
+                ).astype("Float64")
             elif fiona_type.startswith("bool"):
                 coerced[column] = coerced[column].astype("boolean")
         except (TypeError, ValueError):
-            logger.debug("Could not coerce column %s to Fiona type %s", column, raw_type)
+            logger.debug(
+                "Could not coerce column %s to Fiona type %s", column, raw_type
+            )
     return coerced
 
 
@@ -1244,7 +1370,9 @@ def _select_streaming_partition_columns(
     if derived_huc_column and policy.derived_huc_partition_columns:
         return "derived_huc", list(policy.derived_huc_partition_columns)
     if derived_prefix_column and policy.derived_prefix_partitions:
-        return "derived_prefix", [name for name, _width in policy.derived_prefix_partitions]
+        return "derived_prefix", [
+            name for name, _width in policy.derived_prefix_partitions
+        ]
     if forced_admin_column:
         return "admin", [forced_admin_column]
     return "single_file", []
@@ -1302,12 +1430,16 @@ def _resolved_policy_for_schema(
             else ()
         ),
         derived_huc_column=(
-            _resolve_source_column(names, policy.derived_huc_column, "derived_huc_column")
+            _resolve_source_column(
+                names, policy.derived_huc_column, "derived_huc_column"
+            )
             if policy.derived_huc_column and (strict or has_huc_column)
             else None
         ),
         derived_prefix_column=(
-            _resolve_source_column(names, policy.derived_prefix_column, "derived_prefix_column")
+            _resolve_source_column(
+                names, policy.derived_prefix_column, "derived_prefix_column"
+            )
             if policy.derived_prefix_column and (strict or has_prefix_column)
             else None
         ),
@@ -1348,10 +1480,7 @@ def _s2_cells_for_point(point: Any, levels: tuple[int, ...]) -> dict[int, int]:
     except Exception:
         return {level: 0 for level in levels}
     return {
-        level: cell.parent(level).id()
-        if 0 <= level <= 30
-        else 0
-        for level in levels
+        level: cell.parent(level).id() if 0 <= level <= 30 else 0 for level in levels
     }
 
 
@@ -1469,7 +1598,7 @@ def _prepare_streaming_feature(
                 properties,
                 policy.derived_huc_column,
                 policy.derived_huc_partition_columns,
-            )
+            ),
         )
     elif partitioning.startswith("derived_prefix"):
         _merge_derived_partition_values(
@@ -1478,7 +1607,7 @@ def _prepare_streaming_feature(
                 properties,
                 policy.derived_prefix_column,
                 policy.derived_prefix_partitions,
-            )
+            ),
         )
     return _feature_with_properties(feature, properties)
 
@@ -1528,9 +1657,9 @@ def _canonicalize_geoparquet_batch_metadata(table: pa.Table) -> pa.Table:
     geo_metadata = dict(geo_metadata)
     geo_metadata["columns"] = canonical_columns
     canonical_metadata = dict(metadata)
-    canonical_metadata[b"geo"] = json.dumps(
-        geo_metadata, separators=(",", ":")
-    ).encode("utf-8")
+    canonical_metadata[b"geo"] = json.dumps(geo_metadata, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return table.replace_schema_metadata(canonical_metadata)
 
 
@@ -1564,17 +1693,13 @@ def _bounded_compression_sample(
     fields = list(table.schema)
     if not fields:
         return None
-    row_values = [
-        table.column(index).to_pylist()[0] for index in range(len(fields))
-    ]
+    row_values = [table.column(index).to_pylist()[0] for index in range(len(fields))]
     value_budget = max(1, sample_bytes // len(fields))
     for _attempt in range(8):
         try:
             arrays: list[pa.Array] = []
             for field, value in zip(fields, row_values):
-                truncated = _truncate_compression_value(
-                    value, field.type, value_budget
-                )
+                truncated = _truncate_compression_value(value, field.type, value_budget)
                 arrays.append(pa.array([truncated], type=field.type))
             sample = pa.Table.from_arrays(arrays, schema=table.schema)
         except (TypeError, ValueError, pa.ArrowException):
@@ -1611,9 +1736,7 @@ def _truncate_compression_value(
         return [
             (
                 _truncate_compression_value(key, data_type.key_type, child_budget),
-                _truncate_compression_value(
-                    item, data_type.item_type, child_budget
-                ),
+                _truncate_compression_value(item, data_type.item_type, child_budget),
             )
             for key, item in value[:item_count]
         ]
@@ -1644,10 +1767,7 @@ def _zstd_compression_ratio(
     if not sample_tables:
         return None
     schema_metadata = sample_tables[0].schema.metadata
-    tables = [
-        table.replace_schema_metadata(schema_metadata)
-        for table in sample_tables
-    ]
+    tables = [table.replace_schema_metadata(schema_metadata) for table in sample_tables]
     sample = tables[0] if len(tables) == 1 else pa.concat_tables(tables)
     uncompressed_bytes = max(1, sample.nbytes)
     sink = pa.BufferOutputStream()
@@ -1708,9 +1828,7 @@ def _allocate_feature_bytes(feature_sizes: list[int], batch_bytes: int) -> list[
     batch_bytes = max(len(feature_sizes), batch_bytes)
     total_weight = max(1, sum(feature_sizes))
     distributable = batch_bytes - len(feature_sizes)
-    allocations = [
-        1 + (distributable * size // total_weight) for size in feature_sizes
-    ]
+    allocations = [1 + (distributable * size // total_weight) for size in feature_sizes]
     remainder = batch_bytes - sum(allocations)
     ranked = sorted(
         range(len(feature_sizes)),
@@ -1759,15 +1877,18 @@ def _preflight_layer_with_histograms(
     compression_sample_rng = random.Random(0)
     candidate_non_null: dict[str, int] = {}
 
-    with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+    with (
+        _with_large_geojson_support(),
+        fiona.open(str(file_path), **open_kwargs) as src,
+    ):
         source_schema = src.schema or {}
-        resolved_policy = _resolved_policy_for_schema(source_schema, policy, strict=False)
-        configured_partitioning, configured_columns = _select_streaming_partition_columns(
-            source_schema, resolved_policy
+        resolved_policy = _resolved_policy_for_schema(
+            source_schema, policy, strict=False
         )
-        base_partitioning = (
-            "s2" if configured_partitioning == "s2" else "single_file"
+        configured_partitioning, configured_columns = (
+            _select_streaming_partition_columns(source_schema, resolved_policy)
         )
+        base_partitioning = "s2" if configured_partitioning == "s2" else "single_file"
         base_columns = ["s2_parent_cell"] if base_partitioning == "s2" else []
         collect_s2_histograms = (
             configured_partitioning in {"single_file", "s2"} or policy.force_s2
@@ -1796,7 +1917,9 @@ def _preflight_layer_with_histograms(
                 _geodataframe_to_geoparquet_arrow(gdf)
             )
             batch_bytes = max(len(features), table.nbytes)
-            feature_sizes = [max(1, _estimate_feature_size_bytes(feature)) for feature in features]
+            feature_sizes = [
+                max(1, _estimate_feature_size_bytes(feature)) for feature in features
+            ]
             batch_serialized_bytes = sum(feature_sizes)
             allocated_bytes = _allocate_feature_bytes(feature_sizes, batch_bytes)
             feature_count += len(features)
@@ -1940,9 +2063,7 @@ def _preflight_layer_with_histograms(
     else:
         compression_ratio = sampled_compression_ratio
         compression_estimation_method = "sampled_zstd"
-    estimated_compressed_bytes = max(
-        1, int(uncompressed_bytes * compression_ratio)
-    )
+    estimated_compressed_bytes = max(1, int(uncompressed_bytes * compression_ratio))
 
     selection_s2_kind = "semantic_s2"
     selection_s2_name = ""
@@ -1951,8 +2072,8 @@ def _preflight_layer_with_histograms(
         and estimated_compressed_bytes >= policy.large_dataset_threshold_bytes
     ):
         resolved_policy = _resolved_policy_for_schema(source_schema, policy)
-        configured_partitioning, configured_columns = _select_streaming_partition_columns(
-            source_schema, resolved_policy
+        configured_partitioning, configured_columns = (
+            _select_streaming_partition_columns(source_schema, resolved_policy)
         )
         if configured_partitioning not in {"single_file", "s2"}:
             base_partitioning = configured_partitioning
@@ -1975,10 +2096,9 @@ def _preflight_layer_with_histograms(
     ):
         for column in candidate_non_null:
             cardinality = histogram_store.cardinality("candidate", column)
-            if (
-                candidate_non_null[column] / feature_count >= 0.95
-                and 1 < cardinality <= max(1, feature_count // 2)
-            ):
+            if candidate_non_null[
+                column
+            ] / feature_count >= 0.95 and 1 < cardinality <= max(1, feature_count // 2):
                 base_partitioning = "admin"
                 base_columns = [column]
                 selection_s2_kind = "candidate_s2"
@@ -2070,13 +2190,11 @@ async def process_layer_partitioned_geoparquet(
     )
     geoparquet_dir = work_dir / "geoparquet"
     geoparquet_dir.mkdir(parents=True, exist_ok=True)
-    buffers: dict[str, _FeatureBuffer] = {}
     writers: dict[str, _ParquetWriterState] = {}
     next_part_index: dict[str, int] = {}
     local_paths: list[Path] = []
     output_layouts: list[GeoParquetOutputLayout] = []
     written_feature_count = 0
-    aggregate_estimated_bytes = 0
     access_counter = 0
     candidate_counter = 0
 
@@ -2096,6 +2214,10 @@ async def process_layer_partitioned_geoparquet(
     file_buffer_bytes = min(
         effective_policy.write_buffer_bytes,
         effective_policy.target_file_size_bytes,
+    )
+    sorted_batch_bytes = min(
+        file_buffer_bytes,
+        effective_policy.aggregate_buffer_bytes,
     )
     source_schema: dict[str, Any] = {}
     has_named_source_layer = bool(layer_name and layer_name != "default")
@@ -2194,14 +2316,15 @@ async def process_layer_partitioned_geoparquet(
                 path=f"{dest_folder.rstrip('/')}/{relative_path}",
             )
 
-    def write_validated(partition_dir: str, buffered: list[_BufferedFeature]) -> None:
+    def write_validated(partition_dir: str, buffered: list[dict[str, Any]]) -> None:
         nonlocal candidate_counter, written_feature_count
         if not buffered:
             return
-        ordered = sorted(buffered, key=lambda item: item.hilbert_key)
-        features = [item.feature for item in ordered]
-        gdf = gpd.GeoDataFrame.from_features(features, crs=current_crs)
-        prepared = _coerce_gdf_to_fiona_schema(gdf.reset_index(drop=True), source_schema)
+        # The SQLite cursor already provides the global order for this partition.
+        gdf = gpd.GeoDataFrame.from_features(buffered, crs=current_crs)
+        prepared = _coerce_gdf_to_fiona_schema(
+            gdf.reset_index(drop=True), source_schema
+        )
         table = _canonicalize_geoparquet_batch_metadata(
             _geodataframe_to_geoparquet_arrow(prepared)
         )
@@ -2227,8 +2350,8 @@ async def process_layer_partitioned_geoparquet(
                         f"of {effective_policy.max_row_group_bytes} uncompressed bytes."
                     )
                 midpoint = len(buffered) // 2
-                write_validated(partition_dir, ordered[:midpoint])
-                write_validated(partition_dir, ordered[midpoint:])
+                write_validated(partition_dir, buffered[:midpoint])
+                write_validated(partition_dir, buffered[midpoint:])
                 return
 
             state = writers.get(partition_dir)
@@ -2268,15 +2391,12 @@ async def process_layer_partitioned_geoparquet(
         finally:
             candidate.unlink(missing_ok=True)
 
-    def flush_partition(partition_dir: str) -> None:
-        nonlocal aggregate_estimated_bytes
-        buffer = buffers.pop(partition_dir, None)
-        if buffer is not None:
-            aggregate_estimated_bytes -= buffer.estimated_bytes
-            write_validated(partition_dir, buffer.features)
-
+    spool = _SpatialFeatureSpool()
     try:
-        with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+        with (
+            _with_large_geojson_support(),
+            fiona.open(str(file_path), **open_kwargs) as src,
+        ):
             current_crs = src.crs if src.crs else "EPSG:4326"
             transformer = _source_transformer(current_crs)
             source_schema = src.schema or {}
@@ -2299,9 +2419,7 @@ async def process_layer_partitioned_geoparquet(
                     )
                 )
                 if preflight.chosen_s2_level is not None:
-                    values.append(
-                        _s2_cell_for_point(point, preflight.chosen_s2_level)
-                    )
+                    values.append(_s2_cell_for_point(point, preflight.chosen_s2_level))
                 _validate_partition_value_collisions(
                     properties, partition_columns, values
                 )
@@ -2314,13 +2432,6 @@ async def process_layer_partitioned_geoparquet(
                         for column, value in zip(partition_columns, values)
                     ]
                     partition_dir = Path(*parts).as_posix()
-                buffer = buffers.setdefault(partition_dir, _FeatureBuffer([]))
-                buffer.features.append(
-                    _BufferedFeature(
-                        _feature_with_properties(prepared_feature, properties),
-                        _hilbert_like_key(point.x, point.y),
-                    )
-                )
                 feature_estimated_bytes = max(
                     1,
                     int(
@@ -2328,28 +2439,43 @@ async def process_layer_partitioned_geoparquet(
                         * preflight.estimate_multiplier
                     ),
                 )
-                buffer.estimated_bytes += feature_estimated_bytes
-                aggregate_estimated_bytes += feature_estimated_bytes
-                buffer.last_used = access_counter
-                if (
-                    buffer.estimated_bytes >= file_buffer_bytes
-                    or len(buffer.features) >= effective_policy.max_row_group_rows
-                ):
-                    flush_partition(partition_dir)
-                while (
-                    buffers
-                    and aggregate_estimated_bytes >= effective_policy.aggregate_buffer_bytes
-                ):
-                    largest_partition = max(
-                        buffers,
-                        key=lambda key: (
-                            buffers[key].estimated_bytes,
-                            -buffers[key].last_used,
-                        ),
+                spool.add(
+                    partition_dir,
+                    _hilbert_like_key(point.x, point.y),
+                    access_counter,
+                    feature_estimated_bytes,
+                    _feature_with_properties(prepared_feature, properties),
+                )
+                if access_counter % 100_000 == 0:
+                    logger.info(
+                        "Spooled %s features for global spatial sorting", access_counter
                     )
-                    flush_partition(largest_partition)
-            for partition_dir in list(buffers):
-                flush_partition(partition_dir)
+            logger.info(
+                "Indexing %s spooled features by partition and S2 Hilbert key",
+                access_counter,
+            )
+            spool.prepare()
+            for partition_dir in spool.partitions():
+                logger.info(
+                    "Writing globally spatially sorted partition %s",
+                    partition_dir or "<root>",
+                )
+                batch: list[dict[str, Any]] = []
+                batch_estimated_bytes = 0
+                for feature, feature_estimated_bytes in spool.sorted_features(
+                    partition_dir
+                ):
+                    batch.append(feature)
+                    batch_estimated_bytes += feature_estimated_bytes
+                    if (
+                        batch_estimated_bytes >= sorted_batch_bytes
+                        or len(batch) >= effective_policy.max_row_group_rows
+                    ):
+                        write_validated(partition_dir, batch)
+                        batch = []
+                        batch_estimated_bytes = 0
+                write_validated(partition_dir, batch)
+                finalize_writer(partition_dir)
             close_writers()
             normalize_single_file_paths()
             footer_size_bytes = sum(
@@ -2370,6 +2496,8 @@ async def process_layer_partitioned_geoparquet(
             candidate.unlink(missing_ok=True)
         logger.error("Error in partitioned GeoParquet processing: %s", e)
         return {"error": str(e)}
+    finally:
+        spool.close()
 
     if written_feature_count != preflight.feature_count:
         return {
@@ -2404,9 +2532,7 @@ async def process_layer_partitioned_geoparquet(
         partition_columns=partition_columns,
         hive_partition_columns=preflight.hive_partition_columns,
         chosen_s2_level=preflight.chosen_s2_level,
-        footer_size_bytes=sum(
-            output.footer_size_bytes for output in output_layouts
-        ),
+        footer_size_bytes=sum(output.footer_size_bytes for output in output_layouts),
         thresholds={
             "large_dataset_bytes": effective_policy.large_dataset_threshold_bytes,
             "estimated_compressed_bytes": preflight.estimated_compressed_bytes,
@@ -2576,7 +2702,9 @@ def _to_wgs84(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         if gdf.crs.to_epsg() == 4326:
             return gdf
     except Exception:
-        logger.warning("Unable to resolve CRS EPSG code; attempting conversion to EPSG:4326.")
+        logger.warning(
+            "Unable to resolve CRS EPSG code; attempting conversion to EPSG:4326."
+        )
     try:
         return gdf.to_crs("EPSG:4326")
     except Exception as exc:
@@ -2587,9 +2715,7 @@ def _to_wgs84(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 def _estimate_feature_size_bytes(feature: dict[str, Any]) -> int:
     try:
-        return len(
-            json.dumps(feature, ensure_ascii=False, default=str).encode("utf-8")
-        )
+        return len(json.dumps(feature, ensure_ascii=False, default=str).encode("utf-8"))
     except Exception:
         return 1024
 
@@ -2646,12 +2772,22 @@ async def process_layer_chunked(
     if layer_name and format_type in {"geopackage", "file_geodatabase"}:
         open_kwargs["layer"] = layer_name
 
-    def flush_parquet_chunk(crs: Any, features: list[dict[str, Any]], idx: int, start_id: int) -> int:
-        nonlocal bytes_per_feature, current_chunk_size, current_memory_multiplier, chunk_target_bytes
+    def flush_parquet_chunk(
+        crs: Any, features: list[dict[str, Any]], idx: int, start_id: int
+    ) -> int:
+        nonlocal \
+            bytes_per_feature, \
+            current_chunk_size, \
+            current_memory_multiplier, \
+            chunk_target_bytes
 
         if skip_parquet:
-            actual_uncompressed_bytes = sum(_estimate_feature_size_bytes(f) for f in features)
-            file_size_bytes = max(1, int(actual_uncompressed_bytes / max(1.0, current_memory_multiplier)))
+            actual_uncompressed_bytes = sum(
+                _estimate_feature_size_bytes(f) for f in features
+            )
+            file_size_bytes = max(
+                1, int(actual_uncompressed_bytes / max(1.0, current_memory_multiplier))
+            )
             chunk_bytes_per_feature = file_size_bytes / max(1, len(features))
             processed_len = len(features)
         else:
@@ -2667,19 +2803,27 @@ async def process_layer_chunked(
             geoparquet_files.append(parquet_path)
             file_size_bytes = parquet_path.stat().st_size
             chunk_bytes_per_feature = file_size_bytes / max(1, len(gdf_chunk))
-            actual_uncompressed_bytes = sum(_estimate_feature_size_bytes(f) for f in features)
+            actual_uncompressed_bytes = sum(
+                _estimate_feature_size_bytes(f) for f in features
+            )
             processed_len = len(gdf_chunk)
 
         observed_multiplier = actual_uncompressed_bytes / max(1, file_size_bytes)
-        current_memory_multiplier = (current_memory_multiplier * 0.7) + (observed_multiplier * 0.3)
+        current_memory_multiplier = (current_memory_multiplier * 0.7) + (
+            observed_multiplier * 0.3
+        )
         current_memory_multiplier = max(2.0, min(20.0, current_memory_multiplier))
 
         if bytes_per_feature is None:
             bytes_per_feature = chunk_bytes_per_feature
         else:
-            bytes_per_feature = (bytes_per_feature * 0.7) + (chunk_bytes_per_feature * 0.3)
+            bytes_per_feature = (bytes_per_feature * 0.7) + (
+                chunk_bytes_per_feature * 0.3
+            )
 
-        proposed_chunk_size = max(1, int(compressed_target_bytes / max(bytes_per_feature, 1)))
+        proposed_chunk_size = max(
+            1, int(compressed_target_bytes / max(bytes_per_feature, 1))
+        )
         chunk_target_bytes = int(compressed_target_bytes * current_memory_multiplier)
         if current_chunk_size is None:
             current_chunk_size = proposed_chunk_size
@@ -2690,7 +2834,10 @@ async def process_layer_chunked(
         return processed_len
 
     def flush_fgb_chunk(crs: Any, features: list[dict[str, Any]], idx: int) -> None:
-        nonlocal null_geometry_count, invalid_geometry_count, invalid_geometry_count_after_repair
+        nonlocal \
+            null_geometry_count, \
+            invalid_geometry_count, \
+            invalid_geometry_count_after_repair
         nonlocal dropped_for_pmtiles_count, pmtiles_write_failed
 
         gdf_chunk = gpd.GeoDataFrame.from_features(features, crs=crs)
@@ -2705,7 +2852,11 @@ async def process_layer_chunked(
             gdf_valid.to_file(fgb_path, driver="FlatGeobuf", engine="pyogrio")
             fgb_files.append(fgb_path)
         except Exception as e:
-            logger.warning("FGB write failed for chunk %s (%s). Retrying with repaired geometries.", idx, e)
+            logger.warning(
+                "FGB write failed for chunk %s (%s). Retrying with repaired geometries.",
+                idx,
+                e,
+            )
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
                 valid_mask = gdf_valid.geometry.is_valid
@@ -2731,7 +2882,10 @@ async def process_layer_chunked(
 
     try:
         if not skip_parquet:
-            with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+            with (
+                _with_large_geojson_support(),
+                fiona.open(str(file_path), **open_kwargs) as src,
+            ):
                 crs = src.crs if src.crs else "EPSG:4326"
                 src_iter = iter(src)
                 sample_features: list[dict[str, Any]] = []
@@ -2741,9 +2895,15 @@ async def process_layer_chunked(
                     except StopIteration:
                         break
                 if not sample_features:
-                    return {"geoparquet_paths": [], "pmtiles_path": None, "feature_count": 0}
+                    return {
+                        "geoparquet_paths": [],
+                        "pmtiles_path": None,
+                        "feature_count": 0,
+                    }
 
-                sample = _ensure_id_column(gpd.GeoDataFrame.from_features(sample_features, crs=crs), start_id=1)
+                sample = _ensure_id_column(
+                    gpd.GeoDataFrame.from_features(sample_features, crs=crs), start_id=1
+                )
                 sample_path = geoparquet_dir / "_estimate.parquet"
                 _write_geodataframe_parquet(
                     sample,
@@ -2753,17 +2913,28 @@ async def process_layer_chunked(
                 )
                 bytes_per_feature = sample_path.stat().st_size / max(1, len(sample))
                 sample_path.unlink(missing_ok=True)
-                current_chunk_size = max(1, int(compressed_target_bytes / max(bytes_per_feature, 1)))
-                chunk_target_bytes = int(compressed_target_bytes * current_memory_multiplier)
+                current_chunk_size = max(
+                    1, int(compressed_target_bytes / max(bytes_per_feature, 1))
+                )
+                chunk_target_bytes = int(
+                    compressed_target_bytes * current_memory_multiplier
+                )
 
                 chunk_features.extend(sample_features)
-                chunk_uncompressed_bytes = sum(_estimate_feature_size_bytes(feat) for feat in sample_features)
+                chunk_uncompressed_bytes = sum(
+                    _estimate_feature_size_bytes(feat) for feat in sample_features
+                )
                 feature_count = len(sample_features)
 
                 for feat in src_iter:
                     feat_size = _estimate_feature_size_bytes(feat)
-                    if chunk_features and (chunk_uncompressed_bytes + feat_size) > chunk_target_bytes:
-                        processed_count = flush_parquet_chunk(crs, chunk_features, chunk_num, features_processed + 1)
+                    if (
+                        chunk_features
+                        and (chunk_uncompressed_bytes + feat_size) > chunk_target_bytes
+                    ):
+                        processed_count = flush_parquet_chunk(
+                            crs, chunk_features, chunk_num, features_processed + 1
+                        )
                         features_processed += processed_count
                         chunk_features = []
                         chunk_uncompressed_bytes = 0
@@ -2771,22 +2942,31 @@ async def process_layer_chunked(
                     chunk_features.append(feat)
                     chunk_uncompressed_bytes += feat_size
                     feature_count += 1
-                    estimated_mb = (len(chunk_features) * (bytes_per_feature or 1)) / (1024 * 1024)
+                    estimated_mb = (len(chunk_features) * (bytes_per_feature or 1)) / (
+                        1024 * 1024
+                    )
                     if (
                         len(chunk_features) >= (current_chunk_size or 1)
                         or estimated_mb >= geoparquet_chunk_size_mb
                         or chunk_uncompressed_bytes >= chunk_target_bytes
                     ):
-                        processed_count = flush_parquet_chunk(crs, chunk_features, chunk_num, features_processed + 1)
+                        processed_count = flush_parquet_chunk(
+                            crs, chunk_features, chunk_num, features_processed + 1
+                        )
                         features_processed += processed_count
                         chunk_features = []
                         chunk_uncompressed_bytes = 0
                         chunk_num += 1
                 if chunk_features:
-                    processed_count = flush_parquet_chunk(crs, chunk_features, chunk_num, features_processed + 1)
+                    processed_count = flush_parquet_chunk(
+                        crs, chunk_features, chunk_num, features_processed + 1
+                    )
                     features_processed += processed_count
         else:
-            with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+            with (
+                _with_large_geojson_support(),
+                fiona.open(str(file_path), **open_kwargs) as src,
+            ):
                 src_iter = iter(src)
                 sample_features: list[dict[str, Any]] = []
                 for _ in range(estimate_sample_size):
@@ -2795,19 +2975,38 @@ async def process_layer_chunked(
                     except StopIteration:
                         break
                 if not sample_features:
-                    return {"geoparquet_paths": [], "pmtiles_path": None, "feature_count": 0}
-                sample_bytes = sum(_estimate_feature_size_bytes(f) for f in sample_features)
-                bytes_per_feature = max(1.0, sample_bytes / max(1, len(sample_features)))
-                current_chunk_size = max(1, int(compressed_target_bytes / max(bytes_per_feature, 1)))
-                chunk_target_bytes = int(compressed_target_bytes * current_memory_multiplier)
+                    return {
+                        "geoparquet_paths": [],
+                        "pmtiles_path": None,
+                        "feature_count": 0,
+                    }
+                sample_bytes = sum(
+                    _estimate_feature_size_bytes(f) for f in sample_features
+                )
+                bytes_per_feature = max(
+                    1.0, sample_bytes / max(1, len(sample_features))
+                )
+                current_chunk_size = max(
+                    1, int(compressed_target_bytes / max(bytes_per_feature, 1))
+                )
+                chunk_target_bytes = int(
+                    compressed_target_bytes * current_memory_multiplier
+                )
 
         if (feature_count > 0 or skip_parquet) and not skip_pmtiles:
             fgb_bytes_per_feature = max(bytes_per_feature or 1.0, 1.0)
             fgb_compressed_target_bytes = fgb_chunk_size_mb * 1024 * 1024
-            fgb_target_rows = max(1, int(fgb_compressed_target_bytes / max(fgb_bytes_per_feature, 1)))
-            fgb_target_bytes = int(fgb_compressed_target_bytes * current_memory_multiplier)
+            fgb_target_rows = max(
+                1, int(fgb_compressed_target_bytes / max(fgb_bytes_per_feature, 1))
+            )
+            fgb_target_bytes = int(
+                fgb_compressed_target_bytes * current_memory_multiplier
+            )
 
-            with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+            with (
+                _with_large_geojson_support(),
+                fiona.open(str(file_path), **open_kwargs) as src,
+            ):
                 crs = src.crs if src.crs else "EPSG:4326"
                 src_iter = iter(src)
                 chunk_features = []
@@ -2817,14 +3016,19 @@ async def process_layer_chunked(
                     if skip_parquet:
                         feature_count += 1
                     feat_size = _estimate_feature_size_bytes(feat)
-                    if chunk_features and (chunk_uncompressed_bytes + feat_size) > fgb_target_bytes:
+                    if (
+                        chunk_features
+                        and (chunk_uncompressed_bytes + feat_size) > fgb_target_bytes
+                    ):
                         flush_fgb_chunk(crs, chunk_features, fgb_chunk_num)
                         chunk_features = []
                         chunk_uncompressed_bytes = 0
                         fgb_chunk_num += 1
                     chunk_features.append(feat)
                     chunk_uncompressed_bytes += feat_size
-                    estimated_mb = (len(chunk_features) * fgb_bytes_per_feature) / (1024 * 1024)
+                    estimated_mb = (len(chunk_features) * fgb_bytes_per_feature) / (
+                        1024 * 1024
+                    )
                     if (
                         len(chunk_features) >= fgb_target_rows
                         or estimated_mb >= fgb_chunk_size_mb
@@ -2897,9 +3101,15 @@ async def resolve_existing_output_formats(
 ) -> dict[str, bool]:
     if not skip_format_existing:
         return {"parquet": False, "pmtiles": False, "geopackage": False}
-    parquet_exists = await check_format_folder_exists(dest_storage, dest_folder, "parquet")
-    pmtiles_exists = await check_format_folder_exists(dest_storage, dest_folder, "pmtiles")
-    geopackage_exists = await check_format_folder_exists(dest_storage, dest_folder, "geopackage")
+    parquet_exists = await check_format_folder_exists(
+        dest_storage, dest_folder, "parquet"
+    )
+    pmtiles_exists = await check_format_folder_exists(
+        dest_storage, dest_folder, "pmtiles"
+    )
+    geopackage_exists = await check_format_folder_exists(
+        dest_storage, dest_folder, "geopackage"
+    )
     return {
         "parquet": parquet_exists,
         "pmtiles": pmtiles_exists,
@@ -2919,7 +3129,9 @@ async def _upload_extracted_format_files(
     format_files_dir.mkdir(exist_ok=True)
 
     if data_file.is_dir():
-        shutil.copytree(data_file, format_files_dir / data_file.name, dirs_exist_ok=True)
+        shutil.copytree(
+            data_file, format_files_dir / data_file.name, dirs_exist_ok=True
+        )
     else:
         shutil.copy2(data_file, format_files_dir / data_file.name)
         if format_type == "shapefile":
@@ -2946,10 +3158,14 @@ async def _process_single_format_variant(
 ) -> Optional[dict[str, Any]]:
     format_dest_folder = f"{dest_folder}{format_name}/"
     skip_upload = False
-    if skip_format_existing and await check_format_folder_exists(dest_storage, dest_folder, format_name):
+    if skip_format_existing and await check_format_folder_exists(
+        dest_storage, dest_folder, format_name
+    ):
         skip_upload = True
 
-    unzip_result = await unzip_from_storage(source_storage, format_path, extract_dir / format_name)
+    unzip_result = await unzip_from_storage(
+        source_storage, format_path, extract_dir / format_name
+    )
     if unzip_result is None:
         return None
     format_type, data_file = unzip_result
@@ -2957,7 +3173,9 @@ async def _process_single_format_variant(
     if format_name == "unknown":
         format_name = format_type
         format_dest_folder = f"{dest_folder}{format_name}/"
-        if skip_format_existing and await check_format_folder_exists(dest_storage, dest_folder, format_name):
+        if skip_format_existing and await check_format_folder_exists(
+            dest_storage, dest_folder, format_name
+        ):
             skip_upload = True
 
     try:
@@ -3004,7 +3222,10 @@ async def write_geopackage_chunked(
     chunk_features: list[dict[str, Any]] = []
     chunk_uncompressed_bytes = 0
 
-    with _with_large_geojson_support(), fiona.open(str(file_path), **open_kwargs) as src:
+    with (
+        _with_large_geojson_support(),
+        fiona.open(str(file_path), **open_kwargs) as src,
+    ):
         output_crs = src.crs if src.crs else "EPSG:4326"
         src_iter = iter(src)
 
@@ -3021,16 +3242,22 @@ async def write_geopackage_chunked(
             gpd.GeoDataFrame.from_features(sample_features, crs=output_crs)
         )
         sample_path = output_gpkg.parent / f"{output_gpkg.stem}_sample.gpkg"
-        sample_gdf.to_file(str(sample_path), driver="GPKG", layer=layer_name if layer_name else None)
+        sample_gdf.to_file(
+            str(sample_path), driver="GPKG", layer=layer_name if layer_name else None
+        )
         bytes_per_feature = sample_path.stat().st_size / max(1, len(sample_features))
         sample_path.unlink(missing_ok=True)
 
         current_memory_multiplier = DEFAULT_MEMORY_ESTIMATE_MULTIPLIER
-        current_chunk_size = max(1, int(chunk_target_bytes / (bytes_per_feature * current_memory_multiplier)))
+        current_chunk_size = max(
+            1, int(chunk_target_bytes / (bytes_per_feature * current_memory_multiplier))
+        )
 
         feature_id_counter = 1
         chunk_features.extend(sample_features)
-        chunk_uncompressed_bytes = sum(_estimate_feature_size_bytes(feat) for feat in sample_features)
+        chunk_uncompressed_bytes = sum(
+            _estimate_feature_size_bytes(feat) for feat in sample_features
+        )
 
         if chunk_features:
             chunk_gdf = gpd.GeoDataFrame.from_features(chunk_features, crs=output_crs)
@@ -3048,8 +3275,13 @@ async def write_geopackage_chunked(
 
         for feat in src_iter:
             feat_size = _estimate_feature_size_bytes(feat)
-            if chunk_features and (chunk_uncompressed_bytes + feat_size) > chunk_target_bytes:
-                chunk_gdf = gpd.GeoDataFrame.from_features(chunk_features, crs=output_crs)
+            if (
+                chunk_features
+                and (chunk_uncompressed_bytes + feat_size) > chunk_target_bytes
+            ):
+                chunk_gdf = gpd.GeoDataFrame.from_features(
+                    chunk_features, crs=output_crs
+                )
                 chunk_gdf = _ensure_id_column(chunk_gdf, start_id=feature_id_counter)
                 chunk_gdf = _sanitize_geopackage_columns(chunk_gdf)
                 feature_id_counter += len(chunk_gdf)
@@ -3065,7 +3297,9 @@ async def write_geopackage_chunked(
             chunk_features.append(feat)
             chunk_uncompressed_bytes += feat_size
             if len(chunk_features) >= current_chunk_size:
-                chunk_gdf = gpd.GeoDataFrame.from_features(chunk_features, crs=output_crs)
+                chunk_gdf = gpd.GeoDataFrame.from_features(
+                    chunk_features, crs=output_crs
+                )
                 chunk_gdf = _ensure_id_column(chunk_gdf, start_id=feature_id_counter)
                 chunk_gdf = _sanitize_geopackage_columns(chunk_gdf)
                 feature_id_counter += len(chunk_gdf)
@@ -3174,7 +3408,9 @@ async def _process_dataset(
         )
 
         if not geopackage_created and not existing_outputs["geopackage"]:
-            best_format, best_format_path = _select_best_format_for_geopackage(processed_formats)
+            best_format, best_format_path = _select_best_format_for_geopackage(
+                processed_formats
+            )
             if best_format and best_format_path and best_format_path.exists():
                 format_type = best_format["format_type"]
                 layers = best_format["layers"]
@@ -3194,11 +3430,15 @@ async def _process_dataset(
                         await dest_storage.upload_file(output_gpkg, remote_path)
                         geopackage_created = True
 
-        preferred_format, preferred_data_file, preferred_format_type = _select_preferred_processing_format(
-            processed_formats
+        preferred_format, preferred_data_file, preferred_format_type = (
+            _select_preferred_processing_format(processed_formats)
         )
         if not preferred_format:
-            return {"success": False, "error": "No processable format found", "layers": []}
+            return {
+                "success": False,
+                "error": "No processable format found",
+                "layers": [],
+            }
 
         layers = preferred_format["layers"]
         skip_parquet_upload = existing_outputs["parquet"]
@@ -3252,19 +3492,33 @@ async def _process_staged_dataset_version_async(
     logical_source_key = _StorageAdapter(staging_storage).logical_key(source_keys[0])
     parts = logical_source_key.split("/")
     if len(parts) < 4:
-        return {"success": False, "error": "Source keys do not match dataset/file/version layout", "layers": []}
+        return {
+            "success": False,
+            "error": "Source keys do not match dataset/file/version layout",
+            "layers": [],
+        }
 
     dataset_slug, file_slug, version = parts[:3]
     dest_folder = f"{dataset_slug}/{file_slug}/{version}/"
 
-    with staging_storage.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
+    with staging_storage.get_local_version_dir(
+        dataset_slug, file_slug, version
+    ) as version_dir:
         version_path = Path(version_dir)
         processed_formats = _discover_staged_formats(version_path)
-        preferred_format, preferred_data_file, preferred_format_type = _select_preferred_processing_input(
-            processed_formats
+        preferred_format, preferred_data_file, preferred_format_type = (
+            _select_preferred_processing_input(processed_formats)
         )
-        if not preferred_format or preferred_data_file is None or preferred_format_type is None:
-            return {"success": False, "error": "No processable staged format found", "layers": []}
+        if (
+            not preferred_format
+            or preferred_data_file is None
+            or preferred_format_type is None
+        ):
+            return {
+                "success": False,
+                "error": "No processable staged format found",
+                "layers": [],
+            }
 
         all_layers: list[dict[str, Any]] = []
         with tempfile.TemporaryDirectory() as temp_dir:

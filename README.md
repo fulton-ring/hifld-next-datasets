@@ -46,6 +46,13 @@ are percent-escaped (`a/b` becomes `a%2Fb`). Null values use Hive's standard
 `__HIVE_DEFAULT_PARTITION__` sentinel, and a literal value equal to that
 sentinel is rejected because it would be ambiguous.
 
+Within each final Hive partition, features are globally ordered by the S2
+Hilbert curve before Parquet row groups are formed. The publisher uses a
+compressed, disk-backed SQLite spool so this ordering stays bounded in memory;
+Kubernetes steps request a 250 GiB scratch volume for the source, spool, and
+output files. Row groups target 128 MiB uncompressed and may grow only to the
+160 MiB validation ceiling before being split.
+
 Readers should provide partition types when numeric-looking values represent
 strings. For DuckDB, use for example:
 

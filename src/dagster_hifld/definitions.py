@@ -87,7 +87,7 @@ def _default_executor():
                                         "storageClassName": "dynamic-rwo",
                                         "resources": {
                                             "requests": {
-                                                "storage": "100Gi",
+                                                "storage": "250Gi",
                                             }
                                         },
                                     }
