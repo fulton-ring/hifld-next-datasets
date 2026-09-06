@@ -19,6 +19,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     discover_canonical_source_file,
+    discover_canonical_shapefile,
     discover_legacy_unknown_shapefile,
 )
 
@@ -288,6 +289,16 @@ def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
                         return gpd.read_file(str(path), engine="pyogrio")
                 except Exception:
                     continue
+        elif format_name == "shapefile":
+            path = discover_canonical_shapefile(search_dir)
+            if path is None:
+                continue
+            canonical_shapefile = path
+            try:
+                with _with_large_geojson_support():
+                    return gpd.read_file(str(path))
+            except Exception:
+                continue
         else:
             path = discover_canonical_source_file(search_dir, format_name)
             if path is None:
@@ -349,6 +360,9 @@ def _iter_geospatial_sources(version_dir: Path):
     for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
         if format_name == "file_geodatabase":
             paths = iter_file_geodatabases(version_dir / format_name)
+        elif format_name == "shapefile":
+            path = discover_canonical_shapefile(version_dir / format_name)
+            paths = [path] if path is not None else []
         else:
             path = discover_canonical_source_file(version_dir / format_name, format_name)
             paths = [path] if path is not None else []

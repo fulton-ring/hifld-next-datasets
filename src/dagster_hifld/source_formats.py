@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
@@ -85,6 +86,66 @@ def discover_canonical_source_file(
     if len(candidates) > 1:
         raise ValueError(
             f"Found multiple canonical {format_name} sources under {format_dir}."
+        )
+    return candidates[0] if candidates else None
+
+
+def discover_canonical_shapefile(format_dir: Path) -> Path | None:
+    """Return one canonical Shapefile, extracting archive sources locally."""
+    direct_candidates = (
+        sorted(
+            path
+            for path in format_dir.rglob("*")
+            if path.is_file()
+            and path.suffix.lower() == ".shp"
+            and ".extracted" not in path.relative_to(format_dir).parts
+        )
+        if format_dir.is_dir()
+        else []
+    )
+    direct = direct_candidates[0] if direct_candidates else None
+    archives = (
+        sorted(
+            path
+            for path in format_dir.rglob("*")
+            if path.is_file()
+            and path.suffix.lower() == ".zip"
+            and ".extracted" not in path.relative_to(format_dir).parts
+        )
+        if format_dir.is_dir()
+        else []
+    )
+    if len(direct_candidates) > 1 and not archives:
+        raise ValueError(
+            f"Found multiple canonical shapefile sources under {format_dir}."
+        )
+    candidates = [] if archives else ([direct] if direct is not None else [])
+    extract_root = format_dir / ".extracted"
+    for archive in archives:
+        destination = extract_root / archive.stem
+        if not destination.exists():
+            destination.mkdir(parents=True)
+            try:
+                with zipfile.ZipFile(archive) as zf:
+                    destination_resolved = destination.resolve()
+                    for member in zf.infolist():
+                        target = (destination / member.filename).resolve()
+                        if (
+                            target != destination_resolved
+                            and destination_resolved not in target.parents
+                        ):
+                            raise ValueError(f"Unsafe zip member path: {member.filename}")
+                    zf.extractall(destination)
+            except zipfile.BadZipFile as exc:
+                raise ValueError(f"Invalid shapefile ZIP: {archive}") from exc
+        candidates.extend(
+            path
+            for path in sorted(destination.rglob("*"))
+            if path.is_file() and path.suffix.lower() == ".shp"
+        )
+    if len(candidates) > 1:
+        raise ValueError(
+            f"Found multiple canonical shapefile sources under {format_dir}."
         )
     return candidates[0] if candidates else None
 

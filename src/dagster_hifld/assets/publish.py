@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
 import tempfile
+import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,6 +159,44 @@ def _copy_metadata_files(
     return copied
 
 
+def _archive_only_pairs(
+    storage: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    keys: list[str],
+) -> list[tuple[str, str]]:
+    """Select promotable keys and require one archive for multipart formats."""
+    pairs = [
+        (key, relative_key)
+        for key in keys
+        if (relative_key := _relative_version_key(
+            storage, dataset_slug, file_slug, version, key
+        ))
+    ]
+    archived_formats = {"file_geodatabase", "shapefile"}
+    for format_dir in archived_formats:
+        format_paths = [
+            relative_key
+            for _key, relative_key in pairs
+            if Path(relative_key).parts[0] == format_dir
+        ]
+        if not format_paths:
+            continue
+        archives = [path for path in format_paths if Path(path).suffix.lower() == ".zip"]
+        if len(archives) != 1:
+            raise ValueError(
+                f"Canonical {format_dir} source requires exactly one ZIP archive; "
+                f"found {len(archives)}."
+            )
+    return [
+        (key, relative_key)
+        for key, relative_key in pairs
+        if Path(relative_key).parts[0] not in archived_formats
+        or Path(relative_key).suffix.lower() == ".zip"
+    ]
+
+
 def _copy_version_files(
     staging_storage: StagingStorageResource,
     published_storage: PublishedStorageResource,
@@ -164,22 +204,18 @@ def _copy_version_files(
     file_slug: str,
     version: str,
 ) -> list[str]:
+    keys = staging_storage.list_keys(dataset_slug, file_slug, version)
+    selected_pairs = _archive_only_pairs(
+        staging_storage, dataset_slug, file_slug, version, keys
+    )
+    selected_pairs = [
+        (key, relative_key)
+        for key, relative_key in selected_pairs
+        if Path(relative_key).parts[0] != "unknown"
+    ]
     published_storage.delete_prefix(
         published_storage.build_target_location(dataset_slug, file_slug, version, "")
     )
-    keys = staging_storage.list_keys(dataset_slug, file_slug, version)
-    selected_pairs = [
-        (key, relative_key)
-        for key in keys
-        if (relative_key := _relative_version_key(
-            staging_storage,
-            dataset_slug,
-            file_slug,
-            version,
-            key,
-        ))
-        and Path(relative_key).parts[0] != "unknown"
-    ]
     copied = list(
         staging_storage.copy_keys_to(
             published_storage,
@@ -211,26 +247,16 @@ def _copy_source_format_files(
     version: str,
     keys: list[str],
 ) -> list[str]:
-    source_pairs: list[tuple[str, str]] = []
-    for key in sorted(keys):
-        rel_path = _relative_version_key(
-            staging_storage,
-            dataset_slug,
-            file_slug,
-            version,
+    source_pairs = [
+        (
             key,
+            _logical_version_key(dataset_slug, file_slug, version, rel_path),
         )
-        if not rel_path:
-            continue
-        format_dir = Path(rel_path).parts[0]
-        if format_dir not in _PROMOTED_SOURCE_FORMAT_DIRS:
-            continue
-        source_pairs.append(
-            (
-                key,
-                _logical_version_key(dataset_slug, file_slug, version, rel_path),
-            )
+        for key, rel_path in _archive_only_pairs(
+            staging_storage, dataset_slug, file_slug, version, keys
         )
+        if Path(rel_path).parts[0] in _PROMOTED_SOURCE_FORMAT_DIRS
+    ]
     copied = list(
         staging_storage.copy_keys_to(
             published_storage,
@@ -271,7 +297,8 @@ def _copy_legacy_unknown_shapefile(
         ))
     }
     if any(
-        relative_key.startswith("shapefile/") and Path(key).suffix.lower() == ".shp"
+        relative_key.startswith("shapefile/")
+        and Path(key).suffix.lower() in {".shp", ".zip"}
         for key, relative_key in relative_keys.items()
     ):
         return []
@@ -295,22 +322,28 @@ def _copy_legacy_unknown_shapefile(
     if not legacy_keys:
         return []
 
-    destination_keys = [
-        _logical_version_key(
+    shapefile_key = next(
+        key for key in legacy_keys if Path(key).suffix.lower() == ".shp"
+    )
+    archive_buffer = io.BytesIO()
+    with zipfile.ZipFile(
+        archive_buffer, "w", compression=zipfile.ZIP_DEFLATED
+    ) as archive:
+        for key in legacy_keys:
+            archive.writestr(
+                Path(key).name,
+                staging_storage.read_bytes(dataset_slug, file_slug, version, key),
+            )
+    archive_name = f"{Path(shapefile_key).stem}.zip"
+    return [
+        published_storage.write(
             dataset_slug,
             file_slug,
             version,
-            f"shapefile/{relative_keys[key].removeprefix('unknown/')}",
+            f"shapefile/{archive_name}",
+            archive_buffer.getvalue(),
         )
-        for key in legacy_keys
     ]
-    return list(
-        staging_storage.copy_keys_to(
-            published_storage,
-            list(legacy_keys),
-            destination_keys=destination_keys,
-        )
-    )
 
 
 def _storage_version_prefix(

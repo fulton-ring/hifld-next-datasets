@@ -146,6 +146,18 @@ def _collect_staging_files(primary: Path) -> list[tuple[Path, str]]:
     return files
 
 
+def _zip_source(primary: Path, destination: Path) -> None:
+    """Package a complete directory source or Shapefile dataset as one ZIP."""
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        if primary.is_dir():
+            for path in sorted(primary.rglob("*")):
+                if path.is_file():
+                    archive.write(path, path.relative_to(primary.parent).as_posix())
+        else:
+            for path in shapefile_dataset_files(primary):
+                archive.write(path, path.name)
+
+
 def _safe_layer_name(name: str) -> str:
     """Sanitise a layer name for use in file names (matches process_gcs_datasets._safe_layer_suffix)."""
     return name.replace("/", "-").replace("\\", "-").replace(" ", "_")
@@ -157,7 +169,7 @@ def download_convert_and_stage(
     version: str,
     staging_storage: StagingStorageResource,
 ) -> dict:
-    """Download all available source formats and write only extracted source files to staging."""
+    """Download sources, retaining Shapefile and FileGDB only as ZIP archives."""
     prefix = _key_prefix(staging_storage, dataset_slug, file_slug, version)
 
     with tempfile.TemporaryDirectory(prefix="hifld_dl_") as _tmp:
@@ -192,12 +204,28 @@ def download_convert_and_stage(
                 ext = dl_primary.suffix.lower() if dl_primary.is_file() else ".gdb"
                 format_name = _FORMAT_NAMES.get(ext, "source")
 
-                # Stage extracted files under {format_name}/ (mirrors bucket layout)
-                for local_path, rel_key in _collect_staging_files(dl_primary):
-                    key = f"{prefix}/{format_name}/{rel_key}"
-                    staging_storage.write_key(key, local_path.read_bytes())
+                is_zip = len(content) >= 4 and content[:4] == b"PK\x03\x04"
+                if format_name in {"shapefile", "file_geodatabase"}:
+                    archive_name = (
+                        filename
+                        if filename.lower().endswith(".zip")
+                        else f"{dl_primary.name}.zip"
+                    )
+                    archive_path = dl_dir / archive_name
+                    if not is_zip:
+                        _zip_source(dl_primary, archive_path)
+                    key = f"{prefix}/{format_name}/{archive_name}"
+                    staging_storage.write_key(
+                        key, content if is_zip else archive_path.read_bytes()
+                    )
                     written.append(key)
                     logger.info("Staged %s", key)
+                else:
+                    for local_path, rel_key in _collect_staging_files(dl_primary):
+                        key = f"{prefix}/{format_name}/{rel_key}"
+                        staging_storage.write_key(key, local_path.read_bytes())
+                        written.append(key)
+                        logger.info("Staged %s", key)
 
         if not written:
             raise ValueError(

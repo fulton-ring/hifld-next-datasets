@@ -161,6 +161,9 @@ class ConversionTests(unittest.TestCase):
             with zipfile.ZipFile(zip_path, "w") as zf:
                 zf.writestr("source.gdb/gdb", b"")
                 zf.writestr("source.gdb/a00000001.gdbtable", b"")
+            loose = fgdb_dir / "legacy.gdb"
+            loose.mkdir()
+            (loose / "a00000001.gdbtable").write_bytes(b"legacy")
 
             processed = _discover_staged_formats(version_dir)
 
@@ -182,6 +185,47 @@ class ConversionTests(unittest.TestCase):
 
             self.assertEqual(processed["shapefile"]["format_type"], "shapefile")
             self.assertEqual(processed["shapefile"]["data_file"], shapefile)
+
+    def test_discover_staged_formats_extracts_zipped_shapefile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            version_dir = Path(tmpdir)
+            source = self._write_shapefile(version_dir / "source", "stations")
+            archive_dir = version_dir / "shapefile"
+            archive_dir.mkdir()
+            with zipfile.ZipFile(archive_dir / "stations.zip", "w") as archive:
+                for path in source.parent.iterdir():
+                    archive.write(path, path.name)
+            (archive_dir / "legacy.shp").write_bytes(b"legacy")
+
+            processed = _discover_staged_formats(version_dir)
+
+            self.assertEqual(processed["shapefile"]["data_file"].name, "stations.shp")
+            self.assertIn(".extracted", processed["shapefile"]["data_file"].parts)
+            self.assertEqual(
+                _discover_staged_formats(version_dir)["shapefile"]["data_file"],
+                processed["shapefile"]["data_file"],
+            )
+
+    def test_discover_staged_formats_rejects_ambiguous_zipped_shapefiles(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive_dir = Path(tmpdir) / "shapefile"
+            archive_dir.mkdir()
+            with zipfile.ZipFile(archive_dir / "sources.zip", "w") as archive:
+                for stem in ("one", "two"):
+                    for suffix in (".shp", ".shx", ".dbf"):
+                        archive.writestr(f"{stem}{suffix}", b"data")
+
+            with self.assertRaisesRegex(ValueError, "multiple canonical shapefile"):
+                _discover_staged_formats(Path(tmpdir))
+
+    def test_discover_staged_formats_rejects_corrupt_shapefile_zip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive_dir = Path(tmpdir) / "shapefile"
+            archive_dir.mkdir()
+            (archive_dir / "source.zip").write_bytes(b"not a zip")
+
+            with self.assertRaisesRegex(ValueError, "Invalid shapefile ZIP"):
+                _discover_staged_formats(Path(tmpdir))
 
     def test_discover_staged_formats_reads_nested_case_insensitive_canonical_sources(
         self,

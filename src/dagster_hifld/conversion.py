@@ -44,6 +44,7 @@ from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     SOURCE_FORMAT_EXTENSIONS,
     discover_canonical_source_file,
+    discover_canonical_shapefile,
     discover_legacy_unknown_shapefile,
     shapefile_dataset_files,
 )
@@ -3593,6 +3594,8 @@ def _discover_staged_formats(version_dir: Path) -> dict[str, dict[str, Any]]:
                     f"Found multiple canonical {format_name} sources under {search_dir}."
                 )
             data_file = geodatabases[0] if geodatabases else None
+        elif format_name == "shapefile":
+            data_file = discover_canonical_shapefile(search_dir)
         else:
             data_file = discover_canonical_source_file(search_dir, format_name)
         if data_file is None:

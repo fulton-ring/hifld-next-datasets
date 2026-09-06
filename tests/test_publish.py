@@ -183,6 +183,33 @@ class PublishTests(unittest.TestCase):
         )
         self.assertEqual(copied, ["copied/quality_manifest.json", "copied/source.parquet"])
 
+    def test_copy_version_files_prefers_zip_and_excludes_loose_components(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            version_root = Path(staging_dir) / "dataset-a/file-a/v1"
+            gdb_dir = version_root / "file_geodatabase/source.gdb"
+            gdb_dir.mkdir(parents=True)
+            (gdb_dir / "table").write_bytes(b"loose")
+            (version_root / "file_geodatabase/source.gdb.zip").write_bytes(b"archive")
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+
+            copied = _copy_version_files(staging, published, "dataset-a", "file-a", "v1")
+
+            self.assertEqual(copied, ["dataset-a/file-a/v1/file_geodatabase/source.gdb.zip"])
+            self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1/file_geodatabase/source.gdb/table").exists())
+
+    def test_copy_version_files_validates_archive_before_deleting_published_prefix(self):
+        staging = Mock()
+        staging.list_keys.return_value = [
+            "dataset-a/file-a/v1/file_geodatabase/source.gdb/table"
+        ]
+        published = Mock()
+
+        with self.assertRaisesRegex(ValueError, "requires exactly one ZIP archive"):
+            _copy_version_files(staging, published, "dataset-a", "file-a", "v1")
+
+        published.delete_prefix.assert_not_called()
+
     def test_copy_source_format_files_promotes_only_canonical_staged_source_formats(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             version_root = (
@@ -195,6 +222,8 @@ class PublishTests(unittest.TestCase):
             (version_root / "file_geodatabase" / "stations.gdb").mkdir(parents=True)
             (version_root / "metadata").mkdir(parents=True)
             (version_root / "shapefile" / "stations.shp").write_bytes(b"shape")
+            (version_root / "shapefile" / "stations.zip").write_bytes(b"shape zip")
+            (version_root / "file_geodatabase" / "stations.gdb.zip").write_bytes(b"gdb zip")
             (version_root / "file_geodatabase" / "stations.gdb" / "a00000001.gdbtable").write_bytes(
                 b"gdb"
             )
@@ -218,8 +247,8 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(
                 sorted(copied),
                 [
-                    "amtrak-stations/amtrak-stations/run_a/file_geodatabase/stations.gdb/a00000001.gdbtable",
-                    "amtrak-stations/amtrak-stations/run_a/shapefile/stations.shp",
+                    "amtrak-stations/amtrak-stations/run_a/file_geodatabase/stations.gdb.zip",
+                    "amtrak-stations/amtrak-stations/run_a/shapefile/stations.zip",
                 ],
             )
             self.assertTrue(
@@ -229,7 +258,7 @@ class PublishTests(unittest.TestCase):
                     / "amtrak-stations"
                     / "run_a"
                     / "shapefile"
-                    / "stations.shp"
+                    / "stations.zip"
                 ).exists()
             )
             self.assertTrue(
@@ -239,8 +268,7 @@ class PublishTests(unittest.TestCase):
                     / "amtrak-stations"
                     / "run_a"
                     / "file_geodatabase"
-                    / "stations.gdb"
-                    / "a00000001.gdbtable"
+                    / "stations.gdb.zip"
                 ).exists()
             )
 
@@ -251,6 +279,7 @@ class PublishTests(unittest.TestCase):
             (version_root / "file_geodatabase" / "source.gdb.zip").write_bytes(b"zip")
             (version_root / "shapefile").mkdir()
             (version_root / "shapefile" / "source.shp").write_bytes(b"shape")
+            (version_root / "shapefile" / "source.zip").write_bytes(b"shape zip")
 
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
             published = PublishedStorageResource(local_dir=published_dir, use_local=True)
@@ -269,14 +298,14 @@ class PublishTests(unittest.TestCase):
                 copied,
                 [
                     "dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip",
-                    "dataset-a/file-a/v1.0.0/shapefile/source.shp",
+                    "dataset-a/file-a/v1.0.0/shapefile/source.zip",
                 ],
             )
             self.assertTrue(
                 (Path(published_dir) / "dataset-a/file-a/v1.0.0/file_geodatabase/source.gdb.zip").exists()
             )
             self.assertTrue(
-                (Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.shp").exists()
+                (Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.zip").exists()
             )
 
     def test_copy_source_format_files_promotes_retained_shapefile_with_sidecars(self):
@@ -287,6 +316,7 @@ class PublishTests(unittest.TestCase):
             (version_root / "geoparquet").mkdir()
             for suffix in (".shp", ".shx", ".dbf", ".prj"):
                 (version_root / "shapefile" / f"source{suffix}").write_bytes(suffix.encode())
+            (version_root / "shapefile" / "source.zip").write_bytes(b"shape zip")
             (version_root / "unknown" / "legacy.shp").write_bytes(b"legacy")
             (version_root / "geoparquet" / "source.parquet").write_bytes(b"derived")
 
@@ -305,10 +335,7 @@ class PublishTests(unittest.TestCase):
 
             self.assertEqual(
                 copied,
-                [
-                    f"dataset-a/file-a/v1.0.0/shapefile/source{suffix}"
-                    for suffix in (".dbf", ".prj", ".shp", ".shx")
-                ],
+                ["dataset-a/file-a/v1.0.0/shapefile/source.zip"],
             )
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/geoparquet").exists())
@@ -339,7 +366,7 @@ class PublishTests(unittest.TestCase):
             self.assertTrue(all("/shapefile/source." in key for key in copied))
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
             self.assertTrue(
-                (Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.shp").exists()
+                (Path(published_dir) / "dataset-a/file-a/v1.0.0/shapefile/source.zip").exists()
             )
 
     def test_copy_version_files_canonicalizes_legacy_unknown_without_copying_unknown(self):
@@ -359,7 +386,7 @@ class PublishTests(unittest.TestCase):
 
             copied = _copy_version_files(staging, published, "dataset-a", "file-a", "v1.0.0")
 
-            self.assertIn("dataset-a/file-a/v1.0.0/shapefile/source.shp", copied)
+            self.assertIn("dataset-a/file-a/v1.0.0/shapefile/source.zip", copied)
             self.assertIn("dataset-a/file-a/v1.0.0/metadata/quality_manifest.json", copied)
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
 
@@ -415,6 +442,9 @@ class PublishTests(unittest.TestCase):
                     f"shapefile/source{suffix}",
                     suffix.encode(),
                 )
+            staging.write(
+                "dataset-a", "file-a", "v1.0.0", "shapefile/source.zip", b"zip"
+            )
 
             outputs = _copy_source_files(
                 staging,
@@ -450,7 +480,7 @@ class PublishTests(unittest.TestCase):
                 raise AssertionError("legacy canonicalization must not materialize the version")
 
             def read_bytes(self, *args, **kwargs):
-                raise AssertionError("legacy canonicalization must use storage-side copies")
+                return b"sidecar"
 
         staging = FakeStaging()
         published = Mock(prefix="published-prefix")
@@ -471,19 +501,8 @@ class PublishTests(unittest.TestCase):
             keys,
         )
 
-        self.assertEqual(
-            getattr(staging, "copied_keys", []),
-            [keys[2], keys[0], keys[1]],
-        )
-        self.assertEqual(
-            staging.destination_keys,
-            [
-                "dataset-a/file-a/v1.0.0/shapefile/nested/source.dbf",
-                "dataset-a/file-a/v1.0.0/shapefile/nested/source.shp",
-                "dataset-a/file-a/v1.0.0/shapefile/nested/source.shx",
-            ],
-        )
-        self.assertEqual(len(copied), 3)
+        self.assertEqual(len(copied), 1)
+        published.write.assert_called_once()
 
     def test_copy_source_format_files_reports_and_skips_ambiguous_legacy_unknown(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:

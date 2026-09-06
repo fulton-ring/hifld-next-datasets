@@ -795,8 +795,13 @@ class StagingStorageResourceTests(unittest.TestCase):
             version_root = (
                 Path(tmpdir) / "amtrak-stations" / "amtrak-stations" / "run_test"
             )
-            self.assertTrue((version_root / "shapefile" / "stations.shp").exists())
-            self.assertTrue((version_root / "shapefile" / "stations.dbf").exists())
+            self.assertTrue((version_root / "shapefile" / "amtrak.zip").exists())
+            self.assertFalse((version_root / "shapefile" / "stations.shp").exists())
+            with zipfile.ZipFile(version_root / "shapefile" / "amtrak.zip") as archive:
+                self.assertEqual(
+                    sorted(archive.namelist()),
+                    ["stations.dbf", "stations.shp", "stations.shx"],
+                )
             self.assertFalse((version_root / "parquet").exists())
             self.assertFalse((version_root / "pmtiles").exists())
             self.assertEqual(result["dataset_slug"], "amtrak-stations")
