@@ -30,6 +30,7 @@ from dagster_hifld.conversion import (
     _bounded_compression_sample,
     _build_tippecanoe_cmd,
     _canonicalize_geoparquet_batch_metadata,
+    _coerce_gdf_to_fiona_schema,
     _create_and_upload_pmtiles,
     _detect_format_from_path,
     _discover_staged_formats,
@@ -1476,6 +1477,35 @@ class ConversionTests(unittest.TestCase):
 
             self.assertNotIn("error", result)
             self.assertEqual(calculate_cells.call_count, 0)
+
+    def test_schema_coercion_orders_sparse_and_reordered_batches(self):
+        schema = {"properties": {"MINUTE": "int", "SECOND": "float", "NAME": "str"}}
+        tables = []
+        for properties in (
+            {"MINUTE": 1, "SECOND": 2.5, "NAME": "first"},
+            {"NAME": "second", "MINUTE": 2, "SECOND": None},
+            {"MINUTE": 3, "NAME": "third"},
+        ):
+            frame = gpd.GeoDataFrame.from_features(
+                [
+                    {
+                        "type": "Feature",
+                        "properties": properties,
+                        "geometry": {"type": "Point", "coordinates": [0, 0]},
+                    }
+                ],
+                crs="EPSG:4326",
+            )
+            prepared = _coerce_gdf_to_fiona_schema(frame, schema)
+            self.assertEqual(
+                list(prepared.columns), ["geometry", "MINUTE", "SECOND", "NAME"]
+            )
+            self.assertEqual(prepared.crs, frame.crs)
+            tables.append(_geodataframe_to_geoparquet_arrow(prepared))
+        combined = pa.concat_tables(tables)
+        self.assertEqual(combined["SECOND"].to_pylist(), [2.5, None, None])
+        self.assertEqual(combined["NAME"].to_pylist(), ["first", "second", "third"])
+        self.assertGreater(_zstd_compression_ratio(tables), 0)
 
     def test_preflight_coerces_sparse_batches_to_source_schema(self):
         with tempfile.TemporaryDirectory() as tmpdir:

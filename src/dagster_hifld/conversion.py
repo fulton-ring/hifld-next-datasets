@@ -1249,7 +1249,7 @@ def _coerce_gdf_to_fiona_schema(
     gdf: gpd.GeoDataFrame,
     schema: dict[str, Any],
 ) -> gpd.GeoDataFrame:
-    """Keep streaming chunks from inferring different Arrow types for sparse fields."""
+    """Keep streaming chunks in source order with stable types for sparse fields."""
     properties = schema.get("properties") or {}
     if not properties:
         return gdf
@@ -1257,7 +1257,7 @@ def _coerce_gdf_to_fiona_schema(
     coerced = gdf.copy()
     for column, raw_type in properties.items():
         if column not in coerced.columns:
-            continue
+            coerced[column] = pd.Series(None, index=coerced.index, dtype="object")
         fiona_type = str(raw_type).lower()
         try:
             list_type = _fiona_list_arrow_type(fiona_type)
@@ -1301,7 +1301,14 @@ def _coerce_gdf_to_fiona_schema(
             logger.debug(
                 "Could not coerce column %s to Fiona type %s", column, raw_type
             )
-    return coerced
+    geometry_column = coerced.geometry.name
+    ordered_columns = [geometry_column] + [
+        column for column in properties if column != geometry_column
+    ]
+    ordered_columns.extend(
+        column for column in coerced.columns if column not in ordered_columns
+    )
+    return coerced[ordered_columns]
 
 
 def _fiona_list_arrow_type(fiona_type: str) -> pa.DataType | None:
