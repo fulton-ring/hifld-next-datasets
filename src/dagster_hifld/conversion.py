@@ -2739,9 +2739,12 @@ async def _create_and_upload_pmtiles(
     try:
         return await dest_storage.upload_file(pmtiles_path, remote_path)
     except Exception as exc:
+        elapsed = time.monotonic() - started_at
         raise PMTilesGenerationError(
             f"PMTiles upload failed for layer {layer_filename!r}; "
-            f"local_path={pmtiles_path}; remote_path={remote_path}"
+            f"command={command_text}; {len(fgb_files)} input(s), {fgb_bytes} bytes; "
+            f"elapsed={elapsed:.1f}s; exit code 0; output tail={stderr_tail!r}; "
+            f"local_path={pmtiles_path}; remote_path={remote_path}; error={exc}"
         ) from exc
 
 
@@ -2817,6 +2820,11 @@ async def process_layer_chunked(
     mem_before = get_memory_usage_mb()
     driver = _get_fiona_driver(format_type)
     if not driver:
+        if not skip_pmtiles:
+            raise PMTilesGenerationError(
+                f"PMTiles preparation failed for layer {layer_filename!r}: "
+                f"unsupported streaming format {format_type!r}"
+            )
         return {"error": f"Unsupported format for streaming: {format_type}"}
 
     geoparquet_dir = work_dir / "geoparquet"
@@ -2977,6 +2985,12 @@ async def process_layer_chunked(
                     except StopIteration:
                         break
                 if not sample_features:
+                    geometry_type = src.schema.get("geometry")
+                    if not skip_pmtiles and geometry_type not in {None, "None"}:
+                        raise PMTilesGenerationError(
+                            f"PMTiles preparation failed for layer {layer_filename!r}: "
+                            f"spatial source ({geometry_type}) contains zero features"
+                        )
                     return {
                         "geoparquet_paths": [],
                         "pmtiles_path": None,
@@ -3057,6 +3071,12 @@ async def process_layer_chunked(
                     except StopIteration:
                         break
                 if not sample_features:
+                    geometry_type = src.schema.get("geometry")
+                    if geometry_type not in {None, "None"}:
+                        raise PMTilesGenerationError(
+                            f"PMTiles preparation failed for layer {layer_filename!r}: "
+                            f"spatial source ({geometry_type}) contains zero features"
+                        )
                     return {
                         "geoparquet_paths": [],
                         "pmtiles_path": None,
