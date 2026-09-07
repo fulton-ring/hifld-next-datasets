@@ -78,7 +78,7 @@ class ConversionTests(unittest.TestCase):
                 raise RuntimeError("bad crs")
 
         gdf = Mock()
-        converted = Mock()
+        converted = gpd.GeoDataFrame(geometry=[Point(0, 0)], crs="EPSG:4326")
         gdf.crs = BadCRS()
         gdf.to_crs.return_value = converted
 

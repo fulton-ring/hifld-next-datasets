@@ -2714,6 +2714,22 @@ async def _create_and_upload_pmtiles(
             cwd=str(pmtiles_path.parent),
             env=env,
         )
+        zoom_guess_error = (
+            "Can't guess maxzoom (-zg) without at least two distinct feature locations"
+        )
+        if returncode == 110 and stderr_tail.splitlines()[-1:] == [zoom_guess_error]:
+            logger.warning(
+                "tippecanoe could not infer maxzoom for %s; retrying with maximum zoom 14",
+                layer_filename,
+            )
+            pmtiles_path.unlink(missing_ok=True)
+            cmd = [argument for argument in cmd if argument != "-zg"]
+            command_text = shlex.join(cmd)
+            returncode, stderr_tail = _run_streaming_command(
+                cmd,
+                cwd=str(pmtiles_path.parent),
+                env=env,
+            )
     except FileNotFoundError as exc:
         elapsed = time.monotonic() - started_at
         raise PMTilesGenerationError(
@@ -2774,21 +2790,35 @@ def _repair_geometries_for_fgb(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def _to_wgs84(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Transform declared CRS and reject unusable longitude/latitude output."""
     if gdf.crs is None:
-        return gdf.set_crs("EPSG:4326")
-    try:
-        if gdf.crs.to_epsg() == 4326:
-            return gdf
-    except Exception:
-        logger.warning(
-            "Unable to resolve CRS EPSG code; attempting conversion to EPSG:4326."
+        result = gdf.set_crs("EPSG:4326")
+    else:
+        try:
+            is_wgs84 = gdf.crs.to_epsg() == 4326
+        except Exception:
+            logger.warning(
+                "Unable to resolve CRS EPSG code; attempting conversion to EPSG:4326."
+            )
+            is_wgs84 = False
+        try:
+            result = gdf if is_wgs84 else gdf.to_crs("EPSG:4326")
+        except Exception as exc:
+            raise ValueError(
+                f"Failed to convert source CRS {gdf.crs} to EPSG:4326: {exc}"
+            ) from exc
+    bounds = _filter_valid_geometries(result).bounds
+    if not (
+        bounds.minx.ge(-180)
+        & bounds.maxx.le(180)
+        & bounds.miny.ge(-90)
+        & bounds.maxy.le(90)
+    ).all():
+        raise ValueError(
+            "Invalid longitude/latitude coordinates after CRS conversion; "
+            "verify the source CRS against authoritative metadata before retrying."
         )
-    try:
-        return gdf.to_crs("EPSG:4326")
-    except Exception as exc:
-        logger.warning("Failed to convert CRS to EPSG:4326: %s", exc)
-        return gdf
-    return gdf
+    return result
 
 
 def _estimate_feature_size_bytes(feature: dict[str, Any]) -> int:
