@@ -2839,6 +2839,7 @@ async def process_layer_chunked(
     invalid_geometry_count = 0
     invalid_geometry_count_after_repair = 0
     dropped_for_pmtiles_count = 0
+    source_is_nonspatial = False
 
     bytes_per_feature: Optional[float] = None
     current_chunk_size: Optional[int] = None
@@ -2977,6 +2978,9 @@ async def process_layer_chunked(
                 fiona.open(str(file_path), **open_kwargs) as src,
             ):
                 crs = src.crs if src.crs else "EPSG:4326"
+                source_is_nonspatial = getattr(src, "schema", {}).get(
+                    "geometry", "Unknown"
+                ) in {None, "None"}
                 src_iter = iter(src)
                 sample_features: list[dict[str, Any]] = []
                 for _ in range(estimate_sample_size):
@@ -3063,6 +3067,9 @@ async def process_layer_chunked(
                 _with_large_geojson_support(),
                 fiona.open(str(file_path), **open_kwargs) as src,
             ):
+                source_is_nonspatial = getattr(src, "schema", {}).get(
+                    "geometry", "Unknown"
+                ) in {None, "None"}
                 src_iter = iter(src)
                 sample_features: list[dict[str, Any]] = []
                 for _ in range(estimate_sample_size):
@@ -3095,7 +3102,11 @@ async def process_layer_chunked(
                     compressed_target_bytes * current_memory_multiplier
                 )
 
-        if (feature_count > 0 or skip_parquet) and not skip_pmtiles:
+        if (
+            (feature_count > 0 or skip_parquet)
+            and not skip_pmtiles
+            and not source_is_nonspatial
+        ):
             fgb_bytes_per_feature = max(bytes_per_feature or 1.0, 1.0)
             fgb_compressed_target_bytes = fgb_chunk_size_mb * 1024 * 1024
             fgb_target_rows = max(
@@ -3161,7 +3172,7 @@ async def process_layer_chunked(
             )
 
         pmtiles_path = None
-        if not skip_pmtiles:
+        if not skip_pmtiles and not source_is_nonspatial:
             pmtiles_path = await _create_and_upload_pmtiles(
                 dest_storage=dest_storage,
                 fgb_files=fgb_files,

@@ -2883,6 +2883,100 @@ class ConversionTests(unittest.TestCase):
                         )
                     )
 
+    def test_nonspatial_table_skips_requested_pmtiles_with_or_without_parquet(self):
+        feature = {
+            "type": "Feature",
+            "properties": {"name": "A"},
+            "geometry": None,
+        }
+
+        class FakeCollection:
+            crs = None
+            schema = {"geometry": "None"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return iter([feature])
+
+        for skip_parquet in (False, True):
+            with self.subTest(skip_parquet=skip_parquet):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    with (
+                        patch(
+                            "dagster_hifld.conversion.fiona.open",
+                            return_value=FakeCollection(),
+                        ),
+                        patch(
+                            "dagster_hifld.conversion._write_geodataframe_parquet",
+                            side_effect=lambda _gdf, path, **_kwargs: path.write_bytes(
+                                b"parquet"
+                            ),
+                        ),
+                        patch(
+                            "dagster_hifld.conversion._upload_geoparquet_files",
+                            return_value=[],
+                        ),
+                        patch(
+                            "dagster_hifld.conversion._create_and_upload_pmtiles"
+                        ) as create_pmtiles,
+                    ):
+                        result = asyncio.run(
+                            process_layer_chunked(
+                                file_path=Path("table.gpkg"),
+                                format_type="geopackage",
+                                layer_name="table",
+                                layer_filename="table",
+                                dest_folder="dest/",
+                                dest_storage=Mock(),
+                                work_dir=Path(tmpdir),
+                                skip_parquet=skip_parquet,
+                            )
+                        )
+                    self.assertIsNone(result["pmtiles_path"])
+                    create_pmtiles.assert_not_called()
+
+    def test_empty_declared_spatial_source_raises_for_requested_pmtiles(self):
+        class FakeCollection:
+            crs = "EPSG:4326"
+            schema = {"geometry": "Point"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return iter(())
+
+        for skip_parquet in (False, True):
+            with self.subTest(skip_parquet=skip_parquet):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    with patch(
+                        "dagster_hifld.conversion.fiona.open",
+                        return_value=FakeCollection(),
+                    ):
+                        with self.assertRaisesRegex(
+                            RuntimeError, "spatial source.*zero features"
+                        ):
+                            asyncio.run(
+                                process_layer_chunked(
+                                    file_path=Path("empty.gpkg"),
+                                    format_type="geopackage",
+                                    layer_name=None,
+                                    layer_filename="empty",
+                                    dest_folder="dest/",
+                                    dest_storage=Mock(),
+                                    work_dir=Path(tmpdir),
+                                    skip_parquet=skip_parquet,
+                                )
+                            )
+
 
 
 if __name__ == "__main__":
