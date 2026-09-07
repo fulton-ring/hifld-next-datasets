@@ -1,6 +1,9 @@
 import asyncio
+import io
 import json
 import random
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -40,6 +43,7 @@ from dagster_hifld.conversion import (
     _layer_output_namespace,
     _policy_s2_levels,
     _row_group_uncompressed_sizes,
+    _run_streaming_command,
     _s2_cells_for_point,
     _select_s2_level,
     geoparquet_policy_for,
@@ -346,19 +350,19 @@ class ConversionTests(unittest.TestCase):
                 "dagster_hifld.conversion.fiona.open",
                 side_effect=RuntimeError("stop before real I/O"),
             ):
-                result = asyncio.run(
-                    process_layer_chunked(
-                        file_path=Path("source.gpkg"),
-                        format_type="geopackage",
-                        layer_name=None,
-                        layer_filename="source",
-                        dest_folder="dataset/file/v1",
-                        dest_storage=Mock(),
-                        work_dir=work_dir,
+                with self.assertRaisesRegex(RuntimeError, "PMTiles preparation"):
+                    asyncio.run(
+                        process_layer_chunked(
+                            file_path=Path("source.gpkg"),
+                            format_type="geopackage",
+                            layer_name=None,
+                            layer_filename="source",
+                            dest_folder="dataset/file/v1",
+                            dest_storage=Mock(),
+                            work_dir=work_dir,
+                        )
                     )
-                )
 
-            self.assertIn("error", result)
             self.assertTrue((work_dir / "geoparquet").is_dir())
             self.assertTrue((work_dir / "pmtiles").is_dir())
 
@@ -460,20 +464,20 @@ class ConversionTests(unittest.TestCase):
                     side_effect=RuntimeError("stop before real I/O"),
                 ),
             ):
-                result = asyncio.run(
-                    process_layer_chunked(
-                        file_path=Path("source.geojson"),
-                        format_type="geojson",
-                        layer_name=None,
-                        layer_filename="source",
-                        dest_folder="dataset/file/v1",
-                        dest_storage=Mock(),
-                        work_dir=Path(tmpdir),
-                        skip_parquet=True,
+                with self.assertRaisesRegex(RuntimeError, "PMTiles preparation"):
+                    asyncio.run(
+                        process_layer_chunked(
+                            file_path=Path("source.geojson"),
+                            format_type="geojson",
+                            layer_name=None,
+                            layer_filename="source",
+                            dest_folder="dataset/file/v1",
+                            dest_storage=Mock(),
+                            work_dir=Path(tmpdir),
+                            skip_parquet=True,
+                        )
                     )
-                )
 
-        self.assertIn("error", result)
         self.assertIn({"OGR_GEOJSON_MAX_OBJ_SIZE": "0"}, env_calls)
 
     def test_write_geopackage_chunked_applies_large_geojson_config(self):
@@ -2698,10 +2702,10 @@ class ConversionTests(unittest.TestCase):
             fgb_path = Path(tmpdir) / "pmtiles" / "chunk-0.fgb"
             fgb_path.parent.mkdir(parents=True)
             fgb_path.write_bytes(b"fgb")
-            pmtiles_path.write_bytes(b"pmtiles")
-
             proc = Mock()
-            proc.wait.return_value = 0
+            proc.stdout = io.BytesIO(b"progress\n")
+            proc.stderr = io.BytesIO(b"")
+            proc.wait.side_effect = lambda: (pmtiles_path.write_bytes(b"pmtiles"), 0)[1]
             with patch(
                 "dagster_hifld.conversion.subprocess.Popen", return_value=proc
             ) as popen:
@@ -2718,10 +2722,167 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(result, "dataset/file/v1.0.0/pmtiles/layer.pmtiles")
             _cmd, kwargs = popen.call_args
             self.assertNotIn("capture_output", kwargs)
-            self.assertEqual(kwargs["stdout"], None)
-            self.assertEqual(kwargs["stderr"], None)
+            self.assertEqual(kwargs["stdout"], subprocess.PIPE)
+            self.assertEqual(kwargs["stderr"], subprocess.STDOUT)
             self.assertEqual(kwargs["cwd"], str(pmtiles_path.parent))
             self.assertEqual(kwargs["env"]["TMPDIR"], str(pmtiles_path.parent))
+
+    def test_pmtiles_nonzero_exit_raises_context_and_does_not_upload(self):
+        storage = Mock()
+        storage.upload_file = AsyncMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            fgb_path = root / "chunk.fgb"
+            fgb_path.write_bytes(b"1234")
+            proc = Mock(stdout=io.BytesIO(b"working\nfatal detail\n"))
+            proc.wait.return_value = 110
+            with patch("dagster_hifld.conversion.subprocess.Popen", return_value=proc):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    r"tippecanoe.*layer.*1 input.*4 bytes.*exit code 110.*fatal detail",
+                ):
+                    asyncio.run(
+                        _create_and_upload_pmtiles(
+                            storage, [fgb_path], root / "layer.pmtiles", "dest/", "layer"
+                        )
+                    )
+        storage.upload_file.assert_not_awaited()
+
+    def test_pmtiles_missing_executable_raises_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            fgb_path = root / "chunk.fgb"
+            fgb_path.write_bytes(b"fgb")
+            with patch(
+                "dagster_hifld.conversion.subprocess.Popen",
+                side_effect=FileNotFoundError("tippecanoe"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "tippecanoe.*not found.*layer"):
+                    asyncio.run(
+                        _create_and_upload_pmtiles(
+                            Mock(), [fgb_path], root / "layer.pmtiles", "dest/", "layer"
+                        )
+                    )
+
+    def test_pmtiles_success_without_nonempty_output_raises(self):
+        for existing_bytes in (None, b""):
+            with self.subTest(existing_bytes=existing_bytes):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    root = Path(tmpdir)
+                    fgb_path = root / "chunk.fgb"
+                    fgb_path.write_bytes(b"fgb")
+                    output = root / "layer.pmtiles"
+                    if existing_bytes is not None:
+                        output.write_bytes(existing_bytes)
+                    proc = Mock(stdout=io.BytesIO(), stderr=io.BytesIO())
+                    proc.wait.return_value = 0
+                    with patch(
+                        "dagster_hifld.conversion.subprocess.Popen", return_value=proc
+                    ):
+                        with self.assertRaisesRegex(RuntimeError, "missing or empty output"):
+                            asyncio.run(
+                                _create_and_upload_pmtiles(
+                                    Mock(), [fgb_path], output, "dest/", "layer"
+                                )
+                            )
+
+    def test_pmtiles_upload_failure_propagates(self):
+        class FailingStorage:
+            async def upload_file(self, _local_path, _remote_path):
+                raise OSError("upload unavailable")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            fgb_path = root / "chunk.fgb"
+            fgb_path.write_bytes(b"fgb")
+            output = root / "layer.pmtiles"
+            proc = Mock(stdout=io.BytesIO(), stderr=io.BytesIO())
+            proc.wait.side_effect = lambda: (output.write_bytes(b"pmtiles"), 0)[1]
+            with patch("dagster_hifld.conversion.subprocess.Popen", return_value=proc):
+                with self.assertRaisesRegex(RuntimeError, "upload failed.*layer"):
+                    asyncio.run(
+                        _create_and_upload_pmtiles(
+                            FailingStorage(), [fgb_path], output, "dest/", "layer"
+                        )
+                    )
+
+    def test_pmtiles_requested_with_no_fgb_inputs_raises(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaisesRegex(RuntimeError, "zero FlatGeobuf inputs"):
+                asyncio.run(
+                    _create_and_upload_pmtiles(
+                        Mock(), [], Path(tmpdir) / "layer.pmtiles", "dest/", "layer"
+                    )
+                )
+
+    def test_streaming_command_retains_only_bounded_output_tail(self):
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('x' * 100000 + 'TRAILING-DIAGNOSTIC')",
+        ]
+
+        with patch("sys.stderr", new=io.StringIO()):
+            returncode, output_tail = _run_streaming_command(
+                command, cwd=None, env=None
+            )
+
+        self.assertEqual(returncode, 0)
+        self.assertLessEqual(len(output_tail.encode("utf-8")), 16 * 1024)
+        self.assertTrue(output_tail.endswith("TRAILING-DIAGNOSTIC"))
+
+    def test_failed_fgb_repair_export_raises_original_and_retry_context(self):
+        feature = {
+            "type": "Feature",
+            "properties": {"name": "A"},
+            "geometry": {"type": "Point", "coordinates": [0, 0]},
+        }
+
+        class FakeCollection:
+            crs = "EPSG:4326"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return iter([feature])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch(
+                    "dagster_hifld.conversion.fiona.open",
+                    return_value=FakeCollection(),
+                ),
+                patch.object(
+                    gpd.GeoDataFrame,
+                    "to_file",
+                    side_effect=[OSError("initial export"), OSError("repair export")],
+                ),
+                patch(
+                    "dagster_hifld.conversion._repair_geometries_for_fgb",
+                    side_effect=lambda gdf: gdf,
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    r"layer 'source'.*chunk 0.*1 feature.*initial export.*repair export",
+                ):
+                    asyncio.run(
+                        process_layer_chunked(
+                            file_path=Path("source.geojson"),
+                            format_type="geojson",
+                            layer_name=None,
+                            layer_filename="source",
+                            dest_folder="dest/",
+                            dest_storage=Mock(),
+                            work_dir=Path(tmpdir),
+                            skip_parquet=True,
+                        )
+                    )
+
 
 
 if __name__ == "__main__":

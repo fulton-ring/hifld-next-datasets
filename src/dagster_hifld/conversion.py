@@ -13,10 +13,13 @@ import logging
 import os
 import pickle
 import random
+import shlex
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
+import time
 import warnings
 import zipfile
 import zlib
@@ -87,6 +90,11 @@ DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_BYTES = 64 * 1024 * 1024
 DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLES = 64
 DEFAULT_GEOPARQUET_COMPRESSION_SAMPLE_TABLE_BYTES = 1 * 1024 * 1024
 DEFAULT_S2_CANDIDATE_LEVELS = tuple(range(2, 17))
+TIPPECANOE_ERROR_TAIL_BYTES = 16 * 1024
+
+
+class PMTilesGenerationError(RuntimeError):
+    """Requested PMTiles output could not be created or uploaded."""
 
 
 @dataclass(frozen=True)
@@ -2614,6 +2622,45 @@ async def _upload_geoparquet_files(
     return paths
 
 
+def _run_streaming_command(
+    command: list[str], cwd: str | None, env: dict[str, str] | None
+) -> tuple[int, str]:
+    """Run a command while logging output and retaining bounded stderr context."""
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    stderr_tail = bytearray()
+    try:
+        if process.stdout is not None:
+            while chunk := process.stdout.read1(4096):
+                if hasattr(sys.stderr, "buffer"):
+                    sys.stderr.buffer.write(chunk)
+                else:
+                    sys.stderr.write(chunk.decode(errors="replace"))
+                sys.stderr.flush()
+                stderr_tail.extend(chunk)
+                if len(stderr_tail) > TIPPECANOE_ERROR_TAIL_BYTES:
+                    del stderr_tail[:-TIPPECANOE_ERROR_TAIL_BYTES]
+        returncode = process.wait()
+    except BaseException:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        raise
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+    return returncode, stderr_tail.decode(errors="replace")
+
+
 def _build_tippecanoe_cmd(
     pmtiles_path: Path, layer_filename: str, fgb_files: list[Path]
 ) -> list[str]:
@@ -2643,39 +2690,59 @@ async def _create_and_upload_pmtiles(
     layer_filename: str,
 ) -> Optional[str]:
     if not fgb_files:
-        return None
-    try:
-        cmd = _build_tippecanoe_cmd(pmtiles_path, layer_filename, fgb_files)
-        fgb_bytes = sum(path.stat().st_size for path in fgb_files if path.exists())
-        logger.info(
-            "Starting tippecanoe for %s with %s FGB chunk(s), %.1f MiB input, temp dir %s",
-            layer_filename,
-            len(fgb_files),
-            fgb_bytes / (1024 * 1024),
-            pmtiles_path.parent,
+        raise PMTilesGenerationError(
+            f"tippecanoe PMTiles generation for layer {layer_filename!r} received "
+            "zero FlatGeobuf inputs"
         )
-        env = os.environ.copy()
-        env["TMPDIR"] = str(pmtiles_path.parent)
-        process = subprocess.Popen(
+    cmd = _build_tippecanoe_cmd(pmtiles_path, layer_filename, fgb_files)
+    fgb_bytes = sum(path.stat().st_size for path in fgb_files if path.exists())
+    started_at = time.monotonic()
+    command_text = shlex.join(cmd)
+    pmtiles_path.unlink(missing_ok=True)
+    logger.info(
+        "Starting tippecanoe for %s with %s FGB chunk(s), %.1f MiB input, temp dir %s",
+        layer_filename,
+        len(fgb_files),
+        fgb_bytes / (1024 * 1024),
+        pmtiles_path.parent,
+    )
+    env = os.environ.copy()
+    env["TMPDIR"] = str(pmtiles_path.parent)
+    try:
+        returncode, stderr_tail = _run_streaming_command(
             cmd,
             cwd=str(pmtiles_path.parent),
             env=env,
-            stdout=None,
-            stderr=None,
-            text=True,
         )
-        returncode = process.wait()
-        if returncode != 0:
-            logger.warning("tippecanoe failed with exit code %s", returncode)
-            return None
-        remote_path = f"{dest_folder}pmtiles/{layer_filename}.pmtiles"
+    except FileNotFoundError as exc:
+        elapsed = time.monotonic() - started_at
+        raise PMTilesGenerationError(
+            f"tippecanoe executable not found for layer {layer_filename!r}; "
+            f"command={command_text}; {len(fgb_files)} input(s), {fgb_bytes} bytes; "
+            f"elapsed={elapsed:.1f}s"
+        ) from exc
+    elapsed = time.monotonic() - started_at
+    if returncode != 0:
+        raise PMTilesGenerationError(
+            f"tippecanoe failed for layer {layer_filename!r}; command={command_text}; "
+            f"{len(fgb_files)} input(s), {fgb_bytes} bytes; elapsed={elapsed:.1f}s; "
+            f"exit code {returncode}; output tail={stderr_tail!r}"
+        )
+    if not pmtiles_path.is_file() or pmtiles_path.stat().st_size == 0:
+        raise PMTilesGenerationError(
+            f"tippecanoe failed for layer {layer_filename!r}; command={command_text}; "
+            f"{len(fgb_files)} input(s), {fgb_bytes} bytes; elapsed={elapsed:.1f}s; "
+            "exit code 0; missing or empty output; "
+            f"output tail={stderr_tail!r}"
+        )
+    remote_path = f"{dest_folder}pmtiles/{layer_filename}.pmtiles"
+    try:
         return await dest_storage.upload_file(pmtiles_path, remote_path)
-    except FileNotFoundError:
-        logger.warning("tippecanoe not found, skipping PMTiles creation")
-        return None
-    except Exception as e:
-        logger.warning("PMTiles creation failed: %s", e)
-        return None
+    except Exception as exc:
+        raise PMTilesGenerationError(
+            f"PMTiles upload failed for layer {layer_filename!r}; "
+            f"local_path={pmtiles_path}; remote_path={remote_path}"
+        ) from exc
 
 
 def _filter_valid_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -2764,7 +2831,6 @@ async def process_layer_chunked(
     invalid_geometry_count = 0
     invalid_geometry_count_after_repair = 0
     dropped_for_pmtiles_count = 0
-    pmtiles_write_failed = False
 
     bytes_per_feature: Optional[float] = None
     current_chunk_size: Optional[int] = None
@@ -2846,7 +2912,7 @@ async def process_layer_chunked(
             null_geometry_count, \
             invalid_geometry_count, \
             invalid_geometry_count_after_repair
-        nonlocal dropped_for_pmtiles_count, pmtiles_write_failed
+        nonlocal dropped_for_pmtiles_count
 
         gdf_chunk = gpd.GeoDataFrame.from_features(features, crs=crs)
         gdf_valid = _filter_valid_geometries(gdf_chunk)
@@ -2874,7 +2940,11 @@ async def process_layer_chunked(
             if len(repaired) == 0:
                 invalid_geometry_count_after_repair += invalid_before
                 dropped_for_pmtiles_count += len(gdf_valid)
-                pmtiles_write_failed = True
+                raise PMTilesGenerationError(
+                    f"FlatGeobuf preparation failed for layer {layer_filename!r}, "
+                    f"chunk {idx}, {len(gdf_valid)} feature(s); initial error: {e}; "
+                    "geometry repair produced zero usable features"
+                ) from e
             else:
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
@@ -2885,8 +2955,12 @@ async def process_layer_chunked(
                 try:
                     repaired.to_file(fgb_path, driver="FlatGeobuf", engine="pyogrio")
                     fgb_files.append(fgb_path)
-                except Exception:
-                    pmtiles_write_failed = True
+                except Exception as retry_exc:
+                    raise PMTilesGenerationError(
+                        f"FlatGeobuf preparation failed for layer {layer_filename!r}, "
+                        f"chunk {idx}, {len(gdf_valid)} feature(s); initial error: {e}; "
+                        f"repair export error: {retry_exc}"
+                    ) from retry_exc
 
     try:
         if not skip_parquet:
@@ -3067,7 +3141,7 @@ async def process_layer_chunked(
             )
 
         pmtiles_path = None
-        if not skip_pmtiles and not pmtiles_write_failed:
+        if not skip_pmtiles:
             pmtiles_path = await _create_and_upload_pmtiles(
                 dest_storage=dest_storage,
                 fgb_files=fgb_files,
@@ -3084,8 +3158,14 @@ async def process_layer_chunked(
             "invalid_geometry_count_after_repair": invalid_geometry_count_after_repair,
             "dropped_for_pmtiles_count": dropped_for_pmtiles_count,
         }
+    except PMTilesGenerationError:
+        raise
     except Exception as e:
         logger.error("Error in chunked processing: %s", e)
+        if not skip_pmtiles:
+            raise PMTilesGenerationError(
+                f"PMTiles preparation failed for layer {layer_filename!r}: {e}"
+            ) from e
         return {"error": str(e)}
 
 

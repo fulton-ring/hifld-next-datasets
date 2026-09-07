@@ -3,7 +3,7 @@ import unittest
 import zipfile
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import geopandas as gpd
 from shapely.geometry import Point
@@ -366,15 +366,18 @@ class PipelineUpdateTests(unittest.TestCase):
             existing_file.parent.mkdir(parents=True)
             existing_file.write_bytes(b"exists")
 
-            result = publish_assets_module.run_local_version_pipeline(
-                staging_storage=staging,
-                published_storage=published,
-                api_resource=Mock(enabled=False),
-                dataset_slug="dataset-a",
-                file_slug="file-a",
-                version="v1.0.0",
-                storage_location_name="Local published",
-            )
+            with patch.object(
+                publish_assets_module, "_write_and_publish_pmtiles", return_value=[]
+            ):
+                result = publish_assets_module.run_local_version_pipeline(
+                    staging_storage=staging,
+                    published_storage=published,
+                    api_resource=Mock(enabled=False),
+                    dataset_slug="dataset-a",
+                    file_slug="file-a",
+                    version="v1.0.0",
+                    storage_location_name="Local published",
+                )
 
             replacement_file = existing / "file-a.parquet"
             self.assertFalse(existing_file.exists())
