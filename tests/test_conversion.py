@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+from typing import ClassVar
 from unittest.mock import AsyncMock, Mock, patch
 import zipfile
 
@@ -346,7 +347,7 @@ class ConversionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             work_dir = Path(tmpdir) / "nested" / "geoparquet"
 
-            with patch(
+            with patch(  # noqa: SIM117
                 "dagster_hifld.conversion.fiona.open",
                 side_effect=RuntimeError("stop before real I/O"),
             ):
@@ -2736,7 +2737,9 @@ class ConversionTests(unittest.TestCase):
             fgb_path.write_bytes(b"1234")
             proc = Mock(stdout=io.BytesIO(b"working\nfatal detail\n"))
             proc.wait.return_value = 110
-            with patch("dagster_hifld.conversion.subprocess.Popen", return_value=proc):
+            with patch(  # noqa: SIM117
+                "dagster_hifld.conversion.subprocess.Popen", return_value=proc
+            ):
                 with self.assertRaisesRegex(
                     RuntimeError,
                     r"tippecanoe.*layer.*1 input.*4 bytes.*exit code 110.*fatal detail",
@@ -2753,7 +2756,7 @@ class ConversionTests(unittest.TestCase):
             root = Path(tmpdir)
             fgb_path = root / "chunk.fgb"
             fgb_path.write_bytes(b"fgb")
-            with patch(
+            with patch(  # noqa: SIM117
                 "dagster_hifld.conversion.subprocess.Popen",
                 side_effect=FileNotFoundError("tippecanoe"),
             ):
@@ -2766,7 +2769,7 @@ class ConversionTests(unittest.TestCase):
 
     def test_pmtiles_success_without_nonempty_output_raises(self):
         for existing_bytes in (None, b""):
-            with self.subTest(existing_bytes=existing_bytes):
+            with self.subTest(existing_bytes=existing_bytes):  # noqa: SIM117
                 with tempfile.TemporaryDirectory() as tmpdir:
                     root = Path(tmpdir)
                     fgb_path = root / "chunk.fgb"
@@ -2776,7 +2779,7 @@ class ConversionTests(unittest.TestCase):
                         output.write_bytes(existing_bytes)
                     proc = Mock(stdout=io.BytesIO(), stderr=io.BytesIO())
                     proc.wait.return_value = 0
-                    with patch(
+                    with patch(  # noqa: SIM117
                         "dagster_hifld.conversion.subprocess.Popen", return_value=proc
                     ):
                         with self.assertRaisesRegex(RuntimeError, "missing or empty output"):
@@ -2798,7 +2801,9 @@ class ConversionTests(unittest.TestCase):
             output = root / "layer.pmtiles"
             proc = Mock(stdout=io.BytesIO(), stderr=io.BytesIO())
             proc.wait.side_effect = lambda: (output.write_bytes(b"pmtiles"), 0)[1]
-            with patch("dagster_hifld.conversion.subprocess.Popen", return_value=proc):
+            with patch(  # noqa: SIM117
+                "dagster_hifld.conversion.subprocess.Popen", return_value=proc
+            ):
                 with self.assertRaisesRegex(RuntimeError, "upload failed.*layer"):
                     asyncio.run(
                         _create_and_upload_pmtiles(
@@ -2807,7 +2812,7 @@ class ConversionTests(unittest.TestCase):
                     )
 
     def test_pmtiles_requested_with_no_fgb_inputs_raises(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir:  # noqa: SIM117
             with self.assertRaisesRegex(RuntimeError, "zero FlatGeobuf inputs"):
                 asyncio.run(
                     _create_and_upload_pmtiles(
@@ -2850,7 +2855,7 @@ class ConversionTests(unittest.TestCase):
             def __iter__(self):
                 return iter([feature])
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir:  # noqa: SIM117
             with (
                 patch(
                     "dagster_hifld.conversion.fiona.open",
@@ -2892,7 +2897,7 @@ class ConversionTests(unittest.TestCase):
 
         class FakeCollection:
             crs = None
-            schema = {"geometry": "None"}
+            schema: ClassVar[dict[str, str]] = {"geometry": "None"}
 
             def __enter__(self):
                 return self
@@ -2904,7 +2909,7 @@ class ConversionTests(unittest.TestCase):
                 return iter([feature])
 
         for skip_parquet in (False, True):
-            with self.subTest(skip_parquet=skip_parquet):
+            with self.subTest(skip_parquet=skip_parquet):  # noqa: SIM117
                 with tempfile.TemporaryDirectory() as tmpdir:
                     with (
                         patch(
@@ -2943,7 +2948,7 @@ class ConversionTests(unittest.TestCase):
     def test_empty_declared_spatial_source_raises_for_requested_pmtiles(self):
         class FakeCollection:
             crs = "EPSG:4326"
-            schema = {"geometry": "Point"}
+            schema: ClassVar[dict[str, str]] = {"geometry": "Point"}
 
             def __enter__(self):
                 return self
@@ -2955,7 +2960,7 @@ class ConversionTests(unittest.TestCase):
                 return iter(())
 
         for skip_parquet in (False, True):
-            with self.subTest(skip_parquet=skip_parquet):
+            with self.subTest(skip_parquet=skip_parquet):  # noqa: SIM117
                 with tempfile.TemporaryDirectory() as tmpdir:
                     with patch(
                         "dagster_hifld.conversion.fiona.open",
