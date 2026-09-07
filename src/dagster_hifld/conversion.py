@@ -2191,6 +2191,8 @@ async def process_layer_partitioned_geoparquet(
     single-layer dataset at the stable GeoParquet root. ``None`` preserves
     the historical namespace behavior for direct callers.
     """
+    if policy.max_row_group_rows <= 0:
+        return {"error": "max_row_group_rows must be greater than zero."}
     driver = _get_fiona_driver(format_type)
     if not driver:
         return {"error": f"Unsupported format for streaming: {format_type}"}
@@ -2332,18 +2334,10 @@ async def process_layer_partitioned_geoparquet(
                 path=f"{dest_folder.rstrip('/')}/{relative_path}",
             )
 
-    def write_validated(partition_dir: str, buffered: list[dict[str, Any]]) -> None:
+    def write_validated_table(partition_dir: str, table: pa.Table) -> None:
         nonlocal candidate_counter, written_feature_count
-        if not buffered:
+        if table.num_rows == 0:
             return
-        # The SQLite cursor already provides the global order for this partition.
-        gdf = gpd.GeoDataFrame.from_features(buffered, crs=current_crs)
-        prepared = _coerce_gdf_to_fiona_schema(
-            gdf.reset_index(drop=True), source_schema
-        )
-        table = _canonicalize_geoparquet_batch_metadata(
-            _geodataframe_to_geoparquet_arrow(prepared)
-        )
         candidate_counter += 1
         candidate = geoparquet_dir / f".candidate-{candidate_counter:06d}.parquet"
         try:
@@ -2353,21 +2347,21 @@ async def process_layer_partitioned_geoparquet(
                 compression="zstd",
                 compression_level=effective_policy.compression_level,
                 data_page_size=DEFAULT_DATA_PAGE_SIZE_BYTES,
-                row_group_size=max(1, len(prepared)),
+                row_group_size=max(1, table.num_rows),
             )
             probe_row_group_sizes = _row_group_uncompressed_sizes(candidate)
             if (
                 max(probe_row_group_sizes, default=0)
                 > effective_policy.max_row_group_bytes
             ):
-                if len(buffered) == 1:
+                if table.num_rows == 1:
                     raise ValueError(
                         "A single feature exceeds the GeoParquet row-group hard limit "
                         f"of {effective_policy.max_row_group_bytes} uncompressed bytes."
                     )
-                midpoint = len(buffered) // 2
-                write_validated(partition_dir, buffered[:midpoint])
-                write_validated(partition_dir, buffered[midpoint:])
+                midpoint = table.num_rows // 2
+                write_validated_table(partition_dir, table.slice(0, midpoint))
+                write_validated_table(partition_dir, table.slice(midpoint))
                 return
 
             state = writers.get(partition_dir)
@@ -2402,10 +2396,20 @@ async def process_layer_partitioned_geoparquet(
                 writers[partition_dir] = state
             else:
                 state.footer_estimate_bytes += candidate_footer_size
-            state.writer.write_table(table, row_group_size=max(1, len(prepared)))
-            written_feature_count += len(prepared)
+            state.writer.write_table(table, row_group_size=max(1, table.num_rows))
+            written_feature_count += table.num_rows
         finally:
             candidate.unlink(missing_ok=True)
+
+    def prepare_arrow_table(buffered: list[dict[str, Any]]) -> pa.Table:
+        # The SQLite cursor already provides the global order for this partition.
+        gdf = gpd.GeoDataFrame.from_features(buffered, crs=current_crs)
+        prepared = _coerce_gdf_to_fiona_schema(
+            gdf.reset_index(drop=True), source_schema
+        )
+        return _canonicalize_geoparquet_batch_metadata(
+            _geodataframe_to_geoparquet_arrow(prepared)
+        )
 
     spool = _SpatialFeatureSpool()
     try:
@@ -2478,6 +2482,104 @@ async def process_layer_partitioned_geoparquet(
                 )
                 batch: list[dict[str, Any]] = []
                 batch_estimated_bytes = 0
+                pending_tables: list[pa.Table] = []
+                pending_buffer_bytes = 0
+                pending_estimated_bytes = 0
+                pending_rows = 0
+
+                def flush_pending_tables(
+                    pending_tables: list[pa.Table] = pending_tables,
+                    partition_dir: str = partition_dir,
+                ) -> None:
+                    nonlocal pending_buffer_bytes, pending_estimated_bytes, pending_rows
+                    if not pending_tables:
+                        return
+                    table = (
+                        pending_tables[0]
+                        if len(pending_tables) == 1
+                        else pa.concat_tables(pending_tables)
+                    )
+                    write_validated_table(partition_dir, table)
+                    pending_tables.clear()
+                    pending_buffer_bytes = 0
+                    pending_estimated_bytes = 0
+                    pending_rows = 0
+
+                def fitting_prefix_rows(
+                    table: pa.Table, offset: int, row_limit: int, byte_limit: int
+                ) -> int:
+                    low = 1
+                    high = row_limit
+                    fitting = 0
+                    while low <= high:
+                        midpoint = (low + high) // 2
+                        if table.slice(offset, midpoint).nbytes <= byte_limit:
+                            fitting = midpoint
+                            low = midpoint + 1
+                        else:
+                            high = midpoint - 1
+                    return max(1, fitting)
+
+                def accumulate_batch(
+                    buffered: list[dict[str, Any]],
+                    pending_tables: list[pa.Table] = pending_tables,
+                ) -> None:
+                    nonlocal pending_buffer_bytes, pending_estimated_bytes, pending_rows
+                    if not buffered:
+                        return
+                    table = prepare_arrow_table(buffered)
+                    offset = 0
+                    while offset < table.num_rows:
+                        remaining_rows = table.num_rows - offset
+                        row_capacity = (
+                            effective_policy.max_row_group_rows - pending_rows
+                        )
+                        target_capacity = (
+                            effective_policy.target_row_group_bytes
+                            - pending_estimated_bytes
+                        )
+                        memory_capacity = (
+                            effective_policy.aggregate_buffer_bytes
+                            - pending_buffer_bytes
+                        )
+                        byte_capacity = min(target_capacity, memory_capacity)
+                        if pending_tables and (row_capacity <= 0 or byte_capacity <= 0):
+                            flush_pending_tables()
+                            continue
+                        rows_to_take = min(remaining_rows, row_capacity)
+                        if table.slice(offset, rows_to_take).nbytes > byte_capacity:
+                            rows_to_take = fitting_prefix_rows(
+                                table, offset, rows_to_take, byte_capacity
+                            )
+                        if rows_to_take == remaining_rows and offset == 0:
+                            chunk = table
+                        else:
+                            indices = pa.array(
+                                range(offset, offset + rows_to_take), type=pa.int64()
+                            )
+                            chunk = table.take(indices)
+                        chunk_buffer_bytes = chunk.get_total_buffer_size()
+                        if pending_tables and (
+                            chunk_buffer_bytes > memory_capacity
+                            or chunk.nbytes > target_capacity
+                        ):
+                            flush_pending_tables()
+                            continue
+                        pending_tables.append(chunk)
+                        pending_buffer_bytes += chunk_buffer_bytes
+                        pending_estimated_bytes += chunk.nbytes
+                        pending_rows += chunk.num_rows
+                        offset += chunk.num_rows
+                        if (
+                            offset < table.num_rows
+                            or pending_estimated_bytes
+                            >= effective_policy.target_row_group_bytes
+                            or pending_buffer_bytes
+                            >= effective_policy.aggregate_buffer_bytes
+                            or pending_rows >= effective_policy.max_row_group_rows
+                        ):
+                            flush_pending_tables()
+
                 for feature, feature_estimated_bytes in spool.sorted_features(
                     partition_dir
                 ):
@@ -2487,10 +2589,11 @@ async def process_layer_partitioned_geoparquet(
                         batch_estimated_bytes >= sorted_batch_bytes
                         or len(batch) >= effective_policy.max_row_group_rows
                     ):
-                        write_validated(partition_dir, batch)
+                        accumulate_batch(batch)
                         batch = []
                         batch_estimated_bytes = 0
-                write_validated(partition_dir, batch)
+                accumulate_batch(batch)
+                flush_pending_tables()
                 finalize_writer(partition_dir)
             close_writers()
             normalize_single_file_paths()

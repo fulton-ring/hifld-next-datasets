@@ -1340,6 +1340,7 @@ class PublishTests(unittest.TestCase):
                     target_file_size_bytes=1,
                     write_buffer_bytes=10**9,
                     aggregate_buffer_bytes=10**9,
+                    max_row_group_rows=1,
                 ),
             )
 
