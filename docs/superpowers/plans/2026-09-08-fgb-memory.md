@@ -16,3 +16,12 @@
 - [ ] Launch only publish/formats/pmtiles for nfhl/national-flood-hazard-layer-area-nfhl-1-east/v1.0.0; verify running worker and early bounded-batch evidence. Do not promote or regenerate other formats.
 
 The image also includes the previously verified row-group packing change already merged into the feature branch. This retry does not select GeoParquet, so that writer is not exercised by this run.
+
+## Verification and deployment
+
+- Code commits `31460ad`, `38ddc33`; full suite338 tests passed, one skipped. New focused memory tests4 passed. Independent review's retained sample GeoDataFrame finding fixed in38ddc33.
+- Packaged amd64 runtime smoke test: 100000-vertex Fiona geometry measured1388977 bytes; FGB caps104857600 serialized bytes and10000 rows.
+- Image `gcr.io/hifld-next/dagster-user:fgb-memory-38ddc33-20260908`; registry digest `sha256:c7f5e58825259ebebd5e8685b9058757e8341e982daa097aaa30e29aa3dc6dc9`.
+- Helm revision56, chart1.13.21, all three services ready on new image. Existing resource limits retained. GCS partial logs upload every30seconds; conversion logger managed atINFO. IaC overlay commit6dd5f7d records upload interval.
+- Initial partial deployment-array CLI override was rejected by chart validation before rollout; reapplied with complete existing Helm values, changing only four image tags and diagnostic configuration.
+- East PMTiles-only retry launched: `04ed31e3-c551-4257-9917-12da53df09f0`. No other assets selected; no production promotion.
