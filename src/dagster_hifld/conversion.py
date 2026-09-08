@@ -3263,6 +3263,7 @@ async def process_layer_chunked(
         chunk_features = []
         if not skip_parquet:
             del sample_features
+            del sample
 
         if (
             (feature_count > 0 or skip_parquet)
