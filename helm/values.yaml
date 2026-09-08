@@ -192,5 +192,10 @@ runLauncher:
 # ---------------------------------------------------------------------------
 # Misc
 # ---------------------------------------------------------------------------
+pythonLogs:
+  managedPythonLoggers:
+    - dagster_hifld.conversion
+  pythonLogLevel: INFO
+
 telemetry:
   enabled: false
