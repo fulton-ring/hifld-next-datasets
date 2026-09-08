@@ -78,6 +78,8 @@ FORMAT_SUFFIXES = [
 DEFAULT_ROW_GROUP_SIZE = 100_000
 DEFAULT_DATA_PAGE_SIZE_BYTES = 1024 * 1024
 DEFAULT_FGB_CHUNK_SIZE_MB = 100
+DEFAULT_FGB_MAX_CHUNK_BYTES = 100 * 1024 * 1024
+DEFAULT_FGB_MAX_CHUNK_ROWS = 10_000
 DEFAULT_MEMORY_ESTIMATE_MULTIPLIER = 5.0
 DEFAULT_GEOPARQUET_ROW_GROUP_TARGET_BYTES = 128 * 1024 * 1024
 DEFAULT_GEOPARQUET_WRITE_BUFFER_BYTES = 128 * 1024 * 1024
@@ -2925,10 +2927,22 @@ def _to_wgs84(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def _estimate_feature_size_bytes(feature: dict[str, Any]) -> int:
+    def serialize_fiona_model(value: object) -> object:
+        if isinstance(value, fiona.model.Object):
+            return fiona.model.to_dict(value)
+        return str(value)
+
     try:
-        return len(json.dumps(feature, ensure_ascii=False, default=str).encode("utf-8"))
-    except Exception:
-        return 1024
+        return len(
+            json.dumps(
+                feature, ensure_ascii=False, default=serialize_fiona_model
+            ).encode("utf-8")
+        )
+    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+        feature_id = feature.get("id", "unknown")
+        raise ValueError(
+            f"Unable to estimate complete serialized size for feature {feature_id!r}"
+        ) from exc
 
 
 async def process_layer_chunked(
@@ -3049,13 +3063,29 @@ async def process_layer_chunked(
             current_chunk_size = max(min_size, min(max_size, proposed_chunk_size))
         return processed_len
 
-    def flush_fgb_chunk(crs: Any, features: list[dict[str, Any]], idx: int) -> None:
+    def flush_fgb_chunk(
+        crs: Any,
+        features: list[dict[str, Any]],
+        idx: int,
+        estimated_serialized_bytes: int,
+    ) -> None:
         nonlocal \
             null_geometry_count, \
             invalid_geometry_count, \
             invalid_geometry_count_after_repair
         nonlocal dropped_for_pmtiles_count
 
+        rss_before_mb = get_memory_usage_mb()
+        logger.info(
+            "Writing FlatGeobuf chunk %s for layer %s: feature_count=%s, "
+            "full_geometry_serialized_byte_estimate=%s, rss_before_mb=%.1f; "
+            "serialized bytes are a chunking estimate, not a hard RSS bound",
+            idx,
+            layer_filename,
+            len(features),
+            estimated_serialized_bytes,
+            rss_before_mb,
+        )
         gdf_chunk = gpd.GeoDataFrame.from_features(features, crs=crs)
         gdf_valid = _filter_valid_geometries(gdf_chunk)
         null_geometry_count += len(gdf_chunk) - len(gdf_valid)
@@ -3103,6 +3133,15 @@ async def process_layer_chunked(
                         f"chunk {idx}, {len(gdf_valid)} feature(s); initial error: {e}; "
                         f"repair export error: {retry_exc}"
                     ) from retry_exc
+        logger.info(
+            "Finished FlatGeobuf chunk %s for layer %s: feature_count=%s, "
+            "full_geometry_serialized_byte_estimate=%s, rss_after_mb=%.1f",
+            idx,
+            layer_filename,
+            len(features),
+            estimated_serialized_bytes,
+            get_memory_usage_mb(),
+        )
 
     try:
         if not skip_parquet:
@@ -3203,14 +3242,9 @@ async def process_layer_chunked(
                 source_is_nonspatial = getattr(src, "schema", {}).get(
                     "geometry", "Unknown"
                 ) in {None, "None"}
-                src_iter = iter(src)
-                sample_features: list[dict[str, Any]] = []
-                for _ in range(estimate_sample_size):
-                    try:
-                        sample_features.append(next(src_iter))
-                    except StopIteration:
-                        break
-                if not sample_features:
+                try:
+                    first_feature = next(iter(src))
+                except StopIteration:
                     geometry_type = src.schema.get("geometry")
                     if geometry_type not in {None, "None"}:
                         raise PMTilesGenerationError(
@@ -3222,32 +3256,24 @@ async def process_layer_chunked(
                         "pmtiles_path": None,
                         "feature_count": 0,
                     }
-                sample_bytes = sum(
-                    _estimate_feature_size_bytes(f) for f in sample_features
-                )
-                bytes_per_feature = max(
-                    1.0, sample_bytes / max(1, len(sample_features))
-                )
-                current_chunk_size = max(
-                    1, int(compressed_target_bytes / max(bytes_per_feature, 1))
-                )
-                chunk_target_bytes = int(
-                    compressed_target_bytes * current_memory_multiplier
-                )
+                del first_feature
+
+        # Do not retain the Parquet sizing sample or final Parquet chunk while the
+        # source is read again for independently bounded FlatGeobuf preparation.
+        chunk_features = []
+        if not skip_parquet:
+            del sample_features
 
         if (
             (feature_count > 0 or skip_parquet)
             and not skip_pmtiles
             and not source_is_nonspatial
         ):
-            fgb_bytes_per_feature = max(bytes_per_feature or 1.0, 1.0)
-            fgb_compressed_target_bytes = fgb_chunk_size_mb * 1024 * 1024
-            fgb_target_rows = max(
-                1, int(fgb_compressed_target_bytes / max(fgb_bytes_per_feature, 1))
+            fgb_target_bytes = min(
+                fgb_chunk_size_mb * 1024 * 1024,
+                DEFAULT_FGB_MAX_CHUNK_BYTES,
             )
-            fgb_target_bytes = int(
-                fgb_compressed_target_bytes * current_memory_multiplier
-            )
+            fgb_target_rows = DEFAULT_FGB_MAX_CHUNK_ROWS
 
             with (
                 _with_large_geojson_support(),
@@ -3262,30 +3288,48 @@ async def process_layer_chunked(
                     if skip_parquet:
                         feature_count += 1
                     feat_size = _estimate_feature_size_bytes(feat)
+                    if feat_size > fgb_target_bytes:
+                        feature_id = feat.get("id", "unknown")
+                        raise PMTilesGenerationError(
+                            f"Feature {feature_id!r} ({feat_size} bytes) exceeds "
+                            f"the FlatGeobuf chunk budget of {fgb_target_bytes} bytes "
+                            f"for layer {layer_filename!r}"
+                        )
                     if (
                         chunk_features
                         and (chunk_uncompressed_bytes + feat_size) > fgb_target_bytes
                     ):
-                        flush_fgb_chunk(crs, chunk_features, fgb_chunk_num)
+                        flush_fgb_chunk(
+                            crs,
+                            chunk_features,
+                            fgb_chunk_num,
+                            chunk_uncompressed_bytes,
+                        )
                         chunk_features = []
                         chunk_uncompressed_bytes = 0
                         fgb_chunk_num += 1
                     chunk_features.append(feat)
                     chunk_uncompressed_bytes += feat_size
-                    estimated_mb = (len(chunk_features) * fgb_bytes_per_feature) / (
-                        1024 * 1024
-                    )
                     if (
                         len(chunk_features) >= fgb_target_rows
-                        or estimated_mb >= fgb_chunk_size_mb
                         or chunk_uncompressed_bytes >= fgb_target_bytes
                     ):
-                        flush_fgb_chunk(crs, chunk_features, fgb_chunk_num)
+                        flush_fgb_chunk(
+                            crs,
+                            chunk_features,
+                            fgb_chunk_num,
+                            chunk_uncompressed_bytes,
+                        )
                         chunk_features = []
                         chunk_uncompressed_bytes = 0
                         fgb_chunk_num += 1
                 if chunk_features:
-                    flush_fgb_chunk(crs, chunk_features, fgb_chunk_num)
+                    flush_fgb_chunk(
+                        crs,
+                        chunk_features,
+                        fgb_chunk_num,
+                        chunk_uncompressed_bytes,
+                    )
 
         mem_after = get_memory_usage_mb()
         logger.info(
