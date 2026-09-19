@@ -1,0 +1,46 @@
+[project]
+name = "hifld-next-datasets"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agno>=2.5.8",
+    "crawl4ai>=0.8.0",
+    "dagster>=1.10.0",
+    "dagster-gcp>=0.26.0",
+    "dagster-k8s>=0.26.0",
+    "dagster-postgres>=0.26.0",
+    "dagster-webserver>=1.10.0",
+    "ddgs>=9.11.2",
+    "fastapi>=0.135.1",
+    "fiona>=1.10.0",
+    "geopandas>=1.0.0",
+    "great-expectations>=0.18.0",
+    "gcsfs>=2024.1.0",
+    "google-crc32c>=1.8.0",
+    "httpx>=0.28.1",
+    "openai>=2.26.0",
+    "polars>=1.38.1",
+    "python-dotenv>=1.2.2",
+    "pyarrow>=23.0.1",
+    "s2sphere>=0.2.5",
+    "boto3>=1.43.89",
+]
+
+[build-system]
+requires = ["setuptools>=70.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["hifld_next_datasets*", "dagster_hifld*"]
+
+[project.scripts]
+find-dataset-sources = "hifld_next_datasets.scraper:main"
+seed-source-manifests = "dagster_hifld.seed_source_manifests:main"
+hifld-geoparquet-maintenance = "dagster_hifld.maintenance:main"
+build-portolan-inventory-catalog = "dagster_hifld.portolan.build_inventory_catalog:main"
