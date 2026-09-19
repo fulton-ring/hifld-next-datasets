@@ -102,6 +102,8 @@ class CatalogRecord:
     feature_id_column: str | None = None
     native_bbox: tuple[float, float, float, float] | None = None
     crs84_bbox: tuple[float, float, float, float] | None = None
+    source_version_description: str | None = None
+    source_version_bounds: tuple[float, float, float, float] | None = None
     quality_manifest_href: str = "metadata/quality_manifest.json"
     quality_passed: bool = True
     invalid_geometry_count: int = 0
@@ -970,6 +972,12 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         "hifld:geometry_type": record.geometry_type,
         "hifld:feature_id_column": record.feature_id_column,
         "hifld:native_bbox": list(record.native_bbox) if record.native_bbox else None,
+        "hifld:source_version_description": record.source_version_description,
+        "hifld:source_version_bounds": (
+            list(record.source_version_bounds)
+            if record.source_version_bounds is not None
+            else None
+        ),
         "hifld:quality": {
             "passed": record.quality_passed,
             "invalid_geometry_count": record.invalid_geometry_count,

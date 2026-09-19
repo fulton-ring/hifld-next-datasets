@@ -100,6 +100,9 @@ class PortolanCatalogTests(unittest.TestCase):
                 "hifld/example-dataset/example-file/v1.0.0/parquet/data.parquet",
                 collection.read_text(),
             )
+            document = json.loads(collection.read_text())
+            self.assertIsNone(document["hifld:source_version_description"])
+            self.assertIsNone(document["hifld:source_version_bounds"])
             self.assertTrue((Path(tmpdir) / "catalog.json").is_file())
             self.assertTrue((Path(tmpdir) / "hifld/README.md").is_file())
 
@@ -320,6 +323,41 @@ class PortolanCatalogTests(unittest.TestCase):
             self.assertEqual(document["table:columns"][0]["exampleValues"], [1, 2])
             self.assertEqual(document["table:columns"][0]["numUniqueValues"], 2)
             self.assertEqual(document["table:columns"][1]["is_geometry"], True)
+
+    def test_version_stac_preserves_source_quality_metadata_separately(self):
+        record = CatalogRecord(
+            "hifld",
+            "dataset",
+            "file",
+            "v1.1.0",
+            "File",
+            "Dictionary description",
+            "spatial",
+            1,
+            (),
+            crs84_bbox=(-77.0, 38.0, -76.0, 39.0),
+            source_version_description="Updated source metadata note.",
+            source_version_bounds=(-77.1, 37.9, -75.9, 39.1),
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            render_portolan_tree(root, (record,))
+            document = json.loads(
+                (root / "hifld/dataset/file/v1.1.0/collection.json").read_text()
+            )
+
+        self.assertEqual(document["description"], "Dictionary description")
+        self.assertEqual(
+            document["extent"]["spatial"]["bbox"], [[-77.0, 38.0, -76.0, 39.0]]
+        )
+        self.assertEqual(
+            document["hifld:source_version_description"],
+            "Updated source metadata note.",
+        )
+        self.assertEqual(
+            document["hifld:source_version_bounds"],
+            [-77.1, 37.9, -75.9, 39.1],
+        )
 
     def test_archived_hifld_record_renders_public_domain_mark_and_notice(self):
         record = CatalogRecord(

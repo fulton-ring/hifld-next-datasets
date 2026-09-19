@@ -405,6 +405,8 @@ def _catalog_record(
         geometry_type=_single_geometry_type(geoparquet),
         native_bbox=bbox,
         crs84_bbox=_to_crs84_bbox(bbox, crs),
+        source_version_description=_optional_text(quality, "description"),
+        source_version_bounds=_bounds(quality.get("bounds")),
         quality_manifest_href="metadata/quality_manifest.json",
         quality_passed=_bool(quality, "quality_check_passed", False),
         invalid_geometry_count=_integer(quality, "invalid_geometry_count", 0),
@@ -468,6 +470,22 @@ def _md5_multihash(value: str | None) -> str | None:
 def _text(value: Mapping[str, object], key: str) -> str:
     candidate = value.get(key)
     return candidate.strip() if isinstance(candidate, str) else ""
+
+
+def _optional_text(value: Mapping[str, object], key: str) -> str | None:
+    candidate = value.get(key)
+    return candidate if isinstance(candidate, str) else None
+
+
+def _bounds(value: object) -> tuple[float, float, float, float] | None:
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    if not all(
+        isinstance(coordinate, (int, float)) and not isinstance(coordinate, bool)
+        for coordinate in value
+    ):
+        return None
+    return (float(value[0]), float(value[1]), float(value[2]), float(value[3]))
 
 
 def _integer(value: Mapping[str, object], key: str, default: int) -> int:
