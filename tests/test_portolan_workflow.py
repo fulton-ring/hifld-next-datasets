@@ -20,8 +20,10 @@ from dagster_hifld.partitions import PUBLISH_PARTITIONS
 from dagster_hifld.portolan.catalog import CatalogRecord
 from dagster_hifld.portolan.release import ReleasePointer
 from dagster_hifld.portolan.workflow import (
+    GeoParquetFacts,
     PortolanPublishRequest,
     _ensure_absolute_self_link,
+    _prepare_portolan_record,
     _promote_source_metadata,
     _promote_staged_data,
     _publish_catalog,
@@ -509,6 +511,90 @@ class PortolanWorkflowTests(unittest.TestCase):
 
         self.assertFalse(prepare.call_args.kwargs["convert"])
         self.assertFalse(prepare.call_args.kwargs["promote"])
+
+    def test_catalog_only_record_preserves_authored_version_note_and_bounds(self):
+        note = (
+            "Updated hospital bed counts.\n\n"
+            "Update support provided by [Niyam IT](https://niyamit.com).\n\n"
+            "![Niyam IT icon](https://niyamit.com/favicon.ico)"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            staging = StagingStorageResource(
+                local_dir=str(root / "staging"), use_local=True, prefix="hifld"
+            )
+            published = PublishedStorageResource(
+                local_dir=str(root / "published"), use_local=True, prefix="hifld"
+            )
+            request = PortolanPublishRequest(
+                "hifld", "hospitals-3", "hospitals-3", "v1.1.0", "", "", ""
+            )
+            staging.write_key(
+                "metadata/source/collections.json",
+                b'[{"slug":"hifld","name":"HIFLD Next","description":"Catalog"}]',
+            )
+            staging.write_key(
+                "hospitals-3/metadata/source/source_manifest.json",
+                b'{"title":"Hospitals"}',
+            )
+            staging.write_key(
+                "hospitals-3/hospitals-3/metadata/source/source_manifest.json",
+                b'{"title":"Hospitals"}',
+            )
+            staging.write(
+                "hospitals-3",
+                "hospitals-3",
+                "v1.1.0",
+                "metadata/source/source_manifest.json",
+                b"{}",
+            )
+            staging.write(
+                "hospitals-3",
+                "hospitals-3",
+                "v1.1.0",
+                "metadata/source/data_dictionary.json",
+                b'{"title":"Hospitals","description":"Hospital locations","columns":[]}',
+            )
+            staging.write(
+                "hospitals-3",
+                "hospitals-3",
+                "v1.1.0",
+                "metadata/source/quality_manifest.json",
+                json.dumps(
+                    {
+                        "feature_count": 1,
+                        "quality_check_passed": True,
+                        "description": note,
+                        "bounds": [-77.1, 37.9, -75.9, 39.1],
+                    }
+                ).encode(),
+            )
+            facts = GeoParquetFacts(
+                1,
+                "OGC:CRS84",
+                "geometry",
+                "Point",
+                None,
+                (-77.1, 37.9, -75.9, 39.1),
+                (-77.1, 37.9, -75.9, 39.1),
+                (),
+            )
+            with (
+                patch(
+                    "dagster_hifld.portolan.workflow.inspect_geoparquet",
+                    return_value=facts,
+                ),
+                patch(
+                    "dagster_hifld.portolan.workflow.render_geoparquet_thumbnail",
+                    return_value=None,
+                ),
+            ):
+                record = _prepare_portolan_record(
+                    request, staging, published, convert=False, promote=False
+                )
+
+        self.assertEqual(record.source_version_description, note)
+        self.assertEqual(record.source_version_bounds, (-77.1, 37.9, -75.9, 39.1))
 
     def test_manifest_tags_preserve_all_group_names_and_values(self):
         self.assertEqual(
