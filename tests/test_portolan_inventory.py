@@ -120,6 +120,7 @@ class PortolanInventoryTests(unittest.TestCase):
 
         self.assertEqual(result.report.version_count, 1)
         record = result.records[0]
+        self.assertEqual(record.collection_title, "HIFLD")
         self.assertEqual(record.title, "Version title")
         self.assertEqual(record.license_id, "CC-PDM-1.0")
         self.assertEqual(record.license_href, "../../../LICENSE.md")

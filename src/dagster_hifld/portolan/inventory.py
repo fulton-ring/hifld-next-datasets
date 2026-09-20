@@ -130,7 +130,7 @@ def build_catalog_from_inventories(
     published_root: str,
     collection_slug: str = "hifld",
     published_prefix: str = "hifld",
-    collection_title: str | None = "HIFLD Next",
+    collection_title: str | None = "HIFLD",
     collection_description: str = "",
     collection_created_at: str | None = None,
     collection_updated_at: str | None = None,
