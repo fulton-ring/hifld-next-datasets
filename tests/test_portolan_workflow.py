@@ -531,7 +531,7 @@ class PortolanWorkflowTests(unittest.TestCase):
             )
             staging.write_key(
                 "metadata/source/collections.json",
-                b'[{"slug":"hifld","name":"HIFLD Next","description":"Catalog"}]',
+                b'[{"slug":"hifld","name":"HIFLD","description":"Catalog"}]',
             )
             staging.write_key(
                 "hospitals-3/metadata/source/source_manifest.json",
@@ -593,6 +593,7 @@ class PortolanWorkflowTests(unittest.TestCase):
                     request, staging, published, convert=False, promote=False
                 )
 
+        self.assertEqual(record.collection_title, "HIFLD")
         self.assertEqual(record.source_version_description, note)
         self.assertEqual(record.source_version_bounds, (-77.1, 37.9, -75.9, 39.1))
 
