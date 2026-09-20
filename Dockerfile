@@ -43,10 +43,17 @@ RUN uv sync --frozen --no-dev --no-install-project
 # Install the project itself.
 COPY src/ ./src/
 COPY README.md ./
+COPY scripts/ ./scripts/
+COPY HIFLD_Open_Inventory_12112025.csv ./HIFLD_Open_Inventory_12112025.full.csv
+RUN python scripts/sanitize_public_inventory.py \
+    HIFLD_Open_Inventory_12112025.full.csv \
+    HIFLD_Open_Inventory_12112025.csv
 RUN uv sync --frozen --no-dev
 
 # ---- Stage 2: runtime image --------------------------------------------------
 FROM ghcr.io/osgeo/gdal:ubuntu-small-3.9.0 AS runtime
+
+LABEL org.opencontainers.image.source="https://github.com/fulton-ring/hifld-next-datasets"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -64,7 +71,7 @@ RUN apt-get update \
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/src /app/src
 COPY --from=builder /app/pyproject.toml /app/pyproject.toml
-COPY HIFLD_Open_Inventory_12112025.csv /app/HIFLD_Open_Inventory_12112025.csv
+COPY --from=builder /app/HIFLD_Open_Inventory_12112025.csv /app/HIFLD_Open_Inventory_12112025.csv
 
 WORKDIR /app
 

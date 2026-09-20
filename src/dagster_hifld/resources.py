@@ -12,6 +12,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from functools import cache
 from pathlib import Path
 from types import TracebackType
 from typing import BinaryIO, Protocol, cast
@@ -19,8 +20,12 @@ from typing import BinaryIO, Protocol, cast
 import google_crc32c
 import httpx
 from dagster import ConfigurableResource
+from google.cloud import storage
+from google.cloud.storage.blob import Blob
 
 logger = logging.getLogger(__name__)
+
+_GCS_DOWNLOAD_TIMEOUT_SECONDS = 60
 
 
 class _GCSWritable(Protocol):
@@ -81,12 +86,29 @@ class StagingStorageResource(ConfigurableResource):
     prefix: str = ""
     use_local: bool = True
     local_dir: str = ""
+    backend: str = "gcs"
+    s3_endpoint_url: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
+    s3_region: str = "us-east-1"
+    s3_use_ssl: bool = False
 
     @classmethod
     def from_env(cls) -> "StagingStorageResource":
         bucket = os.environ.get("HIFLD_STAGING_BUCKET") or None
         local_dir = os.environ.get("HIFLD_STAGING_DIR", "data/staging")
-        return cls(bucket=bucket, use_local=not bool(bucket), local_dir=local_dir)
+        backend = os.environ.get("HIFLD_STAGING_BACKEND", "gcs")
+        return cls(bucket=bucket, prefix=os.environ.get("HIFLD_STAGING_PREFIX", "").strip("/"), use_local=not bool(bucket), local_dir=local_dir, backend=backend, s3_endpoint_url=os.environ.get("HIFLD_STAGING_S3_ENDPOINT"), s3_access_key_id=os.environ.get("HIFLD_STAGING_S3_ACCESS_KEY"), s3_secret_access_key=os.environ.get("HIFLD_STAGING_S3_SECRET_KEY"), s3_region=os.environ.get("HIFLD_STAGING_S3_REGION", "us-east-1"), s3_use_ssl=os.environ.get("HIFLD_STAGING_S3_USE_SSL", "false").lower() == "true")
+
+    def _uses_s3(self) -> bool:
+        return not self.use_local and self.backend == "s3"
+
+    def _s3(self):
+        if not self.bucket:
+            raise RuntimeError("S3 storage requires a bucket.")
+        import boto3
+        from botocore.config import Config
+        return boto3.client("s3", endpoint_url=self.s3_endpoint_url, aws_access_key_id=self.s3_access_key_id, aws_secret_access_key=self.s3_secret_access_key, region_name=self.s3_region, use_ssl=self.s3_use_ssl, config=Config(s3={"addressing_style": "path"}))
 
     def _apply_prefix(self, key: str) -> str:
         if self.prefix:
@@ -120,12 +142,33 @@ class StagingStorageResource(ConfigurableResource):
             full.write_bytes(data)
             return key
 
+        if self._uses_s3():
+            content_types = {
+                ".json": "application/json",
+                ".sqlite": "application/vnd.sqlite3",
+                ".parquet": "application/vnd.apache.parquet",
+                ".pmtiles": "application/vnd.pmtiles",
+            }
+            self._s3().put_object(Bucket=self.bucket, Key=key, Body=data,
+                                  Metadata={"sha256": hashlib.sha256(data).hexdigest()},
+                                  CacheControl="no-cache",
+                                  ContentType=content_types.get(Path(key).suffix.lower(), "application/octet-stream"))
+            return key
+
         import gcsfs
 
         fs = gcsfs.GCSFileSystem()
         with cast(
             BinaryIO,
-            cast(object, fs.open(f"{self.bucket}/{key}", "wb")),
+            cast(
+                object,
+                fs.open(
+                    f"{self.bucket}/{key}",
+                    "wb",
+                    fixed_key_metadata={"cache_control": "no-cache"},
+                    metadata={"sha256": hashlib.sha256(data).hexdigest()},
+                ),
+            ),
         ) as output:
             _ = output.write(data)
         return key
@@ -164,6 +207,10 @@ class StagingStorageResource(ConfigurableResource):
                 for path in dir_path.rglob("*")
                 if path.is_file()
             )
+        if self._uses_s3():
+            client = self._s3()
+            paginator = client.get_paginator("list_objects_v2")
+            return sorted(item["Key"] for page in paginator.paginate(Bucket=self.bucket, Prefix=key_prefix) for item in page.get("Contents", []))
 
         import gcsfs
 
@@ -190,6 +237,8 @@ class StagingStorageResource(ConfigurableResource):
                 for path in sorted(target.rglob("*"))
                 if path.is_file()
             )
+        if self._uses_s3():
+            return tuple(snapshot for key in self.list_prefix(key_prefix) if (snapshot := self.object_snapshot(key)) is not None)
 
         import gcsfs
 
@@ -209,20 +258,24 @@ class StagingStorageResource(ConfigurableResource):
             root = Path(self.local_dir).resolve()
             path = root / key
             return _local_snapshot(root, path) if path.is_file() else None
+        if self._uses_s3():
+            from botocore.exceptions import ClientError
+            try:
+                info = self._s3().head_object(Bucket=self.bucket, Key=key)
+            except ClientError as error:
+                if error.response["Error"].get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                    return None
+                raise
+            metadata = info.get("Metadata", {})
+            return StorageObjectSnapshot(key, int(info["ContentLength"]), str(info.get("VersionId") or info.get("ETag", "").strip('"')), info.get("ETag", "").strip('"'), None, metadata.get("sha256"))
 
-        import gcsfs
-
-        fs = gcsfs.GCSFileSystem()
-        object_path = f"{self.bucket}/{key}"
+        from google.api_core.exceptions import NotFound
+        blob = _gcs_client().bucket(self.bucket).blob(key)
         try:
-            info = fs.info(object_path)
-        except FileNotFoundError:
+            blob.reload(timeout=_GCS_DOWNLOAD_TIMEOUT_SECONDS)
+        except NotFound:
             return None
-        return _gcs_snapshot(
-            self.bucket,
-            object_path,
-            _require_string_object_mapping(cast(object, info), "GCS object metadata"),
-        )
+        return _native_gcs_snapshot(key, blob)
 
     def read_bytes(
         self,
@@ -243,26 +296,132 @@ class StagingStorageResource(ConfigurableResource):
             root = Path(self.local_dir).resolve()
             full = root / key
             return full.read_bytes()
+        if self._uses_s3():
+            return self._s3().get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        return self.read_key(key)
 
-        import gcsfs
+    def download_key_to(self, key: str, destination: Path) -> None:
+        """Materialize an exact object with bounded memory, including S3."""
+        key = self._ensure_prefixed(key)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if self.use_local or not self.bucket:
+            shutil.copy2(Path(self.local_dir).resolve() / key, destination)
+        elif self._uses_s3():
+            self._s3().download_file(self.bucket, key, str(destination))
+        else:
+            _gcs_client().bucket(self.bucket).blob(key).download_to_filename(
+                str(destination), timeout=_GCS_DOWNLOAD_TIMEOUT_SECONDS
+            )
 
-        fs = gcsfs.GCSFileSystem()
-        path = f"{self.bucket}/{key}"
-        data = fs.read_bytes(path)
+    def upload_local_file(self, source: Path, key: str) -> str:
+        """Upload bytes without buffering the full file and persist its checksum."""
+        key = self._ensure_prefixed(key)
+        if self.use_local or not self.bucket:
+            destination = Path(self.local_dir).resolve() / key
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+        elif self._uses_s3():
+            with source.open("rb") as body:
+                self._s3().put_object(Bucket=self.bucket, Key=key, Body=body,
+                                      Metadata={"sha256": _file_sha256(source)},
+                                      CacheControl="no-cache")
+        else:
+            import gcsfs
+            gcsfs.GCSFileSystem().put(str(source), f"{self.bucket}/{key}")
+        return key
+
+    def read_key(self, key: str) -> bytes:
+        """Read one exact catalog-relative key without dataset path inference."""
+        key = self._ensure_prefixed(key)
+        if self.use_local or not self.bucket:
+            return (Path(self.local_dir).resolve() / key).read_bytes()
+        if self._uses_s3():
+            return self._s3().get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        data = _gcs_client().bucket(self.bucket).blob(key).download_as_bytes(
+            timeout=_GCS_DOWNLOAD_TIMEOUT_SECONDS
+        )
         if not isinstance(data, bytes):
             raise RuntimeError(f"GCS returned non-bytes content for {key}.")
         return data
+
+    def read_key_range(
+        self,
+        key: str,
+        offset: int,
+        length: int,
+        expected_snapshot: StorageObjectSnapshot | None = None,
+    ) -> bytes:
+        """Read a fixed object range without materializing the full object."""
+        if offset < 0 or length < 0:
+            raise ValueError("Range offset and length must be non-negative.")
+        key = self._ensure_prefixed(key)
+        before = self.object_snapshot(key)
+        if before is None:
+            raise FileNotFoundError(f"Storage object does not exist: {key}")
+        if expected_snapshot is not None and before != expected_snapshot:
+            raise RuntimeError(f"Storage object changed before range read: {key}")
+        if offset + length > before.size:
+            raise ValueError(f"Requested range exceeds storage object size: {key}")
+        if self.use_local or not self.bucket:
+            with (Path(self.local_dir).resolve() / key).open("rb") as source:
+                source.seek(offset)
+                data = source.read(length)
+        elif self._uses_s3():
+            end = offset + length - 1
+            response = self._s3().get_object(
+                Bucket=self.bucket,
+                Key=key,
+                Range=f"bytes={offset}-{end}",
+            )
+            body = cast(BinaryIO, response["Body"])
+            with body:
+                data = body.read()
+        else:
+            import gcsfs
+
+            with cast(
+                BinaryIO,
+                gcsfs.GCSFileSystem().open(f"{self.bucket}/{key}", "rb"),
+            ) as source:
+                source.seek(offset)
+                data = source.read(length)
+        if not isinstance(data, bytes) or len(data) != length:
+            raise RuntimeError(f"Storage range read returned incomplete data: {key}")
+        after = self.object_snapshot(key)
+        if after != before:
+            raise RuntimeError(f"Storage object changed during range read: {key}")
+        return data
+
+    def sha256_key(self, key: str) -> str:
+        """Hash an exact object in bounded memory when storage lacks SHA metadata."""
+        key = self._ensure_prefixed(key)
+        if not (self.use_local or not self.bucket) and not self._uses_s3():
+            with tempfile.TemporaryDirectory(prefix="hifld-gcs-sha256-") as temporary:
+                local_path = Path(temporary) / "object"
+                self.download_key_to(key, local_path)
+                return _file_sha256(local_path)
+        if self.use_local or not self.bucket:
+            stream = (Path(self.local_dir).resolve() / key).open("rb")
+        else:
+            stream = cast(
+                BinaryIO,
+                self._s3().get_object(Bucket=self.bucket, Key=key)["Body"],
+            )
+        digest = hashlib.sha256()
+        with stream:
+            while chunk := stream.read(8 * 1024 * 1024):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     def object_exists(self, key: str) -> bool:
         key = self._ensure_prefixed(key)
         if self.use_local or not self.bucket:
             root = Path(self.local_dir).resolve()
             return (root / key).exists()
+        if self._uses_s3():
+            return self.object_snapshot(key) is not None
 
-        import gcsfs
-
-        fs = gcsfs.GCSFileSystem()
-        return bool(fs.exists(f"{self.bucket}/{key}"))
+        return self.object_snapshot(key) is not None
 
     def object_content_matches(
         self,
@@ -277,6 +436,20 @@ class StagingStorageResource(ConfigurableResource):
             destination_key
         ):
             return False
+
+        if self._uses_s3() or destination._uses_s3():
+            source_snapshot = self.object_snapshot(key)
+            target_snapshot = destination.object_snapshot(destination_key)
+            if source_snapshot is None or target_snapshot is None or source_snapshot.size != target_snapshot.size:
+                return False
+            if source_snapshot.sha256 and target_snapshot.sha256:
+                return source_snapshot.sha256 == target_snapshot.sha256
+            with tempfile.TemporaryDirectory(prefix="hifld-compare-") as temporary:
+                source_path = Path(temporary) / "source"
+                target_path = Path(temporary) / "target"
+                self.download_key_to(key, source_path)
+                destination.download_key_to(destination_key, target_path)
+                return _file_sha256(source_path) == _file_sha256(target_path)
 
         source_is_local = self.use_local or not self.bucket
         destination_is_local = destination.use_local or not destination.bucket
@@ -338,6 +511,17 @@ class StagingStorageResource(ConfigurableResource):
             root = Path(self.local_dir).resolve()
             destination = root / key
             return _atomic_local_write(destination, data, expected_snapshot, root)
+        if self._uses_s3():
+            client = self._s3()
+            request: dict[str, object] = {"Bucket": self.bucket, "Key": key, "Body": data, "Metadata": {"sha256": hashlib.sha256(data).hexdigest()}, "ContentLength": len(data), "ContentType": "application/vnd.sqlite3" if key.endswith(".sqlite") else "application/octet-stream", "CacheControl": "no-cache"}
+            if expected_snapshot is None:
+                request["IfNoneMatch"] = "*"
+            elif expected_snapshot.md5:
+                request["IfMatch"] = expected_snapshot.md5
+            else:
+                raise RuntimeError(f"S3 snapshot has no ETag for conditional write: {key}")
+            response = client.put_object(**request)
+            return StorageObjectSnapshot(key, len(data), str(response.get("VersionId") or response.get("ETag", "").strip('"')), response.get("ETag", "").strip('"'), None, hashlib.sha256(data).hexdigest())
 
         import gcsfs
 
@@ -365,6 +549,11 @@ class StagingStorageResource(ConfigurableResource):
         key = self._ensure_prefixed(key)
         if expected_snapshot.key != key:
             raise ValueError("Expected snapshot key does not match delete key.")
+        if self._uses_s3():
+            if not expected_snapshot.md5:
+                raise ValueError("S3 conditional delete requires ETag")
+            self._s3().delete_object(Bucket=self.bucket, Key=key, IfMatch=expected_snapshot.md5)
+            return
         if self.use_local or not self.bucket:
             current = self.object_snapshot(key)
             if current != expected_snapshot:
@@ -389,6 +578,14 @@ class StagingStorageResource(ConfigurableResource):
         key_prefix = self._ensure_prefixed(key_prefix).rstrip("/")
         if not key_prefix:
             raise ValueError("Refusing to delete an empty storage prefix.")
+        if self._uses_s3():
+            # Delimit the directory: `format` must not also match `format-other`.
+            for key in self.list_prefix(key_prefix + "/"):
+                if key.startswith(key_prefix + "/"):
+                    snapshot = self.object_snapshot(key)
+                    if snapshot is not None:
+                        self.delete_key_if_unchanged(key, snapshot)
+            return
 
         if self.use_local or not self.bucket:
             root = Path(self.local_dir).resolve()
@@ -415,6 +612,11 @@ class StagingStorageResource(ConfigurableResource):
         """Copy one fully-qualified relative key to another storage resource."""
         key = self._ensure_prefixed(key)
         destination_key = destination._ensure_prefixed(destination_key or key)
+        if self._uses_s3() or destination._uses_s3():
+            with tempfile.TemporaryDirectory(prefix="hifld-copy-") as temporary:
+                path = Path(temporary) / "object"
+                self.download_key_to(key, path)
+                return destination.upload_local_file(path, destination_key)
 
         if (self.use_local or not self.bucket) and (
             destination.use_local or not destination.bucket
@@ -468,6 +670,13 @@ class StagingStorageResource(ConfigurableResource):
 
         source_is_local = self.use_local or not self.bucket
         destination_is_local = destination.use_local or not destination.bucket
+        if self._uses_s3() or destination._uses_s3():
+            if self.object_snapshot(key) != source_snapshot:
+                raise RuntimeError("Source changed before conditional copy")
+            data = self.read_key(key)
+            if self.object_snapshot(key) != source_snapshot:
+                raise RuntimeError("Source changed during conditional copy")
+            return destination.write_key_if_unchanged(destination_key, data, destination_snapshot)
         if source_is_local:
             source_path = Path(self.local_dir).resolve() / key
             if self.object_snapshot(key) != source_snapshot:
@@ -639,6 +848,9 @@ class StagingStorageResource(ConfigurableResource):
             )
 
     def key_size(self, key: str) -> int:
+        if self._uses_s3():
+            snapshot = self.object_snapshot(key)
+            return snapshot.size if snapshot is not None else 0
         key = self._ensure_prefixed(key)
         if self.use_local or not self.bucket:
             path = Path(self.local_dir).resolve() / key
@@ -684,9 +896,18 @@ class StagingStorageResource(ConfigurableResource):
         return sorted(set(versions))
 
     @contextmanager
-    def get_local_version_dir(self, dataset_slug: str, file_slug: str, version: str):
+    def get_local_version_dir(
+        self,
+        dataset_slug: str,
+        file_slug: str,
+        version: str,
+        *,
+        include_directories: tuple[str, ...] | None = None,
+    ):
         """Yield a local directory path containing the version's files (for fiona/chunked read).
         For local storage returns the actual path; for GCS materializes to a temp dir and cleans up on exit.
+        ``include_directories`` limits remote materialization to named first-level
+        version directories while retaining their relative layout.
         """
         key_prefix = self.build_target_location(
             dataset_slug, file_slug, version, ""
@@ -697,9 +918,20 @@ class StagingStorageResource(ConfigurableResource):
             return
         tmp = Path(tempfile.mkdtemp(prefix="hifld_staging_"))
         try:
-            import gcsfs
-
-            fs = gcsfs.GCSFileSystem()
+            if self._uses_s3():
+                prefix_with_slash = key_prefix + "/"
+                client = self._s3()
+                for key in self.list_keys(dataset_slug, file_slug, version):
+                    rel = key.removeprefix(prefix_with_slash)
+                    if not rel:
+                        continue
+                    if not _included_version_directory(rel, include_directories):
+                        continue
+                    dest = tmp / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    client.download_file(self.bucket, key, str(dest))
+                yield tmp
+                return
             key_prefix = self.build_target_location(
                 dataset_slug, file_slug, version, ""
             ).rstrip("/")
@@ -710,18 +942,14 @@ class StagingStorageResource(ConfigurableResource):
                 rel = key.removeprefix(prefix_with_slash)
                 if not rel:
                     continue
+                if not _included_version_directory(rel, include_directories):
+                    continue
                 dest = tmp / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                self._copy_gcs_key_to_path(fs, key, dest)
+                self.download_key_to(key, dest)
             yield tmp
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-
-    def _copy_gcs_key_to_path(self, fs, key: str, dest: Path) -> None:
-        """Stream a GCS object to local disk without loading it all into memory."""
-        with fs.open(f"{self.bucket}/{key}", "rb") as source:
-            with dest.open("wb") as output:
-                shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 class GreatExpectationsResource(ConfigurableResource):
@@ -747,7 +975,17 @@ class PublishedStorageResource(StagingStorageResource):
     def from_env(cls) -> "PublishedStorageResource":
         bucket = os.environ.get("HIFLD_DATASETS_BUCKET") or None
         local_dir = os.environ.get("HIFLD_DATASETS_DIR", "data/published")
-        return cls(bucket=bucket, use_local=not bool(bucket), local_dir=local_dir)
+        backend = os.environ.get("HIFLD_DATASETS_BACKEND", "gcs")
+        return cls(bucket=bucket, prefix=os.environ.get("HIFLD_DATASETS_PREFIX", "").strip("/"), use_local=not bool(bucket), local_dir=local_dir, backend=backend, s3_endpoint_url=os.environ.get("HIFLD_DATASETS_S3_ENDPOINT"), s3_access_key_id=os.environ.get("HIFLD_DATASETS_S3_ACCESS_KEY"), s3_secret_access_key=os.environ.get("HIFLD_DATASETS_S3_SECRET_KEY"), s3_region=os.environ.get("HIFLD_DATASETS_S3_REGION", "us-east-1"), s3_use_ssl=os.environ.get("HIFLD_DATASETS_S3_USE_SSL", "false").lower() == "true")
+
+
+def _included_version_directory(
+    relative_key: str,
+    include_directories: tuple[str, ...] | None,
+) -> bool:
+    if include_directories is None:
+        return True
+    return relative_key.split("/", 1)[0] in include_directories
 
 
 def _local_snapshot(root: Path, path: Path) -> StorageObjectSnapshot:
@@ -781,6 +1019,27 @@ def _gcs_snapshot(
         generation=str(generation) if generation is not None else None,
         md5=str(md5) if md5 is not None else None,
         crc32c=str(crc32c) if crc32c is not None else None,
+    )
+
+
+@cache
+def _gcs_client() -> storage.Client:
+    """Construct an ADC client without repeatedly probing the Cloud SDK project."""
+    return storage.Client(project=os.environ.get("GOOGLE_CLOUD_PROJECT"))
+
+
+def _native_gcs_snapshot(key: str, blob: Blob) -> StorageObjectSnapshot:
+    """Normalize native client metadata into the storage identity contract."""
+    if not isinstance(blob.size, int):
+        raise RuntimeError(f"GCS object has invalid size metadata: {key}")
+    metadata = blob.metadata or {}
+    return StorageObjectSnapshot(
+        key=key,
+        size=blob.size,
+        generation=str(blob.generation) if blob.generation is not None else None,
+        md5=blob.md5_hash,
+        crc32c=blob.crc32c,
+        sha256=metadata.get("sha256"),
     )
 
 
@@ -888,7 +1147,14 @@ def _gcs_conditional_write(
     expected_generation: str,
 ) -> dict[str, object]:
     boundary = "hifld-conditional-upload"
-    metadata = json.dumps({"name": key}, separators=(",", ":"))
+    metadata = json.dumps(
+        {
+            "name": key,
+            "cacheControl": "no-cache",
+            "metadata": {"sha256": hashlib.sha256(data).hexdigest()},
+        },
+        separators=(",", ":"),
+    )
     payload = (
         (
             f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"

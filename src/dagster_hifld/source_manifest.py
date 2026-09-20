@@ -86,8 +86,32 @@ def _manifest_lookup_keys(
     ]
 
 
+def snapshot_source_metadata(
+    staging: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+) -> None:
+    """Pin authored metadata before catalog generation replaces version files."""
+    version_root = f"{dataset_slug}/{file_slug}/{version}"
+    keys = [
+        f"{dataset_slug}/metadata/source_manifest.json",
+        f"{dataset_slug}/{file_slug}/metadata/source_manifest.json",
+        f"{version_root}/metadata/source_manifest.json",
+        f"{version_root}/metadata/data_dictionary.json",
+        f"{version_root}/metadata/quality_manifest.json",
+    ]
+    for key in keys:
+        destination = str(Path(key).parent / "source" / Path(key).name)
+        if staging.object_exists(destination) or not staging.object_exists(key):
+            continue
+        staging.write_key_if_unchanged(destination, staging.read_key(key), None)
+
+
 def _read_optional_key(staging: StagingStorageResource, key: str) -> bytes | None:
     key = staging._ensure_prefixed(key)
+    if staging._uses_s3():
+        return staging.read_key(key) if staging.object_exists(key) else None
     if staging.use_local or not staging.bucket:
         full = Path(staging.local_dir).resolve() / key
         return full.read_bytes() if full.is_file() else None

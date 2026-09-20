@@ -46,6 +46,47 @@ MAX_SENSOR_GCS_LIST_WORKERS = int(
 )
 
 
+def _step_resources() -> dict[str, dict[str, str]]:
+    resources = {
+        "requests": {
+            "cpu": "4",
+            "memory": "48Gi",
+            "ephemeral-storage": "10Gi",
+        },
+        "limits": {
+            "cpu": "8",
+            "memory": "64Gi",
+            "ephemeral-storage": "10Gi",
+        },
+    }
+    if os.environ.get("HIFLD_SHADOW_MANUAL_ONLY") != "1":
+        return resources
+
+    env_names = {
+        "requests.cpu": "HIFLD_SHADOW_STEP_CPU_REQUEST",
+        "requests.memory": "HIFLD_SHADOW_STEP_MEMORY_REQUEST",
+        "requests.ephemeral-storage": "HIFLD_SHADOW_STEP_EPHEMERAL_STORAGE_REQUEST",
+        "limits.cpu": "HIFLD_SHADOW_STEP_CPU_LIMIT",
+        "limits.memory": "HIFLD_SHADOW_STEP_MEMORY_LIMIT",
+        "limits.ephemeral-storage": "HIFLD_SHADOW_STEP_EPHEMERAL_STORAGE_LIMIT",
+    }
+    for path, env_name in env_names.items():
+        value = os.environ.get(env_name)
+        if value:
+            scope, key = path.split(".", 1)
+            resources[scope][key] = value
+    return resources
+
+
+def _step_scratch_storage() -> str:
+    if os.environ.get("HIFLD_SHADOW_MANUAL_ONLY") == "1":
+        value = os.environ.get("HIFLD_SHADOW_STEP_SCRATCH_STORAGE")
+        if value:
+            return value
+    # Production default remains the original inline value: "storage": "250Gi".
+    return "250Gi"
+
+
 def _default_executor():
     if not os.environ.get("KUBERNETES_SERVICE_HOST"):
         return None
@@ -63,18 +104,7 @@ def _default_executor():
                             "mount_path": "/tmp",
                         }
                     ],
-                    "resources": {
-                        "requests": {
-                            "cpu": "4",
-                            "memory": "48Gi",
-                            "ephemeral-storage": "10Gi",
-                        },
-                        "limits": {
-                            "cpu": "8",
-                            "memory": "64Gi",
-                            "ephemeral-storage": "10Gi",
-                        },
-                    }
+                    "resources": _step_resources(),
                 },
                 "pod_spec_config": {
                     "volumes": [
@@ -87,7 +117,7 @@ def _default_executor():
                                         "storageClassName": "dynamic-rwo",
                                         "resources": {
                                             "requests": {
-                                                "storage": "250Gi",
+                                                "storage": _step_scratch_storage(),
                                             }
                                         },
                                     }
@@ -353,10 +383,16 @@ def version_discovery_sensor(context):
     )
 
 
+def _configured_sensors():
+    if os.environ.get("HIFLD_SHADOW_MANUAL_ONLY") == "1":
+        return []
+    return [version_discovery_sensor]
+
+
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
-    sensors=[version_discovery_sensor],
+    sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
         "staging_storage": StagingStorageResource.from_env(),

@@ -44,7 +44,10 @@ from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
 )
-from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.source_manifest import (
+    load_resolved_source_manifest,
+    snapshot_source_metadata,
+)
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
@@ -1115,6 +1118,13 @@ def _write_and_publish_shapefile_zip(
             version,
             staged_shapefile_keys,
         )
+    if any(Path(key).suffix.lower() == ".zip" for key in staged_shapefile_keys):
+        return _published_outputs_from_keys(
+            dataset_slug,
+            file_slug,
+            version,
+            staged_shapefile_keys,
+        )
     existing = _prepare_format_publish(staging_storage, dataset_slug, file_slug, version, "shapefile")
     if existing:
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)
@@ -1277,6 +1287,7 @@ def run_local_version_pipeline(
     version: str,
     storage_location_name: str,
 ) -> dict[str, Any]:
+    snapshot_source_metadata(staging_storage, dataset_slug, file_slug, version)
     resolved_manifest = load_resolved_source_manifest(
         staging_storage,
         dataset_slug,
@@ -1493,3 +1504,7 @@ publish_assets = [
     publish_pmtiles,
     publish_shapefile_zip,
 ]
+
+from dagster_hifld.assets.portolan import publish_portolan_catalog
+
+publish_assets.append(publish_portolan_catalog)

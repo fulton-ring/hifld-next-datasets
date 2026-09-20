@@ -254,7 +254,7 @@ class _StorageAdapter:
         self.local_dir = Path(resource.local_dir).resolve()
         self.use_local = resource.use_local or not resource.bucket
         self.fs = None
-        if not self.use_local:
+        if not self.use_local and not resource._uses_s3():
             import gcsfs
 
             self.fs = gcsfs.GCSFileSystem()
@@ -280,6 +280,8 @@ class _StorageAdapter:
 
     async def list_files(self, logical_prefix: str) -> list[str]:
         prefix = self.qualify_key(logical_prefix)
+        if self.resource._uses_s3():
+            return self.resource.list_prefix(prefix)
         if self.use_local:
             p = (self.local_dir / prefix).resolve()
             if not p.exists():
@@ -304,6 +306,8 @@ class _StorageAdapter:
 
     async def file_exists(self, qualified_path: str) -> bool:
         remote_path = qualified_path.lstrip("/")
+        if self.resource._uses_s3():
+            return self.resource.object_exists(remote_path)
         if self.use_local:
             return (self.local_dir / remote_path).exists()
         return bool(self.fs.exists(f"{self.bucket}/{remote_path}"))
@@ -311,6 +315,9 @@ class _StorageAdapter:
     async def download_file(self, qualified_path: str, local_path: Path) -> None:
         remote_path = qualified_path.lstrip("/")
         local_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.resource._uses_s3():
+            self.resource.download_key_to(remote_path, local_path)
+            return
         if self.use_local:
             src = self.local_dir / remote_path
             if src.is_dir():
@@ -322,6 +329,8 @@ class _StorageAdapter:
 
     async def upload_file(self, local_path: Path, logical_path: str) -> str:
         remote_path = self.qualify_key(logical_path)
+        if self.resource._uses_s3():
+            return self.resource.upload_local_file(local_path, remote_path)
         if self.use_local:
             dst = self.local_dir / remote_path
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -332,6 +341,9 @@ class _StorageAdapter:
 
     async def get_file_size(self, qualified_path: str) -> int:
         remote_path = qualified_path.lstrip("/")
+        if self.resource._uses_s3():
+            snapshot = self.resource.object_snapshot(remote_path)
+            return snapshot.size if snapshot is not None else 0
         if self.use_local:
             p = self.local_dir / remote_path
             return p.stat().st_size if p.exists() else 0
@@ -343,18 +355,24 @@ class _StorageAdapter:
 
     def get_public_url(self, qualified_path: str) -> str:
         remote_path = qualified_path.lstrip("/")
+        if self.resource._uses_s3():
+            return f"{self.resource.s3_endpoint_url.rstrip('/')}/{self.bucket}/{remote_path}"
         if self.use_local:
             return f"file://{self.local_dir / remote_path}"
         return f"https://storage.googleapis.com/{self.bucket}/{remote_path}"
 
     def path_to_storage_uri(self, qualified_path: str) -> str:
         path = qualified_path.lstrip("/")
+        if self.resource._uses_s3():
+            return f"s3://{self.bucket}/{path}"
         if self.use_local:
             return str(self.local_dir / path)
         return f"gs://{self.bucket}/{path}"
 
     async def read_bytes(self, qualified_path: str) -> bytes:
         remote_path = qualified_path.lstrip("/")
+        if self.resource._uses_s3():
+            return self.resource.read_key(remote_path)
         if self.use_local:
             return (self.local_dir / remote_path).read_bytes()
         return self.fs.read_bytes(f"{self.bucket}/{remote_path}")

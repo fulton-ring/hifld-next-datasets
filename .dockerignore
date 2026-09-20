@@ -13,6 +13,16 @@ __pycache__/
 *.egg-info/
 src/hifld_next_datasets.egg-info/
 
+# Local Dagster state, databases, and credentials
+.local/
+.dagster_home/
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+
 # Local data and scraper outputs (not needed at runtime; pipelines fetch fresh)
 data/
 dataset-source-hints.jsonl
@@ -28,9 +38,6 @@ test_*.py
 .vscode/
 .cursor/
 .DS_Store
-
-# Dagster local home
-.dagster_home/
 
 # Plans / docs that aren't shipped
 prompts/

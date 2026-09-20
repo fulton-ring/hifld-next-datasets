@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -117,7 +116,7 @@ class DynamicPartitionTests(unittest.TestCase):
 
     def test_supported_assets_do_not_drive_publish_asset_count(self):
         self.assertEqual(len(catalog_assets_module.catalog_assets), 1)
-        self.assertEqual(len(publish_assets_module.publish_assets), 5)
+        self.assertEqual(len(publish_assets_module.publish_assets), 6)
 
     def test_version_discovery_sensor_discovers_missing_catalog_version_without_requesting_run(
         self,
@@ -377,12 +376,7 @@ class DynamicPartitionTests(unittest.TestCase):
             local_dir="data/staging",
         )
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "google.cloud.storage": SimpleNamespace(Client=FakeStorageClient),
-            },
-        ):
+        with patch("google.cloud.storage.Client", FakeStorageClient):
             versions = list(_iter_staged_version_paths(storage) or [])
 
         self.assertEqual(
@@ -416,10 +410,7 @@ class DynamicPartitionTests(unittest.TestCase):
             local_dir="data/staging",
         )
 
-        with patch.dict(
-            "sys.modules",
-            {"google.cloud.storage": SimpleNamespace(Client=FakeStorageClient)},
-        ):
+        with patch("google.cloud.storage.Client", FakeStorageClient):
             versions = list(_iter_staged_version_paths(storage) or [])
 
         self.assertEqual(

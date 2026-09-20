@@ -21,3 +21,4 @@ backtest_cache/
 data/
 dagster_expectations/
 .tmp_dagster_home*/
+.local/

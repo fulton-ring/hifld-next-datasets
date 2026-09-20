@@ -7,10 +7,37 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import (
     ResolvedSourceManifest,
     load_resolved_source_manifest,
+    snapshot_source_metadata,
 )
 
 
 class SourceManifestTests(unittest.TestCase):
+    def test_snapshots_authored_metadata_before_generated_catalog_overwrites_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            staging = StagingStorageResource(
+                local_dir=tmpdir, use_local=True, prefix="hifld"
+            )
+            sources = {
+                "dataset/metadata/source_manifest.json": b'{"title":"Dataset"}',
+                "dataset/file/metadata/source_manifest.json": b'{"title":"File"}',
+                "dataset/file/v1.0.0/metadata/source_manifest.json": b'{"title":"Version"}',
+                "dataset/file/v1.0.0/metadata/data_dictionary.json": b'{"columns":[]}',
+                "dataset/file/v1.0.0/metadata/quality_manifest.json": b'{"feature_count":1}',
+            }
+            for key, body in sources.items():
+                staging.write_key(key, body)
+            snapshot_source_metadata(staging, "dataset", "file", "v1.0.0")
+            staging.write_key(
+                "dataset/file/v1.0.0/metadata/data_dictionary.json",
+                b'{"generated":true}',
+            )
+            snapshot_source_metadata(staging, "dataset", "file", "v1.0.0")
+
+            for key, body in sources.items():
+                prefix, name = key.rsplit("/", 1)
+                pinned = f"{prefix}/source/{name}"
+                self.assertEqual(staging.read_key(pinned), body)
+
     def test_manifest_inherits_dataset_file_and_version_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "dataset-a"

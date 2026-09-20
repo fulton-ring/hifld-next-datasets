@@ -11,7 +11,10 @@ from dagster_hifld.catalog import (
 from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILES
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.source_manifest import (
+    load_resolved_source_manifest,
+    snapshot_source_metadata,
+)
 
 
 def _build_catalog_output_metadata(
@@ -58,6 +61,7 @@ _SUPPORTED_BY_PAIR = {
 )
 def publish_catalog(context, staging_storage: StagingStorageResource) -> Output[dict]:
     dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    snapshot_source_metadata(staging_storage, dataset_slug, file_slug, version)
     spec = _SUPPORTED_BY_PAIR.get((dataset_slug, file_slug))
     description = (
         spec.description if spec else f"Staged dataset file {dataset_slug}/{file_slug}."

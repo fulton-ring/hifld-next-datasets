@@ -1,12 +1,13 @@
 import base64
 import hashlib
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 import zipfile
 
 import google_crc32c
@@ -19,10 +20,31 @@ from dagster_hifld.download import (
     build_version_id,
     download_convert_and_stage,
 )
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
 class StagingStorageResourceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        resources._gcs_client.cache_clear()
+
+    def tearDown(self) -> None:
+        resources._gcs_client.cache_clear()
+
+    def test_bucket_resources_apply_portolan_prefix_from_environment(self):
+        with patch.dict(
+            os.environ,
+            {
+                "HIFLD_STAGING_BUCKET": "staging-bucket",
+                "HIFLD_DATASETS_BUCKET": "published-bucket",
+                "HIFLD_STAGING_PREFIX": "hifld",
+                "HIFLD_DATASETS_PREFIX": "hifld",
+            },
+        ):
+            staging = StagingStorageResource.from_env()
+            published = PublishedStorageResource.from_env()
+        self.assertEqual(staging.prefix, "hifld")
+        self.assertEqual(published.prefix, "hifld")
+
     def test_list_prefix_returns_sorted_prefixed_keys_without_reading_contents(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = StagingStorageResource(
@@ -221,16 +243,108 @@ class StagingStorageResourceTests(unittest.TestCase):
             ["tenant-a/dataset/file/v1/geojson/source.geojson"],
         )
 
+    def test_gcs_read_key_uses_bounded_native_storage_download(self):
+        resource = StagingStorageResource(
+            bucket="published-bucket",
+            use_local=False,
+        )
+        gcs_client = Mock()
+        blob = gcs_client.bucket.return_value.blob.return_value
+        blob.download_as_bytes.return_value = b"catalog document"
+        legacy_filesystem = Mock()
+        legacy_filesystem.read_bytes.return_value = b"legacy document"
+
+        with (
+            patch("google.cloud.storage.Client", return_value=gcs_client),
+            patch("gcsfs.GCSFileSystem", return_value=legacy_filesystem),
+        ):
+            result = resource.read_key("catalog.json")
+
+        self.assertEqual(result, b"catalog document")
+        gcs_client.bucket.assert_called_once_with("published-bucket")
+        gcs_client.bucket.return_value.blob.assert_called_once_with("catalog.json")
+        blob.download_as_bytes.assert_called_once_with(timeout=60)
+        legacy_filesystem.read_bytes.assert_not_called()
+
+    def test_gcs_object_snapshot_uses_native_storage_metadata(self):
+        resource = StagingStorageResource(
+            bucket="published-bucket",
+            use_local=False,
+        )
+        gcs_client = Mock()
+        blob = gcs_client.bucket.return_value.blob.return_value
+        blob.size = 12
+        blob.generation = 123
+        blob.md5_hash = "md5-value"
+        blob.crc32c = "crc32c-value"
+        blob.metadata = {"sha256": "sha256-value"}
+
+        with patch("google.cloud.storage.Client", return_value=gcs_client):
+            snapshot = resource.object_snapshot("metadata/source_manifest.json")
+
+        self.assertEqual(
+            snapshot,
+            resources.StorageObjectSnapshot(
+                key="metadata/source_manifest.json",
+                size=12,
+                generation="123",
+                md5="md5-value",
+                crc32c="crc32c-value",
+                sha256="sha256-value",
+            ),
+        )
+        blob.reload.assert_called_once_with(timeout=60)
+        gcs_client.bucket.assert_called_once_with("published-bucket")
+        gcs_client.bucket.return_value.blob.assert_called_once_with(
+            "metadata/source_manifest.json"
+        )
+
+    def test_gcs_sha256_key_downloads_through_native_storage_client(self):
+        resource = StagingStorageResource(
+            bucket="published-bucket",
+            use_local=False,
+        )
+        gcs_client = Mock()
+        blob = gcs_client.bucket.return_value.blob.return_value
+        def write_asset(destination: str, timeout: int) -> None:
+            self.assertEqual(timeout, 60)
+            Path(destination).write_bytes(b"asset bytes")
+
+        blob.download_to_filename.side_effect = write_asset
+        legacy_filesystem = Mock()
+
+        with (
+            patch("google.cloud.storage.Client", return_value=gcs_client),
+            patch("gcsfs.GCSFileSystem", return_value=legacy_filesystem),
+        ):
+            digest = resource.sha256_key("geoparquet/data.parquet")
+
+        self.assertEqual(digest, hashlib.sha256(b"asset bytes").hexdigest())
+        gcs_client.bucket.assert_called_once_with("published-bucket")
+        gcs_client.bucket.return_value.blob.assert_called_once_with(
+            "geoparquet/data.parquet"
+        )
+        blob.download_to_filename.assert_called_once()
+        legacy_filesystem.open.assert_not_called()
+
     def test_gcs_get_local_version_dir_streams_objects_to_disk(self):
         resource = StagingStorageResource(bucket="staging-bucket", use_local=False)
         key = "dataset/file/v1.0.0/geopackage/source.gpkg"
         fake_fs = Mock()
         fake_fs.find.return_value = [f"staging-bucket/{key}"]
-        fake_file = MagicMock()
-        fake_file.__enter__.return_value = BytesIO(b"source bytes")
-        fake_fs.open.return_value = fake_file
+        gcs_client = Mock()
+        blob = gcs_client.bucket.return_value.blob.return_value
 
-        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+        def write_source(destination: str, timeout: int) -> None:
+            self.assertEqual(timeout, 60)
+            Path(destination).write_bytes(b"source bytes")
+
+        blob.download_to_filename.side_effect = write_source
+
+        with (
+            patch("gcsfs.GCSFileSystem", return_value=fake_fs),
+            patch("google.cloud.storage.Client", return_value=gcs_client),
+        ):
             with resource.get_local_version_dir(
                 "dataset", "file", "v1.0.0"
             ) as version_dir:
@@ -238,7 +352,10 @@ class StagingStorageResourceTests(unittest.TestCase):
                 self.assertEqual(copied.read_bytes(), b"source bytes")
 
         fake_fs.read_bytes.assert_not_called()
-        fake_fs.open.assert_called_once_with(f"staging-bucket/{key}", "rb")
+        fake_fs.open.assert_not_called()
+        gcs_client.bucket.assert_called_once_with("staging-bucket")
+        gcs_client.bucket.return_value.blob.assert_called_once_with(key)
+        blob.download_to_filename.assert_called_once()
 
     def test_object_exists_checks_exact_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -267,7 +384,17 @@ class StagingStorageResourceTests(unittest.TestCase):
             {"size": 12, "md5Hash": "same-checksum"},
         ]
 
-        with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+        gcs_client = Mock()
+        blob = gcs_client.bucket.return_value.blob.return_value
+        blob.size = 12
+        blob.generation = "1"
+        blob.md5_hash = "same-checksum"
+        blob.crc32c = None
+        blob.metadata = None
+        with (
+            patch("gcsfs.GCSFileSystem", return_value=fake_fs),
+            patch("google.cloud.storage.Client", return_value=gcs_client),
+        ):
             matches = source.object_content_matches(
                 destination,
                 "dataset/file/v1/geojson/source.geojson",
@@ -297,7 +424,17 @@ class StagingStorageResourceTests(unittest.TestCase):
                 "md5Hash": checksum,
             }
 
-            with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            gcs_client = Mock()
+            blob = gcs_client.bucket.return_value.blob.return_value
+            blob.size = len(b"candidate bytes")
+            blob.generation = "1"
+            blob.md5_hash = checksum
+            blob.crc32c = None
+            blob.metadata = None
+            with (
+                patch("gcsfs.GCSFileSystem", return_value=fake_fs),
+                patch("google.cloud.storage.Client", return_value=gcs_client),
+            ):
                 matches = source.object_content_matches(destination, key, key)
 
             self.assertTrue(matches)
@@ -324,7 +461,17 @@ class StagingStorageResourceTests(unittest.TestCase):
                 "crc32c": checksum,
             }
 
-            with patch("gcsfs.GCSFileSystem", return_value=fake_fs):
+            gcs_client = Mock()
+            blob = gcs_client.bucket.return_value.blob.return_value
+            blob.size = len(data)
+            blob.generation = "1"
+            blob.md5_hash = None
+            blob.crc32c = checksum
+            blob.metadata = None
+            with (
+                patch("gcsfs.GCSFileSystem", return_value=fake_fs),
+                patch("google.cloud.storage.Client", return_value=gcs_client),
+            ):
                 matches = source.object_content_matches(destination, key, key)
 
             self.assertTrue(matches)
@@ -385,6 +532,8 @@ class StagingStorageResourceTests(unittest.TestCase):
         fake_fs.open.assert_called_once_with(
             "staging-bucket/dataset/file/v1/geojson/source.geojson",
             "wb",
+            fixed_key_metadata={"cache_control": "no-cache"},
+            metadata={"sha256": hashlib.sha256(b"data").hexdigest()},
         )
         self.assertEqual(output.getvalue(), b"data")
         fake_fs.call.assert_not_called()
@@ -584,6 +733,17 @@ class StagingStorageResourceTests(unittest.TestCase):
         fake_fs.call.assert_called_once()
         _args, kwargs = fake_fs.call.call_args
         self.assertEqual(kwargs["ifGenerationMatch"], "404")
+        self.assertIn(
+            b'"metadata":{"sha256":"'
+            + hashlib.sha256(b"{}").hexdigest().encode()
+            + b'"}',
+            kwargs["data"],
+        )
+        self.assertIn(b'"cacheControl":"no-cache"', kwargs["data"])
+        self.assertIn(
+            b"Content-Type: application/octet-stream\r\n",
+            kwargs["data"],
+        )
         self.assertEqual(result.generation, "405")
         self.assertEqual(result.key, snapshot.key)
         fake_fs.info.assert_not_called()
