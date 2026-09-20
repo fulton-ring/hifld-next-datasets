@@ -78,6 +78,17 @@ def _source_text(values: Mapping[str, object], key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _source_bounds(value: object) -> tuple[float, float, float, float] | None:
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    if not all(
+        isinstance(coordinate, (int, float)) and not isinstance(coordinate, bool)
+        for coordinate in value
+    ):
+        return None
+    return (float(value[0]), float(value[1]), float(value[2]), float(value[3]))
+
+
 def manifest_tags(value: Mapping[str, object]) -> tuple[tuple[str, str], ...]:
     tags = value.get("tags")
     if not isinstance(tags, dict):
@@ -815,6 +826,8 @@ def _prepare_portolan_record(
         feature_id_column=facts.feature_id_column,
         native_bbox=facts.native_bbox,
         crs84_bbox=facts.crs84_bbox,
+        source_version_description=_source_text(source_quality, "description") or None,
+        source_version_bounds=_source_bounds(source_quality.get("bounds")),
         quality_passed=quality_passed,
         invalid_geometry_count=invalid_geometry_count,
         null_geometry_count=null_geometry_count,
