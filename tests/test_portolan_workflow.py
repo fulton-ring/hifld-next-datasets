@@ -154,6 +154,21 @@ class PortolanWorkflowTests(unittest.TestCase):
                 )
             )
 
+    def test_source_publisher_uses_authored_inventory_for_legacy_v1_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            self.assertEqual(
+                _source_publisher_from_storage(
+                    published, "hifld/wbd/10-digit-hu-watershed/v1.0.0"
+                ),
+                "U.S. Geological Survey, National Geospatial Technical Operations Center",
+            )
+            self.assertIsNone(
+                _source_publisher_from_storage(
+                    published, "hifld/hospitals-3/hospitals-3/v1.1.0"
+                )
+            )
+
     def test_release_pointer_stays_selected_when_candidate_validation_rejects(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             published = PublishedStorageResource(local_dir=tmpdir, use_local=True)

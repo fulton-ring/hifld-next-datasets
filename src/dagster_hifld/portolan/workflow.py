@@ -27,6 +27,7 @@ from dagster_hifld.resources import (
     StorageObjectSnapshot,
 )
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
+from dagster_hifld.source_manifest import inventory_source_publisher
 
 from .catalog import (
     HIFLD_ARCHIVE_LICENSE_HREF,
@@ -889,7 +890,7 @@ def _source_publisher_from_storage(
     parts = version_path.split("/")
     if len(parts) != 4:
         raise ValueError(f"Invalid Portolan version path: {version_path}")
-    collection, dataset, file_slug, _ = parts
+    collection, dataset, file_slug, version = parts
     metadata_keys = (
         f"{version_path}/metadata/data_dictionary.json",
         f"{version_path}/metadata/source_manifest.json",
@@ -905,6 +906,8 @@ def _source_publisher_from_storage(
         publisher = document.get("publisher")
         if isinstance(publisher, str) and publisher.strip():
             return publisher.strip()
+    if collection == "hifld":
+        return inventory_source_publisher(dataset, file_slug, version)
     return None
 
 

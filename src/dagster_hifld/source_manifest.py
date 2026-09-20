@@ -54,10 +54,31 @@ def load_resolved_source_manifest(
             raise ValueError(f"Source manifest at {key} must be a JSON object.")
         layers.append((source_name, key, _compact_manifest(parsed)))
 
-    if layers:
-        return _merge_manifest_layers(layers)
-
     inventory = _inventory_metadata_for(dataset_slug, file_slug, version)
+    if layers:
+        resolved = _merge_manifest_layers(layers)
+        if inventory is None:
+            return resolved
+        metadata = dict(inventory)
+        metadata.update(
+            {
+                field: value
+                for field, value in resolved.metadata.items()
+                if field
+                not in {"metadata_sources", "metadata_resolved_from", "manifest_keys"}
+            }
+        )
+        metadata["metadata_sources"] = [
+            "inventory",
+            *resolved.metadata["metadata_sources"],
+        ]
+        metadata["metadata_resolved_from"] = {
+            **inventory["metadata_resolved_from"],
+            **resolved.metadata["metadata_resolved_from"],
+        }
+        metadata["manifest_keys"] = resolved.manifest_keys
+        return ResolvedSourceManifest(metadata, resolved.manifest_keys)
+
     if inventory:
         return ResolvedSourceManifest(inventory, [])
 
@@ -82,7 +103,10 @@ def _manifest_lookup_keys(
     return [
         ("dataset", f"{dataset_slug}/metadata/source_manifest.json"),
         ("file", f"{dataset_slug}/{file_slug}/metadata/source_manifest.json"),
-        ("version", f"{dataset_slug}/{file_slug}/{version}/metadata/source_manifest.json"),
+        (
+            "version",
+            f"{dataset_slug}/{file_slug}/{version}/metadata/source_manifest.json",
+        ),
     ]
 
 
@@ -125,14 +149,12 @@ def _read_optional_key(staging: StagingStorageResource, key: str) -> bytes | Non
 
 def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
-        key: value
-        for key, value in manifest.items()
-        if value not in (None, "", [], {})
+        key: value for key, value in manifest.items() if value not in (None, "", [], {})
     }
 
 
 def _merge_manifest_layers(
-    layers: list[tuple[str, str, dict[str, Any]]]
+    layers: list[tuple[str, str, dict[str, Any]]],
 ) -> ResolvedSourceManifest:
     merged: dict[str, Any] = {}
     resolved_from: dict[str, str] = {}
@@ -193,6 +215,17 @@ def _inventory_metadata_for(
     return metadata
 
 
+def inventory_source_publisher(
+    dataset_slug: str, file_slug: str, version: str
+) -> str | None:
+    """Return authored inventory source evidence for an original v1.0.0 layer."""
+    metadata = _inventory_metadata_for(dataset_slug, file_slug, version)
+    publisher = metadata.get("publisher") if metadata is not None else None
+    return (
+        publisher.strip() if isinstance(publisher, str) and publisher.strip() else None
+    )
+
+
 def _lookup_inventory_row(
     dataset_slug: str,
     file_slug: str,
@@ -221,6 +254,15 @@ def _lookup_inventory_row(
         path = _normalize_inventory_path(row.get("path", ""))
         if filename == normalized_file and path.startswith(dataset_slug):
             return row, "alias"
+
+    unscoped = [
+        row
+        for row in rows
+        if _normalize_inventory_path(row.get("path", "")) in {"", "done"}
+        and _slug(row.get("filename", "")) == file_slug
+    ]
+    if len(unscoped) == 1:
+        return unscoped[0], "unscoped_filename"
     return None
 
 
@@ -248,7 +290,11 @@ def _slug(value: str) -> str:
 
 
 def _strip_format_words(value: str) -> str:
-    return re.sub(r"-(geopackage|shapefile|geojson|file-geodatabase|file_geodatabase)(-.*)?$", "", value)
+    return re.sub(
+        r"-(geopackage|shapefile|geojson|file-geodatabase|file_geodatabase)(-.*)?$",
+        "",
+        value,
+    )
 
 
 def _parse_keywords(value: str | None) -> list[str]:
