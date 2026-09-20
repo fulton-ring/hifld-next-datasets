@@ -28,6 +28,8 @@ dependencies = [
     "pyarrow>=23.0.1",
     "s2sphere>=0.2.5",
     "boto3>=1.43.89",
+    "rashid==0.1.8",
+    "jsonschema>=4.26.0",
 ]
 
 [build-system]
