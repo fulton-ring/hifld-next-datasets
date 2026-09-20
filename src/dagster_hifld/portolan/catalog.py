@@ -790,6 +790,10 @@ def _providers(record: CatalogRecord) -> list[dict[str, object]]:
     return providers
 
 
+def _has_source_producer(record: CatalogRecord) -> bool:
+    return bool(record.provider and record.provider != HIFLD_NEXT_HOST_NAME)
+
+
 def _render_record(root: Path, record: CatalogRecord) -> None:
     collection_dir = root / record.collection_path
     dataset_dir = root / record.dataset_path
@@ -974,7 +978,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
     collection = {
         "stac_version": "1.1.0",
         "stac_extensions": [
-            PORTOLAN_STAC_EXTENSION,
+            *([PORTOLAN_STAC_EXTENSION] if _has_source_producer(record) else []),
             "https://stac-extensions.github.io/file/v2.1.0/schema.json",
             "https://stac-extensions.github.io/version/v1.2.0/schema.json",
             "https://stac-extensions.github.io/table/v1.2.0/schema.json",

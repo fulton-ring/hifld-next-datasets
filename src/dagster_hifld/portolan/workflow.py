@@ -42,6 +42,7 @@ from .catalog import (
 from .pmtiles import extract_vector_layer_ids
 from .release import ReleasePointer
 from .thumbnail import render_geoparquet_thumbnail
+from .validation import normalize_candidate_tree, validate_candidate_tree
 
 DEFAULT_PUBLIC_ROOT = "http://localhost:8333/hifld-local-published"
 CATALOG_KEY = "_catalog/catalog.sqlite"
@@ -895,9 +896,20 @@ def _publish_catalog(
     published = published.model_copy(update={"prefix": ""})
     with tempfile.TemporaryDirectory(prefix="hifld-portolan-") as temporary:
         root = Path(temporary)
-        render_portolan_tree(root, records, public_root=request.public_root)
-        database = root / "catalog.sqlite"
         previous = published.object_snapshot(CATALOG_KEY)
+        previous_documents = _seed_release_bundle(published, root, None)
+        render_portolan_tree(root, records, public_root=request.public_root)
+        _merge_and_rebase_release_documents(
+            root,
+            previous_documents,
+            request.public_root,
+            request.public_root,
+            previous_release=False,
+        )
+        normalize_candidate_tree(root)
+        validate_candidate_tree(root)
+        database = root / CATALOG_KEY
+        database.parent.mkdir(parents=True, exist_ok=True)
         root_href = f"{request.public_root}/catalog.json"
         if previous is None:
             generation = build_catalog_sqlite(database, records, root_href=root_href)
@@ -985,6 +997,8 @@ def _publish_release_catalog(
             release_root,
             previous_release=previous_pointer is not None,
         )
+        normalize_candidate_tree(root)
+        validate_candidate_tree(root)
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue

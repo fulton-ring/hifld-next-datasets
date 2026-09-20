@@ -19,6 +19,7 @@ from dagster_hifld.assets.publish import _write_and_publish_shapefile_zip
 from dagster_hifld.partitions import PUBLISH_PARTITIONS
 from dagster_hifld.portolan.catalog import CatalogRecord
 from dagster_hifld.portolan.release import ReleasePointer
+from dagster_hifld.portolan.validation import PortolanValidationError
 from dagster_hifld.portolan.workflow import (
     GeoParquetFacts,
     PortolanPublishRequest,
@@ -57,6 +58,47 @@ def _pmtiles_archive(layer_id: str = "roads") -> bytes:
 
 
 class PortolanWorkflowTests(unittest.TestCase):
+    def test_release_pointer_stays_selected_when_candidate_validation_rejects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            request = PortolanPublishRequest(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "Agency",
+                public_root="https://example.test/catalog",
+            )
+            record = CatalogRecord(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "non_spatial_source",
+                0,
+                (),
+                collection_title="HIFLD Next",
+            )
+            _publish_catalog((record,), request, published, use_release_pointer=True)
+            before = published.read_key("_catalog/current.json")
+
+            with (
+                patch(
+                    "dagster_hifld.portolan.workflow.validate_candidate_tree",
+                    side_effect=PortolanValidationError("invalid candidate"),
+                ),
+                self.assertRaisesRegex(PortolanValidationError, "invalid candidate"),
+            ):
+                _publish_catalog(
+                    (record,), request, published, use_release_pointer=True
+                )
+
+            self.assertEqual(published.read_key("_catalog/current.json"), before)
+
     def test_release_publication_commits_pointer_after_uploading_a_complete_bundle(
         self,
     ):
