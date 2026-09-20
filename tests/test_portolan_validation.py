@@ -17,6 +17,50 @@ from dagster_hifld.portolan.validation import (
 
 
 class PortolanValidationTests(unittest.TestCase):
+    def test_retained_out_of_range_extent_uses_conservative_world_bbox(self):
+        record = CatalogRecord(
+            "hifld",
+            "forests",
+            "forests",
+            "v1.0.0",
+            "Forests",
+            "Data",
+            "spatial",
+            1,
+            (),
+            provider="Source agency",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            render_portolan_tree(root, (record,))
+            path = root / "hifld/forests/forests/v1.0.0/collection.json"
+            document = json.loads(path.read_text())
+            document["extent"]["spatial"]["bbox"] = [
+                [-16698780.0, 2064632.0, -7313653.0, 8745977.0]
+            ]
+            document["hifld:native_bbox"] = [
+                -16698780.0,
+                2064632.0,
+                -7313653.0,
+                8745977.0,
+            ]
+            path.write_text(json.dumps(document))
+
+            self.assertEqual(normalize_candidate_tree(root), [])
+
+            repaired = json.loads(path.read_text())
+            self.assertEqual(
+                repaired["extent"]["spatial"]["bbox"],
+                [[-180.0, -90.0, 180.0, 90.0]],
+            )
+            self.assertEqual(
+                repaired["hifld:native_bbox"],
+                [-16698780.0, 2064632.0, -7313653.0, 8745977.0],
+            )
+            self.assertEqual(
+                repaired["hifld:spatial_extent_status"], "unknown_source_bbox"
+            )
+
     def test_host_only_collection_is_an_explicit_missing_producer_exception(self):
         record = CatalogRecord(
             "hifld",
@@ -95,6 +139,85 @@ class PortolanValidationTests(unittest.TestCase):
             document = json.loads(path.read_text())
             self.assertEqual(document["providers"][0]["roles"], ["producer"])
 
+    def test_retained_name_only_source_provider_gets_producer_and_host_roles(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "hifld/districts/districts/v1.0.0/collection.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "stac_version": "1.1.0",
+                        "stac_extensions": [PORTOLAN_STAC_EXTENSION],
+                        "type": "Collection",
+                        "id": "hifld/districts/districts/v1.0.0",
+                        "description": "Districts",
+                        "license": "CC-PDM-1.0",
+                        "extent": {
+                            "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                            "temporal": {"interval": [[None, None]]},
+                        },
+                        "links": [],
+                        "hifld:agency": "Census Bureau",
+                        "providers": [{"name": "Census Bureau"}],
+                    }
+                )
+            )
+
+            self.assertEqual(normalize_candidate_tree(root), [])
+
+            document = json.loads(path.read_text())
+            self.assertEqual(
+                document["providers"],
+                [
+                    {"name": "Census Bureau", "roles": ["producer"]},
+                    {
+                        "name": HIFLD_NEXT_HOST_NAME,
+                        "roles": ["host"],
+                        "url": "https://hifld.publicenvirodata.org",
+                    },
+                ],
+            )
+
+    def test_retained_publisher_is_verified_against_source_dictionary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "hifld/address-ranges/address-ranges/v1.0.0/collection.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "stac_version": "1.1.0",
+                        "stac_extensions": [PORTOLAN_STAC_EXTENSION],
+                        "type": "Collection",
+                        "id": "hifld/address-ranges/address-ranges/v1.0.0",
+                        "description": "Address ranges",
+                        "license": "CC-PDM-1.0",
+                        "extent": {
+                            "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                            "temporal": {"interval": [[None, None]]},
+                        },
+                        "links": [],
+                        "hifld:agency": "Census Bureau",
+                        "providers": [{"name": "United States Census Bureau"}],
+                    }
+                )
+            )
+
+            exceptions = normalize_candidate_tree(
+                root,
+                source_publisher=lambda version_path: (
+                    "United States Census Bureau"
+                    if version_path == "hifld/address-ranges/address-ranges/v1.0.0"
+                    else None
+                ),
+            )
+
+            self.assertEqual(exceptions, [])
+            document = json.loads(path.read_text())
+            self.assertEqual(document["providers"][0]["roles"], ["producer"])
+            self.assertEqual(document["providers"][-1]["roles"], ["host"])
+
     def test_validation_rejects_a_broken_local_child_link(self):
         record = CatalogRecord(
             "hifld",
@@ -141,3 +264,37 @@ class PortolanValidationTests(unittest.TestCase):
 
             with self.assertRaisesRegex(PortolanValidationError, "AGENTS.md"):
                 validate_candidate_tree(root)
+
+    def test_profile_failure_reports_a_bounded_provider_reason(self):
+        record = CatalogRecord(
+            "hifld",
+            "roads",
+            "roads",
+            "v1.0.0",
+            "Roads",
+            "Data",
+            "spatial",
+            1,
+            (),
+            provider="Agency",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            render_portolan_tree(root, (record,))
+            path = root / "hifld/roads/roads/v1.0.0/collection.json"
+            document = json.loads(path.read_text())
+            document["providers"] = [
+                {
+                    "name": HIFLD_NEXT_HOST_NAME,
+                    "roles": ["host"],
+                    "url": "https://hifld.publicenvirodata.org",
+                }
+            ]
+            path.write_text(json.dumps(document))
+
+            with self.assertRaises(PortolanValidationError) as captured:
+                validate_candidate_tree(root)
+
+            message = str(captured.exception)
+            self.assertIn("providers", message)
+            self.assertLess(len(message), 1200)

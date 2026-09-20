@@ -882,6 +882,65 @@ def _prepare_portolan_record(
     )
 
 
+def _source_publisher_from_storage(
+    published: PublishedStorageResource, version_path: str
+) -> str | None:
+    """Read authored publisher evidence for a retained version Collection."""
+    parts = version_path.split("/")
+    if len(parts) != 4:
+        raise ValueError(f"Invalid Portolan version path: {version_path}")
+    collection, dataset, file_slug, _ = parts
+    metadata_keys = (
+        f"{version_path}/metadata/data_dictionary.json",
+        f"{version_path}/metadata/source_manifest.json",
+        f"{collection}/{dataset}/{file_slug}/metadata/source_manifest.json",
+        f"{collection}/{dataset}/metadata/source_manifest.json",
+    )
+    for key in metadata_keys:
+        if not published.object_exists(key):
+            continue
+        document = json.loads(published.read_key(key))
+        if not isinstance(document, dict):
+            raise TypeError(f"Source metadata is not an object: {key}")
+        publisher = document.get("publisher")
+        if isinstance(publisher, str) and publisher.strip():
+            return publisher.strip()
+    return None
+
+
+def _sync_corrected_spatial_extents(database: Path, root: Path) -> None:
+    """Keep the disposable SQLite projection aligned with corrected STAC boxes."""
+    with sqlite3.connect(database) as connection:
+        for path in sorted(root.rglob("collection.json")):
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(document, dict) or document.get(
+                "hifld:spatial_extent_status"
+            ) not in {"unknown_source_bbox", "clamped_to_crs84"}:
+                continue
+            identifier = document.get("id")
+            extent = document.get("extent")
+            spatial = extent.get("spatial") if isinstance(extent, dict) else None
+            boxes = spatial.get("bbox") if isinstance(spatial, dict) else None
+            bounds = (
+                _source_bounds(boxes[0])
+                if isinstance(boxes, list) and len(boxes) == 1
+                else None
+            )
+            if not isinstance(identifier, str) or bounds is None:
+                raise ValueError(f"Corrected spatial extent is invalid: {path}")
+            serialized = json.dumps(list(bounds))
+            connection.execute(
+                "UPDATE versions SET crs84_bbox_json = ? WHERE version_path = ?",
+                (serialized, identifier),
+            )
+            connection.execute(
+                "UPDATE asset_objects SET crs84_bbox_json = ? "
+                "WHERE asset_path IN "
+                "(SELECT asset_path FROM assets WHERE version_path = ?)",
+                (serialized, identifier),
+            )
+
+
 def _publish_catalog(
     records: tuple[CatalogRecord, ...],
     request: PortolanPublishRequest,
@@ -906,7 +965,12 @@ def _publish_catalog(
             request.public_root,
             previous_release=False,
         )
-        normalize_candidate_tree(root)
+        normalize_candidate_tree(
+            root,
+            source_publisher=lambda version_path: _source_publisher_from_storage(
+                published, version_path
+            ),
+        )
         validate_candidate_tree(root)
         database = root / CATALOG_KEY
         database.parent.mkdir(parents=True, exist_ok=True)
@@ -916,6 +980,7 @@ def _publish_catalog(
         else:
             database.write_bytes(published.read_key(CATALOG_KEY))
             generation = update_catalog_sqlite(database, records)
+        _sync_corrected_spatial_extents(database, root)
         for path in sorted(root.rglob("*")):
             if path.is_file() and path != database:
                 relative_path = path.relative_to(root).as_posix()
@@ -997,7 +1062,13 @@ def _publish_release_catalog(
             release_root,
             previous_release=previous_pointer is not None,
         )
-        normalize_candidate_tree(root)
+        normalize_candidate_tree(
+            root,
+            source_publisher=lambda version_path: _source_publisher_from_storage(
+                published, version_path
+            ),
+        )
+        _sync_corrected_spatial_extents(database, root)
         validate_candidate_tree(root)
         for path in sorted(root.rglob("*")):
             if not path.is_file():

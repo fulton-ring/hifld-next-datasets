@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import TypedDict
 from urllib.parse import urljoin, urlparse
 
 from jsonschema import Draft7Validator
+from jsonschema.exceptions import ValidationError
 from rashid import validate as validate_with_rashid
 from rashid.model import Severity
 
-from .catalog import HIFLD_NEXT_HOST_NAME, PORTOLAN_STAC_EXTENSION
+from .catalog import (
+    HIFLD_NEXT_HOST_NAME,
+    HIFLD_NEXT_HOST_URL,
+    PORTOLAN_STAC_EXTENSION,
+    stac_spatial_bbox,
+)
 
 
 class ValidationException(TypedDict):
@@ -31,27 +38,67 @@ def _read_document(path: Path) -> dict[str, object]:
     return value
 
 
-def _provider_has_source_role(provider: object) -> bool:
+def _provider_has_source_role(
+    provider: object, agency: object, source_publisher: str | None
+) -> bool:
     if not isinstance(provider, dict):
         return False
     if provider.get("name") == HIFLD_NEXT_HOST_NAME:
         return False
     roles = provider.get("roles")
-    return isinstance(roles, list) and any(
-        role in {"publisher", "producer"} for role in roles
+    return (
+        isinstance(roles, list)
+        and any(role in {"publisher", "producer"} for role in roles)
+    ) or (
+        roles is None
+        and (
+            (
+                isinstance(agency, str)
+                and bool(agency)
+                and provider.get("name") == agency
+            )
+            or (
+                source_publisher is not None
+                and provider.get("name") == source_publisher
+            )
+        )
     )
 
 
-def _normalize_providers(document: dict[str, object]) -> bool:
+def _normalize_providers(
+    document: dict[str, object], source_publisher: str | None = None
+) -> bool:
     providers = document.get("providers")
     if not isinstance(providers, list):
         return False
     normalized = False
+    agency = document.get("hifld:agency")
     for provider in providers:
-        if _provider_has_source_role(provider):
+        if _provider_has_source_role(provider, agency, source_publisher):
             assert isinstance(provider, dict)
             provider["roles"] = ["producer"]
             normalized = True
+    if (
+        not normalized
+        and source_publisher
+        and not any(
+            isinstance(provider, dict) and provider.get("name") != HIFLD_NEXT_HOST_NAME
+            for provider in providers
+        )
+    ):
+        providers.insert(0, {"name": source_publisher, "roles": ["producer"]})
+        normalized = True
+    if normalized and not any(
+        isinstance(provider, dict) and provider.get("name") == HIFLD_NEXT_HOST_NAME
+        for provider in providers
+    ):
+        providers.append(
+            {
+                "name": HIFLD_NEXT_HOST_NAME,
+                "roles": ["host"],
+                "url": HIFLD_NEXT_HOST_URL,
+            }
+        )
     return normalized
 
 
@@ -65,7 +112,35 @@ def _remove_portolan_extension(document: dict[str, object]) -> None:
         ]
 
 
-def normalize_candidate_tree(root: Path) -> list[ValidationException]:
+def _normalize_spatial_extent(document: dict[str, object]) -> None:
+    extent = document.get("extent")
+    if not isinstance(extent, dict):
+        return
+    spatial = extent.get("spatial")
+    if not isinstance(spatial, dict):
+        return
+    boxes = spatial.get("bbox")
+    if not isinstance(boxes, list) or len(boxes) != 1:
+        return
+    bounds = boxes[0]
+    if (
+        not isinstance(bounds, list)
+        or len(bounds) != 4
+        or not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in bounds
+        )
+    ):
+        return
+    normalized, extent_status = stac_spatial_bbox(bounds)
+    if extent_status is not None:
+        spatial["bbox"] = [normalized]
+        document["hifld:spatial_extent_status"] = extent_status
+
+
+def normalize_candidate_tree(
+    root: Path, source_publisher: Callable[[str], str | None] | None = None
+) -> list[ValidationException]:
     """Normalize source producers and report collections lacking one.
 
     This operates exclusively on local candidate JSON. It never assigns HIFLD
@@ -77,12 +152,17 @@ def normalize_candidate_tree(root: Path) -> list[ValidationException]:
         document = _read_document(path)
         if document.get("type") != "Collection":
             continue
+        identifier = document.get("id")
+        if not isinstance(identifier, str):
+            raise TypeError(f"Collection ID must be a string: {path}")
+        _normalize_spatial_extent(document)
         has_source_producer = _normalize_providers(document)
+        if not has_source_producer and source_publisher is not None:
+            has_source_producer = _normalize_providers(
+                document, source_publisher(identifier)
+            )
         if not has_source_producer:
             _remove_portolan_extension(document)
-            identifier = document.get("id")
-            if not isinstance(identifier, str):
-                raise ValueError(f"Collection ID must be a string: {path}")
             exceptions.append(
                 {
                     "version_path": identifier,
@@ -204,6 +284,27 @@ def _profile_validator() -> Draft7Validator:
     return Draft7Validator(schema)
 
 
+def _profile_error_messages(error: ValidationError, document_type: str) -> list[str]:
+    """Select the relevant schema branch without serializing an entire Collection."""
+    if error.validator == "oneOf" and error.context:
+        branch = 0 if document_type == "Catalog" else 1
+        relevant = [
+            child
+            for child in error.context
+            if child.schema_path and child.schema_path[0] == branch
+        ]
+        if relevant:
+            return [
+                f"{'/'.join(str(part) for part in child.path) or 'document'}: "
+                f"{child.message[:300]}"
+                for child in relevant
+            ]
+    return [
+        f"{'/'.join(str(part) for part in error.path) or 'document'}: "
+        f"{error.message[:300]}"
+    ]
+
+
 def validate_candidate_tree(root: Path) -> None:
     """Fail closed on malformed local STAC or declared Portolan profile errors."""
     document_paths = _candidate_documents(root)
@@ -226,6 +327,9 @@ def validate_candidate_tree(root: Path) -> None:
         ):
             continue
         for error in sorted(validator.iter_errors(document), key=str):
-            failures.append(f"{relative_path}: Portolan profile: {error.message}")
+            failures.extend(
+                f"{relative_path}: Portolan profile: {message}"
+                for message in _profile_error_messages(error, str(document.get("type")))
+            )
     if failures:
         raise PortolanValidationError("; ".join(failures[:20]))
