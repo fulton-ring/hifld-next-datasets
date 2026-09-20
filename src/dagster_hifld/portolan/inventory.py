@@ -36,6 +36,7 @@ _MEDIA_TYPES = {
     ".json": "application/json",
     ".zip": "application/zip",
 }
+_CRS84_BOUNDARY_EPSILON = 1e-8
 
 
 @dataclass(frozen=True)
@@ -529,20 +530,15 @@ def _consistent_value(
 def _consistent_bbox(
     facts: tuple[Mapping[str, object], ...],
 ) -> tuple[float, float, float, float] | None:
-    values = [fact.get("bbox") for fact in facts]
-    if not values or not all(
-        isinstance(value, list) and len(value) == 4 for value in values
-    ):
+    values = tuple(_bounds(fact.get("bbox")) for fact in facts)
+    if not values or any(value is None for value in values):
         return None
-    if not all(
-        isinstance(coordinate, (int, float)) for value in values for coordinate in value
-    ):
-        return None
+    resolved = tuple(value for value in values if value is not None)
     return (
-        min(float(value[0]) for value in values),
-        min(float(value[1]) for value in values),
-        max(float(value[2]) for value in values),
-        max(float(value[3]) for value in values),
+        min(value[0] for value in resolved),
+        min(value[1] for value in resolved),
+        max(value[2] for value in resolved),
+        max(value[3] for value in resolved),
     )
 
 
@@ -557,12 +553,31 @@ def _to_crs84_bbox(
         transformer = Transformer.from_crs(
             CRS.from_user_input(effective_crs), CRS.from_epsg(4326), always_xy=True
         )
-        return tuple(
-            float(value)
-            for value in transformer.transform_bounds(*bbox, densify_pts=21)
+        transformed_values = transformer.transform_bounds(*bbox, densify_pts=21)
+        transformed = (
+            float(transformed_values[0]),
+            float(transformed_values[1]),
+            float(transformed_values[2]),
+            float(transformed_values[3]),
         )
+        return _clamp_crs84_boundary_noise(transformed)
     except (CRSError, ProjError, ValueError):
         return None
+
+
+def _clamp_crs84_boundary_noise(
+    bounds: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    west, south, east, north = bounds
+    if -180.0 - _CRS84_BOUNDARY_EPSILON <= west < -180.0:
+        west = -180.0
+    if -90.0 - _CRS84_BOUNDARY_EPSILON <= south < -90.0:
+        south = -90.0
+    if 180.0 < east <= 180.0 + _CRS84_BOUNDARY_EPSILON:
+        east = 180.0
+    if 90.0 < north <= 90.0 + _CRS84_BOUNDARY_EPSILON:
+        north = 90.0
+    return west, south, east, north
 
 
 def _single_geometry_type(facts: tuple[Mapping[str, object], ...]) -> str | None:

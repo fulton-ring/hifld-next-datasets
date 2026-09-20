@@ -14,9 +14,7 @@ from uuid import uuid4
 CATALOG_APPLICATION_ID = 0x4849464C
 CATALOG_SCHEMA_VERSION = 2
 PORTOLAN_PROFILE_URI = "https://portolan.dev/profile/0.2"
-PORTOLAN_STAC_EXTENSION = (
-    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json"
-)
+PORTOLAN_STAC_EXTENSION = "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json"
 WEB_MAP_LINKS_EXTENSION = (
     "https://stac-extensions.github.io/web-map-links/v1.3.0/schema.json"
 )
@@ -37,6 +35,8 @@ This notice applies only to the archived HIFLD Open snapshot and its format
 conversions. It does not apply automatically to later uploads. An applicable
 dataset-specific rights file or source notice takes precedence.
 """
+HIFLD_NEXT_HOST_NAME = "HIFLD Next"
+HIFLD_NEXT_HOST_URL = "https://hifld.publicenvirodata.org"
 JsonScalar = str | int | float | bool | None
 
 
@@ -54,6 +54,7 @@ class AssetRecord:
     storage_slug: str = "canonical"
     storage_revision: str | None = None
     object_key: str | None = None
+    pmtiles_layers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -301,7 +302,9 @@ def version_sort_key(label: str) -> tuple[int, int, int, int, int, str, str]:
     numbers = core.split(".")
     if not 1 <= len(numbers) <= 3 or not all(number.isdecimal() for number in numbers):
         return (0, 0, 0, 0, 0, "", label)
-    major, minor, patch = (int(number) for number in (*numbers, *("0",) * (3 - len(numbers))))
+    major, minor, patch = (
+        int(number) for number in (*numbers, *("0",) * (3 - len(numbers)))
+    )
     return (1, major, minor, patch, int(not prerelease), prerelease, label)
 
 
@@ -588,7 +591,6 @@ def render_portolan_tree(
                     ),
                     STAC_JSON_MEDIA_TYPE,
                 )
-
                 for slug in sorted({record.collection_slug for record in records})
             ],
             root_href="catalog.json",
@@ -700,31 +702,31 @@ def render_portolan_tree(
                     _catalog(
                         file_records[0].title,
                         file_records[0].description,
-                    [
-                        (
-                            f"{version}/collection.json",
-                            _required_title(
-                                next(
-                                    record.title
-                                    for record in file_records
-                                    if record.version_label == version
+                        [
+                            (
+                                f"{version}/collection.json",
+                                _required_title(
+                                    next(
+                                        record.title
+                                        for record in file_records
+                                        if record.version_label == version
+                                    ),
+                                    version,
                                 ),
-                                version,
-                            ),
-                            STAC_JSON_MEDIA_TYPE,
-                        )
-                        for version in versions
-                    ],
-                    latest=versions[-1],
-                    identifier=f"{collection_slug}/{dataset_slug}/{file_slug}",
-                    keywords=file_records[0].tags,
-                    source_tags=file_records[0].file_tags,
-                    root_href="../../../catalog.json",
-                    parent_href="../catalog.json",
-                    self_href="catalog.json",
-                    created_at=file_records[0].created_at,
-                    updated_at=file_records[0].updated_at,
-                ),
+                                STAC_JSON_MEDIA_TYPE,
+                            )
+                            for version in versions
+                        ],
+                        latest=versions[-1],
+                        identifier=f"{collection_slug}/{dataset_slug}/{file_slug}",
+                        keywords=file_records[0].tags,
+                        source_tags=file_records[0].file_tags,
+                        root_href="../../../catalog.json",
+                        parent_href="../catalog.json",
+                        self_href="catalog.json",
+                        created_at=file_records[0].created_at,
+                        updated_at=file_records[0].updated_at,
+                    ),
                 )
 
     if public_root:
@@ -751,7 +753,12 @@ def _absolutize_stac_tree(root: Path, public_root: str) -> None:
             for link in links:
                 if isinstance(link, dict):
                     href = link.get("href")
-                    if isinstance(href, str) and not _is_absolute_href(href):
+                    relation = link.get("rel")
+                    if (
+                        isinstance(href, str)
+                        and relation not in {"agents", "describedby"}
+                        and not _is_absolute_href(href)
+                    ):
                         link["href"] = urljoin(document_href, href)
         assets = document.get("assets")
         if isinstance(assets, dict):
@@ -765,6 +772,20 @@ def _absolutize_stac_tree(root: Path, public_root: str) -> None:
 
 def _is_absolute_href(href: str) -> bool:
     return bool(urlparse(href).scheme)
+
+
+def _providers(record: CatalogRecord) -> list[dict[str, object]]:
+    providers: list[dict[str, object]] = []
+    if record.provider and record.provider != HIFLD_NEXT_HOST_NAME:
+        providers.append({"name": record.provider, "roles": ["producer"]})
+    providers.append(
+        {
+            "name": HIFLD_NEXT_HOST_NAME,
+            "roles": ["host"],
+            "url": HIFLD_NEXT_HOST_URL,
+        }
+    )
+    return providers
 
 
 def _render_record(root: Path, record: CatalogRecord) -> None:
@@ -870,8 +891,12 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         }
         for asset in record.assets
     }
-    links: list[dict[str, str]] = [
-        {"rel": "root", "href": "../../../../catalog.json", "type": STAC_JSON_MEDIA_TYPE},
+    links: list[dict[str, object]] = [
+        {
+            "rel": "root",
+            "href": "../../../../catalog.json",
+            "type": STAC_JSON_MEDIA_TYPE,
+        },
         {"rel": "parent", "href": "../catalog.json", "type": STAC_JSON_MEDIA_TYPE},
         {"rel": "self", "href": "collection.json", "type": STAC_JSON_MEDIA_TYPE},
         {"rel": "agents", "href": "AGENTS.md", "type": "text/markdown"},
@@ -882,6 +907,13 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
             {"rel": "license", "href": record.license_href, "type": "text/markdown"}
         )
     if record.source_url:
+        links.append(
+            {
+                "rel": "via",
+                "href": record.source_url,
+                "type": "text/html",
+            }
+        )
         links.append({"rel": "derived_from", "href": record.source_url})
     pmtiles_assets = [asset for asset in record.assets if asset.format_key == "pmtiles"]
     for asset in pmtiles_assets:
@@ -891,6 +923,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
                 "href": asset.href,
                 "type": asset.media_type,
                 "title": asset.title,
+                "pmtiles:layers": list(asset.pmtiles_layers),
             }
         )
     table_columns = [
@@ -950,7 +983,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         "title": record.title,
         "description": record.description,
         "license": record.license_id,
-        "providers": [{"name": record.provider}] if record.provider else [],
+        "providers": _providers(record),
         "keywords": list(record.tags),
         "links": links,
         "extent": {
@@ -996,6 +1029,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         "hifld:inventory_match_type": record.inventory_match_type,
         "hifld:manifest_role": record.manifest_role,
         "hifld:manifest_keys": list(record.manifest_keys),
+        **({"updated": record.updated_at} if record.updated_at else {}),
         **({"hifld:created_at": record.created_at} if record.created_at else {}),
         **({"hifld:updated_at": record.updated_at} if record.updated_at else {}),
     }

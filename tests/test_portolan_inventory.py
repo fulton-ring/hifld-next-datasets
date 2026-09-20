@@ -7,10 +7,19 @@ from unittest.mock import patch
 from dagster import JobDefinition
 
 from dagster_hifld.portolan.build_inventory_catalog import inventory_catalog_job
-from dagster_hifld.portolan.inventory import build_catalog_from_inventories
+from dagster_hifld.portolan.inventory import (
+    _to_crs84_bbox,
+    build_catalog_from_inventories,
+)
 
 
 class PortolanInventoryTests(unittest.TestCase):
+    def test_clamps_only_floating_point_wgs84_bound_overflow(self):
+        self.assertEqual(
+            _to_crs84_bbox((-180.0, -10.0, 180.0000000001, 20.0), "OGC:CRS84"),
+            (-180.0, -10.0, 180.0, 20.0),
+        )
+
     def test_exposes_dagster_job_for_metadata_only_inventory_build(self):
         self.assertIsInstance(inventory_catalog_job, JobDefinition)
         with patch(
@@ -67,6 +76,8 @@ class PortolanInventoryTests(unittest.TestCase):
                 "columns": [{"name": "geometry", "type": "geometry", "nullable": False}]
             },
             "dataset/file/v1.0.0/metadata/quality_manifest.json": {
+                "description": None,
+                "bounds": [-8575600.0, 4707060.0, -8575500.0, 4707160.0],
                 "quality_check_passed": True,
                 "invalid_geometry_count": 0,
                 "null_geometry_count": 0,
@@ -114,6 +125,11 @@ class PortolanInventoryTests(unittest.TestCase):
         self.assertEqual(record.license_href, "../../../LICENSE.md")
         self.assertEqual(record.feature_count, 12)
         self.assertEqual(record.spatial_status, "spatial")
+        self.assertIsNone(record.source_version_description)
+        self.assertEqual(
+            record.source_version_bounds,
+            (-8575600.0, 4707060.0, -8575500.0, 4707160.0),
+        )
         self.assertEqual(record.assets[0].storage_revision, "copy-101")
         self.assertEqual(
             record.assets[0].href,

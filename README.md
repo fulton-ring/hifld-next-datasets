@@ -93,7 +93,7 @@ It builds and pushes the user-code image, fetches Terraform outputs, and runs `h
 
 GitHub Actions publishes the reproducible user-code image as `ghcr.io/fulton-ring/hifld-next-datasets/dagster-user:<git-sha>`. The source repository is public, but verify the GHCR package itself is **public** and anonymously pullable before deploying it to GKE; repository and package visibility are separate. Workload Identity does not authenticate Kubernetes image pulls to GHCR. Only the reduced inventory columns used by the publisher are copied into the runtime image; review the inventory descriptions before publication because they remain public data in that image.
 
-The one-time archived HIFLD Open inventory migration records the operator-confirmed public-domain status as `CC-PDM-1.0` and writes a collection-level `LICENSE.md` notice. For ordinary Dagster publication, the status is opt-in via `HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN=1` and applies only to the `hifld` collection. Future uploads remain `license: "other"` unless rights are supplied; an explicit `license_href` takes precedence over the archive notice.
+The archived HIFLD Open inventory records the operator-confirmed public-domain status as `CC-PDM-1.0` and writes a collection-level `LICENSE.md` notice. Ordinary HIFLD Dagster publication applies this status by default; set `HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN=0` to opt out. It applies only to the archived `hifld` collection. Future uploads remain `license: "other"` unless rights are supplied; an explicit `license_href` takes precedence over the archive notice.
 
 If you need to run the steps by hand:
 

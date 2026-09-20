@@ -12,6 +12,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from functools import cache
 from pathlib import Path
 from types import TracebackType
 from typing import BinaryIO, Protocol, cast
@@ -19,8 +20,12 @@ from typing import BinaryIO, Protocol, cast
 import google_crc32c
 import httpx
 from dagster import ConfigurableResource
+from google.cloud import storage
+from google.cloud.storage.blob import Blob
 
 logger = logging.getLogger(__name__)
+
+_GCS_DOWNLOAD_TIMEOUT_SECONDS = 60
 
 
 class _GCSWritable(Protocol):
@@ -264,19 +269,13 @@ class StagingStorageResource(ConfigurableResource):
             metadata = info.get("Metadata", {})
             return StorageObjectSnapshot(key, int(info["ContentLength"]), str(info.get("VersionId") or info.get("ETag", "").strip('"')), info.get("ETag", "").strip('"'), None, metadata.get("sha256"))
 
-        import gcsfs
-
-        fs = gcsfs.GCSFileSystem()
-        object_path = f"{self.bucket}/{key}"
+        from google.api_core.exceptions import NotFound
+        blob = _gcs_client().bucket(self.bucket).blob(key)
         try:
-            info = fs.info(object_path)
-        except FileNotFoundError:
+            blob.reload(timeout=_GCS_DOWNLOAD_TIMEOUT_SECONDS)
+        except NotFound:
             return None
-        return _gcs_snapshot(
-            self.bucket,
-            object_path,
-            _require_string_object_mapping(cast(object, info), "GCS object metadata"),
-        )
+        return _native_gcs_snapshot(key, blob)
 
     def read_bytes(
         self,
@@ -299,15 +298,7 @@ class StagingStorageResource(ConfigurableResource):
             return full.read_bytes()
         if self._uses_s3():
             return self._s3().get_object(Bucket=self.bucket, Key=key)["Body"].read()
-
-        import gcsfs
-
-        fs = gcsfs.GCSFileSystem()
-        path = f"{self.bucket}/{key}"
-        data = fs.read_bytes(path)
-        if not isinstance(data, bytes):
-            raise RuntimeError(f"GCS returned non-bytes content for {key}.")
-        return data
+        return self.read_key(key)
 
     def download_key_to(self, key: str, destination: Path) -> None:
         """Materialize an exact object with bounded memory, including S3."""
@@ -318,8 +309,9 @@ class StagingStorageResource(ConfigurableResource):
         elif self._uses_s3():
             self._s3().download_file(self.bucket, key, str(destination))
         else:
-            import gcsfs
-            gcsfs.GCSFileSystem().get(f"{self.bucket}/{key}", str(destination))
+            _gcs_client().bucket(self.bucket).blob(key).download_to_filename(
+                str(destination), timeout=_GCS_DOWNLOAD_TIMEOUT_SECONDS
+            )
 
     def upload_local_file(self, source: Path, key: str) -> str:
         """Upload bytes without buffering the full file and persist its checksum."""
@@ -345,23 +337,76 @@ class StagingStorageResource(ConfigurableResource):
             return (Path(self.local_dir).resolve() / key).read_bytes()
         if self._uses_s3():
             return self._s3().get_object(Bucket=self.bucket, Key=key)["Body"].read()
-        import gcsfs
-        data = gcsfs.GCSFileSystem().read_bytes(f"{self.bucket}/{key}")
+        data = _gcs_client().bucket(self.bucket).blob(key).download_as_bytes(
+            timeout=_GCS_DOWNLOAD_TIMEOUT_SECONDS
+        )
         if not isinstance(data, bytes):
             raise RuntimeError(f"GCS returned non-bytes content for {key}.")
+        return data
+
+    def read_key_range(
+        self,
+        key: str,
+        offset: int,
+        length: int,
+        expected_snapshot: StorageObjectSnapshot | None = None,
+    ) -> bytes:
+        """Read a fixed object range without materializing the full object."""
+        if offset < 0 or length < 0:
+            raise ValueError("Range offset and length must be non-negative.")
+        key = self._ensure_prefixed(key)
+        before = self.object_snapshot(key)
+        if before is None:
+            raise FileNotFoundError(f"Storage object does not exist: {key}")
+        if expected_snapshot is not None and before != expected_snapshot:
+            raise RuntimeError(f"Storage object changed before range read: {key}")
+        if offset + length > before.size:
+            raise ValueError(f"Requested range exceeds storage object size: {key}")
+        if self.use_local or not self.bucket:
+            with (Path(self.local_dir).resolve() / key).open("rb") as source:
+                source.seek(offset)
+                data = source.read(length)
+        elif self._uses_s3():
+            end = offset + length - 1
+            response = self._s3().get_object(
+                Bucket=self.bucket,
+                Key=key,
+                Range=f"bytes={offset}-{end}",
+            )
+            body = cast(BinaryIO, response["Body"])
+            with body:
+                data = body.read()
+        else:
+            import gcsfs
+
+            with cast(
+                BinaryIO,
+                gcsfs.GCSFileSystem().open(f"{self.bucket}/{key}", "rb"),
+            ) as source:
+                source.seek(offset)
+                data = source.read(length)
+        if not isinstance(data, bytes) or len(data) != length:
+            raise RuntimeError(f"Storage range read returned incomplete data: {key}")
+        after = self.object_snapshot(key)
+        if after != before:
+            raise RuntimeError(f"Storage object changed during range read: {key}")
         return data
 
     def sha256_key(self, key: str) -> str:
         """Hash an exact object in bounded memory when storage lacks SHA metadata."""
         key = self._ensure_prefixed(key)
+        if not (self.use_local or not self.bucket) and not self._uses_s3():
+            with tempfile.TemporaryDirectory(prefix="hifld-gcs-sha256-") as temporary:
+                local_path = Path(temporary) / "object"
+                self.download_key_to(key, local_path)
+                return _file_sha256(local_path)
         if self.use_local or not self.bucket:
             stream = (Path(self.local_dir).resolve() / key).open("rb")
-        elif self._uses_s3():
-            stream = cast(BinaryIO, self._s3().get_object(Bucket=self.bucket, Key=key)["Body"])
         else:
-            import gcsfs
-
-            stream = cast(BinaryIO, gcsfs.GCSFileSystem().open(f"{self.bucket}/{key}", "rb"))
+            stream = cast(
+                BinaryIO,
+                self._s3().get_object(Bucket=self.bucket, Key=key)["Body"],
+            )
         digest = hashlib.sha256()
         with stream:
             while chunk := stream.read(8 * 1024 * 1024):
@@ -376,10 +421,7 @@ class StagingStorageResource(ConfigurableResource):
         if self._uses_s3():
             return self.object_snapshot(key) is not None
 
-        import gcsfs
-
-        fs = gcsfs.GCSFileSystem()
-        return bool(fs.exists(f"{self.bucket}/{key}"))
+        return self.object_snapshot(key) is not None
 
     def object_content_matches(
         self,
@@ -854,9 +896,18 @@ class StagingStorageResource(ConfigurableResource):
         return sorted(set(versions))
 
     @contextmanager
-    def get_local_version_dir(self, dataset_slug: str, file_slug: str, version: str):
+    def get_local_version_dir(
+        self,
+        dataset_slug: str,
+        file_slug: str,
+        version: str,
+        *,
+        include_directories: tuple[str, ...] | None = None,
+    ):
         """Yield a local directory path containing the version's files (for fiona/chunked read).
         For local storage returns the actual path; for GCS materializes to a temp dir and cleans up on exit.
+        ``include_directories`` limits remote materialization to named first-level
+        version directories while retaining their relative layout.
         """
         key_prefix = self.build_target_location(
             dataset_slug, file_slug, version, ""
@@ -874,14 +925,13 @@ class StagingStorageResource(ConfigurableResource):
                     rel = key.removeprefix(prefix_with_slash)
                     if not rel:
                         continue
+                    if not _included_version_directory(rel, include_directories):
+                        continue
                     dest = tmp / rel
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     client.download_file(self.bucket, key, str(dest))
                 yield tmp
                 return
-            import gcsfs
-
-            fs = gcsfs.GCSFileSystem()
             key_prefix = self.build_target_location(
                 dataset_slug, file_slug, version, ""
             ).rstrip("/")
@@ -892,18 +942,14 @@ class StagingStorageResource(ConfigurableResource):
                 rel = key.removeprefix(prefix_with_slash)
                 if not rel:
                     continue
+                if not _included_version_directory(rel, include_directories):
+                    continue
                 dest = tmp / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                self._copy_gcs_key_to_path(fs, key, dest)
+                self.download_key_to(key, dest)
             yield tmp
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-
-    def _copy_gcs_key_to_path(self, fs, key: str, dest: Path) -> None:
-        """Stream a GCS object to local disk without loading it all into memory."""
-        with fs.open(f"{self.bucket}/{key}", "rb") as source:
-            with dest.open("wb") as output:
-                shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 class GreatExpectationsResource(ConfigurableResource):
@@ -931,6 +977,15 @@ class PublishedStorageResource(StagingStorageResource):
         local_dir = os.environ.get("HIFLD_DATASETS_DIR", "data/published")
         backend = os.environ.get("HIFLD_DATASETS_BACKEND", "gcs")
         return cls(bucket=bucket, prefix=os.environ.get("HIFLD_DATASETS_PREFIX", "").strip("/"), use_local=not bool(bucket), local_dir=local_dir, backend=backend, s3_endpoint_url=os.environ.get("HIFLD_DATASETS_S3_ENDPOINT"), s3_access_key_id=os.environ.get("HIFLD_DATASETS_S3_ACCESS_KEY"), s3_secret_access_key=os.environ.get("HIFLD_DATASETS_S3_SECRET_KEY"), s3_region=os.environ.get("HIFLD_DATASETS_S3_REGION", "us-east-1"), s3_use_ssl=os.environ.get("HIFLD_DATASETS_S3_USE_SSL", "false").lower() == "true")
+
+
+def _included_version_directory(
+    relative_key: str,
+    include_directories: tuple[str, ...] | None,
+) -> bool:
+    if include_directories is None:
+        return True
+    return relative_key.split("/", 1)[0] in include_directories
 
 
 def _local_snapshot(root: Path, path: Path) -> StorageObjectSnapshot:
@@ -964,6 +1019,27 @@ def _gcs_snapshot(
         generation=str(generation) if generation is not None else None,
         md5=str(md5) if md5 is not None else None,
         crc32c=str(crc32c) if crc32c is not None else None,
+    )
+
+
+@cache
+def _gcs_client() -> storage.Client:
+    """Construct an ADC client without repeatedly probing the Cloud SDK project."""
+    return storage.Client(project=os.environ.get("GOOGLE_CLOUD_PROJECT"))
+
+
+def _native_gcs_snapshot(key: str, blob: Blob) -> StorageObjectSnapshot:
+    """Normalize native client metadata into the storage identity contract."""
+    if not isinstance(blob.size, int):
+        raise RuntimeError(f"GCS object has invalid size metadata: {key}")
+    metadata = blob.metadata or {}
+    return StorageObjectSnapshot(
+        key=key,
+        size=blob.size,
+        generation=str(blob.generation) if blob.generation is not None else None,
+        md5=blob.md5_hash,
+        crc32c=blob.crc32c,
+        sha256=metadata.get("sha256"),
     )
 
 

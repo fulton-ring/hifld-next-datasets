@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -377,12 +376,7 @@ class DynamicPartitionTests(unittest.TestCase):
             local_dir="data/staging",
         )
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "google.cloud.storage": SimpleNamespace(Client=FakeStorageClient),
-            },
-        ):
+        with patch("google.cloud.storage.Client", FakeStorageClient):
             versions = list(_iter_staged_version_paths(storage) or [])
 
         self.assertEqual(
@@ -416,10 +410,7 @@ class DynamicPartitionTests(unittest.TestCase):
             local_dir="data/staging",
         )
 
-        with patch.dict(
-            "sys.modules",
-            {"google.cloud.storage": SimpleNamespace(Client=FakeStorageClient)},
-        ):
+        with patch("google.cloud.storage.Client", FakeStorageClient):
             versions = list(_iter_staged_version_paths(storage) or [])
 
         self.assertEqual(

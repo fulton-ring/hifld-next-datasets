@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import json
 import sqlite3
@@ -13,10 +14,11 @@ import pyarrow.parquet as pq
 from dagster import JobDefinition
 from shapely import Point
 
-from dagster_hifld.assets.publish import _write_and_publish_shapefile_zip
 from dagster_hifld.assets.portolan import publish_portolan_catalog
+from dagster_hifld.assets.publish import _write_and_publish_shapefile_zip
 from dagster_hifld.partitions import PUBLISH_PARTITIONS
 from dagster_hifld.portolan.catalog import CatalogRecord
+from dagster_hifld.portolan.release import ReleasePointer
 from dagster_hifld.portolan.workflow import (
     PortolanPublishRequest,
     _ensure_absolute_self_link,
@@ -24,6 +26,8 @@ from dagster_hifld.portolan.workflow import (
     _promote_staged_data,
     _publish_catalog,
     _record_assets,
+    _version_metadata_path,
+    _write_default_pmtiles_style,
     columns_from_dictionary,
     execute_portolan_manifest,
     inspect_geoparquet,
@@ -31,18 +35,146 @@ from dagster_hifld.portolan.workflow import (
     manifest_tags,
     normalize_stac_datetime,
     portolan_publish_job,
+    publish_portolan_record,
+    rollback_portolan_release,
 )
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
+def _pmtiles_archive(layer_id: str = "roads") -> bytes:
+    payload = gzip.compress(
+        json.dumps({"vector_layers": [{"id": layer_id}]}).encode("utf-8")
+    )
+    header = bytearray(127)
+    header[:7] = b"PMTiles"
+    header[7] = 3
+    header[24:32] = (127).to_bytes(8, "little")
+    header[32:40] = len(payload).to_bytes(8, "little")
+    header[97] = 2
+    return bytes(header) + payload
+
+
 class PortolanWorkflowTests(unittest.TestCase):
+    def test_release_publication_commits_pointer_after_uploading_a_complete_bundle(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            request = PortolanPublishRequest(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "Agency",
+                public_root="https://example.test/catalog",
+            )
+            record = CatalogRecord(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "non_spatial_source",
+                0,
+                (),
+                collection_title="HIFLD Next",
+            )
+
+            generation = _publish_catalog(
+                (record,), request, published, use_release_pointer=True
+            )
+            pointer = ReleasePointer.parse(published.read_key("_catalog/current.json"))
+            self.assertEqual(pointer.generation, generation)
+            self.assertEqual(pointer.root_key, f"releases/{generation}/catalog.json")
+            self.assertTrue(published.object_exists(pointer.catalog_key))
+            self.assertTrue(published.object_exists(pointer.root_key))
+            root_catalog = json.loads(published.read_key(pointer.root_key))
+            root_links = {
+                link["rel"]: link["href"]
+                for link in root_catalog["links"]
+                if link["rel"] in {"root", "self"}
+            }
+            expected_root = (
+                f"https://example.test/catalog/releases/{generation}/catalog.json"
+            )
+            self.assertEqual(root_links, {"root": expected_root, "self": expected_root})
+
+    def test_release_rollback_conditionally_restores_a_complete_prior_generation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            request = PortolanPublishRequest(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "Agency",
+                public_root="https://example.test/catalog",
+            )
+            record = CatalogRecord(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "non_spatial_source",
+                0,
+                (),
+                collection_title="HIFLD Next",
+            )
+
+            first_generation = _publish_catalog(
+                (record,), request, published, use_release_pointer=True
+            )
+            second_generation = _publish_catalog(
+                (record,), request, published, use_release_pointer=True
+            )
+            current_snapshot = published.object_snapshot("_catalog/current.json")
+            self.assertIsNotNone(current_snapshot)
+            self.assertNotEqual(first_generation, second_generation)
+
+            second_root = json.loads(
+                published.read_key(f"releases/{second_generation}/catalog.json")
+            )
+            second_hrefs = [link["href"] for link in second_root["links"]]
+            self.assertIn(
+                f"https://example.test/catalog/releases/{second_generation}/hifld/catalog.json",
+                second_hrefs,
+            )
+            self.assertFalse(
+                any(f"/releases/{first_generation}/" in href for href in second_hrefs)
+            )
+
+            restored = rollback_portolan_release(
+                first_generation,
+                published=published,
+                expected_snapshot=current_snapshot,
+            )
+
+            self.assertEqual(restored.generation, first_generation)
+            self.assertEqual(
+                ReleasePointer.parse(
+                    published.read_key("_catalog/current.json")
+                ).generation,
+                first_generation,
+            )
+
     def test_terminal_portolan_asset_is_partitioned_with_promotion(self):
         self.assertIs(publish_portolan_catalog.partitions_def, PUBLISH_PARTITIONS)
 
     def test_terminal_asset_publishes_selected_promoted_partition_only(self):
         context = SimpleNamespace(partition_key="dataset/file/v1.0.0")
-        staging = StagingStorageResource(local_dir="/tmp/staging", use_local=True, prefix="hifld")
-        published = PublishedStorageResource(local_dir="/tmp/published", use_local=True, prefix="hifld")
+        staging = StagingStorageResource(
+            local_dir="/tmp/staging", use_local=True, prefix="hifld"
+        )
+        published = PublishedStorageResource(
+            local_dir="/tmp/published", use_local=True, prefix="hifld"
+        )
         with (
             patch.dict(
                 "os.environ",
@@ -64,21 +196,43 @@ class PortolanWorkflowTests(unittest.TestCase):
         args, kwargs = publish.call_args
         request = args[0]
         self.assertEqual(
-            (request.collection_slug, request.dataset_slug, request.file_slug, request.version),
+            (
+                request.collection_slug,
+                request.dataset_slug,
+                request.file_slug,
+                request.version,
+            ),
             ("hifld", "dataset", "file", "v1.0.0"),
         )
         self.assertEqual(request.public_root, "https://example.test/catalog")
         self.assertEqual(request.collection_title, "HIFLD Next")
-        self.assertFalse(request.archive_public_domain)
+        self.assertTrue(request.archive_public_domain)
+        self.assertEqual(
+            request.resolved_license, ("CC-PDM-1.0", "../../../LICENSE.md")
+        )
         self.assertTrue(kwargs["catalog_only"])
+        self.assertTrue(kwargs["use_release_pointer"])
 
     def test_terminal_asset_opts_into_archived_hifld_status_when_configured(self):
         context = SimpleNamespace(partition_key="dataset/file/v1.0.0")
-        staging = StagingStorageResource(local_dir="/tmp/staging", use_local=True, prefix="hifld")
-        published = PublishedStorageResource(local_dir="/tmp/published", use_local=True, prefix="hifld")
+        staging = StagingStorageResource(
+            local_dir="/tmp/staging", use_local=True, prefix="hifld"
+        )
+        published = PublishedStorageResource(
+            local_dir="/tmp/published", use_local=True, prefix="hifld"
+        )
         with (
-            patch.dict("os.environ", {"HIFLD_PORTOLAN_ENABLED": "1", "HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN": "1"}),
-            patch("dagster_hifld.portolan.workflow.publish_portolan_record", return_value="generation-1") as publish,
+            patch.dict(
+                "os.environ",
+                {
+                    "HIFLD_PORTOLAN_ENABLED": "1",
+                    "HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN": "1",
+                },
+            ),
+            patch(
+                "dagster_hifld.portolan.workflow.publish_portolan_record",
+                return_value="generation-1",
+            ) as publish,
         ):
             publish_portolan_catalog.node_def.compute_fn.decorated_fn(
                 context, staging, published
@@ -92,15 +246,37 @@ class PortolanWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
             request = PortolanPublishRequest(
-                "hifld", "first", "file", "v1.0.0", "First", "First", "Agency",
+                "hifld",
+                "first",
+                "file",
+                "v1.0.0",
+                "First",
+                "First",
+                "Agency",
                 public_root="https://example.test/catalog",
             )
             first = CatalogRecord(
-                "hifld", "first", "file", "v1.0.0", "First", "First", "non_spatial_source", 0, (),
+                "hifld",
+                "first",
+                "file",
+                "v1.0.0",
+                "First",
+                "First",
+                "non_spatial_source",
+                0,
+                (),
                 collection_title="HIFLD Next",
             )
             second = CatalogRecord(
-                "hifld", "second", "file", "v1.0.0", "Second", "Second", "non_spatial_source", 0, (),
+                "hifld",
+                "second",
+                "file",
+                "v1.0.0",
+                "Second",
+                "Second",
+                "non_spatial_source",
+                0,
+                (),
                 collection_title="HIFLD",
             )
             _publish_catalog((first,), request, published)
@@ -108,9 +284,7 @@ class PortolanWorkflowTests(unittest.TestCase):
 
             collection = json.loads(published.read_key("hifld/catalog.json"))
             child_hrefs = {
-                link["href"]
-                for link in collection["links"]
-                if link["rel"] == "child"
+                link["href"] for link in collection["links"] if link["rel"] == "child"
             }
             self.assertEqual(
                 child_hrefs,
@@ -133,12 +307,26 @@ class PortolanWorkflowTests(unittest.TestCase):
                 local_dir=tmpdir, use_local=True, prefix="hifld"
             )
             request = PortolanPublishRequest(
-                "hifld", "dataset", "file", "v1.0.0", "File", "File", "Agency",
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "File",
+                "Agency",
                 public_root="https://example.test/catalog",
             )
             record = CatalogRecord(
-                "hifld", "dataset", "file", "v1.0.0", "File", "File",
-                "non_spatial_source", 0, (), collection_title="HIFLD Next",
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "File",
+                "non_spatial_source",
+                0,
+                (),
+                collection_title="HIFLD Next",
             )
             _publish_catalog((record,), request, published)
             self.assertTrue((Path(tmpdir) / "catalog.json").is_file())
@@ -149,13 +337,27 @@ class PortolanWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
             request = PortolanPublishRequest(
-                "hifld", "dataset", "file", "v1.0.0", "File", "File", "Agency",
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "File",
+                "Agency",
                 public_root="https://example.test/catalog",
             )
             for version in ("v1.9.0", "v1.10.0", "v1.0.0"):
                 record = CatalogRecord(
-                    "hifld", "dataset", "file", version, "File", "File",
-                    "non_spatial_source", 0, (), collection_title="HIFLD Next",
+                    "hifld",
+                    "dataset",
+                    "file",
+                    version,
+                    "File",
+                    "File",
+                    "non_spatial_source",
+                    0,
+                    (),
+                    collection_title="HIFLD Next",
                 )
                 _publish_catalog((record,), request, published)
 
@@ -168,7 +370,9 @@ class PortolanWorkflowTests(unittest.TestCase):
             self.assertEqual(len(child_hrefs), 3)
             self.assertEqual(
                 latest,
-                ["https://example.test/catalog/hifld/dataset/file/v1.10.0/collection.json"],
+                [
+                    "https://example.test/catalog/hifld/dataset/file/v1.10.0/collection.json"
+                ],
             )
             with sqlite3.connect(Path(tmpdir) / "_catalog/catalog.sqlite") as conn:
                 projected_latest = conn.execute(
@@ -196,7 +400,13 @@ class PortolanWorkflowTests(unittest.TestCase):
 
     def test_archived_status_requires_opt_in_and_dataset_license_wins(self):
         archive = PortolanPublishRequest(
-            "hifld", "dataset", "file", "v1.0.0", "Title", "Description", "Agency",
+            "hifld",
+            "dataset",
+            "file",
+            "v1.0.0",
+            "Title",
+            "Description",
+            "Agency",
             archive_public_domain=True,
         )
         self.assertEqual(
@@ -221,6 +431,84 @@ class PortolanWorkflowTests(unittest.TestCase):
         self.assertEqual(
             (request.title, request.description, request.provider), ("", "", "")
         )
+
+    def test_request_uses_configured_public_root_when_manifest_omits_it(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "HIFLD_PORTOLAN_PUBLIC_ROOT": "https://catalog.example.test",
+                "HIFLD_PORTOLAN_STORAGE_SLUG": "gcs-catalog",
+            },
+        ):
+            request = PortolanPublishRequest.from_mapping(
+                {
+                    "collection_slug": "hifld",
+                    "dataset_slug": "dataset",
+                    "file_slug": "file",
+                    "version": "v1.0.0",
+                }
+            )
+
+        self.assertEqual(request.public_root, "https://catalog.example.test")
+        self.assertEqual(request.storage_slug, "gcs-catalog")
+
+    def test_version_metadata_path_uses_copied_production_layout_when_needed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            metadata = (
+                Path(tmpdir) / "hifld/dataset/file/v1.0.0/metadata/data_dictionary.json"
+            )
+            metadata.parent.mkdir(parents=True)
+            metadata.write_text("{}", encoding="utf-8")
+            storage = StagingStorageResource(
+                local_dir=tmpdir, use_local=True, prefix="hifld"
+            )
+            request = PortolanPublishRequest(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "",
+                "",
+                "",
+            )
+
+            path = _version_metadata_path(storage, request, "data_dictionary.json")
+
+        self.assertEqual(path, "metadata/data_dictionary.json")
+
+    def test_catalog_only_record_publication_does_not_promote_source_objects(self):
+        request = PortolanPublishRequest(
+            "hifld", "dataset", "file", "v1.0.0", "", "", ""
+        )
+        staging = StagingStorageResource(local_dir="/tmp/staging", use_local=True)
+        published = PublishedStorageResource(local_dir="/tmp/published", use_local=True)
+        record = CatalogRecord(
+            "hifld",
+            "dataset",
+            "file",
+            "v1.0.0",
+            "Title",
+            "Description",
+            "spatial",
+            0,
+            (),
+        )
+        with (
+            patch(
+                "dagster_hifld.portolan.workflow._prepare_portolan_record",
+                return_value=record,
+            ) as prepare,
+            patch(
+                "dagster_hifld.portolan.workflow._publish_catalog",
+                return_value="generation",
+            ),
+        ):
+            publish_portolan_record(
+                request, staging=staging, published=published, catalog_only=True
+            )
+
+        self.assertFalse(prepare.call_args.kwargs["convert"])
+        self.assertFalse(prepare.call_args.kwargs["promote"])
 
     def test_manifest_tags_preserve_all_group_names_and_values(self):
         self.assertEqual(
@@ -324,7 +612,9 @@ class PortolanWorkflowTests(unittest.TestCase):
             storage = PublishedStorageResource(
                 local_dir=tmpdir, use_local=True, prefix="hifld"
             )
-            storage.write("dataset", "file", "v1.0.0", "pmtiles/file.pmtiles", b"tiles")
+            storage.write(
+                "dataset", "file", "v1.0.0", "pmtiles/file.pmtiles", _pmtiles_archive()
+            )
             request = PortolanPublishRequest(
                 "hifld", "dataset", "file", "v1.0.0", "File", "Description", "Agency"
             )
@@ -332,6 +622,7 @@ class PortolanWorkflowTests(unittest.TestCase):
             storage.write("dataset", "file", "v1.0.0", "collection.json", b"{}")
             assets = _record_assets(storage, request)
         self.assertEqual([asset.format_key for asset in assets], ["pmtiles"])
+        self.assertEqual(assets[0].pmtiles_layers, ("roads",))
         self.assertEqual(
             [asset.key for asset in assets], [asset.key for asset in before]
         )
@@ -343,7 +634,9 @@ class PortolanWorkflowTests(unittest.TestCase):
             )
             storage.write("dataset", "file", "v1.0.0", "AGENTS.md", b"legacy docs")
             storage.write("dataset", "file", "v1.0.0", "README.md", b"legacy docs")
-            storage.write("dataset", "file", "v1.0.0", "pmtiles/file.pmtiles", b"tiles")
+            storage.write(
+                "dataset", "file", "v1.0.0", "pmtiles/file.pmtiles", _pmtiles_archive()
+            )
             request = PortolanPublishRequest(
                 "hifld", "dataset", "file", "v1.0.0", "File", "Description", "Agency"
             )
@@ -367,7 +660,8 @@ class PortolanWorkflowTests(unittest.TestCase):
             storage = PublishedStorageResource(
                 local_dir=tmpdir, use_local=True, prefix="hifld"
             )
-            storage.write("dataset", "file", "v1.0.0", "pmtiles/file.pmtiles", b"tiles")
+            archive = _pmtiles_archive()
+            storage.write("dataset", "file", "v1.0.0", "pmtiles/file.pmtiles", archive)
             request = PortolanPublishRequest(
                 "hifld", "dataset", "file", "v1.0.0", "File", "Description", "Agency"
             )
@@ -378,12 +672,65 @@ class PortolanWorkflowTests(unittest.TestCase):
                 return replace(snapshot, sha256=None) if snapshot is not None else None
 
             with (
-                patch.object(PublishedStorageResource, "object_snapshot", snapshot_without_hash),
-                patch.object(PublishedStorageResource, "read_key", side_effect=AssertionError("do not buffer data assets")),
+                patch.object(
+                    PublishedStorageResource, "object_snapshot", snapshot_without_hash
+                ),
+                patch.object(
+                    PublishedStorageResource,
+                    "read_key",
+                    side_effect=AssertionError("do not buffer data assets"),
+                ),
             ):
                 assets = _record_assets(storage, request)
 
-        self.assertEqual(assets[0].sha256, hashlib.sha256(b"tiles").hexdigest())
+        self.assertEqual(assets[0].sha256, hashlib.sha256(archive).hexdigest())
+
+    def test_default_style_uses_verified_pmtiles_layer_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(
+                local_dir=tmpdir, use_local=True, prefix="hifld"
+            )
+            storage.write(
+                "dataset", "file", "v1.0.0", "pmtiles/file.pmtiles", _pmtiles_archive()
+            )
+            request = PortolanPublishRequest(
+                "hifld", "dataset", "file", "v1.0.0", "File", "Description", "Agency"
+            )
+            pmtiles_assets = _record_assets(storage, request)
+
+            self.assertTrue(
+                _write_default_pmtiles_style(storage, request, pmtiles_assets)
+            )
+            assets = _record_assets(storage, request)
+            style = next(asset for asset in assets if asset.format_key == "styles")
+            document = json.loads(storage.read_key(style.object_key or ""))
+
+        self.assertEqual(style.roles, ("style", "default"))
+        self.assertEqual(style.media_type, "application/vnd.mapbox.style+json")
+        self.assertEqual(
+            document["sources"]["pmtiles-0"]["url"],
+            "pmtiles://http://localhost:8333/hifld-local-published/hifld/dataset/file/v1.0.0/pmtiles/file.pmtiles",
+        )
+        self.assertEqual(document["layers"][0]["source-layer"], "roads")
+
+    def test_asset_scan_marks_generated_thumbnail_as_a_thumbnail(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = PublishedStorageResource(
+                local_dir=tmpdir, use_local=True, prefix="hifld"
+            )
+            storage.write(
+                "dataset", "file", "v1.0.0", "thumbnail/thumbnail.png", b"png"
+            )
+            request = PortolanPublishRequest(
+                "hifld", "dataset", "file", "v1.0.0", "File", "Description", "Agency"
+            )
+
+            assets = _record_assets(storage, request)
+
+        self.assertEqual(len(assets), 1)
+        self.assertEqual(assets[0].format_key, "thumbnail")
+        self.assertEqual(assets[0].media_type, "image/png")
+        self.assertEqual(assets[0].roles, ("thumbnail",))
 
     def test_catalog_only_promotes_exact_source_metadata_without_data_assets(self):
         with tempfile.TemporaryDirectory() as tmpdir:

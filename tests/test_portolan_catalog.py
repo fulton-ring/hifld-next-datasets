@@ -106,7 +106,7 @@ class PortolanCatalogTests(unittest.TestCase):
             self.assertTrue((Path(tmpdir) / "catalog.json").is_file())
             self.assertTrue((Path(tmpdir) / "hifld/README.md").is_file())
 
-    def test_rendered_stac_uses_absolute_internal_links_when_public_root_is_set(self):
+    def test_rendered_stac_keeps_companion_document_links_relative_when_public_root_is_set(self):
         record = CatalogRecord(
             "hifld",
             "dataset",
@@ -131,7 +131,9 @@ class PortolanCatalogTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            render_portolan_tree(root, (record,), public_root="http://seaweed.test:8333/bucket")
+            render_portolan_tree(
+                root, (record,), public_root="http://seaweed.test:8333/bucket"
+            )
             documents = tuple(
                 json.loads(path.read_text())
                 for path in root.rglob("*.json")
@@ -140,11 +142,35 @@ class PortolanCatalogTests(unittest.TestCase):
 
         for document in documents:
             for link in document["links"]:
-                self.assertTrue(
-                    link["href"].startswith(("http://seaweed.test:8333/bucket/", "https://source.example.test/")),
-                    link,
-                )
-        collection = next(document for document in documents if document["type"] == "Collection")
+                if link["rel"] in {"agents", "describedby"}:
+                    self.assertFalse(link["href"].startswith("http"), link)
+                else:
+                    self.assertTrue(
+                        link["href"].startswith(
+                            (
+                                "http://seaweed.test:8333/bucket/",
+                                "https://source.example.test/",
+                            )
+                        ),
+                        link,
+                    )
+        collection = next(
+            document for document in documents if document["type"] == "Collection"
+        )
+        self.assertEqual(
+            [
+                link
+                for link in collection["links"]
+                if link["rel"] == "via"
+            ],
+            [
+                {
+                    "rel": "via",
+                    "href": "https://source.example.test/data",
+                    "type": "text/html",
+                }
+            ],
+        )
         self.assertEqual(
             collection["assets"]["parquet"]["href"],
             "http://seaweed.test:8333/bucket/hifld/dataset/file/v1.0.0/parquet/data.parquet",
@@ -152,18 +178,30 @@ class PortolanCatalogTests(unittest.TestCase):
 
     def test_sqlite_leaves_missing_file_and_version_timestamps_null(self):
         record = CatalogRecord(
-            "hifld", "dataset", "file", "v1", "File", "Description", "non_spatial_source", 0, ()
+            "hifld",
+            "dataset",
+            "file",
+            "v1",
+            "File",
+            "Description",
+            "non_spatial_source",
+            0,
+            (),
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             database = Path(tmpdir) / "catalog.sqlite"
             build_catalog_sqlite(database, (record,))
             connection = sqlite3.connect(database)
             self.assertEqual(
-                connection.execute("SELECT created_at, updated_at FROM files").fetchone(),
+                connection.execute(
+                    "SELECT created_at, updated_at FROM files"
+                ).fetchone(),
                 (None, None),
             )
             self.assertEqual(
-                connection.execute("SELECT created_at, updated_at FROM versions").fetchone(),
+                connection.execute(
+                    "SELECT created_at, updated_at FROM versions"
+                ).fetchone(),
                 (None, None),
             )
             connection.close()
@@ -187,6 +225,7 @@ class PortolanCatalogTests(unittest.TestCase):
                     "application/vnd.pmtiles",
                     3,
                     "a" * 64,
+                    pmtiles_layers=("roads",),
                 ),
             ),
         )
@@ -196,8 +235,7 @@ class PortolanCatalogTests(unittest.TestCase):
             root_document = json.loads((root / "catalog.json").read_text())
             collection_document = json.loads(
                 (
-                    root
-                    / "hifld/example-dataset/example-file/v1.0.0/collection.json"
+                    root / "hifld/example-dataset/example-file/v1.0.0/collection.json"
                 ).read_text()
             )
             self.assertIn(
@@ -230,6 +268,7 @@ class PortolanCatalogTests(unittest.TestCase):
                 if link["rel"] == "pmtiles"
             )
             self.assertEqual(pmtiles["type"], "application/vnd.pmtiles")
+            self.assertEqual(pmtiles["pmtiles:layers"], ["roads"])
 
     def test_renders_source_md5_multihash_without_fabricating_sha256(self):
         record = CatalogRecord(
@@ -269,8 +308,7 @@ class PortolanCatalogTests(unittest.TestCase):
             render_portolan_tree(root, (record,))
             document = json.loads(
                 (
-                    root
-                    / "hifld/example-dataset/example-file/v1.0.0/collection.json"
+                    root / "hifld/example-dataset/example-file/v1.0.0/collection.json"
                 ).read_text()
             )
             self.assertEqual(
@@ -314,7 +352,17 @@ class PortolanCatalogTests(unittest.TestCase):
             document = json.loads(path.read_text())
             self.assertEqual(document["license"], "other")
             self.assertNotIn("license", {link["rel"] for link in document["links"]})
-            self.assertEqual(document["providers"], [{"name": "Authoritative Agency"}])
+            self.assertEqual(
+                document["providers"],
+                [
+                    {"name": "Authoritative Agency", "roles": ["producer"]},
+                    {
+                        "name": "HIFLD Next",
+                        "roles": ["host"],
+                        "url": "https://hifld.publicenvirodata.org",
+                    },
+                ],
+            )
             self.assertEqual(document["table:columns"][0]["name"], "OBJECTID")
             self.assertEqual(
                 document["table:columns"][0]["description"],
@@ -361,8 +409,16 @@ class PortolanCatalogTests(unittest.TestCase):
 
     def test_archived_hifld_record_renders_public_domain_mark_and_notice(self):
         record = CatalogRecord(
-            "hifld", "dataset", "file", "v1.0.0", "File", "Description",
-            "non_spatial_source", 0, (), license_id="CC-PDM-1.0",
+            "hifld",
+            "dataset",
+            "file",
+            "v1.0.0",
+            "File",
+            "Description",
+            "non_spatial_source",
+            0,
+            (),
+            license_id="CC-PDM-1.0",
             license_href="../../../LICENSE.md",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -582,19 +638,21 @@ class PortolanCatalogTests(unittest.TestCase):
                 root_catalog["description"], "Authoritative root description"
             )
             self.assertEqual(dataset_catalog["title"], "hifld/dataset")
-            self.assertEqual(dataset_catalog["description"], "Catalog of published data.")
             self.assertEqual(
-                root_catalog["hifld:created_at"], "2020-01-01T00:00:00Z"
+                dataset_catalog["description"], "Catalog of published data."
             )
-            self.assertEqual(
-                root_catalog["hifld:updated_at"], "2024-01-01T00:00:00Z"
-            )
+            self.assertEqual(root_catalog["hifld:created_at"], "2020-01-01T00:00:00Z")
+            self.assertEqual(root_catalog["hifld:updated_at"], "2024-01-01T00:00:00Z")
             self.assertEqual(
                 dataset_catalog["hifld:created_at"], "2021-01-01T00:00:00Z"
             )
             self.assertEqual(
                 dataset_catalog["hifld:updated_at"], "2023-01-01T00:00:00Z"
             )
+            version_catalog = json.loads(
+                (root / "hifld/dataset/file/v1/collection.json").read_text()
+            )
+            self.assertEqual(version_catalog["updated"], "2025-01-01T00:00:00Z")
             self.assertEqual(
                 connection.execute(
                     "SELECT created_at, updated_at FROM collections"

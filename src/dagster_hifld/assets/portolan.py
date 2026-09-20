@@ -55,7 +55,7 @@ def publish_portolan_catalog(
         storage_slug=storage_slug,
         collection_title=os.environ.get("HIFLD_PORTOLAN_COLLECTION_TITLE"),
         archive_public_domain=(
-            os.environ.get("HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN") == "1"
+            os.environ.get("HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN", "1") != "0"
         ),
     )
     generation = publish_portolan_record(
@@ -63,5 +63,8 @@ def publish_portolan_catalog(
         staging=staging_storage,
         published=published_storage,
         catalog_only=True,
+        use_release_pointer=(
+            os.environ.get("HIFLD_PORTOLAN_RELEASE_POINTER", "1") != "0"
+        ),
     )
     return Output({"catalog_generation": generation}, metadata={"catalog_generation": generation})
