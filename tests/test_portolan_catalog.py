@@ -106,7 +106,9 @@ class PortolanCatalogTests(unittest.TestCase):
             self.assertTrue((Path(tmpdir) / "catalog.json").is_file())
             self.assertTrue((Path(tmpdir) / "hifld/README.md").is_file())
 
-    def test_rendered_stac_keeps_companion_document_links_relative_when_public_root_is_set(self):
+    def test_rendered_stac_keeps_companion_document_links_relative_when_public_root_is_set(
+        self,
+    ):
         record = CatalogRecord(
             "hifld",
             "dataset",
@@ -158,11 +160,7 @@ class PortolanCatalogTests(unittest.TestCase):
             document for document in documents if document["type"] == "Collection"
         )
         self.assertEqual(
-            [
-                link
-                for link in collection["links"]
-                if link["rel"] == "via"
-            ],
+            [link for link in collection["links"] if link["rel"] == "via"],
             [
                 {
                     "rel": "via",
@@ -581,7 +579,7 @@ class PortolanCatalogTests(unittest.TestCase):
             self.assertEqual(file["keywords"], ["searchable"])
             self.assertEqual(version["keywords"], ["searchable"])
 
-    def test_root_metadata_comes_from_the_single_authoritative_collection(self):
+    def test_root_brand_is_distinct_from_hifld_collection_title(self):
         fixture = CatalogRecord(
             "hifld",
             "dataset",
@@ -605,7 +603,7 @@ class PortolanCatalogTests(unittest.TestCase):
             "non_spatial_source",
             1,
             (),
-            collection_title="Authoritative root",
+            collection_title="HIFLD",
             collection_description="Authoritative root description",
             collection_created_at="2020-01-01T00:00:00Z",
             collection_updated_at="2024-01-01T00:00:00Z",
@@ -627,13 +625,19 @@ class PortolanCatalogTests(unittest.TestCase):
                 connection.execute(
                     "SELECT root_title FROM catalog_metadata"
                 ).fetchone()[0],
-                "Authoritative root",
+                "HIFLD Next",
+            )
+            self.assertEqual(
+                connection.execute("SELECT title FROM collections").fetchone()[0],
+                "HIFLD",
             )
             root_catalog = json.loads((root / "catalog.json").read_text())
+            collection_catalog = json.loads((root / "hifld/catalog.json").read_text())
             dataset_catalog = json.loads(
                 (root / "hifld/dataset/catalog.json").read_text()
             )
-            self.assertEqual(root_catalog["title"], "Authoritative root")
+            self.assertEqual(root_catalog["title"], "HIFLD Next")
+            self.assertEqual(collection_catalog["title"], "HIFLD")
             self.assertEqual(
                 root_catalog["description"], "Authoritative root description"
             )

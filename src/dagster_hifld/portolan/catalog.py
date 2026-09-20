@@ -175,6 +175,8 @@ def _root_metadata(
     if len(collection_slugs) != 1:
         return None, ""
     record = records[0]
+    if record.collection_slug == "hifld":
+        return HIFLD_NEXT_HOST_NAME, record.collection_description or ""
     return record.collection_title, record.collection_description or ""
 
 
