@@ -17,6 +17,46 @@ from dagster_hifld.portolan.catalog import (
 
 
 class PortolanCatalogTests(unittest.TestCase):
+    def test_rendered_collection_uses_world_extent_when_derived_bbox_is_invalid(self):
+        record = CatalogRecord(
+            "hifld",
+            "forests",
+            "forests",
+            "v1.0.0",
+            "Forests",
+            "Data",
+            "spatial",
+            1,
+            (),
+            provider="Source agency",
+            native_bbox=(-16698780.0, 2064632.0, -7313653.0, 8745977.0),
+            crs84_bbox=(-16698780.0, 2064632.0, -7313653.0, 8745977.0),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            render_portolan_tree(root, (record,))
+            path = root / "hifld/forests/forests/v1.0.0/collection.json"
+            document = json.loads(path.read_text())
+            self.assertEqual(
+                document["extent"]["spatial"]["bbox"],
+                [[-180.0, -90.0, 180.0, 90.0]],
+            )
+            self.assertEqual(
+                document["hifld:native_bbox"],
+                [-16698780.0, 2064632.0, -7313653.0, 8745977.0],
+            )
+            self.assertEqual(
+                document["hifld:spatial_extent_status"], "unknown_source_bbox"
+            )
+            database = root / "catalog.sqlite"
+            build_catalog_sqlite(database, (record,))
+            with sqlite3.connect(database) as connection:
+                stored_bbox = connection.execute(
+                    "SELECT crs84_bbox_json FROM versions WHERE version_path = ?",
+                    (record.version_path,),
+                ).fetchone()[0]
+            self.assertEqual(json.loads(stored_bbox), [-180.0, -90.0, 180.0, 90.0])
+
     def test_builds_normalized_sqlite_with_full_path_identity_and_latest(self):
         record = CatalogRecord(
             collection_slug="hifld",

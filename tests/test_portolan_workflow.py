@@ -19,6 +19,7 @@ from dagster_hifld.assets.publish import _write_and_publish_shapefile_zip
 from dagster_hifld.partitions import PUBLISH_PARTITIONS
 from dagster_hifld.portolan.catalog import CatalogRecord
 from dagster_hifld.portolan.release import ReleasePointer
+from dagster_hifld.portolan.validation import PortolanValidationError
 from dagster_hifld.portolan.workflow import (
     GeoParquetFacts,
     PortolanPublishRequest,
@@ -28,6 +29,7 @@ from dagster_hifld.portolan.workflow import (
     _promote_staged_data,
     _publish_catalog,
     _record_assets,
+    _source_publisher_from_storage,
     _version_metadata_path,
     _write_default_pmtiles_style,
     columns_from_dictionary,
@@ -57,6 +59,142 @@ def _pmtiles_archive(layer_id: str = "roads") -> bytes:
 
 
 class PortolanWorkflowTests(unittest.TestCase):
+    def test_release_refresh_uses_dictionary_to_repair_retained_provider(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            request = PortolanPublishRequest(
+                "hifld",
+                "legacy",
+                "file",
+                "v1.0.0",
+                "Legacy",
+                "Data",
+                "Agency",
+                public_root="https://example.test/catalog",
+            )
+            legacy = CatalogRecord(
+                "hifld",
+                "legacy",
+                "file",
+                "v1.0.0",
+                "Legacy",
+                "Data",
+                "non_spatial_source",
+                0,
+                (),
+                provider="Agency",
+            )
+            first_generation = _publish_catalog(
+                (legacy,), request, published, use_release_pointer=True
+            )
+            version_path = "hifld/legacy/file/v1.0.0"
+            published.write_key(
+                f"{version_path}/metadata/data_dictionary.json",
+                b'{"publisher":"Agency","agency":"Different agency"}',
+            )
+            legacy_key = f"releases/{first_generation}/{version_path}/collection.json"
+            legacy_document = json.loads(published.read_key(legacy_key))
+            legacy_document["providers"] = [{"name": "Agency"}]
+            legacy_document["hifld:agency"] = "Different agency"
+            legacy_document["extent"]["spatial"]["bbox"] = [
+                [-16698780.0, 2064632.0, -7313653.0, 8745977.0]
+            ]
+            published.write_key(legacy_key, json.dumps(legacy_document).encode())
+
+            next_request = replace(request, dataset_slug="next")
+            next_record = replace(legacy, dataset_slug="next")
+            next_generation = _publish_catalog(
+                (next_record,), next_request, published, use_release_pointer=True
+            )
+
+            refreshed = json.loads(
+                published.read_key(
+                    f"releases/{next_generation}/{version_path}/collection.json"
+                )
+            )
+            self.assertEqual(
+                [provider["roles"] for provider in refreshed["providers"]],
+                [["producer"], ["host"]],
+            )
+            self.assertEqual(
+                refreshed["extent"]["spatial"]["bbox"],
+                [[-180.0, -90.0, 180.0, 90.0]],
+            )
+            database = (
+                Path(tmpdir) / f"releases/{next_generation}/_catalog/catalog.sqlite"
+            )
+            with sqlite3.connect(database) as connection:
+                stored_bbox = connection.execute(
+                    "SELECT crs84_bbox_json FROM versions WHERE version_path = ?",
+                    (version_path,),
+                ).fetchone()[0]
+            self.assertEqual(json.loads(stored_bbox), [-180.0, -90.0, 180.0, 90.0])
+
+    def test_source_publisher_evidence_comes_from_published_dictionary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            version_path = "hifld/address-ranges/address-ranges/v1.0.0"
+            published.write_key(
+                f"{version_path}/metadata/data_dictionary.json",
+                json.dumps(
+                    {
+                        "publisher": "United States Census Bureau",
+                        "agency": "Census Bureau",
+                    }
+                ).encode(),
+            )
+
+            self.assertEqual(
+                _source_publisher_from_storage(published, version_path),
+                "United States Census Bureau",
+            )
+            self.assertIsNone(
+                _source_publisher_from_storage(
+                    published, "hifld/hospitals-3/hospitals-3/v1.1.0"
+                )
+            )
+
+    def test_release_pointer_stays_selected_when_candidate_validation_rejects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
+            request = PortolanPublishRequest(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "Agency",
+                public_root="https://example.test/catalog",
+            )
+            record = CatalogRecord(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Description",
+                "non_spatial_source",
+                0,
+                (),
+                collection_title="HIFLD Next",
+            )
+            _publish_catalog((record,), request, published, use_release_pointer=True)
+            before = published.read_key("_catalog/current.json")
+
+            with (
+                patch(
+                    "dagster_hifld.portolan.workflow.validate_candidate_tree",
+                    side_effect=PortolanValidationError("invalid candidate"),
+                ),
+                self.assertRaisesRegex(PortolanValidationError, "invalid candidate"),
+            ):
+                _publish_catalog(
+                    (record,), request, published, use_release_pointer=True
+                )
+
+            self.assertEqual(published.read_key("_catalog/current.json"), before)
+
     def test_release_publication_commits_pointer_after_uploading_a_complete_bundle(
         self,
     ):

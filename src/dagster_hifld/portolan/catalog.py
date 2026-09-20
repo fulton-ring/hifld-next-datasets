@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +22,7 @@ WEB_MAP_LINKS_EXTENSION = (
 )
 STAC_JSON_MEDIA_TYPE = "application/json"
 UNKNOWN_SPATIAL_EXTENT = [-180.0, -90.0, 180.0, 90.0]
+CRS84_BOUNDARY_TOLERANCE = 1e-8
 HIFLD_ARCHIVE_PUBLIC_DOMAIN_MARK = "CC-PDM-1.0"
 HIFLD_ARCHIVE_LICENSE_HREF = "../../../LICENSE.md"
 HIFLD_ARCHIVE_RIGHTS_NOTICE = """# Archived HIFLD Open data rights
@@ -38,6 +41,34 @@ dataset-specific rights file or source notice takes precedence.
 HIFLD_NEXT_HOST_NAME = "HIFLD Next"
 HIFLD_NEXT_HOST_URL = "https://hifld.publicenvirodata.org"
 JsonScalar = str | int | float | bool | None
+
+
+def stac_spatial_bbox(bounds: Sequence[float] | None) -> tuple[list[float], str | None]:
+    """Return a valid, conservative CRS84 extent and any correction status.
+
+    A source-derived box outside CRS84 cannot safely be used for spatial
+    filtering. Small floating-point overshoots are clamped; otherwise use the
+    existing unknown/world extent instead of pretending projected coordinates
+    are longitude and latitude.
+    """
+    if bounds is None:
+        return list(UNKNOWN_SPATIAL_EXTENT), None
+    if len(bounds) != 4 or not all(math.isfinite(value) for value in bounds):
+        return list(UNKNOWN_SPATIAL_EXTENT), "unknown_source_bbox"
+    limits = ((-180.0, 180.0), (-90.0, 90.0), (-180.0, 180.0), (-90.0, 90.0))
+    if bounds[0] > bounds[2] or bounds[1] > bounds[3]:
+        return list(UNKNOWN_SPATIAL_EXTENT), "unknown_source_bbox"
+    if any(
+        value < lower - CRS84_BOUNDARY_TOLERANCE
+        or value > upper + CRS84_BOUNDARY_TOLERANCE
+        for value, (lower, upper) in zip(bounds, limits, strict=True)
+    ):
+        return list(UNKNOWN_SPATIAL_EXTENT), "unknown_source_bbox"
+    normalized = [
+        min(max(float(value), lower), upper)
+        for value, (lower, upper) in zip(bounds, limits, strict=True)
+    ]
+    return normalized, "clamped_to_crs84" if normalized != list(bounds) else None
 
 
 @dataclass(frozen=True)
@@ -408,7 +439,9 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
             updated_at,
             record.spatial_status,
             _json(record.native_bbox) if record.native_bbox else None,
-            _json(record.crs84_bbox) if record.crs84_bbox else None,
+            _json(stac_spatial_bbox(record.crs84_bbox)[0])
+            if record.crs84_bbox
+            else None,
             record.native_crs,
             record.geometry_column,
             record.geometry_type,
@@ -465,7 +498,9 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
                 asset.checksum_multihash,
                 asset.storage_revision,
                 _json(record.native_bbox) if record.native_bbox else None,
-                _json(record.crs84_bbox) if record.crs84_bbox else None,
+                _json(stac_spatial_bbox(record.crs84_bbox)[0])
+                if record.crs84_bbox
+                else None,
             ),
         )
     for column in record.columns:
@@ -790,6 +825,10 @@ def _providers(record: CatalogRecord) -> list[dict[str, object]]:
     return providers
 
 
+def _has_source_producer(record: CatalogRecord) -> bool:
+    return bool(record.provider and record.provider != HIFLD_NEXT_HOST_NAME)
+
+
 def _render_record(root: Path, record: CatalogRecord) -> None:
     collection_dir = root / record.collection_path
     dataset_dir = root / record.dataset_path
@@ -971,10 +1010,11 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         }
         for column in sorted(record.columns, key=lambda item: item.ordinal)
     ]
+    spatial_bbox, extent_status = stac_spatial_bbox(record.crs84_bbox)
     collection = {
         "stac_version": "1.1.0",
         "stac_extensions": [
-            PORTOLAN_STAC_EXTENSION,
+            *([PORTOLAN_STAC_EXTENSION] if _has_source_producer(record) else []),
             "https://stac-extensions.github.io/file/v2.1.0/schema.json",
             "https://stac-extensions.github.io/version/v1.2.0/schema.json",
             "https://stac-extensions.github.io/table/v1.2.0/schema.json",
@@ -989,13 +1029,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         "keywords": list(record.tags),
         "links": links,
         "extent": {
-            "spatial": {
-                "bbox": [
-                    list(record.crs84_bbox)
-                    if record.crs84_bbox is not None
-                    else UNKNOWN_SPATIAL_EXTENT
-                ]
-            },
+            "spatial": {"bbox": [spatial_bbox]},
             "temporal": {"interval": [[record.created_at, record.updated_at]]},
         },
         "assets": assets,
@@ -1007,6 +1041,11 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         "hifld:geometry_type": record.geometry_type,
         "hifld:feature_id_column": record.feature_id_column,
         "hifld:native_bbox": list(record.native_bbox) if record.native_bbox else None,
+        **(
+            {"hifld:spatial_extent_status": extent_status}
+            if extent_status is not None
+            else {}
+        ),
         "hifld:source_version_description": record.source_version_description,
         "hifld:source_version_bounds": (
             list(record.source_version_bounds)
