@@ -299,9 +299,10 @@ class PortolanWorkflowTests(unittest.TestCase):
                 root_title = conn.execute(
                     "SELECT root_title FROM catalog_metadata"
                 ).fetchone()[0]
-            self.assertEqual(root_title, "HIFLD")
+            self.assertEqual(root_title, "HIFLD Next")
             root_catalog = json.loads(published.read_key("catalog.json"))
-            self.assertEqual(root_catalog["title"], "HIFLD")
+            self.assertEqual(root_catalog["title"], "HIFLD Next")
+            self.assertEqual(collection["title"], "HIFLD")
 
     def test_root_catalog_ignores_data_prefix(self):
         with tempfile.TemporaryDirectory() as tmpdir:
