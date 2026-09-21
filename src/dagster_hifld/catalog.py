@@ -240,6 +240,8 @@ def generate_data_dictionary(
             "source_modified",
             "date_issued",
             "date_modified",
+            "temporal_start",
+            "temporal_end",
             "metadata_sources",
             "metadata_resolved_from",
             "inventory_match_type",

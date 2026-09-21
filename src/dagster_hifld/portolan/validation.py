@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 from urllib.parse import urljoin, urlparse
@@ -305,6 +306,31 @@ def _profile_error_messages(error: ValidationError, document_type: str) -> list[
     ]
 
 
+def _validate_temporal_intervals(document: dict[str, object], path: str) -> list[str]:
+    if document.get("type") != "Collection":
+        return []
+    extent = document.get("extent")
+    temporal = extent.get("temporal") if isinstance(extent, dict) else None
+    intervals = temporal.get("interval") if isinstance(temporal, dict) else None
+    if not isinstance(intervals, list):
+        return []
+    failures: list[str] = []
+    for interval in intervals:
+        if not isinstance(interval, list) or len(interval) != 2:
+            continue
+        start, end = interval
+        if not isinstance(start, str) or not isinstance(end, str):
+            continue
+        try:
+            start_time = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            end_time = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            if start_time > end_time:
+                failures.append(f"{path}: temporal interval starts after it ends")
+        except (TypeError, ValueError):
+            failures.append(f"{path}: temporal interval has an invalid timestamp")
+    return failures
+
+
 def validate_candidate_tree(root: Path) -> None:
     """Fail closed on malformed local STAC or declared Portolan profile errors."""
     document_paths = _candidate_documents(root)
@@ -320,6 +346,7 @@ def validate_candidate_tree(root: Path) -> None:
     validator = _profile_validator()
     for relative_path, path in document_paths.items():
         document = _read_document(path)
+        failures.extend(_validate_temporal_intervals(document, relative_path))
         extensions = document.get("stac_extensions")
         if (
             not isinstance(extensions, list)

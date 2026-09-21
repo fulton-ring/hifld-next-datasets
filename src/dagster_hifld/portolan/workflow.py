@@ -52,20 +52,24 @@ RELEASE_POINTER_KEY = "_catalog/current.json"
 
 def normalize_stac_datetime(value: object) -> str | None:
     """Normalize authored ISO dates to STAC-compatible RFC 3339 timestamps."""
-    if not isinstance(value, str) or not value.strip():
+    if value is None or value == "":
         return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Authored coverage timestamp must be an ISO date or datetime.")
     text = value.strip()
     if len(text) == 10:
         try:
             date.fromisoformat(text)
-        except ValueError:
-            return None
+        except ValueError as error:
+            raise ValueError("Authored coverage timestamp is not an ISO date.") from error
         return f"{text}T00:00:00Z"
     try:
-        datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    return text
+        parsed = datetime.fromisoformat(text)
+    except ValueError as error:
+        raise ValueError("Authored coverage timestamp is not an ISO datetime.") from error
+    if parsed.tzinfo is None:
+        raise ValueError("Authored coverage timestamp must include a timezone.")
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _required_text(values: Mapping[str, object], key: str) -> str:
@@ -878,8 +882,12 @@ def _prepare_portolan_record(
             if isinstance(manifest_keys_value, list)
             else ()
         ),
-        created_at=normalize_stac_datetime(issued_value),
-        updated_at=normalize_stac_datetime(modified_value),
+        source_issued_date=issued_value if isinstance(issued_value, str) else None,
+        source_modified_date=(
+            modified_value if isinstance(modified_value, str) else None
+        ),
+        temporal_start=normalize_stac_datetime(source_dictionary.get("temporal_start")),
+        temporal_end=normalize_stac_datetime(source_dictionary.get("temporal_end")),
     )
 
 

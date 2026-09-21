@@ -61,6 +61,32 @@ class PortolanValidationTests(unittest.TestCase):
                 repaired["hifld:spatial_extent_status"], "unknown_source_bbox"
             )
 
+    def test_validation_rejects_reversed_temporal_coverage(self):
+        record = CatalogRecord(
+            "hifld", "roads", "roads", "v1.0.0", "Roads", "Data", "spatial", 1, (),
+            provider="Agency",
+            temporal_start="2024-06-25T00:00:00Z",
+            temporal_end="2020-10-21T00:00:00Z",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            render_portolan_tree(root, (record,))
+            normalize_candidate_tree(root)
+            with self.assertRaisesRegex(PortolanValidationError, "temporal interval"):
+                validate_candidate_tree(root)
+
+    def test_validation_rejects_invalid_one_sided_temporal_coverage(self):
+        record = CatalogRecord(
+            "hifld", "roads", "roads", "v1.0.0", "Roads", "Data", "spatial", 1, (),
+            provider="Agency", temporal_start="not-a-date",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            render_portolan_tree(root, (record,))
+            normalize_candidate_tree(root)
+            with self.assertRaisesRegex(PortolanValidationError, "not-a-date"):
+                validate_candidate_tree(root)
+
     def test_host_only_collection_is_an_explicit_missing_producer_exception(self):
         record = CatalogRecord(
             "hifld",

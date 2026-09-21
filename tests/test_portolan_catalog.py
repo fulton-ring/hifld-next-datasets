@@ -14,6 +14,7 @@ from dagster_hifld.portolan.catalog import (
     render_portolan_tree,
     update_catalog_sqlite,
 )
+from dagster_hifld.portolan.validation import normalize_candidate_tree, validate_candidate_tree
 
 
 class PortolanCatalogTests(unittest.TestCase):
@@ -56,6 +57,62 @@ class PortolanCatalogTests(unittest.TestCase):
                     (record.version_path,),
                 ).fetchone()[0]
             self.assertEqual(json.loads(stored_bbox), [-180.0, -90.0, 180.0, 90.0])
+
+    def test_source_dates_do_not_define_temporal_coverage_or_catalog_lifecycle(self):
+        record = CatalogRecord(
+            "hifld",
+            "border-crossings-natural-gas",
+            "border-crossings-natural-gas",
+            "v1.0.0",
+            "Border Crossings - Natural Gas",
+            "Source description",
+            "spatial",
+            1,
+            (
+                AssetRecord(
+                    "geoparquet", "geoparquet", "GeoParquet",
+                    "https://example.test/border-crossings.parquet",
+                    "application/vnd.apache.parquet", 128, "a" * 64,
+                ),
+            ),
+            source_issued_date="2024-06-25",
+            source_modified_date="2020-10-21",
+            metadata_resolved_from=(
+                ("date_issued", "inventory"),
+                ("date_modified", "inventory"),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            render_portolan_tree(Path(tmpdir), (record,))
+            normalize_candidate_tree(Path(tmpdir))
+            validate_candidate_tree(Path(tmpdir))
+            collection = json.loads(
+                (
+                    Path(tmpdir)
+                    / "hifld/border-crossings-natural-gas/border-crossings-natural-gas/v1.0.0/collection.json"
+                ).read_text()
+            )
+
+        self.assertEqual(collection["extent"]["temporal"]["interval"], [[None, None]])
+        self.assertEqual(
+            collection["hifld:source_dates"],
+            {
+                "issued": "2024-06-25",
+                "modified": "2020-10-21",
+                "provenance": {"issued": "inventory", "modified": "inventory"},
+            },
+        )
+        self.assertNotIn("updated", collection)
+        self.assertNotIn("hifld:created_at", collection)
+        self.assertNotIn("hifld:updated_at", collection)
+        self.assertEqual(
+            collection["assets"]["geoparquet"]["href"],
+            "https://example.test/border-crossings.parquet",
+        )
+        self.assertEqual(
+            collection["assets"]["geoparquet"]["file:checksum"],
+            "1220" + "a" * 64,
+        )
 
     def test_builds_normalized_sqlite_with_full_path_identity_and_latest(self):
         record = CatalogRecord(
@@ -651,8 +708,8 @@ class PortolanCatalogTests(unittest.TestCase):
             dataset_description="",
             dataset_created_at="2021-01-01T00:00:00Z",
             dataset_updated_at="2023-01-01T00:00:00Z",
-            created_at="2022-01-01T00:00:00Z",
-            updated_at="2025-01-01T00:00:00Z",
+            source_issued_date="2022-01-01",
+            source_modified_date="2025-01-01",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -696,7 +753,11 @@ class PortolanCatalogTests(unittest.TestCase):
             version_catalog = json.loads(
                 (root / "hifld/dataset/file/v1/collection.json").read_text()
             )
-            self.assertEqual(version_catalog["updated"], "2025-01-01T00:00:00Z")
+            self.assertEqual(
+                version_catalog["hifld:source_dates"],
+                {"issued": "2022-01-01", "modified": "2025-01-01"},
+            )
+            self.assertNotIn("updated", version_catalog)
             self.assertEqual(
                 connection.execute(
                     "SELECT created_at, updated_at FROM collections"

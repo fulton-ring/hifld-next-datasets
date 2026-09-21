@@ -73,7 +73,13 @@ class PortolanInventoryTests(unittest.TestCase):
                 "tags": {"theme": ["health"]},
             },
             "dataset/file/v1.0.0/metadata/data_dictionary.json": {
-                "columns": [{"name": "geometry", "type": "geometry", "nullable": False}]
+                "columns": [{"name": "geometry", "type": "geometry", "nullable": False}],
+                "date_issued": "2024-06-25",
+                "date_modified": "2020-10-21",
+                "metadata_resolved_from": {
+                    "date_issued": "inventory",
+                    "date_modified": "inventory",
+                },
             },
             "dataset/file/v1.0.0/metadata/quality_manifest.json": {
                 "description": None,
@@ -145,8 +151,11 @@ class PortolanInventoryTests(unittest.TestCase):
         self.assertEqual(record.collection_updated_at, "2026-02-13T02:52:43.921841")
         self.assertEqual(record.dataset_created_at, "2026-08-17T22:47:38.047035")
         self.assertEqual(record.dataset_updated_at, "2026-08-17T22:47:38.047064")
-        self.assertIsNone(record.created_at)
-        self.assertIsNone(record.updated_at)
+        self.assertEqual(record.source_issued_date, "2024-06-25")
+        self.assertEqual(record.source_modified_date, "2020-10-21")
+        self.assertEqual(dict(record.metadata_resolved_from)["date_issued"], "inventory")
+        self.assertIsNone(record.temporal_start)
+        self.assertIsNone(record.temporal_end)
 
 
 def _object(name: str, generation: str) -> dict[str, str]:
