@@ -125,8 +125,10 @@ class CatalogRecord:
     inventory_match_type: str | None = None
     manifest_role: str | None = None
     manifest_keys: tuple[str, ...] = ()
-    created_at: str | None = None
-    updated_at: str | None = None
+    source_issued_date: str | None = None
+    source_modified_date: str | None = None
+    temporal_start: str | None = None
+    temporal_end: str | None = None
 
     @property
     def collection_path(self) -> str:
@@ -332,8 +334,6 @@ def _set_latest_versions(
 
 
 def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> None:
-    created_at = record.created_at
-    updated_at = record.updated_at
     dataset_title = (
         record.title if record.dataset_title is None else record.dataset_title
     )
@@ -380,7 +380,8 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
         "INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?) "
         "ON CONFLICT(file_path) DO UPDATE SET "
         "title = excluded.title, description = excluded.description, "
-        "catalog_href = excluded.catalog_href, updated_at = excluded.updated_at",
+        "catalog_href = excluded.catalog_href, created_at = excluded.created_at, "
+        "updated_at = excluded.updated_at",
         (
             record.file_path,
             record.dataset_path,
@@ -388,8 +389,8 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
             record.title,
             record.description,
             f"{record.file_path}/catalog.json",
-            created_at,
-            updated_at,
+            None,
+            None,
         ),
     )
     connection.execute(
@@ -402,8 +403,8 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
             record.file_path,
             record.version_label,
             f"{record.version_path}/collection.json",
-            created_at,
-            updated_at,
+            None,
+            None,
             record.spatial_status,
             _json(record.native_bbox) if record.native_bbox else None,
             _json(record.crs84_bbox) if record.crs84_bbox else None,
@@ -724,8 +725,6 @@ def render_portolan_tree(
                         root_href="../../../catalog.json",
                         parent_href="../catalog.json",
                         self_href="catalog.json",
-                        created_at=file_records[0].created_at,
-                        updated_at=file_records[0].updated_at,
                     ),
                 )
 
@@ -790,6 +789,23 @@ def _providers(record: CatalogRecord) -> list[dict[str, object]]:
 
 def _has_source_producer(record: CatalogRecord) -> bool:
     return bool(record.provider and record.provider != HIFLD_NEXT_HOST_NAME)
+
+
+def _source_dates(record: CatalogRecord) -> dict[str, object]:
+    dates: dict[str, object] = {}
+    provenance: dict[str, str] = {}
+    resolved_from = dict(record.metadata_resolved_from)
+    if record.source_issued_date:
+        dates["issued"] = record.source_issued_date
+        if source := resolved_from.get("date_issued"):
+            provenance["issued"] = source
+    if record.source_modified_date:
+        dates["modified"] = record.source_modified_date
+        if source := resolved_from.get("date_modified"):
+            provenance["modified"] = source
+    if provenance:
+        dates["provenance"] = provenance
+    return dates
 
 
 def _render_record(root: Path, record: CatalogRecord) -> None:
@@ -973,6 +989,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         }
         for column in sorted(record.columns, key=lambda item: item.ordinal)
     ]
+    source_dates = _source_dates(record)
     collection = {
         "stac_version": "1.1.0",
         "stac_extensions": [
@@ -998,7 +1015,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
                     else UNKNOWN_SPATIAL_EXTENT
                 ]
             },
-            "temporal": {"interval": [[record.created_at, record.updated_at]]},
+            "temporal": {"interval": [[record.temporal_start, record.temporal_end]]},
         },
         "assets": assets,
         "table:columns": table_columns,
@@ -1033,9 +1050,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         "hifld:inventory_match_type": record.inventory_match_type,
         "hifld:manifest_role": record.manifest_role,
         "hifld:manifest_keys": list(record.manifest_keys),
-        **({"updated": record.updated_at} if record.updated_at else {}),
-        **({"hifld:created_at": record.created_at} if record.created_at else {}),
-        **({"hifld:updated_at": record.updated_at} if record.updated_at else {}),
+        **({"hifld:source_dates": source_dates} if source_dates else {}),
     }
     _write_json(version_dir / "collection.json", collection)
     _write_docs(

@@ -428,8 +428,11 @@ def _catalog_record(
         or None,
         manifest_role=_text(version, "manifest_role") or None,
         manifest_keys=_string_tuple(version.get("manifest_keys")),
-        created_at=normalize_stac_datetime(dictionary.get("date_issued")),
-        updated_at=normalize_stac_datetime(dictionary.get("date_modified")),
+        metadata_resolved_from=_resolved_from(dictionary),
+        source_issued_date=_text(dictionary, "date_issued") or None,
+        source_modified_date=_text(dictionary, "date_modified") or None,
+        temporal_start=normalize_stac_datetime(dictionary.get("temporal_start")),
+        temporal_end=normalize_stac_datetime(dictionary.get("temporal_end")),
     )
 
 
@@ -466,6 +469,17 @@ def _md5_multihash(value: str | None) -> str | None:
     if len(digest) != 16:
         raise ValueError("Inventory contains a non-MD5 md5Hash.")
     return f"d50110{digest.hex()}"
+
+
+def _resolved_from(dictionary: Mapping[str, object]) -> tuple[tuple[str, str], ...]:
+    value = dictionary.get("metadata_resolved_from")
+    if not isinstance(value, dict):
+        return ()
+    return tuple(
+        (key, source)
+        for key, source in value.items()
+        if isinstance(key, str) and isinstance(source, str)
+    )
 
 
 def _text(value: Mapping[str, object], key: str) -> str:

@@ -26,6 +26,8 @@ CATALOG_METADATA_FIELDS = (
     "source_modified",
     "date_issued",
     "date_modified",
+    "temporal_start",
+    "temporal_end",
 )
 
 
