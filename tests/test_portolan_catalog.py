@@ -79,7 +79,7 @@ class PortolanCatalogTests(unittest.TestCase):
             source_modified_date="2020-10-21",
             metadata_resolved_from=(
                 ("date_issued", "inventory"),
-                ("date_modified", "inventory"),
+                ("source_modified", "inventory"),
             ),
         )
         with tempfile.TemporaryDirectory() as tmpdir:

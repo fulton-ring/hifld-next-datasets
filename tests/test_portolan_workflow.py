@@ -666,7 +666,7 @@ class PortolanWorkflowTests(unittest.TestCase):
         self.assertFalse(prepare.call_args.kwargs["convert"])
         self.assertFalse(prepare.call_args.kwargs["promote"])
 
-    def test_catalog_only_record_preserves_authored_version_note_and_bounds(self):
+    def test_catalog_only_record_preserves_authored_version_metadata(self):
         note = (
             "Updated hospital bed counts.\n\n"
             "Update support provided by [Niyam IT](https://niyamit.com).\n\n"
@@ -700,14 +700,14 @@ class PortolanWorkflowTests(unittest.TestCase):
                 "hospitals-3",
                 "v1.1.0",
                 "metadata/source/source_manifest.json",
-                b"{}",
+                b'{"date_issued":"2026-04-06","source_modified":"2026-04-07","metadata_resolved_from":{"date_issued":"version","source_modified":"version"}}',
             )
             staging.write(
                 "hospitals-3",
                 "hospitals-3",
                 "v1.1.0",
                 "metadata/source/data_dictionary.json",
-                b'{"title":"Hospitals","description":"Hospital locations","date_issued":"2026-04-06","metadata_resolved_from":{"date_issued":"version"},"columns":[]}',
+                b'{"title":"Hospitals","description":"Hospital locations","columns":[]}',
             )
             staging.write(
                 "hospitals-3",
@@ -751,8 +751,12 @@ class PortolanWorkflowTests(unittest.TestCase):
         self.assertEqual(record.source_version_description, note)
         self.assertEqual(record.source_version_bounds, (-77.1, 37.9, -75.9, 39.1))
         self.assertEqual(record.source_issued_date, "2026-04-06")
+        self.assertEqual(record.source_modified_date, "2026-04-07")
         self.assertEqual(
             dict(record.metadata_resolved_from)["date_issued"], "version"
+        )
+        self.assertEqual(
+            dict(record.metadata_resolved_from)["source_modified"], "version"
         )
 
     def test_manifest_tags_preserve_all_group_names_and_values(self):

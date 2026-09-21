@@ -771,8 +771,15 @@ def _prepare_portolan_record(
         "publisher", source_manifest.get("publisher")
     )
     keywords_value = source_dictionary.get("keywords")
-    issued_value = source_dictionary.get("date_issued")
-    modified_value = source_dictionary.get("date_modified")
+    issued_value = _source_text(source_dictionary, "date_issued") or _source_text(
+        source_manifest, "date_issued"
+    )
+    modified_value = (
+        _source_text(source_dictionary, "date_modified")
+        or _source_text(source_dictionary, "source_modified")
+        or _source_text(source_manifest, "date_modified")
+        or _source_text(source_manifest, "source_modified")
+    )
     sampled_feature_count = source_quality.get("sampled_feature_count")
     sampled_invalid_count = source_quality.get("sampled_invalid_geometry_count")
     sampled_null_count = source_quality.get("sampled_null_geometry_count")
@@ -799,7 +806,20 @@ def _prepare_portolan_record(
         else ()
     )
     metadata_sources_value = source_dictionary.get("metadata_sources")
-    resolved_value = source_dictionary.get("metadata_resolved_from")
+    manifest_resolved_value = source_manifest.get("metadata_resolved_from")
+    dictionary_resolved_value = source_dictionary.get("metadata_resolved_from")
+    resolved_value = {
+        **(
+            manifest_resolved_value
+            if isinstance(manifest_resolved_value, dict)
+            else {}
+        ),
+        **(
+            dictionary_resolved_value
+            if isinstance(dictionary_resolved_value, dict)
+            else {}
+        ),
+    }
     inventory_match_value = source_dictionary.get("inventory_match_type")
     return CatalogRecord(
         request.collection_slug,
