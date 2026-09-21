@@ -1102,6 +1102,8 @@ class PortolanWorkflowTests(unittest.TestCase):
 
     def test_authored_iso_date_normalizes_to_rfc3339(self):
         self.assertEqual(normalize_stac_datetime("2017-06-12"), "2017-06-12T00:00:00Z")
+        with self.assertRaisesRegex(ValueError, "coverage timestamp"):
+            normalize_stac_datetime("not-a-date")
 
 
 if __name__ == "__main__":
