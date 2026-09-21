@@ -707,7 +707,7 @@ class PortolanWorkflowTests(unittest.TestCase):
                 "hospitals-3",
                 "v1.1.0",
                 "metadata/source/data_dictionary.json",
-                b'{"title":"Hospitals","description":"Hospital locations","columns":[]}',
+                b'{"title":"Hospitals","description":"Hospital locations","date_issued":"2026-04-06","metadata_resolved_from":{"date_issued":"version"},"columns":[]}',
             )
             staging.write(
                 "hospitals-3",
@@ -750,6 +750,10 @@ class PortolanWorkflowTests(unittest.TestCase):
         self.assertEqual(record.collection_title, "HIFLD")
         self.assertEqual(record.source_version_description, note)
         self.assertEqual(record.source_version_bounds, (-77.1, 37.9, -75.9, 39.1))
+        self.assertEqual(record.source_issued_date, "2026-04-06")
+        self.assertEqual(
+            dict(record.metadata_resolved_from)["date_issued"], "version"
+        )
 
     def test_manifest_tags_preserve_all_group_names_and_values(self):
         self.assertEqual(

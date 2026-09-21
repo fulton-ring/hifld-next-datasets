@@ -71,6 +71,7 @@ class SourceManifestTests(unittest.TestCase):
                 json.dumps(
                     {
                         "description": "Version-specific description",
+                        "date_issued": "2026-04-06",
                         "source_modified": "2026-05-01",
                     }
                 ),
@@ -103,6 +104,10 @@ class SourceManifestTests(unittest.TestCase):
             )
             self.assertEqual(
                 resolved.metadata["metadata_resolved_from"]["description"], "version"
+            )
+            self.assertEqual(resolved.metadata["date_issued"], "2026-04-06")
+            self.assertEqual(
+                resolved.metadata["metadata_resolved_from"]["date_issued"], "version"
             )
 
     def test_manifest_falls_back_to_inventory_parent_family_for_v1(self):
