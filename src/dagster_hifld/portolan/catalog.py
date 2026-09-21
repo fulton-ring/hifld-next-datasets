@@ -838,7 +838,9 @@ def _source_dates(record: CatalogRecord) -> dict[str, object]:
             provenance["issued"] = source
     if record.source_modified_date:
         dates["modified"] = record.source_modified_date
-        if source := resolved_from.get("date_modified"):
+        if source := resolved_from.get("date_modified") or resolved_from.get(
+            "source_modified"
+        ):
             provenance["modified"] = source
     if provenance:
         dates["provenance"] = provenance
