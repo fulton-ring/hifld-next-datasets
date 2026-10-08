@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 from dagster import JobDefinition
 from shapely import Point
 
-from dagster_hifld.assets.portolan import publish_portolan_catalog
+from dagster_hifld.assets.portolan import default_storage_slug, publish_portolan_catalog
 from dagster_hifld.assets.publish import _write_and_publish_shapefile_zip
 from dagster_hifld.partitions import PUBLISH_PARTITIONS
 from dagster_hifld.portolan.catalog import CatalogRecord
@@ -495,6 +495,15 @@ class PortolanWorkflowTests(unittest.TestCase):
 
         self.assertEqual(request.public_root, "https://catalog.example.test")
         self.assertEqual(request.storage_slug, "gcs-catalog")
+
+    def test_default_storage_slug_matches_canonical_production_slug(self):
+        self.assertEqual(
+            default_storage_slug("gcs", "hifld-next-portolan-published"),
+            "gcp-portolan-published",
+        )
+        self.assertEqual(
+            default_storage_slug("seaweedfs", None), "seaweedfs-local-published"
+        )
 
     def test_version_metadata_path_uses_copied_production_layout_when_needed(self):
         with tempfile.TemporaryDirectory() as tmpdir:
