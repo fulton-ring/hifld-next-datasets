@@ -6,7 +6,11 @@ High-level flow:
 
 1. **Ingest** — One asset per dataset file (e.g. `amtrak-stations/amtrak-stations`); downloads from source URLs and stages raw geodata under the versioned path below.
 2. **Catalog** — Partitioned by **version**; reads staged data, writes `metadata/quality_manifest.json` and `metadata/data_dictionary.json`.
-3. **Publish** — Partitioned by the same version; converts and copies to the published bucket (and promotes metadata). Dataset API calls are intentionally not wired here yet.
+3. **Publish** — Partitioned by the same version; converts and copies to the published bucket, promotes metadata, and publishes Portolan/STAC discovery metadata and the SQLite catalog.
+
+The historical Dataset API integration and export-seeding CLI are retired.
+See [the retirement note](docs/legacy-retirement.md) for the removed interfaces,
+verification, and compatibility retained for existing source data.
 
 **Staging path shape** (no agency prefix, no `source/` wrapper):
 

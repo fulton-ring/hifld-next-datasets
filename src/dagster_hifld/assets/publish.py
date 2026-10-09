@@ -41,7 +41,6 @@ from dagster_hifld.conversion import (
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.resources import (
-    DatasetApiResource,
     PublishedStorageResource,
     StagingStorageResource,
 )
@@ -1200,43 +1199,6 @@ def _copy_catalog_metadata(
     ]
 
 
-def register_published_outputs(
-    api_resource: DatasetApiResource,
-    published_storage: PublishedStorageResource,
-    dataset_slug: str,
-    version: str,
-    storage_location_name: str,
-    outputs: list[PublishedFormatOutput],
-    catalog_metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    files = [
-        {
-            "file_slug": output.file_slug,
-            "format": output.format_type,
-            "path": output.path,
-            "source_metadata": output.source_metadata or {},
-        }
-        for output in outputs
-    ]
-    payload = {
-        "dataset_slug": dataset_slug,
-        "version": version,
-        "storage_location_name": storage_location_name,
-        "files": files,
-    }
-    if catalog_metadata:
-        payload["catalog_metadata"] = catalog_metadata
-    if getattr(api_resource, "enabled", False):
-        api_resource.upsert_dataset_version(
-            dataset_slug=dataset_slug,
-            version=version,
-            storage_location_name=storage_location_name,
-            files=files,
-            overwrite_existing=False,
-        )
-    return payload
-
-
 def _published_outputs_from_keys(
     dataset_slug: str,
     file_slug: str,
@@ -1289,12 +1251,10 @@ def _published_outputs_from_keys(
 def run_local_version_pipeline(
     staging_storage: StagingStorageResource,
     published_storage: PublishedStorageResource,
-    api_resource: DatasetApiResource,
     dataset_slug: str,
     file_slug: str,
     version: str,
-    storage_location_name: str,
-) -> dict[str, Any]:
+) -> dict[str, list[PublishedFormatOutput]]:
     snapshot_source_metadata(staging_storage, dataset_slug, file_slug, version)
     resolved_manifest = load_resolved_source_manifest(
         staging_storage,
@@ -1345,16 +1305,7 @@ def run_local_version_pipeline(
     )
     outputs.extend(promoted)
 
-    api_payload = register_published_outputs(
-        api_resource=api_resource,
-        published_storage=published_storage,
-        dataset_slug=dataset_slug,
-        version=version,
-        storage_location_name=storage_location_name,
-        outputs=outputs,
-        catalog_metadata=resolved_manifest.metadata,
-    )
-    return {"outputs": outputs, "api_payload": api_payload}
+    return {"outputs": outputs}
 
 
 def _output_for_partition(

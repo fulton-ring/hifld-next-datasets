@@ -1,4 +1,4 @@
-"""Dagster resources for staging/published storage and optional API utilities."""
+"""Dagster resources for staging and published storage."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from types import TracebackType
 from typing import BinaryIO, Protocol, cast
 
 import google_crc32c
-import httpx
 from dagster import ConfigurableResource
 from google.cloud import storage
 from google.cloud.storage.blob import Blob
@@ -1242,62 +1241,3 @@ def snapshots_content_match(
         if source_checksum is not None and destination_checksum is not None:
             return source_checksum == destination_checksum
     return False
-
-
-class DatasetApiResource(ConfigurableResource):
-    """Dataset API client for promotion and quality comparison."""
-
-    base_url: str = ""
-    collection_id: int = 1
-    timeout_seconds: float = 120.0
-    api_token: str = ""
-    auth_header_name: str = "Authorization"
-
-    @classmethod
-    def from_env(cls) -> "DatasetApiResource":
-        base_url = os.environ.get("DATASET_API_URL", "").rstrip("/")
-        collection_id = int(os.environ.get("DATASET_API_COLLECTION_ID", "1"))
-        return cls(
-            base_url=base_url,
-            collection_id=collection_id,
-            api_token=os.environ.get("DATASET_API_TOKEN", ""),
-            auth_header_name=os.environ.get("DATASET_API_AUTH_HEADER", "Authorization"),
-        )
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self.base_url)
-
-    def _headers(self) -> dict[str, str]:
-        if not self.api_token:
-            return {}
-        if self.auth_header_name.lower() == "authorization":
-            return {"Authorization": f"Bearer {self.api_token}"}
-        return {self.auth_header_name: self.api_token}
-
-    def upsert_dataset_version(
-        self,
-        dataset_slug: str,
-        version: str,
-        storage_location_name: str,
-        files: list[dict],
-        overwrite_existing: bool = False,
-    ) -> dict | None:
-        if not self.enabled:
-            return None
-        url = (
-            f"{self.base_url}/api/collections/{self.collection_id}/datasets/"
-            f"by-slug/{dataset_slug}/versions"
-        )
-        payload = {
-            "version": version,
-            "storage_location_name": storage_location_name,
-            "files": files,
-            "overwrite_existing": overwrite_existing,
-        }
-        with httpx.Client(
-            timeout=self.timeout_seconds, headers=self._headers()
-        ) as client:
-            resp = client.post(url, json=payload)
-            resp.raise_for_status()
-            return resp.json()

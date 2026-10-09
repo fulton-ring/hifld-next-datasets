@@ -22,7 +22,6 @@ from shapely import from_wkb, total_bounds
 from dagster_hifld.assets.publish import run_local_version_pipeline
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.resources import (
-    DatasetApiResource,
     PublishedStorageResource,
     StagingStorageResource,
     StorageObjectSnapshot,
@@ -658,11 +657,9 @@ def _prepare_portolan_record(
         run_local_version_pipeline(
             staging_storage,
             published_data,
-            DatasetApiResource(),
             request.dataset_slug,
             request.file_slug,
             request.version,
-            request.storage_slug,
         )
     elif promote:
         _promote_staged_data(staging_storage, published_data, request)
