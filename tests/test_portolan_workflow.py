@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 from dagster import JobDefinition
 from shapely import Point
 
-from dagster_hifld.assets.portolan import publish_portolan_catalog
+from dagster_hifld.assets.portolan import default_storage_slug, publish_portolan_catalog
 from dagster_hifld.assets.publish import _write_and_publish_shapefile_zip
 from dagster_hifld.partitions import PUBLISH_PARTITIONS
 from dagster_hifld.portolan.catalog import CatalogRecord
@@ -608,6 +608,15 @@ class PortolanWorkflowTests(unittest.TestCase):
         self.assertEqual(request.public_root, "https://catalog.example.test")
         self.assertEqual(request.storage_slug, "gcs-catalog")
 
+    def test_default_storage_slug_matches_canonical_production_slug(self):
+        self.assertEqual(
+            default_storage_slug("gcs", "hifld-next-portolan-published"),
+            "gcp-portolan-published",
+        )
+        self.assertEqual(
+            default_storage_slug("seaweedfs", None), "seaweedfs-local-published"
+        )
+
     def test_version_metadata_path_uses_copied_production_layout_when_needed(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             metadata = (
@@ -733,6 +742,20 @@ class PortolanWorkflowTests(unittest.TestCase):
                 (-77.1, 37.9, -75.9, 39.1),
                 (),
             )
+            style_key = published.write(
+                "hospitals-3", "hospitals-3", "v1.1.0", "styles/maplibre.json",
+                b'{"version":8,"sources":{},"layers":[]}',
+            )
+            thumbnail_key = published.write(
+                "hospitals-3", "hospitals-3", "v1.1.0", "thumbnail/thumbnail.png",
+                b"pinned-thumbnail",
+            )
+            published.write(
+                "hospitals-3", "hospitals-3", "v1.1.0", "pmtiles/data.pmtiles",
+                _pmtiles_archive("hospitals"),
+            )
+            style_before = published.object_snapshot(style_key)
+            thumbnail_before = published.object_snapshot(thumbnail_key)
             with (
                 patch(
                     "dagster_hifld.portolan.workflow.inspect_geoparquet",
@@ -740,12 +763,14 @@ class PortolanWorkflowTests(unittest.TestCase):
                 ),
                 patch(
                     "dagster_hifld.portolan.workflow.render_geoparquet_thumbnail",
-                    return_value=None,
+                    return_value=b"new-thumbnail",
                 ),
             ):
                 record = _prepare_portolan_record(
                     request, staging, published, convert=False, promote=False
                 )
+            self.assertEqual(published.object_snapshot(style_key), style_before)
+            self.assertEqual(published.object_snapshot(thumbnail_key), thumbnail_before)
 
         self.assertEqual(record.collection_title, "HIFLD")
         self.assertEqual(record.source_version_description, note)

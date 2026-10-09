@@ -35,14 +35,9 @@ def publish_portolan_catalog(
         public_root = f"https://storage.googleapis.com/{published_storage.bucket}"
     if not public_root:
         public_root = DEFAULT_PUBLIC_ROOT
-    storage_slug = os.environ.get("HIFLD_PORTOLAN_STORAGE_SLUG")
-    if not storage_slug:
-        if published_storage.bucket and published_storage.backend == "gcs":
-            storage_slug = f"gcs-{published_storage.bucket.removeprefix('hifld-next-')}"
-        elif published_storage.bucket and published_storage.backend == "s3":
-            storage_slug = f"s3-{published_storage.bucket}"
-        else:
-            storage_slug = "seaweedfs-local-published"
+    storage_slug = os.environ.get("HIFLD_PORTOLAN_STORAGE_SLUG") or default_storage_slug(
+        published_storage.backend, published_storage.bucket
+    )
     request = PortolanPublishRequest(
         collection_slug=os.environ.get("HIFLD_PORTOLAN_COLLECTION", "hifld"),
         dataset_slug=dataset_slug,
@@ -68,3 +63,17 @@ def publish_portolan_catalog(
         ),
     )
     return Output({"catalog_generation": generation}, metadata={"catalog_generation": generation})
+
+
+def default_storage_slug(backend: str, bucket: str | None) -> str:
+    """Storage slug used when HIFLD_PORTOLAN_STORAGE_SLUG is unset.
+
+    Must match the slug the readers' storage registries use for the bucket
+    (gcp-portolan-published in production), or published assets will be
+    recorded under a name no reader resolves.
+    """
+    if bucket and backend == "gcs":
+        return f"gcp-{bucket.removeprefix('hifld-next-')}"
+    if bucket and backend == "s3":
+        return f"s3-{bucket}"
+    return "seaweedfs-local-published"

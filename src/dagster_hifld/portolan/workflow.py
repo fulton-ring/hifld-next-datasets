@@ -20,6 +20,7 @@ from pyproj import CRS, Transformer
 from shapely import from_wkb, total_bounds
 
 from dagster_hifld.assets.publish import run_local_version_pipeline
+from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.resources import (
     DatasetApiResource,
     PublishedStorageResource,
@@ -532,11 +533,9 @@ def _write_default_pmtiles_style(
         "sources": sources,
         "layers": layers,
     }
-    published.write(
-        request.dataset_slug,
-        request.file_slug,
-        request.version,
-        "styles/maplibre.json",
+    write_immutable_object(
+        published,
+        f"{request.dataset_slug}/{request.file_slug}/{request.version}/styles/maplibre.json",
         json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8"),
     )
     return True
@@ -581,7 +580,7 @@ def _promote_source_metadata(
             logical_prefix, _version_metadata_path(staging, request, filename)
         )
         if not published.object_exists(key):
-            staging.copy_key_to(published, key, key)
+            promote_immutable_objects(staging, published, [(key, key)])
     for logical_prefix, filename in (
         ("", "collections.json"),
         (request.dataset_slug, "source_manifest.json"),
@@ -594,7 +593,7 @@ def _promote_source_metadata(
         except FileNotFoundError:
             continue
         if not published.object_exists(key):
-            staging.copy_key_to(published, key, key)
+            promote_immutable_objects(staging, published, [(key, key)])
 
 
 def _promote_staged_data(
@@ -604,11 +603,13 @@ def _promote_staged_data(
 ) -> None:
     """Promote already-derived, generation-pinned data without rewriting bytes."""
     logical_prefix = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
+    pairs: list[tuple[str, str]] = []
     for key in staging.list_prefix(logical_prefix):
         relative = key.removeprefix(f"{request.collection_slug}/")
         parts = Path(relative).relative_to(logical_prefix).parts
         if len(parts) >= 2 and parts[0] in _PUBLISHED_DATA_FORMATS:
-            staging.copy_key_to(published, relative, relative)
+            pairs.append((relative, relative))
+    promote_immutable_objects(staging, published, pairs, version_prefix=logical_prefix)
 
 
 def _prepare_portolan_record(
@@ -643,9 +644,13 @@ def _prepare_portolan_record(
         _promote_staged_data(staging_storage, published_data, request)
     if promote:
         _promote_source_metadata(staging_storage, published_data, request)
-    _write_default_pmtiles_style(
-        published_data, request, _record_assets(published_data, request)
-    )
+    version_prefix = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
+    if convert or not published_data.object_exists(
+        f"{version_prefix}/styles/maplibre.json"
+    ):
+        _write_default_pmtiles_style(
+            published_data, request, _record_assets(published_data, request)
+        )
     with staging_storage.get_local_version_dir(
         request.dataset_slug,
         request.file_slug,
@@ -654,15 +659,17 @@ def _prepare_portolan_record(
     ) as version_dir:
         local_version_dir = Path(version_dir)
         facts = inspect_geoparquet(local_version_dir)
-        thumbnail = render_geoparquet_thumbnail(
-            local_version_dir, facts.geometry_column
-        )
+        thumbnail = None
+        if convert or not published_data.object_exists(
+            f"{version_prefix}/thumbnail/thumbnail.png"
+        ):
+            thumbnail = render_geoparquet_thumbnail(
+                local_version_dir, facts.geometry_column
+            )
     if thumbnail is not None:
-        published_data.write(
-            request.dataset_slug,
-            request.file_slug,
-            request.version,
-            "thumbnail/thumbnail.png",
+        write_immutable_object(
+            published_data,
+            f"{request.dataset_slug}/{request.file_slug}/{request.version}/thumbnail/thumbnail.png",
             thumbnail,
         )
     quality_path = (
