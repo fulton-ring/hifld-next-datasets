@@ -1,15 +1,18 @@
 import asyncio
+import gzip
 import io
 import json
 import random
+import shutil
+import sqlite3
 import subprocess
 import sys
-from pathlib import Path
 import tempfile
 import unittest
+import zipfile
+from pathlib import Path
 from typing import ClassVar
 from unittest.mock import AsyncMock, Mock, patch
-import zipfile
 
 import geopandas as gpd
 import pandas as pd
@@ -27,8 +30,6 @@ from dagster_hifld.conversion import (
     DEFAULT_LARGE_GEOPARQUET_THRESHOLD_BYTES,
     GeoParquetWritePolicy,
     ShapefileZipPolicy,
-    _PreflightHistogramStore,
-    _StorageAdapter,
     _allocate_feature_bytes,
     _allocate_semantic_hive_keys,
     _bounded_compression_sample,
@@ -43,16 +44,18 @@ from dagster_hifld.conversion import (
     _hilbert_like_key,
     _layer_output_namespace,
     _policy_s2_levels,
+    _PreflightHistogramStore,
     _row_group_uncompressed_sizes,
     _run_streaming_command,
     _s2_cells_for_point,
     _select_s2_level,
-    geoparquet_policy_for,
+    _StorageAdapter,
     _to_wgs84,
     _write_geodataframe_parquet,
     _zstd_compression_ratio,
-    process_layer_partitioned_geoparquet,
+    geoparquet_policy_for,
     process_layer_chunked,
+    process_layer_partitioned_geoparquet,
     process_staged_dataset_version,
     write_geopackage_chunked,
     write_shapefile_zip,
@@ -61,6 +64,131 @@ from dagster_hifld.resources import StagingStorageResource
 
 
 class ConversionTests(unittest.TestCase):
+    @unittest.skipUnless(
+        shutil.which("tippecanoe") and shutil.which("tippecanoe-decode"),
+        "tippecanoe and tippecanoe-decode are required",
+    )
+    def test_source_id_survives_geopackage_and_derived_formats(self):
+        ids = ["0000000001", "0000000002"]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "source.geojson"
+            geopackage = root / "converted.gpkg"
+            gpd.GeoDataFrame(
+                {"ID": ids},
+                geometry=[Point(-77, 39), Point(-120, 35)],
+                crs="EPSG:4326",
+            ).to_file(source, driver="GeoJSON", index=False)
+            asyncio.run(
+                write_geopackage_chunked(source, "geojson", "features", geopackage)
+            )
+            converted = gpd.read_file(geopackage, layer="features")
+            self.assertEqual(converted["ID"].tolist(), ids)
+            shapefile = write_shapefile_zip(
+                converted, root / "shapefile", "features", ShapefileZipPolicy()
+            )
+            self.assertTrue(shapefile.created)
+            self.assertIsNotNone(shapefile.path)
+            self.assertEqual(gpd.read_file(shapefile.path)["ID"].tolist(), ids)
+            storage = StagingStorageResource(
+                local_dir=str(root / "derived"), use_local=True
+            )
+            outputs = asyncio.run(
+                process_layer_chunked(
+                    file_path=geopackage,
+                    format_type="geopackage",
+                    layer_name="features",
+                    layer_filename="features",
+                    dest_folder="dataset/file/v1/",
+                    dest_storage=_StorageAdapter(storage),
+                    work_dir=root / "scratch",
+                )
+            )
+            self.assertEqual(outputs["feature_count"], 2)
+            parquet_paths = outputs["geoparquet_paths"]
+            parquet = ds.dataset(
+                [str(root / "derived" / path) for path in parquet_paths],
+                format="parquet",
+            ).to_table()
+            self.assertCountEqual(parquet["ID"].to_pylist(), ids)
+            self.assertNotIn("source_ID", parquet.column_names)
+            pmtiles = (root / "derived" / outputs["pmtiles_path"]).read_bytes()
+            offset = int.from_bytes(pmtiles[24:32], "little")
+            length = int.from_bytes(pmtiles[32:40], "little")
+            metadata = pmtiles[offset : offset + length]
+            if pmtiles[97] == 2:
+                metadata = gzip.decompress(metadata)
+            fields = json.loads(metadata)["vector_layers"][0]["fields"]
+            self.assertEqual(fields["ID"], "String")
+            self.assertNotIn("source_ID", fields)
+            decoded = json.loads(
+                subprocess.run(
+                    [
+                        "tippecanoe-decode",
+                        str(root / "derived" / outputs["pmtiles_path"]),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                ).stdout
+            )
+            feature_ids = [
+                feature["properties"]["ID"]
+                for tile in decoded["features"]
+                for layer in tile["features"]
+                for feature in layer["features"]
+            ]
+            self.assertCountEqual(feature_ids, ids)
+
+    def test_chunked_geopackage_preserves_source_id_attributes(self):
+        ids = [f"{value:010d}" for value in range(24)]
+        for engine in ("fiona", "pyogrio"):
+            for id_name in ("ID", "id"):
+                with (
+                    self.subTest(engine=engine, id_name=id_name),
+                    tempfile.TemporaryDirectory() as tmpdir,
+                ):
+                    root = Path(tmpdir)
+                    source = root / "source.geojson"
+                    output = root / "converted.gpkg"
+                    gpd.GeoDataFrame(
+                        {
+                            id_name: ids,
+                            "source_ID": [f"original-{value}" for value in ids],
+                        },
+                        geometry=[Point(-77 + i / 100, 39) for i in range(24)],
+                        crs="EPSG:4326",
+                    ).to_file(source, driver="GeoJSON", engine="fiona", index=False)
+                    original_engine = gpd.options.io_engine
+                    try:
+                        gpd.options.io_engine = engine
+                        asyncio.run(
+                            write_geopackage_chunked(
+                                source,
+                                "geojson",
+                                "features",
+                                output,
+                                geoparquet_chunk_size_mb=0,
+                            )
+                        )
+                    finally:
+                        gpd.options.io_engine = original_engine
+                    result = gpd.read_file(output, layer="features", engine=engine)
+                    self.assertIn(id_name, result.columns)
+                    self.assertEqual(result[id_name].tolist(), ids)
+                    self.assertEqual(
+                        result["source_ID"].tolist(),
+                        [f"original-{value}" for value in ids],
+                    )
+                    self.assertNotIn("source_ID_2", result.columns)
+                    self.assertNotIn("index", result.columns)
+                    with sqlite3.connect(output) as connection:
+                        fids = connection.execute(
+                            'SELECT fid FROM "features" ORDER BY fid'
+                        ).fetchall()
+                    self.assertEqual(fids, [(i,) for i in range(1, 25)])
+
     @staticmethod
     def _write_shapefile(path: Path, name: str) -> Path:
         path.mkdir(parents=True, exist_ok=True)

@@ -577,7 +577,8 @@ def _has_spatial_features(gdf: pd.DataFrame) -> bool:
 
 
 def _sanitize_geopackage_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    reserved = {"id", "fid", "ogc_fid"}
+    # Source ID attributes are independent of the internal GeoPackage fid.
+    reserved = {"fid", "ogc_fid"}
     rename_map: dict[str, str] = {}
     existing = set(gdf.columns)
     for column in gdf.columns:
@@ -3558,7 +3559,11 @@ async def write_geopackage_chunked(
         )
         sample_path = output_gpkg.parent / f"{output_gpkg.stem}_sample.gpkg"
         sample_gdf.to_file(
-            str(sample_path), driver="GPKG", layer=layer_name if layer_name else None
+            str(sample_path),
+            driver="GPKG",
+            layer=layer_name if layer_name else None,
+            index=False,
+            FID="fid",
         )
         bytes_per_feature = sample_path.stat().st_size / max(1, len(sample_features))
         sample_path.unlink(missing_ok=True)
@@ -3584,6 +3589,8 @@ async def write_geopackage_chunked(
                 driver="GPKG",
                 layer=layer_name if layer_name else None,
                 mode="w",
+                index=False,
+                FID="fid",
             )
             chunk_features = []
             chunk_uncompressed_bytes = 0
@@ -3605,6 +3612,8 @@ async def write_geopackage_chunked(
                     driver="GPKG",
                     layer=layer_name if layer_name else None,
                     mode="a",
+                    index=False,
+                    FID="fid",
                 )
                 chunk_features = []
                 chunk_uncompressed_bytes = 0
@@ -3623,6 +3632,8 @@ async def write_geopackage_chunked(
                     driver="GPKG",
                     layer=layer_name if layer_name else None,
                     mode="a",
+                    index=False,
+                    FID="fid",
                 )
                 chunk_features = []
                 chunk_uncompressed_bytes = 0
@@ -3636,6 +3647,8 @@ async def write_geopackage_chunked(
                 driver="GPKG",
                 layer=layer_name if layer_name else None,
                 mode="a",
+                index=False,
+                FID="fid",
             )
 
 

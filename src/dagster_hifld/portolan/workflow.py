@@ -283,6 +283,30 @@ def columns_from_dictionary(dictionary: object) -> tuple[ColumnRecord, ...]:
     return tuple(enriched)
 
 
+def validate_converted_columns(
+    columns: tuple[ColumnRecord, ...], facts: GeoParquetFacts
+) -> None:
+    """Reject newly converted output missing attributes described by the catalog."""
+    physical = {column.name for column in facts.columns}
+    missing = sorted(
+        {
+            column.name
+            for column in columns
+            if not column.is_geometry and column.name not in physical
+        }
+    )
+    if missing:
+        raise ValueError(
+            "Generated GeoParquet is missing catalog-described fields: "
+            + ", ".join(missing)
+        )
+    if any(column.is_geometry for column in columns) and not any(
+        column.name == facts.geometry_column and column.is_geometry
+        for column in facts.columns
+    ):
+        raise ValueError("Generated GeoParquet is missing its primary geometry field.")
+
+
 def inspect_geoparquet(version_dir: Path) -> GeoParquetFacts:
     paths = sorted((version_dir / "geoparquet").rglob("*.parquet"))
     if not paths:
@@ -697,6 +721,9 @@ def _prepare_portolan_record(
     )
     if not isinstance(source_dictionary, dict):
         raise TypeError("Production data dictionary must be a JSON object.")
+    columns = columns_from_dictionary(source_dictionary)
+    if convert:
+        validate_converted_columns(columns, facts)
     source_quality = json.loads(
         staging_storage.read_bytes(
             request.dataset_slug,
@@ -852,7 +879,7 @@ def _prepare_portolan_record(
         dataset_tags=manifest_tags(dataset_manifest),
         file_tags=manifest_tags(file_manifest),
         tags=tuple(dict.fromkeys((*keyword_tags, *category_tags))),
-        columns=columns_from_dictionary(source_dictionary),
+        columns=columns,
         native_crs=facts.native_crs,
         geometry_column=facts.geometry_column,
         geometry_type=facts.geometry_type,
