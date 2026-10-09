@@ -1301,27 +1301,3 @@ class DatasetApiResource(ConfigurableResource):
             resp = client.post(url, json=payload)
             resp.raise_for_status()
             return resp.json()
-
-    def get_dataset_quality(
-        self,
-        dataset_slug: str,
-        file_slug: str | None = None,
-        compute_if_missing: bool = True,
-    ) -> dict | None:
-        if not self.enabled:
-            return None
-        url = (
-            f"{self.base_url}/api/collections/{self.collection_id}/datasets/"
-            f"by-slug/{dataset_slug}/quality"
-        )
-        params: dict[str, str] = {
-            "compute_if_missing": "true" if compute_if_missing else "false",
-        }
-        if file_slug:
-            params["file_slug"] = file_slug
-        with httpx.Client(
-            timeout=self.timeout_seconds, headers=self._headers()
-        ) as client:
-            resp = client.get(url, params=params)
-            resp.raise_for_status()
-            return resp.json()

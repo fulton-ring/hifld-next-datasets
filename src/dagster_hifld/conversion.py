@@ -431,10 +431,6 @@ def _get_fiona_driver(format_type: str) -> Optional[str]:
     return driver_map.get(format_type)
 
 
-def _ensure_id_column(gdf: gpd.GeoDataFrame, start_id: int = 1) -> gpd.GeoDataFrame:
-    return gdf
-
-
 def _safe_layer_suffix(layer_name: str) -> str:
     return layer_name.replace("/", "-").replace("\\", "-")
 
@@ -3015,15 +3011,14 @@ async def process_layer_chunked(
     chunk_target_bytes = int(compressed_target_bytes * current_memory_multiplier)
     chunk_uncompressed_bytes = 0
     chunk_num = 0
-    features_processed = 0
     estimate_sample_size = 10
     open_kwargs: dict[str, Any] = {"driver": driver}
     if layer_name and format_type in {"geopackage", "file_geodatabase"}:
         open_kwargs["layer"] = layer_name
 
     def flush_parquet_chunk(
-        crs: Any, features: list[dict[str, Any]], idx: int, start_id: int
-    ) -> int:
+        crs: Any, features: list[dict[str, Any]], idx: int
+    ) -> None:
         nonlocal \
             bytes_per_feature, \
             current_chunk_size, \
@@ -3038,10 +3033,8 @@ async def process_layer_chunked(
                 1, int(actual_uncompressed_bytes / max(1.0, current_memory_multiplier))
             )
             chunk_bytes_per_feature = file_size_bytes / max(1, len(features))
-            processed_len = len(features)
         else:
             gdf_chunk = gpd.GeoDataFrame.from_features(features, crs=crs)
-            gdf_chunk = _ensure_id_column(gdf_chunk, start_id=start_id)
             parquet_path = geoparquet_dir / f"{layer_filename}-{idx}.parquet"
             _write_geodataframe_parquet(
                 gdf_chunk,
@@ -3055,7 +3048,6 @@ async def process_layer_chunked(
             actual_uncompressed_bytes = sum(
                 _estimate_feature_size_bytes(f) for f in features
             )
-            processed_len = len(gdf_chunk)
 
         observed_multiplier = actual_uncompressed_bytes / max(1, file_size_bytes)
         current_memory_multiplier = (current_memory_multiplier * 0.7) + (
@@ -3080,7 +3072,6 @@ async def process_layer_chunked(
             min_size = max(1, int(current_chunk_size * 0.75))
             max_size = max(1, int(current_chunk_size * 1.25))
             current_chunk_size = max(min_size, min(max_size, proposed_chunk_size))
-        return processed_len
 
     def flush_fgb_chunk(
         crs: Any,
@@ -3192,9 +3183,7 @@ async def process_layer_chunked(
                         "feature_count": 0,
                     }
 
-                sample = _ensure_id_column(
-                    gpd.GeoDataFrame.from_features(sample_features, crs=crs), start_id=1
-                )
+                sample = gpd.GeoDataFrame.from_features(sample_features, crs=crs)
                 sample_path = geoparquet_dir / "_estimate.parquet"
                 _write_geodataframe_parquet(
                     sample,
@@ -3223,10 +3212,7 @@ async def process_layer_chunked(
                         chunk_features
                         and (chunk_uncompressed_bytes + feat_size) > chunk_target_bytes
                     ):
-                        processed_count = flush_parquet_chunk(
-                            crs, chunk_features, chunk_num, features_processed + 1
-                        )
-                        features_processed += processed_count
+                        flush_parquet_chunk(crs, chunk_features, chunk_num)
                         chunk_features = []
                         chunk_uncompressed_bytes = 0
                         chunk_num += 1
@@ -3241,18 +3227,12 @@ async def process_layer_chunked(
                         or estimated_mb >= geoparquet_chunk_size_mb
                         or chunk_uncompressed_bytes >= chunk_target_bytes
                     ):
-                        processed_count = flush_parquet_chunk(
-                            crs, chunk_features, chunk_num, features_processed + 1
-                        )
-                        features_processed += processed_count
+                        flush_parquet_chunk(crs, chunk_features, chunk_num)
                         chunk_features = []
                         chunk_uncompressed_bytes = 0
                         chunk_num += 1
                 if chunk_features:
-                    processed_count = flush_parquet_chunk(
-                        crs, chunk_features, chunk_num, features_processed + 1
-                    )
-                    features_processed += processed_count
+                    flush_parquet_chunk(crs, chunk_features, chunk_num)
         else:
             with (
                 _with_large_geojson_support(),
@@ -3573,7 +3553,6 @@ async def write_geopackage_chunked(
             1, int(chunk_target_bytes / (bytes_per_feature * current_memory_multiplier))
         )
 
-        feature_id_counter = 1
         chunk_features.extend(sample_features)
         chunk_uncompressed_bytes = sum(
             _estimate_feature_size_bytes(feat) for feat in sample_features
@@ -3581,9 +3560,7 @@ async def write_geopackage_chunked(
 
         if chunk_features:
             chunk_gdf = gpd.GeoDataFrame.from_features(chunk_features, crs=output_crs)
-            chunk_gdf = _ensure_id_column(chunk_gdf, start_id=feature_id_counter)
             chunk_gdf = _sanitize_geopackage_columns(chunk_gdf)
-            feature_id_counter += len(chunk_gdf)
             chunk_gdf.to_file(
                 str(output_gpkg),
                 driver="GPKG",
@@ -3604,9 +3581,7 @@ async def write_geopackage_chunked(
                 chunk_gdf = gpd.GeoDataFrame.from_features(
                     chunk_features, crs=output_crs
                 )
-                chunk_gdf = _ensure_id_column(chunk_gdf, start_id=feature_id_counter)
                 chunk_gdf = _sanitize_geopackage_columns(chunk_gdf)
-                feature_id_counter += len(chunk_gdf)
                 chunk_gdf.to_file(
                     str(output_gpkg),
                     driver="GPKG",
@@ -3624,9 +3599,7 @@ async def write_geopackage_chunked(
                 chunk_gdf = gpd.GeoDataFrame.from_features(
                     chunk_features, crs=output_crs
                 )
-                chunk_gdf = _ensure_id_column(chunk_gdf, start_id=feature_id_counter)
                 chunk_gdf = _sanitize_geopackage_columns(chunk_gdf)
-                feature_id_counter += len(chunk_gdf)
                 chunk_gdf.to_file(
                     str(output_gpkg),
                     driver="GPKG",
@@ -3640,7 +3613,6 @@ async def write_geopackage_chunked(
 
         if chunk_features:
             chunk_gdf = gpd.GeoDataFrame.from_features(chunk_features, crs=output_crs)
-            chunk_gdf = _ensure_id_column(chunk_gdf, start_id=feature_id_counter)
             chunk_gdf = _sanitize_geopackage_columns(chunk_gdf)
             chunk_gdf.to_file(
                 str(output_gpkg),

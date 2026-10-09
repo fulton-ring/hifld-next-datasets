@@ -324,10 +324,6 @@ def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
     return None
 
 
-def _ensure_id_column(gdf: gpd.GeoDataFrame, start_id: int = 1) -> gpd.GeoDataFrame:
-    return gdf
-
-
 def _summarize_best_geospatial_file(
     version_dir: Path,
     dictionary_name: str,
