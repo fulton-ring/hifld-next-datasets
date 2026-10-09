@@ -3,7 +3,7 @@ import unittest
 import zipfile
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import geopandas as gpd
 from shapely.geometry import Point
@@ -13,7 +13,6 @@ from dagster_hifld.assets import publish as publish_assets_module
 from dagster_hifld.conversion import (
     GeoParquetWritePolicy,
     ShapefileZipPolicy,
-    _discover_staged_formats,
     geoparquet_policy_for,
     select_processing_input,
     write_geoparquet_dataset,
@@ -282,32 +281,7 @@ class PipelineUpdateTests(unittest.TestCase):
         self.assertEqual(large.partitioning, "admin")
         self.assertEqual(large.partition_columns, ["statefp"])
 
-    def test_api_register_payload_uses_glob_for_partitioned_geoparquet(self):
-        api = Mock()
-        api.enabled = True
-        published = PublishedStorageResource(local_dir="unused", use_local=True)
-
-        payload = publish_assets_module.register_published_outputs(
-            api_resource=api,
-            published_storage=published,
-            dataset_slug="dataset-a",
-            version="v1.0.0",
-            storage_location_name="GCS hifld-next-datasets-prod",
-            outputs=[
-                publish_assets_module.PublishedFormatOutput(
-                    file_slug="file-a",
-                    format_type="geoparquet",
-                    path="dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet",
-                    source_metadata={"hive_partitioned": True},
-                )
-            ],
-        )
-
-        self.assertEqual(payload["version"], "v1.0.0")
-        self.assertEqual(payload["files"][0]["path"], "dataset-a/file-a/v1.0.0/geoparquet/**/*.parquet")
-        api.upsert_dataset_version.assert_called_once()
-
-    def test_local_e2e_converts_and_registers_version(self):
+    def test_local_e2e_converts_and_publishes_version_without_api(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
             published = PublishedStorageResource(local_dir=published_dir, use_local=True)
@@ -319,17 +293,12 @@ class PipelineUpdateTests(unittest.TestCase):
                 crs="EPSG:4326",
             )
             gdf.to_file(source_dir / "source.gpkg", driver="GPKG")
-            api = Mock()
-            api.enabled = True
-
             result = publish_assets_module.run_local_version_pipeline(
                 staging_storage=staging,
                 published_storage=published,
-                api_resource=api,
                 dataset_slug="dataset-a",
                 file_slug="file-a",
                 version="v1.0.0",
-                storage_location_name="Local published",
             )
 
             version_root = Path(published_dir) / "dataset-a" / "file-a" / "v1.0.0"
@@ -344,10 +313,10 @@ class PipelineUpdateTests(unittest.TestCase):
             )
             self.assertTrue((version_root / "metadata" / "data_dictionary.json").exists())
             self.assertTrue(any(path.suffix == ".zip" for path in (version_root / "shapefile").iterdir()))
-            self.assertTrue(result["api_payload"]["files"])
-            self.assertIn("metadata", {file["format"] for file in result["api_payload"]["files"]})
-            self.assertIn("shapefile", {file["format"] for file in result["api_payload"]["files"]})
-            api.upsert_dataset_version.assert_called_once()
+            self.assertTrue(result["outputs"])
+            self.assertIn("metadata", {output.format_type for output in result["outputs"]})
+            self.assertIn("shapefile", {output.format_type for output in result["outputs"]})
+            self.assertTrue(all(published.object_exists(output.path) for output in result["outputs"]))
 
     def test_local_e2e_rejects_replacing_existing_published_data_layout(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
@@ -372,11 +341,9 @@ class PipelineUpdateTests(unittest.TestCase):
                 publish_assets_module.run_local_version_pipeline(
                     staging_storage=staging,
                     published_storage=published,
-                    api_resource=Mock(enabled=False),
                     dataset_slug="dataset-a",
                     file_slug="file-a",
                     version="v1.0.0",
-                    storage_location_name="Local published",
                 )
 
             self.assertEqual(existing_file.read_bytes(), b"exists")

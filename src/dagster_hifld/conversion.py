@@ -1,7 +1,7 @@
 """Native conversion pipeline for staged geospatial datasets.
 
-This module ports the performance-critical conversion behavior from
-`dataset-api/scripts/process_gcs_datasets.py` into this Dagster repo.
+Historically ported from `dataset-api/scripts/process_gcs_datasets.py`; the
+retired service is no longer a runtime dependency.
 """
 
 from __future__ import annotations

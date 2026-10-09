@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import TypedDict
 
-from dagster_hifld.assets.publish import run_local_version_pipeline
+from pydantic import JsonValue, TypeAdapter
+
+from dagster_hifld.assets.publish import (
+    PublishedFormatOutput,
+    run_local_version_pipeline,
+)
 from dagster_hifld.resources import (
-    DatasetApiResource,
     PublishedStorageResource,
     StagingStorageResource,
 )
@@ -30,7 +33,14 @@ REAL_GCS_E2E_CASES = (
 )
 
 
-def run_real_gcs_e2e_case(case: RealGcsE2ECase) -> dict[str, Any]:
+class RealGcsE2EResult(TypedDict):
+    outputs: list[PublishedFormatOutput]
+    quality_manifest: dict[str, JsonValue]
+    data_dictionary: dict[str, JsonValue]
+    published_keys: list[str]
+
+
+def run_real_gcs_e2e_case(case: RealGcsE2ECase) -> RealGcsE2EResult:
     if os.environ.get("HIFLD_RUN_GCS_E2E") != "1":
         raise RuntimeError("Set HIFLD_RUN_GCS_E2E=1 to run real GCS E2E cases.")
     if os.environ.get("HIFLD_E2E_CONFIRM_PROD_WRITE") != "1":
@@ -48,7 +58,6 @@ def run_real_gcs_e2e_case(case: RealGcsE2ECase) -> dict[str, Any]:
         use_local=False,
         local_dir="",
     )
-    api = DatasetApiResource.from_env()
 
     staged_keys = staging.list_keys(case.dataset_slug, case.file_slug, case.version)
     if not staged_keys:
@@ -59,14 +68,13 @@ def run_real_gcs_e2e_case(case: RealGcsE2ECase) -> dict[str, Any]:
     result = run_local_version_pipeline(
         staging_storage=staging,
         published_storage=published,
-        api_resource=api,
         dataset_slug=case.dataset_slug,
         file_slug=case.file_slug,
         version=case.version,
-        storage_location_name=published.bucket or "hifld-next-datasets-prod",
     )
 
-    quality_manifest = json.loads(
+    json_object = TypeAdapter(dict[str, JsonValue])
+    quality_manifest = json_object.validate_json(
         staging.read_bytes(
             case.dataset_slug,
             case.file_slug,
@@ -74,7 +82,7 @@ def run_real_gcs_e2e_case(case: RealGcsE2ECase) -> dict[str, Any]:
             "metadata/quality_manifest.json",
         )
     )
-    data_dictionary = json.loads(
+    data_dictionary = json_object.validate_json(
         staging.read_bytes(
             case.dataset_slug,
             case.file_slug,
@@ -82,13 +90,15 @@ def run_real_gcs_e2e_case(case: RealGcsE2ECase) -> dict[str, Any]:
             "metadata/data_dictionary.json",
         )
     )
-    published_keys = published.list_keys(case.dataset_slug, case.file_slug, case.version)
+    published_keys = published.list_keys(
+        case.dataset_slug, case.file_slug, case.version
+    )
     if not published_keys:
         raise ValueError(
             f"No published keys found for {case.dataset_slug}/{case.file_slug}/{case.version}."
         )
     return {
-        **result,
+        "outputs": result["outputs"],
         "quality_manifest": quality_manifest,
         "data_dictionary": data_dictionary,
         "published_keys": published_keys,
