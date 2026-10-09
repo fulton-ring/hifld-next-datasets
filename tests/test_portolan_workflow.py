@@ -17,7 +17,7 @@ from shapely import Point
 from dagster_hifld.assets.portolan import default_storage_slug, publish_portolan_catalog
 from dagster_hifld.assets.publish import _write_and_publish_shapefile_zip
 from dagster_hifld.partitions import PUBLISH_PARTITIONS
-from dagster_hifld.portolan.catalog import CatalogRecord
+from dagster_hifld.portolan.catalog import CatalogRecord, ColumnRecord
 from dagster_hifld.portolan.release import ReleasePointer
 from dagster_hifld.portolan.validation import PortolanValidationError
 from dagster_hifld.portolan.workflow import (
@@ -41,6 +41,7 @@ from dagster_hifld.portolan.workflow import (
     portolan_publish_job,
     publish_portolan_record,
     rollback_portolan_release,
+    validate_converted_columns,
 )
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
@@ -59,6 +60,198 @@ def _pmtiles_archive(layer_id: str = "roads") -> bytes:
 
 
 class PortolanWorkflowTests(unittest.TestCase):
+    @staticmethod
+    def _schema_facts(*columns: ColumnRecord) -> GeoParquetFacts:
+        return GeoParquetFacts(
+            1,
+            "OGC:CRS84",
+            "geometry",
+            "Point",
+            None,
+            (-77.0, 39.0, -77.0, 39.0),
+            (-77.0, 39.0, -77.0, 39.0),
+            columns,
+        )
+
+    def test_converted_schema_rejects_renamed_described_attribute(self):
+        described = columns_from_dictionary(
+            {
+                "columns": [
+                    {"name": "ID", "type": "string", "nullable": False},
+                ]
+            }
+        )
+        facts = self._schema_facts(ColumnRecord("source_ID", "string", 0, False))
+        with self.assertRaisesRegex(ValueError, "missing.*ID"):
+            validate_converted_columns(described, facts)
+
+    def test_converted_schema_matches_attribute_names_case_sensitively(self):
+        described = (ColumnRecord("ID", "string", 0, False),)
+        facts = self._schema_facts(ColumnRecord("id", "string", 0, False))
+        with self.assertRaisesRegex(ValueError, "missing.*ID"):
+            validate_converted_columns(described, facts)
+
+    def test_converted_schema_allows_derived_columns_and_normalized_geometry(self):
+        described = (
+            ColumnRecord("ID", "string", 0, False),
+            ColumnRecord("Shape", "geometry", 1, False, is_geometry=True),
+        )
+        facts = self._schema_facts(
+            ColumnRecord("ID", "string", 0, False),
+            ColumnRecord("geometry", "binary", 1, False, is_geometry=True),
+            ColumnRecord("bbox", "struct", 2, True),
+        )
+        validate_converted_columns(described, facts)
+
+    def test_converted_schema_requires_physical_primary_geometry(self):
+        described = (ColumnRecord("Shape", "geometry", 0, False, is_geometry=True),)
+        for physical in ((), (ColumnRecord("geometry", "string", 0, False),)):
+            with (
+                self.subTest(physical=physical),
+                self.assertRaisesRegex(ValueError, "primary geometry"),
+            ):
+                validate_converted_columns(described, self._schema_facts(*physical))
+
+    @staticmethod
+    def _write_mismatched_schema_fixture(
+        root: Path,
+    ) -> tuple[
+        PortolanPublishRequest, StagingStorageResource, PublishedStorageResource
+    ]:
+        staging = StagingStorageResource(
+            local_dir=str(root / "staging"), use_local=True, prefix="hifld"
+        )
+        published = PublishedStorageResource(
+            local_dir=str(root / "published"), use_local=True, prefix="hifld"
+        )
+        request = PortolanPublishRequest(
+            "hifld",
+            "dataset",
+            "file",
+            "v1.1.0",
+            "File",
+            "Data",
+            "Agency",
+            public_root="https://example.test/catalog",
+            archive_public_domain=True,
+        )
+        staging.write_key(
+            "metadata/source/collections.json", b'[{"slug":"hifld","name":"HIFLD"}]'
+        )
+        for key in (
+            "dataset/metadata/source/source_manifest.json",
+            "dataset/file/metadata/source/source_manifest.json",
+        ):
+            staging.write_key(key, b'{"title":"File","description":"Data"}')
+        quality = b'{"feature_count":2,"quality_check_passed":true}'
+        for filename, payload in (
+            ("source_manifest.json", b"{}"),
+            ("quality_manifest.json", quality),
+            (
+                "data_dictionary.json",
+                json.dumps(
+                    {
+                        "columns": [
+                            {"name": "ID", "type": "string", "nullable": False},
+                            {"name": "Shape", "type": "geometry", "nullable": False},
+                        ]
+                    }
+                ).encode(),
+            ),
+        ):
+            staging.write(
+                "dataset", "file", "v1.1.0", f"metadata/source/{filename}", payload
+            )
+        staging.write(
+            "dataset", "file", "v1.1.0", "metadata/quality_manifest.json", quality
+        )
+        geo = {
+            "version": "1.1.0",
+            "primary_column": "geometry",
+            "columns": {
+                "geometry": {
+                    "encoding": "WKB",
+                    "crs": "OGC:CRS84",
+                    "geometry_types": ["Point"],
+                }
+            },
+        }
+        table = pa.table(
+            {
+                "source_ID": ["0001", "0002"],
+                "geometry": [Point(-77, 38).wkb, Point(-76, 39).wkb],
+            }
+        ).replace_schema_metadata({b"geo": json.dumps(geo).encode()})
+        parquet = root / "data.parquet"
+        pq.write_table(table, parquet)
+        staging.write(
+            "dataset", "file", "v1.1.0", "geoparquet/data.parquet", parquet.read_bytes()
+        )
+        staging.write(
+            "dataset", "file", "v1.1.0", "pmtiles/data.pmtiles", _pmtiles_archive()
+        )
+        return request, staging, published
+
+    def test_converted_publication_rejects_schema_mismatch_without_pointer_change(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            request, staging, published = self._write_mismatched_schema_fixture(
+                Path(tmpdir)
+            )
+            previous_request = replace(request, version="v1.0.0")
+            previous_record = CatalogRecord(
+                "hifld",
+                "dataset",
+                "file",
+                "v1.0.0",
+                "File",
+                "Data",
+                "non_spatial_source",
+                0,
+                (),
+            )
+            _publish_catalog(
+                (previous_record,),
+                previous_request,
+                published,
+                use_release_pointer=True,
+            )
+            catalog_storage = published.model_copy(update={"prefix": ""})
+            before = catalog_storage.read_key("_catalog/current.json")
+            with (
+                patch(
+                    "dagster_hifld.portolan.workflow.run_local_version_pipeline",
+                    side_effect=lambda *args: _promote_staged_data(
+                        staging, published, request
+                    ),
+                ),
+                self.assertRaisesRegex(ValueError, "missing.*ID"),
+            ):
+                publish_portolan_record(
+                    request,
+                    staging=staging,
+                    published=published,
+                    use_release_pointer=True,
+                )
+            self.assertEqual(catalog_storage.read_key("_catalog/current.json"), before)
+
+    def test_catalog_only_refresh_allows_historical_schema_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            request, staging, published = self._write_mismatched_schema_fixture(
+                Path(tmpdir)
+            )
+            _promote_staged_data(staging, published, request)
+            record = _prepare_portolan_record(
+                request,
+                staging,
+                published,
+                convert=False,
+                promote=False,
+            )
+            self.assertEqual(
+                [column.name for column in record.columns], ["ID", "Shape"]
+            )
+            self.assertEqual(record.feature_count, 2)
+
     def test_release_refresh_uses_dictionary_to_repair_retained_provider(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
