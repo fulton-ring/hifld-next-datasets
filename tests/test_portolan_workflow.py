@@ -742,6 +742,20 @@ class PortolanWorkflowTests(unittest.TestCase):
                 (-77.1, 37.9, -75.9, 39.1),
                 (),
             )
+            style_key = published.write(
+                "hospitals-3", "hospitals-3", "v1.1.0", "styles/maplibre.json",
+                b'{"version":8,"sources":{},"layers":[]}',
+            )
+            thumbnail_key = published.write(
+                "hospitals-3", "hospitals-3", "v1.1.0", "thumbnail/thumbnail.png",
+                b"pinned-thumbnail",
+            )
+            published.write(
+                "hospitals-3", "hospitals-3", "v1.1.0", "pmtiles/data.pmtiles",
+                _pmtiles_archive("hospitals"),
+            )
+            style_before = published.object_snapshot(style_key)
+            thumbnail_before = published.object_snapshot(thumbnail_key)
             with (
                 patch(
                     "dagster_hifld.portolan.workflow.inspect_geoparquet",
@@ -749,12 +763,14 @@ class PortolanWorkflowTests(unittest.TestCase):
                 ),
                 patch(
                     "dagster_hifld.portolan.workflow.render_geoparquet_thumbnail",
-                    return_value=None,
+                    return_value=b"new-thumbnail",
                 ),
             ):
                 record = _prepare_portolan_record(
                     request, staging, published, convert=False, promote=False
                 )
+            self.assertEqual(published.object_snapshot(style_key), style_before)
+            self.assertEqual(published.object_snapshot(thumbnail_key), thumbnail_before)
 
         self.assertEqual(record.collection_title, "HIFLD")
         self.assertEqual(record.source_version_description, note)

@@ -39,6 +39,7 @@ from dagster_hifld.conversion import (
     write_shapefile_zip,
 )
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
+from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.resources import (
     DatasetApiResource,
     PublishedStorageResource,
@@ -157,7 +158,11 @@ def _copy_metadata_files(
         rel_path = f"metadata/{filename}"
         contents = staging_storage.read_bytes(dataset_slug, file_slug, version, rel_path)
         copied.append(
-            published_storage.write(dataset_slug, file_slug, version, rel_path, contents)
+            write_immutable_object(
+                published_storage,
+                _logical_version_key(dataset_slug, file_slug, version, rel_path),
+                contents,
+            )
         )
     return copied
 
@@ -208,6 +213,14 @@ def _copy_version_files(
     version: str,
 ) -> list[str]:
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
+    legacy = _legacy_unknown_shapefile_archive(
+        staging_storage, dataset_slug, file_slug, version, keys
+    )
+    if legacy is not None:
+        path, contents = legacy
+        keys.append(
+            staging_storage.write(dataset_slug, file_slug, version, path, contents)
+        )
     selected_pairs = _archive_only_pairs(
         staging_storage, dataset_slug, file_slug, version, keys
     )
@@ -216,28 +229,14 @@ def _copy_version_files(
         for key, relative_key in selected_pairs
         if Path(relative_key).parts[0] != "unknown"
     ]
-    published_storage.delete_prefix(
-        published_storage.build_target_location(dataset_slug, file_slug, version, "")
-    )
-    copied = list(
-        staging_storage.copy_keys_to(
-            published_storage,
-            [key for key, _relative_key in selected_pairs],
-            destination_keys=[
-                _logical_version_key(dataset_slug, file_slug, version, relative_key)
-                for _key, relative_key in selected_pairs
-            ],
-        )
-    )
-    copied.extend(
-        _copy_legacy_unknown_shapefile(
-            staging_storage,
-            published_storage,
-            dataset_slug,
-            file_slug,
-            version,
-            keys,
-        )
+    copied = promote_immutable_objects(
+        staging_storage,
+        published_storage,
+        [
+            (key, _logical_version_key(dataset_slug, file_slug, version, relative_key))
+            for key, relative_key in selected_pairs
+        ],
+        version_prefix=f"{dataset_slug}/{file_slug}/{version}",
     )
     return sorted(copied)
 
@@ -260,13 +259,7 @@ def _copy_source_format_files(
         )
         if Path(rel_path).parts[0] in _PROMOTED_SOURCE_FORMAT_DIRS
     ]
-    copied = list(
-        staging_storage.copy_keys_to(
-            published_storage,
-            [key for key, _destination_key in source_pairs],
-            destination_keys=[destination_key for _key, destination_key in source_pairs],
-        )
-    )
+    copied = promote_immutable_objects(staging_storage, published_storage, source_pairs)
     copied.extend(
         _copy_legacy_unknown_shapefile(
             staging_storage,
@@ -288,6 +281,28 @@ def _copy_legacy_unknown_shapefile(
     version: str,
     keys: list[str],
 ) -> list[str]:
+    archive = _legacy_unknown_shapefile_archive(
+        staging_storage, dataset_slug, file_slug, version, keys
+    )
+    if archive is None:
+        return []
+    path, contents = archive
+    return [
+        write_immutable_object(
+            published_storage,
+            _logical_version_key(dataset_slug, file_slug, version, path),
+            contents,
+        )
+    ]
+
+
+def _legacy_unknown_shapefile_archive(
+    staging_storage: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+    keys: list[str],
+) -> tuple[str, bytes] | None:
     relative_keys = {
         key: relative_key
         for key in keys
@@ -304,12 +319,12 @@ def _copy_legacy_unknown_shapefile(
         and Path(key).suffix.lower() in {".shp", ".zip"}
         for key, relative_key in relative_keys.items()
     ):
-        return []
+        return None
     unknown_keys = [
         key for key, relative_key in relative_keys.items() if relative_key.startswith("unknown/")
     ]
     if not unknown_keys:
-        return []
+        return None
 
     try:
         legacy_keys = discover_legacy_unknown_shapefile_keys(unknown_keys)
@@ -321,9 +336,9 @@ def _copy_legacy_unknown_shapefile(
             version,
             exc,
         )
-        return []
+        return None
     if not legacy_keys:
-        return []
+        return None
 
     shapefile_key = next(
         key for key in legacy_keys if Path(key).suffix.lower() == ".shp"
@@ -334,19 +349,12 @@ def _copy_legacy_unknown_shapefile(
     ) as archive:
         for key in legacy_keys:
             archive.writestr(
-                Path(key).name,
+                zipfile.ZipInfo(Path(key).name),
                 staging_storage.read_bytes(dataset_slug, file_slug, version, key),
+                compress_type=zipfile.ZIP_DEFLATED,
             )
     archive_name = f"{Path(shapefile_key).stem}.zip"
-    return [
-        published_storage.write(
-            dataset_slug,
-            file_slug,
-            version,
-            f"shapefile/{archive_name}",
-            archive_buffer.getvalue(),
-        )
-    ]
+    return f"shapefile/{archive_name}", archive_buffer.getvalue()
 
 
 def _storage_version_prefix(

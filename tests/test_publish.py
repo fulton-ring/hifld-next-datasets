@@ -36,6 +36,30 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 
 
 class PublishTests(unittest.TestCase):
+    def test_promotion_rejects_changed_bytes_before_copying_any_objects(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            published.write("dataset", "file", "v1", "geopackage/z.gpkg", b"original")
+            staging.write("dataset", "file", "v1", "geopackage/z.gpkg", b"changed")
+            staging.write("dataset", "file", "v1", "geojson/a.geojson", b"new")
+            with self.assertRaisesRegex(ValueError, "immutable"):
+                _copy_version_files(staging, published, "dataset", "file", "v1")
+            self.assertEqual(published.read_key("dataset/file/v1/geopackage/z.gpkg"), b"original")
+            self.assertFalse(published.object_exists("dataset/file/v1/geojson/a.geojson"))
+
+    def test_promotion_reuses_identical_objects_and_preserves_unselected_objects(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            key = staging.write("dataset", "file", "v1", "geopackage/source.gpkg", b"original")
+            _copy_version_files(staging, published, "dataset", "file", "v1")
+            before = published.object_snapshot(key)
+            extra = published.write("dataset", "file", "v1", "thumbnail/thumbnail.png", b"png")
+            _copy_version_files(staging, published, "dataset", "file", "v1")
+            self.assertEqual(published.object_snapshot(key), before)
+            self.assertTrue(published.object_exists(extra))
+
     def test_copy_metadata_files_promotes_catalog_outputs(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             metadata_root = (
@@ -139,49 +163,6 @@ class PublishTests(unittest.TestCase):
             self.assertTrue((Path(published_dir) / "dataset-a/file-a/v1.0.0/metadata/quality_manifest.json").exists())
             self.assertTrue((Path(published_dir) / "dataset-a/file-a/v1.0.0/geojson").exists())
             self.assertFalse((Path(published_dir) / "dataset-a/file-a/v1.0.0/unknown").exists())
-
-    def test_copy_version_files_uses_bulk_copy(self):
-        class FakeStaging:
-            def __init__(self):
-                self.bulk_keys = None
-
-            def list_keys(self, dataset_slug, file_slug, version):
-                return [
-                    f"{dataset_slug}/{file_slug}/{version}/metadata/quality_manifest.json",
-                    f"{dataset_slug}/{file_slug}/{version}/geoparquet/source.parquet",
-                ]
-
-            def copy_keys_to(self, destination, keys, *, destination_keys=None):
-                self.bulk_keys = list(keys)
-                self.destination_keys = list(destination_keys or keys)
-                return [f"copied/{Path(key).name}" for key in keys]
-
-        class FakePublished:
-            def __init__(self):
-                self.deleted = None
-
-            def build_target_location(
-                self, dataset_slug, file_slug, version, filename
-            ):
-                return f"{dataset_slug}/{file_slug}/{version}/{filename}".rstrip("/")
-
-            def delete_prefix(self, prefix):
-                self.deleted = prefix
-
-        staging = FakeStaging()
-        published = FakePublished()
-
-        copied = _copy_version_files(staging, published, "dataset-a", "file-a", "v1.0.0")
-
-        self.assertEqual(published.deleted, "dataset-a/file-a/v1.0.0")
-        self.assertEqual(
-            staging.bulk_keys,
-            [
-                "dataset-a/file-a/v1.0.0/metadata/quality_manifest.json",
-                "dataset-a/file-a/v1.0.0/geoparquet/source.parquet",
-            ],
-        )
-        self.assertEqual(copied, ["copied/quality_manifest.json", "copied/source.parquet"])
 
     def test_copy_version_files_prefers_zip_and_excludes_loose_components(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
@@ -484,6 +465,7 @@ class PublishTests(unittest.TestCase):
 
         staging = FakeStaging()
         published = Mock(prefix="published-prefix")
+        published.object_snapshot.return_value = None
         keys = [
             "staged-prefix/dataset-a/file-a/v1.0.0/unknown/nested/source.shp",
             "staged-prefix/dataset-a/file-a/v1.0.0/unknown/nested/source.shx",
@@ -502,7 +484,7 @@ class PublishTests(unittest.TestCase):
         )
 
         self.assertEqual(len(copied), 1)
-        published.write.assert_called_once()
+        published.write_key_if_unchanged.assert_called_once()
 
     def test_copy_source_format_files_reports_and_skips_ambiguous_legacy_unknown(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:

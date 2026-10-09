@@ -349,7 +349,7 @@ class PipelineUpdateTests(unittest.TestCase):
             self.assertIn("shapefile", {file["format"] for file in result["api_payload"]["files"]})
             api.upsert_dataset_version.assert_called_once()
 
-    def test_local_e2e_overwrites_existing_published_format_outputs(self):
+    def test_local_e2e_rejects_replacing_existing_published_data_layout(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
             published = PublishedStorageResource(local_dir=published_dir, use_local=True)
@@ -368,8 +368,8 @@ class PipelineUpdateTests(unittest.TestCase):
 
             with patch.object(
                 publish_assets_module, "_write_and_publish_pmtiles", return_value=[]
-            ):
-                result = publish_assets_module.run_local_version_pipeline(
+            ), self.assertRaisesRegex(ValueError, "immutable"):
+                publish_assets_module.run_local_version_pipeline(
                     staging_storage=staging,
                     published_storage=published,
                     api_resource=Mock(enabled=False),
@@ -379,14 +379,8 @@ class PipelineUpdateTests(unittest.TestCase):
                     storage_location_name="Local published",
                 )
 
-            replacement_file = existing / "file-a.parquet"
-            self.assertFalse(existing_file.exists())
-            self.assertTrue(replacement_file.exists())
-            self.assertNotEqual(replacement_file.read_bytes(), b"exists")
-            self.assertIn(
-                "dataset-a/file-a/v1.0.0/geoparquet/file-a.parquet",
-                [output.path for output in result["outputs"]],
-            )
+            self.assertEqual(existing_file.read_bytes(), b"exists")
+            self.assertFalse((existing / "file-a.parquet").exists())
 
 
 if __name__ == "__main__":
