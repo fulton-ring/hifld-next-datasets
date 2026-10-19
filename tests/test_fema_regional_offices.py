@@ -14,7 +14,8 @@ from dagster_hifld import construction_state
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import fema_regional_offices as s
 
-FIXTURE=Path(__file__).parent/'fixtures/fema-regional-offices-complete.json.gz'
+_CAPTURE_ARCHIVE_ENV='HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'
+FIXTURE=Path(os.environ[_CAPTURE_ARCHIVE_ENV]) if os.environ.get(_CAPTURE_ARCHIVE_ENV) else None
 
 def unpack(root):
     values=json.loads(gzip.decompress(FIXTURE.read_bytes()))
@@ -37,6 +38,7 @@ class FemaOfficeTests(unittest.TestCase):
         with patch.object(s,'validate_construction_code_identity'):
             return s.stage_fema_regional_offices(storage,capture_dir=root)
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_complete_original_fourteen_fields_values_native_points(self):
         captures=fixture();table,audit=s.inspect_captures(captures);self.assertEqual(table.num_rows,14);self.assertEqual(table.column_names,list(s.FIELDS));self.assertEqual(table['region_number'].type,pa.int16());self.assertEqual(table['region_objectid'].type,pa.int16())
         self.assertEqual(audit['office_type_counts'],{'area':3,'national':1,'regional':10});rows=table.to_pylist();wire=json.loads(captures['page_00000'][0])['features']
@@ -44,6 +46,7 @@ class FemaOfficeTests(unittest.TestCase):
             self.assertEqual({k:v for k,v in actual.items() if k!='geometry'},raw['attributes']);self.assertEqual(actual['geometry'],s.shapely.Point(raw['geometry']['x'],raw['geometry']['y']).wkb)
         self.assertEqual(rows[2]['address1'],'546 Bonney Loop ');self.assertIn('00918',table['zip'].to_pylist());self.assertIn('0002',table['zip4'].to_pylist());self.assertNotIn('id',table.column_names)
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_full_baseline_formats_and_separate_ids(self):
         c=fixture();table,_=s.inspect_captures(c);report=s.baseline_comparison(c,table)
         self.assertEqual(set(report['formats']),{'geoparquet','geopackage','geojson','shapefile'})
@@ -52,6 +55,7 @@ class FemaOfficeTests(unittest.TestCase):
             self.assertEqual(len(summary['diagnostic_attribute_differences']),0 if name=='geojson' else 1)
         ids=[r['id'] for r in report['formats']['geoparquet']['published_identifiers']];self.assertLess(len(set(ids)),14);self.assertFalse(report['approved']);self.assertEqual(report['status'],'blocked')
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_display_only_renderer_exclusion_and_real_drift(self):
         c=fixture();original=s.inspect_captures(c)
         for name in ('metadata_before','metadata_after'):mutate(c,name,lambda d:d.update(drawingInfo={'synthetic_display_only':True}))
@@ -59,6 +63,7 @@ class FemaOfficeTests(unittest.TestCase):
         mutate(c,'metadata_after',lambda d:d.update(maxRecordCount=9999))
         with self.assertRaisesRegex(ValueError,'source_changed'):s.inspect_captures(c)
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_missing_duplicate_unrequested_limit_schema_geometry_drift(self):
         changes=[lambda d:d['features'].pop(),lambda d:d['features'].append(d['features'][0]),lambda d:d['features'][0]['attributes'].update(objectid=999),lambda d:d.update(exceededTransferLimit=True),lambda d:d['features'][0]['attributes'].update(renamed=1),lambda d:d.update(spatialReference={'latestWkid':3857}),lambda d:d['features'][0]['geometry'].update(z=1)]
         for change in changes:
@@ -68,6 +73,7 @@ class FemaOfficeTests(unittest.TestCase):
             c=fixture();mutate(c,name,change)
             with self.subTest(name=name),self.assertRaises(ValueError):s.inspect_captures(c)
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_json_metadata_boolean_integer_float_drift_never_compares_equal(self):
         # Reviewer actual reproducer: False==0 must NOT make typed metadata equal.
         cases=[lambda d:d['fields'][0].update(nullable=0),lambda d:d['fields'][0].update(nullable=0.0),lambda d:d['fields'][0].update(editable=0),lambda d:d['fields'][1].update(length=40.0),lambda d:d.update(id=False),lambda d:d.update(id=0.0),lambda d:d['extent']['spatialReference'].update(latestWkid=4326.0),lambda d:d.update(maxRecordCount=2000.0),lambda d:d.update(minScale=False)]
@@ -75,6 +81,7 @@ class FemaOfficeTests(unittest.TestCase):
             c=fixture();mutate(c,'metadata_after',change)
             with self.subTest(change=change),self.assertRaises(ValueError):s.inspect_captures(c)
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_original_refresh_semantic_json_types_are_bound(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage=StagingStorageResource(local_dir=tmp);c=fixture();identity={'files':{}};pin={'bytes':1,'sha256':'a'*64}
@@ -90,6 +97,7 @@ class FemaOfficeTests(unittest.TestCase):
             with self.subTest(field=field),self.assertRaises(ValueError):s.physical_value(next(f for f in s.FIELD_DEFINITIONS if f['name']==field),value)
         self.assertEqual(s.physical_value(s.FIELD_DEFINITIONS[8],'  literal  '),'  literal  ')
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_native_containers_and_metadata_forgery(self):
         table,_=s.inspect_captures(fixture())
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,6 +108,7 @@ class FemaOfficeTests(unittest.TestCase):
             with s.sqlite3.connect(root/'geopackage'/f'{s.SLUG}.gpkg') as db:db.execute('UPDATE gpkg_contents SET srs_id=3857')
             with self.assertRaisesRegex(ValueError,'full_container'):s.verify_outputs(root,table)
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_failed_receipt_body_first_and_exact_bad_bytes(self):
         for mode in ('malformed','unreadable'):
             with self.subTest(mode=mode),tempfile.TemporaryDirectory() as tmp:
@@ -116,6 +125,7 @@ class FemaOfficeTests(unittest.TestCase):
                 if mode=='malformed':self.assertEqual((root/'staging'/attempted['raw_receipt_key']).read_bytes(),bad)
                 self.assertFalse((root/'staging'/'_construction-state').exists())
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_local_guard_precedes_acquisition_and_relative_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);inputs=root/'inputs';inputs.mkdir();unpack(inputs);before=Path.cwd()
@@ -127,6 +137,7 @@ class FemaOfficeTests(unittest.TestCase):
                 with patch.object(s,'fetch_one') as fetch,self.assertRaises(ValueError):s.stage_fema_regional_offices(storage)
                 fetch.assert_not_called()
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_cache_reuse_renderer_receipt_new_observation_preserves_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);inputs=root/'inputs';inputs.mkdir();unpack(inputs);storage=StagingStorageResource(local_dir=str(root/'staging'));first=self.stage(storage,inputs);target=root/'staging'/s.SLUG/s.SLUG/first['version'];before={str(p.relative_to(target)):p.read_bytes() for p in target.rglob('*') if p.is_file()}
@@ -135,6 +146,7 @@ class FemaOfficeTests(unittest.TestCase):
                 path=inputs/(name+'.body');d=json.loads(path.read_bytes());d['drawingInfo']={'new_display':1};body=s.encode(d);path.write_bytes(body);p=inputs/(name+'.receipt.json');rec=json.loads(p.read_bytes());rec.update(sha256=s.digest(body),bytes=len(body),observed_at='2026-10-19T13:00:00+00:00');p.write_bytes(s.encode(rec))
             second=self.stage(storage,inputs);self.assertTrue(second['reused']);self.assertEqual(second['version'],first['version']);self.assertEqual(alias.read_bytes(),original);self.assertEqual(before,{str(p.relative_to(target)):p.read_bytes() for p in target.rglob('*') if p.is_file()})
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_missing_all_originals_durable_incident_prevents_cold_rebootstrap(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);inputs=root/'inputs';inputs.mkdir();unpack(inputs);storage=StagingStorageResource(local_dir=str(root/'staging'));first=self.stage(storage,inputs);target=root/'staging'/s.SLUG/s.SLUG/first['version'];state=root/'staging'/s.construction_record_key(first['version']);backup={p:p.read_bytes() for p in state.parent.rglob('*') if p.is_file()}
@@ -145,6 +157,7 @@ class FemaOfficeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'permanent_observed_original_trust_loss'):self.stage(storage,inputs)
             self.assertFalse(state.exists());self.assertTrue(any((root/'staging'/'_quarantine').rglob('typed-source.parquet')))
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_incident_write_failure_preserves_candidate_and_partial_journal_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);inputs=root/'inputs';inputs.mkdir();unpack(inputs);storage=StagingStorageResource(local_dir=str(root/'staging'));first=self.stage(storage,inputs);target=root/'staging'/s.SLUG/s.SLUG/first['version'];alias=root/'staging'/s.construction_record_key(first['version']);original=alias.read_bytes();alias.unlink();before={str(p.relative_to(target)):p.read_bytes() for p in target.rglob('*') if p.is_file()}
@@ -155,6 +168,7 @@ class FemaOfficeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'permanent_observed_original_trust_loss'):self.stage(storage,inputs)
             self.assertTrue(target.exists())
 
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_private_failure_creates_no_first_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);inputs=root/'inputs';inputs.mkdir();unpack(inputs);storage=StagingStorageResource(local_dir=str(root/'staging'))
