@@ -1,0 +1,41 @@
+{
+  "approved": false,
+  "status": "working_draft_full_independent_review_and_history_runs_pending",
+  "construction_commit": "6928c8d0ec064e9f953b2a11efbc1abb7425030b",
+  "full_suite": {
+    "tests": 536,
+    "passed": 535,
+    "skipped": 1,
+    "production_GCS_skipped": true,
+    "seconds": 189.966,
+    "log": "full-suite.log"
+  },
+  "source_tests": {
+    "tests": 13,
+    "passed": 13,
+    "seconds": 38.349,
+    "log": "focused-tests.log"
+  },
+  "catalog_tests": {
+    "tests": 20,
+    "passed": 20,
+    "seconds": 0.546,
+    "log": "catalog-focused-tests.log"
+  },
+  "source_complete_materialization": {
+    "kind": "real_complete_source",
+    "run_id": "4d325def-16a8-49e4-903c-676c4b398918",
+    "success": true,
+    "errors": [],
+    "materializations": [
+      "ingest/historical-tsunami-observations/historical-tsunami-observations"
+    ],
+    "checks": []
+  },
+  "prior_constructor_13_actual_runs": "dagster-execution-initial-6f79b76.json",
+  "new_constructor_normal_graphs": "In progress; final actual run records will replace progress evidence.",
+  "baseline_audit": "baseline-audit.json",
+  "raw_inputs": "captures/source_http.zip; captures/authority_http.zip",
+  "iac_actual_source_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+  "release_gate": "No source/baseline/contract/schema/ID/geometry/coverage acceptance; no production write."
+}

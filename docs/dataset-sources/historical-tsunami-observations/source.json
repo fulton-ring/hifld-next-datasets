@@ -1,0 +1,42 @@
+{
+  "issue": 114,
+  "pr": 449,
+  "status": "working_draft_pipeline_independent_review_and_history_verification_in_progress",
+  "approved": false,
+  "source": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_observations/FeatureServer/0",
+  "authority_chain": [
+    "https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis",
+    "https://www.ncei.noaa.gov/maps/tsunami-events/",
+    "https://www.ncei.noaa.gov/maps/tsunami-events/assets/index-LsW0PzVb.js",
+    "https://www.arcgis.com/sharing/rest/content/items/8bed3e9c40114d6a8b2708ceaee0b329/data?f=json"
+  ],
+  "feature_count": 34495,
+  "native_fields": 50,
+  "crs": "EPSG:3857",
+  "identifier_fields": [
+    "ID",
+    "ObjectId",
+    "TSEVENT_ID"
+  ],
+  "source_original_archive_sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8",
+  "baseline": {
+    "status": "candidate_not_accepted",
+    "rows": 32614,
+    "unapproved_id_correspondence": {
+      "current_ID_vs_published_source_ID_only": "Diagnostic value-set comparison; this is NOT an approved ID rename/join.",
+      "common": 32595,
+      "only_current": 1900,
+      "only_published": 19
+    }
+  },
+  "release_prerequisites": [
+    "Source and complete historical baseline acceptance",
+    "Explicit ID/schema/type/geometry/coverage compatibility decision",
+    "Output format constraint/mapping acceptance",
+    "Independent release approval registry bound to exact artifacts"
+  ],
+  "worker": "/root/review_dart_49",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "implementation_commit": "6928c8d0ec064e9f953b2a11efbc1abb7425030b",
+  "actual_complete_source_run": "4d325def-16a8-49e4-903c-676c4b398918"
+}

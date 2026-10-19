@@ -1,0 +1,162 @@
+{
+  "__pycache__/actual_dagster.cpython-312.pyc": {
+    "bytes": 20459,
+    "sha256": "f6f5315978f810a83b7c887fef54c634ddc65b373f919fd0aac14ad55a2c5a5b"
+  },
+  "__pycache__/provenance_recovery.cpython-312.pyc": {
+    "bytes": 16654,
+    "sha256": "6d231a31d736b4f8d1dc4e5fd682f7c5820ba45d768edf82ef5f4c0c02eca64f"
+  },
+  "access-blockers/archive.body": {
+    "bytes": 6157,
+    "sha256": "03c30021fbb6636177f3ac1457941523645402315838d4dc9ee4c1e6f6d37c45"
+  },
+  "access-blockers/archive.receipt.json": {
+    "bytes": 332,
+    "sha256": "fa7cdfe3a43d3d0f00feb56c8b93370010ded911ee8e2b90a3cb587fe6a5be56"
+  },
+  "access-blockers/crosswalk.body": {
+    "bytes": 6157,
+    "sha256": "5739a7f8d0f4567e3b3ce0bb0d08396f9ca1310f122bda12f52f60f64d3d544f"
+  },
+  "access-blockers/crosswalk.receipt.json": {
+    "bytes": 299,
+    "sha256": "858ccfa83fddff17858afad5b93a066847e0dfc733e7510489e42ef115b2692a"
+  },
+  "actual_dagster.py": {
+    "bytes": 11406,
+    "sha256": "53dc614aa552faaaebf2f38e969ca04090f8f50c0c4f60b7653411402ee4232f"
+  },
+  "audit.py": {
+    "bytes": 5217,
+    "sha256": "d187152a5544ea5c76dc9ee5c87513e3e330d28a6aace2015fca8128d03db5ad"
+  },
+  "baseline-audit.json": {
+    "bytes": 8300597,
+    "sha256": "31bc19a66ff44a2cced08a5dcaaf9bda5f62b1b338dfa1b0436d39b7571348f7"
+  },
+  "captures/authority_http.zip": {
+    "bytes": 650448,
+    "sha256": "afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736"
+  },
+  "captures/source_http.zip": {
+    "bytes": 4572619,
+    "sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8"
+  },
+  "catalog-focused-tests.log": {
+    "bytes": 358,
+    "sha256": "d5a3a1e2e38459c2a0d72ff90fe36ace829556505ea43ee50c5e886da1308b5f"
+  },
+  "catalog-real-float-repair.json": {
+    "bytes": 2314,
+    "sha256": "9258535e7cfbaed0ed2eb57dcdb93e418b7a059796ca15bb3cadfddb7e5f9b5c"
+  },
+  "dagster-execution-initial-6f79b76.json": {
+    "bytes": 32689,
+    "sha256": "ac537e6420ce91ca0ede2e2c5afe8e8bb9fac430b27ade0827da63241af59a2a"
+  },
+  "dagster-progress-6928c8d.json": {
+    "bytes": 566,
+    "sha256": "b6a7a86f6961008dd28d49e9247342f24541d5e39560651a3d28f7307e24ace7"
+  },
+  "focused-tests.log": {
+    "bytes": 352,
+    "sha256": "b9c3e30f5df4550f0ec061f35267258b9f150905ed66061203f7a720b1a50ff6"
+  },
+  "full-suite-initial-6f79b76.log": {
+    "bytes": 18674,
+    "sha256": "9c33347e9549fcc78741a572323a865d7807a66414cad6db0f89b01a02c25415"
+  },
+  "full-suite.log": {
+    "bytes": 18675,
+    "sha256": "64b193c2741e6ec4f97d99d7a1920625b37b5e991e88486f3f5e77327ca80191"
+  },
+  "observations_source_audit.json": {
+    "bytes": 28966,
+    "sha256": "ef722493748e29624f6a9ffe2472b1c1f5bf294171d60de40986d3f26f5f336e"
+  },
+  "original-construction-bundle.json": {
+    "bytes": 171520,
+    "sha256": "ae5773480acd2ea7fd38385dad16ca454b12b7019ed33339d88ecfa57d808fe9"
+  },
+  "original-first-marker.json": {
+    "bytes": 185,
+    "sha256": "1304e5b1fbd9fa38b827a6420b1f48f67fd44ae82bd7c73db86db55929b503fc"
+  },
+  "processing_identity.json": {
+    "bytes": 10786,
+    "sha256": "79f1f7d54e22c6b4ba523d2465eb853c275b49b96fff591f3937673929b0cfcb"
+  },
+  "provenance_recovery.py": {
+    "bytes": 8548,
+    "sha256": "96d8c29b4f9fee9b04210870568e4d927b333e4bd693d4e9a9dbaed08f2688c2"
+  },
+  "published-candidate/collection.json": {
+    "bytes": 29724,
+    "sha256": "872a8f567adf917e1173e4fc9a202a0622ef1289091872fa69a9078b483361a7"
+  },
+  "published-candidate/collection.receipt.json": {
+    "bytes": 1670,
+    "sha256": "443632fe76ab0d43992d64883d34e363eda0a23d9138b7f522e81d585499650a"
+  },
+  "published-candidate/file_geodatabase.receipt.json": {
+    "bytes": 1603,
+    "sha256": "814094a40ed380bca72b3f49dcd1720adc62bd3899e71c8e648ad0eba1a145d5"
+  },
+  "published-candidate/geojson.receipt.json": {
+    "bytes": 1584,
+    "sha256": "ef9c8088386b9caf078dfa6cdf35c28aa0512c1e7629a7a69ac6dbc699f2c373"
+  },
+  "published-candidate/geopackage.receipt.json": {
+    "bytes": 1578,
+    "sha256": "e9eeeca7e648781de505f999c7b359190fb11ee28b929db1737e3163eca3cd20"
+  },
+  "published-candidate/geoparquet.receipt.json": {
+    "bytes": 1574,
+    "sha256": "657cd4beaed0059c45bfde6af9fe0c2f82d7754b63275116898271e658561d2f"
+  },
+  "published-candidate/historical-tsunami-observations-file_geodatabase.zip": {
+    "bytes": 3582798,
+    "sha256": "4f11c96363a848e1b47a986ec91e3ea970c0e695c746d586342626ccf9add390"
+  },
+  "published-candidate/historical-tsunami-observations-geojson.geojson": {
+    "bytes": 54300673,
+    "sha256": "30a8a5cebfcfb5344ec7fb0b8883589c6db81389bd44789507465116a97bff73"
+  },
+  "published-candidate/historical-tsunami-observations.gpkg": {
+    "bytes": 21757952,
+    "sha256": "24957c162f4b4ef66fbb70d4f2873981b594378650a24caf07206218cf569299"
+  },
+  "published-candidate/historical-tsunami-observations.parquet": {
+    "bytes": 3112102,
+    "sha256": "fe0e3fe4c91dfb6f3a559231951065a6a2f314c2a84054525be214ad5e961cc2"
+  },
+  "published-candidate/historical-tsunami-observations.pmtiles": {
+    "bytes": 14269755,
+    "sha256": "d5afe0e5f5f4ee8ad7af670cfed5447b5dffa639fbef3f71ef161be656a84937"
+  },
+  "published-candidate/historical-tsunami-observations.zip": {
+    "bytes": 3768011,
+    "sha256": "287c11d098f23e254b7c2279d8cc585589fa3a3aaad1ec283a7a9ab71219cdf1"
+  },
+  "published-candidate/pmtiles.receipt.json": {
+    "bytes": 1572,
+    "sha256": "a81b64ca80ff93f0354de3217a7156616bf2a3826324501571f6c7ac2203cb84"
+  },
+  "published-candidate/shapefile.receipt.json": {
+    "bytes": 1555,
+    "sha256": "251a63603fae358cc46d9e620f0a8f458f0294b72457f2d2802c90afec8b7c0c"
+  },
+  "source-capture-summary.json": {
+    "bytes": 29340,
+    "sha256": "05f1677a71661fd8ce539f12564c6fd82a1b9abb14cc2375d01d390ee2eff6cf"
+  },
+  "source_manifest.json": {
+    "bytes": 170902,
+    "sha256": "2ab1ea74641d2f1d97932878594609c6daa7233f1a6f619f8a34e49557e23082"
+  },
+  "verification.json": {
+    "bytes": 1363,
+    "sha256": "d47470fd5fe04a50a8f366910315b31c6f3a88b76484ba5ba4e02bfbab353b9f"
+  }
+}
