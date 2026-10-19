@@ -240,6 +240,30 @@ class FullPopulationTests(unittest.TestCase):
 
 
 class ReleaseBoundaryTests(unittest.TestCase):
+    def test_malformed_exclusion_policy_blocks_generation_and_release_even_when_repinned(self):
+        for policy in (None, [], {"shapefile_zip": None}, {"geoparquet": None}, {"unknown_format": "loss"}):
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory() as d:
+                source, target, registry = accepted_fixture(Path(d))
+                manifest_key = "synthetic/points/vtest/metadata/source_manifest.json"
+                manifest = json.loads(source.read_key(manifest_key))
+                manifest["unsupported_output_formats"] = policy
+                source.write_key(manifest_key, json.dumps(manifest).encode())
+                with patch("dagster_hifld.assets.publish._read_layer") as conversion:
+                    with self.assertRaises(ValueError):
+                        _write_and_publish_shapefile_zip(source, "synthetic", "points", "vtest")
+                conversion.assert_not_called()
+                value = json.loads(registry.read_text())
+                entry = value["releases"][0]
+                digest = source.sha256_key(manifest_key)
+                entry["staged_objects"][manifest_key] = digest
+                entry["published_objects"][manifest_key] = digest
+                entry["provenance_sha256"] = digest
+                registry.write_text(json.dumps(value))
+                with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                    with self.assertRaises(ValueError):
+                        _copy_version_files(source, target, "synthetic", "points", "vtest")
+                self.assertEqual(target.list_prefix(), [])
+
     def test_evidenced_unsupported_shapefile_is_skipped_and_stale_artifact_cannot_promote(self):
         with tempfile.TemporaryDirectory() as d:
             source, target, registry = accepted_fixture(Path(d))
