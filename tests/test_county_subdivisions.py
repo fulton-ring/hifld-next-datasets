@@ -45,6 +45,33 @@ def synthetic_population():
             yield root,storage,raw,receipt_path,table
 
 
+_REAL_ARCHIVE=os.environ.get('HIFLD_COUSUB_TEST_ARCHIVE')
+_REAL_RECEIPT=os.environ.get('HIFLD_COUSUB_TEST_RECEIPT')
+_REPO_ROOT=Path(source.__file__).parents[3].resolve()
+def _real_capture_paths_external():
+    if not _REAL_ARCHIVE or not _REAL_RECEIPT:return False
+    try:
+        Path(_REAL_ARCHIVE).resolve().relative_to(_REPO_ROOT)
+        return False
+    except ValueError:
+        pass
+    try:
+        Path(_REAL_RECEIPT).resolve().relative_to(_REPO_ROOT)
+        return False
+    except ValueError:
+        pass
+    return Path(_REAL_ARCHIVE).is_file() and Path(_REAL_RECEIPT).is_file()
+
+@unittest.skipUnless(_real_capture_paths_external(), 'set HIFLD_COUSUB_TEST_ARCHIVE and HIFLD_COUSUB_TEST_RECEIPT to existing external original captures')
+class CountySubdivisionCaptureTests(unittest.TestCase):
+    def test_complete_real_population_schema_and_physical_width(self):
+        raw=os.environ.get('HIFLD_COUSUB_TEST_ARCHIVE')
+        if not raw:self.skipTest('Set HIFLD_COUSUB_TEST_ARCHIVE for complete preserved real Census source audit')
+        path=Path(raw);receipt=source.strict_json(Path(os.environ['HIFLD_COUSUB_TEST_RECEIPT']).read_bytes());source.validate_receipt(path,receipt);audit=source.source_audit(path)
+        self.assertEqual(audit['rows'],36492);self.assertEqual(len(audit['state_counts']),56);self.assertEqual(audit['native_wkb_bytes'],489108707);self.assertEqual(audit['physical_fields']['OBJECTID']['Length'],'4');self.assertEqual(audit['native_attributes'],11)
+        self.assertEqual(audit['state_counts']['60'],16);self.assertEqual(audit['state_counts']['69'],12)
+
+
 class CountySubdivisionTests(unittest.TestCase):
     def stage(self,storage,raw,receipt):return source.stage_county_subdivisions_candidate(storage,archive_path=raw,receipt_path=receipt)
 
@@ -64,12 +91,6 @@ class CountySubdivisionTests(unittest.TestCase):
             self.assertFalse((Path(storage.local_dir)/source.RAW_KEY).exists());partials=list(Path(storage.local_dir).rglob('*.partial'));self.assertEqual(len(partials),1);self.assertEqual(partials[0].read_bytes(),body)
             reports=list((Path(storage.local_dir)/'_quarantine').rglob('*.json'));self.assertEqual(len(reports),1);self.assertFalse(source.strict_json(reports[0].read_bytes())['receipt']['complete_body'])
 
-    def test_complete_real_population_schema_and_physical_width(self):
-        raw=os.environ.get('HIFLD_COUSUB_TEST_ARCHIVE')
-        if not raw:self.skipTest('Set HIFLD_COUSUB_TEST_ARCHIVE for complete preserved real Census source audit')
-        path=Path(raw);receipt=source.strict_json(Path(os.environ['HIFLD_COUSUB_TEST_RECEIPT']).read_bytes());source.validate_receipt(path,receipt);audit=source.source_audit(path)
-        self.assertEqual(audit['rows'],36492);self.assertEqual(len(audit['state_counts']),56);self.assertEqual(audit['native_wkb_bytes'],489108707);self.assertEqual(audit['physical_fields']['OBJECTID']['Length'],'4');self.assertEqual(audit['native_attributes'],11)
-        self.assertEqual(audit['state_counts']['60'],16);self.assertEqual(audit['state_counts']['69'],12)
 
     def test_actual_httpx_oversize_preserves_every_consumed_byte(self):
         body=b'EXPLICIT_SYNTHETIC_OVERSIZE_TRANSPORT';original_client=httpx.Client

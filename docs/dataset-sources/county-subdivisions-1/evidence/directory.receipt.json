@@ -1,9 +1,0 @@
-{
-  "url": "https://www2.census.gov/geo/tiger/TGRGDB24/",
-  "final_url": "https://www2.census.gov/geo/tiger/TGRGDB24/",
-  "status": 200,
-  "bytes": 43897,
-  "sha256": "e37e31f42bbc59508ced1c891e29003c28f59f1c7dbff8b5b0dae28f73441eee",
-  "observed_at": "2026-10-19T11:36:24.315363+00:00",
-  "complete_body": true
-}

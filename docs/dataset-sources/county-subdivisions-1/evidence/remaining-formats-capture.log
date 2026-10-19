@@ -1,7 +1,0 @@
-{"format": "geojson", "status": "PASS", "bytes": 1394822984, "compressed_bytes": 422163385, "sha256": "bad62d5a6e765aab321eea9efa3bf6db3a365fa7655e1a04d870e21e54d993d1"}
-{"format": "geopackage", "status": "PASS", "bytes": 525926400, "compressed_bytes": 299196386, "sha256": "eef838944f362b9f8adb29a87fda97079c4b1e29996b02b8bf2731ca57be1c8a"}
-Traceback (most recent call last):
-  File "/workspace/work/hifld-coordinator/45/capture_remaining_formats.py", line 17, in <module>
-    if shutil.disk_usage(out).free<800000000:raise ValueError('capacity guard before large stream')
-                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: capacity guard before large stream

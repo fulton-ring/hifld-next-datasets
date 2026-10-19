@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/workspace/work/hifld-coordinator/45/audit_historical_gpkg.py", line 26, in <module>
-    assert size==receipt['bytes'] and sha.hexdigest()==receipt['sha256'];fcntl.fcntl(fd,fcntl.F_ADD_SEALS,fcntl.F_SEAL_SEAL|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_WRITE)
-                                                                                        ^^^^^^^^^^^^^^^^^
-AttributeError: module 'fcntl' has no attribute 'F_ADD_SEALS'

@@ -1,9 +1,0 @@
-{
-  "url": "https://meta.geo.census.gov/data/existing/decennial/GEO/GPMB/TIGERline/Current_19115/series_tl_2023_cousub.shp.iso.xml",
-  "final_url": "https://meta.geo.census.gov/data/existing/decennial/GEO/GPMB/TIGERline/Current_19115/series_tl_2023_cousub.shp.iso.xml",
-  "status": 404,
-  "bytes": 288,
-  "sha256": "60ec01c78bac828d2484fde18ad1e22733e281867027a0923562f2dea7a141a2",
-  "observed_at": "2026-10-19T11:36:24.824731+00:00",
-  "complete_body": true
-}

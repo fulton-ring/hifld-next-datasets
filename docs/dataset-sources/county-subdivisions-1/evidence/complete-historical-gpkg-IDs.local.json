@@ -1,9 +1,0 @@
-{
-  "classification": "Complete private runtime artifact; original full bytes retained locally, not embedded in public Git evidence",
-  "path": "/workspace/work/hifld-coordinator/45/complete-historical-gpkg-IDs.json.gz",
-  "bytes": 794326,
-  "sha256": "a33ec3b1e906bd755b8977c5655f0ad36ff70f87878a90a41c86e01c68e486e3",
-  "rows": 36498,
-  "format": "gzip JSON complete historical GeoPackage intrinsic/source ID census",
-  "replay": "audit_historical_gpkg.py regenerates from the complete preserved native historical GeoPackage; historical-native-gpkg-audit.json pins full-column inventories; complete-ID-censuses.json.gz separately preserves complete source/published Parquet IDs in Git"
-}

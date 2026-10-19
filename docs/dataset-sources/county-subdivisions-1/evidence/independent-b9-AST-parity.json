@@ -1,9 +1,0 @@
-{
-  "before": "0f3983da9b5bc7faca8cfbe9f2c8e428fcac6cc7",
-  "after": "b9aafc3c124f3c6f627fe887f0944ca0d7a339d8",
-  "changed_functions": [
-    "acquire"
-  ],
-  "all_other_source_functions_AST_exact": true,
-  "release_and_shared_catalog_unmodified": true
-}
