@@ -65,6 +65,25 @@ def _source_layer_stable(before: Mapping[str, object], after: Mapping[str, objec
     return dict(before) == dict(after)
 
 
+def _validated_page_rows(page: Mapping[str, object], expected_ids: list[int], *, has_following: bool) -> list[dict[str, object]]:
+    """Accept ArcGIS continuation flags only when this full ordered ID slice is complete."""
+    if "error" in page:
+        raise ValueError("source_page_error_or_truncated")
+    rows = page.get("features")
+    if not isinstance(rows, list):
+        raise ValueError("source_page_missing_features")
+    page_ids = [row.get("attributes", {}).get("OBJECTID") if isinstance(row, dict) else None for row in rows]
+    if (any(type(value) is not int for value in page_ids)
+            or page_ids != expected_ids or len(set(page_ids)) != len(page_ids)):
+        raise ValueError("source_page_id_slice_incomplete_or_duplicated")
+    exceeded = page.get("exceededTransferLimit")
+    if exceeded is not None and type(exceeded) is not bool:
+        raise ValueError("source_page_transfer_limit_flag_invalid")
+    if exceeded is True and (len(rows) != PAGE_SIZE or not has_following):
+        raise ValueError("source_page_truncated_with_transfer_limit_flag")
+    return rows
+
+
 def _type(field: Mapping[str, object]) -> pa.DataType:
     kind = field["type"]
     if kind == "esriFieldTypeOID": return pa.int64()
@@ -116,6 +135,8 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[lis
     if (layer.get("name") != LAYER_NAME or layer.get("geometryType") != "esriGeometryPoint"
             or layer.get("hasZ") is not False or layer.get("hasM") is not False):
         raise ValueError("epa_layer_schema_or_geometry_drift")
+    if layer.get("objectIdField") != "OBJECTID":
+        raise ValueError("source_object_id_field_drift")
     if layer.get("extent",{}).get("spatialReference",{}).get("latestWkid") != 3857:
         raise ValueError("source_crs_drift")
     fields = layer.get("fields")
@@ -133,12 +154,16 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[lis
         raise ValueError("source_id_population_changed_or_invalid")
     features=[]
     names=[f["name"] for f in fields]
-    for n in sorted(x for x in captures if x.startswith("page_")):
+    source_ids=sorted(before)
+    expected_pages=[f"page_{i:03d}" for i in range((count+PAGE_SIZE-1)//PAGE_SIZE)]
+    page_names=sorted(x for x in captures if x.startswith("page_"))
+    if page_names != expected_pages:
+        raise ValueError("source_page_roster_incomplete_or_unexpected")
+    for page_index,n in enumerate(page_names):
         page=docs[n]
-        if "error" in page or page.get("exceededTransferLimit") is True: raise ValueError("source_page_error_or_truncated")
         if page.get("spatialReference",{}).get("latestWkid") != 3857: raise ValueError("source_page_crs_drift")
-        rows=page.get("features")
-        if not isinstance(rows,list): raise ValueError("source_page_missing_features")
+        expected_ids=source_ids[page_index*PAGE_SIZE:(page_index+1)*PAGE_SIZE]
+        rows=_validated_page_rows(page,expected_ids,has_following=page_index < len(page_names)-1)
         features.extend(rows)
     if len(features)!=count: raise ValueError("source_feature_count_incomplete")
     for feature in features:

@@ -11,6 +11,7 @@ from dagster_hifld.partitions import build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_disaster_debris import (
     _native_parquet, _portal_publication_snapshot, _sha, _source_layer_stable,
+    _validated_page_rows,
 )
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
@@ -19,6 +20,20 @@ from dagster_hifld.sources.epa_frs_common import (
 
 
 class EpaDisasterDebrisTests(unittest.TestCase):
+    def test_arcgis_continuation_flag_requires_an_exact_complete_ordered_page(self):
+        expected = list(range(1, 10001))
+        rows = [{"attributes": {"OBJECTID": value}} for value in expected]
+        page = {"features": rows, "exceededTransferLimit": True}
+        self.assertEqual(_validated_page_rows(page, expected, has_following=True), rows)
+        with self.assertRaisesRegex(ValueError, "source_page_truncated_with_transfer_limit_flag"):
+            _validated_page_rows({"features": rows[:321], "exceededTransferLimit": True}, expected[:321], has_following=True)
+        with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_duplicated"):
+            _validated_page_rows({"features": rows[:-1] + [rows[-2]], "exceededTransferLimit": True}, expected, has_following=True)
+        with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_duplicated"):
+            _validated_page_rows({"features": rows[1:], "exceededTransferLimit": True}, expected, has_following=True)
+        with self.assertRaisesRegex(ValueError, "source_page_truncated_with_transfer_limit_flag"):
+            _validated_page_rows(page, expected, has_following=False)
+
     def test_portal_view_counter_is_the_only_ignored_publication_change(self):
         before = {"id": "item", "owner": "EPA_GEO", "url": "https://example.gov/service",
                   "title": "EPA 2026", "type": "Feature Service", "access": "public", "numViews": 12}
