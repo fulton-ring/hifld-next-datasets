@@ -8,6 +8,7 @@ import subprocess
 import sqlite3
 import pyarrow as pa
 from pathlib import Path
+from unittest.mock import patch
 
 parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=Path,required=True);parser.add_argument('--resume-after-integrity',action='store_true');args=parser.parse_args()
 repo=Path(__file__).resolve().parents[1];capture=repo/'docs/dataset-sources/cbrs-units-2/evidence/captures'
@@ -46,7 +47,7 @@ def record(kind,result):
   'checks':[{'name':e.check_name,'passed':e.passed} for e in result.get_asset_check_evaluations()]})
  (runtime/'execution.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
  return errors
-with DagsterInstance.get() as instance:
+with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',side_effect=AssertionError('generic regeneration must never run for pinned native source')) as converter, DagsterInstance.get() as instance:
  sourcejob=normal.resolve_job_def('fws_cbrs_units_draft_refresh');graph=defs.resolve_job_def('cbrs_graph')
  if not args.resume_after_integrity:
   first=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
@@ -56,6 +57,22 @@ with DagsterInstance.get() as instance:
   assert (source.SLUG,source.SLUG,output['version']) in list(_iter_staged_version_paths(staging))
   assert source.sha((root/'raw'/source.ARCHIVE_NAME).read_bytes())==source.PIN
   before={str(p.relative_to(root)):source.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+  # A policy reason/control change cannot self-authorize through new ready hashes.
+  manifestfile=root/'metadata/source_manifest.json';manifest_original=manifestfile.read_bytes()
+  readyfile=root/'metadata/cbrs_units_candidate_ready.json';ready_original=readyfile.read_bytes()
+  policy=json.loads(manifest_original);policy['prebuilt_output_policy']['formats']['geoparquet']['reason']='Unreviewed replacement capability claim'
+  manifestfile.write_bytes(source.encode(policy));ready=json.loads(ready_original)
+  ready['objects']['metadata/source_manifest.json']=source.sha(manifestfile.read_bytes());readyfile.write_bytes(source.encode(ready))
+  attacked=source.candidate_inventory(root)
+  control=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+  control_errors=record('complete_source_cache_self_repin_prebuilt_policy_control',control)
+  assert not control.success and any('cached_provenance_differs_from_original_capture' in e for e in control_errors)
+  assert not root.exists() and (source.SLUG,source.SLUG,output['version']) not in list(_iter_staged_version_paths(staging))
+  retained=list((runtime/'staging/_quarantine'/source.SLUG/'versions').glob('*/candidate'))
+  assert len(retained)==1 and source.candidate_inventory(retained[0])==attacked
+  os.rename(retained[0],root);manifestfile.write_bytes(manifest_original);readyfile.write_bytes(ready_original)
+  assert snapshot(published)==prior
+  report['prebuilt_policy_control_self_repin']={'run_id':control.run_id,'rejected':True,'not_discoverable':True,'all_remaining_bytes_preserved':True,'test_fixture_explicitly_restored':True}
   again=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
   record('real_complete_refresh',again);assert again.success and output==again.output_for_node(fws_cbrs_units.op.name)
   assert before=={str(p.relative_to(root)):source.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
@@ -64,6 +81,12 @@ with DagsterInstance.get() as instance:
   errors=record('normal_formats_missing_approval',formats)
   assert not formats.success and errors and all('missing_independent_release_approval_registry' in error for error in errors),errors
   assert snapshot(published)==prior
+  assert converter.call_count==0
+  positive_policy=json.loads((root/'metadata/source_manifest.json').read_bytes())['prebuilt_output_policy']
+  assert positive_policy==json.loads((root/'metadata/data_dictionary.json').read_bytes())['prebuilt_output_policy']==json.loads((root/'metadata/resolved_provenance.json').read_bytes())['prebuilt_output_policy']
+  expected_object=positive_policy['formats']['geoparquet']['objects'][0]
+  assert source.sha((root/expected_object['path']).read_bytes())==expected_object['sha256']
+  report['prebuilt_capability']={'policy':positive_policy,'dictionary_and_resolved_provenance_exact':True,'generic_converter_calls':converter.call_count,'native_artifact_sha256':expected_object['sha256']}
   post=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
   record('real_complete_post_formats_refresh',post);assert post.success and post.output_for_node(fws_cbrs_units.op.name)==output
   assert snapshot(published)==prior
@@ -168,6 +191,26 @@ with DagsterInstance.get() as instance:
   assert snapshot(published)==prior
   report['harness_continuation']={'reason':'Previous assertion incorrectly rejected a valid zero-byte differences sidecar after all eight attacks completed. SHA validation supports empty files.',
     'source_or_data_writer_change':False,'prior_runs_preserved':True,'terminal_formats_rebuilt':False}
+ # Exercise the actual normal writer under native-object drift, without source
+ # regeneration or re-signing controls. All data remain explicitly local fixtures.
+ driftprefix=prefix+'-synthetic-prebuilt-drift';driftroot=runtime/'staging'/driftprefix
+ shutil.copytree(root,driftroot);driftfile=driftroot/'geoparquet'/f'{source.SLUG}.parquet'
+ drift_original=driftfile.read_bytes();instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[driftprefix])
+ report['prebuilt_normal_drift_probes']=[]
+ for attack in ['missing','extra','changed']:
+  try:
+   if attack=='missing':driftfile.unlink()
+   elif attack=='extra':(driftfile.parent/'unexpected.parquet').write_bytes(drift_original)
+   else:
+    table=pq.read_table(driftfile);column=table.column_names.index('Name');names=table.column('Name').to_pylist();names[0]='Explicit synthetic mutation'
+    pq.write_table(table.set_column(column,table.schema.field('Name'),pa.array(names,type=pa.string())),driftfile,compression='zstd')
+   failed=graph.execute_in_process(instance=instance,partition_key=driftprefix,raise_on_error=False)
+   errors=record('synthetic_prebuilt_normal_writer_'+attack,failed)
+   assert not failed.success and any('Prebuilt output' in error for error in errors),errors
+   assert converter.call_count==0 and snapshot(published)==prior
+   report['prebuilt_normal_drift_probes'].append({'attack':attack,'run_id':failed.run_id,'rejected':True,'generic_converter_calls':0,'prior_published_fixture_preserved':True})
+  finally:
+   driftfile.write_bytes(drift_original);(driftfile.parent/'unexpected.parquet').unlink(missing_ok=True)
  # Corrupt a separate explicitly synthetic test partition, leaving the real candidate unchanged.
  badprefix=prefix+'-synthetic-invalid-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot)
  gpfile=badroot/'geopackage'/f'{source.SLUG}.gpkg'
@@ -180,6 +223,8 @@ with DagsterInstance.get() as instance:
  assert any(not e.passed for e in bad.get_asset_check_evaluations())
  assert snapshot(published)==prior
  assert (root/'candidate/typed-source.parquet').read_bytes()==(root/'geoparquet'/f'{source.SLUG}.parquet').read_bytes()
+ assert converter.call_count==0
+ report['generic_converter_calls']=converter.call_count
  report.update(output=output,all_942_ids_values_types_wkb_preserved=True,source_discoverable_without_manual_copy=True,refresh_byte_idempotent=True,prior_published_fixture_preserved=True,
   quality=json.loads((root/'metadata/quality_manifest.json').read_text()),provenance_input_count=len(json.loads((root/'metadata/source_manifest.json').read_text())['inputs']))
 (runtime/'execution.json').write_text(json.dumps(report,indent=2,default=str)+'\n')

@@ -36,7 +36,8 @@ from shapely.geometry import mapping, shape
 
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.source_manifest import load_resolved_source_manifest, prebuilt_output_keys
+from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
@@ -170,7 +171,7 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     return captures
 
 
-def provenance(captures: dict) -> dict:
+def provenance(captures: dict, *, prebuilt_body: bytes | None = None) -> dict:
     # Validate the complete original capture bundle before any canonical candidate writes.
     for name,url in URLS.items(): validate_receipt(*captures[name],url)
     if b'/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip' not in captures['fws_download'][0]:
@@ -198,13 +199,24 @@ def provenance(captures: dict) -> dict:
         'license_review_required':'Preserve official use constraints; maintainer acceptance required before release.',
         'transformations':[{'operation':'decode_original_shapefile','preserved':'All eight DBF columns, decoded values and original physical declarations/decimal bytes (retained in the raw ZIP), native NAD83 coordinates and original shapefile FID under proposed __source_fid. Complete ZIP and25members retained.',
             'repair_or_projection':False,'mapping_approval':'not established; full published candidate compatibility and original FID/OBJECTID/id crosswalk remain unapproved'}],
-        'unsupported_output_formats':{'geoparquet':'Observed generic conversion adds an unapproved bbox column and changes field/nullability metadata. This adapter supplies its complete native typed GeoParquet; generic regeneration remains quarantined pending output contract acceptance.',
-            'shapefile_zip':'The full original producer archive is retained in raw/. Regenerated DBF loses the proposed explicit original source FID or renames it; no regenerated mapping approval.',
+        'unsupported_output_formats':{'shapefile_zip':'The full original producer archive is retained in raw/. Regenerated DBF loses the proposed explicit original source FID or renames it; no regenerated mapping approval.',
             'pmtiles':'Tile reprojection and quantization alter native geometry. No visualization mapping approved.'}}
 
+    if prebuilt_body is not None:
+        manifest['prebuilt_output_policy']=native_prebuilt_policy(prebuilt_body)
+    validate_output_policy(manifest)
     validate_release_provenance(manifest)
     return manifest
 
+
+
+def native_prebuilt_policy(body: bytes) -> dict:
+    """Capability pin, not source/contract/release acceptance or a format ban."""
+    policy={'schema_version':1,'formats':{'geoparquet':{
+        'reason':'Observed generic conversion adds bbox and changes field/nullability metadata. Preserve this complete native source-typed GeoParquet without generic regeneration; independent mapping and release approvals remain mandatory.',
+        'objects':[{'path':f'geoparquet/{SLUG}.parquet','sha256':sha(body),'bytes':len(body)}]}}}
+    validate_output_policy({'prebuilt_output_policy':policy})
+    return policy
 
 def processing_identity() -> dict:
     """Installed source, lock/project, Python, Python distributions and native engines."""
@@ -327,6 +339,13 @@ def typed_table(rows: list[dict], audit: dict) -> pa.Table:
     return table.replace_schema_metadata({b'geo':encode(geo)})
 
 
+
+def derive_native_parquet_bytes(rows: list[dict], audit: dict) -> bytes:
+    """Fresh canonical reference for policy pins; original materialization writer is unchanged."""
+    output=pa.BufferOutputStream()
+    pq.write_table(typed_table(rows,audit),output,compression='zstd')
+    return output.getvalue().to_pybytes()
+
 def write_geopackage(path: Path, rows: list[dict]) -> None:
     with fiona.open(path,'w',driver='GPKG',layer=SLUG,crs='EPSG:4269',
                     schema={'properties':SCHEMA,'geometry':'Unknown'}) as stream:
@@ -377,11 +396,13 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     if not expected.issubset(actual) or actual-expected-allowed_derivatives:
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
-    expected_manifest=provenance(cached)
+    expected_manifest=provenance(cached,prebuilt_body=derive_native_parquet_bytes(rows,audit))
     if any(cached[name][0]!=captures[name][0] for name in URLS):
         raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
+    validate_output_policy(manifest)
     validate_release_provenance(manifest)
+    prebuilt_output_keys(manifest,storage,prefix,'geoparquet')
     for relative in ('metadata/source/source_manifest.json',
                      'metadata/source/version_'+sha((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'):
         snapshot=root/relative
@@ -522,6 +543,8 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
             capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
             version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
+            expected_prebuilt=derive_native_parquet_bytes(rows,audit)
+            manifest=provenance(captures,prebuilt_body=expected_prebuilt)
             cached=reuse_existing_candidate(storage,prefix,version,records,fingerprint,rows,audit,captures,identity,members)
             if cached is not None:return cached
             geopackage = directory / f'{SLUG}.gpkg'
@@ -545,6 +568,8 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
                 'geometry': mapping(shapely.from_wkb(r['geometry']))}) for r in pq.read_table(parquet).to_pylist()))
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
+            if parquet.read_bytes()!=expected_prebuilt:
+                raise CBRSQuarantineError('canonical_prebuilt_artifact_bytes_disagree_with_original_reconstruction')
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
             manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)

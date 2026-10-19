@@ -258,7 +258,7 @@ class CBRSTests(unittest.TestCase):
                 try:s.commit_complete_candidate(storage,prefix,{'geopackage/winner.gpkg':b'valid synthetic winning object'}, {'status':'synthetic_not_approved'})
                 except Exception as exc:failures.append(exc)
                 finally:winner_done.set()
-            with patch.object(s,'acquire',return_value=captures),patch.object(s,'processing_identity',return_value=identity),patch.object(s,'inspect_archive',return_value=([],{},{})),patch.object(s,'_quarantine_existing_candidate_locked',side_effect=paused_detach):
+            with patch.object(s,'acquire',return_value=captures),patch.object(s,'processing_identity',return_value=identity),patch.object(s,'inspect_archive',return_value=([],{},{})),patch.object(s,'derive_native_parquet_bytes',return_value=b'synthetic-control-flow-only'),patch.object(s,'_quarantine_existing_candidate_locked',side_effect=paused_detach):
                 a=threading.Thread(target=stale_refresh);a.start();self.assertTrue(at_detach.wait(10))
                 b=threading.Thread(target=valid_winner);b.start();self.assertTrue(winner_started.wait(10))
                 self.assertFalse(winner_done.wait(0.1));self.assertTrue((target/'geopackage/old.gpkg').exists())
@@ -269,5 +269,35 @@ class CBRSTests(unittest.TestCase):
             self.assertEqual(json.loads((target/'metadata/cbrs_units_candidate_ready.json').read_bytes())['status'],'synthetic_not_approved')
             retained=list(Path(d,'_quarantine',s.SLUG,'versions').glob('*/candidate'))
             self.assertEqual(len(retained),1);self.assertEqual(s.candidate_inventory(retained[0]),old)
+
+
+    def test_native_prebuilt_capability_is_closed_and_preserves_exact_prior_bytes(self):
+        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        with tempfile.TemporaryDirectory() as d:
+            rows,audit,_=s.inspect_archive(captures['official_zip'][0],Path(d))
+            body=s.derive_native_parquet_bytes(rows,audit)
+        self.assertEqual(len(body),6555616)
+        self.assertEqual(s.sha(body),'5f5155eb565c4b566948d4e11e2a946ced98ef48ea0b9682c880315566e93b5b')
+        manifest=s.provenance(captures,prebuilt_body=body)
+        self.assertNotIn('geoparquet',manifest['unsupported_output_formats'])
+        self.assertEqual(set(manifest['unsupported_output_formats']),{'shapefile_zip','pmtiles'})
+        self.assertEqual(manifest['prebuilt_output_policy']['schema_version'],1)
+        self.assertEqual(manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'],
+            [{'path':'geoparquet/cbrs-units-2.parquet','sha256':s.sha(body),'bytes':len(body)}])
+        self.assertFalse(manifest['approved'])
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);prefix='test/test/v0.0.0-native'
+            storage.write_key(prefix+'/geoparquet/cbrs-units-2.parquet',body)
+            self.assertEqual(s.prebuilt_output_keys(manifest,storage,prefix,'geoparquet'),[prefix+'/geoparquet/cbrs-units-2.parquet'])
+            storage.write_key(prefix+'/geoparquet/extra.parquet',b'unapproved shard')
+            with self.assertRaisesRegex(ValueError,'roster'):s.prebuilt_output_keys(manifest,storage,prefix,'geoparquet')
+
+    def test_invalid_native_capability_fails_before_canonical_namespace(self):
+        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        bad={'schema_version':True,'formats':{'geoparquet':{'reason':'invalid bool version','objects':[]}}}
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'acquire',return_value=captures),patch.object(s,'native_prebuilt_policy',return_value=bad):
+            with self.assertRaisesRegex(ValueError,'prebuilt_output_policy'):
+                s.stage_cbrs_units_candidate(StagingStorageResource(local_dir=d),capture_dir=CAPTURE)
+            self.assertFalse(Path(d,s.SLUG).exists())
 
 if __name__=='__main__':unittest.main()
