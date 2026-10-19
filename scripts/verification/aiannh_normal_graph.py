@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import importlib
 import os
 import subprocess
 from pathlib import Path
@@ -21,7 +22,6 @@ from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_schedule,
     census_bureau_aiannh_areas,
 )
-from dagster_hifld.definitions import defs
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import aiannh
@@ -42,9 +42,14 @@ def main():
         os.environ.pop(variable, None)
     os.environ.update(DAGSTER_HOME=str(home), HIFLD_STAGING_DIR=str(staging),
                       HIFLD_DATASETS_DIR=str(published), CRAWL4_AI_BASE_DIRECTORY=str(root / 'crawl'))
-    source = StagingStorageResource(local_dir=str(staging), use_local=True)
-    destination = PublishedStorageResource(local_dir=str(published), use_local=True)
-    resources = {'staging_storage': source, 'published_storage': destination}
+    # The registered Definitions bind resources when imported. Load them only
+    # after local environment configuration, then execute their own resources
+    # unchanged; replacing bound resources by reference breaks subset resolution.
+    defs = importlib.import_module('dagster_hifld.definitions').defs
+    source = defs.resources['staging_storage']
+    destination = defs.resources['published_storage']
+    assert source.use_local and source.local_dir == str(staging) and not source.bucket
+    assert destination.use_local and destination.local_dir == str(published) and not destination.bucket
     code_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     report = {'approved': False, 'scope': 'registered normal graph; isolated local working draft',
               'code_commit': code_commit, 'dependency': 'c7343b802966c566e8f6088bf31f19081b2a0cde',
@@ -64,7 +69,7 @@ def main():
         assert list(job.graph.node_dict) == [census_bureau_aiannh_areas.op.name]
         config = {'ops': {census_bureau_aiannh_areas.op.name: {'config': {
             'archive_path': str(args.archive.resolve()), 'code_commit': code_commit, 'vintage': 2023}}}}
-        result = job.execute_in_process(instance=instance, resources=resources, run_config=config)
+        result = job.execute_in_process(instance=instance, run_config=config)
         assert result.success
         candidate = result.output_for_node(census_bureau_aiannh_areas.op.name)
         report.update(candidate=candidate)
@@ -75,7 +80,7 @@ def main():
         assert len(source_records.read_bytes().splitlines()) == 862
         assert (version_path / f'raw/{aiannh.ARCHIVE_NAME}').read_bytes() == args.archive.read_bytes()
         before = snapshot(version_path)
-        repeated = job.execute_in_process(instance=instance, resources=resources, run_config=config)
+        repeated = job.execute_in_process(instance=instance, run_config=config)
         assert repeated.success and snapshot(version_path) == before
         report['runs'].append({'step': 'registered_source_idempotent_rerun', 'job': job.name,
                                'run_id': repeated.run_id, 'success': repeated.success})
@@ -88,7 +93,7 @@ def main():
         sentinel.parent.mkdir(parents=True, exist_ok=True)
         sentinel.write_bytes(b'PREEXISTING LOCAL FIXTURE; no Census acceptance')
         published_before = snapshot(published)
-        result = graph_job.execute_in_process(instance=instance, resources=resources, partition_key=partition,
+        result = graph_job.execute_in_process(instance=instance, partition_key=partition,
                                              asset_selection=list(keys), raise_on_error=False)
         failures = {event.step_key: event.event_specific_data.error.to_string() for event in result.get_step_failure_events()}
         report['runs'].append({'step': 'normal_combined_publish_graph', 'job': graph_job.name,
