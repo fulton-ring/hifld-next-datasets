@@ -13,6 +13,7 @@ from dagster import (
 )
 
 from dagster_hifld.faa_airspace import ingest_candidate
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
@@ -51,9 +52,12 @@ _AVIATION_BASE = (
 )
 def faa_airspace_boundaries(context, staging_storage: StagingStorageResource) -> dict:
     capture_dir = context.op_config.get("capture_dir", "")
-    return ingest_candidate(
+    result = ingest_candidate(
         staging_storage, pathlib.Path(capture_dir) if capture_dir else None
     )
+    key = build_publish_partition_key(result["dataset_slug"], result["file_slug"], result["version"])
+    context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [key])
+    return {**result, "partition_key": key}
 
 
 
