@@ -39,6 +39,26 @@ def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
+def content_derived_version(source_record_sha256: str, source_geometry_sha256: str,
+                            source_schema_sha256: str,
+                            identity: Mapping[str, object]) -> str:
+    """Return the immutable candidate version for one source/code identity."""
+    fingerprint = _sha(_canonical({
+        "source_record_sha256": source_record_sha256,
+        "source_geometry_sha256": source_geometry_sha256,
+        "source_schema_sha256": source_schema_sha256,
+        "processing_identity": identity,
+    }))
+    return "v" + fingerprint[:32]
+
+
+def candidate_prefix(dataset_slug: str, file_slug: str, version: str) -> str:
+    """Build the storage prefix from the candidate version, never the run ID."""
+    if not dataset_slug or not file_slug or not version:
+        raise ValueError("invalid_candidate_prefix")
+    return f"{dataset_slug}/{file_slug}/{version}"
+
+
 def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
                 *, max_bytes: int = 128 * 1024 * 1024) -> tuple[bytes, dict[str, object]]:
     """Persist complete GET decoded and wire bodies plus a hash-pinned receipt."""

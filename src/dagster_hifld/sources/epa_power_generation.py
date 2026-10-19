@@ -29,7 +29,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.sources.epa_frs_common import (
-    capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.output_policy import validate_output_policy
@@ -321,7 +321,6 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
 
     identity = _code_identity()
     parquet_body = _parquet_bytes(fields, extracted["features"])
-    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     source_objects = {"geoparquet/epa-frs-eia-860-power-generation-facilities-by-source.parquet":{"bytes":len(parquet_body),"sha256":_sha(parquet_body)}}
     manifest = {
       "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS/EIA-860 power generation layer. EPA service describes EIA data vintage as June 2014; currentness and successor decision are pending.",
@@ -336,13 +335,10 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
     audit = {**extracted["audit"],"source_fields":fields,"official_layer_name":LAYER_NAME,"arcgis_item_id":ITEM_ID,"service_modified_is_not_release_date":True,"source_vintage":SOURCE_VINTAGE,"source_vintage_note":SOURCE_VINTAGE_NOTE,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    version_fingerprint = _sha(_canonical({
-        "source_record_sha256": audit["source_record_sha256"],
-        "source_geometry_sha256": audit["source_geometry_sha256"],
-        "source_schema_sha256": audit["source_schema_sha256"],
-        "processing_identity": identity,
-    }))
-    version = "v" + version_fingerprint[:32]
+    version = content_derived_version(audit["source_record_sha256"],
+                                      audit["source_geometry_sha256"],
+                                      audit["source_schema_sha256"], identity)
+    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
