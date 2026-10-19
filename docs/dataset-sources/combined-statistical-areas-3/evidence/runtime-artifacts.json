@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "classification": "Full runtime artifacts preserved separately; captures are candidates, not accepted releases",
+  "artifacts": [
+    {
+      "path": "/workspace/work/hifld-coordinator/40/official2024_nationgeo.zip",
+      "bytes": 271963133,
+      "sha256": "68f517f0ef6ab6bcbc2e89102fa960fd1c7c7a130039a1aee2f475319917aeb4"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/baseline.parquet",
+      "bytes": 8907462,
+      "sha256": "e43308a6a7a375ee2339be47d5b1fbcb5443de6a9842f54392029bc841f81c2c"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/verified-materialization.log",
+      "bytes": 12909,
+      "sha256": "65375c2522f91ec13ac17376c05998e6166f61ba9ae4806aeed3dac950939cf5"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/full-suite-76df42c.log",
+      "bytes": 18604,
+      "sha256": "dd099f482e9b717feaf36f57699bfa8e1980e746ba9ab8d096b8692873649cbb"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/focused-final.log",
+      "bytes": 1474,
+      "sha256": "649a412268550b21a7a6e319ee0fdff034c0e53901224eb08e7188d2a821d697"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/materialization.log",
+      "bytes": 9770,
+      "sha256": "afe980974765dec850eae96eacfca24f26bbcf357cd331852ba378aa6d0344ff"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/final-materialization.log",
+      "bytes": 8553,
+      "sha256": "69347b258b793720b2acc6a2c20eac5e9558085924a7ff25d61bf35f79ebe26a"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/native-comparison.log",
+      "bytes": 300,
+      "sha256": "ac76815933ec5937657582340d30e6a04a40660f4c2b37ae75c5288e3834c378"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/postverify.py",
+      "bytes": 1851,
+      "sha256": "e1a4393fdbf8e7f586e1c3505bbc9f3f117689410370b926fe98f24caf9e743d"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/native_compare.py",
+      "bytes": 1349,
+      "sha256": "2e4235631293248fe1f48aa5e44efa327b18ee517c286c5a74aae0ddcb77427e"
+    }
+  ]
+}

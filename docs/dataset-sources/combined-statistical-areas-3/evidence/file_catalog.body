@@ -1,0 +1,66 @@
+{
+  "description": "Combined Statistical Areas (CSAs) consist of two or more adjacent CBSAs that have substantial employment interchange. The CBSAs that combine to create a CSA retain separate identities within the larger CSA. Because CSAs represent groupings of metropolitan and/or micropolitan statistical areas, they should not be ranked or compared with individual metropolitan and micropolitan statistical areas.Download:\u00a0https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_nationgeo.gdb.zip\u00a0Layer: Combined_Statistical_AreaMetadata:\u00a0https://meta.geo.census.gov/data/existing/decennial/GEO/GPMB/TIGERline/Current_19115/series_tl_2023_csa.shp.iso.xml",
+  "hifld:tags": {
+    "categories": [
+      "Geonames",
+      "Government"
+    ],
+    "inventory_name": "combined-statistical-areas-3"
+  },
+  "id": "hifld/combined-statistical-areas-3/combined-statistical-areas-3",
+  "keywords": [
+    "Geonames",
+    "Government"
+  ],
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/combined-statistical-areas-3/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/combined-statistical-areas-3/combined-statistical-areas-3/catalog.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/combined-statistical-areas-3/combined-statistical-areas-3/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/combined-statistical-areas-3/combined-statistical-areas-3/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/combined-statistical-areas-3/combined-statistical-areas-3/v1.0.0/collection.json",
+      "rel": "child",
+      "title": "Combined Statistical Areas",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/combined-statistical-areas-3/combined-statistical-areas-3/v1.0.0/collection.json",
+      "rel": "child",
+      "title": "Combined Statistical Areas",
+      "type": "application/json"
+    },
+    {
+      "rel": "latest-version",
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/combined-statistical-areas-3/combined-statistical-areas-3/v1.0.0/collection.json",
+      "type": "application/json",
+      "title": "v1.0.0"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "title": "Combined Statistical Areas",
+  "type": "Catalog"
+}

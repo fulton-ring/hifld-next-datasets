@@ -1,0 +1,65 @@
+{
+  "layer_name": "Combined_Statistical_Area",
+  "crs": "EPSG:4269",
+  "encoding": "UTF-8",
+  "fields": [
+    "GEOID",
+    "GEOIDFQ",
+    "NAMELSAD",
+    "LSAD",
+    "ALAND",
+    "AWATER",
+    "INTPTLAT",
+    "INTPTLON"
+  ],
+  "dtypes": [
+    "object",
+    "object",
+    "object",
+    "object",
+    "float64",
+    "float64",
+    "object",
+    "object"
+  ],
+  "ogr_types": [
+    "OFTString",
+    "OFTString",
+    "OFTString",
+    "OFTString",
+    "OFTReal",
+    "OFTReal",
+    "OFTString",
+    "OFTString"
+  ],
+  "ogr_subtypes": [
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone"
+  ],
+  "fid_column": "OBJECTID",
+  "geometry_name": "SHAPE",
+  "geometry_type": "MultiPolygon",
+  "features": 184,
+  "total_bounds": [
+    -124.703541,
+    17.831509,
+    -65.422706,
+    49.000737
+  ],
+  "driver": "OpenFileGDB",
+  "capabilities": {
+    "random_read": true,
+    "fast_set_next_by_index": true,
+    "fast_spatial_filter": true,
+    "fast_feature_count": true,
+    "fast_total_bounds": true
+  },
+  "layer_metadata": null,
+  "dataset_metadata": null
+}

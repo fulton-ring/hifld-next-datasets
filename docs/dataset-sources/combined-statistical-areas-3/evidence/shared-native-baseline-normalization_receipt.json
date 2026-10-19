@@ -1,0 +1,226 @@
+{
+  "acceptance": "not_established_by_normalization",
+  "adapter": "native-physical-values-v1",
+  "code_sha256": "a11e68f3d838bc0384fd7184bedb6834d2a8ab56a51431d27e4daa44b35783e5",
+  "columns": [
+    "OBJECTID",
+    "GEOID",
+    "GEOIDFQ",
+    "NAMELSAD",
+    "LSAD",
+    "ALAND",
+    "AWATER",
+    "INTPTLAT",
+    "INTPTLON"
+  ],
+  "limits": {
+    "batch_rows": 4,
+    "max_batch_bytes": 16777216,
+    "max_metadata_bytes": 16777216,
+    "max_nested_values_per_record": 100000,
+    "max_objects": 4096,
+    "max_output_bytes": 4294967296,
+    "max_record_bytes": 33554432,
+    "max_row_group_bytes": 134217728
+  },
+  "lineage": {
+    "bytes": 52084,
+    "path": "normalization_lineage.jsonl",
+    "rows": 184,
+    "sha256": "635c3edcaa266d99f00f87a8be4483357bc7eca076a421a73c0e1424c2ee9dcc"
+  },
+  "normalized": {
+    "adapter": "typed-geojson-feature-jsonl-v1",
+    "bytes": 50651278,
+    "path": "normalized_records.jsonl",
+    "sha256": "18a47ec5dd464763c47e09f9bf89caa6804a09cf4cd3f487b0304bfae6f88819"
+  },
+  "nullable": {
+    "ALAND": true,
+    "AWATER": true,
+    "GEOID": true,
+    "GEOIDFQ": true,
+    "INTPTLAT": true,
+    "INTPTLON": true,
+    "LSAD": true,
+    "NAMELSAD": true,
+    "OBJECTID": false,
+    "SHAPE": true,
+    "_gpkg_storage_fid": false
+  },
+  "objects": [
+    {
+      "bytes": 20770816,
+      "key": "combined-statistical-areas-3.gpkg",
+      "physical_schema_sha256": "d2f1b6264b90948af5d05f9e245ed33021d9b19d3a19c7e421b7b0b6302a86c3",
+      "rows_observed": 184,
+      "sha256": "e42ee037b7e6009e6d4f515d43cd990d71c6950b4803e411194a37eee7f9704b"
+    }
+  ],
+  "parameters": {
+    "format": "geopackage",
+    "geometry_column": "SHAPE",
+    "layer": "Combined_Statistical_Area",
+    "schema_version": 1
+  },
+  "physical_schema": {
+    "crs_wkt": "GEOGCS[\"NAD83\",DATUM[\"North_American_Datum_1983\",SPHEROID[\"GRS 1980\",6378137,298.257222101,AUTHORITY[\"EPSG\",\"7019\"]],AUTHORITY[\"EPSG\",\"6269\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AXIS[\"Latitude\",NORTH],AXIS[\"Longitude\",EAST],AUTHORITY[\"EPSG\",\"4269\"]]",
+    "driver": "GPKG",
+    "feature_id": {
+      "driver_type": "string",
+      "physical_column": "_gpkg_storage_fid"
+    },
+    "fiona_schema": {
+      "geometry": "MultiPolygon",
+      "properties": {
+        "ALAND": "float",
+        "AWATER": "float",
+        "GEOID": "str:3",
+        "GEOIDFQ": "str:12",
+        "INTPTLAT": "str:11",
+        "INTPTLON": "str:12",
+        "LSAD": "str:2",
+        "NAMELSAD": "str:100",
+        "OBJECTID": "int"
+      }
+    },
+    "geometry": [
+      "SHAPE",
+      4269,
+      "MULTIPOLYGON",
+      0,
+      0
+    ],
+    "layer": "Combined_Statistical_Area",
+    "reader": "fiona+sqlite-raw",
+    "sqlite_columns": [
+      [
+        0,
+        "_gpkg_storage_fid",
+        "INTEGER",
+        1,
+        null,
+        1,
+        0
+      ],
+      [
+        1,
+        "SHAPE",
+        "MULTIPOLYGON",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        2,
+        "OBJECTID",
+        "INTEGER",
+        1,
+        null,
+        0,
+        0
+      ],
+      [
+        3,
+        "GEOID",
+        "TEXT(3)",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        4,
+        "GEOIDFQ",
+        "TEXT(12)",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        5,
+        "NAMELSAD",
+        "TEXT(100)",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        6,
+        "LSAD",
+        "TEXT(2)",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        7,
+        "ALAND",
+        "REAL",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        8,
+        "AWATER",
+        "REAL",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        9,
+        "INTPTLAT",
+        "TEXT(11)",
+        0,
+        null,
+        0,
+        0
+      ],
+      [
+        10,
+        "INTPTLON",
+        "TEXT(12)",
+        0,
+        null,
+        0,
+        0
+      ]
+    ]
+  },
+  "policy": {
+    "coverage_fields": [
+      "GEOID"
+    ],
+    "crs": "EPSG:4269",
+    "geometry": true,
+    "geometry_nullable": false,
+    "id_fields": [
+      "OBJECTID"
+    ],
+    "schema_version": 1,
+    "status": "proposed"
+  },
+  "policy_sha256": "0c13ef850c6427af50d31d47cd71effcdf1d94fbc70ab6a94de25e8ae3e91342",
+  "reader_versions": {
+    "fiona": "1.10.1",
+    "gdal": "3.9.2",
+    "geos": "3.13.1",
+    "proj": "9.5.1",
+    "pyarrow": "23.0.1",
+    "pyproj": "3.7.2",
+    "shapely": "2.1.2"
+  },
+  "reason_codes": [],
+  "receipt_id": "41627d134dd0e501304c9a02f81939399b50ed81c41de2cbc4ae736effc11a06",
+  "rows": 184,
+  "schema_version": 1,
+  "status": "complete"
+}

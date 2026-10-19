@@ -1,0 +1,464 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+ <head>
+  <title>Index of /geo/tiger/TGRGDB24</title>
+ </head>
+ <body>
+<!-- GOV BANNER AND SIMPLE HEADER LAST UPDATED 11/17/2021 -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script src="/main/uswds/uswds-2.12.0/js/uswds-init.min.js"></script>
+    <script async type="text/javascript" id="_fed_an_ua_tag" src="/main/javascript/dap/Universal-Federated-Analytics-Min.js?agency=DOC"></script>
+   <!-- <link rel="stylesheet" href="https://www.census.gov/main/uswds/uswds-2.12.0/css/uswds.min.css" /> -->
+  <!--  <link rel="stylesheet" href="https://www.census.gov/main/.in/css/all_header_styles.css" /> -->
+  <link rel="stylesheet" href="/main/css/all_header_styles.css" />
+   
+   
+  </head>
+  <body>
+    <script src="/main/uswds/uswds-2.12.0/js/uswds.min.js"></script>
+    <section class="usa-banner" aria-label="Official government website">
+        <div class="usa-accordion">
+          <header class="usa-banner__header">
+            <div class="usa-banner__inner">
+              <div class="grid-col-auto">
+                <img
+                  class="usa-banner__header-flag"
+                  src="/main/uswds/uswds-2.12.0/img/us_flag_small.png"
+                  alt="U.S. flag"
+                />
+              </div>
+              <div class="grid-col-fill tablet:grid-col-auto">
+                <p class="usa-banner__header-text">
+                  An official website of the United States government
+                </p>
+                <!-- <p class="usa-banner__header-action" aria-hidden="true">
+                  Here's how you know
+                </p>
+              </div>
+              <button
+                class="usa-accordion__button usa-banner__button"
+                aria-expanded="false"
+                aria-controls="gov-banner-default"
+              >
+                <span class="usa-banner__button-text">Here's how you know</span>
+              </button>
+            </div>
+          </header>
+          <div class="usa-banner__content usa-accordion__content" id="gov-banner-default">
+            <div class="grid-row grid-gap-lg">
+              <div class="usa-banner__guidance tablet:grid-col-6">
+                <img
+                  class="usa-banner__icon usa-media-block__img"
+                  src="https://www.census.gov/main/uswds/uswds-2.12.0/img/icon-dot-gov.svg"
+                  role="img"
+                  alt=""
+                  aria-hidden="true"
+                />
+                <div class="usa-media-block__body">
+                  <p>
+                    <strong> Official websites use .gov </strong>
+                    <br />
+                    A <strong>.gov</strong> website belongs to an official government
+                    organization in the United States.
+                  </p>
+                </div>
+              </div>
+              <div class="usa-banner__guidance tablet:grid-col-6">
+                <img
+                  class="usa-banner__icon usa-media-block__img"
+                  src="https://www.census.gov/main/uswds/uswds-2.12.0/img/icon-https.svg"
+                  role="img"
+                  alt=""
+                  aria-hidden="true"
+                />
+                <div class="usa-media-block__body">
+                  <p>
+                    <strong> Secure .gov websites use HTTPS </strong>
+                    <br />
+                    A <strong>lock</strong> (
+                    <span class="icon-lock"
+                      ><svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="52"
+                        height="64"
+                        viewBox="0 0 52 64"
+                        class="usa-banner__lock-image"
+                        role="img"
+                        aria-labelledby="banner-lock-title-default banner-lock-description-default"
+                        focusable="false"
+                      >
+                        <title id="banner-lock-title-default">Lock</title>
+                        <desc id="banner-lock-description-default">A locked padlock</desc>
+                        <path
+                          fill="#000000"
+                          fill-rule="evenodd"
+                          d="M26 0c10.493 0 19 8.507 19 19v9h3a4 4 0 0 1 4 4v28a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V32a4 4 0 0 1 4-4h3v-9C7 8.507 15.507 0 26 0zm0 8c-5.979 0-10.843 4.77-10.996 10.712L15 19v9h22v-9c0-6.075-4.925-11-11-11z"/>
+                        </svg></span>
+                    ) or <strong>https://</strong> means you’ve safely connected to
+                    the .gov website. Share sensitive information only on official,
+                    secure websites.
+                  </p> -->
+                </div>
+              </div>
+            </div>
+         <!-- </div>
+        </div>-->
+      </section>
+
+
+<!-- Adding original census.gov css -->
+<!-- 
+<link rel="stylesheet" href="https://www.census.gov/main/css/_new/bootstrap.css" class="cb-main-support global-file">
+<link rel="stylesheet" href="https://www.census.gov/main/css/_new/base.css" class="cb-main-support global-file">
+<link rel="stylesheet" href="https://www.census.gov/main/css/_new/extra.css" class="cb-main-support global-file">
+<link rel="stylesheet" href="https://www.census.gov/main/css/_new/typeahead.css" class="cb-main-support global-file">
+<link rel="stylesheet" href="https://www.census.gov/main/css/_new/header.css" class="cb-main-support global-file">
+<link rel="stylesheet" href="https://www.census.gov/main/css/_new/search.css" class="cb-main-support global-file">
+ -->
+<!--
+<style id="antiClickjack">
+    body {
+        display: none !important
+    }
+</style>
+-->
+<!--
+<script type="text/javascript" src="/main/javascript/clickjack.js"></script>
+-->
+<script src="/main/responsive-header/jquery/jquery.js"
+    class="cb-main-support global-file"></script>
+<!-- <script src="https://www.census.gov/main/javascript/jquery-ui-1.13.2/jquery-ui.js" class="cb-main-support global-file"></script> -->
+
+<!-- Check for jquery conflict -->
+<script type="text/javascript">
+
+	$.ajax({
+		type : 'get',
+		url : '/main/app-config/header/adobe-launch.txt',	
+		dataType: 'text',            	
+		success : function(data){		 		
+	                var adobeLaunchScript = document.createElement("script");
+	                adobeLaunchScript.setAttribute("src",data);
+	                document.head.appendChild(adobeLaunchScript);
+	            },
+	    error : function(xhr, errorText, errorMessage){
+	                console.log('adobe-launch URL recognition failed: ' + errorText);
+	            }
+	});
+
+    $acn = jQuery.noConflict();
+    if (typeof jQuery === 'undefined' || typeof $ === 'undefined') {
+        jQuery = $acn;
+        $ = $acn;
+    }
+    $(function () {
+        $('.cb-header-skip-nav').click(function () {
+            $('#cb-after-header-anchor').focus();
+        });
+    });
+</script>
+
+<script src="/main/responsive-header/bootstrap-custom/js/bootstrap.js"
+    class="cb-main-support global-file"></script>
+<!-- <script src="https://www.census.gov/main/responsive-header/js/typeahead.js" class="cb-main-support global-file"></script> -->
+
+
+<style type="text/css">
+    header.hdr-primary,
+    header.hdr-primary>nav {
+        display: flex !important;
+        align-items: center !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: 64px !important;
+        background-color: #ffffff !important;
+       /* border-color: #112e51 !important;*/
+    }
+
+    header.hdr-primary>nav>div {
+        box-sizing: border-box !important;
+        height: 36.62px !important;
+        font-size: 20px !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.02em !important;
+        line-height: 30px !important;
+        white-space: nowrap !important;
+        vertical-align: baseline !important;
+        padding: 0 0 0 16px !important;
+        margin: 0 !important;
+        min-width: 150px !important;
+    }
+
+    header.hdr-primary>nav>div>a,
+    header.hdr-primary>nav>div>a>img {
+        padding: 0 !important;
+        margin: 0 !important;
+        border-style: none !important;
+        background: transparent !important;
+        text-decoration: none !important;
+    }
+
+    header.hdr-primary>nav>div>a {
+        box-sizing: border-box !important;
+        cursor: pointer !important;
+        text-decoration: none !important;
+    }
+
+    header.hdr-primary>nav>div>a>img {
+        width: 86px !important;
+        height: 33.62px !important;
+        margin-left: 15px !important;
+    }
+    hr.blue-line {
+   /* border-top-width: 2px;*/
+   /* border-color: #d0dce1;*/
+    margin: 0px;
+    border-bottom: #d0dce1 1px solid;
+    
+    }
+    
+</style>
+<button class="cb-header-skip-nav sr-only sr-only-focusable">Skip to main content</button>
+<header class="hdr-primary">
+    <nav>
+        <!--  <div><a href="https://www.census.gov" id="census-home-link"><img src="https://data.census.gov/cedsci/img/census-logo-white.25c8cb29.svg" alt="United States Census Bureau" title="U.S. Census Bureau"></a></div> 
+          <div><a href="https://www.census.gov" id="census-home-link"><img src="https://www.census.gov/main/.in/USCENSUS_IDENTITY_SOLO_White_2in_TM.svg" alt="United States Census Bureau" title="U.S. Census Bureau"></a></div>
+    -->
+        <div><a href="https://www.census.gov" id="census-home-link"><img
+                    src="/main/img/USCENSUS_IDENTITY_SOLO_BLACK_1.5in_R_no_padding.svg"
+                    alt="United States Census Bureau" title="U.S. Census Bureau"></a></div>
+    </nav>
+</header>
+<hr class="blue-line">
+<a class="sr-only" tabindex="-1" id="cb-after-header-anchor">end of header</a>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"7e4353b0de94489d8c328f144e852cc3","spa":2}' crossorigin="anonymous"></script>
+</body>
+
+</html>
+  <table>
+   <tr><th valign="top"><img src="/icons/blank.gif" alt="[ICO]"></th><th><a href="?C=N;O=D">Name</a></th><th><a href="?C=M;O=A">Last modified</a></th><th><a href="?C=S;O=A">Size</a></th><th><a href="?C=D;O=A">Description</a></th></tr>
+   <tr><th colspan="5"><hr></th></tr>
+<tr><td valign="top"><img src="/icons/back.gif" alt="[PARENTDIR]"></td><td><a href="/geo/tiger/">Parent Directory</a></td><td>&nbsp;</td><td align="right">  - </td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_01_al.gdb.zip">tlgdb_2024_a_01_al.gdb.zip</a></td><td align="right">2024-08-07 17:16  </td><td align="right"> 87M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_01_al_edges.gdb.zip">tlgdb_2024_a_01_al_edges.gdb.zip</a></td><td align="right">2024-08-07 17:16  </td><td align="right">163M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_02_ak.gdb.zip">tlgdb_2024_a_02_ak.gdb.zip</a></td><td align="right">2024-08-08 08:26  </td><td align="right"> 41M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_02_ak_edges.gdb.zip">tlgdb_2024_a_02_ak_edges.gdb.zip</a></td><td align="right">2024-08-08 08:26  </td><td align="right"> 73M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_04_az.gdb.zip">tlgdb_2024_a_04_az.gdb.zip</a></td><td align="right">2024-08-08 08:27  </td><td align="right"> 67M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_04_az_edges.gdb.zip">tlgdb_2024_a_04_az_edges.gdb.zip</a></td><td align="right">2024-08-08 08:27  </td><td align="right">199M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_05_ar.gdb.zip">tlgdb_2024_a_05_ar.gdb.zip</a></td><td align="right">2024-08-08 08:27  </td><td align="right"> 75M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_05_ar_edges.gdb.zip">tlgdb_2024_a_05_ar_edges.gdb.zip</a></td><td align="right">2024-08-08 08:27  </td><td align="right">147M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_06_ca.gdb.zip">tlgdb_2024_a_06_ca.gdb.zip</a></td><td align="right">2024-08-08 08:28  </td><td align="right">216M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_06_ca_edges.gdb.zip">tlgdb_2024_a_06_ca_edges.gdb.zip</a></td><td align="right">2024-08-08 08:28  </td><td align="right">412M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_08_co.gdb.zip">tlgdb_2024_a_08_co.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right"> 69M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_08_co_edges.gdb.zip">tlgdb_2024_a_08_co_edges.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right">157M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_09_ct.gdb.zip">tlgdb_2024_a_09_ct.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right"> 21M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_09_ct_edges.gdb.zip">tlgdb_2024_a_09_ct_edges.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right"> 32M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_10_de.gdb.zip">tlgdb_2024_a_10_de.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right">7.5M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_10_de_edges.gdb.zip">tlgdb_2024_a_10_de_edges.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right"> 11M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_11_dc.gdb.zip">tlgdb_2024_a_11_dc.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right">1.6M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_11_dc_edges.gdb.zip">tlgdb_2024_a_11_dc_edges.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right">2.0M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_12_fl.gdb.zip">tlgdb_2024_a_12_fl.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right">115M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_12_fl_edges.gdb.zip">tlgdb_2024_a_12_fl_edges.gdb.zip</a></td><td align="right">2024-08-08 08:29  </td><td align="right">233M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_13_ga.gdb.zip">tlgdb_2024_a_13_ga.gdb.zip</a></td><td align="right">2024-08-08 08:30  </td><td align="right">106M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_13_ga_edges.gdb.zip">tlgdb_2024_a_13_ga_edges.gdb.zip</a></td><td align="right">2024-08-08 08:30  </td><td align="right">197M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_15_hi.gdb.zip">tlgdb_2024_a_15_hi.gdb.zip</a></td><td align="right">2024-08-08 08:30  </td><td align="right">8.6M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_15_hi_edges.gdb.zip">tlgdb_2024_a_15_hi_edges.gdb.zip</a></td><td align="right">2024-08-08 08:30  </td><td align="right"> 14M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_16_id.gdb.zip">tlgdb_2024_a_16_id.gdb.zip</a></td><td align="right">2024-08-08 08:30  </td><td align="right"> 59M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_16_id_edges.gdb.zip">tlgdb_2024_a_16_id_edges.gdb.zip</a></td><td align="right">2024-08-08 08:30  </td><td align="right">154M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_17_il.gdb.zip">tlgdb_2024_a_17_il.gdb.zip</a></td><td align="right">2024-08-08 08:31  </td><td align="right">101M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_17_il_edges.gdb.zip">tlgdb_2024_a_17_il_edges.gdb.zip</a></td><td align="right">2024-08-08 08:31  </td><td align="right">188M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_18_in.gdb.zip">tlgdb_2024_a_18_in.gdb.zip</a></td><td align="right">2024-08-08 08:31  </td><td align="right"> 65M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_18_in_edges.gdb.zip">tlgdb_2024_a_18_in_edges.gdb.zip</a></td><td align="right">2024-08-08 08:31  </td><td align="right">125M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_19_ia.gdb.zip">tlgdb_2024_a_19_ia.gdb.zip</a></td><td align="right">2024-08-08 08:31  </td><td align="right"> 54M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_19_ia_edges.gdb.zip">tlgdb_2024_a_19_ia_edges.gdb.zip</a></td><td align="right">2024-08-08 08:31  </td><td align="right">104M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_20_ks.gdb.zip">tlgdb_2024_a_20_ks.gdb.zip</a></td><td align="right">2024-08-08 08:32  </td><td align="right"> 53M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_20_ks_edges.gdb.zip">tlgdb_2024_a_20_ks_edges.gdb.zip</a></td><td align="right">2024-08-08 08:32  </td><td align="right">155M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_21_ky.gdb.zip">tlgdb_2024_a_21_ky.gdb.zip</a></td><td align="right">2024-08-08 08:32  </td><td align="right"> 88M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_21_ky_edges.gdb.zip">tlgdb_2024_a_21_ky_edges.gdb.zip</a></td><td align="right">2024-08-08 08:32  </td><td align="right">160M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_22_la.gdb.zip">tlgdb_2024_a_22_la.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 65M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_22_la_edges.gdb.zip">tlgdb_2024_a_22_la_edges.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right">117M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_23_me.gdb.zip">tlgdb_2024_a_23_me.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 35M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_23_me_edges.gdb.zip">tlgdb_2024_a_23_me_edges.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 53M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_24_md.gdb.zip">tlgdb_2024_a_24_md.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 38M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_24_md_edges.gdb.zip">tlgdb_2024_a_24_md_edges.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 74M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_25_ma.gdb.zip">tlgdb_2024_a_25_ma.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 37M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_25_ma_edges.gdb.zip">tlgdb_2024_a_25_ma_edges.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 71M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_26_mi.gdb.zip">tlgdb_2024_a_26_mi.gdb.zip</a></td><td align="right">2024-08-08 08:33  </td><td align="right"> 74M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_26_mi_edges.gdb.zip">tlgdb_2024_a_26_mi_edges.gdb.zip</a></td><td align="right">2024-08-08 08:34  </td><td align="right">146M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_27_mn.gdb.zip">tlgdb_2024_a_27_mn.gdb.zip</a></td><td align="right">2024-08-08 08:34  </td><td align="right"> 85M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_27_mn_edges.gdb.zip">tlgdb_2024_a_27_mn_edges.gdb.zip</a></td><td align="right">2024-08-08 08:34  </td><td align="right">160M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_28_ms.gdb.zip">tlgdb_2024_a_28_ms.gdb.zip</a></td><td align="right">2024-08-08 08:34  </td><td align="right"> 67M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_28_ms_edges.gdb.zip">tlgdb_2024_a_28_ms_edges.gdb.zip</a></td><td align="right">2024-08-08 08:34  </td><td align="right">129M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_29_mo.gdb.zip">tlgdb_2024_a_29_mo.gdb.zip</a></td><td align="right">2024-08-08 08:35  </td><td align="right">108M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_29_mo_edges.gdb.zip">tlgdb_2024_a_29_mo_edges.gdb.zip</a></td><td align="right">2024-08-08 08:35  </td><td align="right">252M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_30_mt.gdb.zip">tlgdb_2024_a_30_mt.gdb.zip</a></td><td align="right">2024-08-08 08:35  </td><td align="right"> 74M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_30_mt_edges.gdb.zip">tlgdb_2024_a_30_mt_edges.gdb.zip</a></td><td align="right">2024-08-08 08:35  </td><td align="right">161M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_31_ne.gdb.zip">tlgdb_2024_a_31_ne.gdb.zip</a></td><td align="right">2024-08-08 08:35  </td><td align="right"> 33M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_31_ne_edges.gdb.zip">tlgdb_2024_a_31_ne_edges.gdb.zip</a></td><td align="right">2024-08-08 08:35  </td><td align="right">105M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_32_nv.gdb.zip">tlgdb_2024_a_32_nv.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right"> 37M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_32_nv_edges.gdb.zip">tlgdb_2024_a_32_nv_edges.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right">105M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_33_nh.gdb.zip">tlgdb_2024_a_33_nh.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right"> 15M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_33_nh_edges.gdb.zip">tlgdb_2024_a_33_nh_edges.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right"> 29M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_34_nj.gdb.zip">tlgdb_2024_a_34_nj.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right"> 44M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_34_nj_edges.gdb.zip">tlgdb_2024_a_34_nj_edges.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right"> 73M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_35_nm.gdb.zip">tlgdb_2024_a_35_nm.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right"> 56M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_35_nm_edges.gdb.zip">tlgdb_2024_a_35_nm_edges.gdb.zip</a></td><td align="right">2024-08-08 08:36  </td><td align="right">149M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_36_ny.gdb.zip">tlgdb_2024_a_36_ny.gdb.zip</a></td><td align="right">2024-08-08 08:37  </td><td align="right">104M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_36_ny_edges.gdb.zip">tlgdb_2024_a_36_ny_edges.gdb.zip</a></td><td align="right">2024-08-08 08:37  </td><td align="right">153M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_37_nc.gdb.zip">tlgdb_2024_a_37_nc.gdb.zip</a></td><td align="right">2024-08-08 08:37  </td><td align="right">121M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_37_nc_edges.gdb.zip">tlgdb_2024_a_37_nc_edges.gdb.zip</a></td><td align="right">2024-08-08 08:37  </td><td align="right">203M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_38_nd.gdb.zip">tlgdb_2024_a_38_nd.gdb.zip</a></td><td align="right">2024-08-08 08:38  </td><td align="right"> 30M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_38_nd_edges.gdb.zip">tlgdb_2024_a_38_nd_edges.gdb.zip</a></td><td align="right">2024-08-08 08:38  </td><td align="right"> 85M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_39_oh.gdb.zip">tlgdb_2024_a_39_oh.gdb.zip</a></td><td align="right">2024-08-08 08:38  </td><td align="right"> 93M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_39_oh_edges.gdb.zip">tlgdb_2024_a_39_oh_edges.gdb.zip</a></td><td align="right">2024-08-08 08:38  </td><td align="right">174M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_40_ok.gdb.zip">tlgdb_2024_a_40_ok.gdb.zip</a></td><td align="right">2024-08-08 08:38  </td><td align="right"> 65M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_40_ok_edges.gdb.zip">tlgdb_2024_a_40_ok_edges.gdb.zip</a></td><td align="right">2024-08-08 08:38  </td><td align="right">182M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_41_or.gdb.zip">tlgdb_2024_a_41_or.gdb.zip</a></td><td align="right">2024-08-08 08:39  </td><td align="right"> 93M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_41_or_edges.gdb.zip">tlgdb_2024_a_41_or_edges.gdb.zip</a></td><td align="right">2024-08-08 08:39  </td><td align="right">167M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_42_pa.gdb.zip">tlgdb_2024_a_42_pa.gdb.zip</a></td><td align="right">2024-08-08 08:39  </td><td align="right">132M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_42_pa_edges.gdb.zip">tlgdb_2024_a_42_pa_edges.gdb.zip</a></td><td align="right">2024-08-08 08:39  </td><td align="right">218M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_44_ri.gdb.zip">tlgdb_2024_a_44_ri.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right">8.3M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_44_ri_edges.gdb.zip">tlgdb_2024_a_44_ri_edges.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right"> 14M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_45_sc.gdb.zip">tlgdb_2024_a_45_sc.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right"> 68M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_45_sc_edges.gdb.zip">tlgdb_2024_a_45_sc_edges.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right">107M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_46_sd.gdb.zip">tlgdb_2024_a_46_sd.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right"> 30M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_46_sd_edges.gdb.zip">tlgdb_2024_a_46_sd_edges.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right"> 73M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_47_tn.gdb.zip">tlgdb_2024_a_47_tn.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right">106M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_47_tn_edges.gdb.zip">tlgdb_2024_a_47_tn_edges.gdb.zip</a></td><td align="right">2024-08-08 08:40  </td><td align="right">144M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_48_tx.gdb.zip">tlgdb_2024_a_48_tx.gdb.zip</a></td><td align="right">2024-08-08 08:42  </td><td align="right">253M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_48_tx_edges.gdb.zip">tlgdb_2024_a_48_tx_edges.gdb.zip</a></td><td align="right">2024-08-08 08:42  </td><td align="right">587M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_49_ut.gdb.zip">tlgdb_2024_a_49_ut.gdb.zip</a></td><td align="right">2024-08-08 08:42  </td><td align="right"> 51M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_49_ut_edges.gdb.zip">tlgdb_2024_a_49_ut_edges.gdb.zip</a></td><td align="right">2024-08-08 08:42  </td><td align="right">115M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_50_vt.gdb.zip">tlgdb_2024_a_50_vt.gdb.zip</a></td><td align="right">2024-08-08 08:42  </td><td align="right"> 16M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_50_vt_edges.gdb.zip">tlgdb_2024_a_50_vt_edges.gdb.zip</a></td><td align="right">2024-08-08 08:42  </td><td align="right"> 34M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_51_va.gdb.zip">tlgdb_2024_a_51_va.gdb.zip</a></td><td align="right">2024-08-08 08:43  </td><td align="right">105M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_51_va_edges.gdb.zip">tlgdb_2024_a_51_va_edges.gdb.zip</a></td><td align="right">2024-08-08 08:43  </td><td align="right">244M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_53_wa.gdb.zip">tlgdb_2024_a_53_wa.gdb.zip</a></td><td align="right">2024-08-08 08:43  </td><td align="right"> 70M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_53_wa_edges.gdb.zip">tlgdb_2024_a_53_wa_edges.gdb.zip</a></td><td align="right">2024-08-08 08:43  </td><td align="right">146M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_54_wv.gdb.zip">tlgdb_2024_a_54_wv.gdb.zip</a></td><td align="right">2024-08-08 08:43  </td><td align="right"> 55M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_54_wv_edges.gdb.zip">tlgdb_2024_a_54_wv_edges.gdb.zip</a></td><td align="right">2024-08-08 08:43  </td><td align="right">107M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_55_wi.gdb.zip">tlgdb_2024_a_55_wi.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right"> 90M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_55_wi_edges.gdb.zip">tlgdb_2024_a_55_wi_edges.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">143M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_56_wy.gdb.zip">tlgdb_2024_a_56_wy.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right"> 42M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_56_wy_edges.gdb.zip">tlgdb_2024_a_56_wy_edges.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right"> 98M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_60_as.gdb.zip">tlgdb_2024_a_60_as.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">524K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_60_as_edges.gdb.zip">tlgdb_2024_a_60_as_edges.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">785K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_66_gu.gdb.zip">tlgdb_2024_a_66_gu.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">1.4M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_66_gu_edges.gdb.zip">tlgdb_2024_a_66_gu_edges.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">2.0M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_69_mp.gdb.zip">tlgdb_2024_a_69_mp.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">1.3M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_69_mp_edges.gdb.zip">tlgdb_2024_a_69_mp_edges.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">833K</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_72_pr.gdb.zip">tlgdb_2024_a_72_pr.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right"> 18M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_72_pr_edges.gdb.zip">tlgdb_2024_a_72_pr_edges.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right"> 39M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_78_vi.gdb.zip">tlgdb_2024_a_78_vi.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">1.6M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_78_vi_edges.gdb.zip">tlgdb_2024_a_78_vi_edges.gdb.zip</a></td><td align="right">2024-08-08 08:44  </td><td align="right">2.6M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_addr.gdb.zip">tlgdb_2024_a_us_addr.gdb.zip</a></td><td align="right">2024-08-08 08:58  </td><td align="right">486M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_aiarelated.gdb.zip">tlgdb_2024_a_us_aiarelated.gdb.zip</a></td><td align="right">2024-08-08 08:58  </td><td align="right"> 14M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_areawater.gdb.zip">tlgdb_2024_a_us_areawater.gdb.zip</a></td><td align="right">2024-08-08 08:59  </td><td align="right">489M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_block.gdb.zip">tlgdb_2024_a_us_block.gdb.zip</a></td><td align="right">2024-08-08 09:04  </td><td align="right">2.7G</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_legislative.gdb.zip">tlgdb_2024_a_us_legislative.gdb.zip</a></td><td align="right">2024-08-08 09:04  </td><td align="right"> 99M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_linearwater.gdb.zip">tlgdb_2024_a_us_linearwater.gdb.zip</a></td><td align="right">2024-08-08 09:06  </td><td align="right">1.3G</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_nationgeo.gdb.zip">tlgdb_2024_a_us_nationgeo.gdb.zip</a></td><td align="right">2024-08-08 09:07  </td><td align="right">259M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_rails.gdb.zip">tlgdb_2024_a_us_rails.gdb.zip</a></td><td align="right">2024-08-08 09:07  </td><td align="right"> 18M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_roads.gdb.zip">tlgdb_2024_a_us_roads.gdb.zip</a></td><td align="right">2024-08-08 09:10  </td><td align="right">2.2G</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_school.gdb.zip">tlgdb_2024_a_us_school.gdb.zip</a></td><td align="right">2024-08-08 09:10  </td><td align="right"> 76M</td><td>&nbsp;</td></tr>
+<tr><td valign="top"><img src="/icons/compressed.gif" alt="[   ]"></td><td><a href="tlgdb_2024_a_us_substategeo.gdb.zip">tlgdb_2024_a_us_substategeo.gdb.zip</a></td><td align="right">2024-08-08 09:11  </td><td align="right">702M</td><td>&nbsp;</td></tr>
+   <tr><th colspan="5"><hr></th></tr>
+</table>
+<!-- START CB Footer - Last Revised: 10/04/2022 -->
+<!-- Responsive Version -->
+<!DOCTYPE html>
+<head>
+<meta content="width=device-width, initial-scale=1" name="viewport" />
+
+<!--  <link rel="stylesheet" type="text/css" href="/main/css/bootstrap-4.3.1.min.css">-->
+<link rel="stylesheet" type="text/css" href="/main/css/new_footer.css">
+<link rel="stylesheet" href="/main/css/font-awesome-6.5.1/css/all.min.css">
+<script src="/main/css/font-awesome-6.5.1/js/all.min.js"></script>
+
+
+<!-- <script src="/main/javascript/jquery-3.0.0/jquery.min.js"></script>
+<script src="/main/javascript/bootstrap-4.3.1/bootstrap.min.js"></script>-->
+
+<style>
+
+@media only screen and (max-width: 700px) {
+    .val {
+    width: 100%;
+    margin: auto 0;
+    
+}
+
+a{
+font-size: small;
+}
+
+.foot_bottom_links{
+width: 100%;
+
+text-align:left;
+}
+
+}
+
+hr.foot-line {
+margin-bottom: 10px;
+}
+
+
+
+</style>
+
+</head>
+        
+        <footer class="footer container-fluid">
+   <div class="row">
+  
+    <div class="grid_footer_links cf">
+   
+
+        <div class="foot_bottom">
+            <div class="foot_bottom_links">
+            
+                <div class="footerbottom">
+                
+                 
+                <div class="val">
+					<a class="foot_bottom_socialLinks" href="https://www.census.gov/about/contact-us/social_media.html">CONNECT WITH US</a>
+                    <a class="social-icon" href="https://www.facebook.com/uscensusbureau"><i class="fa-brands fa-facebook-f"></i></a>
+                    <a class="social-icon" href="https://twitter.com/uscensusbureau"><i class="fa-brands fa-square-x-twitter"></i></a>
+                    <a class="social-icon" href="https://www.linkedin.com/company/us-census-bureau"><i class="fa-brands fa-linkedin-in"></i></a>
+                    <a class="social-icon" href="https://www.youtube.com/user/uscensusbureau"><i class="fa-brands fa-youtube"></i></a>
+                    <a class="social-icon" href="https://www.instagram.com/uscensusbureau/"><i class="fa-brands fa-instagram"></i></a>
+                    <!-- <i class="foot_bottom_socialLinks" href="https://public.govdelivery.com/accounts/USCENSUS/subscriber/new" target="_blank"><img src="//www.census.gov/main/img/Mail_White.svg" alt="Email Updates logo" title="Email Updates"/></i> -->
+</div>
+
+<div class="val">
+                    <ul class="legal-menu">
+                    <li><a href="https://www.census.gov/quality/">Information Quality</a></li>
+                    <li><a href="https://www.census.gov/datalinkage/">Data Linkage Infrastructure</a></li>
+                    <li><a href="https://www.census.gov/privacy/">Data Protection and Privacy Policy</a></li>
+                    <li><a href="https://www.census.gov/about/policies/privacy/privacy-policy.html#accessibility">Accessibility</a></li>      
+                    <li><a href="https://www.census.gov/foia/">FOIA</a></li>
+                    <li><a href="https://www.oig.doc.gov/Pages/default.aspx">Inspector General</a></li>
+                    <li><a href="https://www.commerce.gov/cr/reports-and-resources/no-fear-act">No FEAR Act</a></li>
+                    <li><a href="https://www.commerce.gov/">U.S. Department of Commerce</a></li>
+                    <li><a href="https://www.usa.gov/">USA.gov</a></li>
+                        
+                    </ul>
+                   
+                   </div>
+                   <hr class="foot-line">
+                   <p class="foot_bottom_tagline">Measuring America's People and Economy</p>
+                   </div> 
+                </div> <!-- end class=footerbotom -->
+            </div> <!-- end class=foot_bottom_links -->
+        </div> <!-- end class=grid_footer_links -->
+    </div>
+</footer> <!-- end class=footer -->
+
+
+</html>
+</body></html>

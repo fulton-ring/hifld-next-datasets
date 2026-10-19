@@ -1,0 +1,764 @@
+{
+  "acceptance": "not_established_by_comparison",
+  "adapter": "typed-geojson-feature-jsonl-v1",
+  "attribute_field_changes": {
+    "bytes": 830,
+    "fields": 12,
+    "path": "baseline_field_changes.jsonl",
+    "sha256": "47d2b132ccfe140b7073b1eaa308a4a5b88f62c723be4d23189c90f27791bbb7"
+  },
+  "baseline": {
+    "acceptance": "unapproved_candidate",
+    "comparison_input": {
+      "adapter": "typed-geojson-feature-jsonl-v1",
+      "bytes": 50651278,
+      "derivation": {
+        "code_sha256": "a11e68f3d838bc0384fd7184bedb6834d2a8ab56a51431d27e4daa44b35783e5",
+        "parameters": {
+          "policy_sha256": "0c13ef850c6427af50d31d47cd71effcdf1d94fbc70ab6a94de25e8ae3e91342",
+          "receipt_sha256": "bfecb1b8bd43b351ac7f659a4d42c5c8ca56c8c2973762cd6e495805939df8e0"
+        },
+        "source_sha256": [
+          "e42ee037b7e6009e6d4f515d43cd990d71c6950b4803e411194a37eee7f9704b"
+        ]
+      },
+      "path": "normalized_records.jsonl",
+      "sha256": "18a47ec5dd464763c47e09f9bf89caa6804a09cf4cd3f487b0304bfae6f88819"
+    },
+    "data_objects": [
+      {
+        "bytes": 20770816,
+        "sha256": "e42ee037b7e6009e6d4f515d43cd990d71c6950b4803e411194a37eee7f9704b"
+      }
+    ],
+    "dataset_slug": "combined-statistical-areas-3",
+    "file_slug": "combined-statistical-areas-3",
+    "version": "v0.0.0-draft-census2024-68f517f0ef6ab6bc-c096cc28641ed113"
+  },
+  "baseline_input_bytes": 50651278,
+  "baseline_sha256": "18a47ec5dd464763c47e09f9bf89caa6804a09cf4cd3f487b0304bfae6f88819",
+  "candidate_input_bytes": 50641558,
+  "candidate_sha256": "0a4505517bcc27cbdb05d77b69a5dbace88b9dde17cb680cc90c183187cbca93",
+  "comparator_sha256": "e09afaf16c27df65b9a8e0bbfde9c46e89c436d4335bdfaef9436609876ff206",
+  "contract_sha256": "dc3d3a8d0311e77ce0b793ebaa5c858932b8746bf68b035c21a2c867f75d78cc",
+  "differences": {
+    "added": 0,
+    "attributes": 184,
+    "coverage_buckets": 0,
+    "geometry": 0,
+    "removed": 0
+  },
+  "native_inputs": {
+    "baseline": {
+      "path": "baseline/normalization_receipt.json",
+      "receipt": {
+        "acceptance": "not_established_by_normalization",
+        "adapter": "native-physical-values-v1",
+        "code_sha256": "a11e68f3d838bc0384fd7184bedb6834d2a8ab56a51431d27e4daa44b35783e5",
+        "columns": [
+          "OBJECTID",
+          "GEOID",
+          "GEOIDFQ",
+          "NAMELSAD",
+          "LSAD",
+          "ALAND",
+          "AWATER",
+          "INTPTLAT",
+          "INTPTLON"
+        ],
+        "limits": {
+          "batch_rows": 4,
+          "max_batch_bytes": 16777216,
+          "max_metadata_bytes": 16777216,
+          "max_nested_values_per_record": 100000,
+          "max_objects": 4096,
+          "max_output_bytes": 4294967296,
+          "max_record_bytes": 33554432,
+          "max_row_group_bytes": 134217728
+        },
+        "lineage": {
+          "bytes": 52084,
+          "path": "normalization_lineage.jsonl",
+          "rows": 184,
+          "sha256": "635c3edcaa266d99f00f87a8be4483357bc7eca076a421a73c0e1424c2ee9dcc"
+        },
+        "normalized": {
+          "adapter": "typed-geojson-feature-jsonl-v1",
+          "bytes": 50651278,
+          "path": "normalized_records.jsonl",
+          "sha256": "18a47ec5dd464763c47e09f9bf89caa6804a09cf4cd3f487b0304bfae6f88819"
+        },
+        "nullable": {
+          "ALAND": true,
+          "AWATER": true,
+          "GEOID": true,
+          "GEOIDFQ": true,
+          "INTPTLAT": true,
+          "INTPTLON": true,
+          "LSAD": true,
+          "NAMELSAD": true,
+          "OBJECTID": false,
+          "SHAPE": true,
+          "_gpkg_storage_fid": false
+        },
+        "objects": [
+          {
+            "bytes": 20770816,
+            "key": "combined-statistical-areas-3.gpkg",
+            "physical_schema_sha256": "d2f1b6264b90948af5d05f9e245ed33021d9b19d3a19c7e421b7b0b6302a86c3",
+            "rows_observed": 184,
+            "sha256": "e42ee037b7e6009e6d4f515d43cd990d71c6950b4803e411194a37eee7f9704b"
+          }
+        ],
+        "parameters": {
+          "format": "geopackage",
+          "geometry_column": "SHAPE",
+          "layer": "Combined_Statistical_Area",
+          "schema_version": 1
+        },
+        "physical_schema": {
+          "crs_wkt": "GEOGCS[\"NAD83\",DATUM[\"North_American_Datum_1983\",SPHEROID[\"GRS 1980\",6378137,298.257222101,AUTHORITY[\"EPSG\",\"7019\"]],AUTHORITY[\"EPSG\",\"6269\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AXIS[\"Latitude\",NORTH],AXIS[\"Longitude\",EAST],AUTHORITY[\"EPSG\",\"4269\"]]",
+          "driver": "GPKG",
+          "feature_id": {
+            "driver_type": "string",
+            "physical_column": "_gpkg_storage_fid"
+          },
+          "fiona_schema": {
+            "geometry": "MultiPolygon",
+            "properties": {
+              "ALAND": "float",
+              "AWATER": "float",
+              "GEOID": "str:3",
+              "GEOIDFQ": "str:12",
+              "INTPTLAT": "str:11",
+              "INTPTLON": "str:12",
+              "LSAD": "str:2",
+              "NAMELSAD": "str:100",
+              "OBJECTID": "int"
+            }
+          },
+          "geometry": [
+            "SHAPE",
+            4269,
+            "MULTIPOLYGON",
+            0,
+            0
+          ],
+          "layer": "Combined_Statistical_Area",
+          "reader": "fiona+sqlite-raw",
+          "sqlite_columns": [
+            [
+              0,
+              "_gpkg_storage_fid",
+              "INTEGER",
+              1,
+              null,
+              1,
+              0
+            ],
+            [
+              1,
+              "SHAPE",
+              "MULTIPOLYGON",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              2,
+              "OBJECTID",
+              "INTEGER",
+              1,
+              null,
+              0,
+              0
+            ],
+            [
+              3,
+              "GEOID",
+              "TEXT(3)",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              4,
+              "GEOIDFQ",
+              "TEXT(12)",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              5,
+              "NAMELSAD",
+              "TEXT(100)",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              6,
+              "LSAD",
+              "TEXT(2)",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              7,
+              "ALAND",
+              "REAL",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              8,
+              "AWATER",
+              "REAL",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              9,
+              "INTPTLAT",
+              "TEXT(11)",
+              0,
+              null,
+              0,
+              0
+            ],
+            [
+              10,
+              "INTPTLON",
+              "TEXT(12)",
+              0,
+              null,
+              0,
+              0
+            ]
+          ]
+        },
+        "policy": {
+          "coverage_fields": [
+            "GEOID"
+          ],
+          "crs": "EPSG:4269",
+          "geometry": true,
+          "geometry_nullable": false,
+          "id_fields": [
+            "OBJECTID"
+          ],
+          "schema_version": 1,
+          "status": "proposed"
+        },
+        "policy_sha256": "0c13ef850c6427af50d31d47cd71effcdf1d94fbc70ab6a94de25e8ae3e91342",
+        "reader_versions": {
+          "fiona": "1.10.1",
+          "gdal": "3.9.2",
+          "geos": "3.13.1",
+          "proj": "9.5.1",
+          "pyarrow": "23.0.1",
+          "pyproj": "3.7.2",
+          "shapely": "2.1.2"
+        },
+        "reason_codes": [],
+        "receipt_id": "41627d134dd0e501304c9a02f81939399b50ed81c41de2cbc4ae736effc11a06",
+        "rows": 184,
+        "schema_version": 1,
+        "status": "complete"
+      },
+      "sha256": "bfecb1b8bd43b351ac7f659a4d42c5c8ca56c8c2973762cd6e495805939df8e0"
+    },
+    "candidate": {
+      "path": "candidate/normalization_receipt.json",
+      "receipt": {
+        "acceptance": "not_established_by_normalization",
+        "adapter": "native-physical-values-v1",
+        "code_sha256": "a11e68f3d838bc0384fd7184bedb6834d2a8ab56a51431d27e4daa44b35783e5",
+        "columns": [
+          "OBJECTID",
+          "GEOID",
+          "GEOIDFQ",
+          "NAMELSAD",
+          "LSAD",
+          "ALAND",
+          "AWATER",
+          "INTPTLAT",
+          "INTPTLON"
+        ],
+        "limits": {
+          "batch_rows": 4,
+          "max_batch_bytes": 16777216,
+          "max_metadata_bytes": 16777216,
+          "max_nested_values_per_record": 100000,
+          "max_objects": 4096,
+          "max_output_bytes": 4294967296,
+          "max_record_bytes": 33554432,
+          "max_row_group_bytes": 134217728
+        },
+        "lineage": {
+          "bytes": 39972,
+          "path": "normalization_lineage.jsonl",
+          "rows": 184,
+          "sha256": "79293528ba1d14ee317abc3fffc17167632fa9a46fc432e271766dcba563c147"
+        },
+        "normalized": {
+          "adapter": "typed-geojson-feature-jsonl-v1",
+          "bytes": 50641558,
+          "path": "normalized_records.jsonl",
+          "sha256": "0a4505517bcc27cbdb05d77b69a5dbace88b9dde17cb680cc90c183187cbca93"
+        },
+        "nullable": {
+          "ALAND": true,
+          "AWATER": true,
+          "GEOID": true,
+          "GEOIDFQ": true,
+          "INTPTLAT": true,
+          "INTPTLON": true,
+          "LSAD": true,
+          "NAMELSAD": true,
+          "OBJECTID": false,
+          "SHAPE": true
+        },
+        "objects": [
+          {
+            "bytes": 17207926,
+            "key": "typed-source.parquet",
+            "physical_schema_sha256": "374a7de0ee1fabf563a953a872ba8da68e99d1dd9460542e107a597eaf2294f3",
+            "rows_observed": 184,
+            "sha256": "d0ed83f85ceefd7ce80e80f5134d3b1a1c52fa1744368b2ef2623bbd328091b3"
+          }
+        ],
+        "parameters": {
+          "format": "geoparquet",
+          "geometry_column": "SHAPE",
+          "schema_version": 1
+        },
+        "physical_schema": {
+          "feature_id": "absent",
+          "fields": [
+            {
+              "metadata": [],
+              "name": "OBJECTID",
+              "nullable": false,
+              "physical_type": "int64"
+            },
+            {
+              "metadata": [
+                [
+                  "R0RBTDpPR1I6d2lkdGg=",
+                  "Mw=="
+                ]
+              ],
+              "name": "GEOID",
+              "nullable": true,
+              "physical_type": "string"
+            },
+            {
+              "metadata": [
+                [
+                  "R0RBTDpPR1I6d2lkdGg=",
+                  "MTI="
+                ]
+              ],
+              "name": "GEOIDFQ",
+              "nullable": true,
+              "physical_type": "string"
+            },
+            {
+              "metadata": [
+                [
+                  "R0RBTDpPR1I6d2lkdGg=",
+                  "MTAw"
+                ]
+              ],
+              "name": "NAMELSAD",
+              "nullable": true,
+              "physical_type": "string"
+            },
+            {
+              "metadata": [
+                [
+                  "R0RBTDpPR1I6d2lkdGg=",
+                  "Mg=="
+                ]
+              ],
+              "name": "LSAD",
+              "nullable": true,
+              "physical_type": "string"
+            },
+            {
+              "metadata": [],
+              "name": "ALAND",
+              "nullable": true,
+              "physical_type": "double"
+            },
+            {
+              "metadata": [],
+              "name": "AWATER",
+              "nullable": true,
+              "physical_type": "double"
+            },
+            {
+              "metadata": [
+                [
+                  "R0RBTDpPR1I6d2lkdGg=",
+                  "MTE="
+                ]
+              ],
+              "name": "INTPTLAT",
+              "nullable": true,
+              "physical_type": "string"
+            },
+            {
+              "metadata": [
+                [
+                  "R0RBTDpPR1I6d2lkdGg=",
+                  "MTI="
+                ]
+              ],
+              "name": "INTPTLON",
+              "nullable": true,
+              "physical_type": "string"
+            },
+            {
+              "metadata": [
+                [
+                  "QVJST1c6ZXh0ZW5zaW9uOm1ldGFkYXRh",
+                  "eyJjcnMiOnsKICAiJHNjaGVtYSI6ICJodHRwczovL3Byb2oub3JnL3NjaGVtYXMvdjAuNy9wcm9qanNvbi5zY2hlbWEuanNvbiIsCiAgInR5cGUiOiAiR2VvZ3JhcGhpY0NSUyIsCiAgIm5hbWUiOiAiTkFEODMiLAogICJkYXR1bSI6IHsKICAgICJ0eXBlIjogIkdlb2RldGljUmVmZXJlbmNlRnJhbWUiLAogICAgIm5hbWUiOiAiTm9ydGggQW1lcmljYW4gRGF0dW0gMTk4MyIsCiAgICAiZWxsaXBzb2lkIjogewogICAgICAibmFtZSI6ICJHUlMgMTk4MCIsCiAgICAgICJzZW1pX21ham9yX2F4aXMiOiA2Mzc4MTM3LAogICAgICAiaW52ZXJzZV9mbGF0dGVuaW5nIjogMjk4LjI1NzIyMjEwMQogICAgfQogIH0sCiAgImNvb3JkaW5hdGVfc3lzdGVtIjogewogICAgInN1YnR5cGUiOiAiZWxsaXBzb2lkYWwiLAogICAgImF4aXMiOiBbCiAgICAgIHsKICAgICAgICAibmFtZSI6ICJMYXRpdHVkZSIsCiAgICAgICAgImFiYnJldmlhdGlvbiI6ICJsYXQiLAogICAgICAgICJkaXJlY3Rpb24iOiAibm9ydGgiLAogICAgICAgICJ1bml0IjogImRlZ3JlZSIKICAgICAgfSwKICAgICAgewogICAgICAgICJuYW1lIjogIkxvbmdpdHVkZSIsCiAgICAgICAgImFiYnJldmlhdGlvbiI6ICJsb24iLAogICAgICAgICJkaXJlY3Rpb24iOiAiZWFzdCIsCiAgICAgICAgInVuaXQiOiAiZGVncmVlIgogICAgICB9CiAgICBdCiAgfSwKICAiaWQiOiB7CiAgICAiYXV0aG9yaXR5IjogIkVQU0ciLAogICAgImNvZGUiOiA0MjY5CiAgfQp9fQ=="
+                ],
+                [
+                  "QVJST1c6ZXh0ZW5zaW9uOm5hbWU=",
+                  "Z2VvYXJyb3cud2ti"
+                ]
+              ],
+              "name": "SHAPE",
+              "nullable": true,
+              "physical_type": "binary"
+            }
+          ],
+          "geometry_column": "SHAPE",
+          "metadata": [
+            [
+              "Z2Vv",
+              "eyJjb2x1bW5zIjp7IlNIQVBFIjp7ImJib3giOlstMTI0LjcwMzU0MDk5OTk5OTk3LDE3LjgzMTUwOTAwMDAwMDA0LC02NS40MjI3MDU5OTk5OTk5NSw0OS4wMDA3MzcwMDAwMDAwN10sImNycyI6eyIkc2NoZW1hIjoiaHR0cHM6Ly9wcm9qLm9yZy9zY2hlbWFzL3YwLjcvcHJvampzb24uc2NoZW1hLmpzb24iLCJhcmVhIjoiTm9ydGggQW1lcmljYSAtIG9uc2hvcmUgYW5kIG9mZnNob3JlOiBDYW5hZGEgLSBBbGJlcnRhOyBCcml0aXNoIENvbHVtYmlhOyBNYW5pdG9iYTsgTmV3IEJydW5zd2ljazsgTmV3Zm91bmRsYW5kIGFuZCBMYWJyYWRvcjsgTm9ydGh3ZXN0IFRlcnJpdG9yaWVzOyBOb3ZhIFNjb3RpYTsgTnVuYXZ1dDsgT250YXJpbzsgUHJpbmNlIEVkd2FyZCBJc2xhbmQ7IFF1ZWJlYzsgU2Fza2F0Y2hld2FuOyBZdWtvbi4gUHVlcnRvIFJpY28uIFVuaXRlZCBTdGF0ZXMgKFVTQSkgLSBBbGFiYW1hOyBBbGFza2E7IEFyaXpvbmE7IEFya2Fuc2FzOyBDYWxpZm9ybmlhOyBDb2xvcmFkbzsgQ29ubmVjdGljdXQ7IERlbGF3YXJlOyBGbG9yaWRhOyBHZW9yZ2lhOyBIYXdhaWk7IElkYWhvOyBJbGxpbm9pczsgSW5kaWFuYTsgSW93YTsgS2Fuc2FzOyBLZW50dWNreTsgTG91aXNpYW5hOyBNYWluZTsgTWFyeWxhbmQ7IE1hc3NhY2h1c2V0dHM7IE1pY2hpZ2FuOyBNaW5uZXNvdGE7IE1pc3Npc3NpcHBpOyBNaXNzb3VyaTsgTW9udGFuYTsgTmVicmFza2E7IE5ldmFkYTsgTmV3IEhhbXBzaGlyZTsgTmV3IEplcnNleTsgTmV3IE1leGljbzsgTmV3IFlvcms7IE5vcnRoIENhcm9saW5hOyBOb3J0aCBEYWtvdGE7IE9oaW87IE9rbGFob21hOyBPcmVnb247IFBlbm5zeWx2YW5pYTsgUmhvZGUgSXNsYW5kOyBTb3V0aCBDYXJvbGluYTsgU291dGggRGFrb3RhOyBUZW5uZXNzZWU7IFRleGFzOyBVdGFoOyBWZXJtb250OyBWaXJnaW5pYTsgV2FzaGluZ3RvbjsgV2VzdCBWaXJnaW5pYTsgV2lzY29uc2luOyBXeW9taW5nLiBVUyBWaXJnaW4gSXNsYW5kcy4gQnJpdGlzaCBWaXJnaW4gSXNsYW5kcy4iLCJiYm94Ijp7ImVhc3RfbG9uZ2l0dWRlIjotNDAuNzMsIm5vcnRoX2xhdGl0dWRlIjo4Ni40NSwic291dGhfbGF0aXR1ZGUiOjE0LjkyLCJ3ZXN0X2xvbmdpdHVkZSI6MTY3LjY1fSwiY29vcmRpbmF0ZV9zeXN0ZW0iOnsiYXhpcyI6W3siYWJicmV2aWF0aW9uIjoiTGF0IiwiZGlyZWN0aW9uIjoibm9ydGgiLCJuYW1lIjoiR2VvZGV0aWMgbGF0aXR1ZGUiLCJ1bml0IjoiZGVncmVlIn0seyJhYmJyZXZpYXRpb24iOiJMb24iLCJkaXJlY3Rpb24iOiJlYXN0IiwibmFtZSI6Ikdlb2RldGljIGxvbmdpdHVkZSIsInVuaXQiOiJkZWdyZWUifV0sInN1YnR5cGUiOiJlbGxpcHNvaWRhbCJ9LCJkYXR1bSI6eyJlbGxpcHNvaWQiOnsiaW52ZXJzZV9mbGF0dGVuaW5nIjoyOTguMjU3MjIyMTAxLCJuYW1lIjoiR1JTIDE5ODAiLCJzZW1pX21ham9yX2F4aXMiOjYzNzgxMzd9LCJuYW1lIjoiTm9ydGggQW1lcmljYW4gRGF0dW0gMTk4MyIsInR5cGUiOiJHZW9kZXRpY1JlZmVyZW5jZUZyYW1lIn0sImlkIjp7ImF1dGhvcml0eSI6IkVQU0ciLCJjb2RlIjo0MjY5fSwibmFtZSI6Ik5BRDgzIiwic2NvcGUiOiJHZW9kZXN5LiIsInR5cGUiOiJHZW9ncmFwaGljQ1JTIn0sImVuY29kaW5nIjoiV0tCIiwiZ2VvbWV0cnlfdHlwZXMiOlsiTXVsdGlQb2x5Z29uIl19fSwicHJpbWFyeV9jb2x1bW4iOiJTSEFQRSIsInZlcnNpb24iOiIxLjEuMCJ9Cg=="
+            ]
+          ],
+          "reader": "arrow"
+        },
+        "policy": {
+          "coverage_fields": [
+            "GEOID"
+          ],
+          "crs": "EPSG:4269",
+          "geometry": true,
+          "geometry_nullable": false,
+          "id_fields": [
+            "OBJECTID"
+          ],
+          "schema_version": 1,
+          "status": "proposed"
+        },
+        "policy_sha256": "0c13ef850c6427af50d31d47cd71effcdf1d94fbc70ab6a94de25e8ae3e91342",
+        "reader_versions": {
+          "fiona": "1.10.1",
+          "gdal": "3.9.2",
+          "geos": "3.13.1",
+          "proj": "9.5.1",
+          "pyarrow": "23.0.1",
+          "pyproj": "3.7.2",
+          "shapely": "2.1.2"
+        },
+        "reason_codes": [],
+        "receipt_id": "049953a2a3bf069af29e71ca35ea23d7527180b53089b0da9be23f9bdffa51e6",
+        "rows": 184,
+        "schema_version": 1,
+        "status": "complete"
+      },
+      "sha256": "582cb9c25e10c16400796f0c0fc5eae40414c85816f34b91e7ab5a92189b49d7"
+    }
+  },
+  "physical_schema": {
+    "baseline": {
+      "crs_wkt": "GEOGCS[\"NAD83\",DATUM[\"North_American_Datum_1983\",SPHEROID[\"GRS 1980\",6378137,298.257222101,AUTHORITY[\"EPSG\",\"7019\"]],AUTHORITY[\"EPSG\",\"6269\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AXIS[\"Latitude\",NORTH],AXIS[\"Longitude\",EAST],AUTHORITY[\"EPSG\",\"4269\"]]",
+      "driver": "GPKG",
+      "feature_id": {
+        "driver_type": "string",
+        "physical_column": "_gpkg_storage_fid"
+      },
+      "fiona_schema": {
+        "geometry": "MultiPolygon",
+        "properties": {
+          "ALAND": "float",
+          "AWATER": "float",
+          "GEOID": "str:3",
+          "GEOIDFQ": "str:12",
+          "INTPTLAT": "str:11",
+          "INTPTLON": "str:12",
+          "LSAD": "str:2",
+          "NAMELSAD": "str:100",
+          "OBJECTID": "int"
+        }
+      },
+      "geometry": [
+        "SHAPE",
+        4269,
+        "MULTIPOLYGON",
+        0,
+        0
+      ],
+      "layer": "Combined_Statistical_Area",
+      "reader": "fiona+sqlite-raw",
+      "sqlite_columns": [
+        [
+          0,
+          "_gpkg_storage_fid",
+          "INTEGER",
+          1,
+          null,
+          1,
+          0
+        ],
+        [
+          1,
+          "SHAPE",
+          "MULTIPOLYGON",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          2,
+          "OBJECTID",
+          "INTEGER",
+          1,
+          null,
+          0,
+          0
+        ],
+        [
+          3,
+          "GEOID",
+          "TEXT(3)",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          4,
+          "GEOIDFQ",
+          "TEXT(12)",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          5,
+          "NAMELSAD",
+          "TEXT(100)",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          6,
+          "LSAD",
+          "TEXT(2)",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          7,
+          "ALAND",
+          "REAL",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          8,
+          "AWATER",
+          "REAL",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          9,
+          "INTPTLAT",
+          "TEXT(11)",
+          0,
+          null,
+          0,
+          0
+        ],
+        [
+          10,
+          "INTPTLON",
+          "TEXT(12)",
+          0,
+          null,
+          0,
+          0
+        ]
+      ]
+    },
+    "candidate": {
+      "feature_id": "absent",
+      "fields": [
+        {
+          "metadata": [],
+          "name": "OBJECTID",
+          "nullable": false,
+          "physical_type": "int64"
+        },
+        {
+          "metadata": [
+            [
+              "R0RBTDpPR1I6d2lkdGg=",
+              "Mw=="
+            ]
+          ],
+          "name": "GEOID",
+          "nullable": true,
+          "physical_type": "string"
+        },
+        {
+          "metadata": [
+            [
+              "R0RBTDpPR1I6d2lkdGg=",
+              "MTI="
+            ]
+          ],
+          "name": "GEOIDFQ",
+          "nullable": true,
+          "physical_type": "string"
+        },
+        {
+          "metadata": [
+            [
+              "R0RBTDpPR1I6d2lkdGg=",
+              "MTAw"
+            ]
+          ],
+          "name": "NAMELSAD",
+          "nullable": true,
+          "physical_type": "string"
+        },
+        {
+          "metadata": [
+            [
+              "R0RBTDpPR1I6d2lkdGg=",
+              "Mg=="
+            ]
+          ],
+          "name": "LSAD",
+          "nullable": true,
+          "physical_type": "string"
+        },
+        {
+          "metadata": [],
+          "name": "ALAND",
+          "nullable": true,
+          "physical_type": "double"
+        },
+        {
+          "metadata": [],
+          "name": "AWATER",
+          "nullable": true,
+          "physical_type": "double"
+        },
+        {
+          "metadata": [
+            [
+              "R0RBTDpPR1I6d2lkdGg=",
+              "MTE="
+            ]
+          ],
+          "name": "INTPTLAT",
+          "nullable": true,
+          "physical_type": "string"
+        },
+        {
+          "metadata": [
+            [
+              "R0RBTDpPR1I6d2lkdGg=",
+              "MTI="
+            ]
+          ],
+          "name": "INTPTLON",
+          "nullable": true,
+          "physical_type": "string"
+        },
+        {
+          "metadata": [
+            [
+              "QVJST1c6ZXh0ZW5zaW9uOm1ldGFkYXRh",
+              "eyJjcnMiOnsKICAiJHNjaGVtYSI6ICJodHRwczovL3Byb2oub3JnL3NjaGVtYXMvdjAuNy9wcm9qanNvbi5zY2hlbWEuanNvbiIsCiAgInR5cGUiOiAiR2VvZ3JhcGhpY0NSUyIsCiAgIm5hbWUiOiAiTkFEODMiLAogICJkYXR1bSI6IHsKICAgICJ0eXBlIjogIkdlb2RldGljUmVmZXJlbmNlRnJhbWUiLAogICAgIm5hbWUiOiAiTm9ydGggQW1lcmljYW4gRGF0dW0gMTk4MyIsCiAgICAiZWxsaXBzb2lkIjogewogICAgICAibmFtZSI6ICJHUlMgMTk4MCIsCiAgICAgICJzZW1pX21ham9yX2F4aXMiOiA2Mzc4MTM3LAogICAgICAiaW52ZXJzZV9mbGF0dGVuaW5nIjogMjk4LjI1NzIyMjEwMQogICAgfQogIH0sCiAgImNvb3JkaW5hdGVfc3lzdGVtIjogewogICAgInN1YnR5cGUiOiAiZWxsaXBzb2lkYWwiLAogICAgImF4aXMiOiBbCiAgICAgIHsKICAgICAgICAibmFtZSI6ICJMYXRpdHVkZSIsCiAgICAgICAgImFiYnJldmlhdGlvbiI6ICJsYXQiLAogICAgICAgICJkaXJlY3Rpb24iOiAibm9ydGgiLAogICAgICAgICJ1bml0IjogImRlZ3JlZSIKICAgICAgfSwKICAgICAgewogICAgICAgICJuYW1lIjogIkxvbmdpdHVkZSIsCiAgICAgICAgImFiYnJldmlhdGlvbiI6ICJsb24iLAogICAgICAgICJkaXJlY3Rpb24iOiAiZWFzdCIsCiAgICAgICAgInVuaXQiOiAiZGVncmVlIgogICAgICB9CiAgICBdCiAgfSwKICAiaWQiOiB7CiAgICAiYXV0aG9yaXR5IjogIkVQU0ciLAogICAgImNvZGUiOiA0MjY5CiAgfQp9fQ=="
+            ],
+            [
+              "QVJST1c6ZXh0ZW5zaW9uOm5hbWU=",
+              "Z2VvYXJyb3cud2ti"
+            ]
+          ],
+          "name": "SHAPE",
+          "nullable": true,
+          "physical_type": "binary"
+        }
+      ],
+      "geometry_column": "SHAPE",
+      "metadata": [
+        [
+          "Z2Vv",
+          "eyJjb2x1bW5zIjp7IlNIQVBFIjp7ImJib3giOlstMTI0LjcwMzU0MDk5OTk5OTk3LDE3LjgzMTUwOTAwMDAwMDA0LC02NS40MjI3MDU5OTk5OTk5NSw0OS4wMDA3MzcwMDAwMDAwN10sImNycyI6eyIkc2NoZW1hIjoiaHR0cHM6Ly9wcm9qLm9yZy9zY2hlbWFzL3YwLjcvcHJvampzb24uc2NoZW1hLmpzb24iLCJhcmVhIjoiTm9ydGggQW1lcmljYSAtIG9uc2hvcmUgYW5kIG9mZnNob3JlOiBDYW5hZGEgLSBBbGJlcnRhOyBCcml0aXNoIENvbHVtYmlhOyBNYW5pdG9iYTsgTmV3IEJydW5zd2ljazsgTmV3Zm91bmRsYW5kIGFuZCBMYWJyYWRvcjsgTm9ydGh3ZXN0IFRlcnJpdG9yaWVzOyBOb3ZhIFNjb3RpYTsgTnVuYXZ1dDsgT250YXJpbzsgUHJpbmNlIEVkd2FyZCBJc2xhbmQ7IFF1ZWJlYzsgU2Fza2F0Y2hld2FuOyBZdWtvbi4gUHVlcnRvIFJpY28uIFVuaXRlZCBTdGF0ZXMgKFVTQSkgLSBBbGFiYW1hOyBBbGFza2E7IEFyaXpvbmE7IEFya2Fuc2FzOyBDYWxpZm9ybmlhOyBDb2xvcmFkbzsgQ29ubmVjdGljdXQ7IERlbGF3YXJlOyBGbG9yaWRhOyBHZW9yZ2lhOyBIYXdhaWk7IElkYWhvOyBJbGxpbm9pczsgSW5kaWFuYTsgSW93YTsgS2Fuc2FzOyBLZW50dWNreTsgTG91aXNpYW5hOyBNYWluZTsgTWFyeWxhbmQ7IE1hc3NhY2h1c2V0dHM7IE1pY2hpZ2FuOyBNaW5uZXNvdGE7IE1pc3Npc3NpcHBpOyBNaXNzb3VyaTsgTW9udGFuYTsgTmVicmFza2E7IE5ldmFkYTsgTmV3IEhhbXBzaGlyZTsgTmV3IEplcnNleTsgTmV3IE1leGljbzsgTmV3IFlvcms7IE5vcnRoIENhcm9saW5hOyBOb3J0aCBEYWtvdGE7IE9oaW87IE9rbGFob21hOyBPcmVnb247IFBlbm5zeWx2YW5pYTsgUmhvZGUgSXNsYW5kOyBTb3V0aCBDYXJvbGluYTsgU291dGggRGFrb3RhOyBUZW5uZXNzZWU7IFRleGFzOyBVdGFoOyBWZXJtb250OyBWaXJnaW5pYTsgV2FzaGluZ3RvbjsgV2VzdCBWaXJnaW5pYTsgV2lzY29uc2luOyBXeW9taW5nLiBVUyBWaXJnaW4gSXNsYW5kcy4gQnJpdGlzaCBWaXJnaW4gSXNsYW5kcy4iLCJiYm94Ijp7ImVhc3RfbG9uZ2l0dWRlIjotNDAuNzMsIm5vcnRoX2xhdGl0dWRlIjo4Ni40NSwic291dGhfbGF0aXR1ZGUiOjE0LjkyLCJ3ZXN0X2xvbmdpdHVkZSI6MTY3LjY1fSwiY29vcmRpbmF0ZV9zeXN0ZW0iOnsiYXhpcyI6W3siYWJicmV2aWF0aW9uIjoiTGF0IiwiZGlyZWN0aW9uIjoibm9ydGgiLCJuYW1lIjoiR2VvZGV0aWMgbGF0aXR1ZGUiLCJ1bml0IjoiZGVncmVlIn0seyJhYmJyZXZpYXRpb24iOiJMb24iLCJkaXJlY3Rpb24iOiJlYXN0IiwibmFtZSI6Ikdlb2RldGljIGxvbmdpdHVkZSIsInVuaXQiOiJkZWdyZWUifV0sInN1YnR5cGUiOiJlbGxpcHNvaWRhbCJ9LCJkYXR1bSI6eyJlbGxpcHNvaWQiOnsiaW52ZXJzZV9mbGF0dGVuaW5nIjoyOTguMjU3MjIyMTAxLCJuYW1lIjoiR1JTIDE5ODAiLCJzZW1pX21ham9yX2F4aXMiOjYzNzgxMzd9LCJuYW1lIjoiTm9ydGggQW1lcmljYW4gRGF0dW0gMTk4MyIsInR5cGUiOiJHZW9kZXRpY1JlZmVyZW5jZUZyYW1lIn0sImlkIjp7ImF1dGhvcml0eSI6IkVQU0ciLCJjb2RlIjo0MjY5fSwibmFtZSI6Ik5BRDgzIiwic2NvcGUiOiJHZW9kZXN5LiIsInR5cGUiOiJHZW9ncmFwaGljQ1JTIn0sImVuY29kaW5nIjoiV0tCIiwiZ2VvbWV0cnlfdHlwZXMiOlsiTXVsdGlQb2x5Z29uIl19fSwicHJpbWFyeV9jb2x1bW4iOiJTSEFQRSIsInZlcnNpb24iOiIxLjEuMCJ9Cg=="
+        ]
+      ],
+      "reader": "arrow"
+    },
+    "equal": false
+  },
+  "populations": {
+    "baseline": {
+      "duplicate_keys": 0,
+      "invalid_records": 0,
+      "null_keys": 0,
+      "rows": 184
+    },
+    "candidate": {
+      "duplicate_keys": 0,
+      "invalid_records": 0,
+      "null_keys": 0,
+      "rows": 184
+    }
+  },
+  "reason_codes": [
+    "full_population_changes_require_acceptance"
+  ],
+  "retained_rows_compared": 184,
+  "schema_version": 1,
+  "sidecar": {
+    "bytes": 395358,
+    "path": "baseline_differences.jsonl",
+    "sha256": "ddf898486a89190d9c5c9bd69149a6605fb82ce120867e8d5ce24977660b2154"
+  },
+  "status": "needs_decision",
+  "verification_scope": "native_originals_recomputed"
+}

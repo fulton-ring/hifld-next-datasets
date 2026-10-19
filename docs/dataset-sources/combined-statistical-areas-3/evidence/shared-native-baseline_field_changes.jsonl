@@ -1,0 +1,12 @@
+{"field": "$hifld.geometry_state", "retained_rows_compared": 184, "changed": 0}
+{"field": "$hifld.partition", "retained_rows_compared": 184, "changed": 0}
+{"field": "$hifld.source_feature_id", "retained_rows_compared": 184, "changed": 184}
+{"field": "ALAND", "retained_rows_compared": 184, "changed": 0}
+{"field": "AWATER", "retained_rows_compared": 184, "changed": 0}
+{"field": "GEOID", "retained_rows_compared": 184, "changed": 0}
+{"field": "GEOIDFQ", "retained_rows_compared": 184, "changed": 0}
+{"field": "INTPTLAT", "retained_rows_compared": 184, "changed": 0}
+{"field": "INTPTLON", "retained_rows_compared": 184, "changed": 0}
+{"field": "LSAD", "retained_rows_compared": 184, "changed": 0}
+{"field": "NAMELSAD", "retained_rows_compared": 184, "changed": 0}
+{"field": "OBJECTID", "retained_rows_compared": 184, "changed": 0}

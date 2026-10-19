@@ -1,0 +1,113 @@
+{
+  "acceptance": "not_established_by_comparison",
+  "adapter": "typed-geojson-feature-jsonl-v1",
+  "attribute_field_changes": {
+    "bytes": 830,
+    "fields": 12,
+    "path": "baseline_field_changes.jsonl",
+    "sha256": "47d2b132ccfe140b7073b1eaa308a4a5b88f62c723be4d23189c90f27791bbb7"
+  },
+  "baseline": {
+    "acceptance": "unapproved_candidate",
+    "comparison_input": {
+      "adapter": "typed-geojson-feature-jsonl-v1",
+      "bytes": 50651278,
+      "derivation": {
+        "code_sha256": "a11e68f3d838bc0384fd7184bedb6834d2a8ab56a51431d27e4daa44b35783e5",
+        "parameters": {
+          "policy_sha256": "0c13ef850c6427af50d31d47cd71effcdf1d94fbc70ab6a94de25e8ae3e91342",
+          "receipt_sha256": "bfecb1b8bd43b351ac7f659a4d42c5c8ca56c8c2973762cd6e495805939df8e0"
+        },
+        "source_sha256": [
+          "e42ee037b7e6009e6d4f515d43cd990d71c6950b4803e411194a37eee7f9704b"
+        ]
+      },
+      "path": "normalized_records.jsonl",
+      "sha256": "18a47ec5dd464763c47e09f9bf89caa6804a09cf4cd3f487b0304bfae6f88819"
+    },
+    "data_objects": [
+      {
+        "bytes": 20770816,
+        "sha256": "e42ee037b7e6009e6d4f515d43cd990d71c6950b4803e411194a37eee7f9704b"
+      }
+    ],
+    "dataset_slug": "combined-statistical-areas-3",
+    "file_slug": "combined-statistical-areas-3",
+    "version": "v0.0.0-draft-census2024-68f517f0ef6ab6bc-c096cc28641ed113"
+  },
+  "baseline_input_bytes": 50651278,
+  "baseline_sha256": "18a47ec5dd464763c47e09f9bf89caa6804a09cf4cd3f487b0304bfae6f88819",
+  "candidate_input_bytes": 50641558,
+  "candidate_sha256": "0a4505517bcc27cbdb05d77b69a5dbace88b9dde17cb680cc90c183187cbca93",
+  "comparator_sha256": "e09afaf16c27df65b9a8e0bbfde9c46e89c436d4335bdfaef9436609876ff206",
+  "contract_sha256": "dc3d3a8d0311e77ce0b793ebaa5c858932b8746bf68b035c21a2c867f75d78cc",
+  "differences": {
+    "added": 0,
+    "attributes": 184,
+    "coverage_buckets": 0,
+    "geometry": 0,
+    "removed": 0
+  },
+  "populations": {
+    "baseline": {
+      "duplicate_keys": 0,
+      "invalid_records": 0,
+      "null_keys": 0,
+      "rows": 184
+    },
+    "candidate": {
+      "duplicate_keys": 0,
+      "invalid_records": 0,
+      "null_keys": 0,
+      "rows": 184
+    }
+  },
+  "reason_codes": [
+    "full_population_changes_require_acceptance"
+  ],
+  "retained_rows_compared": 184,
+  "schema_version": 1,
+  "sidecar": {
+    "bytes": 395358,
+    "path": "baseline_differences.jsonl",
+    "sha256": "ddf898486a89190d9c5c9bd69149a6605fb82ce120867e8d5ce24977660b2154"
+  },
+  "status": "needs_decision",
+  "verification_scope": "native_originals_recomputed",
+  "physical_schema_equal": false,
+  "native_inputs": {
+    "baseline": {
+      "receipt_path": "baseline/normalization_receipt.json",
+      "receipt_sha256": "bfecb1b8bd43b351ac7f659a4d42c5c8ca56c8c2973762cd6e495805939df8e0",
+      "status": "complete",
+      "source_objects": [
+        {
+          "bytes": 20770816,
+          "key": "combined-statistical-areas-3.gpkg",
+          "physical_schema_sha256": "d2f1b6264b90948af5d05f9e245ed33021d9b19d3a19c7e421b7b0b6302a86c3",
+          "rows_observed": 184,
+          "sha256": "e42ee037b7e6009e6d4f515d43cd990d71c6950b4803e411194a37eee7f9704b"
+        }
+      ]
+    },
+    "candidate": {
+      "receipt_path": "candidate/normalization_receipt.json",
+      "receipt_sha256": "582cb9c25e10c16400796f0c0fc5eae40414c85816f34b91e7ab5a92189b49d7",
+      "status": "complete",
+      "source_objects": [
+        {
+          "bytes": 17207926,
+          "key": "typed-source.parquet",
+          "physical_schema_sha256": "374a7de0ee1fabf563a953a872ba8da68e99d1dd9460542e107a597eaf2294f3",
+          "rows_observed": 184,
+          "sha256": "d0ed83f85ceefd7ce80e80f5134d3b1a1c52fa1744368b2ef2623bbd328091b3"
+        }
+      ]
+    }
+  },
+  "full_report_runtime": {
+    "path": "/workspace/work/hifld-coordinator/40/native-source-vs-parquet/baseline_comparison.json",
+    "bytes": 26366,
+    "sha256": "384f4fbb0c5413ea9f98ed331ffdaaa57468fff4ecb8aefb02063c96f6c6a838"
+  }
+}

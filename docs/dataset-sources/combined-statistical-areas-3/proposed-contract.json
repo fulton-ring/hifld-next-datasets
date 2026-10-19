@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "contract_version": "draft-census-csa-2024-v1",
+  "status": "proposed",
+  "approved": false,
+  "geometry": {
+    "source_column": "SHAPE",
+    "type": "MultiPolygon",
+    "encoding": "native WKB",
+    "crs": "EPSG:4269",
+    "nullable": true,
+    "observed_nulls": 0,
+    "observed_invalid": 0,
+    "transformations": []
+  },
+  "columns": {
+    "OBJECTID": {
+      "physical": "int64",
+      "nullable": false,
+      "role": "original intrinsic OpenFileGDB FID exposed unchanged as attribute"
+    },
+    "GEOID": {
+      "physical": "string",
+      "width": 3,
+      "nullable": true
+    },
+    "GEOIDFQ": {
+      "physical": "string",
+      "width": 12,
+      "nullable": true
+    },
+    "NAMELSAD": {
+      "physical": "string",
+      "width": 100,
+      "nullable": true
+    },
+    "LSAD": {
+      "physical": "string",
+      "width": 2,
+      "nullable": true
+    },
+    "ALAND": {
+      "physical": "float64",
+      "nullable": true
+    },
+    "AWATER": {
+      "physical": "float64",
+      "nullable": true
+    },
+    "INTPTLAT": {
+      "physical": "string",
+      "width": 11,
+      "nullable": true
+    },
+    "INTPTLON": {
+      "physical": "string",
+      "width": 12,
+      "nullable": true
+    }
+  },
+  "id_fields": [
+    "OBJECTID"
+  ],
+  "coverage_fields": [
+    "GEOID"
+  ],
+  "observed_feature_count": 184,
+  "observed_nulls": {
+    "OBJECTID": 0,
+    "GEOID": 0,
+    "GEOIDFQ": 0,
+    "NAMELSAD": 0,
+    "LSAD": 0,
+    "ALAND": 0,
+    "AWATER": 0,
+    "INTPTLAT": 0,
+    "INTPTLON": 0
+  },
+  "observed_raw_FID_range": [
+    1,
+    184
+  ],
+  "accepted_published_mapping": null,
+  "published_baseline_contract": null,
+  "source_physical_nullability_vs_observed_completeness": "Declared nullable source attributes retain their declarations; this pinned full release happens to have zero nulls. New null values quarantine as observed-release drift, not destructive type tightening.",
+  "gpkg_storage_fid": "_gpkg_storage_fid is an independent storage index, never a substitute source/published identifier. Native OBJECTID remains an explicit int64 field.",
+  "terminal_schema_changes": "Shared GeoParquet adds bbox and changes representation metadata/nullability. These require review; no format contract accepted."
+}

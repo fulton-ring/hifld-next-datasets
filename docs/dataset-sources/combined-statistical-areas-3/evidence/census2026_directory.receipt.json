@@ -1,0 +1,9 @@
+{
+  "url": "https://www2.census.gov/geo/tiger/TGRGDB26/",
+  "observed_at": "2026-10-19T07:03:33.887449+00:00",
+  "status": 200,
+  "final_url": "https://www2.census.gov/geo/tiger/TGRGDB26/",
+  "bytes": 44018,
+  "sha256": "9ddabbb466d64403ce7489789596d8ec57bbd8222297ac17578ed0a10a108db7",
+  "complete_body": true
+}
