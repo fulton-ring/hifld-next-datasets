@@ -169,7 +169,7 @@ class AquifersTests(unittest.TestCase):
             prefix=Path(tmp,'aquifers','aquifers',first['version'])
             self.assert_cached_self_repin_rejected(storage,prefix,kwargs,Path(tmp),cases=[
                 'geopackage-contents-crs','geopackage-contents-bounds','geopackage-column-crs',
-                'geopackage-srs-definition','geopackage-srs-authority','geopackage-rtree-bounds','geopackage-header-crs','geopackage-header-bounds'])
+                'geopackage-srs-definition','geopackage-srs-authority','geopackage-rtree-bounds','geopackage-header-crs','geopackage-header-bounds','geopackage-value'])
 
     def assert_cached_self_repin_rejected(self, storage, prefix, kwargs, root, cases=None):
         marker=prefix/'metadata/aquifers_candidate_ready.json'
@@ -255,7 +255,7 @@ class AquifersTests(unittest.TestCase):
                 'parquet-native-geometry':'cached_parquet_original_row_or_geometry_mismatch',
                 'parquet-integer-width':'cached_parquet_physical_schema_metadata_or_crs_drift',
                 'parquet-nullability':'cached_parquet_physical_schema_metadata_or_crs_drift',
-                'geopackage-value':'cached_geopackage_original_row_or_geometry_mismatch',
+                'geopackage-value':'cached_geopackage_native_crs_bounds_or_header_drift',
                 'provenance':'cached_source_provenance_semantic_or_code_drift',
                 'extra-output':'existing_candidate_inventory_conflict',
                 'missing-output':'existing_candidate_inventory_conflict',
