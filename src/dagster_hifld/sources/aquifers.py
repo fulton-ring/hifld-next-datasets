@@ -65,6 +65,8 @@ def sha(body: bytes) -> str:
 
 
 def strict_json(body: bytes) -> dict:
+    if len(body) > 128_000:
+        raise AquifersQuarantineError('metadata_size_limit')
     def pairs(items):
         result = {}
         for key, value in items:
@@ -121,10 +123,11 @@ def acquire(storage: StagingStorageResource, archive_path: Path | None, receipt_
                 body = stream.read(MAX_BYTES + 1)
             if receipt_path is None:
                 raise AquifersQuarantineError('preserved_capture_requires_original_receipt')
-            receipt = strict_json(receipt_path.read_bytes())
+            with receipt_path.open('rb') as stream:
+                receipt = strict_json(stream.read(128_001))
             validate_receipt(body, receipt)
             return body, receipt
-        except (OSError, ValueError, TypeError) as exc:
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
             location = quarantine(storage, body, receipt, str(exc))
             raise AquifersQuarantineError(f'{exc}; retained:{location}') from exc
     for attempt in range(3):
@@ -134,7 +137,7 @@ def acquire(storage: StagingStorageResource, archive_path: Path | None, receipt_
             with httpx.Client(follow_redirects=False, timeout=60) as client:
                 with client.stream('GET', URL) as response:
                     receipt.update(final_url=str(response.url), status=response.status_code)
-                    for block in response.iter_bytes():
+                    for block in response.iter_bytes(chunk_size=64 * 1024):
                         body += block
                         if len(body) > MAX_BYTES:
                             raise AquifersQuarantineError('response_size_limit')
@@ -205,6 +208,8 @@ def inspect_archive(body: bytes, directory: Path) -> tuple[list[dict], dict, dic
                 raise AquifersQuarantineError(f'source_type_or_null_drift:{name}')
             if isinstance(value, int) and not -(2**31) <= value < 2**31:
                 raise AquifersQuarantineError(f'source_integer_width_drift:{name}')
+        if row['geometry'] is None:
+            raise AquifersQuarantineError('missing_native_geometry')
         g = shape(row['geometry'])
         if g.is_empty or g.geom_type != 'Polygon':
             raise AquifersQuarantineError('invalid_empty_or_changed_native_geometry')

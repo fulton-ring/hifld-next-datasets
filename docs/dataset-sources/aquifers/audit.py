@@ -7,6 +7,10 @@ import argparse
 import collections
 import json
 import tempfile
+import hashlib
+import numpy as np
+from pyproj import Transformer
+from shapely.ops import transform
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -39,6 +43,17 @@ def main():
     tuple_index={key(r):r for r in published}
     renamed=sum(r['OBJECTID_1']!=tuple_index[key(r)]['OBJECTID'] for r in original if key(r) in tuple_index)
     geometry=[shapely.from_wkb(r['geometry']) for r in published]
+    projected=Transformer.from_crs(4269,3857,always_xy=True)
+    geometric=collections.Counter(); maximum_bounds_delta=0.0
+    for row in rows:
+        candidate=tuple_index[key(row['properties'])]
+        original_geometry=shapely.geometry.shape(row['geometry'])
+        published_geometry=shapely.from_wkb(candidate['geometry'])
+        diagnostic_projected=transform(projected.transform, original_geometry)
+        geometric['complete_pairs_compared']+=1
+        geometric['native_vertex_count_same' if len(shapely.get_coordinates(original_geometry))==len(shapely.get_coordinates(published_geometry)) else 'native_vertex_count_different']+=1
+        geometric['projected_normalized_geometry_exact' if shapely.normalize(diagnostic_projected).wkb==shapely.normalize(published_geometry).wkb else 'projected_normalized_geometry_different']+=1
+        maximum_bounds_delta=max(maximum_bounds_delta,float(np.abs(np.array(diagnostic_projected.bounds)-np.array(published_geometry.bounds)).max()))
     report={'approved':False,'status':'migration_decision_required','complete_populations':True,
         'producer_source':audit,'published_candidate':{'sha256':BASELINE_SHA,'generation':'1791506350105881',
             'bytes':len(baseline_bytes),'feature_count':len(table),'arrow_schema':str(table.schema),
@@ -54,7 +69,7 @@ def main():
             'numeric_id_join_attribute_differences':direct,
             'diagnostic_shared_attribute_tuple':{'columns':fields,'unique_source':len(source_tuple),'unique_published':len(published_tuple),
                 'matched':sum((source_tuple&published_tuple).values()),'renumbered_ids':renamed,
-                'approved_crosswalk':False,'geometry_comparison':'Different nativeCRS/coordinates; no accepted reprojection,tolerance,repair or ID crosswalk. Invalidsource20 vs validpublished0 retained; no geometryequivalence inferred.'},
+                'approved_crosswalk':False,'geometry_comparison':{'counts':dict(geometric), 'diagnostic_only_reprojection':'EPSG4269 toEPSG3857 viainstalledPyProj; no rounding,simplification,repair or tolerance', 'max_diagnostic_absolute_projected_bounds_delta_m':maximum_bounds_delta, 'acceptance':'No approvedsource/publishedIDcrosswalk,reprojection,tolerance or geometryrepair. This complete per-feature diagnostic grantsnone.'}},
             'source_null_rock_name_published_fill':{'source_nulls':audit['nulls']['ROCK_NAME'],'published_nulls':sum(r['ROCK_NAME'] is None for r in published),
                 'source_null_published_values':dict(collections.Counter(tuple_index[key(r)]['ROCK_NAME'] for r in original if r['ROCK_NAME'] is None))}},
         'acceptance_prerequisites':['DHS crosswalk provider403 or explicit unmatched acceptance',

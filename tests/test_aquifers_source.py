@@ -7,7 +7,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import httpx
-from dagster import AssetKey, DefaultScheduleStatus, ScheduleExecutionError, build_schedule_context
+import fiona
+from shapely.geometry import mapping, shape
+from dagster import AssetKey, DefaultScheduleStatus, build_schedule_context
+from dagster._core.errors import ScheduleExecutionError
 
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usgs import usgs_aquifers, usgs_aquifers_draft_refresh_schedule
@@ -54,7 +57,7 @@ class AquifersTests(unittest.TestCase):
             headers = {}
             def __enter__(self): return self
             def __exit__(self,*args): pass
-            def iter_bytes(self):
+            def iter_bytes(self, **kwargs):
                 yield b'partial-real-network-chunk'
                 raise httpx.ReadError('connection reset')
         class Client:
@@ -108,3 +111,24 @@ class AquifersTests(unittest.TestCase):
             del ready['objects']['raw/members/us_aquifers.dbf'];marker.write_text(json.dumps(ready))
             with self.assertRaisesRegex(ValueError,'inventory_conflict'):
                 source.stage_aquifers_candidate(storage,**kwargs)
+
+    @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
+    def test_missing_duplicate_lossy_types_columns_and_geometry_reject(self):
+        with fiona.open(CAPTURES/'zip/us_aquifers.shp') as original:
+            rows=[{'properties':dict(r['properties']),'geometry':mapping(shape(r['geometry']))} for r in original]
+        class Stream:
+            schema={'properties':source.SCHEMA,'geometry':'Polygon'}
+            crs='EPSG:4269'
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def __iter__(self):return iter(self.rows)
+        cases=[('missing-ID',lambda r:r['properties'].pop('OBJECTID_1')),
+               ('duplicate-ID',lambda r:r['properties'].__setitem__('OBJECTID_1',2)),
+               ('integer-to-float',lambda r:r['properties'].__setitem__('AQ_CODE',999.0)),
+               ('unexpected-column',lambda r:r['properties'].__setitem__('unapproved',1)),
+               ('geometry-null',lambda r:r.__setitem__('geometry',None))]
+        for name,change in cases:
+            altered=copy.deepcopy(rows);change(altered[0]);stream=Stream();stream.rows=altered
+            with self.subTest(name=name),tempfile.TemporaryDirectory() as tmp,patch.object(source.fiona,'open',return_value=stream):
+                with self.assertRaises((ValueError,TypeError)):
+                    source.inspect_archive(CAPTURES.joinpath('zip.body').read_bytes(),Path(tmp))
