@@ -1,0 +1,16 @@
+{
+  "repository": "fulton-ring/hifld-next-iac",
+  "commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+  "source_url": "https://api.github.com/repos/fulton-ring/hifld-next-iac/tarball/56aa10757129c457c530d707d9a40bae13e0907f",
+  "archive_sha256": "ee36600c45e5bb71d5b96736a34ec4391a31dc1502c7c01ff8b2413eeadebc00",
+  "archive_bytes": 336477,
+  "observed_at": "2026-10-19T06:47:44.549773+00:00",
+  "classification": "Unmodified complete real pinned sibling repository source snapshot, not a fabricated test fixture. No infrastructure commands or writes to cloud.",
+  "required_file": {
+    "path": "environments/prod/dagster.tf",
+    "bytes": 6296,
+    "sha256": "11841bd7296e82557750bdfc69462e0167c37c353a635dc6c5737cb3616ddf66"
+  },
+  "test_path": "/workspace/hifld-worker-worktrees/hifld-next-iac/environments/prod/dagster.tf",
+  "infrastructure_commands_executed": false
+}

@@ -38,5 +38,19 @@
     "baseline": "/workspace/work/hifld-coordinator/19/baseline.body",
     "baseline_receipt": "/workspace/work/hifld-coordinator/19/baseline.json",
     "complete_source_and_actual_outputs": "/workspace/work/hifld-coordinator/19/final-graph"
+  },
+  "final_full_suite": {
+    "code_head": "4cf2c4e90907b74081a4873d7b3cd8423098304f",
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src .venv/bin/python -m unittest discover tests",
+    "tests": 479,
+    "passed": 478,
+    "skipped": 1,
+    "errors": 0,
+    "status": "pass_with_one_production_fixture_skip",
+    "duration_seconds": 240.696,
+    "log": "full-suite-real-iac.log.gz",
+    "actual_input": "real-iac-test-input.json",
+    "historical_missing_input_failure_preserved": true,
+    "scope": "Complete repositorysuite with actualunmodifiedpinnedsiblingIaC source; no fixturefabrication or suppressions; noCIorrealreleaseacceptanceinferred"
   }
 }
