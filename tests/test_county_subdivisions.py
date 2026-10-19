@@ -79,7 +79,7 @@ class CountySubdivisionTests(unittest.TestCase):
     def test_source_drift_preserves_original_and_prior_output(self):
         with synthetic_population() as (root,storage,raw,receipt,_):
             prior=root/'prior';prior.write_bytes(b'accepted fixture');raw.write_bytes(b'changed source')
-            with self.assertRaisesRegex(ValueError,'hash_drift'):self.stage(storage,raw,receipt)
+            with self.assertRaisesRegex(ValueError,'rejected_after_observation'):self.stage(storage,raw,receipt)
             self.assertEqual(raw.read_bytes(),b'changed source');self.assertEqual(prior.read_bytes(),b'accepted fixture');self.assertFalse((Path(storage.local_dir)/source.SLUG).exists())
 
     def test_missing_state_quarantines_and_second_attempt_never_bootstraps(self):
@@ -96,6 +96,24 @@ class CountySubdivisionTests(unittest.TestCase):
             self.assertFalse((Path(storage.local_dir)/'_construction-state').exists())
             self.assertFalse(list((Path(storage.local_dir)/source.SLUG/source.SLUG).glob('v*')))
             self.assertTrue(self.stage(storage,raw,receipt))
+
+    def test_external_malformed_or_invalid_receipts_preserved_before_validation(self):
+        for invalid in [b'{NOT JSON',b'[]',b'{}']:
+            with self.subTest(invalid=invalid),synthetic_population() as (root,storage,raw,receipt,_):
+                original=raw.read_bytes();receipt.write_bytes(invalid)
+                with self.assertRaisesRegex(ValueError,'rejected_after_observation'):self.stage(storage,raw,receipt)
+                observations=list((Path(storage.local_dir)/'_raw-untrusted-observations').rglob('receipt.bin'));self.assertEqual(len(observations),1);self.assertEqual(observations[0].read_bytes(),invalid)
+                diagnostic=source.strict_json(observations[0].with_name('observation.json').read_bytes());self.assertTrue(diagnostic['complete_receipt_descriptor_read']);self.assertEqual(diagnostic['archive_path'],str(raw));self.assertEqual(raw.read_bytes(),original)
+                self.assertFalse((Path(storage.local_dir)/'_construction-state').exists());self.assertFalse((Path(storage.local_dir)/'_raw-capture-references').exists())
+
+    def test_external_receipt_read_bounded_and_alias_refused(self):
+        with synthetic_population() as (root,storage,raw,receipt,_):
+            receipt.write_bytes(b'x'*(source.MAX_RECEIPT_BYTES+97))
+            with self.assertRaisesRegex(ValueError,'rejected_after_observation'):self.stage(storage,raw,receipt)
+            observed=next((Path(storage.local_dir)/'_raw-untrusted-observations').rglob('receipt.bin'));self.assertEqual(observed.stat().st_size,source.MAX_RECEIPT_BYTES+1)
+            self.assertFalse(source.strict_json(observed.with_name('observation.json').read_bytes())['complete_receipt_descriptor_read'])
+            link=root/'receipt-link';link.symlink_to(receipt)
+            with self.assertRaisesRegex(ValueError,'alias'):self.stage(storage,raw,link)
 
     def test_partial_cas_only_blocks_without_rewriting(self):
         with synthetic_population() as (_,storage,raw,receipt,_):

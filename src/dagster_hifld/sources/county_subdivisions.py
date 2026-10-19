@@ -52,6 +52,7 @@ RAW_KEY=f'_raw-captures/{SLUG}/{SHA256}/original.gdb.zip'
 READY='metadata/cousub_candidate_ready.json'
 FIELDS=('OBJECTID','COUSUBNS','GEOID','GEOIDFQ','NAMELSAD','CLASSFP','FUNCSTAT','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
 TYPES=(pa.int32(),*[pa.string()]*6,pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
+MAX_RECEIPT_BYTES=65536
 BATCH_SIZE=512
 STATE_COUNTS={'01': 390, '02': 37, '04': 80, '05': 1095, '06': 404, '08': 209, '09': 174, '10': 27, '11': 1, '12': 316, '13': 586, '15': 44, '16': 170, '17': 1696, '18': 1012, '19': 1663, '20': 1525, '21': 493, '22': 576, '23': 529, '24': 290, '25': 357, '26': 1580, '27': 2759, '28': 410, '29': 1394, '30': 194, '31': 1182, '32': 71, '33': 260, '34': 569, '35': 130, '36': 1023, '37': 1041, '38': 1761, '39': 1607, '40': 305, '41': 212, '42': 2573, '44': 40, '45': 299, '46': 1328, '47': 844, '48': 862, '49': 93, '50': 256, '51': 552, '53': 242, '54': 225, '55': 1925, '56': 71, '60': 16, '66': 20, '69': 12, '72': 939, '78': 23}
 
@@ -101,12 +102,37 @@ def validate_receipt(path,receipt):
         'license':LICENSE,'attribution':'U.S. Census Bureau, TIGER/Line 2024 national substate geographic geodatabase, County_Subdivision.',
         'release_date_unknown_reason':'Producer edition2024. HTTP Last-Modified2024-08-08 is packaging evidence; an exact independently established publication day remains unresolved.'}
 
+def observe_external_receipt(storage,archive_path,receipt_path):
+    """Retain bounded exact consumed receipt bytes BEFORE trusting any claims."""
+    path=unaliased(archive_path,file=True);receipt_file=unaliased(receipt_path,file=True)
+    descriptor=os.open(receipt_file,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(descriptor,'rb') as stream:
+        before=os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1:raise CountySubdivisionQuarantineError('receipt_regular_unlinked_descriptor_required')
+        raw=stream.read(MAX_RECEIPT_BYTES+1);after=os.fstat(stream.fileno())
+    fields=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns')
+    stable=all(getattr(before,n)==getattr(after,n) for n in fields)
+    diagnostic={'classification':'UNTRUSTED external capture/receipt observation; no HTTP/source validity or completeness claim',
+        'archive_path':str(path),'archive_bytes_reported_by_stat':path.stat().st_size,
+        'receipt_path':str(receipt_file),'receipt_bytes_reported_by_stat':before.st_size,'receipt_read_limit':MAX_RECEIPT_BYTES,
+        'receipt_consumed_bytes':len(raw),'receipt_consumed_sha256':digest(raw),'receipt_descriptor_stable':stable,
+        'complete_receipt_descriptor_read':stable and before.st_size<=MAX_RECEIPT_BYTES and len(raw)==before.st_size}
+    key=f'_raw-untrusted-observations/{SLUG}/{digest(encode(diagnostic))}'
+    immutable(storage,key+'/receipt.bin',raw);immutable(storage,key+'/observation.json',encode(diagnostic))
+    try:
+        if not diagnostic['complete_receipt_descriptor_read']:raise CountySubdivisionQuarantineError('external_receipt_oversized_short_or_changed')
+        receipt=strict_json(raw);validate_receipt(path,receipt)
+    except (ValueError,TypeError,KeyError,OSError) as exc:
+        immutable(storage,key+'/rejection.json',encode({'approved':False,'error_type':type(exc).__name__,'reason':str(exc)[:512],'source_claims_validated':False}))
+        raise CountySubdivisionQuarantineError('external_capture_receipt_rejected_after_observation:'+type(exc).__name__) from exc
+    return path,receipt
+
 def acquire(storage,archive_path=None,receipt_path=None):
     root=local_only(storage)
     if archive_path is not None:
         # Deliberately explicit read-only reference to a preserved complete raw
         # depot, NOT a copied staging object or claim of a new live observation.
-        path=unaliased(archive_path,file=True);receipt=strict_json(unaliased(receipt_path,file=True).read_bytes());validate_receipt(path,receipt)
+        path,receipt=observe_external_receipt(storage,archive_path,receipt_path)
         pointer={'kind':'external_preserved_read_only_capture','absolute_path':str(path),'sha256':SHA256,'bytes':BYTES,'ownership':'caller/coordinator preserved original; adapter never writes or removes this file'}
     else:
         path=root/RAW_KEY;path.parent.mkdir(parents=True,exist_ok=True)
