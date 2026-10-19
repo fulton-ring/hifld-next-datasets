@@ -1,0 +1,316 @@
+{
+  "schema_version": 1,
+  "issue": 42,
+  "dataset_slug": "construction-minerals-operations",
+  "actual_worker": "/root/review_units_31",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "implementation_scope": "Reviewable explicitly selected historical preservation-candidate reconstruction only; no source/current-feed/contract/baseline/datum/ID-mapping acceptance",
+  "status": "draft_implementation_local_validation_in_progress",
+  "approved": false,
+  "official_producer": "U.S. Geological Survey Minerals Information Team, National Atlas",
+  "publication_month": "2005-12",
+  "data_active_year": 2003,
+  "source_release_day": null,
+  "freshness": "Static legacy dataset, not expected updated; irregular historical metadata does not establish a maintained endpoint",
+  "exact_grain": "Construction mineral operations(plants/mines), excluding construction sand/gravel and crushed stone; not MRDS, modern mineplant or PA subset",
+  "official_metadata": {
+    "url": "https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/minop2x020.xml",
+    "sha256": "d68776d0c1c487d7b131c4abc0643c7e0ac9fbeac656144b585ca3c6044c3e94",
+    "datum_claim": "North American Datum of 1983"
+  },
+  "original_machine_url": "http://dds.cr.usgs.gov/pub/data/nationalatlas/minop2x020_nt00019.tar.gz",
+  "original_machine_result": "HTTP\u2192HTTPS404; original archive authentication not recovered",
+  "crosswalk": {
+    "url": "https://doi.org/10.3886/E241367V1",
+    "status": "403, not read; exact match remains UNVERIFIED, not declared unmatched"
+  },
+  "preservation_candidate": {
+    "package_id": "stanford-ds401wt4784-preservation-as-provided-v1",
+    "landing_url": "https://purl.stanford.edu/ds401wt4784",
+    "manifest_url": "https://purl.stanford.edu/ds401wt4784.xml",
+    "classification": "third-party historical preservation archive, not authenticated original USGS bytes/delegated agency feed",
+    "master_count": 5,
+    "all_manifest_size_MD5_SHA1_verified": true,
+    "native_count": 766,
+    "states": 46,
+    "native_DBF_fields": [
+      {
+        "name": "MINOP2X020",
+        "type": "N",
+        "width": 3,
+        "decimals": 0
+      },
+      {
+        "name": "COMMODITY",
+        "type": "C",
+        "width": 21,
+        "decimals": 0
+      },
+      {
+        "name": "SITE_NAME",
+        "type": "C",
+        "width": 46,
+        "decimals": 0
+      },
+      {
+        "name": "COMPANY_NA",
+        "type": "C",
+        "width": 51,
+        "decimals": 0
+      },
+      {
+        "name": "STATE_LOCA",
+        "type": "C",
+        "width": 14,
+        "decimals": 0
+      },
+      {
+        "name": "COUNTY",
+        "type": "C",
+        "width": 16,
+        "decimals": 0
+      },
+      {
+        "name": "LATITUDE",
+        "type": "N",
+        "width": 9,
+        "decimals": 3
+      },
+      {
+        "name": "LONGITUDE",
+        "type": "N",
+        "width": 11,
+        "decimals": 3
+      },
+      {
+        "name": "PLANT_MIN",
+        "type": "C",
+        "width": 10,
+        "decimals": 0
+      }
+    ],
+    "crs_as_provided": "GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]]",
+    "datum_conflict": "Own PRJ WGS84 vs embedded/original USGS FGDC NAD83; retained, not silently resolved",
+    "input_selection": "Explicit local package and exact packageID required; no default current download, no archive polling, STOPPED reconstruction/integrity schedule"
+  },
+  "mirror_candidate": {
+    "classification": "third-party national HIFLD mirror; no agency delegation established",
+    "count": 766,
+    "before_after_count_ids_metadata_unchanged": true,
+    "all_10_attributes_exact_equal_baseline": true,
+    "extra_native_ids": [
+      "OBJECTID_1",
+      "FID_1"
+    ],
+    "physical_fields": [
+      {
+        "name": "OBJECTID_1",
+        "type": "esriFieldTypeOID",
+        "alias": "OBJECTID_1"
+      },
+      {
+        "name": "FID_1",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "FID_1"
+      },
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "OBJECTID"
+      },
+      {
+        "name": "MINOP2X020",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "MINOP2X020"
+      },
+      {
+        "name": "COMMODITY",
+        "type": "esriFieldTypeString",
+        "alias": "COMMODITY",
+        "length": 21
+      },
+      {
+        "name": "SITE_NAME",
+        "type": "esriFieldTypeString",
+        "alias": "SITE_NAME",
+        "length": 46
+      },
+      {
+        "name": "COMPANY_NA",
+        "type": "esriFieldTypeString",
+        "alias": "COMPANY_NA",
+        "length": 49
+      },
+      {
+        "name": "STATE_LOCA",
+        "type": "esriFieldTypeString",
+        "alias": "STATE_LOCA",
+        "length": 14
+      },
+      {
+        "name": "COUNTY",
+        "type": "esriFieldTypeString",
+        "alias": "COUNTY",
+        "length": 16
+      },
+      {
+        "name": "LATITUDE",
+        "type": "esriFieldTypeDouble",
+        "alias": "LATITUDE"
+      },
+      {
+        "name": "LONGITUDE",
+        "type": "esriFieldTypeDouble",
+        "alias": "LONGITUDE"
+      },
+      {
+        "name": "PLANT_MIN",
+        "type": "esriFieldTypeString",
+        "alias": "PLANT_MIN",
+        "length": 3
+      }
+    ],
+    "native_crs": {
+      "wkid": 4326,
+      "latestWkid": 4326
+    },
+    "vs_baseline_geometry_minmax_m": [
+      7.730796472162538e-07,
+      0.00015931600349324297
+    ]
+  },
+  "baseline": {
+    "classification": "unapproved complete published candidates",
+    "release_collection": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/collection.json",
+    "count": 766,
+    "all5_complete_provider_MD5_size_generation_verified": true,
+    "open_format_comparison": "All766\u00d710attribute values exact across GeoJSON,GPKG,SHP,Parquet; GPKG/SHP native geometry exact Parquet, GeoJSON native3857 rounding differs<=0.00005m; PMTiles complete bytes only, features not independently decoded",
+    "identifiers": "Original source MINOP2X020, implicit fileFID0..765 and SHP record1..766 retained distinctly; complete published MINOP2X020/OBJECTID/GeoJSONFID/featureid/GPKGstorageFID/SHPFID separately retained; no join/mapping approved"
+  },
+  "proposed_physical_schema": {
+    "DBF_N": "Arrowdecimal128(originalwidth,originalscale), originalrawDBFbytes retained",
+    "DBF_C": "ASCII string, only DBF right padding removed; originalrawbytes retained",
+    "geometry": "Original nativePointWKB doubles; own preservedPRJasprovided, datuminterpretationunapproved",
+    "outputs": "Native prebuilt GeoParquet only, no generic converter; noGPKGdecimalcoercion, shapefileschema mapping orPMTilesprojection/quantization approved"
+  },
+  "compatibility_differences": {
+    "MINOP2X020": {
+      "exact_mismatched_rows": 0,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 0
+    },
+    "COMMODITY": {
+      "exact_mismatched_rows": 766,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 0
+    },
+    "SITE_NAME": {
+      "exact_mismatched_rows": 766,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 150
+    },
+    "COMPANY_NA": {
+      "exact_mismatched_rows": 766,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 227
+    },
+    "STATE_LOCA": {
+      "exact_mismatched_rows": 766,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 3
+    },
+    "COUNTY": {
+      "exact_mismatched_rows": 766,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 1
+    },
+    "LATITUDE": {
+      "exact_mismatched_rows": 0,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 0
+    },
+    "LONGITUDE": {
+      "exact_mismatched_rows": 0,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 0
+    },
+    "PLANT_MIN": {
+      "exact_mismatched_rows": 0,
+      "mismatched_after_hypothetical_uppercase_diagnostic_only": 0
+    }
+  },
+  "substantive_examples": [
+    {
+      "MINOP2X020": 17,
+      "field": "SITE_NAME",
+      "preserved": "Mine 23 - Perry",
+      "published": "MINE 23 PERRY"
+    },
+    {
+      "MINOP2X020": 24,
+      "field": "SITE_NAME",
+      "preserved": "Mine #10 - Black Charm",
+      "published": "MINE #10 BLACK CHARM"
+    },
+    {
+      "MINOP2X020": 25,
+      "field": "SITE_NAME",
+      "preserved": "Mine #17 - Young",
+      "published": "MINE #17 YOUNG"
+    },
+    {
+      "MINOP2X020": 11,
+      "field": "COMPANY_NA",
+      "preserved": "Unimin Corp",
+      "published": "UNIMIN CORPORATION"
+    },
+    {
+      "MINOP2X020": 12,
+      "field": "COMPANY_NA",
+      "preserved": "Unimin Corp",
+      "published": "UNIMIN CORPORATION"
+    },
+    {
+      "MINOP2X020": 14,
+      "field": "COMPANY_NA",
+      "preserved": "Unimin Corp",
+      "published": "UNIMIN CORPORATION"
+    },
+    {
+      "MINOP2X020": 11,
+      "field": "STATE_LOCA",
+      "preserved": "Mississippi",
+      "published": "TENNESSEE"
+    },
+    {
+      "MINOP2X020": 12,
+      "field": "STATE_LOCA",
+      "preserved": "Mississippi",
+      "published": "TENNESSEE"
+    },
+    {
+      "MINOP2X020": 318,
+      "field": "STATE_LOCA",
+      "preserved": "North Carolina",
+      "published": "VIRGINIA"
+    },
+    {
+      "MINOP2X020": 318,
+      "field": "COUNTY",
+      "preserved": "Rockingham",
+      "published": "CITY OF RICHMOND"
+    }
+  ],
+  "geometry_differences": {
+    "comparison": "preserved PRJ interpreted EPSG4326; published nativeEPSG3857 transformed EPSG4326; not an approved transform/mapping",
+    "different_all_rows": true,
+    "min_geodesic_m": 0.5783617400275584,
+    "max_geodesic_m": 1.2842673493858228
+  },
+  "external_decisions": [
+    "Authenticate original agency raw files or explicitly choose/accept a named preservation/mirror package; no choice made by this PR",
+    "Resolve contradictory source datum claims and coordinate differences with explicit approved mapping/tolerance",
+    "Review substantive state/county/company/name differences, original/published ID provenance and complete coverage",
+    "Approve versioned physical schema/raw-to-published ID/column mapping and accepted baseline/contract",
+    "Crosswalk match still unavailable due403; no inferred match approval",
+    "Independent exact-head review and release decision required; no merge/closure/production authorized"
+  ],
+  "validation": {
+    "focused": "12PASS21.688s sourcecheckpointd2d36f5; sourcefull766 realfixture, no sourceacceptance",
+    "actual_Dagster": "pending parent-owned registry integration; no materialization success claimed yet",
+    "full_suite": "not yet run on this branch",
+    "CI": "not inferred"
+  }
+}

@@ -1,0 +1,19 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+test_complete_reuse_and_published_id_or_ready_coforge_quarantines_whole_candidate (test_construction_minerals.MineralsTests.test_complete_reuse_and_published_id_or_ready_coforge_quarantines_whole_candidate) ... ok
+test_explicit_package_required_and_remote_or_linked_storage_rejected_before_acquire (test_construction_minerals.MineralsTests.test_explicit_package_required_and_remote_or_linked_storage_rejected_before_acquire) ... ok
+test_first_marker_failure_leaves_CAS_and_repeated_retry_cannot_bootstrap (test_construction_minerals.MineralsTests.test_first_marker_failure_leaves_CAS_and_repeated_retry_cannot_bootstrap) ... ok
+test_full766_native_values_types_ids_geometry_and_conflicting_metadata (test_construction_minerals.MineralsTests.test_full766_native_values_types_ids_geometry_and_conflicting_metadata) ... ok
+test_invalid_git_claim_and_private_writer_failure_never_seal (test_construction_minerals.MineralsTests.test_invalid_git_claim_and_private_writer_failure_never_seal) ... ok
+test_missing_renamed_extra_types_duplicate_ids_and_record_counts_fail (test_construction_minerals.MineralsTests.test_missing_renamed_extra_types_duplicate_ids_and_record_counts_fail) ... ok
+test_native_geometry_errors_missing_records_wrong_index_and_nonfinite_fail (test_construction_minerals.MineralsTests.test_native_geometry_errors_missing_records_wrong_index_and_nonfinite_fail) ... ok
+test_native_parquet_metadata_forgery_with_coforged_ready_does_not_rebase (test_construction_minerals.MineralsTests.test_native_parquet_metadata_forgery_with_coforged_ready_does_not_rebase) ... ok
+test_original_receipt_coforge_and_repeated_missing_state_require_exact_restore (test_construction_minerals.MineralsTests.test_original_receipt_coforge_and_repeated_missing_state_require_exact_restore) ... ok
+test_pinned_drift_incomplete_receipts_and_extra_package_quarantine (test_construction_minerals.MineralsTests.test_pinned_drift_incomplete_receipts_and_extra_package_quarantine) ... ok
+test_raw_physical_decimal_scale_and_character_bytes_not_coerced (test_construction_minerals.MineralsTests.test_raw_physical_decimal_scale_and_character_bytes_not_coerced) ... ok
+test_unknown_catalog_metadata_whole_quarantine_and_original_raw_preserved (test_construction_minerals.MineralsTests.test_unknown_catalog_metadata_whole_quarantine_and_original_raw_preserved) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 21.688s
+
+OK
