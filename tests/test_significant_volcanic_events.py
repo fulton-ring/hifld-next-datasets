@@ -29,6 +29,10 @@ def decode(p):return f.decode_pages([p],[7000,7001])
 
 
 class SignificantVolcanicTests(unittest.TestCase):
+    def test_official_distribution_receipt_has_concrete_delegation(self):
+        body=b'explicit synthetic receipt fixture';name='count_before';receipt={'url':f.URLS[name],'final_url':f.URLS[name],'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,'observed_at':'2026-10-19T00:00:00+00:00'}
+        item=f.validate_receipt(name,body,receipt);self.assertEqual(item['role'],'official_distributor');self.assertEqual(item['delegation_evidence']['hosted_service_url'],f.SERVICE);self.assertEqual(item['delegation_evidence']['portal_owner'],'ncei_noaa')
+
     def test_original_ids_physical_types_BCE_nulls_literal_dates_and_WKB(self):
         t=decode(page());self.assertEqual(t.num_rows,2);self.assertEqual(t['YEAR'].type,pa.int16());self.assertEqual(t['SIG_ID'].type,pa.int32());self.assertEqual(t['VOL_ID'].type,pa.float64());self.assertEqual(t['OBJECTID'].type,pa.int32())
         self.assertEqual(t['YEAR'].to_pylist(),[-4360,None]);self.assertEqual(t['NUM'][0].as_py(),'0101-06=');self.assertEqual(t['TIME_ERUPT'][0].as_py(),'D1');self.assertEqual(t['NAME'][0].as_py(),' literal name ');self.assertEqual(t['COMMENTS'][0].as_py(),'<p> 001 literal & text </p>')
@@ -90,5 +94,6 @@ class CompleteSignificantVolcanicTests(unittest.TestCase):
         r=Path(os.environ['SIGNIFICANT_VOLCANIC_TEST_CAPTURE_DIR']);c={n:((r/(n+'.body')).read_bytes(),f.strict_json((r/(n+'.receipt.json')).read_bytes()))for n in f.URLS};t,a=f.inspect_captures(c);self.assertEqual(t.num_rows,903);self.assertEqual(t.num_columns,60);self.assertEqual(a['BCE_count'],25);self.assertEqual(t['YEAR'].type,pa.int16())
         with tempfile.TemporaryDirectory()as d:
             p=Path(d);(p/'geoparquet').mkdir();pq.write_table(f.parquet_table(t),p/'geoparquet'/f'{f.SLUG}.parquet',compression='zstd');f.validate_output(p,t)
+            path=p/'geoparquet'/f'{f.SLUG}.parquet';manifest=f.manifest_for(c,{'explicit_test_identity':True},{'bytes':path.stat().st_size,'sha256':f.sha256_file(path)});f.validate_release_provenance(manifest);self.assertTrue(all(x.get('delegation_evidence')for x in manifest['inputs']if x['role']=='official_distributor'))
 
 if __name__=='__main__':unittest.main()

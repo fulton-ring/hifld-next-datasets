@@ -179,6 +179,8 @@ def validate_receipt(name,body,receipt):
     if datetime.fromisoformat(receipt['observed_at']).tzinfo is None:raise VolcanicQuarantineError('retrieval_timezone_required')
     return {'input_id':name+':'+digest(body),'producer':'NOAA National Centers for Environmental Information','host':httpx.URL(URLS[name]).host,
         'role':'official_distributor'if name.startswith(('volcano_','page_','count_','ids_','layer_'))else'producer_publication',
+        'distributor':'NOAA NCEI ArcGIS organization C8EMgrsFcRFL6LrL, ncei_noaa-owned service item',
+        'delegation_evidence':{'producer_page_url':LANDING,'viewer_url':URLS['hazards_viewer'],'viewer_javascript_url':URLS['hazards_js'],'portal_item_url':URLS['volcano_item'],'portal_owner':'ncei_noaa','hosted_service_url':SERVICE},
         'canonical_url':URLS[name],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],
         'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,
         'attribution':'NOAA NCEI/WDS Significant Volcanic Eruptions Database, DOI10.7289/V5JW8BSH; original source item attribution and rights retained.',
