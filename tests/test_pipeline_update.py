@@ -1,3 +1,5 @@
+from publication_mechanics import PublicationMechanicsMixin
+
 import tempfile
 import unittest
 import zipfile
@@ -28,7 +30,7 @@ from dagster_hifld.partitions import (
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
-class PipelineUpdateTests(unittest.TestCase):
+class PipelineUpdateTests(PublicationMechanicsMixin, unittest.TestCase):
     def test_staged_version_discovery_recognizes_shapefile_and_ignores_derived_folders(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

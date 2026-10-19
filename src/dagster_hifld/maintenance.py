@@ -1699,88 +1699,13 @@ def replace_geoparquet(
         return MaintenanceJsonReport({**result, "status": "already-applied"})
     if not apply:
         return result
-    # Re-check all production identities immediately before the mutation.
-    for logical, snapshot in production_snapshots.items():
-        if published.object_snapshot(_storage_key(published, logical)) != snapshot:
-            return MaintenanceJsonReport(
-                {
-                    **result,
-                    "status": "blocked",
-                    "errors": [f"Generation race: {logical}"],
-                }
-            )
-    backup_snapshots: dict[str, StorageObjectSnapshot] = {}
-    promoted_snapshots: dict[str, StorageObjectSnapshot] = {}
-    try:
-        for logical, snapshot in sorted(production_snapshots.items()):
-            backup_logical = f"{backup_prefix}/{logical}"
-            existing_backup = backup.object_snapshot(backup_logical)
-            if existing_backup is not None and not snapshots_content_match(
-                snapshot, existing_backup
-            ):
-                raise RuntimeError(f"Conflicting rollback backup: {backup_logical}")
-            if existing_backup is None:
-                backup_snapshots[logical] = published.copy_key_to_if_unchanged(
-                    backup,
-                    snapshot.key,
-                    backup_logical,
-                    source_snapshot=snapshot,
-                    destination_snapshot=None,
-                )
-            else:
-                backup_snapshots[logical] = existing_backup
-        for logical, snapshot in production_snapshots.items():
-            published.delete_key_if_unchanged(snapshot.key, snapshot)
-        for logical in candidate_paths:
-            source_snapshot = candidate_snapshots[logical]
-            promoted_snapshots[logical] = candidate.copy_key_to_if_unchanged(
-                published,
-                source_snapshot.key,
-                logical,
-                source_snapshot=source_snapshot,
-                destination_snapshot=None,
-            )
-        result["promoted_snapshots"] = [
-            promoted_snapshots[key].to_dict() for key in sorted(promoted_snapshots)
-        ]
-        return result
-    except (OSError, ValueError, RuntimeError) as promotion_error:
-        rollback_error: Exception | None = None
-        try:
-            for logical in candidate_paths:
-                current = published.object_snapshot(_storage_key(published, logical))
-                promoted = promoted_snapshots.get(logical)
-                if current is not None and promoted is not None and current == promoted:
-                    published.delete_key_if_unchanged(current.key, current)
-            for logical, backup_snapshot in backup_snapshots.items():
-                backup.copy_key_to_if_unchanged(
-                    published,
-                    backup_snapshot.key,
-                    logical,
-                    source_snapshot=backup_snapshot,
-                    destination_snapshot=None,
-                )
-        except (OSError, ValueError, RuntimeError) as exc:
-            rollback_error = exc
-        if rollback_error is not None:
-            return MaintenanceJsonReport(
-                {
-                    **result,
-                    "status": "blocked",
-                    "errors": [
-                        f"Promotion failed: {promotion_error}",
-                        f"Rollback failed; backup retained: {rollback_error}",
-                    ],
-                    "backup_retained": True,
-                }
-            )
-        return MaintenanceJsonReport(
-            {
-                **result,
-                "status": "blocked",
-                "errors": [f"Promotion failed and was rolled back: {promotion_error}"],
-            }
-        )
+    # In-place replacement invalidates immutable releases and bypassed acceptance.
+    # Keep the audited dry run available; a separately reviewed version migration
+    # must use the checked immutable promotion path instead of delete-and-recopy.
+    return MaintenanceJsonReport({
+        **result, "status": "blocked",
+        "errors": ["In-place published replacement is disabled; use a separately accepted new immutable version."],
+    })
 
 
 def benchmark_tiles(

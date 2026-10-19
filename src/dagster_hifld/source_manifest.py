@@ -28,6 +28,12 @@ CATALOG_METADATA_FIELDS = (
     "date_modified",
     "temporal_start",
     "temporal_end",
+    "schema_version",
+    "processor",
+    "inputs",
+    "transformations",
+    "code_commit",
+    "lineage",
 )
 
 
@@ -169,6 +175,22 @@ def _merge_manifest_layers(
         for field, value in metadata.items():
             if field in {"metadata_sources", "metadata_resolved_from", "manifest_keys"}:
                 continue
+            if field == "inputs":
+                # Source identity is additive across defaults and version layers.
+                # Conflicts cannot be resolved by silently replacing attribution.
+                inputs = {item["input_id"]: item for item in merged.get("inputs", [])}
+                if not isinstance(value, list):
+                    raise ValueError("Source manifest inputs must be a list")
+                layer_ids = set()
+                for item in value:
+                    if not isinstance(item, dict) or not item.get("input_id"):
+                        raise ValueError("Source manifest input requires input_id")
+                    identity = item["input_id"]
+                    if identity in layer_ids or (identity in inputs and inputs[identity] != item):
+                        raise ValueError(f"Conflicting source manifest input: {identity}")
+                    layer_ids.add(identity)
+                    inputs[identity] = item
+                value = list(inputs.values())
             merged[field] = value
             resolved_from[field] = source_name
 

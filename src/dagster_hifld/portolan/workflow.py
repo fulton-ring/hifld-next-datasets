@@ -21,6 +21,7 @@ from shapely import from_wkb, total_bounds
 
 from dagster_hifld.assets.publish import run_local_version_pipeline
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
+from dagster_hifld.release_approval import require_generated_object_approval
 from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
@@ -1043,6 +1044,7 @@ def _publish_catalog(
             database.write_bytes(published.read_key(CATALOG_KEY))
             generation = update_catalog_sqlite(database, records)
         _sync_corrected_spatial_extents(database, root)
+        pending_documents = []
         for path in sorted(root.rglob("*")):
             if path.is_file() and path != database:
                 relative_path = path.relative_to(root).as_posix()
@@ -1061,7 +1063,12 @@ def _publish_catalog(
                         )
                         document = _merge_catalog_children(previous_document, document)
                     body = (json.dumps(document, indent=2) + "\n").encode()
-                published.write_key(relative_path, body)
+                pending_documents.append((relative_path, body))
+        # Preflight the entire discovery bundle before the first public write.
+        for key, body in [*pending_documents, (CATALOG_KEY, database.read_bytes())]:
+            require_generated_object_approval(published, key, body)
+        for key, body in pending_documents:
+            published.write_key(key, body)
         published.write_key_if_unchanged(CATALOG_KEY, database.read_bytes(), previous)
     return generation
 
@@ -1132,15 +1139,12 @@ def _publish_release_catalog(
         )
         _sync_corrected_spatial_extents(database, root)
         validate_candidate_tree(root)
+        pending_documents = []
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
             relative_path = path.relative_to(root).as_posix()
-            published.write_key_if_unchanged(
-                f"{release_prefix}/{relative_path}",
-                path.read_bytes(),
-                None,
-            )
+            pending_documents.append((f"{release_prefix}/{relative_path}", path.read_bytes()))
         database_bytes = database.read_bytes()
         pointer = ReleasePointer(
             generation=generation,
@@ -1150,6 +1154,10 @@ def _publish_release_catalog(
             size_bytes=len(database_bytes),
             published_at=_release_timestamp(),
         )
+        for key, body in [*pending_documents, (RELEASE_POINTER_KEY, pointer.to_bytes())]:
+            require_generated_object_approval(published, key, body)
+        for key, body in pending_documents:
+            published.write_key_if_unchanged(key, body, None)
         published.write_key_if_unchanged(
             RELEASE_POINTER_KEY,
             pointer.to_bytes(),
@@ -1192,6 +1200,7 @@ def rollback_portolan_release(
         size_bytes=len(catalog_bytes),
         published_at=_release_timestamp(),
     )
+    require_generated_object_approval(storage, RELEASE_POINTER_KEY, pointer.to_bytes())
     storage.write_key_if_unchanged(
         RELEASE_POINTER_KEY, pointer.to_bytes(), current_snapshot
     )
