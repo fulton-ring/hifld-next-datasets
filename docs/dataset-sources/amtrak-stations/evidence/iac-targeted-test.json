@@ -1,9 +1,0 @@
-{
-  "source_checkpoint": "711438e170be3a60cd6a37ec8ab4b7010f11d2a8",
-  "command": "PYTHONPATH=src .venv/bin/python -m unittest tests.test_iac_dagster",
-  "tests": 1,
-  "result": "PASS",
-  "snapshot_repository": "fulton-ring/hifld-next-iac",
-  "snapshot_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
-  "meaning": "Actual unmodified pinned sibling IaC source restored by coordinator; no infrastructure execution. Historical missing-file full-suite error is resolved for this targeted check; unrelated full suite not rerun."
-}

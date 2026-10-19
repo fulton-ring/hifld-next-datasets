@@ -315,15 +315,19 @@ class AmtrakDraftTest(unittest.TestCase):
 if __name__ == '__main__': unittest.main()
 
 
+@unittest.skipUnless(
+    os.environ.get('HIFLD_AMTRAK_TEST_CAPTURE_ZIP'),
+    'Set HIFLD_AMTRAK_TEST_CAPTURE_ZIP to the preserved original complete capture to run this full-capture regression class.',
+)
 class AmtrakActualReplayReviewRegression(unittest.TestCase):
-    """Use the complete committed1,036-row capture, never a substitute fixture."""
+    """Opt-in replay of the preserved complete 1,036-row capture."""
     def setUp(self):
         self.temporary=tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root=pathlib.Path(self.temporary.name)
         self.capture=self.root/'capture'
         self.capture.mkdir()
-        archive=pathlib.Path(__file__).resolve().parents[1]/'docs/dataset-sources/amtrak-stations/evidence/complete-source-20261019.zip'
+        archive=pathlib.Path(os.environ['HIFLD_AMTRAK_TEST_CAPTURE_ZIP'])
         with zipfile.ZipFile(archive) as raw:
             raw.extractall(self.capture)
 
