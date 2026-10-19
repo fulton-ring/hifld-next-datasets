@@ -123,8 +123,9 @@ def validate_receipt(name,body,receipt):
         or type(receipt.get('bytes'))is not int or receipt['bytes']!=len(body) or receipt.get('sha256')!=digest(body) or receipt.get('complete_body')is not True):
         raise FerryRouteQuarantineError('original_receipt_url_status_hash_length_or_completeness_mismatch:'+name)
     return {'input_id':name+':'+digest(body),'producer':'Bureau of Transportation Statistics, U.S. Department of Transportation',
-        'host':urllib.parse.urlsplit(url).hostname,'role':'producer_publication'if name=='bts_ntad'else'delegated_distribution',
+        'host':urllib.parse.urlsplit(url).hostname,'role':'producer_publication'if name=='bts_ntad'else'official_distributor',
         'canonical_url':url,'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt.get('observed_at'),
+        'distributor':'BTS (USDOT_BTS) through Esri ArcGIS Online','delegation_evidence':{'bts_page_url':'https://www.bts.gov/ntad','portal_dataset_url':LANDING,'publisher_account':'USDOT_BTS','service_item':ITEM},
         'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,'attribution':'BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.',
         'release_date_unknown_reason':'Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.'}
 
