@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/workspace/work/hifld-coordinator/113/concurrent_materializations.py", line 5, in <module>
-    history=runtime/'closed-prior-draft-for-concurrency';assert not history.exists();os.rename(root,history)
-                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^
-FileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/113/runtime/staging/census-designated-places/census-designated-places/v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed' -> '/workspace/work/hifld-coordinator/113/runtime/closed-prior-draft-for-concurrency'

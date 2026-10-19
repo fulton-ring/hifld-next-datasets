@@ -1,8 +1,0 @@
-{
-  "url": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_events/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
-  "final_url": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_events/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
-  "status": 200,
-  "observed_at": "2026-10-19T09:57:27.576439+00:00",
-  "sha256": "8ec80bc59c06e2b8b7262690381111bb5dc82812be2356f488af20a136547fc0",
-  "bytes": 18179
-}
