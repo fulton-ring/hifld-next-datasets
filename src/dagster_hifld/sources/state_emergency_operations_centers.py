@@ -32,6 +32,23 @@ LANDING = "https://catalog.data.gov/dataset/state-emergency-operations-centers-e
 CAPTURE_ENV = "HIFLD_EOC_CAPTURE_DIR"
 MAX_COUNT = 10000
 MAX_CAPTURE = 8 * 1024 * 1024
+EXPECTED_FIELDS = (
+    ("objectid", "esriFieldTypeOID", False, None),
+    ("name", "esriFieldTypeString", True, 255),
+    ("city", "esriFieldTypeString", True, 255),
+    ("state", "esriFieldTypeString", True, 255),
+    ("fax", "esriFieldTypeString", True, 255),
+    ("website", "esriFieldTypeString", True, 255),
+    ("traffic", "esriFieldTypeString", True, 255),
+    ("eoc_id", "esriFieldTypeSmallInteger", True, None),
+    ("address1", "esriFieldTypeString", True, 100),
+    ("address2", "esriFieldTypeString", True, 100),
+    ("statename", "esriFieldTypeString", True, 100),
+    ("zip", "esriFieldTypeString", True, 50),
+    ("telephone", "esriFieldTypeString", True, 50),
+    ("latitude", "esriFieldTypeDouble", True, None),
+    ("longitude", "esriFieldTypeDouble", True, None),
+)
 CRS_4326 = {
     "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
     "area": "World.",
@@ -172,6 +189,8 @@ def _validate_rows(features: list, field_names: tuple[str, ...], object_id: str,
         geom = feature.get("geometry")
         if not isinstance(geom, dict) or set(geom) - {"x", "y", "spatialReference"} or type(geom.get("x")) not in (int, float) or type(geom.get("y")) not in (int, float):
             errors.append("missing_or_unexpected_native_point_geometry")
+        elif "spatialReference" in geom and not _is_wgs84(geom.get("spatialReference")):
+            errors.append("feature_coordinate_reference_changed")
         elif not math.isfinite(float(geom["x"])) or not math.isfinite(float(geom["y"])):
             errors.append("nonfinite_source_coordinates")
     if sorted(seen) != ids or len(seen) != len(set(seen)):
@@ -233,10 +252,33 @@ def _table(metadata: dict, features: list) -> tuple[pa.Table, list[str]]:
 def _schema_identity(metadata: dict) -> dict:
     return {"fields": metadata.get("fields"), "objectIdField": metadata.get("objectIdField"),
             "geometryType": metadata.get("geometryType"), "spatialReference": metadata.get("sourceSpatialReference") or metadata.get("spatialReference"),
-            "maxRecordCount": metadata.get("maxRecordCount"), "supportsPagination": metadata.get("advancedQueryCapabilities", {}).get("supportsPagination")}
+            "extent": metadata.get("extent"), "maxRecordCount": metadata.get("maxRecordCount"),
+            "supportsPagination": metadata.get("advancedQueryCapabilities", {}).get("supportsPagination")}
+
+
+def _is_wgs84(spatial_reference: object) -> bool:
+    if not isinstance(spatial_reference, dict):
+        return False
+    wkid = spatial_reference.get("latestWkid", spatial_reference.get("wkid"))
+    return wkid == 4326
+
+
+def _validate_source_layer_metadata(metadata: dict) -> None:
+    fields = metadata.get("fields")
+    signature = tuple((field.get("name"), field.get("type"), field.get("nullable"), field.get("length"))
+                      for field in fields if isinstance(field, dict)) if isinstance(fields, list) else ()
+    if signature != EXPECTED_FIELDS:
+        raise EOCSourceError("source_physical_schema_contract_changed")
+    if metadata.get("objectIdField") != "objectid" or metadata.get("geometryType") != "esriGeometryPoint":
+        raise EOCSourceError("source_identity_or_geometry_contract_changed")
+    source_reference = metadata.get("sourceSpatialReference") or metadata.get("spatialReference")
+    extent = metadata.get("extent")
+    if not _is_wgs84(source_reference) or (extent is not None and not _is_wgs84(extent.get("spatialReference"))):
+        raise EOCSourceError("source_coordinate_reference_changed")
 
 
 def _source_contract(metadata: dict, count_before: int, count_after: int, before_ids: list[int], after_ids: list[int], features: list) -> dict:
+    _validate_source_layer_metadata(metadata)
     object_id = metadata.get("objectIdField")
     names = tuple(f["name"] for f in metadata.get("fields", []))
     if object_id not in names or metadata.get("geometryType") != "esriGeometryPoint":
@@ -387,6 +429,8 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
             page = _strict_json(get(client, f"features_{index:05d}", url))
             if page.get("exceededTransferLimit") is True:
                 raise EOCSourceError("source_page_exceeded_transfer_limit")
+            if not _is_wgs84(page.get("spatialReference")):
+                raise EOCSourceError("source_page_coordinate_reference_changed")
             if tuple(f.get("name") for f in page.get("fields", [])) != tuple(f.get("name") for f in layer_before.get("fields", [])):
                 raise EOCSourceError("query_field_roster_changed")
             features.extend(page.get("features", []))

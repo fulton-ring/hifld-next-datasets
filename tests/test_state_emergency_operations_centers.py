@@ -10,13 +10,32 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.assets.state_emergency_operations_centers import source_quality_check_result
 
 from dagster_hifld.sources.state_emergency_operations_centers import (
+    EXPECTED_FIELDS,
+    EOCSourceError,
     _table,
     _validate_rows,
+    _validate_source_layer_metadata,
     _local_staging,
 )
 
 
 class StateEocSourceTests(unittest.TestCase):
+  def test_source_crs_and_physical_schema_drift_are_rejected(self):
+    fields = [{"name": name, "type": field_type, "nullable": nullable, "length": length}
+              for name, field_type, nullable, length in EXPECTED_FIELDS]
+    wgs84 = {"wkid": 4326, "latestWkid": 4326}
+    metadata = {"fields": fields, "objectIdField": "objectid", "geometryType": "esriGeometryPoint",
+                "sourceSpatialReference": wgs84, "extent": {"spatialReference": wgs84}}
+    _validate_source_layer_metadata(metadata)
+
+    changed_crs = {**metadata, "extent": {"spatialReference": {"wkid": 3857, "latestWkid": 3857}}}
+    with self.assertRaisesRegex(EOCSourceError, "source_coordinate_reference_changed"):
+      _validate_source_layer_metadata(changed_crs)
+
+    changed_schema = {**metadata, "fields": [*fields[:-1], {**fields[-1], "length": 50}]}
+    with self.assertRaisesRegex(EOCSourceError, "source_physical_schema_contract_changed"):
+      _validate_source_layer_metadata(changed_schema)
+
   def test_explicit_local_staging_path_outside_worker_scratch_is_supported(self):
     with tempfile.TemporaryDirectory() as root:
       storage_path = Path(root) / "stage"
@@ -29,10 +48,11 @@ class StateEocSourceTests(unittest.TestCase):
   def test_native_candidate_preserves_source_values_and_flags_zero_point(self):
     fields = [
         {"name": "objectid", "type": "esriFieldTypeOID", "nullable": False},
-        *[{"name": name, "type": "esriFieldTypeString", "nullable": True} for name in (
+        *[{"name": name, "type": "esriFieldTypeString", "nullable": True, "length": 255} for name in (
             "name", "city", "state", "fax", "website", "traffic")],
         {"name": "eoc_id", "type": "esriFieldTypeSmallInteger", "nullable": True},
-        *[{"name": name, "type": "esriFieldTypeString", "nullable": True} for name in (
+        *[{"name": name, "type": "esriFieldTypeString", "nullable": True,
+           "length": 50 if name in ("zip", "telephone") else 100} for name in (
             "address1", "address2", "statename", "zip", "telephone")],
         {"name": "latitude", "type": "esriFieldTypeDouble", "nullable": True},
         {"name": "longitude", "type": "esriFieldTypeDouble", "nullable": True},
