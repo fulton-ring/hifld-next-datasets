@@ -1,0 +1,16 @@
+{
+  "requested_url": "https://rcview.redcross.org/",
+  "observed_final_url": "https://volunteerconnection.redcross.org/?nd=vms_page&page_id=8233",
+  "status": 200,
+  "redirect_chain": [
+    {
+      "from": "https://rcview.redcross.org/",
+      "status": 301,
+      "location": "https://volunteerconnection.redcross.org/?nd=vms_page&page_id=8233",
+      "to": "https://volunteerconnection.redcross.org/?nd=vms_page&page_id=8233"
+    }
+  ],
+  "observed_at": "2026-10-19T05:57:09.088412+00:00",
+  "bytes": 8001,
+  "sha256": "9baaad907836a0d9edffbb9c5037f267e73c28acfba208ca1272ff58188536e6"
+}

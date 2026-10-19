@@ -1,0 +1,78 @@
+{
+  "header": {
+    "title": "American Red Cross - Online Mapping",
+    "showTitle": false,
+    "logo": "home.logo1594919190392.png",
+    "showLogo": false,
+    "coverType": "custom",
+    "coverImg": "home.coverimg1714616049987.png",
+    "coverImgLayout": "Half-height",
+    "coverImgStock": "2",
+    "coverImgPlacement": {
+      "x": "50%",
+      "y": "50%"
+    },
+    "coverBGColor": "",
+    "showCoverImg": true,
+    "titleColor": "white",
+    "titleLogoPos": "middle",
+    "titleLogoAlign": "center",
+    "opacity": 0.45,
+    "backgroundColor": "dark-ramp",
+    "headerCustom": "black"
+  },
+  "content": [
+    {
+      "type": "gallery",
+      "groupId": "7b1ddb018a9441a18f5a2c012e50988b",
+      "showViewLink": false,
+      "sortField": "title",
+      "sortAsc": true,
+      "itemType": "Apps",
+      "id": "",
+      "title": "Featured Content",
+      "showTitle": true,
+      "summary": "",
+      "showSummary": true,
+      "alignment": "left",
+      "showItemThumb": true,
+      "showItemTitle": true,
+      "showItemSummary": true,
+      "showItemType": false,
+      "bgColor": "white-ramp",
+      "numItems": 8
+    },
+    {
+      "type": "text",
+      "title": "RC View on ArcGIS Online",
+      "showTitle": true,
+      "body": "Effective May 1, 2024, RC View  on ArcGIS Online (AGOL) is the offical online mapping portal for the American Red Cross. \nThe Enterprise Portal (RC View) mapping solution was decommissioned on June 30, 2024 and is no longer available. \nAll Online mapping content for Active, Gray-Sky Operations and Blue-Sky Projects are to be completed in  ArcGIS Online (AGOL).\n\n\nThe Viewer license is available for Users with a business need to view internal, proprietary or confidential content. \nThe Creator license is available for Users with a business need to create, update or modify content for active Gray-Sky Operations or Blue-Sky Projects.\nThe Creator Data Editor license is available for DA Workers using Survey123 but Do Not meet the criteria for a pre-assigned Creator account. \n\t* A temporary DR-specific pool account will be provisioned for each DA worker once they are assigned and checked-in through VCN on the DRO.",
+      "showBody": true,
+      "bgColor": "dark-gray",
+      "alignment": "left"
+    }
+  ],
+  "footer": {
+    "showContact": true,
+    "contact": "greg.tune@redcross.org",
+    "bgColor": "light-ramp",
+    "bgCustom": "light-gray",
+    "showCopy": true,
+    "copy": ""
+  },
+  "key": 1594919190392,
+  "customStyles": [
+    
+  ],
+  "baseColor": "gs",
+  "useCustomStyles": false,
+  "typography": [
+    "Avenir Next",
+    "Avenir Next"
+  ],
+  "customTypography": [
+    "Avenir Next",
+    "Avenir Next"
+  ],
+  "useCustomTypography": false
+}
