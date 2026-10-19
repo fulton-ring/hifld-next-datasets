@@ -1,0 +1,321 @@
+{
+  "repository": "fulton-ring/hifld-next-iac",
+  "commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+  "source_url": "https://api.github.com/repos/fulton-ring/hifld-next-iac/tarball/56aa10757129c457c530d707d9a40bae13e0907f",
+  "archive_sha256": "ee36600c45e5bb71d5b96736a34ec4391a31dc1502c7c01ff8b2413eeadebc00",
+  "archive_bytes": 336477,
+  "observed_at": "2026-10-19T06:47:44.549773+00:00",
+  "files": [
+    {
+      "path": ".github/workflows/deploy-containers.yml",
+      "bytes": 7045,
+      "sha256": "2f69ed8ea3d08564003e75b6c96baf9fba20ad8d29f2178c36f60d9a1f26460e"
+    },
+    {
+      "path": ".github/workflows/deploy-dagster.yml",
+      "bytes": 4878,
+      "sha256": "094db3899d974c6740bc43e31ad8473ab4ddb68c9a7d252036d1cfaee60d39e0"
+    },
+    {
+      "path": ".github/workflows/deploy-feature-server.yml",
+      "bytes": 3743,
+      "sha256": "3fb1242b7f22fcd4bc03ac37daaff20c8c1d5aa2e7b47a9e0c5a67b55500e966"
+    },
+    {
+      "path": ".github/workflows/repair-mcp-worker-routing.yml",
+      "bytes": 1776,
+      "sha256": "bebe88ada937acca4bc3e93bf19616e7d6f1b7c39112fb9d5c0b392867687910"
+    },
+    {
+      "path": ".github/workflows/republish-portolan-catalog.yml",
+      "bytes": 3710,
+      "sha256": "a80bdcbf0497c367a34979cfdad8d265a7463ea1584d6c42996123292a93c9d8"
+    },
+    {
+      "path": ".github/workflows/terraform.yml",
+      "bytes": 5395,
+      "sha256": "34f3f54b2dae374dda4a72134fe0a368f6a0ac9b811a88fc7ecf50d931448ce6"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 661,
+      "sha256": "21307b2898cc7f65425a9bf6a5eabec245cce0514ccb44b194e79f24fe92df0f"
+    },
+    {
+      "path": "README.md",
+      "bytes": 11595,
+      "sha256": "ea2973bbd8952d4b46f47095f2d99affbc5c4c70795090fbc06552afd38b6da5"
+    },
+    {
+      "path": "charts/dataset-mcp-gcp/Chart.yaml",
+      "bytes": 250,
+      "sha256": "6dc13a7748f0ed0177dd83ba6707d63248034fb20c1e2e9700fde761c75c8d3a"
+    },
+    {
+      "path": "charts/dataset-mcp-gcp/templates/clickhouse-networkpolicy.yaml",
+      "bytes": 1229,
+      "sha256": "10f2d0d6e96021455672d37d5356a810e231a850f694f7b8b0c5ff82aca0c168"
+    },
+    {
+      "path": "charts/dataset-mcp-gcp/templates/networkpolicy.yaml",
+      "bytes": 1960,
+      "sha256": "db1b75aa9d52739cdf9f18cb0909c43b27c8416878db6b0c02e96491935f12d3"
+    },
+    {
+      "path": "charts/dataset-mcp-gcp/values.yaml",
+      "bytes": 2391,
+      "sha256": "b0792ad9f4d43d463f1807ffe307eec94917f2c3fb9a9fb7691dd236de64c79a"
+    },
+    {
+      "path": "charts/webapp-gcp/Chart.yaml",
+      "bytes": 250,
+      "sha256": "68f4272953c7a582129c8d3c16684c721c3f58c433e4ef6d0ce3d89f1f3e2b97"
+    },
+    {
+      "path": "charts/webapp-gcp/values.yaml",
+      "bytes": 1156,
+      "sha256": "ca4b5e303423de0c5fc64ccd2ad011658fb002127b11f3ef57a351eecff4ae37"
+    },
+    {
+      "path": "docs/clickhouse-deployment.md",
+      "bytes": 1677,
+      "sha256": "6db4c2abf6121e6b53dd8beb1f3489ebdaa5db9c5eaf8e7d0b4de4a99436ace4"
+    },
+    {
+      "path": "docs/legacy-retirement.md",
+      "bytes": 6071,
+      "sha256": "5f87ad56082124abe8b9586f066a2e4774324e194f9695a63850cffb2eac87e8"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-09-permanent-storage-cleanup.md",
+      "bytes": 5575,
+      "sha256": "5298d4c23522e16e89ab6c53b862d34413194baee92d1df5fab24854310da813"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-09-permanent-storage-cleanup-design.md",
+      "bytes": 1735,
+      "sha256": "5b842e295053ddcab797c5329a0d38c05b4f0d1a23b12f72a731e6dd5e17cbdd"
+    },
+    {
+      "path": "environments/prod/.terraform.lock.hcl",
+      "bytes": 3417,
+      "sha256": "2d408d892642d83c5ca198e366d7726bf3269709ad84c3a6ea6dd632f70229a2"
+    },
+    {
+      "path": "environments/prod/archive.tf",
+      "bytes": 167,
+      "sha256": "650243f3101cc1f6ef6ddc5efe11ab458355a5a5c9bf439cc0a7721f9eaab97b"
+    },
+    {
+      "path": "environments/prod/backend.hcl.example",
+      "bytes": 250,
+      "sha256": "299fd7f88fa0f22af1383e8300436e7bffacc6b19c393d6df2529d1a8b3ebaf4"
+    },
+    {
+      "path": "environments/prod/backend.tf",
+      "bytes": 416,
+      "sha256": "b27ee94922c880639003303f7ec96b1e3ba3042ffd22b3a4fab04c7fc365a8e8"
+    },
+    {
+      "path": "environments/prod/cloudsql.tf",
+      "bytes": 6939,
+      "sha256": "ee5a91964ec69bacb49d0018ecd955a333a617801490fafa2264421b45157d7e"
+    },
+    {
+      "path": "environments/prod/configs/README.md",
+      "bytes": 735,
+      "sha256": "cb85cfc87351cf5feda1fc5bcd9557beec94a13d0fd0ab674d90cbc1922d855c"
+    },
+    {
+      "path": "environments/prod/configs/datasets.jsonl",
+      "bytes": 1859726,
+      "sha256": "d711ec52755204ad1306ebbe3e83c123ad29d151920b0f1b4aebc9ddc151dddb"
+    },
+    {
+      "path": "environments/prod/configs/formats.json",
+      "bytes": 1125,
+      "sha256": "d47f36ab809565dc80b131e1d49a4a78011c629ce7545f28586fd7c5081cfe36"
+    },
+    {
+      "path": "environments/prod/configs/inventory.csv",
+      "bytes": 547963,
+      "sha256": "d289c077d8c7a62ef0ad1af07e7aa42d367a437a6452be388e654abd1366c4a6"
+    },
+    {
+      "path": "environments/prod/configs/storage.json",
+      "bytes": 354,
+      "sha256": "6d1a1008b77c6a65c603872a90c8ced3dbf9a9d9ca8cd3ca5352ce40eb06e48d"
+    },
+    {
+      "path": "environments/prod/dagster.tf",
+      "bytes": 6296,
+      "sha256": "11841bd7296e82557750bdfc69462e0167c37c353a635dc6c5737cb3616ddf66"
+    },
+    {
+      "path": "environments/prod/dataset_mcp.tf",
+      "bytes": 1342,
+      "sha256": "353377cdc83908c377290acb9ca8e844a49abf66524bc3e9465db6a94b3fb156"
+    },
+    {
+      "path": "environments/prod/gke.tf",
+      "bytes": 2717,
+      "sha256": "6c32847129d1cd75b85202acf5488ca2b460ed158399b53bb0845a537e108861"
+    },
+    {
+      "path": "environments/prod/main.tf",
+      "bytes": 24266,
+      "sha256": "501a4f4de6afb89020d6dc46353f8cc4a0d90303ec0c871c85e94341dca1e16a"
+    },
+    {
+      "path": "environments/prod/provider.tf",
+      "bytes": 820,
+      "sha256": "af879c72f2efc75203ffc25b95569afd0fe0bd86eee2f4bc2214666e8a3e03b4"
+    },
+    {
+      "path": "environments/prod/terraform.tfvars.example",
+      "bytes": 1090,
+      "sha256": "a4dab411e33f22795b813888b8c19c9da7677176a0b18a496542182929a6a15a"
+    },
+    {
+      "path": "environments/prod/webapp.tf",
+      "bytes": 1581,
+      "sha256": "819eecbd3aef4ca8ef84eabed8c4270b6e9682fe3ff1b9ac6225d20a61de5ef9"
+    },
+    {
+      "path": "modules/gcs-bucket/main.tf",
+      "bytes": 2960,
+      "sha256": "32f84c2770cc8ba0c47828b4a4f2abcf2ee70d4ee4cc2e367587bc95a911d6c0"
+    },
+    {
+      "path": "modules/gke/main.tf",
+      "bytes": 1681,
+      "sha256": "00ffbf781a52314e486467b7b8ce7494502237756855642c2e2e3ae1dc22af29"
+    },
+    {
+      "path": "modules/gke/outputs.tf",
+      "bytes": 978,
+      "sha256": "981884b438d84a0d24fb322c297b41a96035d61a30c2db1dbf80fac18d89b04c"
+    },
+    {
+      "path": "modules/gke/variables.tf",
+      "bytes": 1987,
+      "sha256": "8a5c1a21f04f31018c6eda9a45c05a0c4ef92f392e9b68596a144887227e71b4"
+    },
+    {
+      "path": "modules/network/main.tf",
+      "bytes": 1773,
+      "sha256": "e38649ffb42c1107fefa6e2cbfe59e040d7e5861565ca512947eeb2ae701a147"
+    },
+    {
+      "path": "modules/network/outputs.tf",
+      "bytes": 1059,
+      "sha256": "680ebd761f70abf7bd79ea5b0f571a749dd04244cf6895e0b70f5888ba8ba98d"
+    },
+    {
+      "path": "modules/network/variables.tf",
+      "bytes": 849,
+      "sha256": "0d50640ae4b9d8e76470f2afd771ec24cccca287ccd7c0c9698d1c14e228d1c1"
+    },
+    {
+      "path": "modules/service-account/main.tf",
+      "bytes": 1115,
+      "sha256": "1b9f42935619028ea22abdee538a258b3b76504f6e9cf02ccf6b6bb39ca14ab4"
+    },
+    {
+      "path": "scripts/dagster-gcp-values.yaml",
+      "bytes": 667,
+      "sha256": "1155e15cbe1aaa5a0567cbab4c2999f4d86a4ad113f1ac80a8508875f8a371ce"
+    },
+    {
+      "path": "scripts/deploy-dagster.sh",
+      "bytes": 7573,
+      "sha256": "09e27139dc8e30d39a619e108ae83cad968f7eeb76df50bcca91a9e02adb09aa"
+    },
+    {
+      "path": "scripts/feature-server-gcp-values.yaml",
+      "bytes": 626,
+      "sha256": "04a06f0b3612bfd07f33cae2074cc8b23daca4f83240286b8e05fc5036c84c72"
+    },
+    {
+      "path": "scripts/portolan-permanent-containers.yaml",
+      "bytes": 621,
+      "sha256": "24b2ea01bbd18b2d0ff1cf9655c08deacffef5a6f7ee3f05edd26ac0951f5fb9"
+    },
+    {
+      "path": "scripts/portolan-permanent-feature-server.yaml",
+      "bytes": 311,
+      "sha256": "847618a1f91c2b66db9c49de04738d45c6db18e47c58818f81521095824722d8"
+    },
+    {
+      "path": "scripts/restore_versioned_dataset_objects.py",
+      "bytes": 5952,
+      "sha256": "7a7bf422b403423ff6fd78abd27cf1065bbe55498b80489069fc3279a0ff0236"
+    },
+    {
+      "path": "scripts/setup-github-actions-wif.sh",
+      "bytes": 8124,
+      "sha256": "20463dc106bbcab1329238ebc6e4eba890bebd58074954ace029612b7f292053"
+    },
+    {
+      "path": "scripts/sync-clickhouse-secret.py",
+      "bytes": 1527,
+      "sha256": "6f9784856e0d468d744a918505be53fb1cd73efa347828afe085ca56e5ca05df"
+    },
+    {
+      "path": "tests/test_app_gcp_charts.py",
+      "bytes": 11874,
+      "sha256": "1db5fa94ae7e95f58bfee67ddd9f0ac0069801b814fb153e8f086b7ae708810e"
+    },
+    {
+      "path": "tests/test_clickhouse_secret.py",
+      "bytes": 796,
+      "sha256": "eef4c2223589dad6c00b6d3c5a83103903a9fc50207c5f5aeeaca75bfb7f295b"
+    },
+    {
+      "path": "tests/test_database_backend_wiring.py",
+      "bytes": 4857,
+      "sha256": "00042682dc27a2e2240f3579f476b55e645f46102de36af1857508c0bc994f4d"
+    },
+    {
+      "path": "tests/test_dataset_mcp_infrastructure.py",
+      "bytes": 6862,
+      "sha256": "937103ede73d8a1b57952ecd2b738026570ee206a699e891addd148453822ba2"
+    },
+    {
+      "path": "tests/test_dataset_recovery.py",
+      "bytes": 2301,
+      "sha256": "31e58de9a6a27865a9bde50ab339a73fa2d48aaef70975382d999af8a49a9f6c"
+    },
+    {
+      "path": "tests/test_neon_cleanup.py",
+      "bytes": 2936,
+      "sha256": "6cf04cf593abddb69f5174417f53806feb620130807ba72e683853198ca948f0"
+    },
+    {
+      "path": "tests/test_no_cloud_run.py",
+      "bytes": 1986,
+      "sha256": "cc57ce4ed1bc5b63cd697e5576a02930ac7be254a84f2fb75bbffcab953cd9f1"
+    },
+    {
+      "path": "tests/test_portolan_production_wiring.py",
+      "bytes": 15448,
+      "sha256": "84b1bdb81494399231db5b9aaf8f7c26a45e0b13a24126d1ed6de717022b81d1"
+    },
+    {
+      "path": "tests/test_prod_cloudsql.py",
+      "bytes": 5476,
+      "sha256": "deeb8bb8422db26cfeffdc068811b0c11342330d108f0f349de7390ce19fa95b"
+    },
+    {
+      "path": "tests/test_prod_gke_firewall.py",
+      "bytes": 984,
+      "sha256": "6ab27908b6ebcac64bdd0f385db7dbd87eaa749ffdfebfafbba0fdc073af9693"
+    },
+    {
+      "path": "tests/test_setup_github_actions_wif.py",
+      "bytes": 740,
+      "sha256": "e7f1aa6276980f08d60c8fc0283473034835181cf4e461610abb86cca383bd23"
+    }
+  ],
+  "classification": "Unmodified complete real pinned sibling repository source snapshot, not a fabricated test fixture. No infrastructure commands or writes to cloud."
+}

@@ -456,9 +456,15 @@
   },
   "verification": {
     "code_checkpoint": "be49bcb93f1901b408e709b6df33bb58dcc98681",
+    "current_iac_status": {
+      "note": "Historical492-test missing-sibling error is not a current unresolved targeted check; full suite not rerun after restoration or final receipt repairs.",
+      "snapshot": "evidence/iac-source-snapshot.json",
+      "targeted_test": "PASS,1test",
+      "test_evidence": "evidence/iac-targeted-test.json"
+    },
     "focused_tests": 18,
     "full_source_and_baseline_comparison": "evidence/complete-baseline-comparison.zip",
-    "latest_source_checkpoint": "724fa43cc38067f81f871e030dd5da9da318486c",
+    "latest_source_checkpoint": "711438e170be3a60cd6a37ec8ab4b7010f11d2a8",
     "local_execution": "evidence/local-dagster-execution.json",
     "normal_registration_test": "Root independently passed normal repository source-only job and stopped schedule registration test.",
     "release_gate": "Actual full normal local graph prevents unapproved promotion via shared#417; accepted local fixture remains byte-identical after missing-approval and synthetic failed-geometry gates.",
@@ -488,6 +494,19 @@
       "source_code_checkpoint": "bb0f34f5beb34d43d99da14efda4c28e844dd69f",
       "source_manifest": "evidence/review-fixes-source-manifest.json",
       "source_replay_rejections": "All8 authentic witness bodies separately mutated with top-level error/array/null and repinned receipt SHA/length:24 rejected, exact raw/receipts quarantined before canonical candidate. Actual normal source graph error and array injection runs also reject."
+    },
+    "strict_receipts_repair": {
+      "actual_catalog_dictionary": "evidence/strict-receipts-data-dictionary.json",
+      "actual_source_manifest": "evidence/strict-receipts-source-manifest.json",
+      "actual_untrusted_diagnostic_manifest": "evidence/strict-untrusted-diagnostic-source-manifest.json",
+      "canonical_summaries": "Original retrieval summaries derive only from validated/pinned canonical receipt names; optional consumed HTTP Date retains string shape and valid aware parsed date.",
+      "data_proof": "Canonical Parquet/GPKG/GeoJSON bytes and candidate ParquetWriter/GPKG data-writing ASTs remain equal to prior full terminal audit. Receipt-summary metadata AST intentionally changed; no terminal rebuild claimed.",
+      "execution": "evidence/strict-receipts-execution.json",
+      "focused_and_registration_tests": 26,
+      "independent_review": "narrow_followup_pending",
+      "source_checkpoint": "711438e170be3a60cd6a37ec8ab4b7010f11d2a8",
+      "strict_observation_timestamps": "Original ISO date/time/UTC-offset component grammar is bounded before fromisoformat; malformed +00:99,+24:00,-00:60,+99:00,+00:00:30 reject for both terminal and retained-attempt receipts before canonical creation.",
+      "unrelated_diagnostics": "Extra top-level receipt bytes of any JSON shape are preserved, SHA/length-bound in immutable raw inventory and explicitly untrusted in lineage; never source inputs or original retrieval claims. Four diagnostic-shape cases and mutation/reuse preservation checked."
     },
     "suite": {
       "error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf",

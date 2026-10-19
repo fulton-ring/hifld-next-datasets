@@ -1,0 +1,1196 @@
+{
+  "agency": "National Railroad Passenger Corporation (Amtrak)",
+  "code_commit": "711438e170be3a60cd6a37ec8ab4b7010f11d2a8",
+  "columns": [
+    {
+      "name": "geometry",
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "670",
+        "365",
+        "98",
+        "76",
+        "248"
+      ],
+      "max": 1036,
+      "min": 1,
+      "name": "OBJECTID",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "Curbside Bus Stop only (no shelter)",
+        "Curbside Bus Stop only (no shelter)",
+        "Station Building (with waiting room)",
+        "Platform with Shelter",
+        "Curbside Bus Stop only (no shelter)"
+      ],
+      "length": 36,
+      "name": "StaType",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "Curbside Bus Stop only (no shelter)",
+        "Platform only (no shelter)",
+        "Platform with Shelter",
+        "Station Building (with waiting room)"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "BUS",
+        "BUS",
+        "TRAIN",
+        "TRAIN",
+        "BUS"
+      ],
+      "length": 5,
+      "name": "StnType",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "BUS",
+        "TRAIN"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "93907",
+        "49930",
+        "49017",
+        "94710",
+        "54702"
+      ],
+      "length": 7,
+      "name": "ZipCode",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "CA",
+        "MI",
+        "MI",
+        "CA",
+        "WI"
+      ],
+      "length": 2,
+      "name": "State",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Prunedale",
+        "Hancock",
+        "Battle Creek",
+        "Berkeley",
+        "Eau Claire"
+      ],
+      "length": 22,
+      "name": "City",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        " ",
+        " ",
+        " ",
+        " ",
+        " "
+      ],
+      "length": 33,
+      "name": "Address2",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        " ",
+        "1301 Sharps Access Road (Train 6)",
+        "251 B Street West",
+        "Main and Carolina Entrance",
+        "North Charleston Transit Center",
+        "Suite 1",
+        "Suite 101",
+        "Temporarily in trailer next door"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Highway 156 and Hwy 101",
+        "125 Quincy Street",
+        "119 McCamly Street South",
+        "700 University Avenue",
+        "642 University Drive"
+      ],
+      "length": 55,
+      "name": "Address1",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        " ",
+        " ",
+        " ",
+        " ",
+        "University of Wisconsin"
+      ],
+      "length": 32,
+      "name": "Name",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "PDL",
+        "HKM",
+        "BTL",
+        "BKY",
+        "EUC"
+      ],
+      "length": 3,
+      "name": "Code",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Prunedale, CA",
+        "Hancock, MI",
+        "Battle Creek, MI",
+        "Berkeley, CA",
+        "Eau Claire, WI"
+      ],
+      "length": 32,
+      "name": "StationName",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        " ",
+        " ",
+        " ",
+        " ",
+        "University of Wisconsin"
+      ],
+      "length": 32,
+      "name": "StationFacilityName",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        " ",
+        " ",
+        " ",
+        " ",
+        " "
+      ],
+      "length": 107,
+      "name": "StationAliases",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2026-07-01T04:01:31",
+        "2026-08-06T04:00:56",
+        "2017-11-06T07:04:33",
+        "2026-07-24T04:01:15",
+        "2026-08-06T04:00:52"
+      ],
+      "length": 19,
+      "name": "DateModif",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-121.671367",
+        "-88.580295",
+        "-85.187825",
+        "-122.300707",
+        "-91.506339"
+      ],
+      "max": -68.670015,
+      "min": -124.288311,
+      "name": "lon",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "36.789513",
+        "47.126982",
+        "42.318453",
+        "37.867254",
+        "44.796558"
+      ],
+      "max": 49.273757,
+      "min": 25.849554,
+      "name": "lat",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "float"
+    }
+  ],
+  "inputs": [
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_count/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_count/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_count/000.receipt.json",
+      "receipt_sha256": "50b364f6909cf87a79fa3d620e09776e5cc457f08fffcceda2e698cce4831164",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "retrieved_at": "2026-10-19T05:55:07.923760+00:00",
+      "role": "official_distributor",
+      "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_count_after/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_count_after/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_count_after/000.receipt.json",
+      "receipt_sha256": "d941fbdd21526cc921ff667bad1fec067e5736703cd3ceaddd7b43d84c1b2012",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "retrieved_at": "2026-10-19T05:55:09.063336+00:00",
+      "role": "official_distributor",
+      "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 4119,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_ids/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_ids/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_ids/000.receipt.json",
+      "receipt_sha256": "09f4d3647eac33296067d2535e073cdb9964f93070f401526e8f243a4a5a9622",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "retrieved_at": "2026-10-19T05:55:08.358646+00:00",
+      "role": "official_distributor",
+      "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 4119,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_ids_after/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_ids_after/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_ids_after/000.receipt.json",
+      "receipt_sha256": "03a1f79494810a7ba7c19ba9e5269e93d9816825013b3d66376536de2a03b32f",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "retrieved_at": "2026-10-19T05:55:09.176089+00:00",
+      "role": "official_distributor",
+      "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 2723,
+      "canonical_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "www.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_item/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_item/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_item/000.receipt.json",
+      "receipt_sha256": "df677c5d7dd8c9fec553b40b2be22bdac0a31eb9a4e55b6330674459fed7edbd",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:07.209268+00:00",
+      "role": "official_distributor",
+      "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 2723,
+      "canonical_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "www.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_item_after/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_item_after/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_item_after/000.receipt.json",
+      "receipt_sha256": "783d48caaf3ef31cd15c90dd757cee6d395517dcf42df6790e32c14ee6eccf4a",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:09.660453+00:00",
+      "role": "official_distributor",
+      "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14551,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_layer/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_layer/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_layer/000.receipt.json",
+      "receipt_sha256": "a4e6fbdd62514a3e09df908810a8eaeada5e143743fdb3c58ed87b271888550e",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:07.680191+00:00",
+      "role": "official_distributor",
+      "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14551,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/bts_layer_after/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/bts_layer_after/000.body",
+      "receipt_path": "raw_arcgis/attempts/bts_layer_after/000.receipt.json",
+      "receipt_sha256": "669659df4e8a627611e5574bc7ff3c4bd4167717b1f135a9f6ca16725e9d2af0",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:09.536188+00:00",
+      "role": "official_distributor",
+      "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 452376,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=OBJECTID+%3E%3D+1+AND+OBJECTID+%3C%3D+1036&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultRecordCount=2000",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/attempts/page-000/000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/attempts/page-000/000.body",
+      "receipt_path": "raw_arcgis/attempts/page-000/000.receipt.json",
+      "receipt_sha256": "f66c228b7795fe91fa243eb379209940c4ade039ae789697b5d0677ee354cca1",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=OBJECTID+%3E%3D+1+AND+OBJECTID+%3C%3D+1036&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultRecordCount=2000",
+      "retrieved_at": "2026-10-19T05:55:08.557588+00:00",
+      "role": "official_distributor",
+      "sha256": "a9941b4d1bbf84072024b2e371bcaff399d61d4dfe5368167c0b7a66a69f42ec",
+      "use": "retained_response_attempt_evidence"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_count.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_count.body",
+      "receipt_path": "raw_arcgis/bts_count.receipt.json",
+      "receipt_sha256": "50b364f6909cf87a79fa3d620e09776e5cc457f08fffcceda2e698cce4831164",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "retrieved_at": "2026-10-19T05:55:07.923760+00:00",
+      "role": "official_distributor",
+      "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_count_after.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_count_after.body",
+      "receipt_path": "raw_arcgis/bts_count_after.receipt.json",
+      "receipt_sha256": "d941fbdd21526cc921ff667bad1fec067e5736703cd3ceaddd7b43d84c1b2012",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "retrieved_at": "2026-10-19T05:55:09.063336+00:00",
+      "role": "official_distributor",
+      "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 4119,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_ids.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_ids.body",
+      "receipt_path": "raw_arcgis/bts_ids.receipt.json",
+      "receipt_sha256": "09f4d3647eac33296067d2535e073cdb9964f93070f401526e8f243a4a5a9622",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "retrieved_at": "2026-10-19T05:55:08.358646+00:00",
+      "role": "official_distributor",
+      "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 4119,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_ids_after.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_ids_after.body",
+      "receipt_path": "raw_arcgis/bts_ids_after.receipt.json",
+      "receipt_sha256": "03a1f79494810a7ba7c19ba9e5269e93d9816825013b3d66376536de2a03b32f",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "retrieved_at": "2026-10-19T05:55:09.176089+00:00",
+      "role": "official_distributor",
+      "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 2723,
+      "canonical_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "www.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_item.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_item.body",
+      "receipt_path": "raw_arcgis/bts_item.receipt.json",
+      "receipt_sha256": "df677c5d7dd8c9fec553b40b2be22bdac0a31eb9a4e55b6330674459fed7edbd",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:07.209268+00:00",
+      "role": "official_distributor",
+      "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 2723,
+      "canonical_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "www.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_item_after.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_item_after.body",
+      "receipt_path": "raw_arcgis/bts_item_after.receipt.json",
+      "receipt_sha256": "783d48caaf3ef31cd15c90dd757cee6d395517dcf42df6790e32c14ee6eccf4a",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:09.660453+00:00",
+      "role": "official_distributor",
+      "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14551,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_layer.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_layer.body",
+      "receipt_path": "raw_arcgis/bts_layer.receipt.json",
+      "receipt_sha256": "a4e6fbdd62514a3e09df908810a8eaeada5e143743fdb3c58ed87b271888550e",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:07.680191+00:00",
+      "role": "official_distributor",
+      "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 14551,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/bts_layer_after.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/bts_layer_after.body",
+      "receipt_path": "raw_arcgis/bts_layer_after.receipt.json",
+      "receipt_sha256": "669659df4e8a627611e5574bc7ff3c4bd4167717b1f135a9f6ca16725e9d2af0",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0?f=pjson",
+      "retrieved_at": "2026-10-19T05:55:09.536188+00:00",
+      "role": "official_distributor",
+      "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90",
+      "use": "terminal_candidate_input"
+    },
+    {
+      "acceptance": "unapproved_draft",
+      "attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor].",
+      "bytes": 452376,
+      "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=OBJECTID+%3E%3D+1+AND+OBJECTID+%3C%3D+1036&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultRecordCount=2000",
+      "complete_body": true,
+      "delegation_evidence": {
+        "captured_item_sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b",
+        "meaning": "Observed NTAD attribution; no dataset or release acceptance implied",
+        "official_item": "https://www.arcgis.com/sharing/rest/content/items/1ed62a9f46304679aaa396bed4c8565a?f=pjson",
+        "published_producer_distributor_attribution": "Acknowledgment of the National Railroad Passenger Corporation (Amtrak), and the Bureau of Transportation Statistics (BTS) [distributor]."
+      },
+      "distributor": "Bureau of Transportation Statistics (USDOT_BTS)",
+      "host": "services.arcgis.com",
+      "http_status": 200,
+      "input_id": "raw_arcgis/page-000.body",
+      "license": "This NTAD dataset is a work of the United States government as defined in 17 U.S.C. \u00a7 101 and as such are not protected by any U.S. copyrights.\u00a0This work is available for unrestricted public use.",
+      "producer": "National Railroad Passenger Corporation (Amtrak)",
+      "raw_path": "raw_arcgis/page-000.body",
+      "receipt_path": "raw_arcgis/page-000.receipt.json",
+      "receipt_sha256": "f66c228b7795fe91fa243eb379209940c4ade039ae789697b5d0677ee354cca1",
+      "release_date_unknown_reason": "This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.",
+      "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0/query?f=json&where=OBJECTID+%3E%3D+1+AND+OBJECTID+%3C%3D+1036&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultRecordCount=2000",
+      "retrieved_at": "2026-10-19T05:55:08.557588+00:00",
+      "role": "official_distributor",
+      "sha256": "a9941b4d1bbf84072024b2e371bcaff399d61d4dfe5368167c0b7a66a69f42ec",
+      "use": "terminal_candidate_input"
+    }
+  ],
+  "lineage": {
+    "crosswalk": "unverified; DataLumos403 prevents inspecting the mapping",
+    "distributor_item": "1ed62a9f46304679aaa396bed4c8565a",
+    "producer": "Amtrak",
+    "raw_files": [
+      {
+        "bytes": 452376,
+        "name": "page-000.body",
+        "sha256": "a9941b4d1bbf84072024b2e371bcaff399d61d4dfe5368167c0b7a66a69f42ec"
+      },
+      {
+        "bytes": 2723,
+        "name": "bts_item.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 2723,
+        "name": "bts_item_after.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 14551,
+        "name": "bts_layer.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 14551,
+        "name": "bts_layer_after.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 4119,
+        "name": "bts_ids.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 4119,
+        "name": "bts_ids_after.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 14,
+        "name": "bts_count.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 14,
+        "name": "bts_count_after.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 763,
+        "name": "page-000.receipt.json",
+        "sha256": "f66c228b7795fe91fa243eb379209940c4ade039ae789697b5d0677ee354cca1"
+      },
+      {
+        "bytes": 445,
+        "name": "bts_item.receipt.json",
+        "sha256": "df677c5d7dd8c9fec553b40b2be22bdac0a31eb9a4e55b6330674459fed7edbd"
+      },
+      {
+        "bytes": 445,
+        "name": "bts_item_after.receipt.json",
+        "sha256": "783d48caaf3ef31cd15c90dd757cee6d395517dcf42df6790e32c14ee6eccf4a"
+      },
+      {
+        "bytes": 486,
+        "name": "bts_layer.receipt.json",
+        "sha256": "a4e6fbdd62514a3e09df908810a8eaeada5e143743fdb3c58ed87b271888550e"
+      },
+      {
+        "bytes": 486,
+        "name": "bts_layer_after.receipt.json",
+        "sha256": "669659df4e8a627611e5574bc7ff3c4bd4167717b1f135a9f6ca16725e9d2af0"
+      },
+      {
+        "bytes": 557,
+        "name": "bts_ids.receipt.json",
+        "sha256": "09f4d3647eac33296067d2535e073cdb9964f93070f401526e8f243a4a5a9622"
+      },
+      {
+        "bytes": 557,
+        "name": "bts_ids_after.receipt.json",
+        "sha256": "03a1f79494810a7ba7c19ba9e5269e93d9816825013b3d66376536de2a03b32f"
+      },
+      {
+        "bytes": 559,
+        "name": "bts_count.receipt.json",
+        "sha256": "50b364f6909cf87a79fa3d620e09776e5cc457f08fffcceda2e698cce4831164"
+      },
+      {
+        "bytes": 559,
+        "name": "bts_count_after.receipt.json",
+        "sha256": "d941fbdd21526cc921ff667bad1fec067e5736703cd3ceaddd7b43d84c1b2012"
+      },
+      {
+        "bytes": 14,
+        "name": "attempts/bts_count/000.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 559,
+        "name": "attempts/bts_count/000.receipt.json",
+        "sha256": "50b364f6909cf87a79fa3d620e09776e5cc457f08fffcceda2e698cce4831164"
+      },
+      {
+        "bytes": 14,
+        "name": "attempts/bts_count_after/000.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 559,
+        "name": "attempts/bts_count_after/000.receipt.json",
+        "sha256": "d941fbdd21526cc921ff667bad1fec067e5736703cd3ceaddd7b43d84c1b2012"
+      },
+      {
+        "bytes": 4119,
+        "name": "attempts/bts_ids/000.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 557,
+        "name": "attempts/bts_ids/000.receipt.json",
+        "sha256": "09f4d3647eac33296067d2535e073cdb9964f93070f401526e8f243a4a5a9622"
+      },
+      {
+        "bytes": 4119,
+        "name": "attempts/bts_ids_after/000.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 557,
+        "name": "attempts/bts_ids_after/000.receipt.json",
+        "sha256": "03a1f79494810a7ba7c19ba9e5269e93d9816825013b3d66376536de2a03b32f"
+      },
+      {
+        "bytes": 2723,
+        "name": "attempts/bts_item/000.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 445,
+        "name": "attempts/bts_item/000.receipt.json",
+        "sha256": "df677c5d7dd8c9fec553b40b2be22bdac0a31eb9a4e55b6330674459fed7edbd"
+      },
+      {
+        "bytes": 2723,
+        "name": "attempts/bts_item_after/000.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 445,
+        "name": "attempts/bts_item_after/000.receipt.json",
+        "sha256": "783d48caaf3ef31cd15c90dd757cee6d395517dcf42df6790e32c14ee6eccf4a"
+      },
+      {
+        "bytes": 14551,
+        "name": "attempts/bts_layer/000.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 486,
+        "name": "attempts/bts_layer/000.receipt.json",
+        "sha256": "a4e6fbdd62514a3e09df908810a8eaeada5e143743fdb3c58ed87b271888550e"
+      },
+      {
+        "bytes": 14551,
+        "name": "attempts/bts_layer_after/000.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 486,
+        "name": "attempts/bts_layer_after/000.receipt.json",
+        "sha256": "669659df4e8a627611e5574bc7ff3c4bd4167717b1f135a9f6ca16725e9d2af0"
+      },
+      {
+        "bytes": 452376,
+        "name": "attempts/page-000/000.body",
+        "sha256": "a9941b4d1bbf84072024b2e371bcaff399d61d4dfe5368167c0b7a66a69f42ec"
+      },
+      {
+        "bytes": 763,
+        "name": "attempts/page-000/000.receipt.json",
+        "sha256": "f66c228b7795fe91fa243eb379209940c4ade039ae789697b5d0677ee354cca1"
+      }
+    ],
+    "source_crs": {
+      "latestWkid": 4326,
+      "wkid": 4326
+    },
+    "source_fields": [
+      {
+        "alias": "OBJECTID",
+        "defaultValue": null,
+        "domain": null,
+        "editable": false,
+        "name": "OBJECTID",
+        "nullable": false,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "alias": "StaType",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 36,
+        "name": "StaType",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StnType",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 5,
+        "name": "StnType",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "ZipCode",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 7,
+        "name": "ZipCode",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "State",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 2,
+        "name": "State",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "City",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 22,
+        "name": "City",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Address2",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 33,
+        "name": "Address2",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Address1",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 55,
+        "name": "Address1",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Name",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 32,
+        "name": "Name",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Code",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 3,
+        "name": "Code",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StationName",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 32,
+        "name": "StationName",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StationFacilityName",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 32,
+        "name": "StationFacilityName",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StationAliases",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 107,
+        "name": "StationAliases",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "DateModif",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 19,
+        "name": "DateModif",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "lon",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "name": "lon",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeDouble"
+      },
+      {
+        "alias": "lat",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "name": "lat",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeDouble"
+      }
+    ],
+    "unobserved_transport_attempts": [],
+    "untrusted_diagnostics": []
+  },
+  "manifest_keys": [
+    "amtrak-stations/amtrak-stations/v0.0.0-reviewfix-687d397b4d95/metadata/source_manifest.json"
+  ],
+  "metadata_resolved_from": {
+    "agency": "version",
+    "code_commit": "version",
+    "complete_rows": "version",
+    "inputs": "version",
+    "lineage": "version",
+    "original_retrieval_receipts": "version",
+    "processing_identity": "version",
+    "processor": "version",
+    "promotion_allowed": "version",
+    "publisher": "version",
+    "schema_version": "version",
+    "source_attribution": "version",
+    "source_modified": "version",
+    "source_release_statement": "version",
+    "source_url": "version",
+    "title": "version",
+    "transformations": "version",
+    "unsupported_output_formats": "version"
+  },
+  "metadata_sources": [
+    "version"
+  ],
+  "name": "amtrak-stations",
+  "processor": "HIFLD Next",
+  "publisher": "Bureau of Transportation Statistics (USDOT_BTS; official distributor)",
+  "schema_version": 1,
+  "source_modified": {
+    "dataLastEditDate": 1791909192290,
+    "lastEditDate": 1791909192290,
+    "schemaLastEditDate": 1791909192290
+  },
+  "source_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0",
+  "title": "Amtrak Stations",
+  "transformations": [
+    {
+      "acceptance": "unapproved",
+      "attribute_mapping": "identity; no omissions; original DateModif text and native coordinate values retained",
+      "name": "raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage"
+    }
+  ],
+  "unsupported_output_formats": {
+    "shapefile_zip": "Unapproved lossy format: source fields include >10-character names and nullable string/identifier fields; regenerated DBF needs a reviewed mapping; no reviewed lossless name/type/null/value mapping."
+  }
+}

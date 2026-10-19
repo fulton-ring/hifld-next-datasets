@@ -19,6 +19,14 @@
     "bytes": 747,
     "sha256": "ae17cd9f8d1ae26ca10a13d0fb2ffa6a8623383be47ab2de9ee89e2fc6b3afc6"
   },
+  "evidence/iac-source-snapshot.json": {
+    "bytes": 11032,
+    "sha256": "ca97be9271e7b42711a715c807f9c752ae7ad1974da8d06b81ac915cda336346"
+  },
+  "evidence/iac-targeted-test.json": {
+    "bytes": 531,
+    "sha256": "9b94b249880c16035bc2fe964818d7cc638f996ce85fb7b95e2dc1ecc0787d3a"
+  },
   "evidence/local-dagster-execution.json": {
     "bytes": 12928,
     "sha256": "df3b8b37beb01e5167a21c993816d817571d6a3209bc59b4a630bf8a7fa9d86a"
@@ -62,5 +70,21 @@
   "evidence/review-fixes-source-manifest.json": {
     "bytes": 72698,
     "sha256": "5d9e29e21c6523d25d67edd7a613392a6030ee40430e14c7f2f183906842e660"
+  },
+  "evidence/strict-receipts-data-dictionary.json": {
+    "bytes": 59548,
+    "sha256": "bf94f8028f797d7b432b8ed078221472a74ba4e5423adb7f906b593cfc18db18"
+  },
+  "evidence/strict-receipts-execution.json": {
+    "bytes": 9775,
+    "sha256": "d20e737bbe427ce14c501e09699571ab85e62d31ced751c2233e12e7f60fc54b"
+  },
+  "evidence/strict-receipts-source-manifest.json": {
+    "bytes": 72731,
+    "sha256": "215453dd8f3fc2ee2efab99553bd84e4601523918ab52e2c519cc5c13836b1e3"
+  },
+  "evidence/strict-untrusted-diagnostic-source-manifest.json": {
+    "bytes": 73318,
+    "sha256": "15b0ff2f07b052bfefad6b7a389977462104ae9586dab96001a6f6f8e437df20"
   }
 }
