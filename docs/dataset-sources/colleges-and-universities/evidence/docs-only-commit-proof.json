@@ -1,0 +1,11 @@
+{
+  "construction_head": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+  "construction_run": "ca9b0f34-ea55-4e07-a0fe-09f39601841d",
+  "later_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+  "changed_paths": [
+    "docs/dataset-sources/colleges-and-universities/README.md"
+  ],
+  "actual_refresh_run": "f383b469-ab0d-49b9-bafb-9c1fab981640",
+  "all_staging_objects_unchanged": true,
+  "original_construction_commit_retained": true
+}

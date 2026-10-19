@@ -289,41 +289,43 @@
     "cache": "Stable common file lock covers lookup, fresh validation, intact invalid-cache detachment and atomic installation; valid concurrent winner never deleted by outer cleanup. Re-derives every source-owned audit/manifest/placeholder and every typed row/whole canonical GPKG container/native prebuilt Parquet from complete originals, not cache self-pins. Immutable original-construction provenance bundle prevents rewritten commit/receipt claims.",
     "transport": "Accept-Encoding identity; Content-Length compared to actual encoded wire bytes, not transparently decompressed body length; bounded partial/error captures preserved.",
     "isolated_only": true,
-    "code_commit": "20f43034191711f8a7c18df502cac074ec53079f",
-    "shared_verifier_base": "4800e4f5df550bfadd3631585268ce68a0fa25d9"
+    "code_commit": "65ee36af8c736a109ca2bf070dd874661f3dcea1",
+    "shared_verifier_base": "4800e4f5df550bfadd3631585268ce68a0fa25d9",
+    "shared_construction_provenance_helper": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+    "provenance_anchor_lifecycle": "Existing canonical candidates require a valid pre-existing external anchor; missing/invalid anchors cannot be recreated. Anchor failures are inside the common-lock whole-cache quarantine boundary; invalid binding bytes preserved separately. First anchor creation only after full private native construction verifies. Actual recomputed processing-file mapping must match every regular Git blob at a real reachable construction commit; genuine later docs-only HEAD reuse preserves original claims."
   },
   "verification": {
-    "focused": "16 passed,21.763s, complete real source inputs enabled",
+    "focused": "21 passed,74.098s, complete real source inputs enabled",
     "actual_registered_runs": [
       {
         "label": "source",
-        "run_id": "64e48764-ebc7-4be9-b636-a260839a8a34",
+        "run_id": "18cb0066-6526-4ecf-a26c-b23cdc3e1a3b",
         "success": true,
         "errors": [],
         "output": {
           "dataset_slug": "colleges-and-universities",
           "file_slug": "colleges-and-universities",
-          "version": "v0.0.0-draft-nces2526-a9faa04495917727",
+          "version": "v0.0.0-draft-nces2526-236e2b011b99828b",
           "feature_count": 6438,
           "reused": false
         }
       },
       {
         "label": "refresh",
-        "run_id": "b4baff0c-b2c1-4176-b66d-e3404039627d",
+        "run_id": "431045b5-279d-4435-905e-eafe391afcbf",
         "success": true,
         "errors": [],
         "output": {
           "dataset_slug": "colleges-and-universities",
           "file_slug": "colleges-and-universities",
-          "version": "v0.0.0-draft-nces2526-a9faa04495917727",
+          "version": "v0.0.0-draft-nces2526-236e2b011b99828b",
           "feature_count": 6438,
           "reused": true
         }
       },
       {
         "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
-        "run_id": "0d65aff3-68ef-48b2-9575-6ce2ce6886e7",
+        "run_id": "8638cf19-bdc1-4c51-afd4-f982e23f5a1d",
         "success": false,
         "errors": [
           "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
@@ -331,13 +333,13 @@
       },
       {
         "label": "post_catalog_cycle_1_source_refresh",
-        "run_id": "3f95758d-9e99-4b94-96b9-4a932a092372",
+        "run_id": "48e17d9a-a25a-435c-8a90-21dddaef8e34",
         "success": true,
         "errors": []
       },
       {
         "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
-        "run_id": "85bf562c-c795-42b0-a0ca-68430450d820",
+        "run_id": "2af217af-1d81-4af4-94a7-d5d82bfcddc8",
         "success": false,
         "errors": [
           "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
@@ -345,13 +347,13 @@
       },
       {
         "label": "post_catalog_cycle_2_source_refresh",
-        "run_id": "61192ce1-ad0b-4d66-b8b5-0125cbf11b08",
+        "run_id": "a9497c82-b805-4b32-b97d-d3f3ba3a2ae6",
         "success": true,
         "errors": []
       },
       {
         "label": "synthetic_failed_quality_blocks_promote",
-        "run_id": "96c2a2ce-9eb8-4148-8ca8-3c66ee8e2813",
+        "run_id": "ed08444e-e5a2-4187-8e46-25d2b0dad811",
         "success": false,
         "errors": [
           "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
@@ -359,27 +361,27 @@
       },
       {
         "label": "post_gate_source_refresh",
-        "run_id": "eb8c0345-5411-4ecf-92b3-b1e712e2d7ad",
+        "run_id": "1f6ff918-d9da-4c95-aa6d-a3d7dcde67bf",
         "success": true,
         "errors": []
       },
       {
         "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
-        "run_id": "c0d22d53-eb15-4d07-9c5c-80e6109595e9",
+        "run_id": "e67fc3fc-002e-4871-b220-e5914234ce33",
         "success": false,
         "errors": [
-          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__colleges_and_universities__colleges_and_universities\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/final-registered/staging/_quarantine/colleges-and-universities/invalid-candidate-904857ad172e4630be9f2e431a43be7a:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/38/final-registered/staging/colleges-and-universities/colleges-and-universities/v0.0.0-draft-nces2526-a9faa04495917727/metadata/colleges_candidate_ready.json'; retained:_quarantine/colleges-and-universities/15dca8f1f46d4701af7734ca101fef83\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/colleges_universities.py\", line 9, in nces_colleges_universities\n    result=stage_colleges(staging_storage,capture_dir=os.environ.get('HIFLD_COLLEGES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 424, in stage_colleges\n    raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/final-registered/staging/_quarantine/colleges-and-universities/invalid-candidate-904857ad172e4630be9f2e431a43be7a:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/38/final-registered/staging/colleges-and-universities/colleges-and-universities/v0.0.0-draft-nces2526-a9faa04495917727/metadata/colleges_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 408, in stage_colleges\n    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/38/final-registered/staging/colleges-and-universities/colleges-and-universities/v0.0.0-draft-nces2526-a9faa04495917727/metadata/colleges_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 405, in stage_colleges\n    try: reconcile_cache(storage,prefix,table,audit,captures,identity)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 326, in reconcile_cache\n    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1019, in read_bytes\n    with self.open(mode='rb') as f:\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__colleges_and_universities__colleges_and_universities\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/provenance-repair-lifecycle/staging/_quarantine/colleges-and-universities/invalid-candidate-763618da5fc24b23a66d028e36c911f5:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/38/provenance-repair-lifecycle/staging/colleges-and-universities/colleges-and-universities/v0.0.0-draft-nces2526-236e2b011b99828b/metadata/colleges_candidate_ready.json'; retained:_quarantine/colleges-and-universities/264600740c58478aa40fa421b13dd6d5\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/colleges_universities.py\", line 9, in nces_colleges_universities\n    result=stage_colleges(staging_storage,capture_dir=os.environ.get('HIFLD_COLLEGES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 455, in stage_colleges\n    raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/provenance-repair-lifecycle/staging/_quarantine/colleges-and-universities/invalid-candidate-763618da5fc24b23a66d028e36c911f5:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/38/provenance-repair-lifecycle/staging/colleges-and-universities/colleges-and-universities/v0.0.0-draft-nces2526-236e2b011b99828b/metadata/colleges_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 426, in stage_colleges\n    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/38/provenance-repair-lifecycle/staging/colleges-and-universities/colleges-and-universities/v0.0.0-draft-nces2526-236e2b011b99828b/metadata/colleges_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 416, in stage_colleges\n    reconcile_cache(storage,prefix,table,audit,captures,identity)\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 327, in reconcile_cache\n    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1019, in read_bytes\n    with self.open(mode='rb') as f:\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
         ]
       },
       {
         "label": "original_source_rebuild_after_quarantine",
-        "run_id": "753019ec-d75b-47f6-b61c-6d32b4648318",
+        "run_id": "139f7e0c-69d8-47c8-b948-81e85a4b4b78",
         "success": true,
         "errors": []
       },
       {
         "label": "rebuilt_cache_refresh",
-        "run_id": "6a02cab8-3809-4c25-9ecb-31b01894c159",
+        "run_id": "c3eac107-af31-4779-ae4f-dfbdee2c5164",
         "success": true,
         "errors": []
       }
@@ -391,9 +393,37 @@
     "original_captures_unchanged": true,
     "CI": "Not inferred; GitHub checks must be inspected separately",
     "iac": "Real unmodified sibling source at56aa10757129c457c530d707d9a40bae13e0907f available; no fixture or deploy",
-    "full_suite": "Actual full suite: 527 total, 526 passed, 1 skipped, zero failures/errors, 115.912s with complete real NCES input tests, installed Tippecanoe and real unmodified sibling IaC.",
+    "full_suite": "Actual current suite: 543 total, 542 passed, 1 skipped, zero failures/errors, 302.800s, complete real NCES inputs enabled, installed Tippecanoe and real unchanged sibling IaC.",
     "full_suite_skip_reason": "One opt-in real production GCS write test intentionally not enabled; no production write authorized.",
-    "first_suite_attempt": "First run lacked installed Tippecanoe in task PATH:527 total,2 executable-not-found errors,2 skips. Retained original log; corrected full suite executes both previously errored cases and Tippecanoe-specific test successfully."
+    "first_suite_attempt": "First run lacked installed Tippecanoe in task PATH:527 total,2 executable-not-found errors,2 skips. Retained original log; corrected full suite executes both previously errored cases and Tippecanoe-specific test successfully.",
+    "provenance_repair_matrix": {
+      "status": "PASS",
+      "cases": 6,
+      "actual_registered_runs": 16,
+      "source_rows_checked_per_case": 6438,
+      "cases_verified": [
+        "genuine_later_docs_only_HEAD",
+        "missing_external_anchor",
+        "malformed_external_anchor",
+        "zero_commit_coforgery",
+        "existing_wrong_code_coforgery",
+        "candidate_only_forgery"
+      ],
+      "all_bad_versions_and_invalid_anchors_preserved": true,
+      "all_original_raw_and_prior_accepted_fixture_unchanged": true,
+      "original_docs_only_commit_proof": {
+        "construction_head": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+        "construction_run": "ca9b0f34-ea55-4e07-a0fe-09f39601841d",
+        "later_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+        "changed_paths": [
+          "docs/dataset-sources/colleges-and-universities/README.md"
+        ],
+        "actual_refresh_run": "f383b469-ab0d-49b9-bafb-9c1fab981640",
+        "all_staging_objects_unchanged": true,
+        "original_construction_commit_retained": true
+      }
+    },
+    "data_writer_scope": "All9 extraction/native writer/source-artifact functions AST-identical to independently audited e6292f7; native GPKG and GeoParquet bytes remain identical."
   },
   "release_prerequisites": [
     "Approve NCES changed successor vs retaining ORNL enriched historical product",
@@ -403,7 +433,17 @@
     "Independent approved baseline/contract/release registry, with all shared verification gates satisfied"
   ],
   "review": {
-    "status": "pending",
-    "exact_head": null
+    "status": "repair_pending_independent_exact_head_recheck",
+    "first_reviewed_head": "e6292f7b0358c0a6ff6de2dbaefd4346bc1a76e9",
+    "findings": [
+      "missing_anchor_recreated_for_existing_candidate",
+      "malformed_anchor_left_discoverable",
+      "coforged_nonexistent_construction_commit_accepted"
+    ],
+    "findings_urls": [
+      "https://github.com/fulton-ring/hifld-next-datasets/issues/38#issuecomment-6263626814",
+      "https://github.com/fulton-ring/hifld-next-datasets/pull/444#issuecomment-6263627124"
+    ],
+    "source_helper_independently_reviewed": true
   }
 }

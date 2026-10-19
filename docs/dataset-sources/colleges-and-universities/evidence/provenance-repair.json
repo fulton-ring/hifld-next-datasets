@@ -1,0 +1,196 @@
+{
+  "approved": false,
+  "head": "cdd0801784eca38539879b2c60d81c851a301e29",
+  "source_rows": 6438,
+  "cases": [
+    {
+      "case": "genuine_later_docs_only_HEAD",
+      "original_construction_commit": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+      "current_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+      "runs": [
+        {
+          "label": "genuine_later_docs_only_HEAD",
+          "run_id": "f383b469-ab0d-49b9-bafb-9c1fab981640",
+          "success": true,
+          "errors": []
+        }
+      ],
+      "all_staging_objects_unchanged": true,
+      "original_construction_commit_retained": true,
+      "original_raw_unchanged": true,
+      "prior_accepted_fixture_unchanged": true,
+      "all_6438_native_rows_IDs_types_WKB_unchanged": true
+    },
+    {
+      "case": "missing_external_anchor",
+      "original_construction_commit": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+      "current_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+      "runs": [
+        {
+          "label": "missing_external_anchor",
+          "run_id": "fc2092ea-6fa2-4c08-9529-e93ac6b85854",
+          "success": false,
+          "errors": [
+            "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__colleges_and_universities__colleges_and_universities\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/missing_external_anchor/staging/_quarantine/colleges-and-universities/invalid-candidate-dd5bdf0dbef14bc4a94b0dd02a2fff74:missing_original_provenance_bundle; retained:_quarantine/colleges-and-universities/d3bcab2a4cde4767aec2661dee92aee6\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/colleges_universities.py\", line 9, in nces_colleges_universities\n    result=stage_colleges(staging_storage,capture_dir=os.environ.get('HIFLD_COLLEGES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 455, in stage_colleges\n    raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/missing_external_anchor/staging/_quarantine/colleges-and-universities/invalid-candidate-dd5bdf0dbef14bc4a94b0dd02a2fff74:missing_original_provenance_bundle\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 426, in stage_colleges\n    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: missing_original_provenance_bundle\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 412, in stage_colleges\n    try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 371, in original_provenance_bundle\n    if not create: raise CollegeQuarantineError('missing_original_provenance_bundle')\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+          ]
+        },
+        {
+          "label": "verified_original_reconstruction",
+          "run_id": "22ccf5ac-63cb-4271-8d5c-fb6779033b10",
+          "success": true,
+          "errors": []
+        },
+        {
+          "label": "reconstructed_cache_reuse",
+          "run_id": "99b418e2-86d6-4083-8f0d-35d04ae0acab",
+          "success": true,
+          "errors": []
+        }
+      ],
+      "canonical_undiscoverable_after_rejection": true,
+      "whole_invalid_version_preserved": true,
+      "invalid_anchor_preserved": false,
+      "valid_anchor_established_after_verified_reconstruction": true,
+      "original_raw_unchanged": true,
+      "prior_accepted_fixture_unchanged": true,
+      "all_6438_native_rows_IDs_types_WKB_unchanged": true
+    },
+    {
+      "case": "malformed_external_anchor",
+      "original_construction_commit": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+      "current_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+      "runs": [
+        {
+          "label": "malformed_external_anchor",
+          "run_id": "13793af9-48b6-44aa-bb18-1b793af5a3f9",
+          "success": false,
+          "errors": [
+            "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__colleges_and_universities__colleges_and_universities\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/malformed_external_anchor/staging/_quarantine/colleges-and-universities/invalid-candidate-66f2f52dafe446da945c82513e7b6c5d:original_provenance_bundle_roster_drift; retained:_quarantine/colleges-and-universities/b2617c3adca448f1b1fd14c7f354d60f\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/colleges_universities.py\", line 9, in nces_colleges_universities\n    result=stage_colleges(staging_storage,capture_dir=os.environ.get('HIFLD_COLLEGES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 455, in stage_colleges\n    raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/malformed_external_anchor/staging/_quarantine/colleges-and-universities/invalid-candidate-66f2f52dafe446da945c82513e7b6c5d:original_provenance_bundle_roster_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 426, in stage_colleges\n    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: original_provenance_bundle_roster_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 412, in stage_colleges\n    try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 378, in original_provenance_bundle\n    raise CollegeQuarantineError('original_provenance_bundle_roster_drift')\n"
+          ]
+        },
+        {
+          "label": "verified_original_reconstruction",
+          "run_id": "c1843c42-542d-4f19-b6b2-4f028de6c9f8",
+          "success": true,
+          "errors": []
+        },
+        {
+          "label": "reconstructed_cache_reuse",
+          "run_id": "d1404578-37eb-424b-8f4e-1bf4ff4465a9",
+          "success": true,
+          "errors": []
+        }
+      ],
+      "canonical_undiscoverable_after_rejection": true,
+      "whole_invalid_version_preserved": true,
+      "invalid_anchor_preserved": true,
+      "valid_anchor_established_after_verified_reconstruction": true,
+      "original_raw_unchanged": true,
+      "prior_accepted_fixture_unchanged": true,
+      "all_6438_native_rows_IDs_types_WKB_unchanged": true
+    },
+    {
+      "case": "zero_commit_coforgery",
+      "original_construction_commit": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+      "current_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+      "runs": [
+        {
+          "label": "zero_commit_coforgery",
+          "run_id": "5d78c742-d22c-41a5-af0b-333b5e211b6a",
+          "success": false,
+          "errors": [
+            "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__colleges_and_universities__colleges_and_universities\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/zero_commit_coforgery/staging/_quarantine/colleges-and-universities/invalid-candidate-7c77aafe72e347308761685d28351d76:construction_invalid_commit; retained:_quarantine/colleges-and-universities/c2640d071a9b485796582f1ca9924343\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/colleges_universities.py\", line 9, in nces_colleges_universities\n    result=stage_colleges(staging_storage,capture_dir=os.environ.get('HIFLD_COLLEGES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 455, in stage_colleges\n    raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/zero_commit_coforgery/staging/_quarantine/colleges-and-universities/invalid-candidate-7c77aafe72e347308761685d28351d76:construction_invalid_commit\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 426, in stage_colleges\n    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_invalid_commit\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 412, in stage_colleges\n    try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 389, in original_provenance_bundle\n    validate_construction_code_identity(Path(__file__).parents[3],bundle['manifest']['code_commit'],identity['files'])\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/construction_provenance.py\", line 64, in validate_construction_code_identity\n    raise ConstructionCodeIdentityError(\"construction_invalid_commit\")\n"
+          ]
+        },
+        {
+          "label": "verified_original_reconstruction",
+          "run_id": "abce92f6-a9c7-4d0f-977c-0de9b03e18d9",
+          "success": true,
+          "errors": []
+        },
+        {
+          "label": "reconstructed_cache_reuse",
+          "run_id": "7f4e44b0-e84c-4b37-9235-81c1be384506",
+          "success": true,
+          "errors": []
+        }
+      ],
+      "canonical_undiscoverable_after_rejection": true,
+      "whole_invalid_version_preserved": true,
+      "invalid_anchor_preserved": true,
+      "valid_anchor_established_after_verified_reconstruction": true,
+      "original_raw_unchanged": true,
+      "prior_accepted_fixture_unchanged": true,
+      "all_6438_native_rows_IDs_types_WKB_unchanged": true
+    },
+    {
+      "case": "existing_wrong_code_coforgery",
+      "original_construction_commit": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+      "current_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+      "runs": [
+        {
+          "label": "existing_wrong_code_coforgery",
+          "run_id": "dc790d2b-3a98-4afc-8f99-7385d4bf8cb6",
+          "success": false,
+          "errors": [
+            "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__colleges_and_universities__colleges_and_universities\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/existing_wrong_code_coforgery/staging/_quarantine/colleges-and-universities/invalid-candidate-5ec3ea420a9d4074942b3d9a4c35ee7c:construction_processing_blob_missing; retained:_quarantine/colleges-and-universities/4f63920dd5414ddfb4f20c541ce8fdc3\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/colleges_universities.py\", line 9, in nces_colleges_universities\n    result=stage_colleges(staging_storage,capture_dir=os.environ.get('HIFLD_COLLEGES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 455, in stage_colleges\n    raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/existing_wrong_code_coforgery/staging/_quarantine/colleges-and-universities/invalid-candidate-5ec3ea420a9d4074942b3d9a4c35ee7c:construction_processing_blob_missing\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 426, in stage_colleges\n    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_processing_blob_missing\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 412, in stage_colleges\n    try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 389, in original_provenance_bundle\n    validate_construction_code_identity(Path(__file__).parents[3],bundle['manifest']['code_commit'],identity['files'])\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/construction_provenance.py\", line 137, in validate_construction_code_identity\n    raise ConstructionCodeIdentityError(\"construction_processing_blob_missing\")\n"
+          ]
+        },
+        {
+          "label": "verified_original_reconstruction",
+          "run_id": "3a68b2bc-3e91-437d-8236-97ef27760c84",
+          "success": true,
+          "errors": []
+        },
+        {
+          "label": "reconstructed_cache_reuse",
+          "run_id": "047921db-fe85-4d4d-97aa-c0730c20848e",
+          "success": true,
+          "errors": []
+        }
+      ],
+      "canonical_undiscoverable_after_rejection": true,
+      "whole_invalid_version_preserved": true,
+      "invalid_anchor_preserved": true,
+      "valid_anchor_established_after_verified_reconstruction": true,
+      "original_raw_unchanged": true,
+      "prior_accepted_fixture_unchanged": true,
+      "all_6438_native_rows_IDs_types_WKB_unchanged": true
+    },
+    {
+      "case": "candidate_only_forgery",
+      "original_construction_commit": "6dfde20e9a815f1d77aa7b538ecec47456e98e25",
+      "current_head": "cdd0801784eca38539879b2c60d81c851a301e29",
+      "runs": [
+        {
+          "label": "candidate_only_forgery",
+          "run_id": "7297cdc8-355a-4f62-b4da-e2c426a33c81",
+          "success": false,
+          "errors": [
+            "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__colleges_and_universities__colleges_and_universities\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/candidate_only_forgery/staging/_quarantine/colleges-and-universities/invalid-candidate-af506361a6a14a36896cd5e8fabc6fbe:cached_provenance_disagrees_with_immutable_original_bundle; retained:_quarantine/colleges-and-universities/95e5436c159844188c77225d828b9a7a\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/assets/colleges_universities.py\", line 9, in nces_colleges_universities\n    result=stage_colleges(staging_storage,capture_dir=os.environ.get('HIFLD_COLLEGES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 455, in stage_colleges\n    raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/38/actual-provenance-repair/candidate_only_forgery/staging/_quarantine/colleges-and-universities/invalid-candidate-af506361a6a14a36896cd5e8fabc6fbe:cached_provenance_disagrees_with_immutable_original_bundle\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 426, in stage_colleges\n    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.colleges_universities.CollegeQuarantineError: cached_provenance_disagrees_with_immutable_original_bundle\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 416, in stage_colleges\n    reconcile_cache(storage,prefix,table,audit,captures,identity)\n  File \"/workspace/hifld-worker-worktrees/38/src/dagster_hifld/sources/colleges_universities.py\", line 337, in reconcile_cache\n    if actual_manifest!=pinned['manifest']:raise CollegeQuarantineError('cached_provenance_disagrees_with_immutable_original_bundle')\n                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+          ]
+        },
+        {
+          "label": "verified_original_reconstruction",
+          "run_id": "d6e7b179-2d15-482e-92c9-9ef1fc6461b6",
+          "success": true,
+          "errors": []
+        },
+        {
+          "label": "reconstructed_cache_reuse",
+          "run_id": "cf86c78a-7829-48c1-b5e7-4b20ebb09aeb",
+          "success": true,
+          "errors": []
+        }
+      ],
+      "canonical_undiscoverable_after_rejection": true,
+      "whole_invalid_version_preserved": true,
+      "invalid_anchor_preserved": true,
+      "valid_anchor_established_after_verified_reconstruction": true,
+      "original_raw_unchanged": true,
+      "prior_accepted_fixture_unchanged": true,
+      "all_6438_native_rows_IDs_types_WKB_unchanged": true
+    }
+  ],
+  "status": "PASS"
+}

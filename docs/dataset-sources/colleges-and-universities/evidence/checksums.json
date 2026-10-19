@@ -1,4 +1,12 @@
 {
+  "initial-pipeline-materialization.log": {
+    "bytes": 37477,
+    "sha256": "c3f8cf2b172954756576eb76b28f7dad4ec61a35d8633a15f60407f153432a09"
+  },
+  "repair-lifecycle-preintegration.log": {
+    "bytes": 341,
+    "sha256": "d15afbf4f5b297e9443b320d631ab81501e664223a72726bb59534fcce8bca13"
+  },
   "full-suite-attempt1-missing-tippecanoe.log": {
     "bytes": 23498,
     "sha256": "1fd4083e6b722a6e7385df4ac2429e5d66faf1755a528bbbbdb828e503351a30"
@@ -7,25 +15,53 @@
     "bytes": 43476,
     "sha256": "e066a1acae73fdb4c24afb3316280adc0b8ddb1c031038d439bf7639df29cd83"
   },
+  "initial-pipeline-full-suite.log": {
+    "bytes": 18601,
+    "sha256": "8dff8f1e95abe1b219ef89610378aa2c575774ce77038f6622d751f521927a14"
+  },
+  "provenance-repair.json": {
+    "bytes": 35984,
+    "sha256": "9fbf7a710f01e2822f8c5daf9d0c9c22d807f0abcaac8e9e2dcafa092cb97a9c"
+  },
   "focused.log": {
-    "bytes": 355,
-    "sha256": "27670e0bcc18759d5639ebfede81f48225db409e2518f7f5d3999002cd2fdf9a"
+    "bytes": 360,
+    "sha256": "631cad0e8e85c77edd608684ae59b6d220622bf7be62e7142cbb823bd4d25258"
   },
   "source_spec.json": {
     "bytes": 3410,
     "sha256": "dcd4841a0f2b5406556d0967e0efff530ee84c3e7e0915d22d921f255b1681c6"
   },
-  "materialization.log": {
-    "bytes": 37477,
-    "sha256": "c3f8cf2b172954756576eb76b28f7dad4ec61a35d8633a15f60407f153432a09"
+  "provenance-proof-baseline.json": {
+    "bytes": 436,
+    "sha256": "7cddf619f70a301da72d381263b1a92074a1ae612bd126333c437ce28d5ee6ad"
   },
-  "materialization.json": {
+  "initial-pipeline-materialization.json": {
     "bytes": 26313,
     "sha256": "9eac7027781cc06247af3247936ce1be2824d5878dd5aa6bbeb601e6e3dc5a6c"
+  },
+  "materialization.log": {
+    "bytes": 39330,
+    "sha256": "fff091182a9210da3743ae455be5b3e270f2ce96faa4a1d5311e98ef6c3ed94b"
+  },
+  "provenance-repair.log": {
+    "bytes": 30463,
+    "sha256": "06d64e8267a1a3afcc11d4615592e7ddffed24aad186a935ff29b214914d488f"
+  },
+  "materialization.json": {
+    "bytes": 26291,
+    "sha256": "9dca3608bbbd2b8cc0b470596adfe951782816ebfcb2d0bb9058e422d3496754"
   },
   "live-acquisition.json": {
     "bytes": 9045,
     "sha256": "55002876896949ce60f13f8acb79ac372bfae242ecddb8eec1437f8b8920bd3e"
+  },
+  "docs-only-commit-proof.json": {
+    "bytes": 435,
+    "sha256": "15f7c1b020373d578450079fd53bfea67282bcd691d41f47abb9455ec7d2ccc9"
+  },
+  "writer-fidelity-scope.json": {
+    "bytes": 2011,
+    "sha256": "62de108ff4e798d106c713010fd6ef3a4c4aa65bbc16c26da1b2885e8db71dc4"
   },
   "live-acquire.log": {
     "bytes": 298,
@@ -35,9 +71,17 @@
     "bytes": 2613609,
     "sha256": "672a357257cd77d2615690a058d6c4a8c7641c3d0506177bd67bbc592bc08c51"
   },
+  "initial-pipeline-focused.log": {
+    "bytes": 355,
+    "sha256": "27670e0bcc18759d5639ebfede81f48225db409e2518f7f5d3999002cd2fdf9a"
+  },
+  "provenance-proof-baseline.log": {
+    "bytes": 2097,
+    "sha256": "e637d87f59c4bc4558413853805cd16bfcc987fceedbbaedc7f0cdda7e6ba011"
+  },
   "full-suite.log": {
-    "bytes": 18601,
-    "sha256": "8dff8f1e95abe1b219ef89610378aa2c575774ce77038f6622d751f521927a14"
+    "bytes": 18655,
+    "sha256": "0d9ba455372124b0a76474d2b27e6c334a41787aaf70d0edc8f31c3d3cead991"
   },
   "inputs/nces_geocode.body": {
     "bytes": 2651816,
