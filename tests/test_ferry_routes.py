@@ -111,3 +111,14 @@ class FerryOriginalCaptureTests(unittest.TestCase):
             with self.assertRaisesRegex(f.FerryRouteQuarantineError,'test_only_native_construction_failure'):f.stage_ferry_routes(f.StagingStorageResource(use_local=True,local_dir=tmp),capture_dir=CAPTURE)
             self.assertFalse(list(Path(tmp).glob('_source-provenance/**/bundle.json')))
             self.assertFalse(list(Path(tmp).glob(f'{f.SLUG}/{f.SLUG}/v*')))
+
+    def test_metadata_only_refresh_keeps_original_audit_and_retains_new_observation(self):
+        captures=dict(self.captures)
+        item=json.loads(captures['source_item'][0]);item['description']+=' [TEST ONLY: metadata observation, no changed source rows.]'
+        body=f.encode(item);receipt=dict(captures['source_item'][1]);receipt.update(bytes=len(body),sha256=f.digest(body))
+        captures['source_item']=(body,receipt)
+        before={str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()}
+        with patch.object(f,'acquire',return_value=captures):result=self.refresh()
+        self.assertTrue(result['reused'])
+        self.assertEqual(before,{str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()})
+        self.assertEqual((self.path/f'_raw-captures/{f.SLUG}/{f.digest(body)}/source_item.body').read_bytes(),body)

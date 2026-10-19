@@ -383,7 +383,11 @@ def stage_ferry_routes(storage,*,capture_dir=None):
             if root.exists():
                 invalid_bundle=False
                 try:
-                    try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                    try:
+                        captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                        # Historical candidate reports must be derived from its
+                        # original captures, not a later metadata observation.
+                        table,audit=inspect_originals(captures)
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError):
                         invalid_bundle=True
                         raise
@@ -403,7 +407,9 @@ def stage_ferry_routes(storage,*,capture_dir=None):
             # Read its binding but never create an anchor until this private
             # reconstruction has passed the full native output verification.
             if binding.exists():
-                try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                try:
+                    captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                    table,audit=inspect_originals(captures)
                 except (ValueError,TypeError,KeyError,OSError,RuntimeError) as exc:
                     target=base/'_quarantine'/SLUG/('invalid-provenance-'+uuid4().hex)
                     target.parent.mkdir(parents=True,exist_ok=True);os.rename(binding,target)
