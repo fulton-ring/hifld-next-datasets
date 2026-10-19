@@ -227,6 +227,9 @@ def _merge_manifest_layers(
     manifest_keys: list[str] = []
 
     for source_name, key, metadata in layers:
+        # Restrictive capabilities accumulate. A narrower layer cannot clear a
+        # whole-format ban merely by mentioning a different output format.
+        validate_output_policy(metadata)
         sources.append(source_name)
         manifest_keys.append(key)
         for field, value in metadata.items():
@@ -248,9 +251,16 @@ def _merge_manifest_layers(
                     layer_ids.add(identity)
                     inputs[identity] = item
                 value = list(inputs.values())
+            if field == "unsupported_output_formats":
+                value = {**merged.get(field, {}), **value}
+            if field == "prebuilt_output_policy" and field in merged and value != merged[field]:
+                raise ValueError("Conflicting inherited prebuilt output policy")
             merged[field] = value
             resolved_from[field] = source_name
 
+    # Includes legacy metadata without processor/inputs: provenance_projection
+    # intentionally omits it, but capability conflicts must still fail closed.
+    validate_output_policy(merged)
     merged["metadata_sources"] = sources
     merged["metadata_resolved_from"] = resolved_from
     merged["manifest_keys"] = manifest_keys

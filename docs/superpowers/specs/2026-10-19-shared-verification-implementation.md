@@ -661,3 +661,36 @@ pins current code, original source-card observations, published schema/selected
 typed values, complete runner/log hashes and all results. New checkpoint review
 is pending; prior `abde85b` independent PASS covers its earlier catalog slice,
 not this new capability policy. No CI or real acceptance claim is made.
+
+Independent review of `81433b3` reproduced a cross-layer defect with real native
+Date32 bytes and exact synthetic decisions: replacing the entire ban dictionary
+let a version's PMTiles ban erase a dataset's GeoParquet ban and thereby admit
+its prebuilt GeoParquet. The follow-up now unions whole-format bans across every
+authored dataset/file/version layer. Empty or unrelated narrower maps cannot
+clear an inherited ban; explicit null remains invalid. Distinct inherited
+prebuilt declarations are rejected instead of silently replacing the parent's
+roster/reason, and the fully merged policy is validated even for legacy metadata
+without modern provenance. No allow/unban override has been invented. Original
+authored files and their existing snapshots are not modified by resolution.
+
+Three additional regression tests exercise different-format multi-layer bans,
+empty/null/explicit declarations, preserved raw/snapshot bytes, and the actual
+writer and release helper under exact synthetic object decisions. A second
+standalone replay with preserved real typed Date32 fixture bytes confirms both
+entrypoints reject the inherited ban before output/copy, leaving all 24 staged
+objects and its prior published sentinel unchanged. The same registered Date32
+graph still succeeds for a valid prebuilt policy with zero generic converter
+calls and preserves its 21 published objects after missing approval, quality,
+staged mutation and whole-format-ban failures.
+
+Frozen validation: **511 local tests, 510 passed, one production-write opt-in
+skipped, zero errors/failures**; 36 focused tests passed. Actual Date32 success
+was `dc98d9b0-bcb6-402d-ad8b-5c1ed379a8d1`; missing approval,
+quality and mutation runs were `40e47558-2f3b-47af-b4a7-56457ab00d1d`,
+`233d2a0a-d3c9-4433-8b85-68b3495ad0ae` and
+`6d42ab87-3801-4114-9516-bf1b948b5dfa`. The
+[inherited-policy repair evidence](../evidence/2026-10-19-inherited-output-policy-repair.json)
+pins the original independent reproductions, code and logs, new actual runs and
+native replay. This narrower checkpoint awaits independent review; the parent
+`81433b3` finding remains honestly recorded. Source #30/#31 integration and all
+real acceptance/deployment decisions remain external.
