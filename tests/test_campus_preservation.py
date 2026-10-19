@@ -22,8 +22,8 @@ class CampusPreservationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix='campus-real-healthy-')
         cls.base = Path(cls.temporary.name)/'staging'
-        cls.storage = StagingStorageResource(local_dir=str(cls.base))
-        cls.output = s.stage_campus_preservation(cls.storage,s.CAPTURES)
+        storage = StagingStorageResource(local_dir=str(cls.base))
+        cls.output = s.stage_campus_preservation(storage,s.CAPTURES)
         cls.prefix = s.SLUG+'/'+s.SLUG+'/'+cls.output['version']
 
     @classmethod
