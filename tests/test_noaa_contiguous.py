@@ -33,7 +33,7 @@ EVIDENCE = Path(__file__).resolve().parents[1] / 'docs/dataset-sources/24nm-cont
 
 
 def real_receipt(directory):
-    """Composite observed captures, explicitly not a simultaneous live snapshot."""
+    """Complete retained live extraction with observed request/redirect receipts."""
     live = os.environ.get('HIFLD_NOAA_CONTIGUOUS_LIVE_RECEIPT')
     if live:
         captures, receipt = source_module.read_contiguous_receipt(Path(live))
@@ -42,31 +42,11 @@ def real_receipt(directory):
             (directory / (name + '.json')).write_bytes(body)
         (directory / 'receipt.json').write_text(json.dumps(receipt))
         return captures, receipt
-    new = EVIDENCE / 'network-20261019'
-    captures = {
-        'layer': (EVIDENCE / 'layer.txt').read_bytes(),
-        'features': (EVIDENCE / 'all-features.json').read_bytes(),
-        'geojson': gzip.decompress((new / 'features-geojson.json.gz').read_bytes()),
-        'ids_before': (new / 'ids-json.body').read_bytes(),
-        'ids_after': (new / 'ids-after.body').read_bytes(),
-        'count_before': (new / 'count-json.body').read_bytes(),
-        'count_after': (EVIDENCE / 'count-recheck.json').read_bytes(),
-    }
+    receipt = json.loads((EVIDENCE / 'verified-capture-receipt.json').read_text())
+    captures = {item['capture']: gzip.decompress((EVIDENCE / ('verified-capture-' + item['capture'] + '.json.gz')).read_bytes()) for item in receipt['receipts']}
     directory.mkdir(parents=True)
-    requests = {r['name']: r for r in json.loads((new / 'requests.json').read_text())}
-    source = json.loads((EVIDENCE.parent / 'source.json').read_text())
-    names = {'geojson': 'features-geojson', 'ids_before': 'ids-json', 'ids_after': 'ids-after', 'count_before': 'count-json'}
-    receipts = []
     for name, raw in captures.items():
         (directory / (name + '.json')).write_bytes(raw)
-        req = requests.get(names.get(name, ''))
-        url = req['url'] if req else source_module.LAYER_URL + ('?f=pjson' if name == 'layer' else '/query?where=1%3D1&' + ('outFields=*&f=pjson' if name == 'features' else 'returnCountOnly=true&f=pjson'))
-        receipts.append({'capture': name, 'url': url, 'http_status': 200,
-            'fetched_at': req['checked_at'] if req else '2026-10-19T04:19:06.917231+00:00',
-            'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw),
-            'receipt_note': 'Complete composite observed research captures; historical Esri plus equal fresh GeoJSON, not a simultaneous live snapshot or accepted release.'})
-    receipt = {'schema_version': 1, 'layer_url': source_module.LAYER_URL,
-               'objects': {name + '.json': {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)} for name, raw in captures.items()}, 'receipts': receipts}
     (directory / 'receipt.json').write_text(json.dumps(receipt))
     return captures, receipt
 
@@ -106,7 +86,7 @@ class ContiguousDraftTests(unittest.TestCase):
             kwargs = dict(staging=storage, dataset_slug=source_module.DATASET, file_slug=source_module.FILE,
                           receipts=receipt['receipts'], expected_fields=source_module.EXPECTED_FIELDS,
                           expected_fingerprints=source_module.PROPOSED_FINGERPRINTS, expected_count=63)
-            valid = stage_noaa_candidate(captures=captures, **kwargs)
+            valid = stage_noaa_candidate(expected_layer_url=source_module.LAYER_URL, captures=captures, **kwargs)
             before = (p / 'staging' / valid['candidate_key']).read_bytes()
             changed = copy.deepcopy(captures)
             full = json.loads(changed['features']);full['features'][0]['geometry']['paths'][0][0][0] += 0.01
@@ -118,7 +98,7 @@ class ContiguousDraftTests(unittest.TestCase):
                     item['bytes'] = len(changed['features'])
             kwargs['receipts'] = changed_receipts
             with self.assertRaisesRegex(ValueError, 'geometry drift'):
-                stage_noaa_candidate(captures=changed, **kwargs)
+                stage_noaa_candidate(expected_layer_url=source_module.LAYER_URL, captures=changed, **kwargs)
             self.assertEqual(before, (p / 'staging' / valid['candidate_key']).read_bytes())
             quarantine = list((p / 'staging').rglob('quarantine.json'))
             self.assertEqual(len(quarantine), 1)

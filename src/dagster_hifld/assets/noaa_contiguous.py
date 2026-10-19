@@ -91,6 +91,7 @@ def noaa_24nm_contiguous_zone(context, config: ContiguousDraftConfig,
         bodies, receipts = fetch_noaa_layer(LAYER_URL, attempts=3)
     report = stage_noaa_candidate(
         staging=staging_storage, dataset_slug=DATASET, file_slug=FILE,
+        expected_layer_url=LAYER_URL,
         captures=bodies, receipts=receipts, expected_fields=EXPECTED_FIELDS,
         expected_fingerprints=PROPOSED_FINGERPRINTS, expected_count=63,
         code_commit=context.run_tags.get('hifld/source_code_commit'),
