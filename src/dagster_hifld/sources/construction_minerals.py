@@ -168,13 +168,16 @@ def acquire(storage,capture_dir,package_id):
             paths=[root/(name+suffix) for suffix in ('.body','.receipt.json')]
             if any(not p.is_file() or p.is_symlink() or p.stat().st_nlink!=1 for p in paths):raise MineralsQuarantineError('linked_or_nonregular_package_input')
             if paths[0].stat().st_size>2*1024*1024 or paths[1].stat().st_size>65536:raise MineralsQuarantineError('package_input_exceeds_bound')
-            body=bounded_input(paths[0],2*1024*1024);raw_receipt=bounded_input(paths[1],65536)
+            body=bounded_input(paths[0],2*1024*1024)
             # Preserve the full bounded attempted input BEFORE interpreting any
             # receipt. These CAS bytes are evidence, not validated provenance.
             body_key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'
+            immutable(storage,body_key,body)
+            attempted[name]={'body_key':body_key,'body_sha256':digest(body),'body_bytes':len(body),'raw_receipt_read':False,'canonical_expected_url':pin['url']}
+            raw_receipt=bounded_input(paths[1],65536)
             receipt_key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.raw-receipt-{digest(raw_receipt)}.body'
-            immutable(storage,body_key,body);immutable(storage,receipt_key,raw_receipt)
-            attempted[name]={'body_key':body_key,'body_sha256':digest(body),'body_bytes':len(body),'raw_receipt_key':receipt_key,'raw_receipt_sha256':digest(raw_receipt),'raw_receipt_bytes':len(raw_receipt),'canonical_expected_url':pin['url']}
+            immutable(storage,receipt_key,raw_receipt)
+            attempted[name].update(raw_receipt_read=True,raw_receipt_key=receipt_key,raw_receipt_sha256=digest(raw_receipt),raw_receipt_bytes=len(raw_receipt))
             receipt=strict_json(raw_receipt);captures[name]=(body,receipt)
             validate_capture(name,body,receipt,pin['url'])
             if len(body)!=pin['bytes'] or digest(body)!=pin['sha256']:raise MineralsQuarantineError('unreviewed_package_bytes_require_explicit_new_package:'+name)

@@ -94,6 +94,17 @@ class MineralsTests(unittest.TestCase):
             hard=Path(tmp)/'hard';os.link(path,hard)
             with self.assertRaises(ValueError):s.bounded_input(path,4)
 
+    @unittest.skipIf(os.geteuid()==0,'Real POSIX unreadable-receipt test needs an ordinary user')
+    def test_unreadable_receipt_preserves_already_read_body_without_inventing_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package=Path(tmp)/'input';shutil.copytree(self.package,package);storage=StagingStorageResource(local_dir=tmp+'/stage');name='legacy_metadata';body=(package/(name+'.body')).read_bytes();receipt=package/(name+'.receipt.json');original=receipt.read_bytes();receipt.chmod(0)
+            try:
+                with self.assertRaisesRegex(ValueError,'Permission denied'):s.acquire(storage,str(package),s.PACKAGE)
+            finally:receipt.chmod(0o600)
+            self.assertEqual(receipt.read_bytes(),original);bodykey=f'_raw-captures/{s.SLUG}/{s.digest(body)}/{name}.body';self.assertEqual(storage.read_key(bodykey),body)
+            attempted=next((Path(tmp)/'stage/_quarantine').rglob('attempted-inputs.json'));record=s.strict_json(attempted.read_bytes())['objects'][name];self.assertFalse(record['raw_receipt_read']);self.assertNotIn('raw_receipt_key',record)
+            self.assertFalse((Path(tmp)/'stage/_construction-state').exists())
+
     def test_first_malformed_or_invalid_receipt_preserves_full_attempt_before_parse(self):
         with tempfile.TemporaryDirectory() as tmp:
             package=Path(tmp)/'input';shutil.copytree(self.package,package);storage=StagingStorageResource(local_dir=tmp+'/stage');name='legacy_metadata';body=(package/(name+'.body')).read_bytes()
