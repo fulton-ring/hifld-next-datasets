@@ -559,7 +559,13 @@ def _processing_identity() -> dict[str, object]:
     return {
         "code_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=project, text=True).strip(),
         "files": files, "python": platform.python_version(), "platform": platform.platform(),
-        "distributions": sorted((dist.metadata["Name"], dist.version) for dist in importlib.metadata.distributions()),
+        "distributions": [
+            list(item)
+            for item in sorted(
+                (dist.metadata["Name"], dist.version)
+                for dist in importlib.metadata.distributions()
+            )
+        ],
         "pyarrow": pa.__version__, "gdal": __import__("pyogrio").__gdal_version_string__,
         "geos": shapely.geos_version_string, "proj": pyproj.proj_version_str,
     }
