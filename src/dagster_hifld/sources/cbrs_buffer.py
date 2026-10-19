@@ -9,6 +9,7 @@ import collections
 import hashlib
 import importlib.metadata
 import io
+import shutil
 import fcntl
 import os
 import json
@@ -20,6 +21,7 @@ import struct
 import subprocess
 import tempfile
 import zipfile
+from dataclasses import asdict
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
@@ -34,6 +36,7 @@ import shapely
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
@@ -48,6 +51,7 @@ ARCHIVE_NAME = '20241219-cbrs-boundaries.zip'
 PIN = '8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0'
 ARCHIVE_BYTES = 32280370
 MAX_BYTES = 40_000_000
+LOCAL_FREE_FLOOR = 300_000_000
 MAX_EXPANDED_BYTES = 60_000_000
 STEM = '20241219_CBRS_Buffer_Zone'
 MEMBERS = frozenset(['20241219_CBRS_Buffer_Zone.prj', '20241219_CBRS_Polygons.prj', '20241219_CBRS_Prohibitions.prj', '20241219_CBRS_Buffer_Zone.sbn', '20241219_CBRS_Polygons.sbn', '20241219_CBRS_Prohibitions.sbn', '20241219_CBRS_Buffer_Zone.sbx', '20241219_CBRS_Polygons.sbx', '20241219_CBRS_Prohibitions.sbx', '20241219_CBRS_Buffer_Zone.shp', '20241219_CBRS_Polygons.shp', '20241219_CBRS_Prohibitions.shp', '20241219_CBRS_Buffer_Zone.shx', '20241219_CBRS_Polygons.shx', '20241219_CBRS_Prohibitions.shx', '20241219-User-Guide-for-CBRS-data.pdf', '20241219_CBRS_Buffer_Zone.cpg', '20241219_CBRS_Polygons.cpg', '20241219_CBRS_Prohibitions.cpg', '20241219_CBRS_Buffer_Zone.dbf', '20241219_CBRS_Polygons.dbf', '20241219_CBRS_Prohibitions.dbf', '20241219_CBRS_Buffer_Zone.shp.xml', '20241219_CBRS_Polygons.shp.xml', '20241219_CBRS_Prohibitions.shp.xml'])
@@ -87,8 +91,18 @@ def strict_json(body: bytes) -> dict:
 
 
 def require_local(storage: StagingStorageResource) -> None:
-    if isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
-        raise CBRSQuarantineError('draft_requires_explicit_isolated_local_staging')
+    """Reject lexical aliases before source acquisition or storage mutation."""
+    if (isinstance(storage, PublishedStorageResource) or not isinstance(storage,StagingStorageResource)
+            or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
+        raise CBRSQuarantineError('draft_requires_explicit_unprefixed_isolated_local_staging')
+    root=Path(storage.local_dir).absolute()
+    if '..' in root.parts:raise CBRSQuarantineError('unsafe_lexical_staging_root')
+    for path in [root,*root.parents]:
+        if path.is_symlink():raise CBRSQuarantineError('linked_lexical_staging_root_or_ancestor')
+    existing=root
+    while not existing.exists():existing=existing.parent
+    if not existing.is_dir():raise CBRSQuarantineError('staging_root_is_not_directory')
+    if shutil.disk_usage(existing).free<LOCAL_FREE_FLOOR:raise CBRSQuarantineError('local_space_guard_before_source_read')
 
 
 def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
@@ -122,6 +136,49 @@ def validate_receipt(body: bytes, receipt: dict, url: str) -> None:
         raise CBRSQuarantineError('capture_receipt_requires_timezone')
 
 
+def capture_live_response(storage, response, receipt, decoded):
+    """Source-owned durable wire sink around the reviewed shared capture helper."""
+    require_local(storage)
+    key=f'_raw-wire/{SLUG}/{uuid4().hex}/wire.body'
+    path=Path(storage.local_dir)/key
+    path.parent.mkdir(parents=True,exist_ok=False)
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    def retain_wire(block):
+        view=memoryview(block)
+        while view:
+            written=os.write(fd,view)
+            if written<=0:raise OSError('wire_sink_short_write')
+            view=view[written:]
+        os.fsync(fd)
+    def reserve(progress):
+        require_local(storage)
+        if shutil.disk_usage(path.parent).free<LOCAL_FREE_FLOOR+progress.reserve_bytes:
+            raise CBRSQuarantineError('local_space_guard_before_wire_or_decode')
+    try:
+        result=capture_http_response(response,max_wire_bytes=MAX_BYTES,max_decoded_bytes=MAX_BYTES,
+            reserve=reserve,retain_wire=retain_wire,retain_decoded=decoded.extend)
+    finally:
+        os.close(fd)
+        # Physical readback is independent of callback acknowledgement, including
+        # interruptions and partially failed sink writes. The wire body survives.
+        receipt['wire_evidence']={'key':key,'bytes':path.stat().st_size,'sha256':sha256_file(path)}
+    info=asdict(result)
+    for field in ('pending_wire','pending_decoded'):
+        pending=info.pop(field)
+        if pending:
+            pending_key=f'{path.parent.relative_to(Path(storage.local_dir))}/{field}.body'
+            immutable(storage,pending_key,pending)
+            receipt[field]={'key':pending_key,'bytes':len(pending),'sha256':sha(pending)}
+    receipt.update(transfer=info,received_wire_bytes=result.httpx_bytes_downloaded,
+        content_encoding=result.content_encoding,byte_length=len(decoded),sha256=sha(decoded))
+    immutable(storage,f'{path.parent.relative_to(Path(storage.local_dir))}/receipt.json',encode(receipt))
+    if (path.stat().st_size!=result.wire_bytes_retained or sha256_file(path)!=result.wire_sha256
+            or len(decoded)!=result.decoded_bytes_retained or sha(decoded)!=result.decoded_sha256):
+        raise CBRSQuarantineError('capture_sink_readback_mismatch')
+    if not result.complete:
+        raise CBRSQuarantineError(f'incomplete_http_capture:{result.error_code}')
+
+
 def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     require_local(storage)
     captures = {}
@@ -141,20 +198,17 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                 raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
         else:
             for attempt in range(3):
-                body=b'';receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
+                body=b'';decoded=bytearray();receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
                     with httpx.Client(follow_redirects=False,timeout=45,headers={'Accept-Encoding':'identity'}) as client:
                         with client.stream('GET',url) as response:
                             receipt.update(final_url=str(response.url),status=response.status_code)
-                            for block in response.iter_bytes(chunk_size=65536):
-                                body+=block
-                                if len(body)>MAX_BYTES: raise CBRSQuarantineError('response_size_limit')
-                            receipt.update(byte_length=len(body),sha256=sha(body),received_wire_bytes=response.num_bytes_downloaded,content_encoding=response.headers.get('content-encoding'))
+                            capture_live_response(storage,response,receipt,decoded)
+                            body=bytes(decoded)
                             validate_receipt(body,receipt,url)
-                            if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=response.num_bytes_downloaded:
-                                raise CBRSQuarantineError('incomplete_content_length')
                     break
                 except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
+                    body=bytes(decoded)
                     receipt.update(byte_length=len(body),sha256=sha(body),partial=True)
                     location=quarantine(storage,body,receipt,str(exc))
                     if attempt==2: raise CBRSQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc

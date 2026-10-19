@@ -82,6 +82,26 @@ class CBRSTests(unittest.TestCase):
                 s.stage_cbrs_buffer_candidate(storage,capture_dir=CAPTURE)
             acquire.assert_not_called()
 
+    def test_lexical_root_and_ancestor_alias_rejected_before_acquisition(self):
+        with tempfile.TemporaryDirectory() as d:
+            target=Path(d)/'target';target.mkdir();alias=Path(d)/'staging-alias';alias.symlink_to(target,target_is_directory=True)
+            for root in [alias,alias/'not-created']:
+                with self.subTest(root=root),patch.object(s,'acquire') as acquire,self.assertRaisesRegex(ValueError,'linked_lexical_staging_root_or_ancestor'):
+                    s.stage_cbrs_buffer_candidate(StagingStorageResource(local_dir=str(root)),capture_dir=CAPTURE)
+                acquire.assert_not_called();self.assertEqual(list(target.iterdir()),[])
+            # Source-local capture API also refuses before opening any body.
+            with patch.object(Path,'open',side_effect=AssertionError('must reject before source reads')),self.assertRaisesRegex(ValueError,'linked_lexical_staging_root_or_ancestor'):
+                s.acquire(StagingStorageResource(local_dir=str(alias)),CAPTURE)
+
+    def test_relative_root_allowed_and_space_reserve_precedes_acquisition(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as d:
+            root=Path(d)/'relative-staging';storage=StagingStorageResource(local_dir=os.path.relpath(root,Path.cwd()))
+            s.require_local(storage);self.assertFalse(root.exists())
+            low=type('DiskUsage',(),{'free':s.LOCAL_FREE_FLOOR-1})()
+            with patch.object(s.shutil,'disk_usage',return_value=low),patch.object(s,'acquire') as acquire,self.assertRaisesRegex(ValueError,'local_space_guard_before_source_read'):
+                s.stage_cbrs_buffer_candidate(storage,capture_dir=CAPTURE)
+            acquire.assert_not_called();self.assertFalse(root.exists())
+
     def test_all_receipts_preflight_strict_timestamp_url_pins(self):
         captures=self.structural_captures()
         self.assertEqual(len(s.provenance(captures)['inputs']),4)
@@ -107,18 +127,34 @@ class CBRSTests(unittest.TestCase):
             self.assertFalse((stage/s.SLUG).exists())
 
     def test_partial_each_attempt_retained(self):
-        class Response:
-            status_code=200;url=s.URL;headers={}
-            def __enter__(self):return self
-            def __exit__(self,*a):pass
-            def iter_bytes(self,**kw):yield b'partial';raise httpx.ReadError('reset')
-        class Client:
-            def __enter__(self):return self
-            def __exit__(self,*a):pass
-            def stream(self,*a):return Response()
-        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',return_value=Client()) as c:
-            with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):s.acquire(StagingStorageResource(local_dir=d),None)
-            self.assertEqual(c.call_count,3);self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
+        original_client=s.httpx.Client
+        class Partial(httpx.SyncByteStream):
+            def __init__(self,block):self.block=block
+            def __iter__(self):yield self.block;raise httpx.ReadError('synthetic reset')
+        for block,headers in [(b'partial',{}),(gzip.compress(b'SYNTHETIC gzip response')[:18],{'Content-Encoding':'gzip'})]:
+            def response(request):return httpx.Response(200,headers=headers,stream=Partial(block))
+            def client(**kw):return original_client(transport=httpx.MockTransport(response),**kw)
+            with self.subTest(headers=headers),tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=client) as c:
+                with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):s.acquire(StagingStorageResource(local_dir=d),None)
+                self.assertEqual(c.call_count,3)
+                wires=list(Path(d).rglob('wire.body'));self.assertEqual(len(wires),3)
+                self.assertTrue(all(p.read_bytes()==block for p in wires))
+                for p in Path(d).rglob('receipt.json'):
+                    receipt=json.loads(p.read_bytes())
+                    if 'transfer' in receipt:
+                        self.assertFalse(receipt['transfer']['complete'])
+                        self.assertEqual(receipt['wire_evidence']['bytes'],len(block))
+                self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
+                self.assertFalse(Path(d,s.SLUG).exists())
+
+    def test_wire_overflow_keeps_entire_delivered_block(self):
+        original_client=s.httpx.Client;block=b'SYNTHETIC-'+b'x'*58
+        def response(request):return httpx.Response(200,stream=httpx.ByteStream(block))
+        def client(**kw):return original_client(transport=httpx.MockTransport(response),**kw)
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'MAX_BYTES',36),patch.object(s.httpx,'Client',side_effect=client):
+            with self.assertRaisesRegex(ValueError,'wire_limit_exceeded'):s.acquire(StagingStorageResource(local_dir=d),None)
+            wires=list(Path(d).rglob('wire.body'));self.assertEqual(len(wires),3)
+            self.assertTrue(all(p.read_bytes()==block for p in wires))
             self.assertFalse(Path(d,s.SLUG).exists())
 
     def test_atomic_interrupt_and_oserror_never_expose_version(self):
@@ -274,7 +310,7 @@ class CBRSTests(unittest.TestCase):
                 self.assertNotEqual(receipt['received_wire_bytes'],receipt['byte_length'])
         def truncated(request):return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed))},stream=httpx.ByteStream(compressed[:-4]))
         def badclient(**kw):return original_client(transport=httpx.MockTransport(truncated),**kw)
-        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=badclient),self.assertRaisesRegex(ValueError,'incomplete_content_length'):
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=badclient),self.assertRaisesRegex(ValueError,'compressed_stream_incomplete'):
             try:s.acquire(StagingStorageResource(local_dir=d),None)
             finally:self.assertEqual(len(list(Path(d).rglob('report.json'))),3)
 
