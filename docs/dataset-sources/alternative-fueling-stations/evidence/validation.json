@@ -1,8 +1,8 @@
 {
   "focused_tests": {
-    "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_dynamic_partitions tests.test_checks tests.test_full_verification -q",
-    "passed": 53,
-    "log_sha256": "7108e7a73a7e03d11c5f26d8734c01a016182fc54ed5b27b0b90e0d37f31f8f9"
+    "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_dynamic_partitions tests.test_checks tests.test_full_verification tests.test_catalog -q",
+    "passed": 74,
+    "log_sha256": "b02d068a03d90c2179af157c70896a82a2fc18a08dcebc55c3146749a4b153f9"
   },
   "raw_and_candidate_graph": "evidence/draft-materialization.json",
   "normal_ingest_and_catalog": "evidence/standard-materialization.json",

@@ -113,7 +113,9 @@ class FuelDraftTest(unittest.TestCase):
         bridge = root / 'geopackage' / (SLUG + '.gpkg')
         self.assertEqual(verify_typed_geopackage(root/'draft_candidate/candidate.parquet', bridge)['rows'], 1)
         with sqlite3.connect(bridge) as connection:
-            connection.create_function('ST_IsEmpty', 1, lambda _geometry: True)
+            # Only this synthetic tamper fixture bypasses spatial maintenance.
+            for (trigger,) in connection.execute('SELECT name FROM sqlite_master WHERE type="trigger"').fetchall():
+                connection.execute(f'DROP TRIGGER "{trigger}"')
             connection.execute(f'UPDATE "{SLUG}" SET zip=?', ('BAD',))
         with self.assertRaisesRegex(ValueError, 'value/geometry changed'):
             verify_typed_geopackage(root/'draft_candidate/candidate.parquet', bridge)
