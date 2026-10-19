@@ -53,6 +53,7 @@ READY='metadata/cousub_candidate_ready.json'
 FIELDS=('OBJECTID','COUSUBNS','GEOID','GEOIDFQ','NAMELSAD','CLASSFP','FUNCSTAT','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
 TYPES=(pa.int32(),*[pa.string()]*6,pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
 MAX_RECEIPT_BYTES=65536
+LIVE_BLOCK_BYTES=1024*1024
 BATCH_SIZE=512
 STATE_COUNTS={'01': 390, '02': 37, '04': 80, '05': 1095, '06': 404, '08': 209, '09': 174, '10': 27, '11': 1, '12': 316, '13': 586, '15': 44, '16': 170, '17': 1696, '18': 1012, '19': 1663, '20': 1525, '21': 493, '22': 576, '23': 529, '24': 290, '25': 357, '26': 1580, '27': 2759, '28': 410, '29': 1394, '30': 194, '31': 1182, '32': 71, '33': 260, '34': 569, '35': 130, '36': 1023, '37': 1041, '38': 1761, '39': 1607, '40': 305, '41': 212, '42': 2573, '44': 40, '45': 299, '46': 1328, '47': 844, '48': 862, '49': 93, '50': 256, '51': 552, '53': 242, '54': 225, '55': 1925, '56': 71, '60': 16, '66': 20, '69': 12, '72': 939, '78': 23}
 
@@ -143,10 +144,17 @@ def acquire(storage,archive_path=None,receipt_path=None):
                 receipt.update(status=response.status_code,final_url=str(response.url),content_length=response.headers.get('content-length'),content_encoding=response.headers.get('content-encoding'),requested_accept_encoding='identity')
                 size=0
                 try:
-                    for block in response.iter_bytes(1024*1024):
-                        size+=len(block)
-                        if size>BYTES or shutil.disk_usage(root).free<300000000:raise CountySubdivisionQuarantineError('oversized_source_or_storage_floor')
+                    blocks=iter(response.iter_bytes(LIVE_BLOCK_BYTES))
+                    while True:
+                        # Reserve the complete bounded decoded block BEFORE a
+                        # network read. Every consumed block is then retained,
+                        # including at most one block beyond the pinned size.
+                        if shutil.disk_usage(root).free<300000000+LIVE_BLOCK_BYTES:raise CountySubdivisionQuarantineError('oversized_source_or_storage_floor')
+                        try:block=next(blocks)
+                        except StopIteration:break
                         output.write(block)
+                        size+=len(block)
+                        if size>BYTES:raise CountySubdivisionQuarantineError('oversized_source_or_storage_floor')
                 finally:receipt['wire_bytes_downloaded']=response.num_bytes_downloaded
             receipt.update(bytes=partial.stat().st_size,sha256=sha256_file(partial),complete_body=True)
             if receipt['content_length'] is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']:raise CountySubdivisionQuarantineError('encoded_transport_truncation')

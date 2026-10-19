@@ -71,6 +71,36 @@ class CountySubdivisionTests(unittest.TestCase):
         self.assertEqual(audit['rows'],36492);self.assertEqual(len(audit['state_counts']),56);self.assertEqual(audit['native_wkb_bytes'],489108707);self.assertEqual(audit['physical_fields']['OBJECTID']['Length'],'4');self.assertEqual(audit['native_attributes'],11)
         self.assertEqual(audit['state_counts']['60'],16);self.assertEqual(audit['state_counts']['69'],12)
 
+    def test_actual_httpx_oversize_preserves_every_consumed_byte(self):
+        body=b'EXPLICIT_SYNTHETIC_OVERSIZE_TRANSPORT';original_client=httpx.Client
+        transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Length':str(len(body))},stream=httpx.ByteStream(body)))
+        with tempfile.TemporaryDirectory() as tmp,patch.multiple(source,BYTES=len(body)-1,SHA256=hashlib.sha256(body[:-1]).hexdigest(),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)):
+            storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'))
+            with self.assertRaisesRegex(ValueError,'oversized_source_or_storage_floor'):source.acquire(storage)
+            partial=next(Path(storage.local_dir).rglob('*.partial'));self.assertEqual(partial.read_bytes(),body)
+            report=source.strict_json(next((Path(storage.local_dir)/'_quarantine').rglob('*.json')).read_bytes())['receipt']
+            self.assertFalse(report['complete_body']);self.assertEqual(report['bytes'],len(body));self.assertEqual(report['wire_bytes_downloaded'],len(body));self.assertEqual(report['sha256'],hashlib.sha256(body).hexdigest());self.assertFalse((Path(storage.local_dir)/source.RAW_KEY).exists())
+
+    def test_actual_httpx_floor_precedes_first_and_next_body_read(self):
+        for stop_after in [0,1]:
+            with self.subTest(stop_after=stop_after),tempfile.TemporaryDirectory() as tmp:
+                consumed=[];block=b'X'*source.LIVE_BLOCK_BYTES
+                class CountedStream(httpx.SyncByteStream):
+                    def __iter__(self):
+                        for number in range(3):
+                            consumed.append(number);yield block
+                original_client=httpx.Client;transport=httpx.MockTransport(lambda request:httpx.Response(200,stream=CountedStream()))
+                # Initial complete-input preflight succeeds; then the floor
+                # falls before exactly the first/second iterator read.
+                free_values=iter([10**10]+[10**10]*stop_after+[299999999])
+                with patch.multiple(source,BYTES=3*len(block),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)),patch.object(source.shutil,'disk_usage',side_effect=lambda _:source.shutil._ntuple_diskusage(10**10,0,next(free_values))):
+                    storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'))
+                    with self.assertRaisesRegex(ValueError,'oversized_source_or_storage_floor'):source.acquire(storage)
+                self.assertEqual(consumed,list(range(stop_after)))
+                partial=next(Path(storage.local_dir).rglob('*.partial'));self.assertEqual(partial.read_bytes(),block*stop_after)
+                report=source.strict_json(next((Path(storage.local_dir)/'_quarantine').rglob('*.json')).read_bytes())['receipt']
+                self.assertFalse(report['complete_body']);self.assertEqual(report['wire_bytes_downloaded'],len(block)*stop_after);self.assertEqual(report['bytes'],len(block)*stop_after)
+
     def test_native_width_values_geometry_refresh_and_no_raw_copy(self):
         with synthetic_population() as (_,storage,raw,receipt,_):
             first=self.stage(storage,raw,receipt);second=self.stage(storage,raw,receipt);self.assertFalse(first['reused']);self.assertTrue(second['reused'])
