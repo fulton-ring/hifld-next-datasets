@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.epa_sems import epa_sems_source_integrity_job, epa_sems_source_integrity_schedule
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -408,6 +409,8 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
+    jobs=[epa_sems_source_integrity_job],
+    schedules=[epa_sems_source_integrity_schedule],
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
     executor=_default_executor(),
