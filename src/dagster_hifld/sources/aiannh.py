@@ -25,7 +25,7 @@ from pyproj import CRS
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.release_approval import verifier_implementation_sha256
+from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
 SLUG = 'aiannh-areas-1'
@@ -243,6 +243,7 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
                 before = storage.object_snapshot(key)
                 if before is None or _sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != before:
                     raise AiannhQuarantineError(f'existing_candidate_object_changed:{name}')
+            validate_release_provenance(json.loads(storage.read_key(f'{prefix}/metadata/source_manifest.json')))
             return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
                     'candidate_sha256': _sha(records), 'source_sha256': PIN, 'status': ready['status'],
                     'written_keys': sorted(f'{prefix}/{name}' for name in ready['objects'])}
@@ -253,7 +254,8 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
                     or manifest['inputs'][0]['sha256'] != PIN):
                 raise AiannhQuarantineError('existing_provenance_conflict')
         else:
-            manifest = {'schema_version': 1, 'processor': 'HIFLD Next draft AIANNH source adapter',
+            manifest = {'schema_version': 1, 'processor': 'HIFLD Next',
+                        'processor_description': 'HIFLD Next draft AIANNH source adapter',
                         'code_commit': code_commit or _current_commit(), 'builder_sha256': builder_sha,
                         'implementation_sha256': implementation_sha,
                         'title': 'Census TIGER2023 AIANNH components — unapproved draft',
@@ -274,6 +276,7 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
                                     'retrieval': retrieval, 'sha256': PIN, 'bytes': len(body),
                                     'license': 'U.S. Census Bureau public data', 'attribution': 'U.S. Census Bureau, Geography Division',
                                     'lineage': 'TIGER2023/Boundary and Annexation Survey; exact inventory URL; DHS crosswalk remains unverified'}]}
+        validate_release_provenance(manifest)
         with tempfile.TemporaryDirectory(prefix='aiannh-gpkg-') as tmp:
             directory = Path(tmp)
             source_records = directory / 'source.jsonl'

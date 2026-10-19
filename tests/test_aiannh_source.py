@@ -13,6 +13,7 @@ import httpx
 from dagster import DefaultScheduleStatus, build_schedule_context
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.assets.census_bureau import aiannh_source_integrity_refresh_schedule
 from dagster_hifld.definitions import defs
 from dagster_hifld.sources.aiannh import (
@@ -154,12 +155,30 @@ class AiannhSourceTests(unittest.TestCase):
             self.assertEqual(first['feature_count'], 862)
             self.assertEqual(first['source_sha256'], PIN)
             prefix = f'{SLUG}/{SLUG}/{first["version"]}'
+            manifest = json.loads(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
+            self.assertEqual(manifest['processor'], 'HIFLD Next')
+            self.assertEqual(manifest['processor_description'], 'HIFLD Next draft AIANNH source adapter')
+            validate_release_provenance(manifest)
             self.assertEqual(storage.read_key(f'{prefix}/raw/{ARCHIVE_NAME}'), archive.read_bytes())
             rows = [json.loads(line) for line in storage.read_key(f'{prefix}/metadata/candidate.records.jsonl').splitlines()]
             self.assertEqual(len(rows), 862)
             self.assertTrue(any(r['properties']['GEOID'].startswith('0') for r in rows))
             self.assertTrue(all(set(r['properties']) == set(SCHEMA) for r in rows))
             self.assertFalse(PROPOSAL['approved'])
+
+    @unittest.skipUnless(os.environ.get('AIANNH_TEST_ARCHIVE'), 'set AIANNH_TEST_ARCHIVE to preserved exact2023 ZIP')
+    def test_complete_provenance_failure_precedes_canonical_staging(self):
+        archive = Path(os.environ['AIANNH_TEST_ARCHIVE'])
+        with tempfile.TemporaryDirectory() as directory:
+            storage = StagingStorageResource(local_dir=directory, use_local=True)
+            _immutable_stage(storage, 'retained/accepted', b'last-good')
+            with patch('dagster_hifld.sources.aiannh.validate_release_provenance',
+                       side_effect=ValueError('synthetic invalid release provenance')):
+                with self.assertRaisesRegex(AiannhQuarantineError, 'synthetic invalid release provenance'):
+                    stage_aiannh_candidate(storage, archive_path=archive)
+            self.assertFalse((Path(directory) / SLUG).exists())
+            self.assertEqual(storage.read_key('retained/accepted'), b'last-good')
+            self.assertEqual(next((Path(directory) / '_quarantine').rglob('response.body')).read_bytes(), archive.read_bytes())
 
 
 if __name__ == '__main__':
