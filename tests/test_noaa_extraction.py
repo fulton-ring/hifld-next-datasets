@@ -4,6 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from http.client import IncompleteRead
+from urllib.error import HTTPError
+import io
+import hashlib
 from unittest.mock import patch
 
 import pyarrow as pa
@@ -29,6 +33,12 @@ def fixture():
     return captures, kwargs
 
 
+def receipt_fixture(captures):
+    return [{"capture": name, "url": "https://example.test/layer/" + name, "http_status": 200,
+             "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "fetched_at": "2026-10-19T04:19:08Z"}
+            for name, raw in captures.items()]
+
+
 class NoaaExtractionTests(unittest.TestCase):
     def test_native_types_ids_vertices_and_staging_are_lossless_idempotent(self):
         captures, kwargs = fixture()
@@ -41,7 +51,7 @@ class NoaaExtractionTests(unittest.TestCase):
         self.assertEqual(list(from_wkb(table["SHAPE"][0].as_py()).coords), [(1, 2), (3, 4)])
         with tempfile.TemporaryDirectory() as directory:
             storage = StagingStorageResource(local_dir=directory, use_local=True)
-            args = {"staging": storage, "dataset_slug": "synthetic", "file_slug": "synthetic", "captures": captures, "receipts": [], **kwargs}
+            args = {"staging": storage, "dataset_slug": "synthetic", "file_slug": "synthetic", "captures": captures, "receipts": receipt_fixture(captures), **kwargs}
             first = stage_noaa_candidate(**args)
             second = stage_noaa_candidate(**args)
             self.assertEqual(first, second)
@@ -74,10 +84,75 @@ class NoaaExtractionTests(unittest.TestCase):
                 obj = json.loads(captures[name]); mutate(obj); captures[name] = json.dumps(obj).encode()
                 with tempfile.TemporaryDirectory() as directory:
                     with self.assertRaisesRegex(ValueError, "quarantined"):
-                        stage_noaa_candidate(staging=StagingStorageResource(local_dir=directory, use_local=True), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=[], **kwargs)
+                        stage_noaa_candidate(staging=StagingStorageResource(local_dir=directory, use_local=True), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=receipt_fixture(captures), **kwargs)
                     self.assertEqual(len(list(Path(directory).rglob("quarantine.json"))), 1)
                     self.assertFalse(list(Path(directory).rglob("*.parquet")))
                     self.assertFalse(list(Path(directory).rglob("*.gpkg")))
+
+    def test_id_witness_cardinality_and_duplicates_are_quarantined_with_raw(self):
+        for witness in ("ids_before", "ids_after"):
+            for representation in ("objectIds", "features"):
+                for values in ([1, 2, 2], [1, 2, None], [1], [1, 1], [1, 2, True]):
+                    with self.subTest(witness=witness, representation=representation, values=values):
+                        captures, kwargs = fixture()
+                        body = {"objectIds": values} if representation == "objectIds" else {"features": [{"attributes": {"OBJECTID": value}} for value in values]}
+                        captures[witness] = json.dumps(body).encode()
+                        with tempfile.TemporaryDirectory() as directory:
+                            with self.assertRaisesRegex(ValueError, "quarantined.*ID reconciliation"):
+                                stage_noaa_candidate(staging=StagingStorageResource(local_dir=directory, use_local=True), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=receipt_fixture(captures), **kwargs)
+                            self.assertEqual(next(Path(directory).rglob(witness + ".json")).read_bytes(), captures[witness])
+                            self.assertEqual(len(list(Path(directory).rglob("quarantine.json"))), 1)
+                            self.assertFalse(list(Path(directory).rglob("*.parquet")))
+
+    def test_valid_shaped_final_http503_is_quarantined_with_raw_receipts(self):
+        captures, kwargs = fixture()
+        statuses = receipt_fixture(captures)
+        for receipt in statuses:
+            receipt["http_status"] = 503
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "quarantined.*terminal HTTP"):
+                stage_noaa_candidate(staging=StagingStorageResource(local_dir=directory, use_local=True), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=statuses, **kwargs)
+            self.assertEqual(next(Path(directory).rglob("features.json")).read_bytes(), captures["features"])
+            self.assertEqual(json.loads(next(Path(directory).rglob("raw/receipts/*.json")).read_text()), statuses)
+            self.assertFalse(list(Path(directory).rglob("*.parquet")))
+
+    def test_exhausted_http_error_with_plausible_body_stays_failed(self):
+        captures, kwargs = fixture()
+        ordered = ["layer", "count_before", "ids_before", "features", "geojson", "ids_after", "count_after"]
+        errors = [HTTPError("https://example.test/layer", 503, "unavailable", None, io.BytesIO(captures[name])) for name in ordered for _ in range(2)]
+        with patch("dagster_hifld.noaa_extract.urlopen", side_effect=errors), patch("dagster_hifld.noaa_extract.time.sleep"):
+            fetched, receipts = fetch_noaa_layer("https://example.test/layer", attempts=2)
+        self.assertEqual(fetched, captures)
+        self.assertTrue(all(r["http_status"] == 503 for r in receipts))
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "quarantined.*terminal HTTP"):
+                stage_noaa_candidate(staging=StagingStorageResource(local_dir=directory, use_local=True), dataset_slug="synthetic", file_slug="synthetic", captures=fetched, receipts=receipts, **kwargs)
+            self.assertEqual(next(Path(directory).rglob("features.json")).read_bytes(), captures["features"])
+            self.assertFalse(list(Path(directory).rglob("*.parquet")))
+
+    def test_body_read_reset_and_partial_exhaustion_retain_prior_raw_for_quarantine(self):
+        class Response:
+            status = 200
+            url = "https://example.test/layer"
+            def __init__(self, value): self.value = value
+            def read(self, limit):
+                if isinstance(self.value, Exception): raise self.value
+                return self.value
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        for error in (ConnectionResetError("reset"), IncompleteRead(b'{"cou', 5)):
+            with self.subTest(error=type(error).__name__), patch("dagster_hifld.noaa_extract.urlopen", side_effect=[Response(b'{"layer":"preserved"}'), *[Response(error) for _ in range(3)]]), patch("dagster_hifld.noaa_extract.time.sleep"):
+                captures, receipts = fetch_noaa_layer("https://example.test/layer", attempts=3)
+                self.assertEqual(captures["layer"], b'{"layer":"preserved"}')
+                self.assertEqual(len(receipts[-1]["failed_attempts"]), 3)
+                if isinstance(error, IncompleteRead): self.assertEqual(captures["count_before"], error.partial)
+                _, kwargs = fixture()
+                with tempfile.TemporaryDirectory() as directory:
+                    with self.assertRaisesRegex(ValueError, "quarantined"):
+                        stage_noaa_candidate(staging=StagingStorageResource(local_dir=directory, use_local=True), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=receipts, **kwargs)
+                    self.assertEqual(next(Path(directory).rglob("layer.json")).read_bytes(), captures["layer"])
+                    self.assertEqual(len(list(Path(directory).rglob("quarantine.json"))), 1)
+                    self.assertFalse(list(Path(directory).rglob("*.parquet")))
 
     def test_duplicate_json_members_quarantine_instead_of_overriding(self):
         captures, kwargs = fixture()
@@ -89,7 +164,7 @@ class NoaaExtractionTests(unittest.TestCase):
         captures, kwargs = fixture()
         with tempfile.TemporaryDirectory() as directory:
             storage = StagingStorageResource(local_dir=directory, use_local=True)
-            args = {"staging": storage, "dataset_slug": "synthetic", "file_slug": "synthetic", "captures": captures, "receipts": [], **kwargs}
+            args = {"staging": storage, "dataset_slug": "synthetic", "file_slug": "synthetic", "captures": captures, "receipts": receipt_fixture(captures), **kwargs}
             with patch("dagster_hifld.noaa_extract.verifier_implementation_sha256", return_value="a" * 64):
                 first = stage_noaa_candidate(**args)
             with patch("dagster_hifld.noaa_extract.verifier_implementation_sha256", return_value="b" * 64):
@@ -120,13 +195,13 @@ class NoaaExtractionTests(unittest.TestCase):
         captures, kwargs = fixture()
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "isolated local storage"):
-                stage_noaa_candidate(staging=PublishedStorageResource(use_local=True, local_dir=directory), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=[], **kwargs)
+                stage_noaa_candidate(staging=PublishedStorageResource(use_local=True, local_dir=directory), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=receipt_fixture(captures), **kwargs)
             self.assertEqual(list(Path(directory).rglob("*")), [])
 
     def test_remote_storage_rejected_for_unapproved_draft(self):
         captures, kwargs = fixture()
         with self.assertRaisesRegex(ValueError, "isolated local storage"):
-            stage_noaa_candidate(staging=StagingStorageResource(use_local=False, bucket="not-real"), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=[], **kwargs)
+            stage_noaa_candidate(staging=StagingStorageResource(use_local=False, bucket="not-real"), dataset_slug="synthetic", file_slug="synthetic", captures=captures, receipts=receipt_fixture(captures), **kwargs)
 
 
 if __name__ == "__main__":

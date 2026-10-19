@@ -17,6 +17,7 @@ from pathlib import Path
 import time
 from collections import Counter
 from datetime import datetime, timezone
+from http.client import HTTPException
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -94,15 +95,25 @@ def fetch_noaa_layer(layer_url: str, *, timeout: float = 45, attempts: int = 3) 
         failures = []
         for attempt in range(attempts):
             try:
-                with urlopen(Request(url, headers={"User-Agent": "HIFLD NOAA draft source adapter"}), timeout=timeout) as response:
-                    content = response.read(32 * 1024 * 1024 + 1)
+                try:
+                    response = urlopen(Request(url, headers={"User-Agent": "HIFLD NOAA draft source adapter"}), timeout=timeout)
+                except HTTPError as exc:
+                    response = exc
+                with response:
                     status, final_url = response.status, response.url
-            except HTTPError as exc:
-                content, status, final_url = exc.read(32 * 1024 * 1024 + 1), exc.code, exc.url
-            except (URLError, TimeoutError) as exc:
-                failures.append({"attempt": attempt + 1, "transport_error": type(exc).__name__})
+                    content = response.read(32 * 1024 * 1024 + 1)
+            except (OSError, HTTPException) as exc:
+                failure = {"attempt": attempt + 1, "transport_error": type(exc).__name__}
+                partial = getattr(exc, "partial", None)
+                if isinstance(partial, bytes):
+                    failure.update(body_base64=base64.b64encode(partial).decode(),
+                                   bytes=len(partial), sha256=hashlib.sha256(partial).hexdigest(), truncated=True)
+                failures.append(failure)
                 if attempt + 1 == attempts:
-                    receipts.append({"capture": name, "url": url, "fetched_at": started, "failed_attempts": failures})
+                    if isinstance(partial, bytes):
+                        captures[name] = partial
+                    receipts.append({"capture": name, "url": url, "fetched_at": started,
+                                     "transport_error": type(exc).__name__, "failed_attempts": failures})
                     return captures, receipts
                 time.sleep(0.25)
                 continue
@@ -177,7 +188,7 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
         if body.get("exceededTransferLimit"):
             raise ValueError(f"NOAA incomplete ID response: {name}")
         other = body.get("objectIds") if "objectIds" in body else [f["attributes"].get("OBJECTID") for f in body.get("features", [])]
-        if any(type(v) is not int for v in other) or len(set(other)) != count or set(other) != set(ids):
+        if not isinstance(other, list) or len(other) != count or any(type(v) is not int for v in other) or len(set(other)) != count or set(other) != set(ids):
             raise ValueError(f"NOAA ID reconciliation failed: {name}")
     for f in ordered:
         if set(f["attributes"]) != set(actual_fields) - {"SHAPE"}:
@@ -282,7 +293,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     processing_fingerprint = verifier_implementation_sha256()
     identity = _digest({"raw_identity": raw_identity, "processing_fingerprint": processing_fingerprint,
                         "expected_fields": expected_fields, "expected_fingerprints": expected_fingerprints, "expected_count": expected_count,
-                        "retrieval_urls": {r["capture"]: r.get("url") for r in receipts}})
+                        "retrieval_urls": [{"capture": r.get("capture"), "url": r.get("url")} for r in receipts]})
     version = "v0.0.0-draft.noaa." + identity[:20]
     prefix = f"{dataset_slug}/{file_slug}/{version}"
     if not set(captures).issubset(_CAPTURE_NAMES):
@@ -292,6 +303,17 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     receipt_key = f"{prefix}/raw/receipts/{_digest(receipts)}.json"
     _write_draft_staging(staging, receipt_key, _json_bytes(receipts))
     try:
+        if len(receipts) != len(_CAPTURE_NAMES) or {r.get("capture") for r in receipts} != set(_CAPTURE_NAMES):
+            raise ValueError("NOAA retrieval receipts missing, duplicated or unexpected")
+        for receipt in receipts:
+            name = receipt["capture"]
+            raw = captures.get(name)
+            if (type(receipt.get("http_status")) is not int or receipt["http_status"] != 200
+                    or receipt.get("transport_error") or receipt.get("truncated")):
+                raise ValueError(f"NOAA terminal HTTP/transport status failed: {name}")
+            if (raw is None or type(receipt.get("bytes")) is not int or receipt["bytes"] != len(raw)
+                    or receipt.get("sha256") != hashlib.sha256(raw).hexdigest()):
+                raise ValueError(f"NOAA retrieval receipt does not match raw body: {name}")
         table, quality = validate_noaa_capture(captures, expected_fields=expected_fields, expected_fingerprints=expected_fingerprints, expected_count=expected_count)
     except (ValueError, KeyError, TypeError, OverflowError, pa.ArrowException) as exc:
         _write_draft_staging(staging, f"{prefix}/metadata/quarantine.json", _json_bytes({"status": "quarantined", "promotion_approved": False, "reason": str(exc), "raw_identity": raw_identity, "processing_fingerprint": processing_fingerprint}))
