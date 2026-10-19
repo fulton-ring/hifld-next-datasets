@@ -97,7 +97,7 @@ class CBRSTests(unittest.TestCase):
             rows,_,_=s.inspect_archive(body,Path(d))
         class Row(dict):
             def __init__(self,r):
-                super().__init__(properties={k:v for k,v in r['properties'].items() if k!='__source_fid'},geometry=r['geometry'])
+                super().__init__(properties={k:v for k,v in r['properties'].items() if k!='__source_fid'},geometry={'type':'Polygon','coordinates':[[[-70.0,40.0],[-70.0,41.0],[-69.0,40.0],[-70.0,40.0]]]})
                 self.id=r['properties']['__source_fid']
         class Stream:
             schema={'properties':s.NATIVE_SCHEMA,'geometry':'Polygon'};crs='EPSG:4269'
