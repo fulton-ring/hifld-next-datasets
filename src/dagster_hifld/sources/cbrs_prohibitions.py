@@ -21,7 +21,6 @@ import struct
 import subprocess
 import tempfile
 import zipfile
-import zlib
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -37,6 +36,7 @@ from shapely.geometry import mapping, shape
 
 from dagster_hifld.construction_provenance import ConstructionCodeIdentityError, validate_construction_code_identity
 from dagster_hifld.construction_state import (ConstructionStateError, canonical_construction_bundle, load_first_construction, seal_first_construction)
+from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
@@ -143,12 +143,16 @@ def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
         storage.write_key_if_unchanged(key, body, None)
 
 
-def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str, wire_body: bytes | None = None) -> str:
+def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str, wire_body: bytes | None = None, pending_wire: bytes = b'', pending_decoded: bytes = b'') -> str:
     prefix = f'_quarantine/{SLUG}/{sha(body)}/{uuid4().hex}'
     immutable(storage, f'{prefix}/response.body', body)
     if wire_body is not None:
         immutable(storage,f'{prefix}/wire.body',wire_body)
         receipt={**receipt,'wire_bytes_captured':len(wire_body),'wire_sha256':sha(wire_body),'wire_evidence':'wire.body'}
+    for label,pending in [('wire',pending_wire),('decoded',pending_decoded)]:
+        if pending:
+            immutable(storage,f'{prefix}/pending-{label}.body',pending)
+            receipt={**receipt,f'pending_{label}_bytes':len(pending),f'pending_{label}_sha256':sha(pending)}
     immutable(storage, f'{prefix}/receipt.json', encode(receipt))
     immutable(storage, f'{prefix}/report.json', encode({'approved': False, 'status': 'quarantined', 'reason': reason}))
     return prefix
@@ -202,45 +206,51 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                 raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
         else:
             for attempt in range(3):
-                body=b'';wire=b'';response=None;receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
+                body=b'';wire=b'';pending_wire=b'';pending_decoded=b'';wire_buffer=bytearray();decoded_buffer=bytearray();response=None;receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
                     with httpx.Client(headers={'Accept-Encoding':'identity'},follow_redirects=False,timeout=45) as client:
                         with client.stream('GET',url) as response:
                             receipt.update(final_url=str(response.url),status=response.status_code)
-                            encoding=response.headers.get('content-encoding','identity').strip().lower()
-                            if encoding not in {'','identity','gzip','deflate'}:raise CBRSQuarantineError('unsupported_content_encoding')
-                            decoder=zlib.decompressobj(16+zlib.MAX_WBITS if encoding=='gzip' else zlib.MAX_WBITS) if encoding in {'gzip','deflate'} else None
-                            iterator=iter(response.iter_raw())
-                            while True:
-                                if available_capture_bytes(storage)<MIN_CAPTURE_FREE_BYTES+len(wire)+len(body)+LIVE_BLOCK_BYTES:
+                            reserve_failure=False
+                            def reserve(progress):
+                                nonlocal reserve_failure
+                                if available_capture_bytes(storage)<MIN_CAPTURE_FREE_BYTES+len(wire_buffer)+len(decoded_buffer)+progress.reserve_bytes:
+                                    reserve_failure=True
                                     raise CBRSQuarantineError('capture_disk_reserve_before_next_block')
-                                try:raw_block=next(iterator)
-                                except StopIteration:break
-                                # Keep every actually delivered wire byte before cap/decode errors.
-                                wire+=raw_block
-                                if len(wire)>MAX_BYTES+LIVE_BLOCK_BYTES:raise CBRSQuarantineError('wire_response_size_limit')
-                                if decoder is None:
-                                    body+=raw_block
-                                    if len(body)>MAX_BYTES:raise CBRSQuarantineError('response_size_limit')
-                                else:
-                                    pending=raw_block
-                                    while True:
-                                        block=decoder.decompress(pending,LIVE_BLOCK_BYTES);body+=block
-                                        if len(body)>MAX_BYTES:raise CBRSQuarantineError('response_size_limit')
-                                        pending=decoder.unconsumed_tail
-                                        if not pending:break
-                            if decoder is not None and (not decoder.eof or decoder.unused_data):
-                                raise CBRSQuarantineError('incomplete_or_multiple_compressed_response')
-                            receipt.update(byte_length=len(body),sha256=sha(body),wire_byte_length=response.num_bytes_downloaded,content_encoding=response.headers.get('content-encoding','identity'),content_length_header=response.headers.get('content-length'))
+                            result=capture_http_response(response,max_wire_bytes=MAX_BYTES+LIVE_BLOCK_BYTES,max_decoded_bytes=MAX_BYTES,
+                                reserve=reserve,retain_wire=wire_buffer.extend,retain_decoded=decoded_buffer.extend)
+                            wire=bytes(wire_buffer);body=bytes(decoded_buffer)
+                            pending_wire=result.pending_wire;pending_decoded=result.pending_decoded
+                            receipt.update(byte_length=len(body),sha256=sha(body),wire_byte_length=result.httpx_bytes_downloaded,
+                                content_encoding=result.content_encoding,content_length_header=result.content_length_header,
+                                capture_complete=result.complete,wire_bytes_received=result.wire_bytes_received,
+                                wire_bytes_retained=result.wire_bytes_retained,decoded_bytes_produced=result.decoded_bytes_produced,
+                                decoded_bytes_retained=result.decoded_bytes_retained,stream_exhausted=result.stream_exhausted,
+                                decoder_eof=result.decoder_eof,capture_error_code=result.error_code,capture_error_type=result.error_type)
+                            # The shared helper acknowledges callbacks, not durable caller readback.
+                            if (len(wire)!=result.wire_bytes_retained or sha(wire)!=result.wire_sha256
+                                    or len(body)!=result.decoded_bytes_retained or sha(body)!=result.decoded_sha256):
+                                receipt['capture_complete']=False
+                                raise CBRSQuarantineError('capture_sink_readback_mismatch')
+                            if result.complete is not True:
+                                errors={'decoded_limit_exceeded':'response_size_limit','wire_limit_exceeded':'wire_response_size_limit',
+                                        'content_length_mismatch':'incomplete_content_length'}
+                                reason='capture_disk_reserve_before_next_block' if reserve_failure else errors.get(result.error_code,result.error_code or 'incomplete_http_capture')
+                                raise CBRSQuarantineError(reason)
                             validate_receipt(body,receipt,url)
-                            if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=response.num_bytes_downloaded:
-                                raise CBRSQuarantineError('incomplete_content_length')
                     break
-                except (httpx.HTTPError,OSError,ValueError,TypeError,zlib.error) as exc:
+                except (KeyboardInterrupt,SystemExit) as exc:
+                    # Shared transport deliberately propagates process interrupts.
+                    # Retain every acknowledged caller-owned prefix before doing so.
+                    wire=bytes(wire_buffer);body=bytes(decoded_buffer)
+                    receipt.update(byte_length=len(body),sha256=sha(body),partial=True,capture_complete=False,capture_error_type=type(exc).__name__)
+                    quarantine(storage,body,receipt,'capture_process_interrupted',wire_body=wire)
+                    raise
+                except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                     receipt.update(byte_length=len(body),sha256=sha(body),partial=True)
                     if response is not None:
                         receipt.update(wire_byte_length=getattr(response,'num_bytes_downloaded',None),content_encoding=response.headers.get('content-encoding','identity'),content_length_header=response.headers.get('content-length'))
-                    location=quarantine(storage,body,receipt,str(exc),wire_body=wire)
+                    location=quarantine(storage,body,receipt,str(exc),wire_body=wire,pending_wire=pending_wire,pending_decoded=pending_decoded)
                     if attempt==2: raise CBRSQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
         captures[name]=(body,receipt)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',body)

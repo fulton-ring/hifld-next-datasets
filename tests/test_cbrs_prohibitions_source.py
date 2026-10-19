@@ -101,18 +101,15 @@ class CBRSTests(unittest.TestCase):
             self.assertFalse((stage/s.SLUG).exists())
 
     def test_partial_each_attempt_retained(self):
-        class Response:
-            status_code=200;url=s.URL;headers={}
-            def __enter__(self):return self
-            def __exit__(self,*a):pass
-            def iter_raw(self):yield b'partial';raise httpx.ReadError('reset')
-        class Client:
-            def __enter__(self):return self
-            def __exit__(self,*a):pass
-            def stream(self,*a):return Response()
-        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',return_value=Client()) as c:
+        class Partial(httpx.SyncByteStream):
+            def __iter__(self):yield b'partial';raise httpx.ReadError('reset')
+        factory=httpx.Client
+        def response(request):return httpx.Response(200,stream=Partial())
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=lambda **kw:factory(transport=httpx.MockTransport(response),**kw)) as client:
             with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):s.acquire(StagingStorageResource(local_dir=d),None)
-            self.assertEqual(c.call_count,3);self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
+            self.assertEqual(client.call_count,3)
+            self.assertEqual([p.read_bytes() for p in Path(d).rglob('response.body')],[b'partial']*3)
+            self.assertEqual([p.read_bytes() for p in Path(d).rglob('wire.body')],[b'partial']*3)
             self.assertFalse(Path(d,s.SLUG).exists())
 
     def test_atomic_interrupt_and_oserror_never_expose_version(self):
@@ -124,6 +121,21 @@ class CBRSTests(unittest.TestCase):
                     s.commit_complete_candidate(storage,target,{'geopackage/test.gpkg':b'fixture'}, {})
                 self.assertFalse(Path(d,target).exists())
                 self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
+
+    def test_live_process_interrupt_retains_acknowledged_prefix_without_retry(self):
+        class Interrupted(httpx.SyncByteStream):
+            def __iter__(self):yield b'actual-consumed-prefix';raise KeyboardInterrupt()
+        factory=httpx.Client
+        def response(request):return httpx.Response(200,stream=Interrupted())
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=lambda **kw:factory(transport=httpx.MockTransport(response),**kw)) as client:
+            with self.assertRaises(KeyboardInterrupt):s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual(client.call_count,1)
+            self.assertEqual([p.read_bytes() for p in Path(d).rglob('response.body')],[b'actual-consumed-prefix'])
+            self.assertEqual([p.read_bytes() for p in Path(d).rglob('wire.body')],[b'actual-consumed-prefix'])
+            receipt=json.loads(next(Path(d).rglob('receipt.json')).read_bytes())
+            self.assertIs(receipt['capture_complete'],False)
+            self.assertEqual(receipt['capture_error_type'],'KeyboardInterrupt')
+            self.assertFalse(Path(d,s.SLUG).exists())
 
     def test_archive_pin_and_zip_roster_changes_fail_before_decode(self):
         body=(CAPTURE/'official_zip.body').read_bytes() if os.environ.get('HIFLD_CBRS_PROHIBITIONS_CAPTURE_DIR') else b'PK\x03\x04synthetic unapproved invalid archive'
@@ -386,7 +398,7 @@ class CBRSTests(unittest.TestCase):
         def partial_response(request):
             return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire))},stream=PartialGzip())
         with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s.httpx,'Client',side_effect=lambda **kwargs:factory(transport=httpx.MockTransport(partial_response),**kwargs)):
-            with self.assertRaisesRegex(ValueError,'interrupted gzip trailer'):s.acquire(StagingStorageResource(local_dir=d),None)
+            with self.assertRaisesRegex(ValueError,'transport_error'):s.acquire(StagingStorageResource(local_dir=d),None)
             self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
             self.assertTrue(all(p.read_bytes()==decoded for p in Path(d).rglob('response.body')))
             receipts=[json.loads(p.read_text()) for p in Path(d).rglob('receipt.json')]
@@ -419,14 +431,30 @@ class CBRSTests(unittest.TestCase):
                 delivered.append(1);yield b'a'*s.LIVE_BLOCK_BYTES
                 delivered.append(2);yield b'b'*s.LIVE_BLOCK_BYTES
         def blocks(request):return httpx.Response(200,stream=Blocks())
-        for allow in [0,1]:
+        for allow in [0,1,2]:
             delivered.clear();calls=[0]
             def available(storage):
                 calls[0]+=1
-                return 10**12 if allow and calls[0]%2 else 0
+                return 10**12 if calls[0]%(allow+1) else 0
             with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s,'available_capture_bytes',side_effect=available),patch.object(s.httpx,'Client',side_effect=lambda **kw:factory(transport=httpx.MockTransport(blocks),**kw)):
                 with self.assertRaisesRegex(ValueError,'capture_disk_reserve_before_next_block'):s.acquire(StagingStorageResource(local_dir=d),None)
                 self.assertEqual(delivered,[1]*3 if allow else [])
-                self.assertEqual([p.read_bytes() for p in Path(d).rglob('response.body')],[b'a'*s.LIVE_BLOCK_BYTES if allow else b'']*3)
+                self.assertEqual([p.read_bytes() for p in Path(d).rglob('wire.body')],[b'a'*s.LIVE_BLOCK_BYTES if allow else b'']*3)
+                self.assertEqual([p.read_bytes() for p in Path(d).rglob('response.body')],[b'a'*s.LIVE_BLOCK_BYTES if allow==2 else b'']*3)
+
+    def test_shared_capture_incomplete_and_sink_mismatch_cannot_become_success(self):
+        from dataclasses import replace
+        original=s.capture_http_response;factory=httpx.Client;body=b'synthetic complete transport only';url='https://www.fws.gov/synthetic-capture-boundary'
+        def response(request):return httpx.Response(200,stream=httpx.ByteStream(body))
+        for mode in ['incomplete','sink_mismatch']:
+            def changed(*args,**kwargs):
+                result=original(*args,**kwargs)
+                return replace(result,complete=False,error_code='synthetic_forced_incomplete') if mode=='incomplete' else replace(result,wire_sha256='0'*64)
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s,'capture_http_response',side_effect=changed),patch.object(s.httpx,'Client',side_effect=lambda **kw:factory(transport=httpx.MockTransport(response),**kw)):
+                with self.assertRaisesRegex(ValueError,'synthetic_forced_incomplete' if mode=='incomplete' else 'capture_sink_readback_mismatch'):s.acquire(StagingStorageResource(local_dir=d),None)
+                self.assertEqual([p.read_bytes() for p in Path(d).rglob('wire.body')],[body]*3)
+                self.assertEqual([p.read_bytes() for p in Path(d).rglob('response.body')],[body]*3)
+                self.assertTrue(all(s.strict_json(p.read_bytes())['capture_complete'] is False for p in Path(d).rglob('receipt.json')))
+                self.assertFalse(Path(d,s.SLUG).exists())
 
 if __name__=='__main__':unittest.main()
