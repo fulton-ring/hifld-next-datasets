@@ -144,7 +144,7 @@
     "later_docs_only_head_and_observation_receipts": "actual registered full1145 refresh/rebuild preserves first commit and original receipts",
     "focused_execution": "evidence/review-repairs/construction-binding-focused-execution.json",
     "normal_graph_execution": "evidence/review-repairs/construction-binding-normal-graph-execution.json",
-    "scope": "Historical1c candidate-only proof; later external-coforgery gap repaired by shared Git validator and durable_construction_history; no acceptance.",
+    "scope": "Historical 1c candidate-only proof; later external-coforgery gap repaired by shared Git validator and durable_construction_history; no acceptance.",
     "full_suite": {
       "total": 514,
       "passed": 513,
@@ -190,7 +190,15 @@
       "marker_malformed",
       "cas_only"
     ],
-    "later_docs_original_context_rebuild": "pending; no handoff-ready claim",
+    "later_docs_original_context_rebuild": {
+      "head": "e05245ce2a40f249d79dacb0a3f99aea0aaef502",
+      "original_construction_head": "ec327f58f2e6bc173d7b0044f39de7dc160b8ea6",
+      "refresh_run": "f2546d31-2007-4aa9-ac47-3ce62750f97b",
+      "cold_rebuild_run": "a123e4dc-e810-4cf2-9915-d1612338ffb1",
+      "success": true,
+      "all_candidate_bytes_and_first_manifest_receipts_preserved": true,
+      "later_observations": "explicit simulated later receipt observations of unchanged complete real bodies; no new live claim"
+    },
     "full_local_suite": {
       "total": 542,
       "passed": 541,
@@ -199,6 +207,7 @@
       "source_checkpoint": "ec327f58f2e6bc173d7b0044f39de7dc160b8ea6",
       "log": "evidence/review-repairs/construction-history-full-suite-542.log",
       "CI_pass_inferred": false
-    }
+    },
+    "independent_review": "Exact PR-head review recorded externally on PR437; no review or local fixture grants dataset acceptance."
   }
 }
