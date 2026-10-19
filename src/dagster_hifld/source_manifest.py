@@ -34,6 +34,7 @@ CATALOG_METADATA_FIELDS = (
     "transformations",
     "code_commit",
     "lineage",
+    "unsupported_output_formats",
 )
 
 
@@ -41,6 +42,17 @@ CATALOG_METADATA_FIELDS = (
 class ResolvedSourceManifest:
     metadata: dict[str, Any]
     manifest_keys: list[str]
+
+
+def unsupported_output_reason(metadata: dict[str, Any], format_name: str) -> str | None:
+    """Return an evidenced format exclusion; exclusion does not approve others."""
+    exclusions = metadata.get("unsupported_output_formats", {})
+    if not isinstance(exclusions, dict):
+        raise ValueError("unsupported_output_formats must map format names to evidence reasons")
+    reason = exclusions.get(format_name)
+    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        raise ValueError("Unsupported output format requires a concrete evidence reason")
+    return reason
 
 
 def load_resolved_source_manifest(

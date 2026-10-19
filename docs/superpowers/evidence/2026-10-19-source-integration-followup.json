@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "classification": "source-integration correctness followup; no real acceptance",
+  "worker": "verifier_417",
+  "issue": 417,
+  "pr": 421,
+  "prior_reviewed_head": "8be7468aede14b81c17cac5d0bae1301c8203ed0",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "implementation_sha256": "c9e3364c8bc026a55a88d797469491d3f1cd07599e5b75684c3d07bbfecff518",
+  "changes": [
+    "catalog restores source-declared numeric sample dtypes from original Fiona feature values, preserves nullable int64/examples/extrema beyond2**53; declared float remains float",
+    "version source manifest unsupported_output_formats string-map records evidenced exclusions; shapefile generation/reuse skipped with visible reason",
+    "release acceptance rejects stale excluded-format artifacts even if inventory hashes are repinned"
+  ],
+  "origin": [
+    {
+      "worker": "noaa_4",
+      "issue": 4,
+      "finding": "real complete63-row draft output preserves PUB_DATEint64; old sampled dictionary claimedfloat"
+    },
+    {
+      "worker": "noaa_3",
+      "issue": 3,
+      "finding": "real complete96-row derivative audit found DBF text truncation/whitespace/precision loss; preserve lossless canonical source/Parquet and explicitly exclude unsupported derivative"
+    }
+  ],
+  "tests": {
+    "catalog": {
+      "passed": 19,
+      "new_real_GPKG_regression": true
+    },
+    "full_verifier": {
+      "passed": 19,
+      "includes_unsupported_stale_artifact_rejection": true
+    },
+    "full_suite": {
+      "total": 467,
+      "passed": 465,
+      "errors": 1,
+      "skipped": 1,
+      "error": "missing sibling hifld-next-iac/environments/prod/dagster.tf",
+      "full_suite_pass": false
+    },
+    "durable_synthetic_integration": {
+      "classification": "synthetic integration; no real acceptance",
+      "success_run_id": "992d67d4-8b8f-44a1-9513-dfeb593b61e7",
+      "failed_drift_run_id": "29934729-c4b1-40c9-b63e-d506b6f98d6f",
+      "success": true,
+      "drift_success": false,
+      "accepted_objects_unchanged": true,
+      "candidate_evidence_preserved": true,
+      "published_object_count": 8,
+      "partition": "synthetic/points/vtest",
+      "dagster_home": "/workspace/hifld-worker-runtime/417/source-followup-integration/dagster"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "/workspace/work/hifld-coordinator/417-source-followup-final-suite.log",
+      "sha256": "d42956ec1f20ee7ab81c058cee613087203f707af7ea186ce6e07d76b4b75ab3"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/417-source-followup-integration.log",
+      "sha256": "8f6f312b50bd4ac46ddd48abcd00d424a28f493d73881c08fc6f16394745a7a6"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/417-catalog-precision-tests.log",
+      "sha256": "5ac0491fa1c7e38c33c6f939c9ce576beb559b89445fd356ac5c0136211c42ed"
+    }
+  ],
+  "scope_limits": [
+    "no acceptance decision for omitted derivative formats",
+    "source-specific actual source+full format materialization is recorded on individual dataset branches, not claimed as this synthetic test",
+    "original-format completeness/transform-lineage/STAC proof and real accepted pilot remain unfinished",
+    "no production writes/merge/closure; manual release boundary still fail-closed"
+  ]
+}
