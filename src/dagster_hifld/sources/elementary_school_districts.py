@@ -385,6 +385,51 @@ def original_bundle(storage,key,version,identity,*,create=None):
     return original,manifest
 
 
+def observed_trust_loss(storage,version,fingerprint,*,candidate=None,restored_manifest=None):
+    """Persist refusal before detaching an observed cache with lost trust.
+
+    This is not construction authority: recovery still needs the exact original
+    outside witnesses. The cached manifest hash only checks that restoration.
+    Loss of every witness before any observation cannot be detected here.
+    """
+    key=f'_construction-incidents/{SLUG}/{version}/incident.json'
+    folder=Path(storage.local_dir)/f'_construction-incidents/{SLUG}/{version}'
+    path=Path(storage.local_dir)/key
+    if not folder.exists() and candidate is None:return False
+    if not folder.exists():
+        # Commit refusal existence before the body. Interrupted writes must not
+        # make a later refresh appear to be an unobserved first construction.
+        folder.mkdir(parents=True)
+        descriptor=os.open(folder.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:os.fsync(descriptor)
+        finally:os.close(descriptor)
+        claim=None;manifest_path=candidate/'metadata/source_manifest.json'
+        try:
+            descriptor=os.open(manifest_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                info=os.fstat(descriptor)
+                if stat.S_ISREG(info.st_mode)and info.st_nlink==1 and info.st_size<=2_000_000:
+                    with os.fdopen(os.dup(descriptor),'rb')as stream:claim=digest(stream.read())
+            finally:os.close(descriptor)
+        except FileNotFoundError:pass
+        immutable(storage,key,encode({'schema_version':1,'version':version,'processing_fingerprint':fingerprint,
+            'status':'observed_original_construction_trust_loss','approved':False,'observed_cached_manifest_sha256':claim}))
+    try:descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    except FileNotFoundError as exc:raise ElementaryDistrictQuarantineError('incomplete_observed_trust_loss_journal')from exc
+    try:
+        info=os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1 or info.st_size>128_000:raise ElementaryDistrictQuarantineError('invalid_observed_trust_loss_journal_file')
+        with os.fdopen(os.dup(descriptor),'rb')as stream:body=stream.read(128_001)
+    finally:os.close(descriptor)
+    value=strict_json(body);claim=value.get('observed_cached_manifest_sha256')
+    if claim is not None and(type(claim)is not str or re.fullmatch('[0-9a-f]{64}',claim)is None):raise ElementaryDistrictQuarantineError('invalid_observed_trust_loss_claim')
+    expected={'schema_version':1,'version':version,'processing_fingerprint':fingerprint,
+        'status':'observed_original_construction_trust_loss','approved':False,'observed_cached_manifest_sha256':claim}
+    if body!=encode(expected):raise ElementaryDistrictQuarantineError('invalid_observed_trust_loss_journal')
+    if restored_manifest is not None and claim is not None and digest(encode(restored_manifest))!=claim:raise ElementaryDistrictQuarantineError('restored_original_manifest_differs_from_observed_candidate_claim')
+    return True
+
+
 def reconcile_cache(storage,prefix,table,audit,captures,identity,manifest):
     root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes());expected=source_payloads(captures,identity,table,audit,manifest)
     expected_names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'}
@@ -420,15 +465,28 @@ def stage_elementary_districts(storage,*,capture_dir=None):
             fcntl.flock(lock,fcntl.LOCK_EX)
             has_history=record_path.exists()or Path(str(record_path)+'.first-construction.json').exists()or Path(str(record_path)+'.evidence').exists()
             if root.exists():
+                can_detach=True
                 try:
-                    captures,manifest=original_bundle(storage,record,version,identity);table,audit=inspect_archives({n:base/f"_raw-captures/{SLUG}/{digest(captures[n][0])}/{n}.body"for n in PINS},captures)
+                    try:
+                        captures,manifest=original_bundle(storage,record,version,identity)
+                        observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest)
+                    except(ValueError,TypeError,KeyError,OSError,RuntimeError):
+                        try:observed_trust_loss(storage,version,fingerprint,candidate=root)
+                        except(ValueError,TypeError,KeyError,OSError,RuntimeError):
+                            can_detach=False
+                            raise
+                        raise
+                    table,audit=inspect_archives({n:base/f"_raw-captures/{SLUG}/{digest(captures[n][0])}/{n}.body"for n in PINS},captures)
                     reconcile_cache(storage,prefix,table,audit,captures,identity,manifest)
                 except(ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error)as exc:
+                    if not can_detach:raise ElementaryDistrictQuarantineError('trust_loss_journal_failed_candidate_retained_untrusted:'+str(exc))from exc
                     target=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
                     raise ElementaryDistrictQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc))from exc
                 return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':COUNT,'approved':False,'reused':True}
-            if has_history:
-                captures,manifest=original_bundle(storage,record,version,identity);table,audit=inspect_archives({n:base/f"_raw-captures/{SLUG}/{digest(captures[n][0])}/{n}.body"for n in PINS},captures)
+            if has_history or observed_trust_loss(storage,version,fingerprint):
+                captures,manifest=original_bundle(storage,record,version,identity)
+                observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest)
+                table,audit=inspect_archives({n:base/f"_raw-captures/{SLUG}/{digest(captures[n][0])}/{n}.body"for n in PINS},captures)
             root.parent.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='.private-elsd-',dir=root.parent)as tmp:
                 private=Path(tmp);values=source_payloads(captures,identity,table,audit,manifest)

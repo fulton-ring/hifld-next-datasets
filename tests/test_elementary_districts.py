@@ -172,6 +172,53 @@ class ElementaryOriginalTests(unittest.TestCase):
             self.assertFalse(self.root.exists());self.assertFalse(record.exists())
             self.assertEqual(marker.read_bytes(),saved);self.assertEqual(evidence.read_bytes(),saved_evidence)
         record.write_bytes(original);self.assertFalse(self.refresh()['reused']);self.assertTrue(self.refresh()['reused'])
+    def test_observed_whole_history_loss_stays_refused_until_exact_trusted_restore(self):
+        folder=self.record().parent
+        saved={p.relative_to(folder):p.read_bytes()for p in folder.rglob('*')if p.is_file()}
+        original_manifest=(self.root/'metadata/source_manifest.json').read_bytes()
+        raw={p.relative_to(self.path):f.sha256_file(p)for p in(self.path/'_raw-captures').rglob('*')if p.is_file()}
+        shutil.rmtree(folder);self.reject('construction_missing_original_state')
+        incident=self.path/f'_construction-incidents/{f.SLUG}/{self.output["version"]}/incident.json'
+        body=incident.read_bytes();self.assertEqual(json.loads(body)['observed_cached_manifest_sha256'],f.digest(original_manifest))
+        for _ in range(2):
+            with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):self.refresh()
+            self.assertFalse(self.root.exists());self.assertFalse(folder.exists());self.assertEqual(incident.read_bytes(),body)
+        for name,value in saved.items():path=folder/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(value)
+        self.assertFalse(self.refresh()['reused']);self.assertTrue(self.refresh()['reused'])
+        self.assertEqual((self.root/'metadata/source_manifest.json').read_bytes(),original_manifest)
+        self.assertEqual(raw,{p.relative_to(self.path):f.sha256_file(p)for p in(self.path/'_raw-captures').rglob('*')if p.is_file()})
+        self.assertEqual(self.prior.read_bytes(),b'accepted bytes stay unchanged')
+    def test_partial_incident_write_retains_untrusted_candidate_and_refuses_retry(self):
+        shutil.rmtree(self.record().parent)
+        before={str(p.relative_to(self.root)):f.sha256_file(p)for p in self.root.rglob('*')if p.is_file()}
+        original=f.immutable
+        def fail_incident(storage,key,body):
+            if key.startswith('_construction-incidents/'):raise OSError('synthetic_incident_write_failure')
+            return original(storage,key,body)
+        with patch.object(f,'immutable',side_effect=fail_incident):
+            with self.assertRaisesRegex(ValueError,'trust_loss_journal_failed_candidate_retained_untrusted'):self.refresh()
+        for _ in range(2):
+            with self.assertRaisesRegex(ValueError,'incomplete_observed_trust_loss_journal'):self.refresh()
+            self.assertTrue(self.root.exists())
+            self.assertEqual(before,{str(p.relative_to(self.root)):f.sha256_file(p)for p in self.root.rglob('*')if p.is_file()})
+        self.assertEqual(self.prior.read_bytes(),b'accepted bytes stay unchanged')
+    def test_relative_root_observed_incident_preserves_exact_restored_context(self):
+        import os
+        previous=Path.cwd()
+        try:
+            os.chdir(self.path.parent)
+            self.storage=f.StagingStorageResource(local_dir=self.path.name)
+            self.test_observed_whole_history_loss_stays_refused_until_exact_trusted_restore()
+        finally:os.chdir(previous)
+    def test_incident_canonical_schema_types_and_claim_are_strict(self):
+        fingerprint=f.digest(f.encode(self.identity))
+        f.observed_trust_loss(self.storage,self.output['version'],fingerprint,candidate=self.root)
+        path=self.path/f'_construction-incidents/{f.SLUG}/{self.output["version"]}/incident.json';original=path.read_bytes()
+        for key,value in [('schema_version',True),('schema_version',1.0),('approved',0),('observed_cached_manifest_sha256','wrong')]:
+            bad=json.loads(original);bad[key]=value;path.write_bytes(f.encode(bad))
+            with self.assertRaises(ValueError):f.observed_trust_loss(self.storage,self.output['version'],fingerprint)
+        path.write_bytes(original)
+        with self.assertRaisesRegex(ValueError,'restored_original_manifest_differs'):f.observed_trust_loss(self.storage,self.output['version'],fingerprint,restored_manifest={'synthetic':'different'})
     def test_marker_bool_or_float_version_fails_without_self_repair(self):
         marker=Path(str(self.record())+'.first-construction.json');original=marker.read_bytes()
         for value in [True,1.0]:
