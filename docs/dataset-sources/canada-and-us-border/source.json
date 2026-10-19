@@ -38,6 +38,11 @@
       "embedded_dataset_metadata": "Open Government Licence Canada",
       "generic_website": "Commercial redistribution requires permission unless otherwise specified; noncommercial reproduction unchanged with attribution",
       "decision": "Dataset-specific exception appears relevant, but no maintainer acceptance inferred; both original statements retained"
+    },
+    "external_government_anchor_retry": {
+      "natural-resources.canada.ca": "403",
+      "state.gov": "403",
+      "usa.gov": "Agency index200, exact IBC entry not found; no authority inference from failed/missing pages"
     }
   },
   "crosswalk": {
@@ -139,14 +144,23 @@
       "refresh_byte_idempotent": true,
       "prior_local_fixture_preserved_after_missing_approval_and_failed_quality": true
     },
-    "full_suite": {
+    "independent_review": "pending exact final head",
+    "historical_full_suite": {
       "tests": 480,
       "passed": 478,
       "errors": 1,
       "skipped": 1,
       "error": "FileNotFoundError missing sibling hifld-next-iac/environments/prod/dagster.tf; no full-suite success claimed"
     },
-    "independent_review": "pending exact final head"
+    "full_suite_with_actual_sibling": {
+      "tests": 480,
+      "passed": 479,
+      "skipped": 1,
+      "errors": 0,
+      "status": "OK (skipped=1)",
+      "sibling_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "limitations": "One real production-storage integration test remains opt-in/skipped. No CI result inferred."
+    }
   },
   "acceptance": {
     "approved": false,

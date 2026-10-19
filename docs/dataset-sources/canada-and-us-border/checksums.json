@@ -67,9 +67,17 @@
     "sha256": "8f97972557d12cc0a339cea9dc6219d2255544288682dc785505741b22b894c1",
     "bytes": 7494
   },
+  "evidence/full-suite-with-real-iac.log": {
+    "sha256": "ad07de649605d4f7402d89c204e50643331bcedf8d03c8318b2c868e7bc8784e",
+    "bytes": 18551
+  },
   "evidence/full-suite.log": {
     "sha256": "291942c6734971ec8374d076655c287b1d66f5b65b647a83043b15ffafee1b45",
     "bytes": 19669
+  },
+  "evidence/real-sibling-iac-input.json": {
+    "sha256": "adf6a99f11c3eac3033a6a1b7e0c5be6db9c679921f507da695ffdd4ec84efbf",
+    "bytes": 735
   },
   "evidence/tests.log": {
     "sha256": "9fa8100cdef154ec3c6c121843d36aeb7d1d1fd30a696b3fb3f656681f1d1633",
