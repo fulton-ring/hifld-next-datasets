@@ -17,6 +17,84 @@ from dagster_hifld.sources.epa_frs_arcgis_table import (
 
 
 class EPAFRSSICTests(unittest.TestCase):
+    def test_hosted_epa_item_allows_undeclared_join_only_with_exact_item_identity(self):
+        profile = replace(
+            PROFILE, service_url="https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_Wastewater/FeatureServer",
+            table_id=2, table_name="Integrated Compliance Information System (ICIS) Wastewater Treatment Plants SIC Codes",
+            expected_rows=1, relationship_name=None, related_table_id=None,
+            relationship_key=None, relationship_cardinality=None, source_vintage=None,
+            portal_item_id="item-1", portal_item_owner="EPA_GEO", portal_item_title="ICIS WWTP",
+        )
+        fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
+                  for name, esri_type, nullable, length in profile.fields]
+        service = {"description": "EPA maintained ICIS wastewater source.", "tables": [
+            {"id": profile.table_id, "name": profile.table_name}]}
+        table = {"name": profile.table_name, "geometryType": None, "fields": fields,
+                 "relationships": []}
+        row = {"OBJECTID": 9, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
+               "PRIMARY_INDICATOR": "PRIMARY"}
+        portal_item = {"id": "item-1", "owner": "EPA_GEO", "title": "ICIS WWTP",
+                       "type": "Feature Service", "url": profile.service_url, "modified": 123}
+
+        class JSONStream(httpx.SyncByteStream):
+            def __init__(self, payload):
+                self.body = json.dumps(payload, separators=(",", ":")).encode()
+
+            def __iter__(self):
+                yield self.body
+
+            def close(self):
+                return None
+
+        def respond(request):
+            path = urlparse(str(request.url)).path
+            query = parse_qs(urlparse(str(request.url)).query)
+            if "/sharing/rest/content/items/" in path:
+                payload = portal_item
+            elif path.rstrip("/").endswith("FeatureServer"):
+                payload = service
+            elif path.endswith(f"/{profile.table_id}"):
+                payload = table
+            elif query.get("returnCountOnly") == ["true"]:
+                payload = {"count": 1}
+            elif query.get("returnIdsOnly") == ["true"]:
+                payload = {"objectIds": [9]}
+            else:
+                payload = {"features": [{"attributes": row}]}
+            return httpx.Response(200, stream=JSONStream(payload),
+                                  headers={"content-type": "application/json"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            client = httpx.Client(transport=httpx.MockTransport(respond))
+            with client:
+                captured, manifest, _ = capture_table(client, profile, Path(tmp))
+        self.assertEqual(captured, [row])
+        self.assertIsNone(manifest["declared_relationship_contract"])
+        self.assertEqual(manifest["relationship"], [])
+        self.assertEqual(manifest["portal_item"]["owner"], "EPA_GEO")
+
+        for bad_item in ({**portal_item, "owner": "mirror"},
+                         {**portal_item, "url": "https://example.invalid/service"}):
+            def bad_respond(request, item=bad_item):
+                path = urlparse(str(request.url)).path
+                if "/sharing/rest/content/items/" in path:
+                    return httpx.Response(200, stream=JSONStream(item),
+                                          headers={"content-type": "application/json"})
+                return respond(request)
+            with tempfile.TemporaryDirectory() as tmp:
+                client = httpx.Client(transport=httpx.MockTransport(bad_respond))
+                with client, self.assertRaisesRegex(ArcGISTableCaptureError,
+                                                    "source_portal_item_identity_changed"):
+                    capture_table(client, profile, Path(tmp))
+
+    def test_hosted_item_identity_and_relationship_contracts_are_all_or_none(self):
+        with self.assertRaisesRegex(ValueError, "portal_item_contract_must_be_complete"):
+            replace(PROFILE, portal_item_id="item-1")
+        with self.assertRaisesRegex(ValueError, "relationship_contract_must_be_complete_or_undeclared"):
+            replace(PROFILE, relationship_name=None)
+        with self.assertRaisesRegex(ValueError, "source_identity_contract_required"):
+            replace(PROFILE, source_vintage=None)
+
     def test_complete_source_capture_brackets_exact_ids_and_retains_receipts(self):
         profile = replace(PROFILE, expected_rows=2)
         fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}

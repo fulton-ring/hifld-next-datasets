@@ -19,14 +19,28 @@ class ArcGISTableProfile:
     table_id: int
     table_name: str
     fields: tuple[tuple[str, str, bool, int | None], ...]
-    relationship_name: str
-    related_table_id: int
-    relationship_key: str
-    relationship_cardinality: str
-    source_vintage: str
+    relationship_name: str | None
+    related_table_id: int | None
+    relationship_key: str | None
+    relationship_cardinality: str | None
+    source_vintage: str | None
     expected_rows: int
+    portal_item_id: str | None = None
+    portal_item_owner: str | None = None
+    portal_item_title: str | None = None
     page_size: int = 500
     max_response_bytes: int = 8 * 1024 * 1024
+
+    def __post_init__(self) -> None:
+        relationship = (self.relationship_name, self.related_table_id,
+                        self.relationship_key, self.relationship_cardinality)
+        if any(value is None for value in relationship) and any(value is not None for value in relationship):
+            raise ValueError("relationship_contract_must_be_complete_or_undeclared")
+        portal = (self.portal_item_id, self.portal_item_owner, self.portal_item_title)
+        if any(value is None for value in portal) and any(value is not None for value in portal):
+            raise ValueError("portal_item_contract_must_be_complete")
+        if self.source_vintage is None and self.portal_item_id is None:
+            raise ValueError("source_identity_contract_required")
 
     @property
     def table_url(self) -> str:
@@ -62,7 +76,11 @@ def _table_contract(payload: Mapping[str, Any], profile: ArcGISTableProfile) -> 
 def _metadata_contract(payload: Mapping[str, Any], profile: ArcGISTableProfile) -> list[dict[str, Any]]:
     fields = _table_contract(payload, profile)
     relationships = payload.get("relationships")
-    if not isinstance(relationships, list) or not any(
+    if not isinstance(relationships, list):
+        raise ArcGISTableCaptureError("source_table_relationship_metadata_missing")
+    if profile.relationship_name is None:
+        return fields
+    if not any(
         isinstance(item, dict) and item.get("name") == profile.relationship_name
         and item.get("relatedTableId") == profile.related_table_id
         and item.get("keyField") == profile.relationship_key
@@ -94,11 +112,27 @@ def capture_table(
         return payload
 
     service = request("service", profile.service_url, {"f": "json"})
+    portal_item = None
+    if profile.portal_item_id is not None:
+        portal_item = request(
+            "portal_item",
+            f"https://www.arcgis.com/sharing/rest/content/items/{profile.portal_item_id}",
+            {"f": "json"},
+        )
+        if (portal_item.get("id") != profile.portal_item_id
+                or portal_item.get("owner") != profile.portal_item_owner
+                or portal_item.get("title") != profile.portal_item_title
+                or portal_item.get("type") != "Feature Service"
+                or portal_item.get("url", "").rstrip("/") != profile.service_url.rstrip("/")):
+            raise ArcGISTableCaptureError("source_portal_item_identity_changed")
     tables = service.get("tables")
-    month_vintage = datetime.strptime(profile.source_vintage, "%Y-%m").strftime("%B %Y")
+    vintage_matches = True
+    if profile.source_vintage is not None:
+        month_vintage = datetime.strptime(profile.source_vintage, "%Y-%m").strftime("%B %Y")
+        vintage_matches = month_vintage in str(service.get("description", ""))
     if (not isinstance(tables, list) or not any(isinstance(item, dict)
             and item.get("id") == profile.table_id and item.get("name") == profile.table_name
-            for item in tables) or month_vintage not in str(service.get("description", ""))):
+            for item in tables) or not vintage_matches):
         raise ArcGISTableCaptureError("source_service_table_or_vintage_changed")
     table_before = request("table_before", profile.table_url, {"f": "json"})
     fields = _metadata_contract(table_before, profile)
@@ -159,6 +193,13 @@ def capture_table(
     manifest = {
         "source_url": profile.table_url, "service_url": profile.service_url,
         "source_table": profile.table_name, "relationship": table_before["relationships"],
+        "declared_relationship_contract": ({"name": profile.relationship_name,
+            "related_table_id": profile.related_table_id, "key": profile.relationship_key,
+            "cardinality": profile.relationship_cardinality}
+            if profile.relationship_name is not None else None),
+        "portal_item": ({key: portal_item.get(key) for key in
+            ("id", "owner", "title", "type", "url", "modified")}
+            if portal_item is not None else None),
         "service_description": service.get("description"), "source_vintage": profile.source_vintage,
         "count_before": count_before, "count_after": after_count,
         "id_count_before": len(ids_before), "id_count_after": len(ids_after),
