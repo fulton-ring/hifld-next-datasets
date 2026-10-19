@@ -9,6 +9,7 @@ import tempfile
 import unittest
 import urllib.error
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from dagster import DagsterInstance
 from dagster_hifld.assets.fuel_stations import (
@@ -246,6 +247,17 @@ class FuelReviewBoundaryTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):build_candidate(self.capture,destination)
         self.assertEqual((destination/'provenance.json').read_bytes(),before)
         self.assertEqual(build_candidate(self.capture,destination),first)
+
+    def test_effective_dependency_change_rejects_same_version_without_replacing_provenance(self):
+        destination=self.root/'candidate';original=build_candidate(self.capture,destination)
+        provenance=(destination/'provenance.json').read_bytes()
+        for name in ('shapely','geos','pyproj','proj','distributions'):
+            self.assertTrue(original['processing']['versions'][name])
+        changed=[SimpleNamespace(metadata={'Name':'synthetic-effective-dependency'},version='999-test-only')]
+        with patch('dagster_hifld.assets.fuel_stations.importlib.metadata.distributions',return_value=changed):
+            with self.assertRaisesRegex(FileExistsError,'processing request changed'):
+                build_candidate(self.capture,destination)
+        self.assertEqual((destination/'provenance.json').read_bytes(),provenance)
 
     def test_failed_candidate_binds_processing_and_preserves_partial_on_changed_builder(self):
         self.page['features'][0]['attributes']['latitude'] = 2**53 + 1

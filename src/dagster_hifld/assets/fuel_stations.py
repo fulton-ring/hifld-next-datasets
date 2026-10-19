@@ -7,6 +7,7 @@ raw ArcGIS fields, including OBJECTID and id, survive the candidate unchanged.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import datetime
 import json
 import math
@@ -23,6 +24,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
+import pyproj
+import shapely
 from dagster import (
     AssetIn, AssetKey, AssetSelection, ConfigurableResource,
     DefaultScheduleStatus, DynamicPartitionsDefinition, RunRequest,
@@ -157,8 +160,12 @@ def _require_review_staging(staging):
 
 def processing_identity():
     pipeline = verifier_implementation_sha256()
-    versions = {'pyarrow': pa.__version__, 'pyogrio': pyogrio.__version__,
-                'gdal': str(pyogrio.__gdal_version__)}
+    versions = {'distributions': sorted(
+        [{'name': distribution.metadata['Name'], 'version': distribution.version}
+         for distribution in importlib.metadata.distributions()], key=lambda item: (item['name'].lower(), item['version'])),
+        'pyarrow': pa.__version__, 'pyogrio': pyogrio.__version__, 'gdal': str(pyogrio.__gdal_version__),
+        'shapely': shapely.__version__, 'geos': shapely.geos_version_string,
+        'pyproj': pyproj.__version__, 'proj': pyproj.proj_version_str}
     fingerprint = hashlib.sha256(json.dumps({'installed_pipeline_sha256': pipeline,
         'versions': versions}, sort_keys=True).encode()).hexdigest()
     root = Path(__file__).resolve().parents[3]
