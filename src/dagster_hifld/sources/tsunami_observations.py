@@ -472,10 +472,18 @@ def original_provenance_bundle(storage: StagingStorageResource,version: str,pack
         bundle_body=encode(bundle)
         immutable(storage,key,bundle_body)
         immutable(storage,marker,encode({'schema_version':1,'version':version,'original_bundle_sha256':sha(bundle_body)}))
-    bundle_body=storage.read_key(key);bundle=strict_json(bundle_body);first=strict_json(storage.read_key(marker))
-    if (set(first)!={'schema_version','version','original_bundle_sha256'} or first['schema_version']!=1 or first['version']!=version
-        or first['original_bundle_sha256']!=sha(bundle_body)):
-        raise ObservationQuarantineError('original_construction_durable_marker_binding_changed')
+    bundle_body=storage.read_key(key);bundle=strict_json(bundle_body);first_body=storage.read_key(marker)
+    expected_marker=encode({'schema_version':1,'version':version,'original_bundle_sha256':sha(bundle_body)})
+    try:
+        first=strict_json(first_body)
+        if (not isinstance(first,dict) or type(first.get('schema_version')) is not int
+            or first_body!=expected_marker):
+            raise ObservationQuarantineError('original_construction_durable_marker_binding_changed')
+    except (ValueError,TypeError,KeyError) as exc:
+        # Retain the exact rejected outside record before the caller detaches
+        # the whole candidate. Never repair/rebase the original trust record.
+        immutable(storage,f'_quarantine/{SLUG}/construction-markers/{sha(first_body)}.json',first_body)
+        raise ObservationQuarantineError('original_construction_durable_marker_binding_changed') from exc
     if (set(bundle)!={'schema_version','version','manifest','archives'} or bundle['schema_version']!=1 or bundle['version']!=version
         or set(bundle['archives'])!=set(ARCHIVE_NAMES)):
         raise ObservationQuarantineError('original_construction_bundle_roster_changed')

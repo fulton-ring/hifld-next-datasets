@@ -188,6 +188,30 @@ class SyntheticObservationBehaviorTests(SyntheticCaptureFixture):
         self.assertTrue(winner['root'].exists());self.assertEqual(self.snap(winner['root']),winner['before'])
         out=self.stage();self.assertEqual(self.root(out),winner['root']);self.assertEqual(self.snap(winner['root']),winner['before'])
 
+    def test_first_marker_requires_canonical_integer_schema_and_retains_each_rejection(self):
+        out=self.stage();root=self.root(out);original_candidate=self.snap(root)
+        key,marker,_=s.trust_keys(out['version']);original=self.storage.read_key(marker)
+        decoded=json.loads(original)
+        variants=[s.encode({**decoded,'schema_version':True}),
+                  s.encode({**decoded,'schema_version':1.0}),original+b'\n',
+                  s.encode({**decoded,'extra':'unapproved'}),
+                  s.encode({**decoded,'original_bundle_sha256':'0'*64})]
+        for bad in variants:
+            with self.subTest(marker=bad):
+                self.storage.write_key(marker,bad)
+                for attempt in range(2):
+                    with self.assertRaisesRegex(s.ObservationQuarantineError,'durable_marker_binding_changed'):
+                        self.stage()
+                    self.assertFalse(root.exists())
+                    self.assertEqual(self.storage.read_key(marker),bad)
+                    retained=f'_quarantine/{s.SLUG}/construction-markers/{s.sha(bad)}.json'
+                    self.assertEqual(self.storage.read_key(retained),bad)
+                self.storage.write_key(marker,original)  # Explicit operator restoration only.
+                self.assertEqual(self.stage(),out)
+                self.assertEqual(self.snap(root),original_candidate)
+        self.assertEqual(self.stage(),out)
+        self.assertEqual(self.storage.read_key(marker),original)
+
     def test_interrupted_live_extraction_preserves_all_partial_bytes_and_existing_candidate(self):
         out=self.stage();root=self.root(out);before=self.snap(root);fragment=b'{"incomplete_original_http":'
         response=mock.MagicMock();response.url=next(iter(s.source_urls().values()));response.status_code=200

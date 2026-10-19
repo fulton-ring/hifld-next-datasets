@@ -8,13 +8,16 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
-parser=argparse.ArgumentParser();parser.add_argument('--capture-dir',type=Path,required=True);parser.add_argument('--resume',action='store_true');parser.add_argument('--skip-native-probes',action='store_true');parser.add_argument('--runtime',type=Path,required=True);args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--capture-dir',type=Path,required=True);parser.add_argument('--staging-dir',type=Path);parser.add_argument('--published-dir',type=Path);parser.add_argument('--resume',action='store_true');parser.add_argument('--skip-native-probes',action='store_true');parser.add_argument('--runtime',type=Path,required=True);args=parser.parse_args()
 repo=Path(__file__).resolve().parents[2];capture=args.capture_dir.resolve()
 runtime=args.runtime.resolve();assert args.resume or not runtime.exists()
-for name in ['dagster','staging','published']:(runtime/name).mkdir(parents=True,exist_ok=args.resume)
+staging_root=args.staging_dir.resolve() if args.staging_dir else runtime/'staging'
+published_root=args.published_dir.resolve() if args.published_dir else runtime/'published'
+(runtime/'dagster').mkdir(parents=True,exist_ok=args.resume)
+for directory in [staging_root,published_root]:directory.mkdir(parents=True,exist_ok=True)
 (runtime/'dagster/dagster.yaml').write_text('telemetry:\n  enabled: false\n')
 for key in ['HIFLD_STAGING_BUCKET','HIFLD_DATASETS_BUCKET','KUBERNETES_SERVICE_HOST','HIFLD_RELEASE_APPROVALS']:os.environ.pop(key,None)
-os.environ.update(DAGSTER_HOME=str(runtime/'dagster'),HIFLD_STAGING_DIR=str(runtime/'staging'),HIFLD_DATASETS_DIR=str(runtime/'published'),HIFLD_SHADOW_MANUAL_ONLY='1')
+os.environ.update(DAGSTER_HOME=str(runtime/'dagster'),HIFLD_STAGING_DIR=str(staging_root),HIFLD_DATASETS_DIR=str(published_root),HIFLD_SHADOW_MANUAL_ONLY='1')
 import fiona
 import pyarrow.parquet as pq
 import pyarrow as pa
@@ -27,15 +30,15 @@ from dagster_hifld.partitions import PUBLISH_PARTITION_NAME,build_publish_partit
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import tsunami_observations as source
 
-staging=StagingStorageResource(local_dir=str(runtime/'staging'),use_local=True)
-published=PublishedStorageResource(local_dir=str(runtime/'published'),use_local=True)
+staging=StagingStorageResource(local_dir=str(staging_root),use_local=True)
+published=PublishedStorageResource(local_dir=str(published_root),use_local=True)
 published.write_key('synthetic-accepted-fixture.bin',b'local-fixture-only-not-an-accepted-real-release')
 def snapshot(storage):return {key:source.sha(storage.read_key(key)) for key in storage.list_prefix()}
 prior=snapshot(published)
 normalkeys=[key for key in normal.resolve_asset_graph().get_all_asset_keys() if key.path[0]=='publish']
 defs=Definitions(assets=normal.assets,asset_checks=normal.asset_checks,resources={'staging_storage':staging,'published_storage':published},
  jobs=[define_asset_job('observations_source',selection=AssetSelection.assets(noaa_tsunami_observations)),define_asset_job('observations_graph',selection=AssetSelection.assets(*normalkeys))])
-report={'code_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'module':source.__file__,'runtime':str(runtime),'approved':False,'runs':[]}
+report={'staging_root':str(staging_root),'published_root':str(published_root),'code_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'module':source.__file__,'runtime':str(runtime),'approved':False,'runs':[]}
 config={'ops':{noaa_tsunami_observations.op.name:{'config':{'capture_dir':str(capture)}}}}
 def record(kind,result):
  errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
@@ -50,7 +53,7 @@ with DagsterInstance.get() as instance:
   first=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
   record('real_complete_source',first);assert first.success
   output=first.output_for_node(noaa_tsunami_observations.op.name);assert output['feature_count']==34495
-  prefix=build_publish_partition_key(source.SLUG,source.SLUG,output['version']);root=runtime/'staging'/prefix
+  prefix=build_publish_partition_key(source.SLUG,source.SLUG,output['version']);root=staging_root/prefix
   assert (source.SLUG,source.SLUG,output['version']) in list(_iter_staged_version_paths(staging))
   assert (root/'raw'/source.ARCHIVE_NAME).read_bytes()==(capture/'source_http.zip').read_bytes()
   before={str(p.relative_to(root)):source.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
@@ -76,8 +79,8 @@ with DagsterInstance.get() as instance:
  else:
   report=json.loads((runtime/'execution-progress.json').read_text())
   assert len(report['runs'])==6 and report['runs'][-1]['success']
-  roots=[p for p in (runtime/'staging'/source.SLUG/source.SLUG).glob('*') if p.is_dir()];assert len(roots)==1
-  root=roots[0];ready=json.loads((root/'metadata/observations_candidate_ready.json').read_text());prefix=str(root.relative_to(runtime/'staging'))
+  roots=[p for p in (staging_root/source.SLUG/source.SLUG).glob('*') if p.is_dir()];assert len(roots)==1
+  root=roots[0];ready=json.loads((root/'metadata/observations_candidate_ready.json').read_text());prefix=str(root.relative_to(staging_root))
   output={'dataset_slug':source.SLUG,'file_slug':source.SLUG,'version':ready['version'],'feature_count':34495,'status':'working_draft_candidate_ready','processing_fingerprint':ready['processing_fingerprint']}
  typed=pq.read_table(root/'candidate/typed-source.parquet');rows=typed.to_pylist();assert len(rows)==34495
  gpmetadata,gptable=pyogrio.raw.read_arrow(root/'geopackage'/f'{source.SLUG}.gpkg',layer=source.SLUG)
@@ -100,7 +103,7 @@ with DagsterInstance.get() as instance:
   report['catalog_native_single_summary']={'all_four_columns_correct_numeric_types_and_null_counts':True,'sample_rows':5000}
  report['terminal_parquet']={'rows':34495,'all_source_values_types_wkb_exact':True,'prebuilt_parquet_bytes_equal':(root/'candidate/typed-source.parquet').read_bytes()==(root/'geoparquet'/f'{source.SLUG}.parquet').read_bytes(),'source_nullable_declarations_preserved':True}
  # Corrupt a separate explicitly synthetic test partition, leaving the real candidate unchanged.
- badprefix=prefix+'-synthetic-invalid-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot)
+ badprefix=prefix+'-synthetic-invalid-geometry';badroot=staging_root/badprefix;shutil.copytree(root,badroot)
  gpfile=badroot/'geopackage'/f'{source.SLUG}.gpkg'
  invalid_geometry=typed.column('geometry').to_pylist();invalid_geometry[0]=None
  invalid=typed.set_column(typed.schema.get_field_index('geometry'),typed.schema.field('geometry'),pa.array(invalid_geometry,type=pa.binary()))
