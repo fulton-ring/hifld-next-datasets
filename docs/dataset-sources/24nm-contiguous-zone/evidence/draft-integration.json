@@ -1,15 +1,17 @@
 {
   "classification": "working local draft; complete fresh live source capture; no dataset acceptance",
-  "source_code_commit": "807c8e87c96de45e93e49397c1900f28fdf64a07",
+  "source_code_commit": "6b3df39df76e76ab3b17187aa5afb6080d103e86",
   "module": "/workspace/hifld-worker-worktrees/4/src/dagster_hifld/assets/noaa_contiguous.py",
-  "source_run_id": "69b2d451-5e11-4a57-897c-07dc57abdf1b",
-  "idempotent_run_id": "133dc3f6-d2fc-4d0c-b141-0d2dd88de54e",
-  "formats_run_id": "a9ccb5c1-3512-40a6-bb4f-90a566dca51b",
-  "failed_release_run_id": "b375f7d5-fe22-4e44-b64c-88c81c9fa701",
+  "asset_collection": "dagster_hifld.definitions.defs.assets",
+  "normal_registered_asset_count": 74,
+  "source_run_id": "52a5bf9a-54a1-4ea5-8787-a63554f17247",
+  "idempotent_run_id": "837733d0-96ae-4597-9558-7add5653098f",
+  "formats_run_id": "150b8579-9aff-44c8-9423-017a045e7d55",
+  "failed_release_run_id": "2c05a4cb-5b82-4a39-8fa2-110e0e804788",
   "source_rows": 63,
   "terminal_rows": 63,
   "terminal_UNILATERAL_type": "double",
-  "partition": "24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.de0702f59f5997b2574a",
+  "partition": "24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.1e272f22d11d2f534a60",
   "candidate_sha256": "d92d06b5e2eb2814c24e5927edcddff271420581d08182f69f3e5706b6fa7ddf",
   "full_attributes_ids_geometries_checked": true,
   "coverage": {
@@ -37,8 +39,8 @@
   "release_failure": "missing_independent_release_approval_registry",
   "promotion_approved": false,
   "terminal_paths": [
-    "/workspace/work/noaa-4/integration-policy-final/staging/24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.de0702f59f5997b2574a/geoparquet/24nm-contiguous-zone.parquet"
+    "/workspace/work/noaa-4/integration-final-registered/staging/24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.1e272f22d11d2f534a60/geoparquet/24nm-contiguous-zone.parquet"
   ],
   "terminal_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nOBJECTID: int64\nBOUND_ID: string\nREGION: string\nFEAT_TYPE: string\nPUB_DATE: int64\nAPPRV_DATE: int64\nLEGAL_AUTH: string\nAOR: string\nNOTE: string\nSUPP_INFO: string\nUNILATERAL: double\nRULEID: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1578\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 782",
-  "state_storage": "/workspace/work/noaa-4/integration-policy-final"
+  "state_storage": "/workspace/work/noaa-4/integration-final-registered"
 }

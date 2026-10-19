@@ -1,37 +1,46 @@
 {
-  "code_tested": "b6c2ba3798868811913d3981b3071b03b4cfd41a",
+  "code_tested": "bbb913c29e268bcc70c7b0479b03bf830bde333e",
   "command": "PYTHONPATH=$PWD/src PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH UV_CACHE_DIR=/workspace/.cache/uv uv run --frozen --no-sync python -m unittest discover tests",
-  "tests_run": 479,
-  "passed": 477,
+  "tests_run": 489,
+  "passed": 487,
   "errors": 1,
   "skipped": 1,
-  "elapsed_seconds": 46.038,
+  "elapsed_seconds": 49.371,
   "error_test": "test_hifld_user_code_has_pod_disruption_budget",
   "error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf",
   "skip": "Production opt-in integration not enabled",
   "full_suite_success": false,
   "ci_pass_claimed": false,
-  "log_path": "/workspace/work/noaa-4/full-suite-final.log",
-  "log_sha256": "e854f5d4203221b459f4e3ce93410f9af5b3354b4201db353b74d60d5205d974",
+  "log_path": "/workspace/work/noaa-4/full-suite-review-fixes.log",
+  "log_sha256": "9fcece77d458e928d1b845013d2bd05e7719a92f4f5c4ae3868edfbecc70bbfa",
   "later_focused_checks": {
-    "code_tested": "807c8e87c96de45e93e49397c1900f28fdf64a07",
-    "dependency": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
-    "complete_real_source_integration": 3,
-    "shared_verifier": 20,
-    "source_manifest": 8,
+    "code_tested": "6b3df39df76e76ab3b17187aa5afb6080d103e86",
+    "dependencies": [
+      "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
+      "1222cc4d3cb2184e161a59e9159f5d12666d93f8",
+      "c7343b802966c566e8f6088bf31f19081b2a0cde"
+    ],
+    "complete_real_source_and_cadence_tests": 5,
+    "normal_registered_schedule_tests": 1,
+    "shared_verifier_tests": 21,
     "all_passed": true,
+    "actual_registered_refresh_run_id": "e9b66ade-1161-460e-8409-4f91c13dd096",
     "logs": {
-      "integration-policy-final.log": {
-        "path": "/workspace/work/noaa-4/integration-policy-final.log",
-        "sha256": "9bfc70ba01e504ba80326195c1dd18175660f06eb0e7f5a7eadad61e08fcdecf"
+      "integration-final-registered.log": {
+        "path": "/workspace/work/noaa-4/integration-final-registered.log",
+        "sha256": "3906d09fb19025164e9beee9bf48be4f37ec8f76a801b9a4c20a85381cc17838"
       },
-      "verifier-policy-final.log": {
-        "path": "/workspace/work/noaa-4/verifier-policy-final.log",
-        "sha256": "9df2f7fb9e0bc25c9f2b3233e4dff20d78739f333fc5b783c9782ffda458b20f"
+      "refresh-registration-final.log": {
+        "path": "/workspace/work/noaa-4/refresh-registration-final.log",
+        "sha256": "b2fd5528b4939f2e3f8ca18bcd6b52c584bb2d7797296ba7b070b9fc219d7d72"
       },
-      "source-manifest-final.log": {
-        "path": "/workspace/work/noaa-4/source-manifest-final.log",
-        "sha256": "db4eaa9dfd9f5e560f3ca47f4ef6c495eb503b1c9d4d8dc081be9cd0057ee7a2"
+      "verifier-generic-exclusion-final.log": {
+        "path": "/workspace/work/noaa-4/verifier-generic-exclusion-final.log",
+        "sha256": "2d4bad7835408871544419bcad4819ad80e7d56da030d377a0830f8c0e8cc7d7"
+      },
+      "registered-refresh-run-final.log": {
+        "path": "/workspace/work/noaa-4/registered-refresh-run-final.log",
+        "sha256": "e214a1dc9906e99e5e9a931defb0313a7cdb7e2e2dce5992678472f7fa992189"
       }
     }
   }

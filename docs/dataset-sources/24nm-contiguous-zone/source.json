@@ -231,19 +231,21 @@
     "Current service dataset-wide release binding unverified; InPort publication2013 does not establish it",
     "Pinned published v1.0.0 object remains candidate until maintainer acceptance",
     "Maintainer-approved schema/ID/geometry mapping absent; concrete type/extra-column decisions recorded",
-    "Shared #417 comparator/promotion implementation and acceptance required",
+    "Independent exact-release acceptance registry and remaining shared #417 acceptance criteria required; implemented gate blocks unapproved promotion",
     "Intermittent upstream ArcGIS errors on same ID URLs; bounded retry/fail-closed completeness required before unattended refresh"
   ],
   "readiness": {
     "dagster": "isolated local Dagster1.12.19 server_info plus RepositoryConnection73 assets on3404, captured2026-10-19",
     "materialization_performed": true,
     "ingestion_approved": false,
-    "actual_source_run_id": "69b2d451-5e11-4a57-897c-07dc57abdf1b",
-    "actual_formats_run_id": "a9ccb5c1-3512-40a6-bb4f-90a566dca51b",
-    "blocked_release_run_id": "b375f7d5-fe22-4e44-b64c-88c81c9fa701",
+    "actual_source_run_id": "52a5bf9a-54a1-4ea5-8787-a63554f17247",
+    "actual_formats_run_id": "150b8579-9aff-44c8-9423-017a045e7d55",
+    "blocked_release_run_id": "2c05a4cb-5b82-4a39-8fa2-110e0e804788",
     "release_approved": false,
     "lossy_shapefile_excluded": true,
-    "prior_local_release_preserved": true
+    "prior_local_release_preserved": true,
+    "normal_registered_asset_count": 74,
+    "normal_registry_verified": true
   },
   "published_baseline_candidate": {
     "slug": "24nm-contiguous-zone",
@@ -297,7 +299,7 @@
     "format_drift_audit": "evidence/draft-format-audit.json",
     "final_report": "evidence/draft-integration.json",
     "live_capture_receipt": "evidence/draft-live-capture-receipt.json",
-    "code_tested": "807c8e87c96de45e93e49397c1900f28fdf64a07",
+    "code_tested": "6b3df39df76e76ab3b17187aa5afb6080d103e86",
     "supported_draft_outputs": [
       "native candidate GeoParquet",
       "typed GeoPackage",
@@ -307,19 +309,30 @@
     "unsupported_outputs": {
       "shapefile_zip": "43 NOTE single-space values to NULL and nullable epoch-ms integer to DBF float; no lossy mapping accepted"
     },
-    "processing_namespace": "content + installed implementation + guard policy + retrieval URL identity; immutable manifests"
+    "processing_namespace": "content + installed implementation + guard policy + retrieval URL identity; immutable manifests",
+    "refresh_cadence": {
+      "job": "noaa_contiguous_draft_refresh",
+      "schedule": "noaa_contiguous_draft_weekly",
+      "cron": "0 9 * * 1",
+      "timezone": "America/New_York",
+      "default_status": "STOPPED",
+      "source_only": true,
+      "registered_in_normal_definitions": true,
+      "activated": false,
+      "manual_execution_report": "evidence/draft-registered-refresh.json"
+    }
   },
   "validation": {
     "report": "evidence/draft-validation.json",
-    "local_tests_run": 479,
-    "passed": 477,
+    "local_tests_run": 489,
+    "passed": 487,
     "errors": 1,
     "skipped": 1,
     "full_suite_passed": false,
     "ci_passed": false,
     "error": "Missing sibling IaC dagster.tf",
-    "full_suite_code_tested": "b6c2ba3798868811913d3981b3071b03b4cfd41a",
-    "later_focused_code_tested": "807c8e87c96de45e93e49397c1900f28fdf64a07",
-    "later_focused_tests_passed": 31
+    "full_suite_code_tested": "bbb913c29e268bcc70c7b0479b03bf830bde333e",
+    "later_focused_code_tested": "6b3df39df76e76ab3b17187aa5afb6080d103e86",
+    "later_focused_tests_passed": 27
   }
 }
