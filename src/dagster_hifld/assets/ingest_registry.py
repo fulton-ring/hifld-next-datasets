@@ -16,6 +16,7 @@ from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facil
 from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
+from dagster_hifld.assets.state_emergency_operations_centers import fema_state_emergency_operations_centers
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -29,4 +30,5 @@ hifld_ingest_assets = [
     bts_amtrak_stations,
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
+    fema_state_emergency_operations_centers,
 ]
