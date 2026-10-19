@@ -111,6 +111,54 @@ class PanelsTests(unittest.TestCase):
             pqfile.write_bytes(originalpq);readyfile.write_bytes(ready)
             self.assertEqual(result,s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE))
 
+    def test_complete_evidence_replay_and_missing_marker_quarantine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store=StagingStorageResource(local_dir=tmp);result=s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE)
+            root=Path(tmp,s.SLUG,s.SLUG,result['version']);pristine=Path(tmp,'pristine');shutil.copytree(root,pristine)
+            readyfile=root/'metadata/cbrs_map_panels_candidate_ready.json'
+            modes=['missing_ready','population','blocked_baseline','markdown','gp_wrapper','pq_wrapper','field_sidecar']
+            for mode in modes:
+                if not root.exists():shutil.copytree(pristine,root)
+                ready=json.loads(readyfile.read_bytes())
+                if mode=='missing_ready':readyfile.unlink()
+                else:
+                    relative={'population':'metadata/source-fidelity/baseline_comparison.json','blocked_baseline':'metadata/baseline_comparison.json','markdown':'metadata/source-fidelity/baseline_comparison.md','gp_wrapper':'metadata/geopackage_source_fidelity.json','pq_wrapper':'metadata/parquet_source_fidelity.json','field_sidecar':'metadata/source-fidelity/baseline_field_changes.jsonl'}[mode]
+                    path=root/relative
+                    if mode in ['markdown','field_sidecar']:path.write_bytes(b'forged accepted population')
+                    else:
+                        doc=json.loads(path.read_bytes())
+                        if mode=='population':
+                            doc['populations']['baseline']['rows']=1;doc['populations']['candidate']['rows']=1;doc['retained_rows_compared']=1;doc['baseline']['approved']=True
+                        elif mode=='blocked_baseline':doc.update(status='pass',approved=True,acceptance='approved')
+                        elif mode=='gp_wrapper':doc['shared_verifier']['baseline']['approved']=True
+                        else:doc['shared_verifier']['rows']=1
+                        path.write_bytes(s.encode(doc))
+                    ready['objects'][relative]=s.sha(path.read_bytes());readyfile.write_bytes(s.encode(ready))
+                before={str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+                old=set(Path(tmp,'_quarantine',s.SLUG).glob('invalid-cache-*'))
+                with self.subTest(mode=mode),self.assertRaises(ValueError):s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE)
+                self.assertFalse(root.exists())
+                new=set(Path(tmp,'_quarantine',s.SLUG).glob('invalid-cache-*'))-old;self.assertEqual(len(new),1)
+                retained=new.pop()/'candidate'
+                self.assertEqual(before,{str(p.relative_to(retained)):s.sha(p.read_bytes()) for p in retained.rglob('*') if p.is_file()})
+            shutil.copytree(pristine,root)
+            self.assertEqual(result,s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE))
+
+    def test_concurrent_install_winner_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp);install=s.commit_complete_candidate
+            def competing(store,prefix,payloads,ready):
+                install(store,prefix,payloads,ready)
+                raise s.CBRSQuarantineError('simulated_concurrent_install_winner')
+            with patch.object(s,'commit_complete_candidate',side_effect=competing),self.assertRaisesRegex(ValueError,'simulated_concurrent_install_winner'):
+                s.stage_cbrs_map_panels_candidate(storage,capture_dir=CAPTURE)
+            versions=list(Path(tmp,s.SLUG,s.SLUG).glob('v*'));self.assertEqual(len(versions),1)
+            before={str(p.relative_to(versions[0])):s.sha(p.read_bytes()) for p in versions[0].rglob('*') if p.is_file()}
+            result=s.stage_cbrs_map_panels_candidate(storage,capture_dir=CAPTURE)
+            self.assertEqual(result['feature_count'],574)
+            self.assertEqual(before,{str(p.relative_to(versions[0])):s.sha(p.read_bytes()) for p in versions[0].rglob('*') if p.is_file()})
+            self.assertFalse(list(Path(tmp,'_quarantine',s.SLUG).glob('invalid-cache-*')))
+
     def test_bad_receipt_original_preserved_no_canonical(self):
         with tempfile.TemporaryDirectory() as tmp:
             raw=Path(tmp,'capture');raw.mkdir();body=(CAPTURE/'fws_data.body').read_bytes();bad=b'{bad receipt'

@@ -20,6 +20,7 @@ import struct
 import subprocess
 import tempfile
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -332,13 +333,6 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         'metadata/processing_identity.json':encode(identity),
         'metadata/cbrs_map_panels_source_audit.json':encode(audit),
         'metadata/proposed_source_contract.json':encode(PROPOSAL)}
-    fidelity=strict_json((root/'metadata/source-fidelity/baseline_comparison.json').read_bytes())
-    if fidelity.get('status')!='pass' or fidelity.get('acceptance')!='not_established_by_comparison' or fidelity.get('baseline_sha256')!=sha(expected_bytes['metadata/candidate.records.jsonl']) or fidelity.get('candidate_sha256')!=sha(expected_bytes['metadata/candidate.records.jsonl']):
-        raise CBRSQuarantineError('cached_source_fidelity_report_drift')
-    for member in ['sidecar','attribute_field_changes']:
-        pin=fidelity[member];path=root/'metadata/source-fidelity'/pin['path']
-        if pin['path'] not in FIDELITY_FILES or path.stat().st_size!=pin['bytes'] or sha(path.read_bytes())!=pin['sha256']:
-            raise CBRSQuarantineError('cached_source_fidelity_sidecar_changed')
     expected_bytes.update({f'raw/members/{name}':body for name,body in members.items()})
     if any((root/name).read_bytes()!=body for name,body in expected_bytes.items()):
         raise CBRSQuarantineError('cached_source_or_normalized_records_differ')
@@ -352,6 +346,19 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('cached_geopackage_source_fidelity_failure')
     if not pq.read_table(root/'candidate/typed-source.parquet').equals(typed_table(rows,audit),check_metadata=True):
         raise CBRSQuarantineError('cached_typed_parquet_source_fidelity_failure')
+    # Re-run the shared comparator against the freshly decoded original and cached
+    # derivative, binding every report field, sidecar, Markdown and wrapper byte.
+    with tempfile.TemporaryDirectory(prefix='map-panels-evidence-') as tmp:
+        directory=Path(tmp);original=directory/'original.jsonl';candidate=directory/'candidate.jsonl'
+        original.write_bytes(expected_bytes['metadata/candidate.records.jsonl'])
+        candidate.write_bytes(b''.join(encode(r) for r in decoded))
+        report=compare_derivative(original,candidate,directory/'comparison')
+        if report.get('status')!='pass': raise CBRSQuarantineError('fresh_source_fidelity_comparison_failed')
+        evidence=fidelity_payloads(report,rows,original.read_bytes(),directory/'comparison')
+        for name,body in evidence.items():
+            if (root/name).read_bytes()!=body:
+                raise CBRSQuarantineError('cached_complete_source_fidelity_evidence_drift:'+name)
+
 
 
 def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
@@ -375,27 +382,43 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
 
 
 
-def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str) -> str | None:
-    """Retain every invalid draft byte, outside the discoverable version namespace."""
-    target=local_candidate_path(storage,prefix)
-    lock=target.parent/('.'+target.name+'.lock')
-    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+@contextmanager
+def candidate_lock(storage: StagingStorageResource, prefix: str):
+    """Serialize lookup, validation and invalid-cache quarantine with installation."""
+    target=local_candidate_path(storage,prefix);target.parent.mkdir(parents=True,exist_ok=True)
+    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
     with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1: raise CBRSQuarantineError('linked_candidate_lock')
+        if os.fstat(held.fileno()).st_nlink!=1:raise CBRSQuarantineError('linked_candidate_lock')
         fcntl.flock(held,fcntl.LOCK_EX)
-        if not target.exists():return None
-        destination=Path(storage.local_dir)/'_quarantine'/SLUG/('invalid-cache-'+uuid4().hex)
-        destination.mkdir(parents=True)
-        os.rename(target,destination/'candidate')
-        (destination/'report.json').write_bytes(encode({'approved':False,'status':'quarantined_invalid_draft_cache','original_prefix':prefix,'reason':reason}))
-        return str(destination)
+        yield target
+
+
+def quarantine_cached_candidate_held(storage: StagingStorageResource, target: Path, prefix: str, reason: str) -> str:
+    """Caller holds candidate_lock; preserve every byte before releasing it."""
+    destination=Path(storage.local_dir)/'_quarantine'/SLUG/('invalid-cache-'+uuid4().hex)
+    destination.mkdir(parents=True)
+    os.rename(target,destination/'candidate')
+    (destination/'report.json').write_bytes(encode({'approved':False,'status':'quarantined_invalid_draft_cache','original_prefix':prefix,'reason':reason}))
+    return str(destination)
+
+
+def fidelity_payloads(fidelity: dict, rows: list[dict], records: bytes, comparison: Path) -> dict[str, bytes]:
+    """One deterministic evidence definition for construction and fresh cache replay."""
+    parquet_fidelity={'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
+        'rows':len(rows),'source_records_sha256':sha(records),'shared_schema_geometry_validation_reference':fidelity}
+    payloads={
+        'metadata/geopackage_source_fidelity.json':encode({'canonical_full_records_byte_identical':True,'shared_verifier':fidelity,'known_invalid_native_geometry_release_blocked':False}),
+        'metadata/parquet_source_fidelity.json':encode({'canonical_full_records_byte_identical':True,'shared_verifier':parquet_fidelity,'known_invalid_native_geometry_release_blocked':False}),
+        'metadata/baseline_comparison.json':encode({'schema_version':1,'status':'blocked','approved':False,
+            'reason_codes':['unapproved_baseline_field_truncation_date_type_empty_null_id_and_geometry_differences'],'acceptance':'not_established'})}
+    payloads.update({f'metadata/source-fidelity/{name}':(comparison/name).read_bytes() for name in FIDELITY_FILES})
+    return payloads
 
 
 def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
     body,receipt = captures['page0000']
-    existing_prefix=None
     try:
         manifest=provenance(captures)
         with tempfile.TemporaryDirectory(prefix='cbrs_map_panels-source-') as tmp:
@@ -408,23 +431,28 @@ def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_
             version = f'v0.0.0-draft-cbrspanels-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/cbrs_map_panels_candidate_ready.json'
-            if storage.object_exists(ready_key):
-                existing_prefix=prefix
-                ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_map_panels_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'metadata/source-fidelity/{name}' for name in FIDELITY_FILES} | {f'raw/members/{name}' for name in members} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
-                if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
-                    raise CBRSQuarantineError('existing_candidate_inventory_conflict')
-                if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
-                        or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
-                    raise CBRSQuarantineError('existing_candidate_identity_conflict')
-                for name, expected in ready['objects'].items():
-                    key = f'{prefix}/{name}'
-                    snapshot = storage.object_snapshot(key)
-                    if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
-                        raise CBRSQuarantineError(f'existing_candidate_object_changed:{name}')
-                reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)
-                return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
-                        'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
+            with candidate_lock(storage,prefix) as target:
+                if target.exists():
+                    try:
+                        if not storage.object_exists(ready_key):raise CBRSQuarantineError('existing_candidate_missing_ready_marker')
+                        ready = strict_json(storage.read_key(ready_key))
+                        expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_map_panels_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'metadata/source-fidelity/{name}' for name in FIDELITY_FILES} | {f'raw/members/{name}' for name in members} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
+                        if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
+                            raise CBRSQuarantineError('existing_candidate_inventory_conflict')
+                        if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
+                                or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
+                            raise CBRSQuarantineError('existing_candidate_identity_conflict')
+                        for name, expected in ready['objects'].items():
+                            key = f'{prefix}/{name}'
+                            snapshot = storage.object_snapshot(key)
+                            if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
+                                raise CBRSQuarantineError(f'existing_candidate_object_changed:{name}')
+                        reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)
+                        return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
+                                'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
+                    except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
+                        quarantine_cached_candidate_held(storage,target,prefix,str(exc))
+                        raise
             geopackage = directory / f'{SLUG}.gpkg'
             write_geopackage(geopackage, rows)
             source_records = directory / 'source.jsonl'
@@ -438,7 +466,7 @@ def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_
                 decoded.write_bytes(b''.join(encode({'type': 'Feature', 'properties': dict(r['properties']),
                     'geometry': mapping(shape(r['geometry']))}) for r in source))
             fidelity = compare_derivative(source_records, decoded, directory / 'comparison')
-            if decoded.read_bytes() != records:
+            if fidelity.get('status')!='pass' or decoded.read_bytes() != records:
                 raise CBRSQuarantineError('geopackage_complete_fidelity_failure')
             table=typed_table(rows,audit)
             parquet = directory / 'typed-source.parquet'
@@ -447,11 +475,6 @@ def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_
                 'geometry': mapping(shapely.from_wkb(r['geometry']))}) for r in pq.read_table(parquet).to_pylist()))
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
-            # Both independently decoded derivatives equal the exact complete source stream.
-            # Repeating the same shared schema/geometry walk adds no independent evidence.
-            parquet_fidelity = {'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
-                'rows':len(rows),'source_records_sha256':sha(records),
-                'shared_schema_geometry_validation_reference':fidelity}
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
             manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
@@ -460,10 +483,8 @@ def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_
                 'metadata/candidate.records.jsonl': records, 'metadata/source_manifest.json': encode(manifest),
                 'metadata/processing_identity.json': encode(identity), 'metadata/cbrs_map_panels_source_audit.json': encode(audit),
                 'metadata/proposed_source_contract.json': encode(PROPOSAL),
-                'metadata/geopackage_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': fidelity, 'known_invalid_native_geometry_release_blocked': False}), 'metadata/parquet_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': parquet_fidelity, 'known_invalid_native_geometry_release_blocked': False}),
-                'metadata/baseline_comparison.json': encode({'schema_version':1, 'status':'blocked', 'approved':False,
-                    'reason_codes':['unapproved_baseline_field_truncation_date_type_empty_null_id_and_geometry_differences'], 'acceptance':'not_established'})}
-            payloads.update({f'metadata/source-fidelity/{name}':(directory/'comparison'/name).read_bytes() for name in FIDELITY_FILES})
+            }
+            payloads.update(fidelity_payloads(fidelity,rows,records,directory/'comparison'))
             payloads.update({f'raw/members/{name}': value for name,value in members.items()})
             payloads.update({f'raw/captures/{name}.body':value[0] for name,value in captures.items()})
             payloads.update({f'raw/captures/{name}.receipt.json':encode(value[1]) for name,value in captures.items()})
@@ -474,7 +495,5 @@ def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
-        if existing_prefix is not None:
-            retained=quarantine_cached_candidate(storage,existing_prefix,str(exc))
         location = quarantine(storage, body, receipt, str(exc))
         raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
