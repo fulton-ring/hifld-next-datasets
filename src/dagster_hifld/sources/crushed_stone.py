@@ -320,20 +320,36 @@ def source_payloads(captures,identity,audit,manifest,table,published_ids):
     return values
 
 
+def ready_metadata(version,captures,identity,objects):
+    """Closed source-owned wrapper; a draft marker cannot add acceptance claims."""
+    return {'version':version,'approved':False,'processing_fingerprint':digest(encode(identity)),
+        'capture_fingerprint':digest(encode({name:digest(body) for name,(body,_) in captures.items()})),
+        'package_id':PACKAGE,'objects':objects}
+
+
+def validate_ready_metadata(body,version,captures,identity,objects):
+    if body!=encode(ready_metadata(version,captures,identity,objects)):
+        raise CrushedStoneQuarantineError('ready_identity_or_closed_source_inventory_drift')
+
+
 def reconcile_cache(storage,prefix,version,table,published_ids,audit,captures,identity,pin):
     root=Path(storage.local_dir).absolute()/prefix
     if not (root/READY).is_file():raise CrushedStoneQuarantineError('incomplete_existing_candidate_missing_ready')
     captures,manifest=original_bundle(storage,version,captures,identity,manifest_for(captures,identity,pin))
     expected=source_payloads(captures,identity,audit,manifest,table,published_ids);names={*expected,'candidate/typed-source.parquet',f'geoparquet/{SLUG}.parquet'}
-    ready=strict_json((root/READY).read_bytes())
-    if ready.get('version')!=version or ready.get('approved')is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise CrushedStoneQuarantineError('ready_identity_or_closed_source_inventory_drift')
+    objects={name:digest(body) for name,body in expected.items()}
+    objects.update({'candidate/typed-source.parquet':pin['sha256'],f'geoparquet/{SLUG}.parquet':pin['sha256']})
+    # Exact canonical bytes bind every field/type/closed roster to the validated
+    # original captures and native objects, including package selection. Python
+    # JSON/dict equality must not equate a boolean with numeric zero or one.
+    validate_ready_metadata((root/READY).read_bytes(),version,captures,identity,objects)
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'
     derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derivatives) or not (names|{READY}).issubset(actual) or any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise CrushedStoneQuarantineError('unknown_missing_or_linked_candidate_object')
     for name,body in expected.items():
         if (root/name).read_bytes()!=body:raise CrushedStoneQuarantineError('source_owned_report_raw_provenance_or_published_ID_drift:'+name)
-    for name,sha in ready['objects'].items():
+    for name,sha in objects.items():
         if sha256_file(root/name)!=sha:raise CrushedStoneQuarantineError('source_owned_object_changed:'+name)
     for name in ('metadata/source/source_manifest.json',snapshot):
         if (root/name).exists() and (root/name).read_bytes()!=encode(manifest):raise CrushedStoneQuarantineError('catalog_source_snapshot_drift')
@@ -376,7 +392,7 @@ def stage_crushed_stone(storage,*,capture_dir=None,package_id=None):
                 body=parquet_bytes(expected_parquet(table));(private/f'geoparquet/{SLUG}.parquet').write_bytes(body);(private/'candidate/typed-source.parquet').write_bytes(body);pin={'sha256':digest(body),'bytes':len(body)}
                 manifest=manifest_for(captures,identity,pin)
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).parent.mkdir(parents=True,exist_ok=True);(private/name).write_bytes(body)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'package_id':PACKAGE,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
+                ready=ready_metadata(version,captures,identity,{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()})
                 (private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids)
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():
                     if (private/name).read_bytes()!=body:raise CrushedStoneQuarantineError('incomplete_private_source_payload:'+name)
@@ -385,7 +401,7 @@ def stage_crushed_stone(storage,*,capture_dir=None,package_id=None):
                 validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
                 captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).write_bytes(body)
-                ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY};(private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids);os.rename(private,target)
+                ready=ready_metadata(version,captures,identity,{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY});(private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids);os.rename(private,target)
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':2324,'reused':False,'package_id':PACKAGE,'accepted':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise CrushedStoneQuarantineError(str(exc)+'; retained:'+retained) from exc

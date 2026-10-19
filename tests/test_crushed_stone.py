@@ -44,6 +44,19 @@ def synthetic_binary_fixture():
     return bytes(body),bytes(shp),bytes(shx)
 
 class StructuralCrushedStoneTests(unittest.TestCase):
+    def test_closed_ready_wrapper_binds_package_captures_types_and_object_hashes(self):
+        c={'synthetic':(b'explicit synthetic raw bytes',{})};identity={'files':{'synthetic':'a'*64}};objects={'candidate/synthetic.parquet':'b'*64}
+        ready=s.ready_metadata('v-synthetic',c,identity,objects)
+        self.assertEqual(set(ready),{'version','approved','processing_fingerprint','capture_fingerprint','package_id','objects'})
+        self.assertIs(ready['approved'],False);self.assertEqual(ready['package_id'],s.PACKAGE)
+        self.assertEqual(ready['capture_fingerprint'],s.digest(s.encode({'synthetic':s.digest(c['synthetic'][0])})))
+        # Type-sensitive/canonical encoding is essential: False == 0 in Python.
+        variants=[ready|{'approved':0},ready|{'approved':None},ready|{'baseline_approved':True},ready|{'package_id':'WRONG'},ready|{'capture_fingerprint':'0'*64},ready|{'processing_fingerprint':'0'*64},ready|{'version':False},ready|{'objects':objects|{'invented':'c'*64}}]
+        s.validate_ready_metadata(s.encode(ready),'v-synthetic',c,identity,objects)
+        for bad in [s.encode(v) for v in variants]+[s.encode(ready)+b'\n',b'null',b'{ malformed']:
+            with self.subTest(body=bad),self.assertRaisesRegex(ValueError,'ready_identity_or_closed_source_inventory_drift'):
+                s.validate_ready_metadata(bad,'v-synthetic',c,identity,objects)
+
     def test_synthetic_exact_decimal_leading_zero_and_literal_text(self):
         dbf,shp,shx=synthetic_binary_fixture();rows=s.decode_dbf(dbf);geometry=s.decode_points(shp,shx);self.assertEqual(len(rows),2324);self.assertEqual(len(geometry),2324);self.assertEqual(rows[0]['CRSTONX020'],Decimal('1'));self.assertEqual(rows[0]['LATITUDE'],Decimal('20.0000'));self.assertEqual(rows[0]['LATITUDE'].as_tuple().exponent,-4);self.assertEqual(rows[0]['FIPS'],'01117');self.assertEqual(rows[0]['STATE_FIPS'],'01');self.assertEqual(rows[0]['COMP_NAME'],' Synthetic company');self.assertEqual(geometry[0],s.shapely.Point(10,20).wkb)
 
@@ -101,6 +114,16 @@ class RealCapturedCrushedStoneTests(unittest.TestCase):
         with patch.object(s,'validate_construction_code_identity'):
             return s.stage_crushed_stone(storage,capture_dir=root,package_id=s.PACKAGE)
 
+
+    def test_complete_ready_forgery_detaches_whole_cache_and_restores_only_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp);root=Path(tmp);out=self.stage(storage,Path(REAL_CAPTURE_DIR));target=root/s.SLUG/s.SLUG/out['version'];before={str(p.relative_to(target)):p.read_bytes() for p in target.rglob('*') if p.is_file()};original=(target/s.READY).read_bytes();ready=json.loads(original)
+            variants=[ready|{'capture_fingerprint':'0'*64},ready|{'package_id':'WRONG'},ready|{'baseline_approved':True},ready|{'approved':0},ready|{'objects':ready['objects']|{'invented':'0'*64}}]
+            for bad in variants:
+                forged=s.encode(bad);(target/s.READY).write_bytes(forged);altered={str(p.relative_to(target)):p.read_bytes() for p in target.rglob('*') if p.is_file()}
+                with self.assertRaisesRegex(ValueError,'ready_identity_or_closed_source_inventory_drift'):self.stage(storage,Path(REAL_CAPTURE_DIR))
+                self.assertFalse(target.exists());self.assertTrue(any({str(p.relative_to(q)):p.read_bytes() for p in q.rglob('*') if p.is_file()}==altered for q in (root/'_quarantine'/s.SLUG).glob('invalid-candidate-*') if q.is_dir()))
+                self.stage(storage,Path(REAL_CAPTURE_DIR));self.assertEqual({str(p.relative_to(target)):p.read_bytes() for p in target.rglob('*') if p.is_file()},before)
 
     def test_raw_archive_never_claimed_as_canonical_shapefile(self):
         c=captures();table,published,audit=s.inspect_captures(c);manifest=s.manifest_for(c,{'files':{}},{'sha256':'a'*64,'bytes':1});payloads=s.source_payloads(c,{'files':{}},audit,manifest,table,published)
