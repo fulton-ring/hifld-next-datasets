@@ -10,7 +10,7 @@ from dagster import (
 from dagster_hifld.faa_airspace import ingest_candidate
 
 from dagster_hifld.download import build_version_id, download_convert_and_stage
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 _AIRSPACE_DATASET_SLUG = "airspace-boundaries-1"
 _AIRSPACE_FILE_SLUG = "airspace-boundaries-1"
@@ -89,7 +89,7 @@ faa_airspace_draft_refresh_job = define_asset_job(
 def faa_airspace_draft_refresh_schedule(context):
     """Daily 06:00 New York proposal; activation is a separate human decision."""
     storage = context.resources.staging_storage
-    if not storage.use_local or storage.bucket:
+    if isinstance(storage, PublishedStorageResource) or not storage.use_local or storage.bucket:
         return SkipReason("Draft FAA refresh is limited to isolated local quarantine storage")
     if context.scheduled_execution_time is None:
         return SkipReason("Draft FAA refresh requires an explicit scheduled day")

@@ -28,7 +28,7 @@ from shapely import from_wkb
 from fiona.io import MemoryFile
 from shapely.geometry import mapping, shape
 
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 SLUG = "airspace-boundaries-1"
 ITEM_URL = "https://www.arcgis.com/sharing/rest/content/items/67885972e4e940b2aa6d74024901c561?f=pjson"
@@ -53,13 +53,32 @@ UNSUPPORTED_OUTPUT_FORMATS = {
 }
 
 
+def _json_members(pairs):
+    parsed = {}
+    for key, value in pairs:
+        if key in parsed:
+            raise ValueError(f"FAA duplicate JSON member: {key}")
+        parsed[key] = value
+    return parsed
+
+
+def _reject_json_constant(value):
+    raise ValueError(f"FAA nonfinite JSON constant: {value}")
+
+
+def _load_json(body):
+    """Reject ambiguous source/receipt objects before any identifier can collapse."""
+    return json.loads(body, object_pairs_hook=_json_members, parse_constant=_reject_json_constant)
+
+
 def _local_only(storage: StagingStorageResource) -> None:
-    if not storage.use_local or storage.bucket:
+    if isinstance(storage, PublishedStorageResource) or not storage.use_local or storage.bucket:
         raise ValueError("Draft FAA adapter requires isolated local candidate storage")
 
 
 def _write_immutable(storage: StagingStorageResource, outputs: dict[str, bytes]) -> None:
     """Preflight the complete set; identical reruns do not replace evidence."""
+    _local_only(storage)
     for key, body in outputs.items():
         if storage.object_exists(key) and storage.read_key(key) != body:
             raise ValueError("FAA immutable candidate collision")
@@ -153,7 +172,7 @@ def _fetch(directory: pathlib.Path, name: str, url: str) -> dict:
     (directory / f"{name}.json").write_text(json.dumps(metadata, sort_keys=True))
     if truncated or read_error:
         raise ValueError(f"FAA incomplete bounded response: {name}")
-    parsed = json.loads(body)
+    parsed = _load_json(body)
     if metadata["status"] != 200 or "error" in parsed:
         raise ValueError(f"FAA upstream failure: {name}")
     return parsed
@@ -169,8 +188,8 @@ def capture(directory: pathlib.Path) -> None:
     }
     for name, url in urls.items():
         _fetch(directory, name, url)
-    count = json.loads((directory / "count.body").read_bytes())["count"]
-    layer = json.loads((directory / "layer.body").read_bytes())
+    count = _load_json((directory / "count.body").read_bytes())["count"]
+    layer = _load_json((directory / "layer.body").read_bytes())
     if type(count) is not int or not 0 < count <= min(layer["maxRecordCount"], 2000):
         raise ValueError("FAA count exceeds verified single-page scope; pagination adapter review required")
     base = LAYER_URL + "/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000"
@@ -216,7 +235,7 @@ def native_geometries(body: bytes, rows: list[dict], count: int) -> dict:
     Fiona is used only for native geometry assembly and OID correspondence.
     Original JSON attributes feed Arrow independently, avoiding GDAL field casts.
     """
-    parsed = json.loads(body)
+    parsed = _load_json(body)
     if parsed["spatialReference"].get("latestWkid", parsed["spatialReference"].get("wkid")) != 4269:
         raise ValueError("FAA native CRS changed from verified EPSG:4269")
     originals = {f["attributes"]["OBJECTID"]: f["geometry"] for f in parsed["features"]}
@@ -257,22 +276,23 @@ def stage_candidate(storage: StagingStorageResource, directory: pathlib.Path) ->
 
 def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
                      capture_prefix: str) -> dict:
+    _local_only(storage)
     bodies, metadata = {}, {}
     for name in NAMES:
         body = (directory / f"{name}.body").read_bytes()
-        receipt = json.loads((directory / f"{name}.json").read_text())
+        receipt = _load_json((directory / f"{name}.json").read_text())
         if (len(body) > MAX_BYTES or len(body) != receipt["bytes"]
                 or hashlib.sha256(body).hexdigest() != receipt["sha256"]
                 or receipt["status"] != 200 or receipt.get("truncated") or receipt.get("read_error")):
             raise ValueError(f"FAA checksum/status mismatch: {name}")
-        parsed = json.loads(body)
+        parsed = _load_json(body)
         if "error" in parsed:
             raise ValueError(f"FAA error response: {name}")
         bodies[name], metadata[name] = body, receipt
-    layer, native, geo = (json.loads(bodies[n]) for n in ("layer", "source-native", "source-geojson"))
+    layer, native, geo = (_load_json(bodies[n]) for n in ("layer", "source-native", "source-geojson"))
     fields = layer["fields"]
-    count = json.loads(bodies["count"])["count"]
-    ids = json.loads(bodies["ids"])["objectIds"]
+    count = _load_json(bodies["count"])["count"]
+    ids = _load_json(bodies["ids"])["objectIds"]
     if type(count) is not int or not 0 < count <= 2000:
         raise ValueError("FAA count outside verified bounded extraction scope")
     rows = [feature["attributes"] for feature in native["features"]]
@@ -283,7 +303,7 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
     _strict_int64([r.get("OBJECTID") for r in rows], "integer source type OBJECTID")
     _strict_int64([f.get("properties", {}).get("OBJECTID") for f in features], "GeoJSON OBJECTID")
     _strict_int64([f.get("id") for f in features], "GeoJSON Feature.id")
-    if native.get("exceededTransferLimit") or geo.get("exceededTransferLimit") or json.loads(bodies["page-end"])["features"]:
+    if native.get("exceededTransferLimit") or geo.get("exceededTransferLimit") or _load_json(bodies["page-end"])["features"]:
         raise ValueError("FAA incomplete pagination")
     if {r["OBJECTID"] for r in rows} != set(ids) or {f["properties"]["OBJECTID"] for f in features} != set(ids):
         raise ValueError("FAA independent ID set mismatch")
@@ -399,8 +419,8 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
         "candidate_geopackage_sha256": hashlib.sha256(gpkg).hexdigest(),
         "geopackage_roundtrip": "Every source/candidate property name, Arrow physical type and value; all native geometries/CRS/count verified",
         "captures": metadata, "durable_capture_prefix": capture_prefix,
-        "publisher": json.loads(bodies["item"])["owner"],
-        "release_description": json.loads(bodies["item"])["description"],
+        "publisher": _load_json(bodies["item"])["owner"],
+        "release_description": _load_json(bodies["item"])["description"],
         "cadence": "56 days per producer item; refresh deployment not enabled",
         "baseline": None, "approved_contract": None, "complete": True,
         "geometry_types": dict(collections.Counter(g.geom_type for g in geometries)),

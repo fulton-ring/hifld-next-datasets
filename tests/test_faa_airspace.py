@@ -8,8 +8,8 @@ import pathlib
 import tempfile
 import unittest
 
-from dagster_hifld.faa_airspace import stage_candidate, ingest_candidate
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.faa_airspace import stage_candidate, ingest_candidate, retain_capture
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
 class FaaCandidateTests(unittest.TestCase):
@@ -166,3 +166,52 @@ class FaaPartialCaptureTests(unittest.TestCase):
             self.assertEqual(body.read_bytes(),b'{"partial":')
             self.assertIn('interrupted body',receipt['read_error'])
             self.assertTrue(list(pathlib.Path(tmp).glob('**/metadata/failures/*.json')))
+
+
+class FaaBoundaryRegressionTests(unittest.TestCase):
+    def test_published_resource_rejected_before_capture_or_any_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);prior=root/'accepted.json';prior.write_bytes(b'accepted-byte-exact')
+            published=PublishedStorageResource(local_dir=tmp)
+            before={str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            with mock.patch('dagster_hifld.faa_airspace.capture') as capture_call:
+                for action in (lambda:ingest_candidate(published), lambda:stage_candidate(published,root/'missing'),lambda:retain_capture(published,root/'missing')):
+                    with self.assertRaisesRegex(ValueError,'isolated local'):
+                        action()
+                capture_call.assert_not_called()
+            self.assertEqual(before,{str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file()})
+
+    def test_normal_asset_and_schedule_reject_published_resource(self):
+        import datetime
+        from dagster import materialize, build_schedule_context
+        from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_airspace_draft_refresh_schedule
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);(root/'prior').write_bytes(b'preserve')
+            published=PublishedStorageResource(local_dir=tmp)
+            before={str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            with mock.patch('dagster_hifld.faa_airspace.capture') as capture_call:
+                result=materialize([faa_airspace_boundaries],resources={'staging_storage':published},raise_on_error=False)
+                self.assertFalse(result.success)
+                context=build_schedule_context(resources={'staging_storage':published},scheduled_execution_time=datetime.datetime(2026,10,19,tzinfo=datetime.timezone.utc))
+                tick=faa_airspace_draft_refresh_schedule.evaluate_tick(context)
+                self.assertFalse(tick.run_requests);self.assertIn('local quarantine',tick.skip_message)
+                capture_call.assert_not_called()
+            self.assertEqual(before,{str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file()})
+
+
+class FaaAmbiguousJsonTests(unittest.TestCase):
+    setUp = FaaCandidateTests.setUp
+    write = FaaCandidateTests.write
+    def test_duplicate_json_members_rejected_and_retained(self):
+        self.write()
+        for name,old,new in [('source-geojson','"id": 7','"id": 6, "id": 7'),('source-native','"OBJECTID": 7','"OBJECTID": 6, "OBJECTID": 7'),('item','"owner":','"owner": "earlier", "owner":'),('layer','"name": "OBJECTID"','"name": "earlier", "name": "OBJECTID"')]:
+            with self.subTest(name=name):
+                self.write()
+                path=self.capture/(name+'.body');body=path.read_bytes();self.assertIn(old.encode(),body)
+                body=body.replace(old.encode(),new.encode(),1);path.write_bytes(body)
+                receipt=self.capture/(name+'.json');m=json.loads(receipt.read_text());m.update(bytes=len(body),sha256=hashlib.sha256(body).hexdigest());receipt.write_text(json.dumps(m))
+                with self.assertRaisesRegex(ValueError,'duplicate JSON member'):
+                    stage_candidate(self.storage,self.capture)
+                archives=list((self.root/'staging').glob('**/quarantine/raw/'+name+'.body'))
+                self.assertTrue(any(p.read_bytes()==body for p in archives))
+                self.assertTrue(list((self.root/'staging').glob('**/metadata/failures/*.json')))

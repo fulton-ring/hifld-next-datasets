@@ -6,7 +6,10 @@ Every source field, including separate `GLOBAL_ID` and `GlobalID`, is retained
 with explicit Arrow physical types/nullability. Original GeoJSON `Feature.id` is
 validated as nonnull, unique, exact int64 and retained as an explicit candidate
 property; fractional, boolean, overflow and duplicate identifiers are rejected.
-No substitute row identifier is generated. Remote storage is refused.
+No substitute row identifier is generated. Remote storage and every explicit
+`PublishedStorageResource` (including local mode) are refused before capture/write.
+All source and receipt JSON rejects duplicate object members and nonfinite
+constants before identifier extraction; ambiguous raw bytes remain quarantined.
 
 Raw bodies and receipts are archived **before validation**, including malformed,
 partial, HTTP/ArcGIS error and transport-failure receipts. A blocked reason stays
