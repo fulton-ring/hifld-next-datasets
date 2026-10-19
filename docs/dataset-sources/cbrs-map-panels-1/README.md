@@ -17,3 +17,8 @@ PYTHONPATH=src python scripts/compare_cbrs_map_panels.py --output /tmp/cbrs-map-
 ```
 
 The original complete published candidate is generation `1791506354782168`, SHA256 `36662423bf6f187a2efb9b399d44ca78e25532c7d3b8200e609028ea88df659d`; it remains unaccepted. The official ArcGIS item account is `richard_easterbrook@fws.gov_fws`, explicitly delegated by FWS, with the full original use constraints retained.
+
+
+The independently reported missing-marker and forged-evidence defects are repaired at source checkpoint `3c0dd7576829c84d17b6b6a80aaad7d7306b8d20`. Existing directory lookup, ready validation and invalid-cache quarantine now share the install lock, so incomplete versions are retained intact outside discovery. Refresh reruns the shared comparator against all original574 rows and checks every deterministic report/sidecar/Markdown/wrapper and the exact unapproved baseline placeholder. A self-repinned cache cannot retain forged population or acceptance claims. Eleven focused tests pass, including exact quarantine inventories and preserving a concurrent valid install winner.
+
+Six actual registered refresh-job runs demonstrate source/reuse success, missing-ready and both reviewer evidence attacks fail with complete-byte quarantine, and restored-cache success. These run IDs and logs are in `evidence/review-repairs/`. The four complete real data payloads and all three data constructor ASTs are identical to the earlier fully formatted574-row proof. That terminal graph and508-test suite remain historical evidence at `b0b1de8`; neither was rerun or relabeled as a new repair-head pass. Independent review of the exact repaired final head is pending. No release decision changed.

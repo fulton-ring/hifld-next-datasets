@@ -133,9 +133,9 @@
     "asset": "src/dagster_hifld/assets/fws_map_panels.py",
     "refresh": "Monthly first day13:00 America/New_York, STOPPED source-only local draft",
     "atomic_staging": "Hidden complete build atomically renamed under per-version advisory lock",
-    "reuse": "Fresh complete original extraction compared with cached Parquet metadata and values, GPKG native columns/rows/geometry BLOB headers/declarations/SRS WKT/authority/bounds, exact source object roster/provenance",
+    "reuse": "Fresh complete originals and decoded cached GP re-run shared comparator; complete report/sidecar/Markdown/wrapper bytes and exact unapproved placeholder must match, in addition to all data/physical metadata/CRS/coverage/provenance checks.",
     "release_gate": "Shared independent exact release registry required; no real approval fixture",
-    "invalid_cache": "Complete invalid draft directory atomically moved intact to _quarantine; no discoverable invalid cache remains; all bytes retained.",
+    "invalid_cache": "Existence/marker lookup, all reconciliation and invalid-cache whole-directory quarantine share the installation lock. Missing-ready and forged reports remain byte-preserved outside discoverable staging; a concurrent valid install winner is preserved.",
     "repeat_catalog_lifecycle": "Exact metadata/source snapshots from repeated normal catalogs allowed; no arbitrary source paths admitted.",
     "shared_verifier_evidence": "All four original shared comparison reports and full sidecars retained under metadata/source-fidelity; checksums bound on reuse."
   },
@@ -165,26 +165,15 @@
       "pmtiles": "Unsupported without approved reprojection/quantization contract."
     }
   },
-  "implementation_head": "b0b1de8aec3a14026a9e0f8bfdec023e74281cb1",
+  "implementation_head": "3c0dd7576829c84d17b6b6a80aaad7d7306b8d20",
   "verification": {
     "evidence": "evidence/validation.json",
     "actual_dagster_execution": "evidence/execution.json",
     "focused_tests": {
-      "total": 9,
-      "passed": 9,
-      "seconds": 6.142,
-      "covers": [
-        "All574 complete real source records and actual source/cache derivation",
-        "strict timestamp/URL/status/hash/length preflight for all8 original receipts before canonical writes",
-        "failed provenance validation before canonical writes",
-        "count/ID consistency before and after extraction, exact field set/types, invalid/missing geometry, native CRS and transfer-limit drift",
-        "atomic OSError and KeyboardInterrupt no discoverable partial candidate",
-        "prior draft byte preservation on install conflict",
-        "self-repinned GPKG contents/geometry_columns SRS, bounds, SRS WKT/authority, date values and per-geometry headerSRS rejected",
-        "self-repinned Arrow CRS and source fidelity sidecar rejected",
-        "invalid full cache atomically moved outside discoverable staging; original bytes retained",
-        "malformed original receipt/body retained; three interrupted fetch attempts all retained"
-      ]
+      "total": 11,
+      "passed": 11,
+      "seconds": 24.051,
+      "source_head": "3c0dd7576829c84d17b6b6a80aaad7d7306b8d20"
     },
     "full_suite": {
       "total": 508,
@@ -193,9 +182,14 @@
       "seconds": 114.906,
       "skip_reason": "Actual production GCS write E2E not enabled.",
       "real_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
-      "CI_pass_inferred": false
+      "CI_pass_inferred": false,
+      "tested_source_head": "b0b1de8aec3a14026a9e0f8bfdec023e74281cb1",
+      "rerun_on_cache_repair": false
     },
     "source_refresh_after_second_catalog": "PASS",
-    "independent_exact_head_review": "pending"
+    "independent_exact_head_review": "pending",
+    "cache_evidence_repair": "evidence/review-repairs/validation.json",
+    "actual_repair_source_runs": "evidence/review-repairs/execution.json",
+    "prior_terminal_graph_data_byte_equivalence": true
   }
 }

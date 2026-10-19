@@ -147,6 +147,34 @@
     "bytes": 483,
     "sha256": "4a157970db746e283c20e8f934dd589ae4050bb51400c2656e9d53de642a0ee4"
   },
+  "review-repairs/cbrs_map_panels_candidate_ready.json": {
+    "bytes": 3727,
+    "sha256": "9f2399cf85440eeb6293284f644375a86462b8462d97a956e4f1e1a50129bc49"
+  },
+  "review-repairs/dagster.log": {
+    "bytes": 11707,
+    "sha256": "229232ea95c43400e0229226ce7cca00ac86ad3fd570a532c8c6fd16b6fb19c7"
+  },
+  "review-repairs/execution.json": {
+    "bytes": 17393,
+    "sha256": "cc99ec6af7254071e92d64a6673f298c84a44cd015ff88c70f2adb375bf4c48d"
+  },
+  "review-repairs/focused-tests.log": {
+    "bytes": 350,
+    "sha256": "8e1451852b01d65850fde55a3636e3b5ffb0d39cd2524a8ccbd2b24b9f56cd39"
+  },
+  "review-repairs/processing_identity.json": {
+    "bytes": 10311,
+    "sha256": "579685cc97aa4b382b9e29e1da46ec51bbbdf19ebcd387d567ef32e2071f5db1"
+  },
+  "review-repairs/source_manifest.json": {
+    "bytes": 15783,
+    "sha256": "ca7a2e26efdc05686b5c8a84f422e042487349043851420645526a4166dfa362"
+  },
+  "review-repairs/validation.json": {
+    "bytes": 18197,
+    "sha256": "50c47dda606b764915e663277e72ac378020f5205de03cb1f325dd9fbefad36e"
+  },
   "source-fidelity/baseline_comparison.json": {
     "bytes": 1816,
     "sha256": "71aeb924e166fdb24ffccf4b91a228077745c7cfa182d8141665551adda4d547"
