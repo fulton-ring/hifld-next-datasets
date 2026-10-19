@@ -78,7 +78,6 @@ def _query_url(**params: object) -> str:
 def _source_metadata_urls() -> list[tuple[str, str]]:
     return [
         ("portal_item", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"),
-        ("portal_data", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}/data?f=json"),
         ("service_before", SERVICE_URL + "?f=pjson"),
         ("layer_before", LAYER_URL + "?f=pjson"),
         ("count_before", _query_url(where="1=1", returnCountOnly="true", f="json")),
