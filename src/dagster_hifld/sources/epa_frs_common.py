@@ -60,7 +60,7 @@ def candidate_prefix(dataset_slug: str, file_slug: str, version: str) -> str:
 
 
 def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
-                *, max_bytes: int = 128 * 1024 * 1024) -> tuple[bytes, dict[str, object]]:
+                *, max_bytes: int = 128 * 1024 * 1024, reserve=None) -> tuple[bytes, dict[str, object]]:
     """Persist complete GET decoded and wire bodies plus a hash-pinned receipt."""
     capture_root.mkdir(parents=True, exist_ok=True)
     wire_path, body_path = capture_root / f"{name}.wire", capture_root / f"{name}.body"
@@ -82,7 +82,7 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
     with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
         result = capture_http_response(
             response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
-            reserve=lambda _progress: None,
+            reserve=reserve or (lambda _progress: None),
             retain_wire=lambda data: retain(wire_path, wire_hash, data, "wire"),
             retain_decoded=lambda data: retain(body_path, body_hash, data, "body"),
         )
