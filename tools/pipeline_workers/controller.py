@@ -111,7 +111,7 @@ def write_output(**values: object) -> None:
 
 
 def dataset_id(body: str) -> str:
-    match = re.search(r'<!-- hifld-dataset:([a-z0-9][a-z0-9-]*) -->', body)
+    match = re.search(r'<!-- hifld-dataset:([A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9][A-Za-z0-9-]*)*) -->', body)
     if match is None:
         raise ValueError('Issue has no stable HIFLD dataset marker')
     return match.group(1)
