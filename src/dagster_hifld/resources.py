@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
 from types import TracebackType
-from typing import BinaryIO, Protocol, cast
+from typing import BinaryIO, Callable, Protocol, cast
 
 import google_crc32c
 from dagster import ConfigurableResource
@@ -539,6 +539,35 @@ class StagingStorageResource(ConfigurableResource):
         )
         return _gcs_snapshot(self.bucket, f"{self.bucket}/{key}", result)
 
+    def write_key_with_dependencies_if_unchanged(
+        self, key: str, data: bytes, expected_snapshot: StorageObjectSnapshot | None,
+        dependencies: dict,
+    ) -> StorageObjectSnapshot:
+        """Recheck all dependency identities at the local pointer commit boundary.
+
+        This is a conditional local commit, not a cross-object cloud transaction.
+        Remote backends fail closed until generation-qualified dependency URLs or
+        a transactional publication protocol are implemented. Writers outside
+        this API can still mutate assets after publication; immutable storage is
+        an operational prerequisite, not something a catalog checksum enforces.
+        """
+        if not (self.use_local or not self.bucket):
+            raise RuntimeError("Dependency-guarded release pointer commit is currently local-only")
+        key = self._ensure_prefixed(key)
+        if expected_snapshot is not None and expected_snapshot.key != key:
+            raise ValueError("Expected snapshot key does not match write key")
+
+        def guard() -> None:
+            for dependency_key, expected in dependencies.items():
+                snapshot = self.object_snapshot(dependency_key)
+                if (snapshot is None or snapshot.to_dict() != expected.get("snapshot")
+                        or snapshot.size != expected.get("bytes") or snapshot.sha256 != expected.get("sha256")
+                        or self.object_snapshot(dependency_key) != snapshot):
+                    raise RuntimeError("Published asset dependency changed before pointer commit")
+
+        root = Path(self.local_dir).resolve()
+        return _atomic_local_write(root / key, data, expected_snapshot, root, guard)
+
     def delete_key_if_unchanged(
         self,
         key: str,
@@ -1057,6 +1086,7 @@ def _atomic_local_write(
     data: bytes,
     expected_snapshot: StorageObjectSnapshot | None,
     root: Path,
+    before_commit: Callable[[], None] | None = None,
 ) -> StorageObjectSnapshot:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(dir=destination.parent)
@@ -1066,7 +1096,7 @@ def _atomic_local_write(
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
-        return _commit_local_temp(temp_path, destination, expected_snapshot, root)
+        return _commit_local_temp(temp_path, destination, expected_snapshot, root, before_commit)
     finally:
         temp_path.unlink(missing_ok=True)
 
@@ -1076,6 +1106,7 @@ def _commit_local_temp(
     destination: Path,
     expected_snapshot: StorageObjectSnapshot | None,
     root: Path,
+    before_commit: Callable[[], None] | None = None,
 ) -> StorageObjectSnapshot:
     current = _local_snapshot(root, destination) if destination.is_file() else None
     if current != expected_snapshot:
@@ -1087,6 +1118,11 @@ def _commit_local_temp(
         _local_snapshot(root, temp_path),
         key=str(destination.relative_to(root)),
     )
+    if before_commit is not None:
+        before_commit()
+        guarded_current = _local_snapshot(root, destination) if destination.is_file() else None
+        if guarded_current != expected_snapshot:
+            raise RuntimeError("Destination changed during dependency preflight")
     if expected_snapshot is None:
         try:
             os.link(temp_path, destination)

@@ -21,7 +21,7 @@ class AviationTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name); self.capture = self.root/'capture'; self.capture.mkdir()
         self.storage = StagingStorageResource(local_dir=str(self.root/'stage'))
-        fields = json.loads((Path(__file__).parents[1]/'docs/dataset-sources/aviation-facilities/draft-contract.json').read_text())['source_fields']
+        fields = json.loads((Path(__file__).parent/'fixtures/aviation-source-fields.json').read_text())
         attrs = {f['name']: ('000001' if f['type']=='esriFieldTypeString' else 1.25 if f['type']=='esriFieldTypeDouble' else 7) for f in fields}
         first = dict(attrs, OBJECTID=2**53+1, SITE_NO='00001.00', ARPT_ID='A001')
         second = dict(attrs, OBJECTID=2**53+2, SITE_NO='00001.00', ARPT_ID='A002', LAT_DEG=None)
