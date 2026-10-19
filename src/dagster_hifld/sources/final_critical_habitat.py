@@ -24,6 +24,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
+from shapely.prepared import prep as prepare_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
@@ -218,16 +219,27 @@ def _esri_polygon(geometry: dict[str, Any]) -> MultiPolygon:
         else: holes.append((ring, polygon))
     if not shells:
         raise ValueError("source_polygon_shell_missing")
+    prepared_shells = []
+    for index, (_, shell_poly) in enumerate(shells):
+        minx, miny, maxx, maxy = shell_poly.bounds
+        prepared_shells.append((shell_poly.area, index, (minx, miny, maxx, maxy),
+                                prepare_geometry(shell_poly)))
+    # Bounding-box containment is a necessary cheap check. Exact checks use
+    # prepared polygons and visit smallest shells first, preserving the prior
+    # nearest-containing-shell assignment including nested islands.
+    prepared_shells.sort(key=lambda item: (item[0], item[1]))
     assigned: dict[int, list[list[list[float]]]] = {index: [] for index in range(len(shells))}
     for ring, hole in holes:
-        # Esri permits islands (clockwise shells) inside counterclockwise
-        # holes. A hole may therefore be contained by both its nearest island
-        # and an outer shell; choose the smallest containing shell as parent.
-        parents = [(shell_poly.area, index) for index, (_, shell_poly) in enumerate(shells)
-                   if shell_poly.contains(hole)]
-        if not parents:
+        hminx, hminy, hmaxx, hmaxy = hole.bounds
+        parent = None
+        for _, index, (sminx, sminy, smaxx, smaxy), prepared_shell in prepared_shells:
+            if (sminx <= hminx and sminy <= hminy and
+                    smaxx >= hmaxx and smaxy >= hmaxy and
+                    prepared_shell.contains(hole)):
+                parent = index
+                break
+        if parent is None:
             raise ValueError("source_polygon_hole_without_containing_shell")
-        _, parent = min(parents)
         assigned[parent].append(ring)
     members = [Polygon(shell, assigned[index]) for index, (shell, _) in enumerate(shells)]
     return MultiPolygon(members)
