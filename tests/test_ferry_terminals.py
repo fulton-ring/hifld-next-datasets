@@ -86,6 +86,42 @@ class FerryTerminalsTests(TestCase):
         bundle=json.loads(original);bundle['manifest']['code_commit']='0'*40;anchor.write_bytes(s.encode(bundle));(root/'metadata/source_manifest.json').write_bytes(s.encode(bundle['manifest']));ready=root/'metadata/ferry_terminals_candidate_ready.json';j=json.loads(ready.read_bytes());j['objects']['metadata/source_manifest.json']=s.sha(s.encode(bundle['manifest']));ready.write_bytes(s.encode(j))
         with self.assertRaisesRegex(s.FerryQuarantineError,'construction_invalid_commit'):self.stage()
         self.assertFalse(root.exists())
+    def test_missing_anchor_twice_never_rebases_original_receipts(self):
+        out=self.stage();root=self.root(out);before=self.snap(root)
+        anchor=Path(self.tmp.name)/'_candidate-construction'/s.SLUG/(out['version']+'.json')
+        marker=anchor.with_name(anchor.name+'.first-construction.json')
+        original=anchor.read_bytes();original_marker=marker.read_bytes();anchor.unlink()
+        with self.assertRaisesRegex(s.FerryQuarantineError,'missing_original_construction_bundle_after_first_construction'):self.stage()
+        self.assertFalse(root.exists());new=Path(self.tmp.name)/'explicit-synthetic-later-receipts';new.mkdir()
+        for n in s.URLS:
+            body=(C/(n+'.body')).read_bytes();receipt=json.loads((C/(n+'.receipt.json')).read_bytes())
+            receipt['fetched_at']=(datetime.fromisoformat(receipt['fetched_at'])+timedelta(hours=3)).isoformat()
+            (new/(n+'.body')).write_bytes(body);(new/(n+'.receipt.json')).write_bytes(s.encode(receipt))
+        for _ in range(2):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'missing_original_construction_bundle_after_first_construction'):self.stage(new)
+            self.assertFalse(root.exists());self.assertFalse(anchor.exists());self.assertEqual(marker.read_bytes(),original_marker)
+        anchor.write_bytes(original)
+        self.assertEqual(self.stage(new),out);self.assertEqual(self.snap(root),before)
+        self.assertEqual(anchor.read_bytes(),original);self.assertEqual(marker.read_bytes(),original_marker)
+
+    def test_missing_or_malformed_first_marker_requires_exact_trusted_restore(self):
+        out=self.stage();root=self.root(out);before=self.snap(root)
+        anchor=Path(self.tmp.name)/'_candidate-construction'/s.SLUG/(out['version']+'.json')
+        marker=anchor.with_name(anchor.name+'.first-construction.json');original=marker.read_bytes()
+        for case in ('missing','malformed'):
+            if case=='missing':marker.unlink()
+            else:marker.write_bytes(b'{}')
+            for _ in range(2):
+                with self.assertRaisesRegex(s.FerryQuarantineError,'missing_or_invalid_first_construction_marker'):self.stage()
+                self.assertFalse(root.exists())
+            marker.write_bytes(original);self.assertEqual(self.stage(),out);self.assertEqual(self.snap(root),before)
+
+    def test_interrupted_private_native_write_has_no_construction_records(self):
+        with mock.patch.object(s,'write_canonical_geopackage',side_effect=OSError('test private native interruption')):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'private native interruption'):self.stage()
+        self.assertFalse(list((Path(self.tmp.name)/'_candidate-construction').rglob('*.json')))
+        self.assertFalse(list((Path(self.tmp.name)/s.SLUG).glob('*/*/metadata/ferry_terminals_candidate_ready.json')))
+
     def test_private_install_and_cache_share_common_lock_and_preserve_winner(self):
         out=self.stage();root=self.root(out);original=s.reconcile_cached_candidate;observed=[]
         def validate(*args,**kwargs):

@@ -352,7 +352,10 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     been retained in the independent raw depot and never rewrite original receipts.
     """
     key=f'_candidate-construction/{SLUG}/{version}.json'
+    started=key+'.first-construction.json'
     if not storage.object_exists(key):
+        if storage.object_exists(started):
+            raise FerryQuarantineError('missing_original_construction_bundle_after_first_construction')
         if not create:
             raise FerryQuarantineError('missing_original_construction_provenance_bundle')
         validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
@@ -360,8 +363,17 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
             name:{'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
                   'receipt_key':f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json'}
             for name,(body,receipt) in captures.items()}}
-        immutable(storage,key,encode(bundle))
-    bundle=strict_json(storage.read_key(key))
+        body=encode(bundle)
+        evidence_key=key+'.evidence/'+sha(body)+'.json'
+        # Retain the exact complete original before either independent trust record
+        # is installed, including a partial storage-write failure. No auto repair.
+        immutable(storage,evidence_key,body)
+        immutable(storage,started,encode({'schema_version':1,'version':version,
+            'processing_fingerprint':manifest['processing_fingerprint'],
+            'original_bundle_sha256':sha(body),'original_bundle_evidence_key':evidence_key}))
+        immutable(storage,key,body)
+    bundle_body=storage.read_key(key)
+    bundle=strict_json(bundle_body)
     if set(bundle)!={'schema_version','version','manifest','captures'} or bundle['schema_version']!=1 or bundle['version']!=version or set(bundle['captures'])!=set(URLS):
         raise FerryQuarantineError('original_construction_bundle_roster_drift')
     original={}
@@ -392,6 +404,12 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
         raise FerryQuarantineError('original_construction_manifest_drift')
     validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)
+    expected_marker={'schema_version':1,'version':version,
+        'processing_fingerprint':actual['processing_fingerprint'],
+        'original_bundle_sha256':sha(bundle_body),
+        'original_bundle_evidence_key':key+'.evidence/'+sha(bundle_body)+'.json'}
+    if not storage.object_exists(started) or strict_json(storage.read_key(started))!=expected_marker:
+        raise FerryQuarantineError('missing_or_invalid_first_construction_marker')
     return original,actual
 
 
@@ -555,7 +573,7 @@ def stage_ferry_terminals_candidate(storage: StagingStorageResource, *, capture_
                         retained=quarantine_cached_candidate(storage,prefix,str(exc),already_locked=True)
                         raise FerryQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc
                 binding_key=f'_candidate-construction/{SLUG}/{version}.json'
-                if storage.object_exists(binding_key):
+                if storage.object_exists(binding_key) or storage.object_exists(binding_key+'.first-construction.json'):
                     captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
                     body,receipt=captures['features']
             geopackage = directory / f'{SLUG}.gpkg'
