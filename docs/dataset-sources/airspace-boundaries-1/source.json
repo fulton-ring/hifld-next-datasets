@@ -853,7 +853,7 @@
     "adapter": "src/dagster_hifld/faa_airspace.py",
     "asset": "ingest/airspace-boundaries-1/airspace-boundaries-1",
     "behavior": "Complete bounded official extraction or checksum-pinned replay -> immutable typed all-column local quarantine; no production storage and no discoverable acceptedversion. Generic catalog/format/promotion integration exercised in separately isolated draft sandbox.",
-    "shared_verifier_dependency": "eab40866ef4289cb93b952b1cf7244ff259c372d",
+    "shared_verifier_dependency": "8be7468aede14b81c17cac5d0bae1301c8203ed0",
     "raw_downloads_lossless": true,
     "candidate_replay_idempotent": true,
     "auto_promotion": false

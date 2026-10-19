@@ -1,0 +1,33 @@
+{
+  "targeted_tests": {
+    "command": "PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p test_faa_airspace.py",
+    "tests": 9,
+    "success": true
+  },
+  "full_suite": {
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src .venv/bin/python -m unittest discover tests",
+    "tests": 474,
+    "errors": 1,
+    "skipped": 1,
+    "success": false,
+    "only_error": "test_hifld_user_code_has_pod_disruption_budget: missing /workspace/hifld-worker-worktrees/hifld-next-iac/environments/prod/dagster.tf"
+  },
+  "graph": "evidence/local-materialization.json",
+  "logs": {
+    "unit.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/unit.log",
+      "sha256": "434e9da466bf116de2d28aba4b4edda592d005783e6f7aee4aca24c3857be00d"
+    },
+    "full-suite-final.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/full-suite-final.log",
+      "sha256": "e90cc113d44bbbe47b8c9bb3fabf9e5adbfb294925c3564e4d8869666e324239"
+    },
+    "e2e-final-head.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/e2e-final-head.log",
+      "sha256": "927134e5c6c0d529d63d41c84d03b28213fc85ed138833044bfbdd494adb499f"
+    }
+  },
+  "ci": "not claimed; query actual GitHub checks separately",
+  "limitation": "Sourcequality/acceptance failures expected and preserved; no successful end-to-end publication claimed",
+  "live_ingest": "evidence/live-ingest.json"
+}

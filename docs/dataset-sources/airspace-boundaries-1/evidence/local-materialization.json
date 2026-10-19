@@ -1,11 +1,11 @@
 {
   "adapter_module_path": "/workspace/hifld-worker-worktrees/10/src/dagster_hifld/faa_airspace.py",
   "capture_dir": "/workspace/work/hifld-coordinator/10",
-  "local_storage": "/workspace/work/hifld-coordinator/10/e2e-final",
+  "local_storage": "/workspace/work/hifld-coordinator/10/e2e-exact",
   "approval_registry_present": false,
-  "shared_verifier_dependency": "eab40866ef4289cb93b952b1cf7244ff259c372d",
+  "shared_verifier_dependency": "8be7468aede14b81c17cac5d0bae1301c8203ed0",
   "ingest": {
-    "run_id": "d3e3406f-0f47-4969-a2fb-813da078f7e9",
+    "run_id": "4698892e-f81c-4e93-bdaf-9a4758faf5d6",
     "success": true,
     "output": {
       "version": "candidate-980c60667faba3e4f4c384f5",
@@ -65,7 +65,7 @@
     "candidate_sha256": "678d1a2cf09a44272514a8ea090072cb081aa5f3acd065f2056a1549432b1ef9"
   },
   "normal_graph": {
-    "run_id": "a83149bb-ea83-429e-872a-fea73135276e",
+    "run_id": "aa761a70-9527-4b9a-93b0-3185dd238cba",
     "success": false,
     "checks": [
       {
@@ -94,7 +94,7 @@
     }
   },
   "verify_probe": {
-    "run_id": "e7742332-4088-4a6b-a119-f7c69ae33dbe",
+    "run_id": "2e5fc619-39a1-43cb-a83d-c08ef9d16d9a",
     "success": false,
     "reason": "missing_independent_release_approval_registry"
   },

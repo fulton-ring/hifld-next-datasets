@@ -5,6 +5,7 @@ GeoJSON bodies, declared schema and identifiers before building a typed candidat
 """
 from __future__ import annotations
 
+import collections
 import datetime
 import hashlib
 import io
@@ -74,6 +75,8 @@ def stage_candidate(storage: StagingStorageResource, directory: pathlib.Path) ->
         bodies[name]=body;metadata[name]=m
     layer=json.loads(bodies['layer']);native=json.loads(bodies['source-native']);geo=json.loads(bodies['source-geojson'])
     fields=layer['fields'];count=json.loads(bodies['count'])['count'];ids=json.loads(bodies['ids'])['objectIds']
+    if type(count) is not int or not 0<count<=2000:
+        raise ValueError('FAA count outside verified bounded extraction scope')
     rows=[f['attributes'] for f in native['features']];features=geo['features']
     if not rows or len(rows)!=count or len(features)!=count or len(ids)!=count or len(set(ids))!=count:
         raise ValueError('FAA incomplete or duplicate ID response')
@@ -108,7 +111,10 @@ def stage_candidate(storage: StagingStorageResource, directory: pathlib.Path) ->
             raise ValueError('FAA integer source type drift')
         if any(isinstance(v,float) and not math.isfinite(v) for v in values):
             raise ValueError('FAA nonfinite numeric value')
-        arrays[f['name']]=pa.array(values,type=types[f['type']],safe=True)
+        converted=pa.array(values,type=types[f['type']],safe=True)
+        if any(before!=after for before,after in zip(values,converted.to_pylist())):
+            raise ValueError('FAA Arrow conversion would lose source values')
+        arrays[f['name']]=converted
     geometries=[shape(by_id[r['OBJECTID']]['geometry']) for r in rows]
     if 'geometry' in arrays or '__source_geojson_feature_id' in arrays:
         raise ValueError('FAA candidate reserved column collision')
@@ -119,7 +125,7 @@ def stage_candidate(storage: StagingStorageResource, directory: pathlib.Path) ->
     table=pa.Table.from_arrays(list(arrays.values()),schema=schema);stream=io.BytesIO();pq.write_table(table,stream,compression='zstd');candidate=stream.getvalue()
     digest=hashlib.sha256(b''.join(bodies[n] for n in NAMES)+json.dumps(metadata,sort_keys=True).encode()).hexdigest()
     version='candidate-'+digest[:24];prefix=f'{SLUG}/{SLUG}/{version}/quarantine'
-    manifest={'schema_version':1,'status':'needs_decision','promotion_allowed':False,'feature_count':count,'source_fields':fields,'candidate_columns':table.column_names,'source_native_crs':native['spatialReference'],'candidate_geometry_crs':'EPSG:4326 via producer outSR; original NAD83 Esri geometry retained raw','transformations':['GeoJSON geometry to WKB (no repair)','Explicit Esri physical types to Arrow; all fields retained','GeoJSON Feature.id retained as __source_geojson_feature_id (unapproved mapping)'],'candidate_sha256':hashlib.sha256(candidate).hexdigest(),'captures':metadata,'publisher':json.loads(bodies['item'])['owner'],'release_description':json.loads(bodies['item'])['description'],'cadence':'56 days per producer item; refresh requires separate scheduled deployment approval','baseline':None,'approved_contract':None,'complete':True,'invalid_geometry_count':sum(not g.is_valid for g in geometries),'empty_geometry_count':sum(g.is_empty for g in geometries),'quarantine_reason':'Unapproved baseline, schema/ID mapping and geometry/coverage migration; shared #417 exact release approval required before promotion'}
+    manifest={'schema_version':1,'status':'needs_decision','promotion_allowed':False,'feature_count':count,'source_fields':fields,'candidate_columns':table.column_names,'source_native_crs':native['spatialReference'],'candidate_geometry_crs':'EPSG:4326 via producer outSR; original NAD83 Esri geometry retained raw','transformations':['GeoJSON geometry to WKB (no repair)','Explicit Esri physical types to Arrow; all fields retained','GeoJSON Feature.id retained as __source_geojson_feature_id (unapproved mapping)'],'candidate_sha256':hashlib.sha256(candidate).hexdigest(),'captures':metadata,'publisher':json.loads(bodies['item'])['owner'],'release_description':json.loads(bodies['item'])['description'],'cadence':'56 days per producer item; refresh requires separate scheduled deployment approval','baseline':None,'approved_contract':None,'complete':True,'geometry_types':dict(collections.Counter(g.geom_type for g in geometries)),'coverage_TYPE_CODE':dict(collections.Counter(str(r.get('TYPE_CODE')) for r in rows)),'bounds':[min(g.bounds[0] for g in geometries),min(g.bounds[1] for g in geometries),max(g.bounds[2] for g in geometries),max(g.bounds[3] for g in geometries)],'invalid_geometry_count':sum(not g.is_valid for g in geometries),'empty_geometry_count':sum(g.is_empty for g in geometries),'quarantine_reason':'Unapproved baseline, schema/ID mapping and geometry/coverage migration; shared #417 exact release approval required before promotion'}
     outputs={**{f'raw/{name}.json':body for name,body in bodies.items()},'candidate/airspace.parquet':candidate,'candidate/airspace.geojson':bodies['source-geojson'],'metadata/provenance.json':json.dumps(manifest,sort_keys=True,indent=2).encode()}
     # Preflight every existing key before any write. Identical reruns are no-ops.
     for name,body in outputs.items():

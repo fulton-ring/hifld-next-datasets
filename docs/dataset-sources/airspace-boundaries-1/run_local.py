@@ -22,7 +22,7 @@ assert 'HIFLD_RELEASE_APPROVALS' not in os.environ
 stage=StagingStorageResource(local_dir=str(runtime/'staging'));published=PublishedStorageResource(local_dir=str(runtime/'published'))
 resources={'staging_storage':stage,'published_storage':published}
 state=runtime/'dagster';state.mkdir(exist_ok=True);os.environ['DAGSTER_HOME']=str(state)
-result={'adapter_module_path':str(pathlib.Path(adapter.__file__).resolve()),'capture_dir':str(capture.resolve()),'local_storage':str(runtime.resolve()),'approval_registry_present':False,'shared_verifier_dependency':'eab40866ef4289cb93b952b1cf7244ff259c372d'}
+result={'adapter_module_path':str(pathlib.Path(adapter.__file__).resolve()),'capture_dir':str(capture.resolve()),'local_storage':str(runtime.resolve()),'approval_registry_present':False,'shared_verifier_dependency':'8be7468aede14b81c17cac5d0bae1301c8203ed0'}
 with DagsterInstance.from_config(str(state)) as instance:
     ingest_job=define_asset_job('faa_ingest_replay',selection=AssetSelection.assets(faa_airspace_boundaries))
     defs=Definitions(assets=hifld_dataset_assets,asset_checks=hifld_asset_checks,resources=resources,jobs=[ingest_job])

@@ -28,7 +28,7 @@ class FaaCandidateTests(unittest.TestCase):
         result=self.run_candidate();again=stage_candidate(self.storage,self.capture)
         self.assertEqual(result,again);self.assertFalse(result['promotion_allowed'])
         p=self.root/'staging'/result['quarantine_prefix']/'candidate/airspace.parquet';t=pq.read_table(p)
-        self.assertEqual(t['GLOBAL_ID'].to_pylist(),['001234567890123456789']);self.assertEqual(str(t.schema.field('UPPER_VAL').type),'double')
+        self.assertEqual(t['GLOBAL_ID'].to_pylist(),['001234567890123456789']);self.assertEqual(str(t.schema.field('UPPER_VAL').type),'double');self.assertFalse(t.schema.field('GLOBAL_ID').nullable)
         self.assertEqual(t['__source_geojson_feature_id'].to_pylist(),[7])
         self.assertEqual((p.parent.parent/'raw/source-native.json').read_bytes(),(self.capture/'source-native.body').read_bytes())
         self.assertFalse(list((self.root/'staging').glob('**/v*/geojson/*')))
@@ -56,3 +56,8 @@ class FaaCandidateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'checksum'):stage_candidate(self.storage,self.capture)
     def test_remote_storage_forbidden(self):
         with self.assertRaisesRegex(ValueError,'isolated local'):stage_candidate(StagingStorageResource(use_local=False,bucket='not-used'),self.capture)
+
+    def test_invalid_geometry_preserved_unrepaired_and_flagged(self):
+        self.data['source-geojson']['features'][0]['geometry']['coordinates']=[[[0,0],[1,1],[1,0],[0,1],[0,0]]]
+        result=self.run_candidate();m=json.loads((self.root/'staging'/result['quarantine_prefix']/'metadata/provenance.json').read_text())
+        self.assertEqual(m['invalid_geometry_count'],1);self.assertFalse(m['promotion_allowed'])
