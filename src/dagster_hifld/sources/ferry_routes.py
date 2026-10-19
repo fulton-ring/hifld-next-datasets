@@ -160,8 +160,21 @@ def acquire(storage,capture_dir=None):
         for name in URLS:
             if capture_dir is not None:
                 with (Path(capture_dir)/(name+'.body')).open('rb') as stream: body=stream.read(15_000_001)
+                # Retain attempted bytes before any receipt decoding. A malformed
+                # local receipt is evidence, not permission to lose its body.
+                key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'
+                immutable(storage,key,body)
+                diagnostic={'url':URLS[name],'body_key':key,'bytes':len(body),
+                    'sha256':digest(body),'complete_body':False,'receipt_validated':False}
+                captures[name]=(body,diagnostic)
                 if len(body)>15_000_000: raise FerryRouteQuarantineError('capture_body_limit')
-                receipt=strict_json((Path(capture_dir)/(name+'.receipt.json')).read_bytes())
+                with (Path(capture_dir)/(name+'.receipt.json')).open('rb') as stream:
+                    raw_receipt=stream.read(65_537)
+                receipt_key=key+'.receipt-original-'+digest(raw_receipt)+'.bin'
+                immutable(storage,receipt_key,raw_receipt)
+                diagnostic['original_receipt_key']=receipt_key
+                if len(raw_receipt)>65_536:raise FerryRouteQuarantineError('capture_receipt_limit')
+                receipt=strict_json(raw_receipt)
                 captures[name]=(body,receipt)
             else:
                 url=URLS[name]
@@ -201,20 +214,23 @@ def inspect_originals(captures):
     docs={name:strict_json(body)for name,(body,_)in captures.items()if name not in ('bts_ntad','official_landing')}
     before=docs['source_layer_before'];after=docs['source_layer_after']
     for layer in [before,after]:
-        if (layer.get('fields')!=FIELD_DECLARATIONS or layer.get('objectIdField')!='OBJECTID' or layer.get('geometryType')!='esriGeometryPolyline'
-            or layer.get('hasM')is not False or layer.get('hasZ')is not False or layer.get('spatialReference')!={'wkid':4326,'latestWkid':4326}
+        if (encode(layer.get('fields'))!=encode(FIELD_DECLARATIONS) or layer.get('objectIdField')!='OBJECTID' or layer.get('geometryType')!='esriGeometryPolyline'
+            or layer.get('hasM')is not False or layer.get('hasZ')is not False or encode(layer.get('spatialReference'))!=encode({'wkid':4326,'latestWkid':4326})
             or layer.get('serviceItemId')!=ITEM or layer.get('maxRecordCount',0)<100):
             raise FerryRouteQuarantineError('native_source_schema_types_crs_or_service_drift')
     if before.get('editingInfo')!=after.get('editingInfo'):raise FerryRouteQuarantineError('source_changed_during_extraction')
     for part in ['before','after']:
         count=docs['source_count_'+part];ids=docs['source_ids_'+part]
-        if type(count.get('count'))is not int or count['count']!=964 or ids.get('objectIdFieldName')!='OBJECTID' or sorted(ids.get('objectIds',[]))!=list(range(1,965)) or len(ids['objectIds'])!=len(set(ids['objectIds'])):
+        roster=ids.get('objectIds')
+        if (type(count.get('count'))is not int or count['count']!=964 or ids.get('objectIdFieldName')!='OBJECTID'
+            or type(roster)is not list or len(roster)!=964 or any(type(value)is not int for value in roster)
+            or len(set(roster))!=964 or sorted(roster)!=list(range(1,965))):
             raise FerryRouteQuarantineError('count_id_roster_completeness_or_coverage_drift')
     features=[]
     for first in range(1,965,100):
         page=docs['source_page_'+str(first).zfill(4)]
         if (page.get('exceededTransferLimit',False)is not False or page.get('objectIdFieldName')!='OBJECTID' or page.get('geometryType')!='esriGeometryPolyline'
-            or page.get('spatialReference')!={'wkid':4326,'latestWkid':4326} or page.get('fields')!=[{k:v for k,v in field.items()if k not in('nullable','editable','isViewOverride')}for field in FIELD_DECLARATIONS]):
+            or encode(page.get('spatialReference'))!=encode({'wkid':4326,'latestWkid':4326}) or encode(page.get('fields'))!=encode([{k:v for k,v in field.items()if k not in('nullable','editable','isViewOverride')}for field in FIELD_DECLARATIONS])):
             raise FerryRouteQuarantineError('truncated_wrong_schema_or_coordinate_system_page')
         rows=page.get('features')
         if not isinstance(rows,list)or [x.get('attributes',{}).get('OBJECTID')for x in rows]!=list(range(first,min(first+100,965))):

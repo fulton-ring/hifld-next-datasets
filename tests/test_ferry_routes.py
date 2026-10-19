@@ -32,6 +32,30 @@ class FerryTransportTests(unittest.TestCase):
     def test_incomplete_wire_fails_and_preserves_diagnostics(self):
         with self.assertRaisesRegex(f.FerryRouteQuarantineError,'non200_or_incomplete_http_response'):self.fetch(lambda size:{'Content-Length':str(size+1)})
     def test_chunked_complete_input(self):self.assertEqual(len(self.fetch(lambda size:{})),19)
+    def test_malformed_local_receipt_retains_body_and_exact_original_receipt(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);source=root/'inputs';source.mkdir();body=b'original attempted body';bad=b'{malformed exact original receipt\n'
+            (source/'bts_ntad.body').write_bytes(body);(source/'bts_ntad.receipt.json').write_bytes(bad)
+            staging=root/'staging';storage=f.StagingStorageResource(use_local=True,local_dir=str(staging))
+            with self.assertRaises(f.FerryRouteQuarantineError):f.acquire(storage,source)
+            retained=list((staging/'_quarantine').rglob('bts_ntad.body'));self.assertEqual(len(retained),1);self.assertEqual(retained[0].read_bytes(),body)
+            receipt=json.loads(retained[0].with_suffix('.receipt.json').read_text())
+            self.assertIs(receipt['complete_body'],False);self.assertEqual((staging/receipt['original_receipt_key']).read_bytes(),bad)
+            self.assertEqual((source/'bts_ntad.receipt.json').read_bytes(),bad)
+    def test_live_partial_stream_preserved_for_each_bounded_attempt(self):
+        class BrokenStream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b'partial original wire body'
+                raise httpx.ReadError('test only interrupted stream')
+        original=httpx.Client
+        transport=httpx.MockTransport(lambda request:httpx.Response(200,stream=BrokenStream()))
+        with tempfile.TemporaryDirectory()as tmp,patch.object(f.httpx,'Client',lambda **kwargs:original(transport=transport,**kwargs)):
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'bounded_fetch_exhausted'):f.acquire(f.StagingStorageResource(use_local=True,local_dir=tmp))
+            bodies=list(Path(tmp).glob('_quarantine/**/bts_ntad.body'));self.assertEqual(len(bodies),3)
+            for body in bodies:
+                self.assertEqual(body.read_bytes(),b'partial original wire body')
+                receipt=json.loads(body.with_suffix('.receipt.json').read_text());self.assertIs(receipt['complete_body'],False)
+                self.assertEqual(receipt['sha256'],f.digest(body.read_bytes()))
     def test_remote_published_or_alias_staging_refused(self):
         with self.assertRaises(f.FerryRouteQuarantineError):f.local_only(f.PublishedStorageResource(local_dir='/tmp'))
 
@@ -77,6 +101,12 @@ class FerryOriginalCaptureTests(unittest.TestCase):
     def test_transfer_limit_missing_rows_and_incomplete_count_rejected(self):
         for name,mutate in [('source_page_0001',lambda j:j.__setitem__('exceededTransferLimit',True)),('source_page_0001',lambda j:j['features'].pop()),('source_count_after',lambda j:j.__setitem__('count',963))]:
             with self.assertRaises(f.FerryRouteQuarantineError):f.inspect_originals(self.changed_doc(name,mutate))
+    def test_before_after_all_id_witness_requires_exact_integer_physical_types(self):
+        for part in ['before','after']:
+            for malformed in [True,1.0]:
+                def mutate(doc):doc['objectIds'][doc['objectIds'].index(1)]=malformed
+                with self.subTest(part=part,value=malformed),self.assertRaisesRegex(f.FerryRouteQuarantineError,'count_id_roster'):
+                    f.inspect_originals(self.changed_doc('source_ids_'+part,mutate))
     def test_actual_vintage_and_moving_snapshot_rejected(self):
         captures=self.changed_doc('source_layer_after',lambda j:j['editingInfo'].__setitem__('dataLastEditDate',0))
         with self.assertRaisesRegex(f.FerryRouteQuarantineError,'changed_during_extraction'):f.inspect_originals(captures)
@@ -148,7 +178,7 @@ class FerryOriginalCaptureTests(unittest.TestCase):
         self.assertFalse(state.exists());self.assertFalse(self.root.exists())
         state.parent.mkdir(parents=True,exist_ok=True);state.write_bytes(original);self.restore_primary()
         self.assertFalse(self.refresh()['reused'])
-    def test_coforged_primary_and_state_cannot_replace_original_CAS_evidence(self):
+    def test_forged_primary_cannot_replace_original_CAS_evidence(self):
         primary=self.bundle();body=json.loads(primary.read_text());body['manifest']['code_commit']='0'*40;primary.write_bytes(f.encode(body))
         self.reject('construction')
         marker_before=self.state().read_bytes()
@@ -174,3 +204,12 @@ class FerryOriginalCaptureTests(unittest.TestCase):
             with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):f.stage_ferry_routes(storage,capture_dir=CAPTURE)
             self.assertEqual(records,{str(p.relative_to(root)):p.read_bytes()for base in ['_construction-state','_construction-evidence']for p in(root/base).rglob('*.json')})
             self.assertFalse(list(root.glob(f'{f.SLUG}/{f.SLUG}/v*')))
+
+    def test_missing_CAS_evidence_never_recreated_from_primary_or_candidate(self):
+        evidence=self.evidence();original=evidence.read_bytes();evidence.unlink();state=self.state().read_bytes()
+        self.reject('missing_or_invalid_original_construction_evidence')
+        for attempt in range(2):
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):self.refresh()
+            self.assertFalse(evidence.exists());self.assertFalse(self.root.exists());self.assertEqual(self.state().read_bytes(),state)
+        evidence.parent.mkdir(parents=True,exist_ok=True);evidence.write_bytes(original);self.restore_primary()
+        self.assertFalse(self.refresh()['reused'])
