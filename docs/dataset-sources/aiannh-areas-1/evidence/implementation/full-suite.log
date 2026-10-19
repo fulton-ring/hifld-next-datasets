@@ -1,0 +1,229 @@
+/workspace/hifld-worker-worktrees/8/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+....................................................Error in partitioned GeoParquet processing: Physical source column 'state_fips' does not match its derived partition value ('99' != '30').
+................FGB write failed for chunk 0 (initial export). Retrying with repaired geometries.
+..Error in partitioned GeoParquet processing: A GeoParquet row group exceeds the hard limit of 100 uncompressed bytes.
+.Error in partitioned GeoParquet processing: Physical source column 's2_parent_cell' does not match its semantic partition value ('original-parent-a' != 1224979098644774912).
+......Error in partitioned GeoParquet processing: Hive partition value '__HIVE_DEFAULT_PARTITION__' collides with the null sentinel '__HIVE_DEFAULT_PARTITION__'.
+.................progress
+..working
+fatal detail
+...........Error in chunked processing: stop before real I/O
+.Error in chunked processing: stop before real I/O
+.Error in chunked processing: stop before real I/O
+...............Error in partitioned GeoParquet processing: A single feature exceeds the GeoParquet row-group hard limit of 100 uncompressed bytes.
+...s.......Error in GeoParquet preflight: Configured derived_prefix_column 'DFIRM_ID' is absent from source properties.
+.Error in GeoParquet preflight: None of the configured force_admin_columns alternatives are present in source properties: 'STATEFP', 'COUNTYFP'.
+......Unable to resolve CRS EPSG code; attempting conversion to EPSG:4326.
+.Unable to retain a bounded GeoParquet compression sample; using a conservative uncompressed estimate.
+.....................................................2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - RUN_START - Started execution of run for "synthetic_verification".
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - ENGINE_EVENT - Executing steps in process (pid: 20296)
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - LOGS_CAPTURED - Started capturing logs in process (pid: 20296).
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify - STEP_START - Started execution of step "publish__verify".
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify - STEP_OUTPUT - Yielded output "result" of type "dict". (Type check passed).
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - publish__verify - Writing file at: /tmp/tmpp_bl20_5/dagster/storage/publish/verify/synthetic/points/vtest using PickledObjectFilesystemIOManager...
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify - ASSET_MATERIALIZATION - Materialized value publish verify.
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify - STEP_SUCCESS - Finished execution of step "publish__verify" in 163ms.
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify_baseline_comparison - STEP_START - Started execution of step "publish__verify_baseline_comparison".
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify_baseline_comparison - STEP_OUTPUT - Yielded output "result" of type "Any". (Type check passed).
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify_baseline_comparison - ASSET_CHECK_EVALUATION - Asset check 'baseline_comparison' on 'publish/verify' passed.
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__verify_baseline_comparison - STEP_SUCCESS - Finished execution of step "publish__verify_baseline_comparison" in 67ms.
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__promote - STEP_START - Started execution of step "publish__promote".
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__promote - STEP_OUTPUT - Yielded output "result" of type "dict". (Type check passed).
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - publish__promote - Writing file at: /tmp/tmpp_bl20_5/dagster/storage/publish/promote/synthetic/points/vtest using PickledObjectFilesystemIOManager...
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__promote - ASSET_MATERIALIZATION - Materialized value publish promote.
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__promote - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - publish__promote - STEP_SUCCESS - Finished execution of step "publish__promote" in 174ms.
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - ENGINE_EVENT - Finished steps in process (pid: 20296) in 521ms
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - d72f0b62-2818-4d2c-beed-11ed86bb43a8 - 20296 - RUN_SUCCESS - Finished execution of run for "synthetic_verification".
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - RUN_START - Started execution of run for "synthetic_verification".
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - ENGINE_EVENT - Executing steps in process (pid: 20296)
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - LOGS_CAPTURED - Started capturing logs in process (pid: 20296).
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - publish__verify - STEP_START - Started execution of step "publish__verify".
+2026-10-19 05:23:24 +0000 - dagster - ERROR - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - publish__verify - STEP_FAILURE - Execution of step "publish__verify" failed.
+
+dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op "publish__verify"::
+
+dagster_hifld.release_approval.ReleaseApprovalError: staged_object_bytes_changed:synthetic/points/vtest/geojson/source.geojson
+
+Stack Trace:
+  File "/workspace/hifld-worker-worktrees/8/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py", line 57, in op_execution_error_boundary
+    yield
+  File "/workspace/hifld-worker-worktrees/8/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py", line 394, in iterate_with_context
+    next_output = next(iterator)
+                  ^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py", line 135, in _coerce_op_compute_fn_to_iterator
+    result = invoke_compute_fn(
+             ^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py", line 115, in invoke_compute_fn
+    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/assets/publish.py", line 1368, in verify_release
+    require_release_approval(staging_storage, published_storage, pairs)
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/release_approval.py", line 141, in require_release_approval
+    raise ReleaseApprovalError(f"staged_object_bytes_changed:{name}")
+
+2026-10-19 05:23:24 +0000 - dagster - ERROR - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - publish__verify_baseline_comparison - Dependencies for step publish__verify_baseline_comparison failed: ['publish__verify']. Not executing.
+2026-10-19 05:23:24 +0000 - dagster - ERROR - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - publish__promote - Dependencies for step publish__promote failed: ['publish__verify'] were not executed: ['publish__verify_baseline_comparison']. Not executing.
+2026-10-19 05:23:24 +0000 - dagster - DEBUG - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - ENGINE_EVENT - Finished steps in process (pid: 20296) in 141ms
+2026-10-19 05:23:25 +0000 - dagster - ERROR - synthetic_verification - c1003cdc-1734-4c5a-bf02-e21bb28b7f21 - 20296 - RUN_FAILURE - Execution of run for "synthetic_verification" failed. Steps failed: ['publish__verify'].
+...........................E....................................................E.........tippecanoe could not infer maxzoom for layer; retrying with maximum zoom 14
+.....................2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - RUN_START - Started execution of run for "inventory_catalog_job".
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - ENGINE_EVENT - Executing steps in process (pid: 20296)
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - build_inventory_catalog - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager].
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - build_inventory_catalog - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager].
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - LOGS_CAPTURED - Started capturing logs in process (pid: 20296).
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - build_inventory_catalog - STEP_START - Started execution of step "build_inventory_catalog".
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - build_inventory_catalog - STEP_OUTPUT - Yielded output "result" of type "Dict[String,Int]". (Type check passed).
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - build_inventory_catalog - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - build_inventory_catalog - STEP_SUCCESS - Finished execution of step "build_inventory_catalog" in 4.91ms.
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - ENGINE_EVENT - Finished steps in process (pid: 20296) in 24ms
+2026-10-19 05:23:27 +0000 - dagster - DEBUG - inventory_catalog_job - 5af243f0-eed3-4ea2-a27a-cec8d77071b0 - 20296 - RUN_SUCCESS - Finished execution of run for "inventory_catalog_job".
+.......................................No dagster instance configuration file (dagster.yaml) found at /tmp/tmp7f_fmwn3/dagster. Defaulting to loading and storing all metadata with /tmp/tmp7f_fmwn3/dagster. If this is the desired behavior, create an empty dagster.yaml file in /tmp/tmp7f_fmwn3/dagster.
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - RUN_START - Started execution of run for "portolan_publish_job".
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - ENGINE_EVENT - Executing steps in process (pid: 20296)
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - publish_portolan - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager].
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - publish_portolan - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager].
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - LOGS_CAPTURED - Started capturing logs in process (pid: 20296).
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - publish_portolan - STEP_START - Started execution of step "publish_portolan".
+
+  Telemetry:
+
+  As an open-source project, we collect usage statistics to inform development priorities. For more
+  information, read https://docs.dagster.io/about/telemetry.
+
+  We will not see or store any data that is processed by your code.
+
+  To opt-out, add the following to $DAGSTER_HOME/dagster.yaml, creating that file if necessary:
+
+    telemetry:
+      enabled: false
+
+
+  Welcome to Dagster!
+
+  If you have any questions or would like to engage with the Dagster team, please join us on Slack
+  (https://bit.ly/39dvSsF).
+
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - publish_portolan - STEP_OUTPUT - Yielded output "result" of type "[String]". (Type check passed).
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - publish_portolan - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 05:23:28 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - publish_portolan - STEP_SUCCESS - Finished execution of step "publish_portolan" in 22ms.
+2026-10-19 05:23:29 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - ENGINE_EVENT - Finished steps in process (pid: 20296) in 188ms
+2026-10-19 05:23:29 +0000 - dagster - DEBUG - portolan_publish_job - 27c4cef9-5096-4bd5-8137-0f535e5093db - 20296 - RUN_SUCCESS - Finished execution of run for "portolan_publish_job".
+.......................................Skipping invalid legacy source dataset-a/file-a/v1.0.0/unknown: Legacy unknown/ does not contain one complete Shapefile: legacy.shp requires .shp, .shx, and .dbf sidecars.
+........................................Es.................................................
+======================================================================
+ERROR: test_hifld_user_code_has_pod_disruption_budget (test_iac_dagster.DagsterIaCTests.test_hifld_user_code_has_pod_disruption_budget)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/hifld-worker-worktrees/8/tests/test_iac_dagster.py", line 14, in test_hifld_user_code_has_pod_disruption_budget
+    ).read_text(encoding="utf-8")
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py", line 1027, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/workspace/hifld-worker-worktrees/hifld-next-iac/environments/prod/dagster.tf'
+
+======================================================================
+ERROR: test_local_e2e_converts_and_publishes_version_without_api (test_pipeline_update.PipelineUpdateTests.test_local_e2e_converts_and_publishes_version_without_api)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 2832, in _create_and_upload_pmtiles
+    returncode, stderr_tail = _run_streaming_command(
+                              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 2749, in _run_streaming_command
+    process = subprocess.Popen(
+              ^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1955, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'tippecanoe'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/workspace/hifld-worker-worktrees/8/tests/test_pipeline_update.py", line 298, in test_local_e2e_converts_and_publishes_version_without_api
+    result = publish_assets_module.run_local_version_pipeline(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/assets/publish.py", line 1298, in run_local_version_pipeline
+    outputs.extend(_write_and_publish_pmtiles(staging_storage, dataset_slug, file_slug, version))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/assets/publish.py", line 1081, in _write_and_publish_pmtiles
+    result = asyncio.run(
+             ^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 3353, in process_layer_chunked
+    pmtiles_path = await _create_and_upload_pmtiles(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 2855, in _create_and_upload_pmtiles
+    raise PMTilesGenerationError(
+dagster_hifld.conversion.PMTilesGenerationError: tippecanoe executable not found for layer 'file-a'; command=tippecanoe -zg --read-parallel --drop-densest-as-needed --extend-zooms-if-still-dropping --force --maximum-zoom=14 --temporary-directory=/tmp/tmpci7la00h/pmtiles -o /tmp/tmpci7la00h/pmtiles/file-a.pmtiles /tmp/tmpci7la00h/pmtiles/file-a-chunk-0.fgb; 1 input(s), 1448 bytes; elapsed=0.0s
+
+======================================================================
+ERROR: test_smoke_helper_verifies_storage_and_metadata_without_api (test_real_gcs_e2e.GcsE2EHelperTests.test_smoke_helper_verifies_storage_and_metadata_without_api)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 2832, in _create_and_upload_pmtiles
+    returncode, stderr_tail = _run_streaming_command(
+                              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 2749, in _run_streaming_command
+    process = subprocess.Popen(
+              ^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1955, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'tippecanoe'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/workspace/hifld-worker-worktrees/8/tests/test_real_gcs_e2e.py", line 72, in test_smoke_helper_verifies_storage_and_metadata_without_api
+    result = run_real_gcs_e2e_case(RealGcsE2ECase("dataset", "file"))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/real_gcs_e2e.py", line 68, in run_real_gcs_e2e_case
+    result = run_local_version_pipeline(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/assets/publish.py", line 1298, in run_local_version_pipeline
+    outputs.extend(_write_and_publish_pmtiles(staging_storage, dataset_slug, file_slug, version))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/assets/publish.py", line 1081, in _write_and_publish_pmtiles
+    result = asyncio.run(
+             ^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 3353, in process_layer_chunked
+    pmtiles_path = await _create_and_upload_pmtiles(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/8/src/dagster_hifld/conversion.py", line 2855, in _create_and_upload_pmtiles
+    raise PMTilesGenerationError(
+dagster_hifld.conversion.PMTilesGenerationError: tippecanoe executable not found for layer 'file'; command=tippecanoe -zg --read-parallel --drop-densest-as-needed --extend-zooms-if-still-dropping --force --maximum-zoom=14 --temporary-directory=/tmp/tmph5hv3jjd/pmtiles -o /tmp/tmph5hv3jjd/pmtiles/file.pmtiles /tmp/tmph5hv3jjd/pmtiles/file-chunk-0.fgb; 1 input(s), 1392 bytes; elapsed=0.0s
+
+----------------------------------------------------------------------
+Ran 476 tests in 80.748s
+
+FAILED (errors=3, skipped=2)

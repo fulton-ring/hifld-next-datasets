@@ -1,7 +1,7 @@
 {
   "dataset_id": "aiannh-areas-1",
   "issue": 8,
-  "outcome": "blocked",
+  "outcome": "working_draft_implemented_release_blocked",
   "requested_status": [
     "Blocked",
     "Potential breaking change",
@@ -258,7 +258,7 @@
     "Original DHS XLSX/archive exact match remains unavailable: current DataLumos HTTP403 challenge",
     "Published candidate is pinned and fully compared but baseline acceptance and all-column contract remain maintainer decisions",
     "Legacy704-area combined M grain differs from raw2025 867 R/T components; source2023 and2026 area-code memberships also differ. Maintainer must choose fixed2023 vs2025 vs annual successors and explicit grain/ID/schema/CRS/geometry-invalid policy",
-    "Shared #417 verifier/promotion implementation independent of this dataset acceptance; no implementation acceptance asserted"
+    "Release gate only: independent baseline/grain/full-column-ID-contract and exact staged release inventory acceptance required. Draft code/local tests proceed without acceptance. No self-approval."
   ],
   "runtime": {
     "port": 3408,
@@ -276,5 +276,38 @@
     "native_crs": "EPSG:3857",
     "geometry_invalid": 38,
     "lineage": "All704 area codes, GNIS identifier sets and summed land/water areas match2025 source groups. Strong2025 grouped-lineage signal only; source_manifest repeats2023 download in inventory text and supplies no actual acquisition provenance. No exact geometry/source relationship established."
+  },
+  "implementation": {
+    "scope": "local-only faithful inventory-linked TIGER2023 source candidate; release unapproved",
+    "module": "src/dagster_hifld/sources/aiannh.py",
+    "dagster_asset": "ingest/aiannh-areas-1/aiannh-areas-1",
+    "shared_verifier_dependency": "62977c91ebaf2740f654f3be7cc98490b607b224 / PR421",
+    "source_selection": {
+      "vintage": 2023,
+      "url": "https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip",
+      "sha256": "4155f58dfefcc40cfe61d741f760f882ebe6c6008537c0c7bc58075871af2f40",
+      "bytes": 9086993,
+      "successors": "2025/2026 explicit quarantine; no automatic replacement"
+    },
+    "candidate_identity": "Deterministic source SHA256 plus exact full pipeline implementation SHA256; immutable conditional staging and idempotent byte checks",
+    "raw_preservation": "Original full ZIP under raw/ plus all7original sidecar/member bytes; no regenerated replacement",
+    "native_geometry": "EPSG:4269;561Polygon and301MultiPolygon; no projection/repair/dissolve/simplification",
+    "formats": {
+      "geopackage": "Source-specific Unknown-geometry layer retains mixed native per-feature types; all attrs/IDs preserved; internal fid is storage index only",
+      "geoparquet": "Existing shared streaming converter; all source attrs/IDs and mixed native geometry retained; generated declared covering bbox separately validated as storage metadata",
+      "shapefile_zip": "Unsupported regenerated derivative: all16physical DBF type/width declarations change and producer ISOXML sidecars omitted; original producer ZIP preserved asraw",
+      "pmtiles": "Unsupported visualization derivative; no source-coordinate precision/simplification/ID fidelity mapping approved"
+    },
+    "cadence": {
+      "job": "aiannh_source_integrity_refresh",
+      "schedule": "aiannh_tiger2023_monthly_integrity_refresh",
+      "cron": "0 3 1 * *",
+      "timezone": "America/New_York",
+      "default_status": "STOPPED",
+      "scope": "Fixed2023 integrity acquisition only; no automatic annual substitution, conversions or publish; local draft resource guard"
+    },
+    "checks": "Pinned bytes/size,7member names and ZIP CRC, DBF/SHP count, full862 row/physicalschema/ID/value/geometry/coverage hashes; source fidelity via shared verifier; invalid inputs and failed derivatives quarantined",
+    "reproduce": "scripts/verification/aiannh_draft_integration.py",
+    "approved": false
   }
 }

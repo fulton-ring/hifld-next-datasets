@@ -1,0 +1,121 @@
+{
+  "source_archive_sha256": "4155f58dfefcc40cfe61d741f760f882ebe6c6008537c0c7bc58075871af2f40",
+  "regenerated_zip_sha256": "08f1532a1178f35f020b1ebaecd3c340b6e4a590809edbe2dc22e59cc6b9d30a",
+  "quarantined_path": "/workspace/work/hifld-coordinator/aiannh-8/regenerated-shapefile-quarantine/aiannh-areas-1.zip",
+  "feature_count": 862,
+  "crs": "EPSG:4269",
+  "physical_schema": {
+    "properties": {
+      "AIANNHCE": "str:80",
+      "AIANNHNS": "str:80",
+      "GEOID": "str:80",
+      "GEOIDFQ": "str:80",
+      "NAME": "str:80",
+      "NAMELSAD": "str:80",
+      "LSAD": "str:80",
+      "CLASSFP": "str:80",
+      "COMPTYP": "str:80",
+      "AIANNHR": "str:80",
+      "MTFCC": "str:80",
+      "FUNCSTAT": "str:80",
+      "ALAND": "int:18",
+      "AWATER": "int:18",
+      "INTPTLAT": "str:80",
+      "INTPTLON": "str:80"
+    },
+    "geometry": "Polygon"
+  },
+  "source_physical_schema": {
+    "AIANNHCE": "str:4",
+    "AIANNHNS": "str:8",
+    "GEOID": "str:5",
+    "GEOIDFQ": "str:14",
+    "NAME": "str:100",
+    "NAMELSAD": "str:100",
+    "LSAD": "str:2",
+    "CLASSFP": "str:2",
+    "COMPTYP": "str:1",
+    "AIANNHR": "str:1",
+    "MTFCC": "str:5",
+    "FUNCSTAT": "str:1",
+    "ALAND": "int:14",
+    "AWATER": "int:14",
+    "INTPTLAT": "str:11",
+    "INTPTLON": "str:12"
+  },
+  "unapproved_physical_type_width_changes": {
+    "AIANNHCE": {
+      "source": "str:4",
+      "regenerated": "str:80"
+    },
+    "AIANNHNS": {
+      "source": "str:8",
+      "regenerated": "str:80"
+    },
+    "GEOID": {
+      "source": "str:5",
+      "regenerated": "str:80"
+    },
+    "GEOIDFQ": {
+      "source": "str:14",
+      "regenerated": "str:80"
+    },
+    "NAME": {
+      "source": "str:100",
+      "regenerated": "str:80"
+    },
+    "NAMELSAD": {
+      "source": "str:100",
+      "regenerated": "str:80"
+    },
+    "LSAD": {
+      "source": "str:2",
+      "regenerated": "str:80"
+    },
+    "CLASSFP": {
+      "source": "str:2",
+      "regenerated": "str:80"
+    },
+    "COMPTYP": {
+      "source": "str:1",
+      "regenerated": "str:80"
+    },
+    "AIANNHR": {
+      "source": "str:1",
+      "regenerated": "str:80"
+    },
+    "MTFCC": {
+      "source": "str:5",
+      "regenerated": "str:80"
+    },
+    "FUNCSTAT": {
+      "source": "str:1",
+      "regenerated": "str:80"
+    },
+    "ALAND": {
+      "source": "int:14",
+      "regenerated": "int:18"
+    },
+    "AWATER": {
+      "source": "int:14",
+      "regenerated": "int:18"
+    },
+    "INTPTLAT": {
+      "source": "str:11",
+      "regenerated": "str:80"
+    },
+    "INTPTLON": {
+      "source": "str:12",
+      "regenerated": "str:80"
+    }
+  },
+  "regenerated_members": [
+    "aiannh-areas-1.cpg",
+    "aiannh-areas-1.dbf",
+    "aiannh-areas-1.prj",
+    "aiannh-areas-1.shp",
+    "aiannh-areas-1.shx"
+  ],
+  "producer_iso_sidecars_preserved_in_derivative": false,
+  "outcome": "regenerated_derivative_excluded; original producer ZIP and all7members remain authoritative raw capture; no publication approved"
+}

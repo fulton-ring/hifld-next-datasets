@@ -1,0 +1,46 @@
+{
+  "implementation_code_commit": "3aed282bde7c5ec4c2ff33a01d2f21c6159e4a32",
+  "pipeline_source_module_sha256": "5754599c4331cfbcc588c9b709d3923d0696c4e7b9e37a3401f7cc3b5708456d",
+  "targeted_tests": {
+    "count": 11,
+    "status": "pass",
+    "code_commit": "3aed282",
+    "log": "source-tests.log"
+  },
+  "real_dagster_integration": {
+    "status": "draft_source_and_lossless_format_fidelity_pass_release_blocked",
+    "all_source_rows": 862,
+    "all_format_differences": {
+      "geopackage": {
+        "added": 0,
+        "attributes": 0,
+        "coverage_buckets": 0,
+        "geometry": 0,
+        "removed": 0
+      },
+      "geoparquet": {
+        "added": 0,
+        "attributes": 0,
+        "coverage_buckets": 0,
+        "geometry": 0,
+        "removed": 0
+      }
+    },
+    "report": "execution.json"
+  },
+  "full_suite": {
+    "code_commit": "bc929f6402cd2460b3f2a6e77e401c504feba9e7",
+    "tests": 476,
+    "errors": 3,
+    "skipped": 2,
+    "status": "not_passed",
+    "errors_detail": [
+      "missing sibling hifld-next-iac/environments/prod/dagster.tf",
+      "tippecanoe executable missing: local pipeline E2E test",
+      "tippecanoe executable missing: storage smoke helper test"
+    ],
+    "log": "full-suite.log"
+  },
+  "ci_status": "not_claimed",
+  "release_approved": false
+}

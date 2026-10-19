@@ -1,0 +1,8 @@
+{
+  "evidence/implementation/execution.json": "56ab7017dddde1f09136ac40cc1f82eb656971918b72d2d5fef14a043d3acd15",
+  "evidence/implementation/dagster-local.log": "f84b4683ef793a10c06bc293ba6eb035945b5b820d86d5d489106f004923db91",
+  "evidence/implementation/regenerated-shapefile.json": "f5ca33cb73024f383f0cdc3bc8021d1e8c1af537132863ee6fdb49d21cca41db",
+  "evidence/implementation/validation-summary.json": "ac664d41355aef071140486606b3f2b6dcaabb2b27ec481f1b657db09d81d36d",
+  "evidence/implementation/source-tests.log": "88ea2e2934c49354cc6b3eda004264542a03e336aa0acd9a942dd07759d8cc53",
+  "evidence/implementation/full-suite.log": "e939499eac7026dde1521eb7fc4a00ad52d58378b5e32e411b78d54de7edb34a"
+}

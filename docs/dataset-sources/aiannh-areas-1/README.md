@@ -1,4 +1,36 @@
-# AIANNH Areas: research progressed; acceptance decision required
+# AIANNH Areas: working draft pipeline implemented; release unapproved
+
+## Current implementation scope — 2026-10-19
+
+The user authorized faithful draft implementation while baseline/grain/contract acceptance remains pending. This supersedes the earlier research-only scope below. Existing PR #426 is a **draft**, stacked on shared verifier PR #421 (`62977c91ebaf2740f654f3be7cc98490b607b224`). Worker `/root/aiannh_8` continues the existing issue #8 branch.
+
+`src/dagster_hifld/sources/aiannh.py` implements the exact inventory-linked **TIGER2023** source. Default anonymous HTTP requires complete HTTP200, bounded size, exact9,086,993 bytes and reviewed SHA256. It validates the exact7archive members/CRC, DBF/SHP count, all862rows, original physical schema, complete attributes/IDs, native geometry/coverage and independent retained reference digests.2025/2026, changed bytes, incomplete/error payloads, schema/type/ID/geometry/coverage drift and failed derivative checks go to a separate quarantine namespace. Draft ingestion rejects remote and published resources before network or writes.
+
+The original ZIP and every sidecar/member remain unchanged under `raw/`. Sorted typed source records preserve every identifier, leading zero, integer, string and native EPSG:4269 coordinate. A source-specific GeoPackage keeps the original561Polygon/301MultiPolygon mix: the generic writer had changed all features to MultiPolygon. GeoPackage's internal fid is a storage primary key and never becomes a source attribute. Storage-only `gpkg_contents.last_change` is fixed to the source release date for deterministic bytes; original producer metadata remains raw. Existing shared GeoParquet conversion preserves all source fields/types and original mixed geometry; its declared covering `bbox` is separately retained and checked for every record. No combined M polygons, column aliases, surrogate source IDs, projection or simplification are introduced.
+
+Regenerated Shapefile is explicitly excluded through the shared format hook. A real local regeneration probe changes **all16 physical DBF field type/width declarations** (for example `GEOID str:5→str:80`, `NAME str:100→str:80`, `ALAND int:14→int:18`) and omits both producer ISO XML sidecars. The complete generated artifact is retained outside the candidate in `/workspace/work/hifld-coordinator/aiannh-8/regenerated-shapefile-quarantine/`; its report is committed in `evidence/implementation/regenerated-shapefile.json`. This does not assert current observed text-value truncation: the physical schema differs and the narrower NAME declaration changes future representable values. Original producer Shapefile ZIP stays intact. PMTiles is an unsupported visualization derivative pending a separate fidelity/precision decision.
+
+The registered `aiannh_source_integrity_refresh` job selects only this ingest. Its `aiannh_tiger2023_monthly_integrity_refresh` schedule is **STOPPED** by default, with cron `0 3 1 * *` in `America/New_York` (03:00 on the first day of each month). It retries fixed2023 integrity into isolated local draft staging. It schedules no conversion, annual source replacement or publication. Operators must explicitly configure isolated local storage and activate the schedule; this code does not activate it or approve deployment/release.
+
+Reproduce actual local materialization from preserved producer bytes without funding any model/API worker:
+
+```bash
+uv run --frozen python scripts/verification/aiannh_draft_integration.py \
+  --archive /workspace/work/hifld-coordinator/aiannh-8/zip2023.body \
+  --workdir /workspace/work/hifld-coordinator/aiannh-8/local-replay
+AIANNH_TEST_ARCHIVE=/workspace/work/hifld-coordinator/aiannh-8/zip2023.body \
+  uv run --frozen python -m unittest discover -s tests -p test_aiannh_source.py
+```
+
+The integration script uses durable isolated Dagster state, explicit registered publish partitions and local staging/published resources, then decodes and verifies every862feature in each generated supported format with the shared full-row comparator. It creates **no Census release approval**. Missing approval fails promotion without changing any staged/published bytes; an injected failed quality check also remains false and publication stays denied. Because the missing registry is checked first, that real-data second denial does not establish a quality-specific approval scenario; shared verifier tests cover quality-specific failure using synthetic test-only acceptance.
+
+The concrete remaining decisions block **release**, not ongoing draft implementation: accept/reject the pinned legacy published baseline; select2023 components vs2025 legacy grouped lineage vs separately versioned successors; approve the complete source/legacy column and ID mapping, M versus R/T feature grain, geometry/CRS/precision/invalid policy and exact release inventory. DataLumos crosswalk/archive remains an independent research gap. No contracts/baselines have been approved and no production data, issue closure or GitHub merge is authorized by these tests.
+
+Exact implementation validation (`3aed282`, with all pipeline source hashes recorded in `evidence/implementation/execution.json`): all862source features passed native GeoPackage and GeoParquet comparison with **zero added, removed, attribute, geometry or coverage differences**. Raw SHA256/sidecars and both failure-preservation scenarios passed.11 targeted tests passed, including source/CRC/ID/type/coverage/geometry/incomplete-response quarantine, exact rerun, local-only resource guard and inactive schedule evaluation. The full suite was attempted at preceding implementation commit `bc929f6`:476tests,3errors,2skipped. Errors were missing sibling IaC and two missing `tippecanoe` executable failures. No full-suite or CI pass is claimed. Logs and exact run IDs are committed.
+
+The physical Shapefile probe can be repeated separately with `scripts/verification/aiannh_shapefile_probe.py --geopackage <native-candidate.gpkg> --workdir <separate-quarantine-directory>`; it never publishes the derivative.
+
+## Research and baseline comparison record
 
 ## Network retry and complete published comparison — 2026-10-19
 
