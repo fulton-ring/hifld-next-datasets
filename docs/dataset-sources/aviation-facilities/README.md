@@ -89,3 +89,13 @@ ran505tests:503passed,1production-write test skipped,1error for missing sibling
 `hifld-next-iac/environments/prod/dagster.tf`. Subsequent precision/format changes
 are covered by the focused source and registration tests and final real graph.
 No CI or full-suite success is inferred.
+
+Parent FAA10 canonical-staging repair `ac2ec4c` was deliberately merged at
+`2b44933b045b3c6ce44d76b90b594d58d8a9c93d`, preserving the aviation function,
+helper and both stopped registrations.38 focused FAA/aviation tests pass; both
+normal registration tests also pass. A fresh real19,427-row source20 ingest and
+identical replay on that merge verify all data/physical types/points, actual
+clean commit provenance, shared17-input manifest structure and normal version
+discovery without data/manifest copies. See `evidence/combined-parent-ingest.json`.
+Source20 extraction/schema/output code is unchanged from the full graph recorded
+in `evidence/local-materialization.json`; the changed parent adapter owns source10.

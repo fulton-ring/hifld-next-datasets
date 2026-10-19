@@ -154,8 +154,16 @@
       "known_error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf",
       "log": "evidence/full-suite-be93.log"
     },
-    "native_review": "pending_exact_final_head_and_parent_FAA10_integration",
+    "native_review": "pending_exact_final_head",
     "shared_release_provenance_structurally_valid_without_approval": true,
-    "normal_ingest_discoverable_without_manual_copies": true
+    "normal_ingest_discoverable_without_manual_copies": true,
+    "combined_parent_validation": {
+      "head": "2b44933b045b3c6ce44d76b90b594d58d8a9c93d",
+      "parent": "ac2ec4c",
+      "focused_tests": 38,
+      "normal_registration_tests": 2,
+      "actual_19427_row_ingest": "evidence/combined-parent-ingest.json",
+      "source20_changed_by_parent_merge": false
+    }
   }
 }
