@@ -35,6 +35,7 @@ report={'classification':'Actual complete local draft, NOT real source/baseline/
 def record(label,result):
     errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
     report['runs'].append({'label':label,'run_id':result.run_id,'success':result.success,'errors':errors})
+    (runtime/'execution-progress.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
     return errors
 with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',side_effect=AssertionError('Forbidden generic regeneration of native prebuilt GeoParquet')) as converter,DagsterInstance.get() as instance:
     for label in ['source','refresh']:
@@ -97,6 +98,6 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
     report.update(version=version,discoverable_without_runner_copies=True,original_capture_objects_unchanged=True,source_owned_objects_unchanged=True,prior_accepted_fixture_unchanged=True,
         full_374_rows_ids_attrs_types_native_wkb_and_coverage_exact=True,native_points_preserved=True,all_eighteen_input_provenance_records_retained=True,generic_converter_calls=converter.call_count,
         terminal_extra_columns_unapproved=sorted(set(terminal.column_names)-set(c.FIELDS)),source_objects=source_pins,
-        quality_manifest=json.loads(saved),source_manifest=manifest,actual_source_OBJECTID_count=len(set(table['OBJECTID'].to_pylist())))
+        quality_manifest=json.loads(saved),source_manifest=manifest,actual_source_STAT_OBJID_count=len(set(table['STAT_OBJID'].to_pylist())))
 (runtime/'materialization.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
 print(json.dumps({'runs':[(x['label'],x['run_id'],x['success']) for x in report['runs']],'prior_unchanged':True}))
