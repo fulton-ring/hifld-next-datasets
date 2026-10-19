@@ -105,6 +105,11 @@ class AquifersTests(unittest.TestCase):
                 other=source.stage_aquifers_candidate(storage,**kwargs)
             self.assertNotEqual(first['version'],other['version'])
             self.assertEqual(before,{str(p.relative_to(prefix)):source.sha(p.read_bytes()) for p in prefix.rglob('*') if p.is_file()})
+            for format_name in ['geopackage','parquet']:
+                artifact=prefix/'metadata'/f'{format_name}_fidelity'
+                comparison=json.loads(artifact.joinpath('baseline_comparison.json').read_text())
+                self.assertEqual(comparison['status'],'fail')
+                self.assertEqual(source.sha(artifact.joinpath(comparison['sidecar']['path']).read_bytes()),comparison['sidecar']['sha256'])
             manifest=json.loads(prefix.joinpath('metadata/source_manifest.json').read_text())
             source.validate_release_provenance(manifest)
             marker=prefix/'metadata/aquifers_candidate_ready.json';ready=json.loads(marker.read_text())

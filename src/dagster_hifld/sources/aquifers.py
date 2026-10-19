@@ -254,7 +254,7 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
             ready_key = f'{prefix}/metadata/aquifers_candidate_ready.json'
             if storage.object_exists(ready_key):
                 ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/aquifers_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'raw/members/{name}' for name in MEMBERS}
+                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/aquifers_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json', 'metadata/geopackage_fidelity/baseline_comparison.json', 'metadata/geopackage_fidelity/baseline_differences.jsonl', 'metadata/parquet_fidelity/baseline_comparison.json', 'metadata/parquet_fidelity/baseline_differences.jsonl'} | {f'raw/members/{name}' for name in MEMBERS}
                 if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
                     raise AquifersQuarantineError('existing_candidate_inventory_conflict')
                 if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
@@ -321,7 +321,11 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
                 'metadata/candidate.records.jsonl': records, 'metadata/source_manifest.json': encode(manifest),
                 'metadata/processing_identity.json': encode(identity), 'metadata/aquifers_source_audit.json': encode(audit),
                 'metadata/proposed_source_contract.json': encode(PROPOSAL),
-                'metadata/geopackage_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': fidelity, 'known_invalid_native_geometry_release_blocked': True}), 'metadata/parquet_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': parquet_fidelity, 'known_invalid_native_geometry_release_blocked': True}),
+                'metadata/geopackage_fidelity/baseline_comparison.json': (directory / 'comparison/baseline_comparison.json').read_bytes(),
+                'metadata/geopackage_fidelity/baseline_differences.jsonl': (directory / 'comparison/baseline_differences.jsonl').read_bytes(),
+                'metadata/parquet_fidelity/baseline_comparison.json': (directory / 'parquet-comparison/baseline_comparison.json').read_bytes(),
+                'metadata/parquet_fidelity/baseline_differences.jsonl': (directory / 'parquet-comparison/baseline_differences.jsonl').read_bytes(),
+                'metadata/geopackage_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier_artifact_prefix': 'metadata/geopackage_fidelity/', 'shared_verifier': fidelity, 'known_invalid_native_geometry_release_blocked': True}), 'metadata/parquet_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier_artifact_prefix': 'metadata/parquet_fidelity/', 'shared_verifier': parquet_fidelity, 'known_invalid_native_geometry_release_blocked': True}),
                 'metadata/baseline_comparison.json': encode({'schema_version':1, 'status':'blocked', 'approved':False,
                     'reason_codes':['unapproved_baseline_and_source_published_id_schema_crs_mapping'], 'acceptance':'not_established'})}
             payloads.update({f'raw/members/{name}': value for name,value in members.items()})
