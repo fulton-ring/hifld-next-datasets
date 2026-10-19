@@ -104,3 +104,45 @@ class CollegeOriginalCaptureTests(unittest.TestCase):
                 with self.assertRaises(BlockingIOError):fcntl.flock(other,fcntl.LOCK_EX|fcntl.LOCK_NB)
             return original(*args,**kwargs)
         with patch.object(c,'reconcile_cache',checking):self.assertTrue(self.refresh()['reused'])
+    def bundle_path(self):
+        identity=c.processing_identity()
+        return self.path/f'_source-provenance/{c.SLUG}/{c.digest(c.encode(identity))}/bundle.json'
+    def test_existing_cache_missing_anchor_fails_without_recreation_then_rebuilds(self):
+        bundle=self.bundle_path();bundle.unlink()
+        before={str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()}
+        self.reject('missing_original_provenance_bundle')
+        self.assertFalse(bundle.exists())
+        rejected=next((self.path/'_quarantine'/c.SLUG).glob('invalid-candidate-*'))
+        self.assertEqual(before,{str(p.relative_to(rejected)):p.read_bytes()for p in rejected.rglob('*')if p.is_file()})
+        self.assertFalse(self.refresh()['reused'])
+        self.assertTrue(bundle.exists())
+        self.assertTrue(self.refresh()['reused'])
+    def test_malformed_external_anchor_preserved_with_undiscoverable_candidate(self):
+        bundle=self.bundle_path();body=b'{"unrecognized":"anchor"}\n';bundle.write_bytes(body)
+        self.reject('original_provenance_bundle_roster_drift')
+        self.assertFalse(bundle.exists())
+        preserved=next((self.path/'_quarantine'/c.SLUG).glob('invalid-provenance-*/bundle.json'))
+        self.assertEqual(preserved.read_bytes(),body)
+        self.assertFalse(self.refresh()['reused'])
+        self.assertTrue(self.refresh()['reused'])
+    def test_no_external_anchor_created_before_native_construction_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=c.StagingStorageResource(use_local=True,local_dir=tmp)
+            with patch.object(c,'reconcile_outputs',side_effect=c.CollegeQuarantineError('test_only_native_construction_rejected')):
+                with self.assertRaisesRegex(c.CollegeQuarantineError,'test_only_native_construction_rejected'):
+                    c.stage_colleges(storage,capture_dir=CAPTURE)
+            self.assertFalse(list(Path(tmp).glob('_source-provenance/**/bundle.json')))
+            self.assertFalse(list(Path(tmp).glob(f'{c.SLUG}/{c.SLUG}/*')))
+    def test_candidate_and_external_anchor_coforged_unknown_commit_rejected(self):
+        name='metadata/source_manifest.json';bundle=self.bundle_path();j=json.loads((self.root/name).read_text());j['code_commit']='0'*40
+        (self.root/name).write_bytes(c.encode(j));self.repin(name)
+        anchor=json.loads(bundle.read_text());anchor['manifest']=j;bundle.write_bytes(c.encode(anchor))
+        self.reject('construction')
+        self.assertFalse(bundle.exists())
+    def test_candidate_and_external_anchor_coforged_existing_wrong_code_rejected(self):
+        name='metadata/source_manifest.json';bundle=self.bundle_path();j=json.loads((self.root/name).read_text())
+        j['code_commit']='4800e4f5df550bfadd3631585268ce68a0fa25d9'
+        (self.root/name).write_bytes(c.encode(j));self.repin(name)
+        anchor=json.loads(bundle.read_text());anchor['manifest']=j;bundle.write_bytes(c.encode(anchor))
+        self.reject('construction')
+        self.assertFalse(bundle.exists())

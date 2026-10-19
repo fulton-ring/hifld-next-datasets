@@ -33,6 +33,7 @@ import pyogrio
 import pyproj
 import shapely
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -358,7 +359,7 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
 
 
 
-def original_provenance_bundle(storage,fingerprint,captures,identity,manifest):
+def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
     """Pin first construction provenance outside the candidate's self-pinned cache.
 
     A docs-only later commit may reuse identical processing code. Its new fetch
@@ -367,6 +368,9 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest):
     """
     key=f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'
     if not storage.object_exists(key):
+        if not create: raise CollegeQuarantineError('missing_original_provenance_bundle')
+        validate_release_provenance(manifest)
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
         bundle={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt} for name,(body,receipt) in captures.items()}}
         immutable(storage,key,encode(bundle))
     bundle=strict_json(storage.read_key(key))
@@ -382,6 +386,7 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest):
         if name!='code_commit' and bundle['manifest'].get(name)!=value:
             raise CollegeQuarantineError('original_provenance_bundle_manifest_drift')
     validate_release_provenance(bundle['manifest'])
+    validate_construction_code_identity(Path(__file__).parents[3],bundle['manifest']['code_commit'],identity['files'])
     return original,bundle['manifest']
 
 
@@ -400,13 +405,35 @@ def stage_colleges(storage,*,capture_dir=None):
         locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
         with lockpath.open('a+b') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)
-            captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+            binding=base/f'_source-provenance/{SLUG}/{fingerprint}'
             if root.exists():
-                try: reconcile_cache(storage,prefix,table,audit,captures,identity)
+                invalid_bundle=False
+                try:
+                    try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                    except (ValueError,TypeError,KeyError,OSError,RuntimeError):
+                        invalid_bundle=True
+                        raise
+                    reconcile_cache(storage,prefix,table,audit,captures,identity)
                 except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error) as exc:
-                    target=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
+                    incident=uuid4().hex
+                    target=base/'_quarantine'/SLUG/('invalid-candidate-'+incident)
+                    target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
+                    # A bad external anchor is evidence, not a basis for the
+                    # next candidate. Preserve it intact beside the detached
+                    # version while keeping genuine valid original bindings.
+                    if invalid_bundle and binding.exists():
+                        os.rename(binding,target.parent/('invalid-provenance-'+incident))
                     raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc
                 return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':6438,'reused':True}
+            # A previous valid construction may survive a rejected candidate.
+            # Read its binding but never create an anchor until this private
+            # reconstruction has passed the full native output verification.
+            if binding.exists():
+                try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                except (ValueError,TypeError,KeyError,OSError,RuntimeError) as exc:
+                    target=base/'_quarantine'/SLUG/('invalid-provenance-'+uuid4().hex)
+                    target.parent.mkdir(parents=True,exist_ok=True);os.rename(binding,target)
+                    raise CollegeQuarantineError('invalid_original_provenance_preserved:'+str(target)+':'+str(exc)) from exc
             build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='candidate-',dir=build) as tmp:
                 temp=Path(tmp)
@@ -417,7 +444,11 @@ def stage_colleges(storage,*,capture_dir=None):
                 for name,value in source_payloads(captures,identity,table,audit,manifest).items():
                     (temp/name).parent.mkdir(parents=True,exist_ok=True);(temp/name).write_bytes(value)
                 ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p) for p in temp.rglob('*') if p.is_file()}}
-                (temp/READY).write_bytes(encode(ready));root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+                (temp/READY).write_bytes(encode(ready))
+                # Only a fully verified private construction can establish a
+                # first anchor. Existing caches can never recreate a lost one.
+                original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
+                root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':6438,'reused':False}
     except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError) as exc:
         where=quarantine(storage,captures,str(exc))
