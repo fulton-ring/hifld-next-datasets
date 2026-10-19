@@ -23,7 +23,7 @@ from dagster_hifld.assets.publish import (
     publish_geopackage, publish_geoparquet, publish_pmtiles, publish_shapefile_zip,
     publish_version, verify_release,
 )
-from dagster_hifld.checks import hifld_asset_checks
+from dagster_hifld.definitions import defs as registered_defs
 from dagster_hifld.noaa_extract import stage_noaa_candidate
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.release_approval import validate_release_provenance
@@ -72,6 +72,13 @@ def real_receipt(directory):
 
 
 class ContiguousDraftTests(unittest.TestCase):
+    def test_normal_repository_registers_exactly_one_source_specific_contiguous_asset(self):
+        key = source_module.noaa_24nm_contiguous_zone.key
+        registered = [asset for asset in registered_defs.assets if key in asset.keys]
+        self.assertEqual(len(registered), 1)
+        self.assertIs(registered[0], source_module.noaa_24nm_contiguous_zone)
+        self.assertIn(key, registered_defs.resolve_asset_graph().get_all_asset_keys())
+
     def test_receipt_rejects_wrong_identity_and_mutation(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'receipt'
@@ -113,7 +120,9 @@ class ContiguousDraftTests(unittest.TestCase):
             sentinel = p / 'published/previous-accepted-release/sentinel';sentinel.parent.mkdir(parents=True);sentinel.write_bytes(b'previous release unchanged')
             before = {str(f.relative_to(p / 'published')): hashlib.sha256(f.read_bytes()).hexdigest() for f in (p / 'published').rglob('*') if f.is_file()}
             formats = [publish_catalog, publish_geopackage, publish_geoparquet, publish_pmtiles, publish_shapefile_zip]
-            defs = Definitions(assets=[source_module.noaa_24nm_contiguous_zone, *formats, verify_release, publish_version], asset_checks=hifld_asset_checks,
+            # Execute selections from the actual registered repository asset collection.
+            # A missing import/list registration must fail this integration too.
+            defs = Definitions(assets=registered_defs.assets, asset_checks=registered_defs.asset_checks,
                 resources={'staging_storage': staging, 'published_storage': published}, jobs=[
                     define_asset_job('source', selection=AssetSelection.assets(source_module.noaa_24nm_contiguous_zone)),
                     define_asset_job('formats', selection=AssetSelection.assets(*formats)),
@@ -193,7 +202,8 @@ class ContiguousDraftTests(unittest.TestCase):
                 self.assertTrue((version_dir / 'metadata/noaa_extraction.json').is_file())
                 result = {'classification': 'working local draft; ' + ('complete fresh live source capture' if os.environ.get('HIFLD_NOAA_CONTIGUOUS_LIVE_RECEIPT') else 'complete real composite observed captures') + '; no dataset acceptance',
                     'source_code_commit': tags['hifld/source_code_commit'],
-                    'module': source_module.__file__, 'source_run_id': first.run_id, 'idempotent_run_id': second.run_id,
+                    'module': source_module.__file__, 'asset_collection': 'dagster_hifld.definitions.defs.assets',
+                    'normal_registered_asset_count': len(registered_defs.resolve_asset_graph().get_all_asset_keys()), 'source_run_id': first.run_id, 'idempotent_run_id': second.run_id,
                     'formats_run_id': formats_result.run_id, 'failed_release_run_id': failure.run_id,
                     'source_rows': table.num_rows, 'terminal_rows': len(terminal_rows), 'terminal_UNILATERAL_type': str(terminal_type),
                     'partition': partition, 'candidate_sha256': report['candidate_sha256'],

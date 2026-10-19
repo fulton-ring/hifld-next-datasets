@@ -22,6 +22,7 @@ hifld_ingest_assets = [
     census_bureau_aiannh_areas,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
+    noaa_24nm_contiguous_zone,
     red_cross_american_red_cross_divisions,
     faa_airspace_boundaries,
     faa_aviation_facilities,
