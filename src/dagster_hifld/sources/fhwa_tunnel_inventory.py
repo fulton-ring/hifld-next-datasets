@@ -211,7 +211,9 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     schema_fields.append(pa.field("geometry", pa.binary(), nullable=False))
     arrays.append(pa.array([Point(row["geometry"]["x"], row["geometry"]["y"]).wkb for row in features], type=pa.binary()))
     geo = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{
-        "encoding":"WKB", "geometry_types":["Point"], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"spherical",
+        # Point geometry has no edges; planar is the supported GeoParquet
+        # encoding marker and stores every source coordinate without change.
+        "encoding":"WKB", "geometry_types":["Point"], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar",
     }}}
     table = pa.Table.from_arrays(arrays, schema=pa.schema(schema_fields, metadata={b"geo":_canonical(geo)}))
     sink = pa.BufferOutputStream(); pq.write_table(table, sink, compression="zstd")
