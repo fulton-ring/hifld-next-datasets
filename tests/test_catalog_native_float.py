@@ -7,16 +7,17 @@ import pyarrow as pa
 import pyogrio
 from shapely import Point,to_wkb
 from dagster_hifld.catalog import _summarize_geospatial_source,generate_data_dictionary
-from dagster_hifld.sources.tsunami_observations import NATIVE_FIELDS,KIND
+# Frozen native-schema fixture: shared catalog tests do not depend on a dataset adapter.
+NATIVE_SCHEMA = [('ID', 'int32', True), ('ObjectId', 'int32', False), ('TSEVENT_ID', 'int32', True), ('YEAR', 'int16', True), ('MONTH', 'int16', True), ('DAY', 'int16', True), ('DATE_STRING', 'string', True), ('ARR_DAY', 'int16', True), ('ARR_HOUR', 'int16', True), ('ARR_MIN', 'int16', True), ('TRAV_HOURS', 'int16', True), ('TRAV_MINS', 'int16', True), ('PERIOD', 'float32', True), ('FIRST_MOTION', 'string', True), ('LATITUDE', 'float64', True), ('LONGITUDE', 'float64', True), ('LOCATION_NAME', 'string', True), ('AREA', 'string', True), ('COUNTRY', 'string', True), ('REGION_CODE', 'int16', True), ('RUNUP_HT', 'float32', True), ('RUNUP_HT_RANK', 'int16', True), ('RUNUP_HORIZ', 'float32', True), ('TYPE_MEASUREMENT_ID', 'int16', True), ('TYPE_MEASUREMENT', 'string', True), ('DAMAGE_MILLIONS_DOLLARS', 'float64', True), ('DAMAGE_AMOUNT_ORDER', 'int16', True), ('DAMAGE_DESCRIPTION', 'string', True), ('DEATHS', 'int32', True), ('DEATHS_AMOUNT_ORDER', 'int16', True), ('DEATHS_DESCRIPTION', 'string', True), ('INJURIES', 'int32', True), ('INJURIES_AMOUNT_ORDER', 'int16', True), ('INJURIES_DESCRIPTION', 'string', True), ('HOUSES_DESTROYED', 'int32', True), ('HOUSES_AMOUNT_ORDER', 'int16', True), ('HOUSES_DESCRIPTION', 'string', True), ('HOUSES_DAMAGED', 'int32', True), ('HOUSES_DAMAGED_AMOUNT_ORDER', 'int16', True), ('HOUSES_DAM_DESCRIPTION', 'string', True), ('COMMENTS', 'string', True), ('DOUBTFUL', 'string', True), ('DIST_FROM_SOURCE', 'int32', True), ('EVENT_REGION_CODE', 'int16', True), ('EVENT_REGION', 'string', True), ('PRED_TRAV_HOURS', 'float32', True), ('PRED_TRAV_MINS', 'int16', True), ('URL', 'string', True), ('TSEVENT_URL', 'string', True), ('DRAWING_ORDER', 'float64', True)]
 
 class NativeFloatCatalogTests(TestCase):
     def test_all_fifty_native_attributes_float_values_and_nullable_widths_survive_sampling(self):
         types={'int16':pa.int16(),'int32':pa.int32(),'float32':pa.float32(),'float64':pa.float64(),'string':pa.string()}
         arrays=[];fields=[]
-        for f in NATIVE_FIELDS:
-            kind=KIND[f['type']];values=([17,18,None] if kind.startswith('int') else [0.1,3.0,None] if kind.startswith('float') else ['original','text',None])
-            if not f['nullable']:values=[17,18,19]
-            arrays.append(pa.array(values,type=types[kind]));fields.append(pa.field(f['name'],types[kind],nullable=f['nullable']))
+        for name,kind,nullable in NATIVE_SCHEMA:
+            values=([17,18,None] if kind.startswith('int') else [0.1,3.0,None] if kind.startswith('float') else ['original','text',None])
+            if not nullable:values=[17,18,19]
+            arrays.append(pa.array(values,type=types[kind]));fields.append(pa.field(name,types[kind],nullable=nullable))
         arrays.append(pa.array([to_wkb(Point(1,2)),to_wkb(Point(3,4)),None],type=pa.binary()));fields.append(pa.field('geometry',pa.binary()))
         table=pa.Table.from_arrays(arrays,schema=pa.schema(fields))
         with TemporaryDirectory() as d:
@@ -40,7 +41,7 @@ class NativeFloatCatalogTests(TestCase):
             self.assertEqual(pyogrio.raw.read_arrow(path,layer='native')[1].column('RUNUP_HT').to_pylist(),table.column('RUNUP_HT').to_pylist())
 
     def test_attributes_only_float_geopackage_retains_values_without_inventing_geometry(self):
-        table=pa.table({'ID':pa.array([1,2],type=pa.int32()),'MEASUREMENT':pa.array([0.1,None],type=pa.float32()),'geometry':pa.array(['original attribute','retained attribute'],type=pa.string())})
+        table=pa.table({'ID':pa.array([1,2],type=pa.int32()),'MEASUREMENT':pa.array([0.1,None],type=pa.float32()),'geometry':pa.array(['original attribute','retained attribute'],type=pa.string()),'wkb_geometry':pa.array(['ordinary text','not spatial data'],type=pa.string())})
         with TemporaryDirectory() as d:
             path=Path(d)/'attributes.gpkg'
             pyogrio.raw.write_arrow(table,path,driver='GPKG',layer='attributes')
@@ -53,4 +54,5 @@ class NativeFloatCatalogTests(TestCase):
             columns={c['name']:c for c in generate_data_dictionary(sample,'attributes')['columns']}
             self.assertEqual(columns['MEASUREMENT']['type'],'float');self.assertEqual(columns['MEASUREMENT']['numNullValues'],1)
             self.assertEqual(columns['MEASUREMENT']['min'],table.column('MEASUREMENT')[0].as_py())
-            self.assertEqual(columns['geometry']['type'],'string')
+            self.assertEqual(columns['geometry']['type'],'string');self.assertEqual(columns['wkb_geometry']['type'],'string')
+            self.assertEqual(sample['wkb_geometry'].tolist(),table.column('wkb_geometry').to_pylist())

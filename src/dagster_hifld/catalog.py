@@ -401,7 +401,7 @@ def _summarize_native_float_geopackage(path: Path, layer_name: str | None, info:
     metadata, table = pyogrio.raw.read_arrow(
         path, layer=layer_name, max_features=CATALOG_SAMPLE_FEATURE_LIMIT,
     )
-    geometry_name = metadata.get("geometry_name") or "wkb_geometry"
+    geometry_name = metadata.get("geometry_name")
     if geometry_name in table.column_names:
         attributes = table.drop([geometry_name]).to_pandas(types_mapper=pd.ArrowDtype)
         sample = gpd.GeoDataFrame(
