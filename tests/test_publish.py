@@ -722,7 +722,7 @@ class PublishTests(PublicationMechanicsMixin, unittest.TestCase):
             self.assertEqual(output.source_metadata, {"skip_reason": "disabled_dataset_family"})
 
     def test_shapefile_zip_skips_oversized_source_before_materializing_version(self):
-        class FakeStorage:
+        class FakeStorage(StagingStorageResource):
             def list_keys(self, dataset_slug, file_slug, version):
                 return [f"{dataset_slug}/{file_slug}/{version}/geojson/source.geojson"]
 

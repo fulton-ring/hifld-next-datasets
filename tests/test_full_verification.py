@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from dagster import DagsterInstance, Definitions, define_asset_job
 
-from dagster_hifld.assets.publish import _copy_version_files, publish_version, verify_release
+from dagster_hifld.assets.publish import _copy_version_files, _write_and_publish_shapefile_zip, publish_version, verify_release
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
@@ -240,6 +240,31 @@ class FullPopulationTests(unittest.TestCase):
 
 
 class ReleaseBoundaryTests(unittest.TestCase):
+    def test_evidenced_unsupported_shapefile_is_skipped_and_stale_artifact_cannot_promote(self):
+        with tempfile.TemporaryDirectory() as d:
+            source, target, registry = accepted_fixture(Path(d))
+            prefix = "synthetic/points/vtest"
+            manifest_key = f"{prefix}/metadata/source_manifest.json"
+            manifest = json.loads(source.read_key(manifest_key))
+            manifest["unsupported_output_formats"] = {"shapefile_zip": "full audit found long-text truncation and whitespace loss"}
+            source.write_key(manifest_key, json.dumps(manifest).encode())
+            stale_key = source.write("synthetic", "points", "vtest", "shapefile/source.zip", b"lossy derivative")
+            with patch("dagster_hifld.assets.publish._read_layer") as conversion:
+                result = _write_and_publish_shapefile_zip(source, "synthetic", "points", "vtest")
+            conversion.assert_not_called()
+            self.assertFalse(result[0].path)
+            self.assertIn("long-text truncation", result[0].source_metadata["skip_reason"])
+            self.assertTrue(source.object_exists(stale_key))
+            value = json.loads(registry.read_text())
+            entry = value["releases"][0]
+            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
+            entry.update(staged_objects=objects, published_objects=objects, provenance_sha256=objects[manifest_key])
+            registry.write_text(json.dumps(value))
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                with self.assertRaisesRegex(ReleaseApprovalError, "unsupported_output_present"):
+                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+            self.assertEqual(target.list_prefix(), [])
+
     def test_candidate_comparison_input_pin_and_derivation_cannot_drift(self):
         for mutation in ("sha256", "source"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as d:
