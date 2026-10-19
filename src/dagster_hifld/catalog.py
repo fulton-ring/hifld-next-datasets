@@ -10,6 +10,7 @@ from pathlib import Path
 import fiona
 import geopandas as gpd
 import pandas as pd
+import pyogrio
 from shapely.geometry import shape
 from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dtype, is_hashable, is_integer_dtype
 
@@ -391,7 +392,53 @@ def _iter_geospatial_sources(version_dir: Path):
             yield legacy_shapefile, None
 
 
+def _summarize_native_float_geopackage(path: Path, layer_name: str | None, info: dict) -> tuple[gpd.GeoDataFrame, dict]:
+    """Bounded Arrow sampling retains native FLOAT values older Fiona omits.
+
+    This path changes catalog sampling only. It never rewrites source data,
+    widens native values or changes the selected layer/format precedence.
+    """
+    metadata, table = pyogrio.raw.read_arrow(
+        path, layer=layer_name, max_features=CATALOG_SAMPLE_FEATURE_LIMIT,
+    )
+    geometry_name = metadata.get("geometry_name")
+    if geometry_name in table.column_names:
+        attributes = table.drop([geometry_name]).to_pandas(types_mapper=pd.ArrowDtype)
+        sample = gpd.GeoDataFrame(
+            attributes,
+            geometry=gpd.GeoSeries.from_wkb(table.column(geometry_name).to_pylist(), crs=metadata.get("crs")),
+            crs=metadata.get("crs"),
+        )
+    elif not metadata.get("geometry_name") and not info.get("geometry_type"):
+        # A legitimate attributes-only GeoPackage has no geometry to invent.
+        sample = gpd.GeoDataFrame(table.to_pandas(types_mapper=pd.ArrowDtype))
+    else:
+        raise ValueError("Native spatial GeoPackage Arrow sample has no declared geometry column")
+    quality = generate_quality_manifest(sample)
+    count = int(info["features"])
+    if count < 0:
+        count = int(pyogrio.read_info(path, layer=layer_name, force_feature_count=True)["features"])
+    bounds = info.get("total_bounds")
+    if bounds is not None:
+        quality["bounds"] = [round(float(value), 6) for value in bounds]
+    quality.update(
+        feature_count=count,
+        catalog_mode="streaming_geospatial_arrow_native_float",
+        sampled_feature_count=len(sample),
+        sampled_null_geometry_count=quality.pop("null_geometry_count"),
+        sampled_invalid_geometry_count=quality["invalid_geometry_count"],
+    )
+    return sample, quality
+
+
 def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gpd.GeoDataFrame, dict]:
+    # Older Fiona/GDAL can silently omit SQLite FLOAT attributes. Select Arrow
+    # only when the actual GeoPackage declares native binary32 columns; retain
+    # existing reader behavior for every other format and physical schema.
+    if path.suffix.lower() == ".gpkg" and path.is_file():
+        info = pyogrio.read_info(path, layer=layer_name)
+        if "float32" in info.get("dtypes", []):
+            return _summarize_native_float_geopackage(path, layer_name, info)
     open_kwargs: dict[str, object] = {}
     if layer_name:
         open_kwargs["layer"] = layer_name
