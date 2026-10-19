@@ -96,7 +96,7 @@ class CensusCDPTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage=StagingStorageResource(local_dir=tmp,use_local=True)
             head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(c.__file__).parents[3],text=True).strip()
-            with self.assertRaisesRegex(ValueError,'construction_processing_blob_digest_mismatch'):
+            with self.assertRaisesRegex(ValueError,'construction_processing_blob_hash_mismatch'):
                 c.construction_bundle(storage,'v0.0.0-draft',Path(tmp)/'not-read',{}, {'files':{'AGENTS.md':'0'*64}}, {'code_commit':head},create=True)
             self.assertEqual(list(Path(tmp).rglob('*.json')),[])
 
