@@ -186,6 +186,10 @@ Each line produced by the script conforms to `src/hifld_next_datasets/core.py::D
 
 Re-run the script whenever the inventory changes to refresh the source URLs or to re-target a new subset of rows.
 
+## Issue 81: Ethanol Plants source limitation
+
+As checked on 2026-10-19, the dedicated [EIA ethanol capacity report](https://www.eia.gov/petroleum/ethanolcapacity/) publishes a workbook with State, Respondent, City, MMgal/yr, and Mb/d fields, but no coordinates, geometry, or spatial IDs. The two candidate [EIA Atlas dataset routes](https://atlas.eia.gov/datasets/eia::ethanol-plants-1/about) returned 404, and its [public catalog API query](https://atlas.eia.gov/api/search/v1/collections/all/items?q=ethanol) returned `numberMatched: 0`; this is a scoped check, not evidence that no other EIA feed exists. EIA's ArcGIS organization exposes item `1f0f8fd4458c43bd93642a01a02959e8`, owned by `amber.dashnaw.ctr` (profile: HSDL Librarian) and hosted at `services7.arcgis.com/FGr1D95XCGALKXqM/…/Ethanol_Plants_US_EIA/FeatureServer/112`. Its item metadata identifies EIA as the capacity attribute source and says locations are approximate points researched from public sources. Despite `access: public`, the exact layer metadata, count, and ID queries all returned ArcGIS `499 Token Required` on 2026-10-19. The separate `esinnott1` mirror is hosted under another ArcGIS account and currently returns one ID. A faithful native spatial pipeline is blocked pending restored public query access and a source-owner decision confirming location lineage, rights, and attribution; approximate locations alone do not resolve that decision. Raw response bodies and SHA-256 pins are retained outside Git under `/tmp/hifld-native-reconstruction/81/source-evidence/`.
+
 ## Workflow dispatch
 
 - The workflow (`src/hifld_next_datasets/workflow.py`) constructs one `Parallel` step that spins up an agent per selected dataset row, so every agent executes concurrently instead of sequential iterations. That lets the pipeline surface file-specific URLs for multiple datasets quickly while keeping the CLI glue minimal.
