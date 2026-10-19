@@ -5,10 +5,11 @@ import os
 from pathlib import Path
 import sys
 import subprocess
+from unittest import mock
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from dagster import AssetKey, AssetSelection, DagsterInstance, Definitions, define_asset_job
+from dagster import AssetKey, AssetSelection, DagsterInstance, Definitions, define_asset_job, build_sensor_context
 from dagster_hifld import aviation_extract as a
 from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.faa import faa_aviation_facilities
@@ -31,12 +32,28 @@ with DagsterInstance.from_config(str(state)) as instance:
     r=defs.resolve_job_def('aviation_real_ingest').execute_in_process(instance=instance,run_config=config)
     assert r.success;out=r.output_for_node(faa_aviation_facilities.op.name)
     result['ingest']={'run_id':r.run_id,'success':True,'output':out}
+    from dagster_hifld.definitions import _iter_staged_version_paths, version_discovery_sensor
+    assert (a.SLUG,a.SLUG,out['version']) in list(_iter_staged_version_paths(stage))
+    with mock.patch('dagster_hifld.definitions.StagingStorageResource.from_env',return_value=stage):
+        discovery=version_discovery_sensor(build_sensor_context(instance=instance))
+    discovered=[]
+    for request in discovery.dynamic_partitions_requests:
+        discovered.extend(request.partition_keys)
+        instance.add_dynamic_partitions(request.partitions_def_name,request.partition_keys)
+    assert build_publish_partition_key(a.SLUG,a.SLUG,out['version']) in discovered
+    result['normal_discovery']={'ingest_alone_discoverable':True,'sensor_partition_requests':discovered,'manual_data_or_manifest_copies':False}
     r=defs.resolve_job_def('aviation_real_ingest').execute_in_process(instance=instance,run_config=config)
     assert r.success and r.output_for_node(faa_aviation_facilities.op.name)==out
     result['idempotent_replay']={'run_id':r.run_id,'success':True,'output_identical':True}
     prefix=f"{a.SLUG}/{a.SLUG}/{out['version']}";root=Path(stage.local_dir)/prefix
     table=pq.read_table(root/'draft_candidate/candidate.parquet');assert table.num_rows==19427
     result['candidate_audit']=a.verify_typed_geopackage(root/'draft_candidate/candidate.parquet',root/'geopackage'/f'{a.SLUG}.gpkg')
+    source_manifest=json.loads((root/'metadata/source_manifest.json').read_bytes())
+    a.validate_release_provenance(source_manifest)
+    assert len(source_manifest['inputs'])==17
+    for item in source_manifest['inputs']:
+        assert stage.sha256_key(item['raw_key'])==item['sha256']
+    result['source_manifest_structurally_valid_without_approval']=True
     provenance=json.loads((root/'draft_candidate/provenance.json').read_bytes())
     assert provenance['processing']['code_commit']==subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
     assert provenance['processing']['working_tree_modified'] is False

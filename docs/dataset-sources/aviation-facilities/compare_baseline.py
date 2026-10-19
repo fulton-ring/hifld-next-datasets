@@ -14,6 +14,9 @@ capture=Path(sys.argv[2]) if len(sys.argv)>2 else root/'capture-bound'
 evidence=Path(__file__).parent/'evidence'
 baseline=root/'baseline.parquet' if (root/'baseline.parquet').is_file() else evidence/'baseline.parquet'
 pin=root/'baseline-pin.json' if (root/'baseline-pin.json').is_file() else evidence/'baseline-pin.json'
+binding=json.loads(pin.read_bytes())
+assert hashlib.sha256(baseline.read_bytes()).hexdigest()==binding['sha256']
+assert baseline.stat().st_size==binding['bytes'] and binding['generation'] in binding['url']
 base=pq.read_table(baseline);originals=[f for p in sorted(capture.glob('page-*.body')) for f in a._json(p)['features']]
 source=[f['attributes'] for f in originals];old=base.to_pylist();fields=a.inspect_capture(capture)['fields'];declared={f['name']:f for f in fields}
 assert len({r['ARPT_ID'] for r in source})==len(source) and len({r['ARPT_ID'] for r in old})==len(old)

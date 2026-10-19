@@ -29,7 +29,7 @@ class AviationTests(unittest.TestCase):
             'extent':{'spatialReference':{'wkid':102100,'latestWkid':3857}},
             'editingInfo':{'dataLastEditDate':1790959621805}}
         ids=[first['OBJECTID'],second['OBJECTID']]
-        self.data={'item':{'id':a.ITEM_ID,'owner':'USDOT_BTS','url':a.SERVICE.rsplit('/',1)[0]},
+        self.data={'item':{'id':a.ITEM_ID,'owner':'USDOT_BTS','url':a.SERVICE.rsplit('/',1)[0],'licenseInfo':'Synthetic unrestricted fixture license','accessInformation':'Synthetic FAA producer / BTS distributor fixture attribution'},
             'bts_layer':layer,'bts_layer_after':copy.deepcopy(layer),
             'bts_count':{'count':2},'bts_count_after':{'count':2},
             'bts_ids':{'objectIds':ids},'bts_ids_after':{'objectIds':ids},
@@ -65,6 +65,13 @@ class AviationTests(unittest.TestCase):
         audit=a.verify_typed_geopackage(root/'draft_candidate/candidate.parquet',root/'geopackage'/f'{a.SLUG}.gpkg')
         self.assertTrue(audit['all_native_geometry_wkb_equal'])
         self.assertFalse(result['promotion_allowed'])
+        manifest=json.loads((root/'metadata/source_manifest.json').read_bytes())
+        a.validate_release_provenance(manifest)
+        self.assertEqual(len(manifest['inputs']),8)
+        for item in manifest['inputs']:
+            self.assertEqual(item['observed_final_url'],item['retrieval_url'])
+            self.assertEqual(item['sha256'],self.storage.sha256_key(item['raw_key']))
+        self.assertEqual(manifest['processor'],'HIFLD Next')
 
     def test_completeness_and_drift_quarantine_preserves_original(self):
         result=_stage_aviation(self.capture,self.storage)

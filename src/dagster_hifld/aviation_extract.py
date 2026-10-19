@@ -24,7 +24,7 @@ from pyproj import CRS
 from shapely import Point, to_wkb
 from dagster_hifld.partitions import SEMVER_VERSION_RE
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.release_approval import verifier_implementation_sha256
+from dagster_hifld.release_approval import verifier_implementation_sha256, validate_release_provenance
 SLUG = 'aviation-facilities'
 ITEM_ID = '1551114f78e34d8395fd77bf41cd8a80'
 ITEM_URL = f'https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=pjson'
@@ -440,6 +440,46 @@ def write_typed_geopackage(candidate: Path, destination: Path, source_edit_ms: i
     temporary.replace(destination)
 
 
+def release_inputs(capture: Path, audit: dict, version: str) -> list[dict]:
+    """Actual complete response attribution in shared release schema, no approval."""
+    item = _json(capture / 'item.body')
+    license_text, attribution = item.get('licenseInfo'), item.get('accessInformation')
+    if not isinstance(license_text, str) or not license_text.strip() or not isinstance(attribution, str) or not attribution.strip():
+        raise ValueError('Missing original distributor license/attribution requires review')
+    result = []
+    for record in audit['raw_files']:
+        if not record['name'].endswith('.body') or '/' in record['name']:
+            continue
+        name = record['name'].removesuffix('.body')
+        receipt = _json(capture / (name + '.receipt.json'))
+        result.append({
+            'input_id': SLUG + ':' + name,
+            'producer': 'Federal Aviation Administration (FAA) NASR',
+            'distributor': 'Bureau of Transportation Statistics / USDOT_BTS',
+            'host': urllib.parse.urlsplit(receipt['url']).hostname,
+            'canonical_url': receipt['url'], 'retrieval_url': receipt['url'],
+            'observed_final_url': receipt['final_url'],
+            'retrieved_at': receipt['observed_at'],
+            'sha256': record['sha256'], 'bytes': record['bytes'],
+            'raw_key': f'{SLUG}/{SLUG}/{version}/raw_arcgis/{record["name"]}',
+            'license': license_text, 'attribution': attribution,
+            'role': 'official_distributor',
+            'delegation_evidence': {
+                'url': ITEM_URL,
+                'item_sha256': _digest(capture / 'item.body'),
+                'quoted_access_information': attribution,
+                'official_portal_link': 'https://www.bts.gov/ntad',
+                'acceptance': 'candidate evidence; independent source acceptance pending',
+            },
+            'release_date': None,
+            'release_date_unknown_reason': (
+                'This mutable service response has no separately versioned per-response publication date. '
+                'Original row EFF_DATE values are retained as source effective dates; resource metadata '
+                'publication date and retrieval/portal edit timestamps are distinct, documented evidence.'),
+        })
+    return result
+
+
 def _stage_capture_payload(capture: Path, staging: StagingStorageResource, version: str) -> dict:
     """Stage native raw proof + lossless typed draft and canonical GeoJSON input.
 
@@ -484,16 +524,16 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     metadata = root / 'metadata'; metadata.mkdir(exist_ok=True)
     manifest = {'title':'Aviation Facilities', 'agency':'Federal Aviation Administration (FAA)',
         'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
-        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':'draft-unapproved-v1',
-        'processor':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
+        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':1,
+        'draft_contract_version':'unapproved-v1',
+        'processor':'HIFLD Next', 'processing_identity':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
         'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-        'inputs':[{'input_id':SERVICE, 'producer':candidate['producer'], 'distributor':candidate['distributor'],
-            'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-            'raw_files':audit['raw_files'], 'crs':audit['crs'], 'fields':audit['fields']}],
+        'inputs':release_inputs(capture, audit, version),
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
         'lineage':{'producer':'FAA NASR', 'distributor_item':'1551114f78e34d8395fd77bf41cd8a80','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
         'unsupported_output_formats':{'pmtiles':'Actual tippecanoe reconstruction assigns sequential internal feature IDs and drops dense features to meet tile size; rendered quantized geometry/full coverage/identifier mapping is unapproved. Primary typed Parquet and native GeoPackage preserve every source row, ID, type and point.', 'shapefile_zip':'Source field names exceed the DBF ten-character limit; no destructive field-name or type/null migration is approved.'}}
+    validate_release_provenance(manifest)
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
