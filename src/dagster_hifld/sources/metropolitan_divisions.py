@@ -486,7 +486,11 @@ def stage_metdiv_candidate(storage,*,archive_path=None,receipt_path=None,baselin
                 'published_compatibility':'Complete pinned HIFLD v1.0.0 baseline comparison is recorded separately. Field/type/OBJECTID/CRS/geometry drift is present; no mapping or release is approved.'}
             payloads={'raw/source_capture.json':{'key':capture,'sha256':SHA256,'bytes':BYTES,'complete_original_gdb_members':71},'raw/retrieval.json':receipt,
                 'metadata/source_manifest.json':manifest,'metadata/processing_identity.json':identity,'metadata/metdiv_source_audit.json':audit,
-                'metadata/baseline_comparison.json':{'schema_version':1,'approved':False,'status':'blocked','reason_codes':['complete_published_baseline_unavailable','source_schema_id_geometry_contract_unapproved']}}
+                # Preserve the measured, fully pinned baseline comparison. A
+                # review gate may block acceptance, but the baseline is present;
+                # do not replace its observed diagnostics with an availability
+                # placeholder that contradicts the retained receipts.
+                'metadata/baseline_comparison.json':baseline_comparison}
             for name,value in payloads.items():
                 (temp/name).write_bytes(encode(value))
             expected_outputs={str(p.relative_to(temp)):p.read_bytes() for p in temp.rglob('*') if p.is_file()}
