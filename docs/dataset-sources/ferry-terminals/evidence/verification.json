@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "approved": false,
+  "review": "independent exact-final-head review pending",
+  "source_code_head": "8e8300719530b604387b2dbb4b77873cfdbb692d",
+  "genuine_docs_only_checkpoint": "26ed57d139afcb6e8fdc6aafe9e94b22483db357",
+  "full_suite": {
+    "total": 535,
+    "passed": 534,
+    "skipped": 1,
+    "seconds": 134.638,
+    "skip": "intentional production-GCS test",
+    "actual_sibling_iac_head": "56aa10757129c457c530d707d9a40bae13e0907f"
+  },
+  "focused": {
+    "total": 13,
+    "passed": 13,
+    "seconds": 70.736
+  },
+  "actual_live": {
+    "inputs": 9,
+    "all200": true,
+    "rows": 845,
+    "feature_sha256": "2f351a2e26994c0d1b580e2af9a892a4e081376255b4475eaf010958a614be70"
+  },
+  "actual_registered_dagster": {
+    "total_runs": 24,
+    "normal_source_graph_runs": 13,
+    "history_recovery_runs": 11,
+    "runs": [
+      {
+        "kind": "real_complete_source",
+        "run_id": "08f7f7b4-771f-43c8-9225-a60ef0a3de8e",
+        "success": true
+      },
+      {
+        "kind": "real_complete_refresh",
+        "run_id": "d84716aa-ca31-498b-acdf-45cf6a209dca",
+        "success": true
+      },
+      {
+        "kind": "normal_formats_missing_approval",
+        "run_id": "a525b0b3-33bc-413e-b1b4-d99a5d49a970",
+        "success": false
+      },
+      {
+        "kind": "real_complete_post_formats_refresh",
+        "run_id": "4a5792f6-6c3c-4d9c-b3b6-59a4719fc37e",
+        "success": true
+      },
+      {
+        "kind": "second_normal_catalog_missing_approval",
+        "run_id": "6bb1e664-3b5c-4961-8096-dd951b959945",
+        "success": false
+      },
+      {
+        "kind": "source_after_second_catalog",
+        "run_id": "2b55e2ff-68ba-4d27-a835-58bda896b037",
+        "success": true
+      },
+      {
+        "kind": "synthetic_failed_geometry_quality_gate",
+        "run_id": "496e15f5-d1fe-4609-833c-3d525c4444e9",
+        "success": false
+      },
+      {
+        "kind": "metadata_self_repin_contents_crs",
+        "run_id": "4a7834ca-e3fe-4ceb-9eef-a24ed3ef5c87",
+        "success": false
+      },
+      {
+        "kind": "fresh_source_after_quarantine_contents_crs",
+        "run_id": "cad10f20-9fa8-4280-a60e-63fd5ad06f49",
+        "success": true
+      },
+      {
+        "kind": "metadata_self_repin_authority",
+        "run_id": "310e2a61-61fd-46df-827f-909fc15b036b",
+        "success": false
+      },
+      {
+        "kind": "fresh_source_after_quarantine_authority",
+        "run_id": "2d46630a-c4c2-4d94-b0a4-093c267fe659",
+        "success": true
+      },
+      {
+        "kind": "metadata_self_repin_ancillary_table",
+        "run_id": "d4fdfffd-9ecb-4b1e-a37a-f01cbc830ede",
+        "success": false
+      },
+      {
+        "kind": "fresh_source_after_quarantine_ancillary_table",
+        "run_id": "02a49432-f9e7-4145-bc8f-c7f074086a3b",
+        "success": true
+      },
+      {
+        "kind": "genuine_docs_head_healthy_newer_receipts",
+        "run_id": "4b773987-09b2-4149-8634-f4a76a37fc5a",
+        "success": true
+      },
+      {
+        "kind": "missing_marker_newer_receipts_whole_quarantine",
+        "run_id": "85154bcf-2a8d-415b-9ff1-bf525031e54c",
+        "success": false
+      },
+      {
+        "kind": "cold_rebuild_original_provenance_after_docs_head_newer_receipts",
+        "run_id": "df01c889-d393-4b77-b96a-1232e164b7da",
+        "success": true
+      },
+      {
+        "kind": "coforged_bundle_and_cache_unresolvable_all_zero_commit",
+        "run_id": "532fef46-75c2-453d-ac37-9ad0bb0e8014",
+        "success": false
+      },
+      {
+        "kind": "source_after_explicit_original_bundle_restore_unresolvable_all_zero_commit",
+        "run_id": "5ee7a4ba-bb7f-46f4-8527-333a74309276",
+        "success": true
+      },
+      {
+        "kind": "coforged_bundle_and_cache_authentic_commit_with_wrong_processing_source",
+        "run_id": "145ab841-9311-49a5-b726-f9432b3a265e",
+        "success": false
+      },
+      {
+        "kind": "source_after_explicit_original_bundle_restore_authentic_commit_with_wrong_processing_source",
+        "run_id": "a1674ba8-25b8-42ae-80af-ddb6d2bebbed",
+        "success": true
+      },
+      {
+        "kind": "outside_bundle_missing_whole_cache_quarantine",
+        "run_id": "95ebe782-9774-42fd-b7aa-bf30884752f8",
+        "success": false
+      },
+      {
+        "kind": "source_after_operator_fixture_restore_missing",
+        "run_id": "115062b3-9bb9-4e33-ad5e-c426d7f40aba",
+        "success": true
+      },
+      {
+        "kind": "outside_bundle_invalid_whole_cache_quarantine",
+        "run_id": "f7ab01c8-69d7-4a59-93fc-ed310c140516",
+        "success": false
+      },
+      {
+        "kind": "source_after_operator_fixture_restore_invalid",
+        "run_id": "62b86e0c-fbb0-412d-81bd-9cdb1f04bf80",
+        "success": true
+      }
+    ],
+    "all845_ids_values22fields_types_nulls_and_native_xy_exact": true,
+    "normal_two_catalog_approval_cycles_rejected": true,
+    "synthetic_quality_failure_preserves_prior": true,
+    "source_container_and_trust_anchor_failures_whole_quarantine_preserved": true,
+    "original_full_manifest_all9receipts_and_binding_preserved_after_genuine_docs_head_cold_rebuild": true,
+    "newer_receipts_retained_separately": true,
+    "prior_local_published_fixture_preserved": true
+  },
+  "fixture_scope": "Newer timestamps explicitly SYNTHETIC on unchanged complete real source bodies, not newLIVEclaims. Genuinedocs-only checkpointactualGit; realwrongsourcef710hasallfilespresentbutactualsourcebytesmismatch. Operatorfixturetrustanchorrestorationexplicit.",
+  "native_objects": {
+    "geopackage/ferry-terminals.gpkg": {
+      "bytes": 294912,
+      "sha256": "78ee31eab7a553979171d127651356db91c67845b9e417665696c300e17fbf99"
+    },
+    "geoparquet/ferry-terminals.parquet": {
+      "bytes": 56423,
+      "sha256": "d8d4e9eab2a3ea39e6a7395309440413d48a5349a91c64d923b90a14434fb8ed"
+    },
+    "metadata/candidate.records.jsonl": {
+      "bytes": 512196,
+      "sha256": "4f10a072cc3a4b8115f1f4986425144c7bf541e8c639230a0ca7a952cd3bc194"
+    }
+  },
+  "limitations": [
+    "No source/baseline/ID/schema/nullability/format/coverage acceptance.",
+    "Layer/data2020census/2019data conflict with portalitem2022description; no2022claim and no producerrelease dateinvented.",
+    "Crosswalk/archiveprovider403unverified; oldbaselinecapturesall6completeproviderpins.",
+    "Source/ArrowOBJECTIDnonnull versus generatedGPKGnullable widerSQLconstraint remainsdecision.",
+    "PublishedParquetdropsOBJECTID/widensphysicaltypes; nativecandidate preservesoriginalsource.",
+    "No production publication, merge, issueclosure, orCIpassinferred."
+  ],
+  "proof_scripts": [
+    "actual_dagster.py",
+    "provenance_recovery.py",
+    "audit.py"
+  ],
+  "runtime_root": "/workspace/work/hifld-coordinator/89",
+  "reproduction": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src /workspace/hifld-worker-worktrees/19/.venv/bin/python docs/dataset-sources/ferry-terminals/evidence/actual_dagster.py --runtime <fresh-isolated-runtime>; create genuine docs-only checkpoint; provenance_recovery.py --runtime <same-runtime> --repo <actual-worktree>"
+}

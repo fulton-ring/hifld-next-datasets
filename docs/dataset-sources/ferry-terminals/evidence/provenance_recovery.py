@@ -55,7 +55,7 @@ with DagsterInstance.get() as instance:
  assert any(snapshot(q)==missing_objects for q in (runtime/'staging/_quarantine'/source.SLUG).glob('invalid-cache-*/candidate'))
  rebuilt,_=run('cold_rebuild_original_provenance_after_docs_head_newer_receipts');assert rebuilt.success
  assert snapshot(root)==original_objects and binding.read_bytes()==original_binding and (root/'metadata/source_manifest.json').read_bytes()==original_manifest
- report['assertions'].append('Healthy refresh and cold reconstruction after whole-cache quarantine retain original manifest and all12original receipts across genuine docs-only HEAD; newer receipts retained separately.')
+ report['assertions'].append('Healthy refresh and cold reconstruction after whole-cache quarantine retain original manifest and all9original receipts across genuine docs-only HEAD; newer receipts retained separately.')
  wrong_source_commit=subprocess.check_output(['git','rev-parse','f710c92ac7ca7da36a861e9cec6a9aa419319bdf'],cwd=repo,text=True).strip()
  for label,claimed in [('unresolvable_all_zero_commit','0'*40),('authentic_commit_with_wrong_processing_source',wrong_source_commit)]:
   manifest=json.loads(original_manifest);manifest['code_commit']=claimed;(root/'metadata/source_manifest.json').write_bytes(source.encode(manifest))
