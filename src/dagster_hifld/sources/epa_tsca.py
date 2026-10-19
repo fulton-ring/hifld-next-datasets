@@ -89,9 +89,9 @@ def _feature_urls(ids: list[int]) -> list[tuple[str, str]]:
     ]
     for offset in range(0, len(ids), PAGE_SIZE):
         params = {
-            "objectIds": ",".join(str(x) for x in ids[offset:offset + PAGE_SIZE]),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4269", "orderByFields": "OBJECTID ASC", "f": "json",
+            "where": "1=1", "outFields": "*", "returnGeometry": "true",
+            "outSR": "4269", "orderByFields": "OBJECTID ASC",
+            "resultOffset": str(offset), "resultRecordCount": str(PAGE_SIZE), "f": "json",
         }
         urls.append((f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query?" + urlencode(params)))
     urls.extend([
@@ -173,12 +173,17 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
     features = []
     for name in page_names:
         page = docs[name]
-        if "error" in page or page.get("exceededTransferLimit") is True:
-            raise ValueError("source_page_error_or_truncated")
+        if "error" in page:
+            raise ValueError("source_page_error")
         if page.get("spatialReference", {}).get("latestWkid") != 4269:
             raise ValueError("source_page_spatial_reference_drift")
         rows = page.get("features")
         if not isinstance(rows, list): raise ValueError("source_page_missing_features")
+        page_index = int(name.removeprefix("page_"))
+        page_ids = [row.get("attributes", {}).get("OBJECTID") for row in rows]
+        expected_page_ids = ids_before[page_index * PAGE_SIZE:(page_index + 1) * PAGE_SIZE]
+        if page_ids != expected_page_ids:
+            raise ValueError("source_page_id_slice_incomplete_or_out_of_order")
         features.extend(rows)
     got_ids = [f.get("attributes", {}).get("OBJECTID") for f in features]
     if len(features) != EXPECTED_COUNT or sorted(got_ids) != ids_before or len(set(got_ids)) != EXPECTED_COUNT:
