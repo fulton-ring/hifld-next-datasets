@@ -2,6 +2,7 @@
 import copy
 import json
 import shutil
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ from dagster_hifld.assets.ibc import ibc_boundary_draft_refresh_schedule, ibc_ca
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import _iter_staged_version_paths
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.source_manifest import snapshot_source_metadata
 from dagster_hifld.sources import canada_us_border as s
 
 CAPTURE=Path(__file__).parents[1]/'docs/dataset-sources/canada-and-us-border/evidence/captures'
@@ -156,7 +158,9 @@ class BoundaryTests(unittest.TestCase):
                 raw=(root/'raw'/s.ARCHIVE_NAME).read_bytes()
                 with self.assertRaisesRegex(ValueError,'fidelity|differ|roster|schema|inventory'):
                     s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
-                self.assertEqual((root/'raw'/s.ARCHIVE_NAME).read_bytes(),raw)
+                retained=list(Path(d,'_quarantine').glob(f'{s.SLUG}/invalid-cache-*/candidate/raw/{s.ARCHIVE_NAME}'))
+                self.assertEqual(len(retained),1);self.assertEqual(retained[0].read_bytes(),raw)
+                self.assertFalse(root.exists())
                 self.assertTrue(list(Path(d,'_quarantine').rglob('report.json')))
 
     def test_interrupted_private_build_never_discoverable(self):
@@ -188,3 +192,52 @@ class BoundaryTests(unittest.TestCase):
             captures=s.acquire(StagingStorageResource(local_dir=d),CAPTURE);manifest=s.provenance(captures)
         for item in manifest['inputs']:
             self.assertEqual(item['license'],'https://open.canada.ca/en/open-government-licence-canada' if item['input_id'].startswith('ibc-zip:') else s.TERMS)
+
+
+    def test_native_container_metadata_self_repin_rejected_and_retained(self):
+        mutations={
+            'contents_crs':"UPDATE gpkg_contents SET srs_id=4326",
+            'authority':"UPDATE gpkg_spatial_ref_sys SET organization_coordsys_id=4326 WHERE srs_id=4269",
+            'definition':"UPDATE gpkg_spatial_ref_sys SET definition=(SELECT definition FROM gpkg_spatial_ref_sys WHERE srs_id=4326) WHERE srs_id=4269",
+            'stored_bounds':"UPDATE gpkg_contents SET min_x=0",
+            'ancillary_table':"CREATE TABLE contradictory_metadata (value TEXT)",
+        }
+        for label,sql in mutations.items():
+            with self.subTest(label=label),tempfile.TemporaryDirectory() as d:
+                storage=StagingStorageResource(local_dir=d)
+                out=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                root=Path(d,s.SLUG,s.SLUG,out['version'])
+                target=root/'geopackage'/f'{s.SLUG}.gpkg'
+                with sqlite3.connect(target) as db:db.execute(sql)
+                marker=root/'metadata/canada_us_border_candidate_ready.json'
+                ready=json.loads(marker.read_text());ready['objects'][f'geopackage/{s.SLUG}.gpkg']=s.sha(target.read_bytes())
+                marker.write_text(json.dumps(ready))
+                before={str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+                published=Path(d,'published');published.mkdir();(published/'accepted-fixture').write_bytes(b'synthetic-prior')
+                with self.assertRaisesRegex(ValueError,'cached_geopackage_canonical_container_differs'):
+                    s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                self.assertFalse(root.exists())
+                retained=list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'))
+                self.assertEqual(len(retained),1)
+                self.assertEqual(before,{str(p.relative_to(retained[0])):s.sha(p.read_bytes()) for p in retained[0].rglob('*') if p.is_file()})
+                self.assertEqual((published/'accepted-fixture').read_bytes(),b'synthetic-prior')
+                self.assertEqual(list(_iter_staged_version_paths(storage)),[])
+                restored=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                self.assertEqual(restored,out)
+
+    def test_repeat_catalog_snapshots_allow_refresh_and_bind_authored_manifest(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d)
+            out=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            prefix=f"{s.SLUG}/{s.SLUG}/{out['version']}"
+            snapshot_source_metadata(storage,s.SLUG,s.SLUG,out['version'])
+            for name in ['data_dictionary','quality_manifest']:
+                storage.write_key(f'{prefix}/metadata/{name}.json',b'{}')
+            snapshot_source_metadata(storage,s.SLUG,s.SLUG,out['version'])
+            for name in ['data_dictionary','quality_manifest']:
+                self.assertTrue(storage.object_exists(f'{prefix}/metadata/source/{name}.json'))
+            self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
+            storage.write_key(f'{prefix}/metadata/source/source_manifest.json',b'{}')
+            with self.assertRaisesRegex(ValueError,'cached_authored_manifest_snapshot_differs'):
+                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            self.assertFalse(Path(d,prefix).exists())

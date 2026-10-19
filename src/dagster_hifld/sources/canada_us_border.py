@@ -295,13 +295,30 @@ def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
     return target
 
 
+
+def write_canonical_geopackage(destination: Path, rows: list[dict]) -> None:
+    """Deterministic native container; no coordinate, ID, field or type changes."""
+    with fiona.open(destination, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
+                    schema={'properties': SCHEMA, 'geometry': 'LineString'}) as stream:
+        stream.writerecords(rows)
+    with sqlite3.connect(destination) as db:
+        db.execute("UPDATE gpkg_contents SET last_change='2018-04-20T00:00:00.000Z'")
+
+
 def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready: dict,
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
     root=local_candidate_path(storage,prefix)
     # The normal graph adds only these derivative files. Source-owned directories remain exact.
+    manifest_body=(root/'metadata/source_manifest.json').read_bytes()
+    authored_snapshot='metadata/source/version_'+sha(manifest_body)+'_source_manifest.json'
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
-        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json'}
+        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json',
+        'metadata/source/source_manifest.json','metadata/source/data_dictionary.json',
+        'metadata/source/quality_manifest.json',authored_snapshot}
+    for name in ['metadata/source/source_manifest.json',authored_snapshot]:
+        if (root/name).exists() and (root/name).read_bytes()!=manifest_body:
+            raise BoundaryQuarantineError('cached_authored_manifest_snapshot_differs')
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise BoundaryQuarantineError('linked_candidate_object')
@@ -335,6 +352,13 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         decoded=[{'type':'Feature','properties':dict(r['properties']),'geometry':mapping(shape(r['geometry'])) if r['geometry'] else None} for r in stream]
     if b''.join(encode(r) for r in decoded)!=b''.join(encode(r) for r in rows):
         raise BoundaryQuarantineError('cached_geopackage_source_fidelity_failure')
+    # Fiona selects one CRS declaration and ignores contradictory auxiliary SRS
+    # metadata. Exact fresh reconstruction also binds every header, index and table.
+    with tempfile.TemporaryDirectory(prefix='ibc-cache-native-container-') as tmp:
+        expected=Path(tmp)/'expected.gpkg'
+        write_canonical_geopackage(expected,rows)
+        if sha256_file(root/'geopackage'/f'{SLUG}.gpkg')!=sha256_file(expected):
+            raise BoundaryQuarantineError('cached_geopackage_canonical_container_differs')
     if not pq.read_table(root/'candidate/typed-source.parquet').equals(typed_table(rows,audit),check_metadata=True):
         raise BoundaryQuarantineError('cached_typed_parquet_source_fidelity_failure')
 
@@ -360,10 +384,31 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
 
 
 
+
+def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str) -> str | None:
+    """Move a rejected local draft intact outside version discovery."""
+    target=local_candidate_path(storage,prefix)
+    lock=target.parent/('.'+target.name+'.lock')
+    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    with os.fdopen(descriptor,'r+b') as held:
+        if os.fstat(held.fileno()).st_nlink!=1:
+            raise BoundaryQuarantineError('linked_candidate_lock')
+        fcntl.flock(held,fcntl.LOCK_EX)
+        if not target.exists():
+            return None
+        destination=Path(storage.local_dir)/'_quarantine'/SLUG/('invalid-cache-'+uuid4().hex)
+        destination.mkdir(parents=True)
+        os.rename(target,destination/'candidate')
+        (destination/'report.json').write_bytes(encode({'approved':False,
+            'status':'quarantined_invalid_draft_cache','original_prefix':prefix,'reason':reason}))
+        return str(destination)
+
+
 def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
     body,receipt = captures['ibc-zip']
+    existing_prefix=None
     try:
         manifest=provenance(captures)
         with tempfile.TemporaryDirectory(prefix='canada_us_border-source-') as tmp:
@@ -377,6 +422,7 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/canada_us_border_candidate_ready.json'
             if storage.object_exists(ready_key):
+                existing_prefix=prefix
                 ready = strict_json(storage.read_key(ready_key))
                 expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/canada_us_border_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
                 if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
@@ -393,11 +439,7 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
                 return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
                         'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
             geopackage = directory / f'{SLUG}.gpkg'
-            with fiona.open(geopackage, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
-                            schema={'properties': SCHEMA, 'geometry': 'LineString'}) as destination:
-                destination.writerecords(rows)
-            with sqlite3.connect(geopackage) as db:
-                db.execute("UPDATE gpkg_contents SET last_change='2018-04-20T00:00:00.000Z'")
+            write_canonical_geopackage(geopackage,rows)
             source_records = directory / 'source.jsonl'
             source_records.write_bytes(records)
             decoded = directory / 'geopackage.jsonl'
@@ -440,5 +482,6 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
+        retained=quarantine_cached_candidate(storage,existing_prefix,str(exc)) if existing_prefix else None
         location = quarantine(storage, body, receipt, str(exc))
-        raise BoundaryQuarantineError(f'{exc}; retained:{location}') from exc
+        raise BoundaryQuarantineError(f'{exc}; retained:{location}; cached_candidate_retained:{retained}') from exc
