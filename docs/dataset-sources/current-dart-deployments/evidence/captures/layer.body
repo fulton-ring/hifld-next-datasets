@@ -1,0 +1,381 @@
+{
+  "currentVersion" : 12, 
+  "id" : 0, 
+  "name" : "Current DART Deployments", 
+  "type" : "Feature Layer", 
+  "serviceItemId" : "764d3a99a4f8440ea05522815b5f5e19", 
+  "cacheMaxAge" : 3600, 
+  "displayField" : "DESCRIPTION", 
+  "description" : "", 
+  "copyrightText" : "", 
+  "defaultVisibility" : true, 
+  "editingInfo" : {
+    "lastEditDate" : 1792317910598, 
+    "schemaLastEditDate" : 1792317910598, 
+    "dataLastEditDate" : 1792317910598
+  }, 
+  "relationships" : [], 
+  "isDataVersioned" : false, 
+  "hasContingentValuesDefinition" : false, 
+  "supportsAppend" : true, 
+  "supportsCalculate" : true, 
+  "supportsASyncCalculate" : true, 
+  "supportsTruncate" : true, 
+  "supportsAttachmentsByUploadId" : true, 
+  "supportsAttachmentsResizing" : true, 
+  "supportsRollbackOnFailureParameter" : true, 
+  "supportsStatistics" : true, 
+  "supportsExceedsLimitStatistics" : true, 
+  "supportsAdvancedQueries" : true, 
+  "supportsValidateSql" : true, 
+  "supportsCoordinatesQuantization" : true, 
+  "supportsLayerOverrides" : true, 
+  "supportsTilesAndBasicQueriesMode" : true, 
+  "supportsFieldDescriptionProperty" : true, 
+  "supportsQuantizationEditMode" : true, 
+  "supportsColumnStoreIndex" : true, 
+  "supportsApplyEditsWithGlobalIds" : false, 
+  "supportsReturningQueryGeometry" : true, 
+  "enableNullGeometry" : false, 
+  "advancedQueryCapabilities" : {
+    "supportsPagination" : true, 
+    "supportsPaginationOnAggregatedQueries" : true, 
+    "supportsQueryRelatedPagination" : true, 
+    "supportsQueryWithDistance" : true, 
+    "supportsOutDistance" : true, 
+    "supportsReturningQueryExtent" : true, 
+    "supportsStatistics" : true, 
+    "supportsOrderBy" : true, 
+    "supportsDistinct" : true, 
+    "supportsQueryWithResultType" : true, 
+    "supportsSqlExpression" : true, 
+    "supportsTimeRelation" : true, 
+    "supportsAdvancedQueryRelated" : true, 
+    "supportsCountDistinct" : true, 
+    "supportsPercentileStatistics" : true, 
+    "supportsApproxPercentileStatistics" : true, 
+    "supportsSpatialAggregationStatistics" : true, 
+    "supportedSpatialAggregationStatistics" : [
+      "EnvelopeAggregate", 
+      "CentroidAggregate", 
+      "ConvexHullAggregate"
+    ], 
+    "supportsLod" : true, 
+    "supportsQueryWithLodSR" : false, 
+    "supportedLodTypes" : [
+      "geohash"
+    ], 
+    "supportsReturningGeometryCentroid" : false, 
+    "supportsReturningGeometryEnvelope" : false, 
+    "supportsQueryWithDatumTransformation" : true, 
+    "supportsCurrentUserQueries" : true, 
+    "supportsHavingClause" : true, 
+    "supportsOutFieldSQLExpression" : true, 
+    "supportsMaxRecordCountFactor" : true, 
+    "supportsTopFeaturesQuery" : true, 
+    "supportsDisjointSpatialRel" : true, 
+    "supportsQueryWithCacheHint" : true, 
+    "supportedOperationsWithCacheHint" : [
+      "query", 
+      "queryTopFilter", 
+      "queryAnalytics", 
+      "queryAttachments", 
+      "queryRelated", 
+      "queryBins", 
+      "queryPivot"
+    ], 
+    "supportsQueryAnalytic" : true, 
+    "supportsQueryPivot" : true, 
+    "supportsQueryBins" : true, 
+    "supportsDefaultSR" : true, 
+    "supportsTranslations" : false, 
+    "supportsAggIds" : true, 
+    "supportsQueryWithCollation" : true, 
+    "supportsISODOW" : true, 
+    "supportsISOWeek" : true, 
+    "supportsFullTextSearch" : true, 
+    "fullTextSearchCapabilities" : {
+      "supportsAccentSensitivity" : true, 
+      "supportsStopWords" : true, 
+      "supportsSearchOperator" : true, 
+      "supportsOperator" : true
+    }
+  }, 
+  "advancedQueryAnalyticCapabilities" : {
+    "supportsLinearRegression" : true, 
+    "supportsTrendlineRegression" : true, 
+    "supportsAsync" : true, 
+    "supportsPercentileAnalytic" : true
+  }, 
+  "queryBinsCapabilities" : {
+    "supportsAsync" : true, 
+    "supportsAutoIntervalBin" : true, 
+    "supportsFixedIntervalBin" : true, 
+    "supportsFixedBoundariesBin" : true, 
+    "supportsDateBin" : true, 
+    "supportsClassificationBin" : true, 
+    "supportsStackBy" : true, 
+    "supportsSplitBy" : true, 
+    "supportsFirstDayOfWeek" : true, 
+    "supportsSnapToData" : true, 
+    "supportsReturnFullIntervalBin" : true, 
+    "supportsReturnStackValueRange" : true, 
+    "supportsNormalization" : true, 
+    "supportedStatisticTypes" : [
+      "COUNT", 
+      "SUM", 
+      "AVG", 
+      "VAR", 
+      "STDDEV", 
+      "MIN", 
+      "MAX", 
+      "PERCENTILE_CONT", 
+      "PERCENTILE_DISC", 
+      "APPROX_PERCENTILE_CONT", 
+      "APPROX_PERCENTILE_DISC", 
+      "CentroidAggregate", 
+      "EnvelopeAggregate", 
+      "ConvexHullAggregate"
+    ], 
+    "supportedNormalizationTypes" : [
+      "boxCox", 
+      "field", 
+      "inverse", 
+      "log", 
+      "naturalLog", 
+      "percentOfTotal", 
+      "squareRoot"
+    ]
+  }, 
+  "supportedOperationsWithCollation" : "query,addField,updateField", 
+  "advancedEditingCapabilities" : {
+    "supportedSqlFormatsInCalculate" : [
+      "standard"
+    ], 
+    "supportsAsyncApplyEdits" : true, 
+    "supportsReturnEditResults" : true, 
+    "supportsApplyEditsbyUploadID" : true, 
+    "supportedApplyEditsUploadIDFormats" : "JSON,PBF", 
+    "supportsTranslation" : false, 
+    "supportsMaxTranslations" : 10
+  }, 
+  "infoInEstimates" : [
+    "extent", 
+    "count"
+  ], 
+  "useStandardizedQueries" : true, 
+  "geometryType" : "esriGeometryPoint", 
+  "minScale" : 0, 
+  "maxScale" : 0, 
+  "extent" : {
+    "xmin" : -19627852.616669994, 
+    "ymin" : -5929351.7674618186, 
+    "xmax" : 19838613.808588915, 
+    "ymax" : 7894836.6279289061, 
+    "spatialReference" : {
+      "wkid" : 102100, 
+      "latestWkid" : 3857
+    }
+  }, 
+  "spatialReference" : {
+    "wkid" : 102100, 
+    "latestWkid" : 3857
+  }, 
+  "drawingInfo":{"renderer":{"type":"uniqueValue","field1":"DEPLOYED","uniqueValueGroups":[{"heading":"","classes":[{"label":"NOAA","description":"NOAA","symbol":{"type":"esriPMS","url":"a90298839aa9d5430cb1a1c882650490","imageData":"iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAqklEQVQ4ja3U0Q2DMAxF0fvhJUjHaNZodupKZQ2yRueoDEQCNbGtlveJouNEfkK4KBI4k4D3v9AdmIEJyED9BVqRB0x6nQqLhYmHvPYP2cEkgmgWB5MIEsEkiniYHFbsIgPspvVokC5m3U40aYO6T8s6QSfpGCtlK5ciz1bWI1QjWDkjc+9GLlYGSA8aYsVARtAXlhzEgk7Yvp0h4kEN055ozHZE/kehen0ArIZOT6nBy4cAAAAASUVORK5CYII=","contentType":"image/png","width":13,"height":13,"angle":0,"xoffset":0,"yoffset":0},"values":[["Y"]]},{"label":"International Partners","description":"International Partners","symbol":{"type":"esriPMS","url":"c77132db94f46e8bbb13e827d2c2e463","imageData":"iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAuklEQVQ4ja3UzQ3CMAwF4HfwAj02jNGsQdaBKzdYp1mjWYFjr6yAHIjUivhHwDtG0edEtkz4U8hxJwBYf4UmABnACCACKN9AFTlOGNcHUO5YNIwsZD69DuJZx8iDcJarjpEH8WDkRSyMNi02EQE78Hg0iOekdsebMNSndL8WuQJX4opa0g3IpSKXNqxbqHiwtEdy70UmlgSkB4lYUhAJ+sDCoCMatMPe3RERC2oYzwlHXSWefWTuIr71BGKRbVEQZZWOAAAAAElFTkSuQmCC","contentType":"image/png","width":13,"height":13,"angle":0,"xoffset":0,"yoffset":0},"values":[["P"]]}]}],"uniqueValueInfos":[{"symbol":{"type":"esriPMS","url":"a90298839aa9d5430cb1a1c882650490","imageData":"iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAqklEQVQ4ja3U0Q2DMAxF0fvhJUjHaNZodupKZQ2yRueoDEQCNbGtlveJouNEfkK4KBI4k4D3v9AdmIEJyED9BVqRB0x6nQqLhYmHvPYP2cEkgmgWB5MIEsEkiniYHFbsIgPspvVokC5m3U40aYO6T8s6QSfpGCtlK5ciz1bWI1QjWDkjc+9GLlYGSA8aYsVARtAXlhzEgk7Yvp0h4kEN055ozHZE/kehen0ArIZOT6nBy4cAAAAASUVORK5CYII=","contentType":"image/png","width":13,"height":13,"angle":0,"xoffset":0,"yoffset":0},"value":"Y","label":"NOAA"},{"symbol":{"type":"esriPMS","url":"c77132db94f46e8bbb13e827d2c2e463","imageData":"iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAuklEQVQ4ja3UzQ3CMAwF4HfwAj02jNGsQdaBKzdYp1mjWYFjr6yAHIjUivhHwDtG0edEtkz4U8hxJwBYf4UmABnACCACKN9AFTlOGNcHUO5YNIwsZD69DuJZx8iDcJarjpEH8WDkRSyMNi02EQE78Hg0iOekdsebMNSndL8WuQJX4opa0g3IpSKXNqxbqHiwtEdy70UmlgSkB4lYUhAJ+sDCoCMatMPe3RERC2oYzwlHXSWefWTuIr71BGKRbVEQZZWOAAAAAElFTkSuQmCC","contentType":"image/png","width":13,"height":13,"angle":0,"xoffset":0,"yoffset":0},"value":"P","label":"International Partners"}],"fieldDelimiter":",","authoringInfo":{"colorRamp":{"type":"algorithmic","algorithm":"esriHSVAlgorithm","fromColor":[255,235,214,255],"toColor":[196,10,10,255]}}},"scaleSymbols":true,"transparency":0,"labelingInfo":null}, 
+  "allowGeometryUpdates" : true, 
+  "hasAttachments" : false, 
+  "htmlPopupType" : "esriServerHTMLPopupTypeAsHTMLText", 
+  "hasM" : false, 
+  "hasZ" : false, 
+  "objectIdField" : "OBJECTID", 
+  "uniqueIdField" : 
+  {
+    "name" : "OBJECTID", 
+    "isSystemMaintained" : true
+  }, 
+  "globalIdField" : "", 
+  "typeIdField" : "DEPLOYED", 
+  "collation" : {
+    "locale" : "neutral", 
+    "caseSensitive" : false, 
+    "accentSensitive" : true
+  }, 
+  "fields" : [
+    {
+      "name" : "STATION", 
+      "type" : "esriFieldTypeInteger", 
+      "alias" : "Deployment ID", 
+      "sqlType" : "sqlTypeOther", 
+      "nullable" : true, 
+      "editable" : true, 
+      "domain" : null, 
+      "defaultValue" : null
+    }, 
+    {
+      "name" : "DESCRIPTION", 
+      "type" : "esriFieldTypeString", 
+      "alias" : "Description", 
+      "sqlType" : "sqlTypeOther", 
+      "length" : 80, 
+      "nullable" : true, 
+      "editable" : true, 
+      "domain" : null, 
+      "defaultValue" : null
+    }, 
+    {
+      "name" : "DEPLOYED", 
+      "type" : "esriFieldTypeString", 
+      "alias" : "Deployed", 
+      "sqlType" : "sqlTypeOther", 
+      "length" : 1, 
+      "nullable" : true, 
+      "editable" : true, 
+      "domain" : null, 
+      "defaultValue" : null
+    }, 
+    {
+      "name" : "OBJECTID", 
+      "type" : "esriFieldTypeOID", 
+      "alias" : "OBJECTID", 
+      "sqlType" : "sqlTypeOther", 
+      "nullable" : false, 
+      "editable" : false, 
+      "domain" : null, 
+      "defaultValue" : null
+    }, 
+    {
+      "name" : "DATA_URL", 
+      "type" : "esriFieldTypeString", 
+      "alias" : "Data URL", 
+      "sqlType" : "sqlTypeOther", 
+      "length" : 90, 
+      "nullable" : true, 
+      "editable" : true, 
+      "domain" : null, 
+      "defaultValue" : null
+    }, 
+    {
+      "name" : "OID", 
+      "type" : "esriFieldTypeInteger", 
+      "alias" : "OID", 
+      "sqlType" : "sqlTypeOther", 
+      "nullable" : true, 
+      "editable" : true, 
+      "domain" : null, 
+      "defaultValue" : null
+    }
+  ], 
+  "indexes" : [
+    {
+      "name" : "PK__Current___F4B70D85D17A77B3", 
+      "fields" : "OBJECTID", 
+      "isAscending" : true, 
+      "isUnique" : true, 
+      "description" : "clustered, unique, primary key", 
+      "indexType" : "Attribute"
+    }, 
+    {
+      "name" : "Current_DARTs_and_Retrospective_BPR_Deployments_CURRENT_DART_DEPLOYMENTS_Shape_sidx", 
+      "fields" : "Shape", 
+      "isAscending" : true, 
+      "isUnique" : false, 
+      "description" : "Shape Index", 
+      "indexType" : "Spatial"
+    }, 
+    {
+      "name" : "UX_Current_DARTs_and_Retrospective_BPR_Deployments_CURRENT_DART_DEPLOYMENTS_OID_ASC", 
+      "fields" : "OID", 
+      "isAscending" : true, 
+      "isUnique" : true, 
+      "description" : "Field properties", 
+      "indexType" : "Attribute"
+    }
+  ], 
+  "dateFieldsTimeReference" : {
+    "timeZone" : "UTC", 
+    "timeZoneIANA" : "Etc/UTC", 
+    "respectsDaylightSaving" : false
+  }, 
+  "preferredTimeReference" : null, 
+  "types" : [
+    {
+      "id" : "Y", 
+      "name" : "NOAA", 
+      "domains" : 
+      {
+      }, 
+      "templates" : [
+        {
+          "name" : "NOAA", 
+          "description" : "", 
+          "drawingTool" : "esriFeatureEditToolPoint", 
+          "prototype" : {
+            "attributes" : {
+              "STATION" : null, 
+              "DESCRIPTION" : null, 
+              "DEPLOYED" : "Y", 
+              "DATA_URL" : null, 
+              "OID" : null
+            }
+          }
+        }
+      ]
+    }, 
+    {
+      "id" : "P", 
+      "name" : "International Partners", 
+      "domains" : 
+      {
+      }, 
+      "templates" : [
+        {
+          "name" : "International Partners", 
+          "description" : "", 
+          "drawingTool" : "esriFeatureEditToolPoint", 
+          "prototype" : {
+            "attributes" : {
+              "STATION" : null, 
+              "DESCRIPTION" : null, 
+              "DEPLOYED" : "P", 
+              "DATA_URL" : null, 
+              "OID" : null
+            }
+          }
+        }
+      ]
+    }
+  ], 
+  "templates" : [], 
+  "supportedQueryFormats" : "JSON, geoJSON, PBF", 
+  "supportedAppendFormats" : "sqlite,geoPackage,shapefile,filegdb,featureCollection,geojson,csv,excel,jsonl,featureService,pbf", 
+  "supportedAppendSourceFilterFormats" : "sqlite,geoPackage,shapefile,filegdb,featureService", 
+  "supportedExportFormats" : "csv,shapefile,sqlite,geoPackage,filegdb,featureCollection,geojson,kml,excel,parquet", 
+  "supportedConvertFileFormats" : "JSON,PBF,Parquet", 
+  "supportedConvertContentFormats" : "LayerEditCollection,FeatureCollection", 
+  "supportedSpatialRelationships" : [
+    "esriSpatialRelIntersects", 
+    "esriSpatialRelContains", 
+    "esriSpatialRelCrosses", 
+    "esriSpatialRelEnvelopeIntersects", 
+    "esriSpatialRelIndexIntersects", 
+    "esriSpatialRelOverlaps", 
+    "esriSpatialRelTouches", 
+    "esriSpatialRelWithin", 
+    "esriSpatialRelDisjoint", 
+    "esriSpatialRelRelation"
+  ], 
+  "guidFormat" : "", 
+  "supportsContingentValues" : true, 
+  "supportsEditingContingentValues" : true, 
+  "supportedContingentValuesFormats" : "JSON, PBF", 
+  "supportsFieldGroups" : true, 
+  "supportedSyncDataOptions" : 260, 
+  "hasStaticData" : true, 
+  "maxRecordCount" : 2000, 
+  "standardMaxRecordCount" : 16000, 
+  "maxIdsCount" : 1000000, 
+  "standardMaxRecordCountNoGeometry" : 32000, 
+  "tileMaxRecordCount" : 8000, 
+  "maxRecordCountFactor" : 1, 
+  "capabilities" : "Query,Extract"
+}

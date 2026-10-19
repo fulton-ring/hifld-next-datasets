@@ -1,0 +1,737 @@
+{
+  "approved": false,
+  "classification": "unapproved_published_candidate_diagnostic",
+  "source_count": 62,
+  "published_counts": {
+    "geoparquet": 62,
+    "geojson": 62,
+    "geopackage": 62
+  },
+  "source_schema": [
+    {
+      "name": "STATION",
+      "type": "esriFieldTypeInteger",
+      "alias": "Deployment ID",
+      "sqlType": "sqlTypeOther",
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DESCRIPTION",
+      "type": "esriFieldTypeString",
+      "alias": "Description",
+      "sqlType": "sqlTypeOther",
+      "length": 80,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DEPLOYED",
+      "type": "esriFieldTypeString",
+      "alias": "Deployed",
+      "sqlType": "sqlTypeOther",
+      "length": 1,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "sqlType": "sqlTypeOther",
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DATA_URL",
+      "type": "esriFieldTypeString",
+      "alias": "Data URL",
+      "sqlType": "sqlTypeOther",
+      "length": 90,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "OID",
+      "type": "esriFieldTypeInteger",
+      "alias": "OID",
+      "sqlType": "sqlTypeOther",
+      "domain": null,
+      "defaultValue": null
+    }
+  ],
+  "published_parquet_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 1416\nSTATION: int64\nDESCRIPTION: string\nDEPLOYED: string\nDATA_URL: string\nOID: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 775\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 1547",
+  "published_geopackage_schema": {
+    "properties": {
+      "STATION": "int32",
+      "DESCRIPTION": "str:80",
+      "DEPLOYED": "str:1",
+      "DATA_URL": "str:90",
+      "OID": "int32"
+    },
+    "geometry": "Point"
+  },
+  "source_crs": {
+    "wkid": 102100,
+    "latestWkid": 3857
+  },
+  "published_geopackage_crs": "EPSG:3857",
+  "all_station_values_retained": true,
+  "source_deployment_coverage": {
+    "Y": 40,
+    "P": 22
+  },
+  "identifier_fields": {
+    "source": [
+      "STATION",
+      "OBJECTID",
+      "OID"
+    ],
+    "published_geojson": [
+      "STATION",
+      "OBJECTID",
+      "OID"
+    ],
+    "published_parquet": [
+      "STATION",
+      "OID"
+    ],
+    "published_geopackage": [
+      "STATION",
+      "OID",
+      "intrinsic_fid"
+    ]
+  },
+  "common_attribute_changed_counts": {
+    "STATION": 0,
+    "DESCRIPTION": 0,
+    "DEPLOYED": 0,
+    "DATA_URL": 0,
+    "OID": 0
+  },
+  "source_objectid_differs_published_geojson": 62,
+  "original_oid_differs_published_oid": 0,
+  "native_wkb_exact_count": 0,
+  "native_xy_max_absolute_difference": 4.980526864528656e-05,
+  "ids": [
+    {
+      "station": 21413,
+      "source_OBJECTID": 155,
+      "source_OID": 70,
+      "published_geojson_OBJECTID": 20,
+      "published_OID": 70,
+      "published_gp_fid": "18"
+    },
+    {
+      "station": 21414,
+      "source_OBJECTID": 138,
+      "source_OID": 1,
+      "published_geojson_OBJECTID": 1,
+      "published_OID": 1,
+      "published_gp_fid": "1"
+    },
+    {
+      "station": 21415,
+      "source_OBJECTID": 168,
+      "source_OID": 117,
+      "published_geojson_OBJECTID": 33,
+      "published_OID": 117,
+      "published_gp_fid": "31"
+    },
+    {
+      "station": 21416,
+      "source_OBJECTID": 166,
+      "source_OID": 114,
+      "published_geojson_OBJECTID": 31,
+      "published_OID": 114,
+      "published_gp_fid": "29"
+    },
+    {
+      "station": 21418,
+      "source_OBJECTID": 167,
+      "source_OID": 116,
+      "published_geojson_OBJECTID": 32,
+      "published_OID": 116,
+      "published_gp_fid": "30"
+    },
+    {
+      "station": 21419,
+      "source_OBJECTID": 178,
+      "source_OID": 135,
+      "published_geojson_OBJECTID": 49,
+      "published_OID": 135,
+      "published_gp_fid": "41"
+    },
+    {
+      "station": 21420,
+      "source_OBJECTID": 198,
+      "source_OID": 161,
+      "published_geojson_OBJECTID": 74,
+      "published_OID": 161,
+      "published_gp_fid": "61"
+    },
+    {
+      "station": 23218,
+      "source_OBJECTID": 190,
+      "source_OID": 153,
+      "published_geojson_OBJECTID": 66,
+      "published_OID": 153,
+      "published_gp_fid": "53"
+    },
+    {
+      "station": 23219,
+      "source_OBJECTID": 191,
+      "source_OID": 154,
+      "published_geojson_OBJECTID": 67,
+      "published_OID": 154,
+      "published_gp_fid": "54"
+    },
+    {
+      "station": 23223,
+      "source_OBJECTID": 192,
+      "source_OID": 155,
+      "published_geojson_OBJECTID": 68,
+      "published_OID": 155,
+      "published_gp_fid": "55"
+    },
+    {
+      "station": 23226,
+      "source_OBJECTID": 193,
+      "source_OID": 156,
+      "published_geojson_OBJECTID": 69,
+      "published_OID": 156,
+      "published_gp_fid": "56"
+    },
+    {
+      "station": 23227,
+      "source_OBJECTID": 182,
+      "source_OID": 140,
+      "published_geojson_OBJECTID": 54,
+      "published_OID": 140,
+      "published_gp_fid": "45"
+    },
+    {
+      "station": 23228,
+      "source_OBJECTID": 181,
+      "source_OID": 139,
+      "published_geojson_OBJECTID": 53,
+      "published_OID": 139,
+      "published_gp_fid": "44"
+    },
+    {
+      "station": 23401,
+      "source_OBJECTID": 156,
+      "source_OID": 71,
+      "published_geojson_OBJECTID": 21,
+      "published_OID": 71,
+      "published_gp_fid": "19"
+    },
+    {
+      "station": 32066,
+      "source_OBJECTID": 185,
+      "source_OID": 143,
+      "published_geojson_OBJECTID": 57,
+      "published_OID": 143,
+      "published_gp_fid": "48"
+    },
+    {
+      "station": 32067,
+      "source_OBJECTID": 186,
+      "source_OID": 144,
+      "published_geojson_OBJECTID": 58,
+      "published_OID": 144,
+      "published_gp_fid": "49"
+    },
+    {
+      "station": 32401,
+      "source_OBJECTID": 139,
+      "source_OID": 2,
+      "published_geojson_OBJECTID": 2,
+      "published_OID": 2,
+      "published_gp_fid": "2"
+    },
+    {
+      "station": 32402,
+      "source_OBJECTID": 184,
+      "source_OID": 142,
+      "published_geojson_OBJECTID": 56,
+      "published_OID": 142,
+      "published_gp_fid": "47"
+    },
+    {
+      "station": 32403,
+      "source_OBJECTID": 194,
+      "source_OID": 157,
+      "published_geojson_OBJECTID": 70,
+      "published_OID": 157,
+      "published_gp_fid": "57"
+    },
+    {
+      "station": 32404,
+      "source_OBJECTID": 195,
+      "source_OID": 158,
+      "published_geojson_OBJECTID": 71,
+      "published_OID": 158,
+      "published_gp_fid": "58"
+    },
+    {
+      "station": 32411,
+      "source_OBJECTID": 162,
+      "source_OID": 79,
+      "published_geojson_OBJECTID": 27,
+      "published_OID": 79,
+      "published_gp_fid": "25"
+    },
+    {
+      "station": 32412,
+      "source_OBJECTID": 172,
+      "source_OID": 125,
+      "published_geojson_OBJECTID": 41,
+      "published_OID": 125,
+      "published_gp_fid": "35"
+    },
+    {
+      "station": 32413,
+      "source_OBJECTID": 180,
+      "source_OID": 137,
+      "published_geojson_OBJECTID": 51,
+      "published_OID": 137,
+      "published_gp_fid": "43"
+    },
+    {
+      "station": 32489,
+      "source_OBJECTID": 196,
+      "source_OID": 159,
+      "published_geojson_OBJECTID": 72,
+      "published_OID": 159,
+      "published_gp_fid": "59"
+    },
+    {
+      "station": 34420,
+      "source_OBJECTID": 197,
+      "source_OID": 160,
+      "published_geojson_OBJECTID": 73,
+      "published_OID": 160,
+      "published_gp_fid": "60"
+    },
+    {
+      "station": 41420,
+      "source_OBJECTID": 140,
+      "source_OID": 3,
+      "published_geojson_OBJECTID": 3,
+      "published_OID": 3,
+      "published_gp_fid": "3"
+    },
+    {
+      "station": 41421,
+      "source_OBJECTID": 141,
+      "source_OID": 4,
+      "published_geojson_OBJECTID": 4,
+      "published_OID": 4,
+      "published_gp_fid": "4"
+    },
+    {
+      "station": 41425,
+      "source_OBJECTID": 187,
+      "source_OID": 150,
+      "published_geojson_OBJECTID": 63,
+      "published_OID": 150,
+      "published_gp_fid": "50"
+    },
+    {
+      "station": 42407,
+      "source_OBJECTID": 142,
+      "source_OID": 6,
+      "published_geojson_OBJECTID": 6,
+      "published_OID": 6,
+      "published_gp_fid": "5"
+    },
+    {
+      "station": 42409,
+      "source_OBJECTID": 177,
+      "source_OID": 134,
+      "published_geojson_OBJECTID": 48,
+      "published_OID": 134,
+      "published_gp_fid": "40"
+    },
+    {
+      "station": 43412,
+      "source_OBJECTID": 163,
+      "source_OID": 80,
+      "published_geojson_OBJECTID": 28,
+      "published_OID": 80,
+      "published_gp_fid": "26"
+    },
+    {
+      "station": 43413,
+      "source_OBJECTID": 164,
+      "source_OID": 81,
+      "published_geojson_OBJECTID": 29,
+      "published_OID": 81,
+      "published_gp_fid": "27"
+    },
+    {
+      "station": 44402,
+      "source_OBJECTID": 171,
+      "source_OID": 123,
+      "published_geojson_OBJECTID": 39,
+      "published_OID": 123,
+      "published_gp_fid": "34"
+    },
+    {
+      "station": 46402,
+      "source_OBJECTID": 143,
+      "source_OID": 8,
+      "published_geojson_OBJECTID": 7,
+      "published_OID": 8,
+      "published_gp_fid": "6"
+    },
+    {
+      "station": 46403,
+      "source_OBJECTID": 144,
+      "source_OID": 9,
+      "published_geojson_OBJECTID": 8,
+      "published_OID": 9,
+      "published_gp_fid": "7"
+    },
+    {
+      "station": 46404,
+      "source_OBJECTID": 145,
+      "source_OID": 10,
+      "published_geojson_OBJECTID": 9,
+      "published_OID": 10,
+      "published_gp_fid": "8"
+    },
+    {
+      "station": 46407,
+      "source_OBJECTID": 146,
+      "source_OID": 11,
+      "published_geojson_OBJECTID": 10,
+      "published_OID": 11,
+      "published_gp_fid": "9"
+    },
+    {
+      "station": 46408,
+      "source_OBJECTID": 147,
+      "source_OID": 13,
+      "published_geojson_OBJECTID": 12,
+      "published_OID": 13,
+      "published_gp_fid": "10"
+    },
+    {
+      "station": 46409,
+      "source_OBJECTID": 148,
+      "source_OID": 14,
+      "published_geojson_OBJECTID": 13,
+      "published_OID": 14,
+      "published_gp_fid": "11"
+    },
+    {
+      "station": 46410,
+      "source_OBJECTID": 149,
+      "source_OID": 15,
+      "published_geojson_OBJECTID": 14,
+      "published_OID": 15,
+      "published_gp_fid": "12"
+    },
+    {
+      "station": 46411,
+      "source_OBJECTID": 150,
+      "source_OID": 16,
+      "published_geojson_OBJECTID": 15,
+      "published_OID": 16,
+      "published_gp_fid": "13"
+    },
+    {
+      "station": 46412,
+      "source_OBJECTID": 151,
+      "source_OID": 17,
+      "published_geojson_OBJECTID": 16,
+      "published_OID": 17,
+      "published_gp_fid": "14"
+    },
+    {
+      "station": 46413,
+      "source_OBJECTID": 152,
+      "source_OID": 18,
+      "published_geojson_OBJECTID": 17,
+      "published_OID": 18,
+      "published_gp_fid": "15"
+    },
+    {
+      "station": 46414,
+      "source_OBJECTID": 188,
+      "source_OID": 151,
+      "published_geojson_OBJECTID": 64,
+      "published_OID": 151,
+      "published_gp_fid": "51"
+    },
+    {
+      "station": 46415,
+      "source_OBJECTID": 189,
+      "source_OID": 152,
+      "published_geojson_OBJECTID": 65,
+      "published_OID": 152,
+      "published_gp_fid": "52"
+    },
+    {
+      "station": 46416,
+      "source_OBJECTID": 199,
+      "source_OID": 162,
+      "published_geojson_OBJECTID": 75,
+      "published_OID": 162,
+      "published_gp_fid": "62"
+    },
+    {
+      "station": 46419,
+      "source_OBJECTID": 153,
+      "source_OID": 19,
+      "published_geojson_OBJECTID": 18,
+      "published_OID": 19,
+      "published_gp_fid": "16"
+    },
+    {
+      "station": 51407,
+      "source_OBJECTID": 154,
+      "source_OID": 20,
+      "published_geojson_OBJECTID": 19,
+      "published_OID": 20,
+      "published_gp_fid": "17"
+    },
+    {
+      "station": 51425,
+      "source_OBJECTID": 169,
+      "source_OID": 120,
+      "published_geojson_OBJECTID": 36,
+      "published_OID": 120,
+      "published_gp_fid": "32"
+    },
+    {
+      "station": 52401,
+      "source_OBJECTID": 157,
+      "source_OID": 74,
+      "published_geojson_OBJECTID": 22,
+      "published_OID": 74,
+      "published_gp_fid": "20"
+    },
+    {
+      "station": 52402,
+      "source_OBJECTID": 158,
+      "source_OID": 75,
+      "published_geojson_OBJECTID": 23,
+      "published_OID": 75,
+      "published_gp_fid": "21"
+    },
+    {
+      "station": 52403,
+      "source_OBJECTID": 159,
+      "source_OID": 76,
+      "published_geojson_OBJECTID": 24,
+      "published_OID": 76,
+      "published_gp_fid": "22"
+    },
+    {
+      "station": 52404,
+      "source_OBJECTID": 160,
+      "source_OID": 77,
+      "published_geojson_OBJECTID": 25,
+      "published_OID": 77,
+      "published_gp_fid": "23"
+    },
+    {
+      "station": 52405,
+      "source_OBJECTID": 161,
+      "source_OID": 78,
+      "published_geojson_OBJECTID": 26,
+      "published_OID": 78,
+      "published_gp_fid": "24"
+    },
+    {
+      "station": 52406,
+      "source_OBJECTID": 170,
+      "source_OID": 121,
+      "published_geojson_OBJECTID": 37,
+      "published_OID": 121,
+      "published_gp_fid": "33"
+    },
+    {
+      "station": 55012,
+      "source_OBJECTID": 173,
+      "source_OID": 126,
+      "published_geojson_OBJECTID": 42,
+      "published_OID": 126,
+      "published_gp_fid": "36"
+    },
+    {
+      "station": 55015,
+      "source_OBJECTID": 174,
+      "source_OID": 127,
+      "published_geojson_OBJECTID": 43,
+      "published_OID": 127,
+      "published_gp_fid": "37"
+    },
+    {
+      "station": 55023,
+      "source_OBJECTID": 179,
+      "source_OID": 136,
+      "published_geojson_OBJECTID": 50,
+      "published_OID": 136,
+      "published_gp_fid": "42"
+    },
+    {
+      "station": 55042,
+      "source_OBJECTID": 183,
+      "source_OID": 141,
+      "published_geojson_OBJECTID": 55,
+      "published_OID": 141,
+      "published_gp_fid": "46"
+    },
+    {
+      "station": 55401,
+      "source_OBJECTID": 165,
+      "source_OID": 82,
+      "published_geojson_OBJECTID": 30,
+      "published_OID": 82,
+      "published_gp_fid": "28"
+    },
+    {
+      "station": 56001,
+      "source_OBJECTID": 175,
+      "source_OID": 132,
+      "published_geojson_OBJECTID": 46,
+      "published_OID": 132,
+      "published_gp_fid": "38"
+    },
+    {
+      "station": 56003,
+      "source_OBJECTID": 176,
+      "source_OID": 133,
+      "published_geojson_OBJECTID": 47,
+      "published_OID": 133,
+      "published_gp_fid": "39"
+    }
+  ],
+  "files": {
+    "captures/count_after.body": {
+      "bytes": 12,
+      "sha256": "4d7fa0dcf0b577004dc5203fef7b4cb9af7132f677b6227575588819d5b01de6"
+    },
+    "captures/count_after.receipt.json": {
+      "bytes": 1807,
+      "sha256": "8ef864460622e34d1db2853d67eaffa289d2b8b099c103a1600f9da6560d0caf"
+    },
+    "captures/count_before.body": {
+      "bytes": 12,
+      "sha256": "4d7fa0dcf0b577004dc5203fef7b4cb9af7132f677b6227575588819d5b01de6"
+    },
+    "captures/count_before.receipt.json": {
+      "bytes": 1773,
+      "sha256": "9e6660cdf799065ccabb137497b14306e44cea56da24608447cd22b0b2c2ded4"
+    },
+    "captures/features.body": {
+      "bytes": 16613,
+      "sha256": "00d93ba1dcc546476c11efdf71b1f0b6afd131325ba3ca3e32675285120d72f6"
+    },
+    "captures/features.receipt.json": {
+      "bytes": 2111,
+      "sha256": "6098e3a2e4da093e779cc443dac87510cd51866d63ec5e3846ba09f9ece461e1"
+    },
+    "captures/ids_after.body": {
+      "bytes": 296,
+      "sha256": "894fc8f0a3a427792ec090ad5ba606936d41434159a1fcfe1e897ff705630ef5"
+    },
+    "captures/ids_after.receipt.json": {
+      "bytes": 1926,
+      "sha256": "96ff9dd56f77a5dd63edd8f92893d2a6d3e4a5009ffcd37073368e09dfcde4dc"
+    },
+    "captures/ids_before.body": {
+      "bytes": 296,
+      "sha256": "894fc8f0a3a427792ec090ad5ba606936d41434159a1fcfe1e897ff705630ef5"
+    },
+    "captures/ids_before.receipt.json": {
+      "bytes": 1891,
+      "sha256": "6b18d9ad2d84feb9fd655aed02e7601ea2c948420bad6c35c24c2cebfd6ad3a6"
+    },
+    "captures/item.body": {
+      "bytes": 4997,
+      "sha256": "0ba4cd98d1d7f46e3bd1ba289ca2d5c0e99ed7f46db49214d6fdd1f1a25a6a00"
+    },
+    "captures/item.receipt.json": {
+      "bytes": 1042,
+      "sha256": "3edb637fa9b7e406e1df4e9e6565295f4d0c7a60efa8e2f976119caaa43d027d"
+    },
+    "captures/layer.body": {
+      "bytes": 14130,
+      "sha256": "32c4fa1dfa848e7224337882487c8320a83e1f41a204756d7c4c6223611a5284"
+    },
+    "captures/layer.receipt.json": {
+      "bytes": 1671,
+      "sha256": "f22407118c7dd463f8c3c3a3066e3b034d73c965eaca4866a1223be886194e44"
+    },
+    "captures/map_store.body": {
+      "bytes": 69871,
+      "sha256": "57e4a3b59f6783bf5bd26c4c29fbad391b759250f5e1203bac6dede1ec2afc34"
+    },
+    "captures/map_store.receipt.json": {
+      "bytes": 844,
+      "sha256": "8cf6f5604e34b5b348e879fd9c169c7b68950c3b8dbff23665a3b904d23f310d"
+    },
+    "captures/ncei_dart.body": {
+      "bytes": 42006,
+      "sha256": "c16f4351bb0b80d885942f95da32ceccaa1bde72ccf94eb5b0cb7cb4bdd5aaa7"
+    },
+    "captures/ncei_dart.receipt.json": {
+      "bytes": 1411,
+      "sha256": "64c98ef21851b011dc2c1e6da38344b365b8e84c8585c26f848f33d870dad7ee"
+    },
+    "captures/ncei_map.body": {
+      "bytes": 29548,
+      "sha256": "c4e3955c801c46b92fca0650e974e4546adfd4d0cc3ef8d68619b34314abf292"
+    },
+    "captures/ncei_map.receipt.json": {
+      "bytes": 836,
+      "sha256": "d15349fbf66af6d67a5c5b31e7b6b34008a25a64da813f3ecb75171ff9d3f8ce"
+    },
+    "captures/webmap.body": {
+      "bytes": 95973,
+      "sha256": "c091b8bca1fd6f358cc0d3100e427f29734d2088fd01581be696502c9f7e81d8"
+    },
+    "captures/webmap.receipt.json": {
+      "bytes": 1056,
+      "sha256": "fa69fc9a9771d9d5a5b492b8f16afb24f6b6d0e94e4690b385b94fbe9c7aa8ec"
+    },
+    "published-candidate/collection.json": {
+      "bytes": 12464,
+      "sha256": "af3cf8d143fe949aedf5dec48f31e563da8d87fb0ba6b21aed4de82a36822d2b"
+    },
+    "published-candidate/collection.receipt.json": {
+      "bytes": 1642,
+      "sha256": "f6536a28b4a96604186f464849d274d9a0701fcec5927bafad72f355a87cc531"
+    },
+    "published-candidate/current-dart-deployments.geojson": {
+      "bytes": 18337,
+      "sha256": "77fa60fc17fbc9e4931b9a3f70ace005cab4da8f37ed0e3c4b1584d2cc646629"
+    },
+    "published-candidate/current-dart-deployments.gpkg": {
+      "bytes": 139264,
+      "sha256": "cb9ac58b18de6622a8850a19869ff793caa96a0d035be6d6a3b114237673bcd8"
+    },
+    "published-candidate/current-dart-deployments.parquet": {
+      "bytes": 16158,
+      "sha256": "1cb1d80efc3b1f921d0a6cc1bd982a2c7816e4e70bc21651581b9875f524e4e8"
+    },
+    "published-candidate/published_geojson.receipt.json": {
+      "bytes": 1530,
+      "sha256": "5416ebfad61ae5b21f58b3ef143ebdaab2a1476e7749a87623da60feabcf67ad"
+    },
+    "published-candidate/published_geopackage.receipt.json": {
+      "bytes": 1544,
+      "sha256": "6dbc2ff85a48cb9f6dead237600173f04120627a44a66d016d71c9695ff485a3"
+    },
+    "published-candidate/published_geoparquet.receipt.json": {
+      "bytes": 1524,
+      "sha256": "cb69814d0b8ac2772f5411d8d8d9dd666a8e625aae1c100ced7fa9c2ef62f8ac"
+    }
+  },
+  "release_gate": "No source, baseline, schema/nullability/int32-vs-int64/ID mapping/format approval. All published identifiers remain in full raw candidates; no join or destructive schema migration applied."
+}

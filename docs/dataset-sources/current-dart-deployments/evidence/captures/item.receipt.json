@@ -1,0 +1,26 @@
+{
+  "url": "https://www.arcgis.com/sharing/rest/content/items/764d3a99a4f8440ea05522815b5f5e19?f=pjson",
+  "final_url": "https://www.arcgis.com/sharing/rest/content/items/764d3a99a4f8440ea05522815b5f5e19?f=pjson",
+  "status": 200,
+  "headers": {
+    "content-type": "text/plain;charset=utf-8",
+    "date": "Mon, 19 Oct 2026 08:43:13 GMT",
+    "strict-transport-security": "max-age=31536000",
+    "server": "envoy",
+    "x-content-type-options": "nosniff",
+    "cache-control": "no-cache",
+    "pragma": "no-cache",
+    "expires": "-1",
+    "vary": "Origin",
+    "x-cache": "Miss from cloudfront",
+    "via": "1.1 49798ef4b8dd64fece36e067d09f69ec.cloudfront.net (CloudFront)",
+    "x-amz-cf-pop": "HIO52-P2",
+    "x-amz-cf-id": "EVULOCDwY0t2EyThdBNoDv8LI3d3vWkBlP82NITtxkNoHT4UOA9V8A==",
+    "x-envoy-upstream-service-time": "333",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 4997,
+  "bytes": 4997,
+  "sha256": "0ba4cd98d1d7f46e3bd1ba289ca2d5c0e99ed7f46db49214d6fdd1f1a25a6a00",
+  "fetched_at": "2026-10-19T08:43:13.723088+00:00"
+}

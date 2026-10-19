@@ -1,0 +1,23 @@
+{
+  "url": "https://www.ncei.noaa.gov/maps/hazards/?layers=4",
+  "final_url": "https://www.ncei.noaa.gov/maps/hazards/?layers=4",
+  "status": 200,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 08:43:12 GMT",
+    "server": "envoy",
+    "strict-transport-security": "max-age=31536000",
+    "last-modified": "Fri, 21 Aug 2026 19:29:10 GMT",
+    "etag": "\"72d0-65993a6934d80\"",
+    "accept-ranges": "bytes",
+    "content-type": "text/html",
+    "vary": "Accept-Encoding",
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "X-Requested-With, Content-Type",
+    "x-envoy-upstream-service-time": "377",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 29548,
+  "bytes": 29548,
+  "sha256": "c4e3955c801c46b92fca0650e974e4546adfd4d0cc3ef8d68619b34314abf292",
+  "fetched_at": "2026-10-19T08:43:13.099768+00:00"
+}

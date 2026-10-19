@@ -1,0 +1,32 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/current-dart-deployments/current-dart-deployments/v1.0.0/collection.json",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/current-dart-deployments/current-dart-deployments/v1.0.0/collection.json",
+  "status": 200,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU81wxLQPCec2FcLYekAuUjZroVW9PsaEp4MSUy2b_PJOI1lPdNkR9tZYdE85uV79ltIp",
+    "date": "Mon, 19 Oct 2026 08:44:03 GMT",
+    "cache-control": "no-cache",
+    "expires": "Tue, 19 Oct 2027 08:44:03 GMT",
+    "last-modified": "Sat, 10 Oct 2026 00:20:44 GMT",
+    "etag": "\"16c0937632de28025ea244885b48b5df\"",
+    "x-goog-generation": "1791591644346910",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "12464",
+    "x-goog-meta-sha256": "af3cf8d143fe949aedf5dec48f31e563da8d87fb0ba6b21aed4de82a36822d2b",
+    "x-goog-hash": "crc32c=wvFPNg==, md5=FsCTdjLeKAJeokSIW0i13w==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "12464",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "405"
+  },
+  "wire_bytes": 12464,
+  "bytes": 12464,
+  "sha256": "af3cf8d143fe949aedf5dec48f31e563da8d87fb0ba6b21aed4de82a36822d2b",
+  "fetched_at": "2026-10-19T08:44:03.281026+00:00"
+}

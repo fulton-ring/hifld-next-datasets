@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "issue": 49,
+  "approved": false,
+  "implementation_scope": "User-authorized reviewable working draft; real source/baseline/contracts and ID mapping remain release prerequisites.",
+  "producer": "NOAA National Centers for Environmental Information",
+  "publisher_account": "ncei_noaa",
+  "distribution_class": "explicitly delegated official ArcGIS Online distribution",
+  "source_relationship": "Exact official current webmap layer and matching archive title/description; source/published ID and physical-type differences require acceptance.",
+  "landing_url": "https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis/dart-ocean-bottom-pressure",
+  "machine_url": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0",
+  "archive_project": 239073,
+  "crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "status": "not_verified_origin_403",
+    "do_not_claim_reviewed": true
+  },
+  "release_date": null,
+  "release_date_unknown_reason": "Service editingInfo and portal timestamps are not a producer-declared data release.",
+  "count": 62,
+  "scope": "Complete global current layer including40Y and22P sites",
+  "source_schema": [
+    {
+      "name": "STATION",
+      "type": "esriFieldTypeInteger",
+      "alias": "Deployment ID",
+      "sqlType": "sqlTypeOther",
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DESCRIPTION",
+      "type": "esriFieldTypeString",
+      "alias": "Description",
+      "sqlType": "sqlTypeOther",
+      "length": 80,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DEPLOYED",
+      "type": "esriFieldTypeString",
+      "alias": "Deployed",
+      "sqlType": "sqlTypeOther",
+      "length": 1,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "sqlType": "sqlTypeOther",
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DATA_URL",
+      "type": "esriFieldTypeString",
+      "alias": "Data URL",
+      "sqlType": "sqlTypeOther",
+      "length": 90,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "OID",
+      "type": "esriFieldTypeInteger",
+      "alias": "OID",
+      "sqlType": "sqlTypeOther",
+      "domain": null,
+      "defaultValue": null
+    }
+  ],
+  "source_identifiers": [
+    "STATION",
+    "OBJECTID",
+    "OID"
+  ],
+  "preserved_published_identifiers": [
+    "STATION",
+    "OID",
+    "GeoJSON OBJECTID",
+    "GeoPackage intrinsic FID"
+  ],
+  "proposed_contract": {
+    "approved": false,
+    "crs": "EPSG:3857",
+    "geometry": "Point",
+    "source_physical_ids": "int32",
+    "published_parquet_ids": "int64",
+    "migration": "Not accepted; preserve each original source and published file without ID substitution."
+  },
+  "promotion_blockers": [
+    "No maintainer-approved source/baseline/contract/ID mapping",
+    "All62 OBJECTID values differ from historical GeoJSON; do not substitute OID",
+    "Source int32 versus historical Parquet int64; schema mapping not accepted",
+    "All62 native coordinate encodings differ from historical Parquet",
+    "Crosswalk contents unavailable from provider-origin403",
+    "No dated source release; freshness is bounded dated extraction evidence"
+  ],
+  "pipeline_paths": [
+    "src/dagster_hifld/sources/current_dart.py",
+    "src/dagster_hifld/assets/noaa_current_dart.py",
+    "tests/test_current_dart.py"
+  ],
+  "evidence": {
+    "audit": "evidence/baseline-audit.json",
+    "replay": "evidence/audit.py",
+    "source_capture_count": 11
+  }
+}
