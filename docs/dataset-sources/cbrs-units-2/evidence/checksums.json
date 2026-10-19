@@ -49,6 +49,66 @@
       "bytes": 452292,
       "sha256": "f51213371eea63ad1e1bb64e7102a09d828a36d2fd0b5d4808566ef91d20458a"
     },
+    "construction-auth-verification/baseline_comparison.json": {
+      "bytes": 199,
+      "sha256": "d2c3112e3c495a0dc6a3e5f68e0f8a315c2d231ba7dd7758abb17a02dc3f937f"
+    },
+    "construction-auth-verification/baseline_differences.jsonl": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "construction-auth-verification/baseline_field_changes.jsonl": {
+      "bytes": 609,
+      "sha256": "115dc46a47ab28085c17a3a0af85114afd293d829277cc1fc8f9157cc5a3d896"
+    },
+    "construction-auth-verification/cbrs_units_source_audit.json": {
+      "bytes": 4574,
+      "sha256": "28b6ce8604087214baede615546beb8a467eab5d269620704aebcdb7990fe4c4"
+    },
+    "construction-auth-verification/execution.json": {
+      "bytes": 40565,
+      "sha256": "c6974457780ec101e1eb03e744dd2f155600875f900ace9c8a7be974a2da7412"
+    },
+    "construction-auth-verification/focused-construction-auth.log": {
+      "bytes": 361,
+      "sha256": "2a38ecb24c7d3e7d2a66829c39ab765a12d62a14cb92c92d01a1c3d0d407b46d"
+    },
+    "construction-auth-verification/full-suite-construction-auth.log": {
+      "bytes": 18684,
+      "sha256": "f16a070977981c810154bb5b82039ec4146bcc25a1738ade18a9640f48daca1d"
+    },
+    "construction-auth-verification/geopackage_source_fidelity.json": {
+      "bytes": 1641,
+      "sha256": "168a01d0ed1da8baa7e864522238d20f9ca996f6d0ea1f388bfd9834b9a388aa"
+    },
+    "construction-auth-verification/graph-construction-auth.log": {
+      "bytes": 38384,
+      "sha256": "839d9b8ea303d826db03820a049927b26f2cfc245eec42600033fc6c14b0f71e"
+    },
+    "construction-auth-verification/native-products.json": {
+      "bytes": 1393,
+      "sha256": "a35d150f5d8c0f3f4b23f95d7add169b519069402cffd676a498eb3a88dad987"
+    },
+    "construction-auth-verification/original-construction-bundle.json": {
+      "bytes": 13748,
+      "sha256": "a1a00f36b1d38c7af5e7555741bad49ec5694504869af157232a2d8d867c6808"
+    },
+    "construction-auth-verification/parquet_source_fidelity.json": {
+      "bytes": 1887,
+      "sha256": "efb7e70048b680ad75506f6a381849ee717d9978bb8cb819a2957cc53881afaf"
+    },
+    "construction-auth-verification/processing_identity.json": {
+      "bytes": 10629,
+      "sha256": "8eda7e94000a7b00ad95ebde1fb59673ed91db1999239bba360d1e7a59254274"
+    },
+    "construction-auth-verification/proposed_source_contract.json": {
+      "bytes": 551,
+      "sha256": "700061cfecd407469480012e7f755de6086c323ee61925385e9ba0410cadcabd"
+    },
+    "construction-auth-verification/source_manifest.json": {
+      "bytes": 7661,
+      "sha256": "cec42ec9d911bfe82e50a7142ce0d8d670bee1613868c2242d3be68e3bbe0471"
+    },
     "crosswalk.body": {
       "bytes": 6178,
       "sha256": "29be071f0b0b47b865841522c96f9b7fe65fada203de81e6688ceced08186aba"

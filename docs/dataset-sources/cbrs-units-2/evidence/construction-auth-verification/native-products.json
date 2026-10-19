@@ -1,0 +1,31 @@
+{
+  "source_checkpoint": "7eac159f64fd2c859fc434bc0833852d3e902599",
+  "byte_identical_to_physical_DBF_corrected4cdb": true,
+  "row_count": 942,
+  "products": {
+    "geopackage/cbrs-units-2.gpkg": {
+      "bytes": 8257536,
+      "sha256": "0549479ec4e30738dff31c2b9585db1ae82131b37e993b84c5627f0fb96b9350"
+    },
+    "candidate/typed-source.parquet": {
+      "bytes": 6555610,
+      "sha256": "64f1bb9b98ff27b76bcfbeb8f6dc049815c0a828f022c87f261b1f797707520a"
+    },
+    "geoparquet/cbrs-units-2.parquet": {
+      "bytes": 6555610,
+      "sha256": "64f1bb9b98ff27b76bcfbeb8f6dc049815c0a828f022c87f261b1f797707520a"
+    },
+    "metadata/candidate.records.jsonl": {
+      "bytes": 18507252,
+      "sha256": "320b8cf705073f5042fa230dd02457776612e984a38c50d416c42acdbd8eebcc"
+    }
+  },
+  "unchanged_data_writer_AST": {
+    "decode_physical_dbf": "6512c8b79c3a6a7b8290663048709e560933978f7866ad938f53cb321eec59b8",
+    "inspect_archive": "0b4f8fddb0206adf7b5ad782d5a61be1d5ce2b58f7125062cd27b6160020b842",
+    "typed_table": "80e88b2e56f4d0e7c57b6f254b81ee8f338c6b488037b639153467ec5967a29b",
+    "derive_native_parquet_bytes": "d2c7560690b138d1d2d1522122028a01d1ada1c66c08d51cdb43b8cc325ff7c6",
+    "write_geopackage": "d43fd90f975e113773bb96bc9671cdf2146970d218f6f194179f38ca2c295e9a",
+    "source_verification_payloads": "a086b8cc0c6682bc76d4899c24b066b8ff0815535a6d16d829758936e4a257da"
+  }
+}
