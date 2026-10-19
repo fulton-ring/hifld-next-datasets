@@ -16,6 +16,10 @@ from dagster import (
 
 from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.faa import (
+    faa_aviation_draft_refresh_job,
+    faa_aviation_draft_refresh_schedule,
+)
+from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
 )
@@ -396,8 +400,8 @@ def _configured_sensors():
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
-    jobs=[faa_airspace_draft_refresh_job],
-    schedules=[faa_airspace_draft_refresh_schedule],
+    jobs=[faa_airspace_draft_refresh_job, faa_aviation_draft_refresh_job],
+    schedules=[faa_airspace_draft_refresh_schedule, faa_aviation_draft_refresh_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
