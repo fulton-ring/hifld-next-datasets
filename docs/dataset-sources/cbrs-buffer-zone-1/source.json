@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 28,
-  "status": "review_repairs_locally_verified_independent_exact_head_rereview_pending",
+  "status": "construction_provenance_candidate_binding_locally_verified_further_authenticity_probe_pending",
   "approval": {
     "source": false,
     "baseline": false,
@@ -83,7 +83,7 @@
     "CBRS_specific_mentions_found": false,
     "classification": "Background only, not a fresh endpoint audit."
   },
-  "implementation_head": "3ac08bc577dc1f1395f880fcefe6aa91ab96d7e8",
+  "implementation_head": "1c117ca414e7e11347ee29dc542581852096106f",
   "verification": {
     "execution": "evidence/execution.json",
     "full_suite": {
@@ -136,5 +136,21 @@
     "race_execution": "evidence/review-repairs/final-registered-race-execution.json",
     "complete_evidence_execution": "evidence/review-repairs/complete-evidence-and-missing-ready-execution.json",
     "live_acquisition": "evidence/review-repairs/actual-live-acquisition-success.json"
+  },
+  "construction_provenance_binding": {
+    "source_checkpoint": "1c117ca414e7e11347ee29dc542581852096106f",
+    "first_construction_manifest_and_original_receipts": "pinned outside candidate under common version lock, content-addressed full original raw bodies",
+    "existing_missing_binding": "reject and quarantine complete candidate intact; never bootstrap from self-pinned cache",
+    "later_docs_only_head_and_observation_receipts": "actual registered full1145 refresh/rebuild preserves first commit and original receipts",
+    "focused_execution": "evidence/review-repairs/construction-binding-focused-execution.json",
+    "normal_graph_execution": "evidence/review-repairs/construction-binding-normal-graph-execution.json",
+    "scope": "Candidate-only self-repinning guards verified; separate depot co-forgery/code-identity authenticity probe still pending, not handoff-ready",
+    "full_suite": {
+      "total": 514,
+      "passed": 513,
+      "skipped": 1,
+      "seconds": 195.828,
+      "log": "evidence/review-repairs/construction-full-suite-514.log"
+    }
   }
 }

@@ -2,8 +2,8 @@
   "schema_version": 1,
   "files": {
     "README.md": {
-      "bytes": 11452,
-      "sha256": "8a0c3f9ad7b4f7959a84e1d49b4ad171999bf4017127aae003ace85ee2147977"
+      "bytes": 12504,
+      "sha256": "fcf125150fd7fdffcb9925b9dd741a4c4989034cbaebd5862414a21103353776"
     },
     "evidence/baseline_comparison.json": {
       "bytes": 202,
@@ -318,12 +318,32 @@
       "sha256": "0f0afd3e1eaa166270fdc328d2f4191f0710e3f155d85edc2e7f58ac805a3e6b"
     },
     "source.json": {
-      "bytes": 7702,
-      "sha256": "aa0ce82496ba1973dd4bb7df0cf3f475de4889f4aa01cd951ac216982c55f57c"
+      "bytes": 8800,
+      "sha256": "529486b59417b622c2109a7fbb86291b97ab6f05f42800a60bc320601ae79c3c"
     },
     "evidence/review-repairs/construction-unit-16.log": {
       "bytes": 349,
       "sha256": "7fd8f91ecf1c3a09812a54b6644dbedb81833a90ad9d5aacfb1a8d890c9f2f2c"
+    },
+    "evidence/review-repairs/construction-binding-focused-execution.json": {
+      "bytes": 17765,
+      "sha256": "b6fd6bf6770a69b5403a939472867f1aa22471f93e5c82969137fe6cd4faaeb0"
+    },
+    "evidence/review-repairs/construction-binding-normal-graph-execution.json": {
+      "bytes": 7782,
+      "sha256": "e31fd72fe7c3915f677596d4a2cb1a272c881fae713fc8dcc7b6dc434accf8fd"
+    },
+    "evidence/review-repairs/construction-binding-normal-graph.log": {
+      "bytes": 14727,
+      "sha256": "aafa776c889950cfa55b8bf9a82a105b5dd595384e8b279ad0e9c351053518c7"
+    },
+    "evidence/review-repairs/construction-full-suite-514.log": {
+      "bytes": 18063,
+      "sha256": "64029294a3ce27d422edd18dedf1456fe719a2cefe783881ceb2f71b46b07ef5"
+    },
+    "evidence/review-repairs/construction-binding-focused.log": {
+      "bytes": 16955,
+      "sha256": "50fe7d671b0c588ab1462da8c9d92126a94a9f3c844c7f9f22cdb5cf874714e6"
     }
   }
 }
