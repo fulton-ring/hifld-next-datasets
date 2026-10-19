@@ -6,6 +6,7 @@ import ast
 import csv
 import hashlib
 import json
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.literal_geojson_policy import literal_geojson_spec
 from dagster_hifld.output_policy import SUPPORTED_OUTPUT_EXCLUSIONS, prebuilt_output_spec, validate_output_policy
 from dagster_hifld.resources import StagingStorageResource
 
@@ -39,6 +41,7 @@ CATALOG_METADATA_FIELDS = (
     "lineage",
     "unsupported_output_formats",
     "prebuilt_output_policy",
+    "literal_geojson_catalog",
     "manifest_layers",
 )
 
@@ -83,15 +86,20 @@ def load_resolved_source_manifest(
     dataset_slug: str,
     file_slug: str,
     version: str,
+    *,
+    max_layer_bytes: int | None = None,
 ) -> ResolvedSourceManifest:
     layers: list[tuple[str, str, dict[str, Any]]] = []
     layer_receipts = []
     for source_name, key in _manifest_lookup_keys(dataset_slug, file_slug, version):
-        raw = _read_optional_key(staging, key)
+        raw = _read_optional_key(staging, key, max_bytes=max_layer_bytes)
         if raw is None:
             continue
         try:
-            parsed = json.loads(raw.decode("utf-8"))
+            parsed = (json.loads(raw.decode("utf-8"), object_pairs_hook=_strict_manifest_pairs,
+                                 parse_float=_finite_manifest_float,
+                                 parse_constant=lambda value: (_ for _ in ()).throw(ValueError('Nonfinite bounded source manifest JSON')))
+                      if max_layer_bytes is not None else json.loads(raw.decode("utf-8")))
         except json.JSONDecodeError as exc:
             raise ValueError(f"Invalid source manifest JSON at {key}: {exc}") from exc
         if not isinstance(parsed, dict):
@@ -105,7 +113,8 @@ def load_resolved_source_manifest(
     inventory = _inventory_metadata_for(dataset_slug, file_slug, version)
     if layers:
         resolved = _merge_manifest_layers(layers)
-        if "inputs" in resolved.metadata or "processor" in resolved.metadata:
+        if ("inputs" in resolved.metadata or "processor" in resolved.metadata
+                or "prebuilt_output_policy" in resolved.metadata or "literal_geojson_catalog" in resolved.metadata):
             resolved.metadata["manifest_layers"] = layer_receipts
         if inventory is None:
             return _checked_manifest(resolved.metadata, resolved.manifest_keys)
@@ -148,6 +157,22 @@ def load_resolved_source_manifest(
 def _checked_manifest(metadata: dict, keys: list[str]) -> ResolvedSourceManifest:
     provenance_projection(metadata)
     return ResolvedSourceManifest(metadata, keys)
+
+
+def _strict_manifest_pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result:
+            raise ValueError('Duplicate bounded source manifest JSON member')
+        result[key] = value
+    return result
+
+
+def _finite_manifest_float(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError('Nonfinite bounded source manifest JSON')
+    return value
 
 
 def _manifest_lookup_keys(
@@ -194,8 +219,18 @@ def snapshot_source_metadata(
         staging.write_key_if_unchanged(destination, staging.read_key(key), None)
 
 
-def _read_optional_key(staging: StagingStorageResource, key: str) -> bytes | None:
+def _read_optional_key(staging: StagingStorageResource, key: str, *, max_bytes: int | None = None) -> bytes | None:
     key = staging._ensure_prefixed(key)
+    if max_bytes is not None:
+        snapshot = staging.object_snapshot(key)
+        if snapshot is None:
+            return None
+        if snapshot.size > max_bytes:
+            raise ValueError('Source manifest exceeds bounded catalog layer limit')
+        body = staging.read_key_range(key, 0, snapshot.size, expected_snapshot=snapshot)
+        if len(body) != snapshot.size or staging.object_snapshot(key) != snapshot:
+            raise ValueError('Source manifest changed during bounded catalog read')
+        return body
     if staging._uses_s3():
         return staging.read_key(key) if staging.object_exists(key) else None
     if staging.use_local or not staging.bucket:
@@ -213,6 +248,7 @@ def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     # Validate before compacting: an explicit null/list policy must not disappear
     # into the same state as an absent optional field.
     unsupported_output_reason(manifest, "shapefile_zip")
+    literal_geojson_spec(manifest)
     return {
         key: value for key, value in manifest.items() if key in {"inputs", "transformations"} or value not in (None, "", [], {})
     }
@@ -255,6 +291,8 @@ def _merge_manifest_layers(
                 value = {**merged.get(field, {}), **value}
             if field == "prebuilt_output_policy" and field in merged and value != merged[field]:
                 raise ValueError("Conflicting inherited prebuilt output policy")
+            if field == "literal_geojson_catalog" and field in merged and value != merged[field]:
+                raise ValueError("Conflicting inherited literal GeoJSON catalog profile")
             merged[field] = value
             resolved_from[field] = source_name
 

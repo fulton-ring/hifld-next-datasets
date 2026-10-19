@@ -1,5 +1,6 @@
 """Real complete NOAA capture and adversarial implementation checks; no acceptance."""
 from pathlib import Path
+import unittest
 from unittest import TestCase, mock
 import copy
 from datetime import datetime, timedelta
@@ -15,8 +16,10 @@ import pyarrow.parquet as pq
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import current_dart as source
 
-CAPTURES=Path(__file__).parents[1]/'docs/dataset-sources/current-dart-deployments/evidence/captures'
+_CAPTURE_DIR_ENV='HIFLD_CURRENT_DART_TEST_CAPTURE_DIR'
+CAPTURES=Path(os.environ[_CAPTURE_DIR_ENV]) if os.environ.get(_CAPTURE_DIR_ENV) else None
 
+@unittest.skipUnless(os.environ.get(_CAPTURE_DIR_ENV), 'complete original Current DART captures opt-in required; see docs/dataset-sources/current-dart-deployments/README.md')
 class CurrentDartTests(TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
@@ -120,9 +123,6 @@ class CurrentDartTests(TestCase):
         with mock.patch.object(source,'commit_complete_candidate',side_effect=install_then_lose):
             with self.assertRaisesRegex(source.DartQuarantineError,'concurrent_or_incomplete'):self.stage()
         self.assertEqual(self.snapshot(winning[0][0]),winning[0][1]);self.stage()
-    def test_published_storage_or_remote_backend_cannot_run_unapproved_source(self):
-        for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
-            with self.assertRaisesRegex(source.DartQuarantineError,'draft_requires'):source.stage_current_dart_candidate(storage,capture_dir=CAPTURES)
     def changed_receipt_capture_dir(self):
         # Explicitly synthetic newer timestamps on COMPLETE REAL bodies, not LIVE evidence.
         directory=Path(self.tmp.name)/'synthetic-newer-receipts';directory.mkdir(exist_ok=True)
@@ -199,6 +199,15 @@ class CurrentDartTests(TestCase):
         with mock.patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original(transport=httpx.MockTransport(handle),**kwargs)):
             captures=source.acquire(self.storage,None)
         self.assertEqual(len(captures),len(source.URLS));self.assertTrue(all(r['wire_bytes']!=len(body) for body,r in captures.values()))
+    
+
+class DartMechanicsTests(TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.storage=StagingStorageResource(local_dir=self.tmp.name,use_local=True)
+    def test_published_storage_or_remote_backend_cannot_run_unapproved_source(self):
+        for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
+            with self.assertRaisesRegex(source.DartQuarantineError,'draft_requires'):source.stage_current_dart_candidate(storage,capture_dir=CAPTURES)
     def test_partial_or_wrong_wire_length_is_retained_and_bounded(self):
         original=httpx.Client;calls=[]
         def handle(request):
