@@ -1,0 +1,200 @@
+{
+  "code_head": "a4116a0079ee33bd9c96316493fa7b69f0161ba8",
+  "module": "/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py",
+  "runtime": "/workspace/work/hifld-coordinator/30/graph-final-lifecycle",
+  "approved": false,
+  "runs": [
+    {
+      "kind": "real_complete_source",
+      "run_id": "2f6ed2a5-3b6b-469d-94d2-c81d02e0bfaf",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/cbrs-prohibitions-1/cbrs-prohibitions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "real_complete_refresh",
+      "run_id": "8363e1ab-b635-4481-90c7-12e7f7984aed",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/cbrs-prohibitions-1/cbrs-prohibitions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_formats_missing_approval",
+      "run_id": "16afc67a-23fa-4130-9022-b104645b0560",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/assets/publish.py\", line 1380, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/release_approval.py\", line 122, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "real_complete_post_formats_refresh",
+      "run_id": "c959f4cb-8022-4ec9-82d8-9c4dcc2b8545",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/cbrs-prohibitions-1/cbrs-prohibitions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "second_normal_formats_missing_approval",
+      "run_id": "22941f12-7b1f-4fb8-b615-620f71278b0c",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/assets/publish.py\", line 1380, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/release_approval.py\", line 122, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "real_complete_post_second_catalog_refresh",
+      "run_id": "198e86c6-9f22-4155-9de3-421456a85a5a",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/cbrs-prohibitions-1/cbrs-prohibitions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "complete_source_cache_self_repin_gpkg_contents_srs",
+      "run_id": "d094207c-e742-4adc-89be-94567897c401",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__cbrs_prohibitions_1__cbrs_prohibitions_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_prohibitions.CBRSQuarantineError: cached_geopackage_auxiliary_metadata_or_header_drift; retained:_quarantine/cbrs-prohibitions-1/8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0/b709dffbba3147b69f7cd2d68babfeaf\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/assets/fws_prohibitions.py\", line 17, in fws_cbrs_prohibitions\n    result=stage_cbrs_prohibitions_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 489, in stage_cbrs_prohibitions_candidate\n    raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_prohibitions.CBRSQuarantineError: cached_geopackage_auxiliary_metadata_or_header_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 433, in stage_cbrs_prohibitions_candidate\n    reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 380, in reconcile_cached_candidate\n    validate_geopackage_metadata(root/'geopackage'/f'{SLUG}.gpkg',rows)\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 316, in validate_geopackage_metadata\n    raise CBRSQuarantineError('cached_geopackage_auxiliary_metadata_or_header_drift')\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "complete_source_cache_self_repin_gpkg_spatial_ref_definition",
+      "run_id": "50e1aa63-5d9d-405c-858b-1bb8f6e42303",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__cbrs_prohibitions_1__cbrs_prohibitions_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_prohibitions.CBRSQuarantineError: cached_geopackage_auxiliary_metadata_or_header_drift; retained:_quarantine/cbrs-prohibitions-1/8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0/7598d7c69df149cba677387d5764d094\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/assets/fws_prohibitions.py\", line 17, in fws_cbrs_prohibitions\n    result=stage_cbrs_prohibitions_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 489, in stage_cbrs_prohibitions_candidate\n    raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_prohibitions.CBRSQuarantineError: cached_geopackage_auxiliary_metadata_or_header_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 433, in stage_cbrs_prohibitions_candidate\n    reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 380, in reconcile_cached_candidate\n    validate_geopackage_metadata(root/'geopackage'/f'{SLUG}.gpkg',rows)\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 316, in validate_geopackage_metadata\n    raise CBRSQuarantineError('cached_geopackage_auxiliary_metadata_or_header_drift')\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "complete_source_cache_self_repin_parquet_geo_crs",
+      "run_id": "526ee682-02e6-48bc-9ae4-60f09997f958",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__cbrs_prohibitions_1__cbrs_prohibitions_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_prohibitions.CBRSQuarantineError: cached_typed_parquet_source_fidelity_failure; retained:_quarantine/cbrs-prohibitions-1/8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0/f70a6ab5e8694f0db1464c6a8d8da3e4\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/assets/fws_prohibitions.py\", line 17, in fws_cbrs_prohibitions\n    result=stage_cbrs_prohibitions_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 489, in stage_cbrs_prohibitions_candidate\n    raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_prohibitions.CBRSQuarantineError: cached_typed_parquet_source_fidelity_failure\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 433, in stage_cbrs_prohibitions_candidate\n    reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)\n  File \"/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py\", line 379, in reconcile_cached_candidate\n    raise CBRSQuarantineError('cached_typed_parquet_source_fidelity_failure')\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "synthetic_failed_geometry_quality_gate",
+      "run_id": "4f758957-e713-4ffa-8416-ac0a6d2192f3",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ],
+      "materializations": [
+        "publish/catalog"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ]
+    }
+  ],
+  "terminal_parquet": {
+    "rows": 1693,
+    "all_source_values_types_wkb_exact": true,
+    "extra_columns": [],
+    "native_date32_columns": [
+      "FI_Date",
+      "SU_Date"
+    ],
+    "normal_geoparquet_regeneration": "explicitly excluded pending native-date-to-string mapping approval",
+    "nullable_inference_requires_review": true
+  },
+  "self_repin_probes": [
+    {
+      "attack": "gpkg_contents_srs",
+      "run_id": "d094207c-e742-4adc-89be-94567897c401",
+      "rejected": true,
+      "prior_published_preserved": true
+    },
+    {
+      "attack": "gpkg_spatial_ref_definition",
+      "run_id": "50e1aa63-5d9d-405c-858b-1bb8f6e42303",
+      "rejected": true,
+      "prior_published_preserved": true
+    },
+    {
+      "attack": "parquet_geo_crs",
+      "run_id": "526ee682-02e6-48bc-9ae4-60f09997f958",
+      "rejected": true,
+      "prior_published_preserved": true
+    }
+  ],
+  "output": {
+    "dataset_slug": "cbrs-prohibitions-1",
+    "file_slug": "cbrs-prohibitions-1",
+    "version": "v0.0.0-draft-cbrs20241219-38ffce9d53efe08a-a01cde06ce850732",
+    "feature_count": 1693,
+    "status": "working_draft_candidate_ready",
+    "processing_fingerprint": "a01cde06ce850732c8bd0b25bd8f47f49e2e2c71fd62cfdf88752fac38328fa1"
+  },
+  "all_1693_ids_values_types_wkb_preserved": true,
+  "source_discoverable_without_manual_copy": true,
+  "refresh_byte_idempotent": true,
+  "prior_published_fixture_preserved": true,
+  "quality": {
+    "bounds": [
+      -97.638831,
+      17.661853,
+      -64.623201,
+      47.435615
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "88d9110b03604fd08904aaa9d34d2562b0ca05f4e3e997ad9f67e592eb9c88b8",
+    "feature_count": 1693,
+    "geometry_type": "Mixed",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 1693,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "provenance_input_count": 4
+}

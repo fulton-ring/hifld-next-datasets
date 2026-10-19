@@ -1,0 +1,24 @@
+{
+  "requested_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+  "final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+  "observed_at": "2026-10-19T07:41:14.658234+00:00",
+  "status": 200,
+  "byte_length": 8129,
+  "sha256": "887abb0eed32ab615b3e959ebba5e5095e382afbcf97596e9658aeca397cfcb1",
+  "headers": {
+    "cache-control": "public, must-revalidate, max-age=0",
+    "content-type": "application/json;charset=UTF-8",
+    "etag": "\"x8dGJtWCHodTSYBk_1775678282\"",
+    "vary": "Origin",
+    "server": "envoy",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "x-aspnet-version": "4.0.30319",
+    "x-powered-by": "ASP.NET",
+    "date": "Mon, 19 Oct 2026 07:41:14 GMT",
+    "content-length": "8129",
+    "set-cookie": "fwb=050f62c446ace563eeddde079ac9d56a;max-age=300;Path=/;Secure;HttpOnly",
+    "x-envoy-upstream-service-time": "93",
+    "connection": "close"
+  }
+}

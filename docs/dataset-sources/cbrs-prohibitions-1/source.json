@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "issue": 30,
+  "dataset_slug": "cbrs-prohibitions-1",
+  "status": "locally_verified_working_draft_independent_review_pending",
+  "approvals": {
+    "source": false,
+    "baseline": false,
+    "contract": false,
+    "release": false
+  },
+  "scope": "User expressly permits reviewable draft implementation and local tests before contract approval; approval and production remain gated.",
+  "source": {
+    "producer": "U.S. Fish and Wildlife Service",
+    "role": "producer-hosted original full ZIP",
+    "landing": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+    "download": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip",
+    "publication_date": "2024-12-19",
+    "edition": "20241219_CBRS_Prohibitions.shp",
+    "source_sha256": "8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0",
+    "feature_count": 1693,
+    "native_crs": "EPSG:4269",
+    "native_geometry_counts": {
+      "Polygon": 1121,
+      "MultiPolygon": 572
+    },
+    "invalid_geometries": 0,
+    "fields": {
+      "Unit": "DBF character10, preserved string",
+      "CBRS_Type": "DBF character30, preserved string",
+      "FI_Date": "DBF DATE, preserved GPKG DATE / Arrow date32",
+      "SU_Date": "DBF DATE with564 source nulls, preserved GPKG DATE / Arrow date32",
+      "SHAPE_Leng": "DBF physical F field, width19/decimal count11, scientific-notation ASCII; decoded float64 proxy, every original string retained",
+      "SHAPE_Area": "DBF physical F field, width19/decimal count11, scientific-notation ASCII; decoded float64 proxy, every original string retained"
+    },
+    "source_identifier": "original shapefile intrinsic FID0\u20131692 preserved under proposed __source_fid string; no producer DBF OBJECTID exists",
+    "authority": "Official FWS maps-and-data directly links original download, Prohibitions metadata and delegated USGS MapServer/1. ZIP and delegated service have2 native geometry differences and must not be called equivalent.",
+    "rights": "Acknowledge FWS; share derived products; source-scale, survey and definitive-in/out limitations preserved in full original metadata. No automatic unrestricted-license assertion."
+  },
+  "published_candidate": {
+    "accepted": false,
+    "rows": 1693,
+    "sha256": "ee6ff71990c32c5e9381f17a09d0b294003900a9d5d84a6905297a51f0b09da5",
+    "bytes": 7231384,
+    "generation": "1791506355102932",
+    "original_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/cbrs-prohibitions-1/cbrs-prohibitions-1/v1.0.0/geoparquet/cbrs-prohibitions-1.parquet",
+    "preserved_identifier_fields": [
+      "OBJECTID",
+      "id"
+    ],
+    "full_capture": "evidence/published_candidate.body"
+  },
+  "complete_comparison": "evidence/complete-comparison.json",
+  "delegated_service_comparison": "evidence/native-api-comparison.json",
+  "crosswalk": {
+    "status": "explicitly_unmatched",
+    "reason": "DOI crosswalk and DataLumos origin403 at recorded exact final URLs; complete response bodies/receipts retained. No archive mapping inferred."
+  },
+  "proposed_contract": "Generated metadata/proposed_source_contract.json normalizes dates to ISO strings only in comparison JSONL while preserving physical DATE/date32 in staged native datasets. Neither output mapping nor original-FID/OBJECTID/id crosswalk is approved.",
+  "pipeline": {
+    "source": "src/dagster_hifld/sources/cbrs_prohibitions.py",
+    "asset": "src/dagster_hifld/assets/fws_prohibitions.py",
+    "runner": "scripts/verify_cbrs_prohibitions_draft.py",
+    "refresh": "STOPPED monthly1st13:00 America/New_York source-only integrity refresh, pinned original edition; changed edition/schema/coverage quarantined for review.",
+    "atomicity": "Complete hidden localbuild renamed into discoverable namespace only after full source and derivative reconciliation.",
+    "cache": "Re-derive source rows, physical Arrow schema+metadata and native GPKG metadata including auxiliary SRS/bounds and every geometry-header SRS; self-repinned cache receipt cannot establish fidelity.",
+    "raw": "Full producer ZIP/all25members, all4transform input bodies and original capture receipts preserved, plus independently pinned complete published candidate and delegated service audit inputs.",
+    "promotion": "Shared exact independent source/baseline/contract/release registry remains mandatory; no real dataset acceptance invented."
+  },
+  "release_decisions": [
+    "Accept exact intended source edition/rights and two ZIP-versus-service geometry differences.",
+    "Approve baseline after complete comparison:2 unresolved geometry joins, mixedgeometry versus single-part wrappers and changed decimal values.",
+    "Approve native date preservation versus published string output mapping and physical schema/nullability.",
+    "Approve a non-destructive original-FID/OBJECTID/id mapping, retaining all original identifiers and historical releases."
+  ],
+  "background_review": {
+    "url": "https://github.com/fulton-ring/agent-content-demos/issues/40",
+    "classification": "Historical background only, not fresh endpoint audit; preserved issue and all3comments contain no CBRS-specific findings."
+  },
+  "physical_dbf_audit": "evidence/physical-dbf-audit.json",
+  "implementation_head": "a4116a0079ee33bd9c96316493fa7b69f0161ba8",
+  "verification": {
+    "execution": "evidence/execution.json",
+    "code_head": "a4116a0079ee33bd9c96316493fa7b69f0161ba8",
+    "real_rows": 1693,
+    "all_native_ids_values_dates_types_nulls_WKB": "PASS",
+    "complete_native_date32_parquet_bytes_preserved_through_normal_graph": true,
+    "second_normal_catalog_then_source_refresh": "PASS",
+    "actual_self_repin_cache_negatives": [
+      "gpkg_contents_srs",
+      "gpkg_spatial_ref_definition",
+      "parquet_geo_crs"
+    ],
+    "prior_published_fixture_preserved": true,
+    "actual_quality_and_missing_approval_gates": "PASS (expected blocking failures)",
+    "full_suite": {
+      "total": 510,
+      "passed": 509,
+      "skipped": 1,
+      "seconds": 139.503,
+      "skip": "Real GCS production-write E2E intentionally not enabled",
+      "real_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f"
+    },
+    "CI": "No CI success inferred",
+    "review": "Native independent exact final-head review pending"
+  }
+}
