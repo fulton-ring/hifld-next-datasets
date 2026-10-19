@@ -43,6 +43,10 @@ PINNED_ASSET_SHA256 = "b8f14064fa77607921c32492f8beaa83e16870daee57bdde104b31ca2
 PINNED_FEATURE_COUNT = 201_344
 MAX_CAPTURE_BYTES = 128 * 1024 * 1024
 ASSET_PATH = "geojson/usgs_nldi_gages.geojson"
+SOURCE_ROOT_METADATA = {
+    "name": "usgs_nldi_gages",
+    "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:EPSG::4269"}},
+}
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -346,14 +350,15 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
         "agency": "USGS sites are represented in the compilation; USGS agency authority/delegation for this release is unaccepted",
         "source_url": asset["browser_download_url"], "license": "Unverified; upstream release licensing requires review",
         "schema_version": 1, "processor": "HIFLD Next",
-        "lineage": "Inventory and historical published provenance identify internetofwater/ref_gages. The complete pinned v1.7 release was compared with the complete HIFLD v1.0.0 candidate: it is a changed successor with material population, ID, and schema drift, not a clean continuation. Official NLDI ref_gage distribution is corroborating evidence only. DataLumos 240397 V1 is a historical archive and is not the refresh source.",
+        "lineage": "Inventory and historical published provenance identify internetofwater/ref_gages. The complete pinned v1.7 release was compared with the complete HIFLD v1.0.0 candidate: it is a changed successor with material population, ID, and schema drift, not a clean continuation. Official NLDI ref_gage distribution is corroborating evidence only. DataLumos 240397 V1 is a historical archive and is not the refresh source. The source declares legacy named CRS urn:ogc:def:crs:EPSG::4269 (NAD83); the original GeoJSON x/y coordinate order is retained as serialized without axis swapping or reprojection, and its semantic compatibility with downstream contracts remains unaccepted.",
         "inputs": [
             {"input_id": "internetofwater-ref-gages-release-metadata", "producer": "Internet of Water", "host": "api.github.com", "role": "producer_publication", "canonical_url": f"https://github.com/{REPOSITORY}/releases/tag/{PINNED_TAG}", "retrieval_url": LATEST_RELEASE_URL, "observed_final_url": release_receipt.get("final_url", LATEST_RELEASE_URL), "retrieved_at": release_receipt["fetched_at"], "http_status": 200, "bytes": len(release_bytes), "sha256": metadata_digest, "license": "Upstream release licensing not verified", "attribution": "Internet of Water ref_gages release metadata; agency delegation unaccepted", "release_date": release.get("published_at"), "distributor": "GitHub Releases", "release_date_unknown_reason": None},
             {"input_id": "internetofwater-ref-gages-v1.7", "producer": "Internet of Water", "host": "github.com", "role": "producer_publication", "canonical_url": f"https://github.com/{REPOSITORY}/releases/tag/{PINNED_TAG}", "retrieval_url": asset["browser_download_url"], "observed_final_url": asset_receipt.get("final_url", asset["browser_download_url"]), "retrieved_at": asset_receipt["fetched_at"], "http_status": 200, "bytes": len(asset_bytes), "sha256": digest, "license": "Upstream release licensing not verified", "attribution": "Internet of Water ref_gages v1.7; USGS agency/delegation acceptance unresolved", "release_date": release.get("published_at"), "distributor": "GitHub Releases"},
         ],
         "code_commit": identity["code_commit"],
         "transformations": ["Identity preservation: exact published source GeoJSON asset bytes retained as the staged catalog asset; no feature, property, ID, geometry, or number-lexeme transformations."],
-        "literal_geojson_catalog": {"schema_version": 1, "path": ASSET_PATH, "bytes": len(asset_bytes), "sha256": digest},
+        "literal_geojson_catalog": {"schema_version": 1, "path": ASSET_PATH, "bytes": len(asset_bytes), "sha256": digest,
+                                    "root_metadata": SOURCE_ROOT_METADATA},
         "source_observation": {
             "fetched_at": receipts[0]["fetched_at"], "receipts": receipts,
             "publisher": "Internet of Water", "repository": f"https://github.com/{REPOSITORY}",
@@ -363,7 +368,10 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
             "asset_github_digest": f"sha256:{PINNED_ASSET_SHA256}", "asset_sha256_independent": digest,
             "feature_count": feature_count, "unique_id_count": len(ids), "id_field": "properties.id",
             "id_type": "string", "id_examples": ids[:5], "provider_id_field": "properties.provider_id",
-            "geometry_type": "Point", "complete_capture": True,
+            "geometry_type": "Point", "source_root_metadata": SOURCE_ROOT_METADATA,
+            "source_declared_crs": "urn:ogc:def:crs:EPSG::4269",
+            "coordinate_order_interpretation": "source_serialized_x_y_retained_without_axis_order_reinterpretation_or_swap",
+            "complete_capture": True,
             "source_audit": audit,
             "official_nldi_distribution_evidence": "https://api.water.usgs.gov/nldi/linked-data/ref_gage",
             "inventory_crosswalk_status": "unverified", "baseline_continuity": "changed-successor-material-drift",

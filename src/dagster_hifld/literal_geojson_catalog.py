@@ -193,9 +193,27 @@ def _geometry(value):
 
 
 def _summarize(data, name, spec):
+    root_metadata = spec.get('root_metadata', {})
     if (type(data) is not dict or data.get('type') != 'FeatureCollection'
-            or set(data) - {'type', 'features', 'bbox'} or type(data.get('features')) is not list):
+            or set(data) - {'type', 'features', 'bbox', *root_metadata}
+            or any(data.get(key) != value for key, value in root_metadata.items())
+            or type(data.get('features')) is not list):
         raise ValueError('literal_geojson_requires_RFC7946_FeatureCollection_no_legacy_CRS_or_foreign_root_members')
+    if 'crs' in root_metadata:
+        try:
+            declared_crs = CRS.from_user_input(root_metadata['crs']['properties']['name'])
+        except Exception as exc:
+            raise ValueError('literal_geojson_pinned_CRS_is_not_recognized') from exc
+        if (not declared_crs.is_geographic or not declared_crs.axis_info
+                or any(axis.unit_name.lower() != 'degree' for axis in declared_crs.axis_info)):
+            raise ValueError('literal_geojson_pinned_CRS_must_be_geographic_degrees')
+        crs = declared_crs.to_json_dict()
+        crs_source = 'producer_declared_CRS_pinned_in_source_manifest'
+        coordinate_order = 'source_serialized_x_y_retained_without_axis_order_reinterpretation_or_swap'
+    else:
+        crs = CRS.from_user_input('OGC:CRS84').to_json_dict()
+        crs_source = 'GeoJSON_RFC7946_normative_OGC_CRS84_interpretation_not_producer_authority_or_acceptance'
+        coordinate_order = 'RFC7946_longitude_latitude'
     rows = data['features']; fields = {}; ids = {'present': 0, 'null': 0, 'types': Counter(), 'examples': []}
     properties_null = 0; nulls = 0; empty = 0; invalid = 0; unparseable = 0; kinds = set(); bounds = None
     examples_bytes = 0; property_hash = hashlib.sha256(); id_hash = hashlib.sha256(); property_null_hash = hashlib.sha256()
@@ -266,14 +284,14 @@ def _summarize(data, name, spec):
             'nativeJSONTypes': sorted(state['types']), 'typedExamples': state['examples'],
             'examplesScope': 'first_5000_features_with_byte_limits'}
     columns = [{'name': field, 'type': 'json', **descriptor(state)} for field,state in fields.items()]
-    crs = CRS.from_user_input('OGC:CRS84').to_json_dict()
     quality = {'version': 'v1', 'feature_count': total, 'bounds': bounds, 'geometry_type': next(iter(kinds)) if len(kinds)==1 else 'Mixed' if kinds else None,
         'invalid_geometry_count': invalid, 'null_geometry_count': nulls, 'empty_geometry_count': empty,
         'unparseable_geometry_count': unparseable, 'quality_check_passed': total > 0 and not(nulls or empty or invalid),
         'columns_hash': hashlib.sha256(_encode(list(fields))).hexdigest(),
         'catalog_mode': 'literal_geojson_full_population', 'spatial_status': 'spatial' if kinds else 'all_null_geometry',
         'sampled_feature_count': min(total, SAMPLE_ROWS), 'population_quality_scope': 'all_rows',
-        'native_crs': crs, 'crs_source': 'GeoJSON_RFC7946_normative_OGC_CRS84_interpretation_not_producer_authority_or_acceptance',
+        'native_crs': crs, 'crs_source': crs_source, 'coordinate_order': coordinate_order,
+        'source_root_metadata': root_metadata,
         'native_geometry_member': 'Feature.geometry', 'properties_null_count': properties_null,
         'literal_input': dict(spec)}
     dictionary = {'name': name, 'columns': columns, 'featureCount': total,
@@ -283,6 +301,7 @@ def _summarize(data, name, spec):
         'nativePropertyPopulationSHA256': property_hash.hexdigest(),
         'nativePropertiesContainerPopulationSHA256': property_null_hash.hexdigest(),
         'nativeFeatureIDPopulationSHA256': id_hash.hexdigest(), 'literalInput': dict(spec),
+        'sourceRootMetadata': root_metadata, 'nativeCRS': crs, 'coordinateOrder': coordinate_order,
         'numericInterpretation': 'Typed float examples expose decoded binary64; nativeJSONValue retains exact fractional/exponent lexemes, including nested values. Population hashes use those typed lexemes. Original bytes remain pinned and unchanged.',
         'schemaInterpretation': 'Literal JSON types and field presence; no homogeneous Arrow/SQL schema or mapping accepted.'}
     return quality, dictionary
