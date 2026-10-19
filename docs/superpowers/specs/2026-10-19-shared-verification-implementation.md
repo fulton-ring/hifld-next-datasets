@@ -806,3 +806,42 @@ failure runs; its second missing-alias refresh was
 sentinel remained byte-identical. Exact code/test/harness and log pins are in
 the state evidence; independent review is pending for this new slice. No CI or
 real release success is inferred.
+
+Independent review of state checkpoint `a86e831` found a real root-alias defect:
+`Path(local_dir).resolve()` removed storage-root/ancestor symlinks before later
+no-follow opens. The reviewer could create the three witness objects outside the
+selected lexical root. Existing sentinel bytes were preserved, but that did not
+make the redirected writes valid; the parent implementation is not declared
+review-passed. The original proof remains retained.
+
+Repair `ef8589a` preserves the lexical absolute root and walks **every** root
+component from the filesystem anchor with descriptor-relative `O_DIRECTORY |
+O_NOFOLLOW` before context acceptance and again for each subsequent operation.
+Root, intermediate ancestor, prefix and object links cannot disappear through
+resolution. Both seal and load reject absolute/relative root aliases, and ordinary
+hard-linked files cannot serve as directory roots. This initial API now explicitly
+requires a staging resource and rejects `PublishedStorageResource`/nonresources
+before directory creation; remote staging remains unsupported. No dataset
+adapter, approved release or source identity is changed.
+
+Two new regressions cover root/intermediate symlinks with absolute and relative
+paths on seal/load, exact outside-byte preservation, and published/nonstorage
+rejection before mkdir. An additional tiny local replay checks sixteen root-path
+operations against both fresh and previously sealed outside directories, with
+zero redirected writes, plus published-resource rejection. Twelve state tests
+and eleven Git tests pass. The same actual registered synthetic construction
+harness still completes three successes and five intended failures, preserving
+four staged objects and one published sentinel. The
+[root-alias repair evidence](../evidence/2026-10-19-construction-state-root-repair.json)
+pins the original finding, repair, tests, replay and durable run IDs. Independent
+review of this narrower checkpoint is separate and pending.
+
+Full local validation of frozen repair `ef8589a`: **534 tests, 533 passed,
+one production-write opt-in skipped, zero errors/failures** in 106.045 seconds,
+using managed Python19 with explicit417 source imports, actual Tippecanoe and the
+real pinned sibling IaC. No CI inference is made. The repaired registered
+construction success was `8cf9ea28-1f66-4065-8adf-80e5f7902786`; second missing-alias
+refresh and missing-approval promotion failed as intended at
+`f14e3e8f-0ccf-4c33-b045-539be4baad77` and
+`7bbed1b7-4a41-4218-ad7f-65c403530773`. All prior raw/witness/published fixture
+bytes remain preserved. These implementation proofs grant no real acceptance.
