@@ -23,7 +23,7 @@ os.environ.update(DAGSTER_HOME=str(runtime/'dagster'),HIFLD_FERRY_ROUTES_CAPTURE
 from dagster import Definitions,define_asset_job,AssetSelection,DagsterInstance,AssetKey
 from dagster_hifld.definitions import defs as normal,_iter_staged_version_paths
 from dagster_hifld.checks import publish_catalog_quality_manifest
-from dagster_hifld.assets.ferry_routes_universities import nces_ferry_routes_universities as source
+from dagster_hifld.assets.bts_ferry_routes import bts_ferry_routes as source
 from dagster_hifld.sources import ferry_routes as c
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 stage=c.StagingStorageResource(local_dir=str(runtime/'staging'));publish=c.PublishedStorageResource(local_dir=str(runtime/'published'))
