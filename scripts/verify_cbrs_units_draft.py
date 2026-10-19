@@ -41,9 +41,10 @@ def record(kind,result):
  report['runs'].append({'kind':kind,'run_id':result.run_id,'success':result.success,'errors':errors,
   'materializations':[e.asset_key.to_user_string() for e in result.get_asset_materialization_events()],
   'checks':[{'name':e.check_name,'passed':e.passed} for e in result.get_asset_check_evaluations()]})
+ (runtime/'execution.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
  return errors
 with DagsterInstance.get() as instance:
- sourcejob=defs.resolve_job_def('cbrs_source');graph=defs.resolve_job_def('cbrs_graph')
+ sourcejob=normal.resolve_job_def('fws_cbrs_units_draft_refresh');graph=defs.resolve_job_def('cbrs_graph')
  first=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
  record('real_complete_source',first);assert first.success
  output=first.output_for_node(fws_cbrs_units.op.name);assert output['feature_count']==942

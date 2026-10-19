@@ -190,7 +190,8 @@ def provenance(captures: dict) -> dict:
         'license_review_required':'Preserve official use constraints; maintainer acceptance required before release.',
         'transformations':[{'operation':'decode_original_shapefile','preserved':'All eight DBF columns, decoded values and original physical declarations/decimal bytes (retained in the raw ZIP), native NAD83 coordinates and original shapefile FID under proposed __source_fid. Complete ZIP and25members retained.',
             'repair_or_projection':False,'mapping_approval':'not established; full published candidate compatibility and original FID/OBJECTID/id crosswalk remain unapproved'}],
-        'unsupported_output_formats':{'shapefile_zip':'The full original producer archive is retained in raw/. Regenerated DBF loses the proposed explicit original source FID or renames it; no regenerated mapping approval.',
+        'unsupported_output_formats':{'geoparquet':'Observed generic conversion adds an unapproved bbox column and changes field/nullability metadata. This adapter supplies its complete native typed GeoParquet; generic regeneration remains quarantined pending output contract acceptance.',
+            'shapefile_zip':'The full original producer archive is retained in raw/. Regenerated DBF loses the proposed explicit original source FID or renames it; no regenerated mapping approval.',
             'pmtiles':'Tile reprojection and quantization alter native geometry. No visualization mapping approved.'}}
 
     validate_release_provenance(manifest)

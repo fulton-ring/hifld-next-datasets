@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "issue": 31,
+  "dataset_slug": "cbrs-units-2",
+  "status": "draft_implementation_actual_verification_in_progress",
+  "approvals": {
+    "source": false,
+    "baseline": false,
+    "contract": false,
+    "release": false
+  },
+  "scope": "User expressly permits reviewable draft implementation and local tests before acceptance; this is no source/baseline/contract/migration/release approval.",
+  "source": {
+    "producer": "U.S. Fish and Wildlife Service",
+    "role": "producer-hosted original complete ZIP",
+    "landing": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+    "download": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip",
+    "publication_date": "2024-12-19",
+    "release_evidence": "Original official CBRS_Polygons metadata pubdate20241219. Fetch time, HTTP Last-Modified and portal edits are not publication dates.",
+    "edition": "20241219_CBRS_Polygons.shp",
+    "sha256": "8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0",
+    "feature_count": 942,
+    "native_crs": "EPSG:4269",
+    "geometry": {
+      "Polygon": 818,
+      "MultiPolygon": 124,
+      "invalid": 0
+    },
+    "fields": {
+      "Unit": "DBF character8; original unit code preserved string",
+      "Name": "DBF character254; preserved string",
+      "Unit_Type": "DBF character25; preserved string",
+      "Fast_Acres": "DBF numeric13.11; float64 decoded, original decimal text retained losslessly in complete ZIP",
+      "Wet_Acres": "DBF numeric13.11; float64 decoded, original decimal text retained losslessly in complete ZIP",
+      "Shore_Mile": "DBF numeric13.11; float64 decoded, original decimal text retained losslessly in complete ZIP",
+      "Shape_Leng": "DBF numeric19.11; float64 decoded, original decimal text retained losslessly in complete ZIP",
+      "Shape_Area": "DBF numeric19.11; float64 decoded, original decimal text retained losslessly in complete ZIP"
+    },
+    "source_identifier": "Original intrinsic shapefile FID0\u2013941, preserved separately under proposed __source_fid string. No producer DBF OBJECTID column exists. The original Unit codes are all942 unique. No substitute row IDs invented.",
+    "coverage": {
+      "System Unit": 592,
+      "Otherwise Protected Area": 350
+    },
+    "rights": "Acknowledge FWS; share derived products with FWS. Original use constraints, source scale and official-map/survey/in-out limitations retained verbatim in original metadata. This digital representation does not determine property eligibility. No unrestricted-license assertion.",
+    "authority": "Official producer pages directly link full ZIP/metadata and delegate USGS MapServer. Complete delegated layer3 is an independently retained candidate, not silently substituted for ZIP."
+  },
+  "published_candidate": {
+    "accepted": false,
+    "rows": 942,
+    "sha256": "1722a061ba320febc764f38323e4b1bf5dbfcae7680b691a7649fb59b082a737",
+    "bytes": 6041751,
+    "generation": "1791506355341298",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/cbrs-units-2/cbrs-units-2/v1.0.0/geoparquet/cbrs-units-2.parquet",
+    "identifier_fields": [
+      "OBJECTID",
+      "id"
+    ],
+    "complete_capture": "evidence/published_candidate.body"
+  },
+  "complete_comparison": {
+    "geometry_membership": "evidence/complete-comparison.json",
+    "unique_Unit_diagnostic_join": "evidence/unit-key-comparison.json",
+    "all_942_unique_Unit_values_equal": true,
+    "source_FID_equal_published_OBJECTID_or_id": 0,
+    "topologically_equal_same_native_crs": 941,
+    "unmatched_geometry_units": 1,
+    "attributes_differ_under_Unit_join": {
+      "Shore_Mile": 734,
+      "Shape_Leng": 938,
+      "Shape_Area": 441
+    },
+    "physical_type_migrations": "Published Fast_Acres/Wet_Acres int64 versus original DBF numeric13.11 decoded float64; not accepted.",
+    "geometry_wrappers": "Original818Polygon/124MultiPolygon versus published10Polygon/932MultiPolygon; no normalization accepted."
+  },
+  "delegated_service_comparison": {
+    "capture": "evidence/native_page0000.body",
+    "comparison": "evidence/native-api-comparison.json",
+    "count_ids_complete_unique": 942,
+    "API_OBJECTID_equal_published_OBJECTID": 942,
+    "exact_ring_arrays": 941,
+    "geometry_difference": "OriginalFID870/API_OBJECTID1641/UnitVA-53",
+    "attribute_differences": {
+      "Name": 2,
+      "Shore_Mile": 734,
+      "Shape_Leng": 942,
+      "Shape_Area": 942
+    },
+    "decision": "Original ZIP remains primary preserved reconstruction candidate. API OID, declared esriFieldTypeSingle precision and doubles remain in full native captures; no equivalence or source mapping accepted."
+  },
+  "crosswalk": {
+    "status": "explicitly_unmatched",
+    "reason": "DOI redirects to DataLumos403, DataLumos archive403; full bodies/receipts retained. No exact historical archive ID inferred.",
+    "background": "Historical linked issue40 and comments retained as background only; not a fresh source audit."
+  },
+  "pipeline": {
+    "source": "src/dagster_hifld/sources/cbrs_units.py",
+    "asset": "src/dagster_hifld/assets/fws_units.py",
+    "runner": "scripts/verify_cbrs_units_draft.py",
+    "refresh": "STOPPED monthly1st15:00 America/New_York source-only integrity/availability refresh. Newly changed ZIP/schema/coverage quarantined for review; no automatic source edition replacement.",
+    "atomicity": "Complete hidden local construction renamed into canonical version only after full reconstruction and validation; interrupt/OSError cannot expose partial version.",
+    "cache": "Fresh original ZIP decode revalidates complete cached rows/IDs/attributes/WKB, Arrow physical schema+all metadata and complete deterministically rederived GPKG container bytes. Entire SRS tables/authorities/WKT, geometry flags/envelopes, RTree/indexes/triggers are bound, rather than Fiona-selected CRS alone.",
+    "raw": "Full ZIP/all25members/all original input receipts plus separately complete API and baseline retained. Malformed/partial attempts kept in raw quarantine with exact original bytes.",
+    "promotion": "Shared independent exact source/baseline/contract/release registry is mandatory. All real approvals remain absent.",
+    "generic_geoparquet_regeneration": {
+      "status": "excluded_pending_mapping_acceptance",
+      "observed_run": "f782ab46-52c1-4ba7-b1c2-c77e21dd43c8",
+      "evidence": "evidence/normal-format-schema-probe.json",
+      "behavior": "Actual normal conversion added bbox and changed field/nullability/extension metadata relative to source typed schema; adapter supplies faithful complete typed GeoParquet rather than silently accept additional columns."
+    }
+  },
+  "release_decisions": [
+    "Accept exact source/edition/rights and reconcile one native geometry/two Name differences between ZIP and delegated API.",
+    "Accept complete published baseline only after reviewing941/942 topological agreement and numeric field value changes.",
+    "Approve lossless published output schema and all source physical declaration/float/int/geometry wrapper differences.",
+    "Approve explicit nondestructive originalFID/Unit/API_OBJECTID/publishedOBJECTID/id mapping, retaining all identifiers and historical releases."
+  ]
+}
