@@ -208,6 +208,7 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
                 "metadata/processing_identity.json": _canonical(identity) + b"\n",
             }
             receipts = {}
+            fresh_captures = {}
             for name, (body, _response) in sorted(_captures().items()):
                 wire = b"original-wire:" + body
                 receipt = {
@@ -219,6 +220,7 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
                     "content_length":str(len(wire)), "error_code":None,
                 }
                 receipts[name] = receipt
+                fresh_captures[name] = (body, receipt)
                 outputs[f"raw/{name}.body"] = body
                 outputs[f"raw/{name}.wire"] = wire
                 outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
@@ -246,15 +248,23 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
 
             # Catalog-owned additions are allowed, but the first acquisition's
             # timestamps, URL, body and wire bytes remain pinned to the seal.
+            for name, (body, receipt) in list(fresh_captures.items()):
+                refreshed = dict(receipt)
+                refreshed["observed_at"] = "2026-10-20T00:00:00+00:00"
+                fresh_captures[name] = (body, refreshed)
             write_immutable(storage, f"{prefix}/metadata/quality_manifest.json", b'{"derived":true}\n')
-            result = _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity, audit, parquet_body)
+            result = _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity,
+                                             audit, parquet_body, fresh_captures)
             self.assertTrue(result["reused"])
             self.assertEqual(result["source_feature_id_sha256"], audit["source_feature_id_sha256"])
             self.assertEqual(result["source_record_sha256"], audit["source_record_sha256"])
+            retained = json.loads(storage.read_key(f"{prefix}/raw/bts_item_before.receipt.json"))
+            self.assertEqual(retained["observed_at"], "2026-10-19T00:00:00+00:00")
 
             write_immutable(storage, f"{prefix}/rogue.json", b"unexpected")
             with self.assertRaisesRegex(ValueError, "cached_candidate_storage_roster_changed"):
-                _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity, audit, parquet_body)
+                _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity,
+                                        audit, parquet_body, fresh_captures)
 
 
 if __name__ == "__main__":

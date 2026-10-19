@@ -297,7 +297,8 @@ def _capture_names(ids: list[int]) -> list[tuple[str, str]]:
 
 def _verify_first_candidate(storage: StagingStorageResource, state_key: str, prefix: str,
                             version: str, fingerprint: str, identity: Mapping[str, object],
-                            audit: Mapping[str, object], parquet_body: bytes) -> dict[str, object]:
+                            audit: Mapping[str, object], parquet_body: bytes,
+                            fresh_captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> dict[str, object]:
     bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
     payload = bundle.get("payload")
     if (not isinstance(payload, dict) or set(payload) != {"processing_identity", "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
@@ -305,9 +306,29 @@ def _verify_first_candidate(storage: StagingStorageResource, state_key: str, pre
             or payload["source_record_sha256"] != audit["source_record_sha256"]
             or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
         raise ValueError("cached_first_candidate_identity_or_source_changed")
+    original_receipts = payload.get("capture_receipts")
+    if not isinstance(original_receipts, dict) or set(original_receipts) != set(fresh_captures):
+        raise ValueError("cached_original_capture_roster_changed")
+    # The current live acquisition must describe the same complete response
+    # bodies and endpoints. Keep the first acquisition's timestamps, wire/body
+    # receipts, hashes and staged bytes as the authoritative retained bundle.
+    for name, (body, receipt) in fresh_captures.items():
+        original = original_receipts[name]
+        if (not isinstance(original, dict)
+                or not isinstance(receipt, Mapping)
+                or receipt.get("complete_body") is not True
+                or receipt.get("status") != 200
+                or receipt.get("url") != original.get("url")
+                or receipt.get("final_url") != original.get("final_url")
+                or receipt.get("status") != original.get("status")
+                or receipt.get("bytes") != original.get("bytes")
+                or receipt.get("sha256") != original.get("sha256")
+                or len(body) != original.get("bytes")
+                or _sha(body) != original.get("sha256")):
+            raise ValueError("cached_live_capture_changed:" + name)
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint,
                             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
-                            payload["objects"], payload["capture_receipts"])
+                            payload["objects"], original_receipts)
     expected_parquet = payload["objects"].get(f"geoparquet/{DATASET_SLUG}.parquet")
     if expected_parquet != {"bytes":len(parquet_body), "sha256":_sha(parquet_body)}:
         raise ValueError("cached_native_candidate_changed")
@@ -479,7 +500,8 @@ def capture_usace_ienc_isolated_danger(
     fingerprint = _sha(_canonical(identity))
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     if storage.object_snapshot(state_key) is not None:
-        return _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity, audit, parquet_body)
+        return _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity,
+                                       audit, parquet_body, captures)
     for name, body in outputs.items():
         write_immutable(storage, f"{prefix}/{name}", body)
     descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
