@@ -11,6 +11,7 @@ from unittest.mock import patch
 import httpx
 import pyarrow as pa
 import pyogrio
+from dagster_hifld import construction_state
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import historical_tsunami_events as s
 
@@ -98,8 +99,60 @@ class TsunamiEventTests(unittest.TestCase):
                     with self.assertRaises(BlockingIOError):fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
                 finally:os.close(fd)
             storage=StagingStorageResource(local_dir=tmp,use_local=True);key=f'_source-provenance/{s.SLUG}/version/bundle.json';s.immutable(storage,key+'.first-construction.json',b'{}')
-            with self.assertRaisesRegex(s.TsunamiQuarantineError,'missing_original_binding_after_first_construction'):s.original_bundle(storage,'version',{}, {},{},create=True)
+            with self.assertRaisesRegex(s.TsunamiQuarantineError,'legacy_unbound_original_requires_explicit_reviewed_migration'):s.original_bundle(storage,'version',{}, {},{},create=True)
             self.assertFalse(storage.object_exists(key))
+
+    def original_fixture(self,storage):
+        captures=self.fixture();identity=s.processing_identity()
+        manifest=s.manifest_for(captures,identity,{'sha256':'a'*64,'bytes':1})
+        for name,(body,receipt) in captures.items():
+            s.immutable(storage,f'_raw-captures/{s.SLUG}/{s.digest(body)}/{name}.body',body)
+        original=s.original_bundle(storage,'v1',captures,identity,manifest,create=True)
+        return captures,identity,manifest,original
+
+    def test_original_full_receipt_bundle_is_bound_and_no_rebootstrap_after_quarantine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp);captures,identity,manifest,original=self.original_fixture(storage)
+            alias=Path(tmp)/s.construction_record_key('v1');before=alias.read_bytes()
+            marker=Path(str(alias)+'.first-construction.json');marker_before=marker.read_bytes()
+            forged=json.loads(before);name='page_00000';receipt=forged['payload']['captures'][name]['receipt'];receipt['observed_at']='2026-10-19T03:00:00+00:00'
+            entry=next(i for i in forged['payload']['manifest']['inputs'] if i['input_id']==name+':'+receipt['sha256']);entry['retrieved_at']=receipt['observed_at']
+            alias.write_bytes(s.canonical_construction_bundle('v1',s.digest(s.encode(identity)),forged['payload']))
+            for create in (False,True,True):
+                with self.assertRaisesRegex(ValueError,'construction_marker_mismatch'):
+                    s.original_bundle(storage,'v1',captures,identity,manifest,create=create)
+            self.assertEqual(marker.read_bytes(),marker_before)
+            alias.write_bytes(before)
+            self.assertEqual(s.original_bundle(storage,'v1',captures,identity,manifest),original)
+            alias.rename(Path(tmp)/'quarantined-original.body')
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
+                    s.original_bundle(storage,'v1',captures,identity,manifest,create=True)
+            self.assertFalse(alias.exists())
+            alias.write_bytes(before)
+            self.assertEqual(s.original_bundle(storage,'v1',captures,identity,manifest),original)
+
+    def test_partial_marker_write_and_missing_cas_never_selfheal_original_receipts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp);captures=self.fixture();identity=s.processing_identity();manifest=s.manifest_for(captures,identity,{'sha256':'a'*64,'bytes':1})
+            install=construction_state._install_once
+            def interrupted(root,key,body):
+                if key.endswith('.first-construction.json'):raise OSError('injected marker failure')
+                install(root,key,body)
+            with patch.object(construction_state,'_install_once',interrupted),self.assertRaisesRegex(ValueError,'construction_state_io_failed'):
+                s.original_bundle(storage,'v1',captures,identity,manifest,create=True)
+            before={str(p.relative_to(tmp)):p.read_bytes() for p in Path(tmp).rglob('*') if p.is_file()}
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
+                    s.original_bundle(storage,'v1',captures,identity,manifest,create=True)
+            self.assertEqual(before,{str(p.relative_to(tmp)):p.read_bytes() for p in Path(tmp).rglob('*') if p.is_file()})
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp);captures,identity,manifest,_=self.original_fixture(storage)
+            alias=Path(tmp)/s.construction_record_key('v1');evidence=Path(str(alias)+'.evidence')/(s.digest(alias.read_bytes())+'.json');evidence.unlink()
+            for create in (False,True):
+                with self.assertRaisesRegex(ValueError,'construction_original_evidence_mismatch'):
+                    s.original_bundle(storage,'v1',captures,identity,manifest,create=create)
+            self.assertFalse(evidence.exists())
 
     def test_local_only_and_duplicate_json(self):
         with self.assertRaises(s.TsunamiQuarantineError):s.local_only(PublishedStorageResource(local_dir='/tmp/unused-tsunami',use_local=True))

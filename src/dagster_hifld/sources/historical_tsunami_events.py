@@ -29,6 +29,7 @@ import pyogrio
 import pyproj
 import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
@@ -291,16 +292,29 @@ def candidate_lock(base,prefix):
         if os.fstat(held.fileno()).st_nlink!=1:raise TsunamiQuarantineError('linked_candidate_lock')
         fcntl.flock(held,fcntl.LOCK_EX);yield target
 
+def construction_record_key(version):
+    return f'_construction-state/{SLUG}/{version}.json'
+
+
 def original_bundle(storage,version,captures,identity,manifest,*,create=False):
-    key=f'_source-provenance/{SLUG}/{version}/bundle.json';started=key+'.first-construction.json'
-    if not storage.object_exists(key):
-        if storage.object_exists(started):raise TsunamiQuarantineError('missing_original_binding_after_first_construction')
-        if not create:raise TsunamiQuarantineError('missing_original_construction_binding')
+    """Caller holds common lock; create only after complete private validation.
+
+    Complete first manifest/receipts are bound by the shared outside CAS/marker.
+    Old unbound records remain evidence and cannot bootstrap this trust scope.
+    """
+    fingerprint=digest(encode(identity))
+    payload={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt} for name,(body,receipt) in captures.items()}}
+    envelope=canonical_construction_bundle(version,fingerprint,payload)
+    legacy=f'_source-provenance/{SLUG}/{version}/bundle.json'
+    if storage.object_exists(legacy) or storage.object_exists(legacy+'.first-construction.json'):
+        raise TsunamiQuarantineError('legacy_unbound_original_requires_explicit_reviewed_migration')
+    key=construction_record_key(version)
+    if create:
         validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
-        immutable(storage,started,encode({'version':version,'processing_fingerprint':digest(encode(identity))}))
-        immutable(storage,key,encode({'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt} for name,(body,receipt) in captures.items()}}))
-    if not storage.object_exists(started) or strict_json(storage.read_key(started))!={'version':version,'processing_fingerprint':digest(encode(identity))}:raise TsunamiQuarantineError('missing_or_invalid_first_construction_marker')
-    bundle=strict_json(storage.read_key(key))
+        retained=seal_first_construction(storage,key,version,fingerprint,envelope)
+    else:
+        retained=load_first_construction(storage,key,version,fingerprint)
+    bundle=strict_json(retained)['payload']
     if set(bundle)!={'manifest','captures'} or set(bundle['captures'])!=set(captures):raise TsunamiQuarantineError('original_binding_capture_roster_drift')
     original={}
     for name,item in bundle['captures'].items():
@@ -364,10 +378,17 @@ def stage_tsunami_events(storage,*,capture_dir=None):
                 for part in ('geopackage','geoparquet','candidate','metadata','raw'):(private/part).mkdir()
                 write_gpkg(table,private/'geopackage'/f'{SLUG}.gpkg');parquet=private/'geoparquet'/f'{SLUG}.parquet';pq.write_table(expected_parquet(table),parquet,compression='zstd');(private/'candidate/typed-source.parquet').write_bytes(parquet.read_bytes());verify_outputs(private,table)
                 pin={'sha256':sha256_file(parquet),'bytes':parquet.stat().st_size};manifest=manifest_for(captures,identity,pin)
-                captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
+                # The entire private candidate is complete before first trust state
+                # is installed. A failed metadata/container build cannot bind history.
                 for name,body in source_payloads(captures,identity,audit,manifest,table).items():(private/name).parent.mkdir(parents=True,exist_ok=True);(private/name).write_bytes(body)
                 ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
-                (private/READY).write_bytes(encode(ready));os.rename(private,target)
+                (private/READY).write_bytes(encode(ready));verify_outputs(private,table)
+                captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
+                # An existing complete outside witness returns original receipts.
+                # Rebuild only the private candidate from those exact originals.
+                for name,body in source_payloads(captures,identity,audit,manifest,table).items():(private/name).write_bytes(body)
+                ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY}
+                (private/READY).write_bytes(encode(ready));verify_outputs(private,table);os.rename(private,target)
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise TsunamiQuarantineError(str(exc)+'; retained:'+retained) from exc
