@@ -1,0 +1,14 @@
+{
+  "requested_url": "https://water.usgs.gov/GIS/dsdl/aquifers_us.zip",
+  "final_url": "https://water.usgs.gov/GIS/dsdl/aquifers_us.zip",
+  "status": 200,
+  "headers": {
+    "last-modified": "Mon, 16 Mar 2015 18:34:46 GMT",
+    "etag": "\"76dd58-5116c1ab89d80\"",
+    "content-length": "7789912",
+    "content-type": "application/x-octet-stream"
+  },
+  "bytes": 7789912,
+  "sha256": "3c597778c51325012aa5ff593751a6e4e662f43906e690fc3eb125c7073b1ebc",
+  "fetched_at": "2026-10-19T06:22:43.619504+00:00"
+}

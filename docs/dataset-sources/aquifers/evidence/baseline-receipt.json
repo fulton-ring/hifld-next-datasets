@@ -1,0 +1,17 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aquifers/aquifers/v1.0.0/geoparquet/aquifers.parquet",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aquifers/aquifers/v1.0.0/geoparquet/aquifers.parquet",
+  "status": 200,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "last-modified": "Fri, 09 Oct 2026 00:39:10 GMT",
+    "etag": "\"89dd576caaf67c1449ef8f3c81efd85e\"",
+    "x-goog-generation": "1791506350105881",
+    "x-goog-stored-content-length": "4915794",
+    "x-goog-hash": "crc32c=+UDC5A==",
+    "content-length": "4915794"
+  },
+  "bytes": 4915794,
+  "sha256": "3897534f901612081bfe1cb47e6bb1e20827c93ccec8d29bb5e128b18c784078",
+  "fetched_at": "2026-10-19T06:21:55.595717+00:00"
+}

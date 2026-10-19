@@ -1,0 +1,11 @@
+{
+  "requested_url": "https://www.usgs.gov/apps/ngwmn/geoserver/ngwmn/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ngwmn%3Aaquifrp025&outputFormat=SHAPE-ZIP",
+  "final_url": "https://www.usgs.gov/apps/ngwmn/geoserver/ngwmn/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ngwmn%3Aaquifrp025&outputFormat=SHAPE-ZIP",
+  "status": 200,
+  "headers": {
+    "content-type": "application/zip"
+  },
+  "bytes": 16389469,
+  "sha256": "e62623fcb7fac1dc31482a0bb6dd8679b3d6cdde150625e485439da50c66f743",
+  "fetched_at": "2026-10-19T06:22:50.657656+00:00"
+}

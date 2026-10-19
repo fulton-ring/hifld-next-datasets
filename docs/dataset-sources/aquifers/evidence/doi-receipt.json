@@ -1,0 +1,12 @@
+{
+  "requested_url": "https://doi.org/10.5066/P9Y2HOUJ",
+  "final_url": "https://www.sciencebase.gov/catalog/item/63140610d34e36012efa385d",
+  "status": 403,
+  "headers": {
+    "content-type": "text/plain",
+    "content-length": "25"
+  },
+  "bytes": 25,
+  "sha256": "870d84f11d07934098167265fdbe64f27821a0e5d7843d66b6a27efe8a02461b",
+  "fetched_at": "2026-10-19T06:22:43.088898+00:00"
+}

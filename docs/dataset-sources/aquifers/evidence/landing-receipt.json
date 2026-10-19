@@ -1,0 +1,13 @@
+{
+  "requested_url": "https://www.usgs.gov/mission-areas/water-resources/science/principal-aquifers-united-states",
+  "final_url": "https://www.usgs.gov/mission-areas/water-resources/science/principal-aquifers-united-states",
+  "status": 200,
+  "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "etag": "W/\"1792390963-gzip\"",
+    "last-modified": "Mon, 19 Oct 2026 06:22:43 GMT"
+  },
+  "bytes": 193768,
+  "sha256": "3ddd49a594a37fbc79e23855e12b269e24af9df7798a978c1b9b1d52c0f3afa0",
+  "fetched_at": "2026-10-19T06:22:45.205116+00:00"
+}

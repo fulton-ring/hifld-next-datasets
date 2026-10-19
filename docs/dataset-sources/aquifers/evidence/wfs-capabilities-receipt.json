@@ -1,0 +1,11 @@
+{
+  "requested_url": "https://www.usgs.gov/apps/ngwmn/geoserver/ngwmn/ows?service=WFS&version=1.0.0&request=GetCapabilities",
+  "final_url": "https://www.usgs.gov/apps/ngwmn/geoserver/ngwmn/ows?service=WFS&version=1.0.0&request=GetCapabilities",
+  "status": 200,
+  "headers": {
+    "content-type": "application/xml"
+  },
+  "bytes": 22432,
+  "sha256": "e4937f0362d4a01f91ab6a33ebc0533ad6379f5fd70bed8d13bade09d51f0e2c",
+  "fetched_at": "2026-10-19T06:22:43.338004+00:00"
+}
