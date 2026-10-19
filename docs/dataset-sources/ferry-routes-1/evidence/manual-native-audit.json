@@ -1,0 +1,29 @@
+{
+  "rows": 964,
+  "fields": 55,
+  "coordinate_pairs": 714082,
+  "all_attributes_original_IDs_exact_in_GPKG_and_Parquet": true,
+  "literal_independent_binary_WKB_exact_in_both_outputs": true,
+  "all_source_Esri_field_metadata_and_nullability_preserved_in_Parquet": true,
+  "numeric_string_types_preserved": true,
+  "OID_int64_storage_proxy_unapproved": true,
+  "WKB_sha256": "b9617531da473dd58c91ae73a45262a758f97a5517a796a04c5a532479bcc36f",
+  "leading_character_values": [],
+  "operator_segment_unique_pairs": 959,
+  "source_census_year": {
+    "2020": 964
+  },
+  "source_data_year": {
+    "2019": 964
+  },
+  "native_payloads": {
+    "geopackage/ferry-routes-1.gpkg": {
+      "bytes": 12333056,
+      "sha256": "deb5e0bacde9055f0d73c5e747c86f27584892ba1631a40f7c535e7d7e076b51"
+    },
+    "geoparquet/ferry-routes-1.parquet": {
+      "bytes": 10140624,
+      "sha256": "75c492a658c2ffdc9f7b47d0cb3104b59b1443d473e294110ca870305ee1ef8c"
+    }
+  }
+}

@@ -1,37 +1,37 @@
 {
   "classification": "Actual complete local draft, NOT real source/baseline/contract acceptance",
-  "code_commit": "c508bf453726a42f2e4dba558eec09bd1bdd5796",
+  "code_commit": "132fe0ea04f67c5782bf3e5320f27098b1388106",
   "module": "/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py",
   "runs": [
     {
       "label": "source",
-      "run_id": "1d86ce61-7d39-4930-af49-12737d42a8a7",
+      "run_id": "b4f7d06a-7720-49c8-90d2-6c8f6d69845a",
       "success": true,
       "errors": [],
       "output": {
         "dataset_slug": "ferry-routes-1",
         "file_slug": "ferry-routes-1",
-        "version": "v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874",
+        "version": "v0.0.0-draft-bts-ncfo2020-6f706af765f77ac7",
         "feature_count": 964,
         "reused": false
       }
     },
     {
       "label": "refresh",
-      "run_id": "21f4b250-79ba-4a5b-88a5-082029d28d24",
+      "run_id": "dea07a07-dc4c-4f0e-8a4f-7e78a393e30b",
       "success": true,
       "errors": [],
       "output": {
         "dataset_slug": "ferry-routes-1",
         "file_slug": "ferry-routes-1",
-        "version": "v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874",
+        "version": "v0.0.0-draft-bts-ncfo2020-6f706af765f77ac7",
         "feature_count": 964,
         "reused": true
       }
     },
     {
       "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
-      "run_id": "934fb460-9ea9-4f91-9888-ca0afe707047",
+      "run_id": "314f177a-ddbe-4009-b06a-4030919ecc62",
       "success": false,
       "errors": [
         "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
@@ -39,13 +39,13 @@
     },
     {
       "label": "post_catalog_cycle_1_source_refresh",
-      "run_id": "6a21dc80-4771-4875-891f-da20af4c2bda",
+      "run_id": "9b4e4fdb-a792-441d-8282-b5290fc83381",
       "success": true,
       "errors": []
     },
     {
       "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
-      "run_id": "653a4f3b-29ce-4fe8-9a84-86f26b6bed48",
+      "run_id": "27c7261c-44be-4d00-9092-785de85ac506",
       "success": false,
       "errors": [
         "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
@@ -53,13 +53,13 @@
     },
     {
       "label": "post_catalog_cycle_2_source_refresh",
-      "run_id": "3f4ec95e-8d9b-4d53-87ac-b70e112e3c3d",
+      "run_id": "b6a79f66-86b0-481b-aee8-578cd5173327",
       "success": true,
       "errors": []
     },
     {
       "label": "synthetic_failed_quality_blocks_promote",
-      "run_id": "930815bd-45ca-4ce4-bc28-5282da4ad493",
+      "run_id": "5634d4ab-8e97-47f4-abd1-246aa734a1e5",
       "success": false,
       "errors": [
         "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
@@ -67,32 +67,32 @@
     },
     {
       "label": "post_gate_source_refresh",
-      "run_id": "d4d9fe40-6cc0-4b8c-a708-8088297fad97",
+      "run_id": "03ff046b-8226-4570-9679-1ec9c623fd54",
       "success": true,
       "errors": []
     },
     {
       "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
-      "run_id": "f819c9b8-948c-4367-a8e5-7bc75bb24123",
+      "run_id": "4a99ce95-d766-4456-a5e7-91c65ab4a51a",
       "success": false,
       "errors": [
-        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__ferry_routes_1__ferry_routes_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-actual/staging/_quarantine/ferry-routes-1/invalid-candidate-ad75cf01bf93488f9ca167f0f7bf6c33:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-actual/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874/metadata/ferry_routes_candidate_ready.json'; retained:_quarantine/ferry-routes-1/cce914eb3a4e4a589866d24580832b5c\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/bts_ferry_routes.py\", line 13, in bts_ferry_routes\n    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 429, in stage_ferry_routes\n    raise FerryRouteQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-actual/staging/_quarantine/ferry-routes-1/invalid-candidate-ad75cf01bf93488f9ca167f0f7bf6c33:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-actual/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874/metadata/ferry_routes_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 400, in stage_ferry_routes\n    raise FerryRouteQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-actual/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874/metadata/ferry_routes_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 390, in stage_ferry_routes\n    reconcile_cache(storage,prefix,table,audit,captures,identity)\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 301, in reconcile_cache\n    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1019, in read_bytes\n    with self.open(mode='rb') as f:\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__ferry_routes_1__ferry_routes_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-metadata-repair/staging/_quarantine/ferry-routes-1/invalid-candidate-f2047a4303004d24944b2b0daff03602:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-metadata-repair/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-6f706af765f77ac7/metadata/ferry_routes_candidate_ready.json'; retained:_quarantine/ferry-routes-1/5aba9d8731b9461dbecfc39ccaf5db8d\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/bts_ferry_routes.py\", line 13, in bts_ferry_routes\n    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 435, in stage_ferry_routes\n    raise FerryRouteQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-metadata-repair/staging/_quarantine/ferry-routes-1/invalid-candidate-f2047a4303004d24944b2b0daff03602:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-metadata-repair/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-6f706af765f77ac7/metadata/ferry_routes_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 404, in stage_ferry_routes\n    raise FerryRouteQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-metadata-repair/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-6f706af765f77ac7/metadata/ferry_routes_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 394, in stage_ferry_routes\n    reconcile_cache(storage,prefix,table,audit,captures,identity)\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 301, in reconcile_cache\n    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1019, in read_bytes\n    with self.open(mode='rb') as f:\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
       ]
     },
     {
       "label": "original_source_rebuild_after_quarantine",
-      "run_id": "39b07671-6000-465a-9525-8f9ce5bc52ea",
+      "run_id": "1d68c3b7-752f-4f30-8df0-be70192e915e",
       "success": true,
       "errors": []
     },
     {
       "label": "rebuilt_cache_refresh",
-      "run_id": "da326c0b-cde0-48bd-94fc-bc04edc906dc",
+      "run_id": "54d6616b-e6a3-434a-83f6-aa9ee1c3d0f2",
       "success": true,
       "errors": []
     }
   ],
-  "version": "v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874",
+  "version": "v0.0.0-draft-bts-ncfo2020-6f706af765f77ac7",
   "discoverable_without_runner_copies": true,
   "original_capture_objects_unchanged": true,
   "source_owned_objects_unchanged": true,
@@ -107,8 +107,8 @@
     "geoparquet/ferry-routes-1.parquet": "75c492a658c2ffdc9f7b47d0cb3104b59b1443d473e294110ca870305ee1ef8c",
     "metadata/baseline_comparison.json": "3006bbcfedf6f1f4b9a5411eafbcaa3b57872e58d975e47b86cbbae5eeb167e5",
     "metadata/ferry_routes_source_audit.json": "f1e3e17fcc835b5bbeaf6f306d413742be43da6c886ad4af7d36e84f978c2722",
-    "metadata/processing_identity.json": "f63760c3ce91b87439c3a5254a56ab328b15c3a1672fbd4cb2ba5c3902d62e73",
-    "metadata/source_manifest.json": "4fe81a433318761bc1f48f4d28f615408a73269cff4a9e193ffb4c6535c9e442",
+    "metadata/processing_identity.json": "6f706af765f77ac722a38d572f0293de6c2b181eb8fadbf1a7cd2841393b555f",
+    "metadata/source_manifest.json": "569e38de5db25a0f093d4e63fda9640ee0db92a6154ada329ba291a3fac2652f",
     "raw/captures/bts_ntad.body": "1a1329a7cc0a89fa9b8d7afb2e3ad19f56a375b85ec74f9a156a80040201204a",
     "raw/captures/bts_ntad.receipt.json": "dc0d3687b88667d0ee8029ef1d82579108035c595db0b2ead65ba45149f839ed",
     "raw/captures/official_landing.body": "c5833ea32e75b6c585c3bfa382b4c2c0d9047a0175ab9c13e1ecf463dcf9833b",
@@ -170,7 +170,7 @@
   "source_manifest": {
     "agency": "U.S. Department of Transportation",
     "approved": false,
-    "code_commit": "c508bf453726a42f2e4dba558eec09bd1bdd5796",
+    "code_commit": "132fe0ea04f67c5782bf3e5320f27098b1388106",
     "inputs": [
       {
         "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
@@ -626,7 +626,7 @@
       },
       "schema_version": 1
     },
-    "processing_fingerprint": "f63760c3ce91b87439c3a5254a56ab328b15c3a1672fbd4cb2ba5c3902d62e73",
+    "processing_fingerprint": "6f706af765f77ac722a38d572f0293de6c2b181eb8fadbf1a7cd2841393b555f",
     "processor": "HIFLD Next",
     "publisher": "Bureau of Transportation Statistics",
     "schema_version": 1,

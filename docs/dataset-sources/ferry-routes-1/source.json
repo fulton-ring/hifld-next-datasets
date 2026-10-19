@@ -1666,7 +1666,7 @@
     "all_literal_ID_occurrences": "evidence/literal-id-diagnostics.jsonl"
   },
   "implementation": {
-    "tested_code_commit": "c508bf453726a42f2e4dba558eec09bd1bdd5796",
+    "tested_code_commit": "132fe0ea04f67c5782bf3e5320f27098b1388106",
     "root_registration_commit": "ea8c331dba2411d0e3ba85ad7e50f021b34a3ace",
     "source": "src/dagster_hifld/sources/ferry_routes.py",
     "asset": "src/dagster_hifld/assets/bts_ferry_routes.py",
@@ -1674,7 +1674,7 @@
     "job": "ferry_routes_source_integrity",
     "refresh": "Monthly firstday11:00America/New_York, STOPPED; cadence is a draft polling choice, not asserted producer release schedule.",
     "raw_preservation": "Immutable original bodies+receipts; failed/partial fetches retained; separate original construction bundle only after verified private build.",
-    "cache": "Commonlock covers lookup/wholefreshoriginal reconciliation/quarantine/install; exact file roster/source-ownedreports/blockedplaceholder/raw/manifest binding; complete deterministic GPKGcontainer and exact prebuilt Parquet; invalid canonical moved intact outside discovery.",
+    "cache": "Commonlock covers lookup/wholefreshoriginal reconciliation/quarantine/install; exact file roster/source-ownedreports/blockedplaceholder/raw/manifest binding; complete deterministic GPKGcontainer and exact prebuilt Parquet; invalid canonical moved intact outside discovery. Reports and typed data are rederived from selected original construction captures after bundle selection, never mixed with later metadata observations. Later complete observations remain retained separately.",
     "construction_provenance": "Shared reviewedGitcontent helper validates reachable real constructioncommit and EVERY recomputed processing source/lock/dependency blob; existingcandidate cannot bootstrap missinganchor. Genuine prior docs-only construction remains reusable.",
     "promotion": "Real independent approvalregistry required; actual quality/approval failures preserve raw/source objects and prior synthetic acceptedfixture. No real source/baseline/contract accepted.",
     "native_parquet_pin": {
@@ -1684,12 +1684,123 @@
   },
   "verification": {
     "focused_tests": {
-      "total": 18,
-      "passed": 18,
-      "seconds": 110.11,
-      "source_code_head": "f0109752d4496706d731d9b1ab57568fff7baf2f"
+      "total": 19,
+      "passed": 19,
+      "scope": "All19 actual-source tests executed within current full541-test suite; no separate19-test timing is claimed.",
+      "targeted_metadata_only_regression": {
+        "total": 1,
+        "passed": 1,
+        "seconds": 34.25
+      }
     },
-    "registered_normal_graph_code_head": "c508bf453726a42f2e4dba558eec09bd1bdd5796",
+    "registered_normal_graph_code_head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+    "actual_registered_runs": [
+      {
+        "label": "source",
+        "run_id": "b4f7d06a-7720-49c8-90d2-6c8f6d69845a",
+        "success": true
+      },
+      {
+        "label": "refresh",
+        "run_id": "dea07a07-dc4c-4f0e-8a4f-7e78a393e30b",
+        "success": true
+      },
+      {
+        "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
+        "run_id": "314f177a-ddbe-4009-b06a-4030919ecc62",
+        "success": false
+      },
+      {
+        "label": "post_catalog_cycle_1_source_refresh",
+        "run_id": "9b4e4fdb-a792-441d-8282-b5290fc83381",
+        "success": true
+      },
+      {
+        "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
+        "run_id": "27c7261c-44be-4d00-9092-785de85ac506",
+        "success": false
+      },
+      {
+        "label": "post_catalog_cycle_2_source_refresh",
+        "run_id": "b6a79f66-86b0-481b-aee8-578cd5173327",
+        "success": true
+      },
+      {
+        "label": "synthetic_failed_quality_blocks_promote",
+        "run_id": "5634d4ab-8e97-47f4-abd1-246aa734a1e5",
+        "success": false
+      },
+      {
+        "label": "post_gate_source_refresh",
+        "run_id": "03ff046b-8226-4570-9679-1ec9c623fd54",
+        "success": true
+      },
+      {
+        "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
+        "run_id": "4a99ce95-d766-4456-a5e7-91c65ab4a51a",
+        "success": false
+      },
+      {
+        "label": "original_source_rebuild_after_quarantine",
+        "run_id": "1d68c3b7-752f-4f30-8df0-be70192e915e",
+        "success": true
+      },
+      {
+        "label": "rebuilt_cache_refresh",
+        "run_id": "54d6616b-e6a3-434a-83f6-aa9ee1c3d0f2",
+        "success": true
+      }
+    ],
+    "all964_original_rows_fields_IDs_types_native_geometry_and_coverage_verified": true,
+    "generic_GeoParquet_converter_calls": 0,
+    "all19_provenance_records_retained": true,
+    "raw_and_source_objects_preserved": true,
+    "prior_synthetic_accepted_fixture_preserved": true,
+    "synthetic_fixtures_grant_no_real_acceptance": true,
+    "full_suite": {
+      "total": 541,
+      "passed": 540,
+      "skipped": 1,
+      "seconds": 422.493,
+      "head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+      "skip": "Opt-in real production GCS writes intentionally disabled",
+      "real_input_tests_executed": true
+    },
+    "real_sibling_IaC": "56aa10757129c457c530d707d9a40bae13e0907f available unchanged; no fake fixture or deployment.",
+    "CI_pass_claimed": false,
+    "independent_review": "pending exact final head",
+    "independent_manual_raw_to_binary_audit": "evidence/manual-native-audit.json",
+    "original_new_native_payloads_byte_identical": true,
+    "metadata_regression": "Test-only metadata observation falsely rejected before repair (65.266s failing reproduction); corrected original-capture audit binding passes34.250s, retains later observation without rewriting original candidate/provenance. No claim of real producer metadata change."
+  },
+  "release_prerequisites": [
+    "Producer item2022 versus actual layer2020 vintage conflict",
+    "Crosswalk inaccessible403, not unmatched",
+    "Exact original/published ID mapping including Parquet id",
+    "Shape__Length versus SHAPE_Length naming/value differences",
+    "Integer physical type/nullability and geometry precision compatibility",
+    "Native output column/format schema and exact release registry"
+  ],
+  "never_authorized": [
+    "source/baseline/contract approval",
+    "silent schema/ID/type/geometry/coverage migration",
+    "merge",
+    "issue closure",
+    "production publication"
+  ],
+  "updated_at": "2026-10-19T09:56:41.639766+00:00",
+  "historical_validation": {
+    "scope": "Prior full native graph and suite, retained as historical evidence, not current132 repair validation.",
+    "code_commit": "c508bf453726a42f2e4dba558eec09bd1bdd5796",
+    "full_suite": {
+      "total": 540,
+      "passed": 539,
+      "skipped": 1,
+      "seconds": 167.05,
+      "head": "c508bf4",
+      "skip": "Opt-in real production GCS writes intentionally disabled",
+      "real_input_tests_executed": true
+    },
     "actual_registered_runs": [
       {
         "label": "source",
@@ -1747,39 +1858,6 @@
         "success": true
       }
     ],
-    "all964_original_rows_fields_IDs_types_native_geometry_and_coverage_verified": true,
-    "generic_GeoParquet_converter_calls": 0,
-    "all19_provenance_records_retained": true,
-    "raw_and_source_objects_preserved": true,
-    "prior_synthetic_accepted_fixture_preserved": true,
-    "synthetic_fixtures_grant_no_real_acceptance": true,
-    "full_suite": {
-      "total": 540,
-      "passed": 539,
-      "skipped": 1,
-      "seconds": 167.05,
-      "head": "c508bf4",
-      "skip": "Opt-in real production GCS writes intentionally disabled",
-      "real_input_tests_executed": true
-    },
-    "real_sibling_IaC": "56aa10757129c457c530d707d9a40bae13e0907f available unchanged; no fake fixture or deployment.",
-    "CI_pass_claimed": false,
-    "independent_review": "pending exact final head"
-  },
-  "release_prerequisites": [
-    "Producer item2022 versus actual layer2020 vintage conflict",
-    "Crosswalk inaccessible403, not unmatched",
-    "Exact original/published ID mapping including Parquet id",
-    "Shape__Length versus SHAPE_Length naming/value differences",
-    "Integer physical type/nullability and geometry precision compatibility",
-    "Native output column/format schema and exact release registry"
-  ],
-  "never_authorized": [
-    "source/baseline/contract approval",
-    "silent schema/ID/type/geometry/coverage migration",
-    "merge",
-    "issue closure",
-    "production publication"
-  ],
-  "updated_at": "2026-10-19T09:56:41.639766+00:00"
+    "evidence": "evidence/historical-c508/"
+  }
 }
