@@ -144,6 +144,36 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
     return fields, features
 
 
+def _load_retained_capture(directory: Path, destination: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
+    """Replay a previously retained complete capture without contacting BTS."""
+    root=Path(directory).absolute()
+    if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)) or not root.is_dir():
+        raise ValueError("unsafe_or_missing_retained_capture")
+    try: manifest=json.loads((root/"capture_manifest.json").read_bytes())
+    except (OSError,ValueError) as exc: raise ValueError("retained_capture_manifest_missing_or_invalid") from exc
+    source_count=manifest.get("source_feature_count",manifest.get("feature_count"))
+    if manifest.get("complete") is not True or source_count!=EXPECTED_COUNT:
+        raise ValueError("retained_capture_is_not_complete_pinned_population")
+    receipts=manifest.get("receipts")
+    if not isinstance(receipts,dict): raise ValueError("retained_capture_receipts_missing")
+    captures={}
+    for name,receipt in receipts.items():
+        if not isinstance(name,str) or not isinstance(receipt,dict): raise ValueError("retained_capture_receipt_invalid")
+        body_path=root/f"{name}.body"; wire_path=root/f"{name}.wire"; receipt_path=root/f"{name}.receipt.json"
+        try: body=body_path.read_bytes();wire=wire_path.read_bytes();receipt_body=receipt_path.read_bytes()
+        except OSError as exc: raise ValueError("retained_capture_object_missing:"+name) from exc
+        if (receipt.get("complete_body") is not True or receipt.get("status")!=200
+            or receipt.get("final_url")!=receipt.get("url") or receipt.get("bytes")!=len(body)
+            or receipt.get("sha256")!=_sha(body) or receipt.get("wire_bytes")!=len(wire)
+            or receipt.get("wire_sha256")!=_sha(wire) or receipt_body!=_canonical(receipt)+b"\n"):
+            raise ValueError("retained_capture_integrity_failed:"+name)
+        shutil.copyfile(wire_path,destination/f"{name}.wire")
+        captures[name]=(body,receipt)
+    if manifest.get("receipts")!={name:receipt for name,(_,receipt) in sorted(captures.items())}:
+        raise ValueError("retained_capture_receipt_roster_changed")
+    return captures
+
+
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
     t=field["type"]
     if t=="esriFieldTypeOID": return pa.int64()
@@ -162,7 +192,8 @@ def _parquet(fields: list[dict[str, object]], features: list[dict[str, object]])
     return sink.getvalue().to_pybytes()
 
 
-def capture_national_transit_map_agencies(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None) -> dict[str, object]:
+def capture_national_transit_map_agencies(storage: StagingStorageResource, *, version: str,
+    capture_directory: str | None = None, replay_capture_directory: str | None = None) -> dict[str, object]:
     """Acquire complete BTS layer, retaining raw/wire bodies and receipts."""
     if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
@@ -175,7 +206,10 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     root=root.absolute();root.mkdir(parents=True,exist_ok=False)
     captures={}
     try:
-        with httpx.Client(follow_redirects=False,timeout=60,headers={"User-Agent":"hifld-next-datasets/national-transit-map-agencies-draft"}) as client:
+        if replay_capture_directory:
+            captures=_load_retained_capture(Path(replay_capture_directory),root)
+        else:
+          with httpx.Client(follow_redirects=False,timeout=60,headers={"User-Agent":"hifld-next-datasets/national-transit-map-agencies-draft"}) as client:
             urls=[("item",ITEM_URL+"?f=json"),("service_before",SERVICE_URL+"?f=pjson"),("layer_before",LAYER_URL+"?f=pjson"),
                 ("count_before",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})),
                 ("ids_before",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}))]

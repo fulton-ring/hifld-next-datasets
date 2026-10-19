@@ -14,6 +14,7 @@ from dagster_hifld.sources.national_transit_map_agencies import (
 
 class NationalTransitMapAgenciesConfig(Config):
     capture_directory: str = ""
+    replay_capture_directory: str = ""
 
 
 @asset(
@@ -31,6 +32,7 @@ def bts_national_transit_map_agencies(context, config: NationalTransitMapAgencie
         staging_storage,
         version=build_version_id(context),
         capture_directory=config.capture_directory or None,
+        replay_capture_directory=config.replay_capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,

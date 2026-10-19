@@ -1,6 +1,8 @@
 import hashlib
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from dagster_hifld.sources import national_transit_map_agencies as source
@@ -93,6 +95,22 @@ class NationalTransitMapAgenciesCaptureTests(unittest.TestCase):
         self.captures["page_000"]=(canonical(page),{})
         with self.assertRaisesRegex(ValueError,"source_page_error_or_truncation"):
             source.validate_captures(self.captures)
+
+    def test_replays_retained_body_wire_and_original_receipt_without_fetching(self):
+        body=b'{"captured":"body"}';wire=b'wire-body'
+        receipt={"url":"https://example.invalid/source","final_url":"https://example.invalid/source",
+            "observed_at":"2026-10-19T20:00:00+00:00","complete_body":True,"status":200,
+            "bytes":len(body),"sha256":hashlib.sha256(body).hexdigest(),
+            "wire_bytes":len(wire),"wire_sha256":hashlib.sha256(wire).hexdigest()}
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);destination=root/"copy";destination.mkdir()
+            (root/"sample.body").write_bytes(body);(root/"sample.wire").write_bytes(wire)
+            (root/"sample.receipt.json").write_bytes(canonical(receipt)+b"\n")
+            (root/"capture_manifest.json").write_bytes(canonical({"complete":True,"source_feature_count":1,"receipts":{"sample":receipt}}))
+            with patch.object(source,"EXPECTED_COUNT",1):
+                replay=source._load_retained_capture(root,destination)
+            self.assertEqual(replay["sample"],(body,receipt))
+            self.assertEqual((destination/"sample.wire").read_bytes(),wire)
 
 
 if __name__ == "__main__":
