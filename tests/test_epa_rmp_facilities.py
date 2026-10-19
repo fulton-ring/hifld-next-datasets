@@ -13,6 +13,7 @@ from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_f
 from dagster_hifld.sources.epa_rmp_facilities import (
     _canonical,
     _parquet_bytes,
+    EPA_FRS_DATA_SOURCES_URL,
     capture_epa_rmp_facilities,
     validate_source_captures,
 )
@@ -57,8 +58,7 @@ def _capture_fixture(*, num_views=(10, 11), data_edit=(1000, 1000), transfer=Fal
         "ids_after": {"objectIds": list(range(expected_count, 0, -1))},
         "ids_seed": {"objectIds": list(range(1, expected_count + 1))}, **pages,
     }
-    captures = {"epa_frs_page": (b"EPA", {}), "epa_frs_sources_page": (b"Risk Management Plan (RMP); section 112(r)", {}),
-                "epa_frs_download_options_page": (b"EPA", {}), "epa_frs_geospatial_download_page": (b"EPA", {})}
+    captures = {"epa_frs_sources_page": (b"Risk Management Plan (RMP); section 112(r)", {})}
     captures.update({name: (json.dumps(value, separators=(",", ":")).encode(), {})
                      if name.startswith("features_") else (_canonical(value), {})
                      for name, value in docs.items()})
@@ -142,7 +142,21 @@ class EpaRmpSourceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"), use_local=True, backend="local")
-            args = {"version": "synthetic-fixture", "capture_directory": str(Path(tmp) / "captures")}
+            replay_root = Path(tmp) / "reference-documentation"
+            replay_root.mkdir()
+            source_page = captures["epa_frs_sources_page"][0]
+            (replay_root / "epa_frs_sources_page.body").write_bytes(source_page)
+            (replay_root / "epa_frs_sources_page.wire").write_bytes(source_page)
+            replay_receipt = {"method": "GET", "url": EPA_FRS_DATA_SOURCES_URL,
+                              "final_url": EPA_FRS_DATA_SOURCES_URL,
+                              "observed_at": "2026-10-19T19:55:32.426036+00:00",
+                              "status": 200, "complete_body": True,
+                              "content_encoding": "identity",
+                              "bytes": len(source_page), "sha256": hashlib.sha256(source_page).hexdigest(),
+                              "wire_bytes": len(source_page), "wire_sha256": hashlib.sha256(source_page).hexdigest()}
+            (replay_root / "epa_frs_sources_page.receipt.json").write_bytes(_canonical(replay_receipt) + b"\n")
+            args = {"version": "synthetic-fixture", "capture_directory": str(Path(tmp) / "captures"),
+                    "supporting_document_replay_directory": str(replay_root)}
             with (patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_COUNT", 2),
                   patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_FIELD_COUNT", 3),
                   patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_SCHEMA_SHA256", schema_sha),
@@ -158,6 +172,15 @@ class EpaRmpSourceTests(unittest.TestCase):
                 self.assertFalse(manifest["approved"])
                 self.assertIsNone(manifest["date_issued"])
                 self.assertIn("release_date_unknown_reason", manifest["inputs"][0])
+                doc_input = next(row for row in manifest["inputs"] if row["input_id"] == "epa_frs_sources_page")
+                self.assertEqual(doc_input["capture_mode"], "documentation_replay")
+                self.assertEqual(doc_input["role"], "producer_publication")
+                self.assertIn("program relationship only", doc_input["evidence_scope"])
+                self.assertIn("Unknown for the EPA FRS data-sources reference page", doc_input["license"])
+                self.assertEqual(doc_input["retrieved_at"], replay_receipt["observed_at"])
+                stored_replay = json.loads(storage.read_key(prefix + "/raw/epa_frs_sources_page.receipt.json"))
+                self.assertTrue(stored_replay["documentation_replay"])
+                self.assertFalse(stored_replay["captured_for_dataset_refresh"])
                 self.assertFalse(candidate["release_accepted"])
                 self.assertIn(prefix + "/raw/features_000.body", storage.list_prefix(prefix))
                 # Catalog-derived documents are permitted by the shared

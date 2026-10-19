@@ -39,10 +39,7 @@ ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"
 SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS_RMP/FeatureServer"
 LAYER_ID = 0
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-EPA_FRS_URL = "https://www.epa.gov/frs"
 EPA_FRS_DATA_SOURCES_URL = "https://www.epa.gov/frs/frs-data-sources"
-EPA_FRS_DOWNLOAD_OPTIONS_URL = "https://www.epa.gov/frs/frs-data-download-options"
-EPA_FRS_GEOSPATIAL_DOWNLOAD_URL = "https://www.epa.gov/frs/geospatial-data-download-service"
 LAYER_NAME = "RMP"
 SOURCE_FIELD_COUNT = 32
 SOURCE_COUNT = 21853
@@ -79,10 +76,7 @@ def _query_url(params: Mapping[str, object]) -> str:
 
 def _source_urls(ids: list[int]) -> list[tuple[str, str]]:
     urls: list[tuple[str, str]] = [
-        ("epa_frs_page", EPA_FRS_URL),
         ("epa_frs_sources_page", EPA_FRS_DATA_SOURCES_URL),
-        ("epa_frs_download_options_page", EPA_FRS_DOWNLOAD_OPTIONS_URL),
-        ("epa_frs_geospatial_download_page", EPA_FRS_GEOSPATIAL_DOWNLOAD_URL),
         ("portal_item_before", ITEM_URL),
         ("service_before", SERVICE_URL + "?f=pjson"),
         ("layer_before", LAYER_URL + "?f=pjson"),
@@ -122,8 +116,7 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
     if expected_schema_sha256 is _DEFAULT_SCHEMA_PIN:
         expected_schema_sha256 = SOURCE_SCHEMA_SHA256
     docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if name not in {"epa_frs_page", "epa_frs_sources_page", "epa_frs_download_options_page",
-                            "epa_frs_geospatial_download_page"}}
+            if name != "epa_frs_sources_page"}
     item0 = _plain_object(docs.get("portal_item_before"), "portal_item_before")
     item1 = _plain_object(docs.get("portal_item_after"), "portal_item_after")
     service0 = _plain_object(docs.get("service_before"), "service_before")
@@ -133,8 +126,7 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
 
     expected_pages = (expected_count + page_size - 1) // page_size
     expected_names = {
-        "epa_frs_page", "epa_frs_sources_page", "epa_frs_download_options_page",
-        "epa_frs_geospatial_download_page", "portal_item_before", "service_before",
+        "epa_frs_sources_page", "portal_item_before", "service_before",
         "layer_before", "count_before", "ids_before", "ids_seed", "portal_item_after", "service_after",
         "layer_after", "count_after", "ids_after", *(f"features_{i:03d}" for i in range(expected_pages)),
     }
@@ -323,8 +315,38 @@ def _identity(repo_root: Path) -> dict[str, object]:
     return identity
 
 
+def _read_supporting_document_replay(directory: str) -> tuple[bytes, bytes, dict[str, object]]:
+    """Load an independently captured EPA program reference without refreshing its timestamp."""
+    root = Path(directory)
+    if root.is_symlink() or any(parent.is_symlink() for parent in root.parents):
+        raise ValueError("unsafe_supporting_document_replay_directory")
+    body_path, wire_path, receipt_path = (root / "epa_frs_sources_page.body",
+                                          root / "epa_frs_sources_page.wire",
+                                          root / "epa_frs_sources_page.receipt.json")
+    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
+        raise ValueError("unsafe_supporting_document_replay_file")
+    body, wire = body_path.read_bytes(), wire_path.read_bytes()
+    receipt = json.loads(receipt_path.read_bytes())
+    observed_at = receipt.get("observed_at") if isinstance(receipt, dict) else None
+    try:
+        observed = datetime.fromisoformat(str(observed_at).replace("Z", "+00:00"))
+    except ValueError:
+        observed = None
+    if (not isinstance(receipt, dict) or receipt.get("url") != EPA_FRS_DATA_SOURCES_URL
+            or receipt.get("final_url") != EPA_FRS_DATA_SOURCES_URL
+            or receipt.get("status") != 200 or receipt.get("complete_body") is not True
+            or receipt.get("content_encoding") != "identity" or observed is None or observed.utcoffset() is None
+            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+            or body != wire or b"Risk Management Plan (RMP)" not in body or b"112(r)" not in body):
+        raise ValueError("supporting_document_replay_integrity_or_content_failed")
+    receipt = {**receipt, "documentation_replay": True, "captured_for_dataset_refresh": False}
+    return body, wire, receipt
+
+
 def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
-                               capture_directory: str | None = None) -> dict[str, object]:
+                               capture_directory: str | None = None,
+                               supporting_document_replay_directory: str | None = None) -> dict[str, object]:
     """Acquire the entire current official feed and stage one sealed local candidate."""
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
@@ -344,6 +366,14 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     try:
+        replayed_document = None
+        if supporting_document_replay_directory:
+            replayed_document = _read_supporting_document_replay(supporting_document_replay_directory)
+            body, wire, receipt = replayed_document
+            for suffix, value in (("body", body), ("wire", wire),
+                                  ("receipt.json", _canonical(receipt) + b"\n")):
+                (capture_root / f"epa_frs_sources_page.{suffix}").write_bytes(value)
+            captures["epa_frs_sources_page"] = (body, receipt)
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent": "hifld-next-datasets/epa-rmp-facilities-draft"}) as client:
             seed_body, seed_receipt = capture_get(client,
@@ -354,6 +384,8 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
                 raise ValueError("source_seed_id_count_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
             for name, url in _source_urls(sorted(seed)):
+                if name == "epa_frs_sources_page" and replayed_document is not None:
+                    continue
                 body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
                 captures[name] = (body, receipt)
         extracted = validate_source_captures(captures)
@@ -390,12 +422,14 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
     inputs = [{"input_id": name, "producer": "U.S. Environmental Protection Agency, FRS Support Team; RMP national program",
                "host": urlsplit(str(receipt["url"])).hostname,
                "role": "producer_publication",
-               "canonical_url": EPA_FRS_DATA_SOURCES_URL if name == "epa_frs_sources_page" else EPA_FRS_URL if name == "epa_frs_page" else EPA_FRS_DOWNLOAD_OPTIONS_URL if name == "epa_frs_download_options_page" else EPA_FRS_GEOSPATIAL_DOWNLOAD_URL if name == "epa_frs_geospatial_download_page" else LAYER_URL,
+               "evidence_scope": "EPA RMP program relationship only; not feature records or release proof." if name == "epa_frs_sources_page" else "feature records or service metadata",
+               "capture_mode": "documentation_replay" if receipt.get("documentation_replay") else "fresh_http_get",
+               "canonical_url": EPA_FRS_DATA_SOURCES_URL if name == "epa_frs_sources_page" else LAYER_URL,
                "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
                "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
                "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-               "license": "EPA item cites U.S. Government public-domain status under 17 U.S.C. § 105; formal terms review pending.",
-               "attribution": "U.S. EPA Facility Registry Service (FRS), Risk Management Plan (RMP) national program; hosted by EPA_GEO.",
+               "license": "Unknown for the EPA FRS data-sources reference page; it supports program relationship only, not source records or rights." if name == "epa_frs_sources_page" else "EPA item cites U.S. Government public-domain status under 17 U.S.C. § 105; formal terms review pending.",
+               "attribution": "U.S. EPA Facility Registry Service Data Sources page." if name == "epa_frs_sources_page" else "U.S. EPA Facility Registry Service (FRS), Risk Management Plan (RMP) national program; hosted by EPA_GEO.",
                "release_date": None, "release_date_unknown_reason": "EPA provides edit timestamps but this service metadata does not identify a source release date; timestamp is retained as actual data/schema editing evidence."}
               for name, receipt in sorted(receipts.items())]
     manifest = {

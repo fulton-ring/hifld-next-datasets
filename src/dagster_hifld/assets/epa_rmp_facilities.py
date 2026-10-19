@@ -14,6 +14,7 @@ from dagster_hifld.sources.epa_rmp_facilities import (
 
 class EpaRmpFacilitiesConfig(Config):
     capture_directory: str = ""
+    supporting_document_replay_directory: str = ""
 
 
 @asset(
@@ -31,6 +32,7 @@ def epa_emergency_response_rmp_facilities(
     version = build_version_id(context)
     result = capture_epa_rmp_facilities(
         staging_storage, version=version, capture_directory=config.capture_directory or None,
+        supporting_document_replay_directory=config.supporting_document_replay_directory or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
