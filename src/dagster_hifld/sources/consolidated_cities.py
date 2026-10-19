@@ -151,13 +151,21 @@ def acquire(storage,capture_dir=None):
                 for attempt in range(3):
                     body=bytearray();receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                     try:
-                        with httpx.Client(follow_redirects=False,timeout=90) as client,client.stream('GET',url) as response:
-                            receipt.update(status=response.status_code,final_url=str(response.url))
-                            for block in response.iter_bytes(65536):
-                                body+=block
-                                if len(body)>limit: raise ConsolidatedCityQuarantineError('oversized_or_changed_source')
+                        with httpx.Client(follow_redirects=False,timeout=90,headers={'Accept-Encoding':'identity'}) as client,client.stream('GET',url) as response:
+                            receipt.update(status=response.status_code,final_url=str(response.url),
+                                requested_accept_encoding='identity',content_encoding=response.headers.get('content-encoding'),
+                                content_length=response.headers.get('content-length'))
+                            try:
+                                for block in response.iter_bytes(None):
+                                    body+=block
+                                    if len(body)>limit: raise ConsolidatedCityQuarantineError('oversized_or_changed_source')
+                            finally:
+                                receipt['wire_bytes_downloaded']=getattr(response,'num_bytes_downloaded',None)
                             receipt.update(bytes=len(body),sha256=digest(body),complete_body=True)
-                            if response.status_code!=200 or (response.headers.get('content-length') is not None and int(response.headers['content-length'])!=len(body)):
+                            # HTTP Content-Length measures the encoded transport body.
+                            # iter_bytes transparently decodes Content-Encoding, even
+                            # when the server ignores our identity request.
+                            if response.status_code!=200 or (receipt['content_length'] is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']):
                                 raise ConsolidatedCityQuarantineError('non200_or_incomplete_http_response')
                         captures[name]=(bytes(body),receipt);break
                     except (httpx.HTTPError,OSError,ValueError) as exc:

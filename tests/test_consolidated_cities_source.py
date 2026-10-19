@@ -1,5 +1,8 @@
 """Complete retained original inputs test draft mechanics; no real acceptance."""
 import copy
+import gzip
+import zlib
+from contextlib import contextmanager
 import json
 import shutil
 import sqlite3
@@ -7,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster_hifld.sources import consolidated_cities as c
@@ -24,6 +28,89 @@ class ConsolidatedCityTests(unittest.TestCase):
     def setUpClass(cls):
         cls.capture=captures()
         cls.table,cls.audit=c.inspect_archives({n:INPUTS/(n+'.body') for n in c.PINS},cls.capture)
+
+    def test_live_transport_complete_gzip_uses_wire_length_and_identity_request(self):
+        real_client=httpx.Client
+        seen=[]
+        class WireBody(httpx.SyncByteStream):
+            def __init__(self,body):self.body=body
+            def __iter__(self):yield self.body
+        def respond(request):
+            seen.append(request.headers['accept-encoding'])
+            name='census2026_concity' if str(request.url)==c.DIRECTORY else request.url.path.rsplit('/',1)[1][:-4]
+            body=self.capture[name][0];wire=gzip.compress(body,mtime=0)
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire))},stream=WireBody(wire))
+        def client(**kwargs):return real_client(transport=httpx.MockTransport(respond),**kwargs)
+        with tempfile.TemporaryDirectory() as d,patch.object(c.httpx,'Client',side_effect=client):
+            actual=c.acquire(StagingStorageResource(local_dir=d))
+            self.assertEqual(set(actual),set(self.capture));self.assertEqual(seen,['identity']*8)
+            for name,(body,receipt) in actual.items():
+                self.assertEqual(body,self.capture[name][0]);self.assertEqual(receipt['content_encoding'],'gzip')
+                self.assertEqual(int(receipt['content_length']),receipt['wire_bytes_downloaded'])
+                self.assertEqual(receipt['bytes'],len(body));self.assertNotEqual(receipt['bytes'],receipt['wire_bytes_downloaded'])
+                self.assertTrue(receipt['complete_body'])
+
+    def test_live_transport_truncated_gzip_preserves_every_attempt_and_prior_capture(self):
+        real_client=httpx.Client;seen=[]
+        partial=self.capture['tl_2026_09_concity'][0][:-9]
+        class WireBody(httpx.SyncByteStream):
+            def __init__(self,body):self.body=body
+            def __iter__(self):yield self.body
+        def respond(request):
+            name='census2026_concity' if str(request.url)==c.DIRECTORY else request.url.path.rsplit('/',1)[1][:-4]
+            seen.append(name)
+            body=self.capture[name][0];wire=gzip.compress(body,mtime=0)
+            if name=='tl_2026_09_concity':wire=gzip.compress(partial,mtime=0)
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire)+(13 if name=='tl_2026_09_concity' else 0))},stream=WireBody(wire))
+        def client(**kwargs):return real_client(transport=httpx.MockTransport(respond),**kwargs)
+        with tempfile.TemporaryDirectory() as d,patch.object(c.httpx,'Client',side_effect=client):
+            root=Path(d);prior=root/'prior-accepted';prior.write_bytes(b'unchanged')
+            with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):c.acquire(StagingStorageResource(local_dir=d))
+            self.assertEqual(seen,['census2026_concity']+['tl_2026_09_concity']*3)
+            receipts=list((root/'_quarantine').rglob('tl_2026_09_concity.receipt.json'));self.assertEqual(len(receipts),3)
+            for path in receipts:
+                receipt=c.strict_json(path.read_bytes());self.assertFalse(receipt['complete_body'])
+                self.assertNotEqual(int(receipt['content_length']),receipt['wire_bytes_downloaded'])
+                self.assertEqual(path.with_name('tl_2026_09_concity.body').read_bytes(),partial)
+            self.assertTrue(any(path.read_bytes()==self.capture['census2026_concity'][0] for path in (root/'_quarantine').rglob('census2026_concity.body')))
+            self.assertEqual(prior.read_bytes(),b'unchanged');self.assertFalse((root/c.SLUG).exists())
+
+    def test_live_transport_stream_error_retains_decoded_partial_bytes_and_wire_count(self):
+        real_client=httpx.Client;partial=b'partial Census directory response'
+        compressor=zlib.compressobj(wbits=31);wire=compressor.compress(partial)+compressor.flush(zlib.Z_SYNC_FLUSH)
+        class BrokenWire(httpx.SyncByteStream):
+            def __iter__(self):
+                yield wire
+                raise httpx.RemoteProtocolError('injected premature encoded-body EOF')
+        def client(**kwargs):
+            return real_client(transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire)+10)},stream=BrokenWire())),**kwargs)
+        with tempfile.TemporaryDirectory() as d,patch.object(c.httpx,'Client',side_effect=client):
+            root=Path(d)
+            with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):c.acquire(StagingStorageResource(local_dir=d))
+            receipts=list((root/'_quarantine').rglob('census2026_concity.receipt.json'));self.assertEqual(len(receipts),3)
+            for path in receipts:
+                receipt=c.strict_json(path.read_bytes());self.assertFalse(receipt['complete_body'])
+                self.assertEqual(receipt['wire_bytes_downloaded'],len(wire));self.assertEqual(receipt['bytes'],len(partial))
+                self.assertEqual(path.with_name('census2026_concity.body').read_bytes(),partial)
+            self.assertFalse((root/c.SLUG).exists())
+
+    def test_live_transport_missing_content_length_and_wire_counter_remain_supported(self):
+        class PlainResponse:
+            status_code=200;headers={}
+            def __init__(self,url,body):self.url=url;self.body=body
+            def iter_bytes(self,size):yield self.body
+        class PlainClient:
+            def __init__(self,**kwargs):pass
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            @contextmanager
+            def stream(inner,method,url):
+                name='census2026_concity' if url==c.DIRECTORY else url.rsplit('/',1)[1][:-4]
+                yield PlainResponse(url,self.capture[name][0])
+        with tempfile.TemporaryDirectory() as d,patch.object(c.httpx,'Client',PlainClient):
+            result=c.acquire(StagingStorageResource(local_dir=d))
+            self.assertEqual(len(result),8)
+            self.assertTrue(all(r['complete_body'] and r['wire_bytes_downloaded'] is None for _,r in result.values()))
 
     def test_registration_and_stopped_schedule(self):
         self.assertIn((c.SLUG,c.SLUG),SUPPORTED_DATASET_FILE_PAIRS)
