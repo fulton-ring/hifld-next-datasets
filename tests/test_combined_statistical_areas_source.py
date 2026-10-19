@@ -89,6 +89,21 @@ class CSASourceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'geopackage_geometry_declarations'):
                 c.reconcile_cached_native_outputs(root,original)
 
+    def test_producer_oid_and_double_declarations_are_distinct_from_arrow(self):
+        evidence=Path(__file__).parents[1]/'docs/dataset-sources/combined-statistical-areas-3/evidence/native-layer-definition.json'
+        xml=json.loads(evidence.read_text())['rows'][0]['FIELD_1']
+        with patch.object(c.pyogrio,'read_arrow',return_value=({},pa.table({'FIELD_1':[xml]}))):
+            declaration=c.read_native_definition(Path('/synthetic-unit-only.zip'))
+        self.assertEqual(declaration['fields']['OBJECTID']['Length'],'4')
+        self.assertEqual(c.TYPES[0],pa.int64())
+        for field,key,value in [('OBJECTID','Length','8'),('OBJECTID','IsNullable','true'),('OBJECTID','Required','false'),('OBJECTID','Editable','true'),('ALAND','FieldType','esriFieldTypeInteger')]:
+            document=c.ET.fromstring(xml)
+            item=next(x for x in document.findall('./GPFieldInfoExs/GPFieldInfoEx') if x.findtext('Name')==field)
+            item.find(key).text=value
+            changed=c.ET.tostring(document,encoding='unicode')
+            with self.subTest(field=field,key=key),patch.object(c.pyogrio,'read_arrow',return_value=({},pa.table({'FIELD_1':[changed]}))),self.assertRaisesRegex(ValueError,'declaration_drift'):
+                c.read_native_definition(Path('/synthetic-unit-only.zip'))
+
     def test_source_schema_types_ids_completeness_and_geometry_guards(self):
         # Fixtures test guards only and cannot approve the real release.
         props={'OBJECTID':list(range(1,185)),'GEOID':[str(i).zfill(3) for i in range(184)],'GEOIDFQ':['x']*184,'NAMELSAD':['x']*184,'LSAD':['M0']*184,'ALAND':[1.0]*184,'AWATER':[0.0]*184,'INTPTLAT':['1']*184,'INTPTLON':['1']*184,'SHAPE':[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))]*184}

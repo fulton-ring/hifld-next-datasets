@@ -71,7 +71,8 @@
     "Published id vs intrinsic source OBJECTID preservation/mapping",
     "Extra/missing field and double-vs-int64 area schema migration",
     "All184 geometries differ; CRS/geometry migration and any tolerances must be approved",
-    "Output format/schema including terminal bbox and intrinsic storageFID mapping"
+    "Output format/schema including terminal bbox and intrinsic storageFID mapping",
+    "Native producer OID Length4 vs GDAL/draft int64 representation widening; no native int64 or mapping approval inferred"
   ],
   "refresh": {
     "mode": "monthly pinned2024-release integrity retrieval; changed bytes quarantine rather than auto-upgrade",

@@ -51,6 +51,41 @@
       "path": "/workspace/work/hifld-coordinator/40/native_compare.py",
       "bytes": 1349,
       "sha256": "2e4235631293248fe1f48aa5e44efa327b18ee517c286c5a74aae0ddcb77427e"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/review-fix-materialization.log",
+      "bytes": 8813,
+      "sha256": "1393e6191f56fc7e38de16d98e9848763be3e7e6ee79dcdad3be1bbe8522e893"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/review-fix-materialization-final.log",
+      "bytes": 14076,
+      "sha256": "f7e85f1f11d86c524daf297195565e6528b4dbe61d59ca42e27c9890040c2351"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/review-fix-metadata-probes.log",
+      "bytes": 17807,
+      "sha256": "3b7ccc0912be18e349d43de86ad552bcc08b950a3a3f6639aaa8708c14e617ce"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/review-fix-full-suite-final.log",
+      "bytes": 18549,
+      "sha256": "81db7974bdfc5573b67830818025db56d9fff7a4c2e0ff55d9aa246c6a77b514"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/review-fix-focused-final.log",
+      "bytes": 1856,
+      "sha256": "db30945a6716111720b3d94677c48a5c316dc947920ca79f5bb686a767f2ef9e"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/review_fix_metadata_probes.py",
+      "bytes": 5008,
+      "sha256": "8b53bbfb0c63eab9061950d7b18cd73d7eef2a2877a9db4fbf052cfa88e673d8"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/40/review_fix_replay.py",
+      "bytes": 6841,
+      "sha256": "a89c173685523b1b4417ce4d4c9af148e45814070e2d1a5ed5353841472dc19f"
     }
   ]
 }

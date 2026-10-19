@@ -108,7 +108,7 @@
   "accepted_published_mapping": null,
   "published_baseline_contract": null,
   "source_physical_nullability_vs_observed_completeness": "Declared nullable source attributes retain their declarations; this pinned full release happens to have zero nulls. New null values quarantine as observed-release drift, not destructive type tightening.",
-  "gpkg_storage_fid": "_gpkg_storage_fid is an independent storage index, never a substitute source/published identifier. Native OBJECTID remains an explicit int64 field.",
+  "gpkg_storage_fid": "_gpkg_storage_fid is an independent storage index, never a substitute source/published identifier. Original OBJECTID values remain in the draft int64 field; producer esriFieldTypeOID Length4 declaration is preserved separately and width mapping is unapproved.",
   "terminal_schema_changes": "Shared GeoParquet adds bbox and changes representation metadata/nullability. These require review; no format contract accepted.",
   "producer_declaration_evidence": "evidence/native-layer-definition.json"
 }
