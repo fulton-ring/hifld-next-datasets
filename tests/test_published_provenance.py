@@ -47,6 +47,8 @@ class PublishedProvenanceTests(unittest.TestCase):
                 self.assertTrue(result["pointer_preserved"])
                 self.assertTrue(result["plan_evidence_preserved"])
                 self.assertEqual(result["prior_object_roster_preserved"], outcome["prior_published_objects_preserved"])
+            self.assertTrue(outcome["actual_catalog_asset"]["exact_persisted_plan_unchanged"])
+            self.assertTrue(outcome["actual_catalog_asset"]["legacy_surfaces_blocked"])
 
     def test_resolved_dataset_and_version_inputs_reach_dictionary_and_downloadable_manifest(self):
         with tempfile.TemporaryDirectory() as d:

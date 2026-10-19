@@ -438,7 +438,7 @@ def _record_assets(
     for key in published.list_prefix(logical_prefix):
         if "/metadata/" in key:
             continue
-        relative = key.removeprefix(f"{request.collection_slug}/")
+        relative = key.removeprefix(published.prefix.rstrip("/") + "/") if published.prefix else key
         asset_parts = Path(relative).relative_to(logical_prefix).parts
         if len(asset_parts) < 2 or asset_parts[0] not in _PUBLISHED_ASSET_FORMATS:
             continue
@@ -578,7 +578,9 @@ def publish_portolan_record(
     catalog_only: bool = False,
     use_release_pointer: bool = False,
 ) -> str:
-    """Convert, promote, publish STAC, then atomically replace the catalog DB last."""
+    """Convert/promote and run the guarded immutable publication path."""
+    if not use_release_pointer:
+        raise ValueError("Legacy in-place catalog publication is disabled; use an independently reviewed immutable release plan")
     staging_storage = staging or StagingStorageResource.from_env()
     published_base = published or PublishedStorageResource.from_env()
     record = _prepare_portolan_record(
@@ -1020,77 +1022,90 @@ def _publish_catalog(
     *,
     use_release_pointer: bool = False,
 ) -> str:
-    if use_release_pointer:
-        return _publish_release_catalog(records, request, published)
-    # STAC hierarchy and SQLite are bucket-root objects; only data assets use
-    # the collection-prefixed storage resource.
-    published = published.model_copy(update={"prefix": ""})
-    with tempfile.TemporaryDirectory(prefix="hifld-portolan-") as temporary:
-        root = Path(temporary)
-        previous = published.object_snapshot(CATALOG_KEY)
-        previous_documents = _seed_release_bundle(published, root, None)
-        render_portolan_tree(root, records, public_root=request.public_root)
-        _merge_and_rebase_release_documents(
-            root,
-            previous_documents,
-            request.public_root,
-            request.public_root,
-            previous_release=False,
-        )
-        normalize_candidate_tree(
-            root,
-            source_publisher=lambda version_path: _source_publisher_from_storage(
-                published, version_path
-            ),
-        )
-        validate_candidate_tree(root)
-        database = root / CATALOG_KEY
-        database.parent.mkdir(parents=True, exist_ok=True)
-        root_href = f"{request.public_root}/catalog.json"
-        if previous is None:
-            generation = build_catalog_sqlite(database, records, root_href=root_href)
-        else:
-            database.write_bytes(published.read_key(CATALOG_KEY))
-            generation = update_catalog_sqlite(database, records)
-        _sync_corrected_spatial_extents(database, root)
-        pending_documents = []
-        for path in sorted(root.rglob("*")):
-            if path.is_file() and path != database:
-                relative_path = path.relative_to(root).as_posix()
-                body = path.read_bytes()
-                if path.suffix == ".json":
-                    document = json.loads(body)
-                    if not isinstance(document, dict):
-                        raise TypeError(
-                            f"Rendered STAC document must be an object: {path}"
-                        )
-                    if path.name == "catalog.json" and published.object_exists(
-                        relative_path
-                    ):
-                        previous_document = json.loads(
-                            published.read_key(relative_path)
-                        )
-                        document = _merge_catalog_children(previous_document, document)
-                    body = (json.dumps(document, indent=2) + "\n").encode()
-                pending_documents.append((relative_path, body))
-        # Preflight the entire discovery bundle before the first public write.
-        for key, body in [*pending_documents, (CATALOG_KEY, database.read_bytes())]:
-            require_generated_object_approval(published, key, body)
-        for key, body in pending_documents:
-            published.write_key(key, body)
-        published.write_key_if_unchanged(CATALOG_KEY, database.read_bytes(), previous)
-    return generation
+    if not use_release_pointer:
+        raise ValueError("Legacy in-place catalog publication is disabled; use an independently reviewed immutable release plan")
+    return _publish_release_catalog(records, request, published)
+
+
+def catalog_execution_binding(request: PortolanPublishRequest, staging: StagingStorageResource,
+                              published: PublishedStorageResource) -> dict:
+    return {"partition_key": f"{request.dataset_slug}/{request.file_slug}/{request.version}",
+            "collection": request.collection_slug, "staging": _storage_identity(staging),
+            "published": _storage_identity(published), "public_root": request.public_root.rstrip("/"),
+            "storage_slug": request.storage_slug, "archive_public_domain": request.archive_public_domain}
+
+
+def _plan_outside_storage(directory: Path, *stores: StagingStorageResource) -> None:
+    for store in stores:
+        if (store.use_local or not store.bucket) and directory.resolve().is_relative_to(Path(store.local_dir).resolve()):
+            raise ValueError("Persist review plans outside staging and published storage")
+
+
+def prepare_promoted_portolan_catalog(request: PortolanPublishRequest, staging: StagingStorageResource,
+                                     published: PublishedStorageResource, plan_dir: Path) -> dict:
+    """Read an already promoted modern version, render a persistent plan only.
+
+    Unlike the legacy conversion helper this does not create styles/thumbnails,
+    promote data or rewrite source metadata. Logical collections never silently
+    replace the supplied physical storage prefix.
+    """
+    _plan_outside_storage(plan_dir, staging, published)
+    version = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
+    dictionary = json.loads(published.read_key(version + "/metadata/data_dictionary.json"))
+    quality = json.loads(published.read_key(version + "/metadata/quality_manifest.json"))
+    if provenance_projection(dictionary) is None:
+        raise ValueError("Persisted catalog preparation requires complete modern input provenance")
+    with published.get_local_version_dir(request.dataset_slug, request.file_slug, request.version,
+                                         include_directories=("geoparquet",)) as directory:
+        facts = inspect_geoparquet(Path(directory))
+    if (quality.get("quality_check_passed") is not True or quality.get("feature_count") != facts.feature_count
+            or quality.get("invalid_geometry_count") != 0):
+        raise ValueError("Promoted quality evidence does not describe a valid complete candidate")
+    columns = columns_from_dictionary(dictionary)
+    validate_converted_columns(columns, facts)
+    record = CatalogRecord(
+        request.collection_slug, request.dataset_slug, request.file_slug, request.version,
+        request.title or dictionary.get("title") or request.file_slug,
+        request.description or dictionary.get("description") or request.file_slug,
+        "spatial", facts.feature_count, _record_assets(published, request),
+        collection_title=request.collection_title, columns=columns, native_crs=facts.native_crs,
+        geometry_column=facts.geometry_column, geometry_type=facts.geometry_type,
+        feature_id_column=facts.feature_id_column, native_bbox=facts.native_bbox, crs84_bbox=facts.crs84_bbox,
+        provider=dictionary.get("publisher"), agency=dictionary.get("agency"), office=dictionary.get("office"),
+        source_url=dictionary.get("source_url"), license_id=request.resolved_license[0], license_href=request.resolved_license[1],
+        quality_passed=True, invalid_geometry_count=0, null_geometry_count=quality.get("null_geometry_count", 0))
+    record = attach_published_provenance(record, published, version, request.public_root)
+    return prepare_portolan_release_bundle((record,), request, published, plan_dir,
+                                          execution_binding=catalog_execution_binding(request, staging, published))
+
+
+def apply_selected_portolan_catalog(request: PortolanPublishRequest, staging: StagingStorageResource,
+                                   published: PublishedStorageResource, plan_dir: Path) -> str:
+    """Apply a selected persisted plan without source conversion or rendering."""
+    _plan_outside_storage(plan_dir, staging, published)
+    validate_evidence_directory(plan_dir)
+    plan = json.loads((plan_dir / "bundle_plan.json").read_text())
+    selected = [{"collection": request.collection_slug, "dataset": request.dataset_slug,
+                 "file": request.file_slug, "version": request.version}]
+    if (plan.get("execution_binding") != catalog_execution_binding(request, staging, published)
+            or plan.get("selected_versions") != selected or plan.get("public_root") != request.public_root.rstrip("/")):
+        raise ValueError("Prepared catalog selection/partition/storage/public-root identity mismatch")
+    path = plan_dir / "tree" / request.collection_slug / request.dataset_slug / request.file_slug / request.version / "collection.json"
+    if not path.is_file():
+        raise ValueError("Selected partition is absent from prepared STAC")
+    return apply_portolan_release_bundle(plan_dir, published)
 
 
 def prepare_portolan_release_bundle(
     records: tuple[CatalogRecord, ...], request: PortolanPublishRequest,
-    published_base: PublishedStorageResource, plan_dir: Path,
+    published_base: PublishedStorageResource, plan_dir: Path, *, execution_binding: dict | None = None,
 ) -> dict:
     """Prepare exact immutable STAC/SQLite/pointer bytes without public writes.
 
     A new empty hardened local folder retains the generated UUID, timestamp,
     schemas and checksums for independent approval; apply never regenerates them.
     """
+    _plan_outside_storage(plan_dir, published_base)
     validate_evidence_directory(plan_dir)
     if plan_dir.exists() and any(plan_dir.iterdir()):
         raise ValueError("Use a new empty catalog plan directory")
@@ -1185,13 +1200,27 @@ def prepare_portolan_release_bundle(
             "destination": _storage_identity(published), "implementation_sha256": verifier_implementation_sha256(),
             "previous_pointer_snapshot": previous_pointer_snapshot.to_dict() if previous_pointer_snapshot else None,
             "objects": objects, "metadata_dependencies": dependencies,
-            "asset_dependencies": asset_dependencies, "public_root": request.public_root.rstrip("/")}
+            "asset_dependencies": asset_dependencies, "public_root": request.public_root.rstrip("/"),
+            "selected_versions": [{"collection": record.collection_slug, "dataset": record.dataset_slug,
+                                   "file": record.file_slug, "version": record.version_label} for record in records],
+            "execution_binding": execution_binding}
     write_json_atomic(plan_dir / "bundle_plan.json", plan)
     return plan
 
 
+def prepared_plan_approval(plan: dict) -> tuple[str, bytes]:
+    """Exact review of canonical plan values; logical approval key, no write.
+
+    Bind selection, dependency snapshots, destination and prior pointer as well
+    as generated bytes. No parsed plan can grant or relabel its own approval.
+    """
+    return (f"_catalog/reviewed-plans/{plan['generation']}.json",
+            json.dumps(plan, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
+
+
 def apply_portolan_release_bundle(plan_dir: Path, published_base: PublishedStorageResource) -> str:
     """Preflight every prepared object, then conditionally select the bundle last."""
+    _plan_outside_storage(plan_dir, published_base)
     validate_evidence_directory(plan_dir)
     plan = json.loads((plan_dir / "bundle_plan.json").read_text())
     published = published_base.model_copy(update={"prefix": ""})
@@ -1245,6 +1274,7 @@ def apply_portolan_release_bundle(plan_dir: Path, published_base: PublishedStora
     verify_prepared_metadata_dependencies(plan_dir / "tree", published, plan.get("metadata_dependencies", {}))
     verify_prepared_asset_dependencies(plan_dir / "tree", published, plan["public_root"], plan.get("asset_dependencies", {}))
     # Approval is external configuration. A plan can never approve itself.
+    require_generated_object_approval(published, *prepared_plan_approval(plan))
     for key, contents in selected:
         require_generated_object_approval(published, key, contents)
         if key != RELEASE_POINTER_KEY and published.object_exists(key):
@@ -1286,39 +1316,8 @@ def rollback_portolan_release(
     published: PublishedStorageResource | None = None,
     expected_snapshot: StorageObjectSnapshot | None = None,
 ) -> ReleasePointer:
-    """Conditionally select a verified prior release without mutating its contents."""
-    _validate_release_generation(target_generation)
-    storage = (published or PublishedStorageResource.from_env()).model_copy(
-        update={"prefix": ""}
-    )
-    current_snapshot = expected_snapshot or storage.object_snapshot(RELEASE_POINTER_KEY)
-    if current_snapshot is None:
-        raise ValueError("Cannot roll back without an active release pointer.")
-    if current_snapshot.key != RELEASE_POINTER_KEY:
-        raise ValueError("Rollback snapshot does not reference the release pointer.")
-
-    release_prefix = f"releases/{target_generation}"
-    catalog_key = f"{release_prefix}/{CATALOG_KEY}"
-    root_key = f"{release_prefix}/catalog.json"
-    if storage.object_snapshot(root_key) is None:
-        raise ValueError("Rollback release has no root STAC document.")
-    catalog_bytes = storage.read_key(catalog_key)
-    if _catalog_generation(catalog_bytes) != target_generation:
-        raise ValueError("Rollback catalog generation does not match selected release.")
-
-    pointer = ReleasePointer(
-        generation=target_generation,
-        catalog_key=catalog_key,
-        root_key=root_key,
-        sha256=hashlib.sha256(catalog_bytes).hexdigest(),
-        size_bytes=len(catalog_bytes),
-        published_at=_release_timestamp(),
-    )
-    require_generated_object_approval(storage, RELEASE_POINTER_KEY, pointer.to_bytes())
-    storage.write_key_if_unchanged(
-        RELEASE_POINTER_KEY, pointer.to_bytes(), current_snapshot
-    )
-    return pointer
+    """Fail closed until rollback has an equivalent independently reviewed plan."""
+    raise ValueError("Legacy rollback is disabled; a separately reviewed persistent rollback plan with complete dependency verification is required")
 
 
 def _catalog_generation(catalog_bytes: bytes) -> str:
@@ -1577,6 +1576,8 @@ def publish_portolan_manifest(
     use_release_pointer: bool = True,
 ) -> tuple[str, ...]:
     """Publish every record in one bounded fixture manifest."""
+    if not use_release_pointer:
+        raise ValueError("Legacy in-place catalog publication is disabled; use an independently reviewed immutable release plan")
     if not requests:
         raise ValueError("Cannot publish an empty Portolan manifest.")
     staging = StagingStorageResource.from_env()

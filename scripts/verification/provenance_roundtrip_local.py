@@ -11,15 +11,21 @@ import os
 import sqlite3
 from pathlib import Path
 
+from dagster import AssetSpec, DagsterInstance, Definitions, define_asset_job
+
 from dagster_hifld.portolan.catalog import CatalogRecord
+from dagster_hifld.assets.portolan import publish_portolan_catalog
+from dagster_hifld.partitions import PUBLISH_PARTITIONS, PUBLISH_PARTITION_NAME
 from dagster_hifld.portolan.provenance import attach_published_provenance
 from dagster_hifld.portolan.release import ReleasePointer
 from dagster_hifld.portolan.workflow import (
     RELEASE_POINTER_KEY, PortolanPublishRequest, _record_assets, apply_portolan_release_bundle,
     inspect_geoparquet, prepare_portolan_release_bundle,
+    prepared_plan_approval,
+    _publish_catalog, rollback_portolan_release,
 )
 from dagster_hifld.release_approval import ReleaseApprovalError
-from dagster_hifld.resources import PublishedStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
 from scripts.verification.native_synthetic_local import run as run_native
 
@@ -28,6 +34,8 @@ def approve_synthetic_plan(registry: Path, plan: dict) -> None:
     value = json.loads(registry.read_text())
     assert value["releases"][0]["decision"]["id"] == "SYNTHETIC-ONLY"
     value["releases"][0]["published_objects"].update({obj["key"]: obj["sha256"] for obj in plan["objects"]})
+    key, contents = prepared_plan_approval(plan)
+    value["releases"][0]["published_objects"][key] = hashlib.sha256(contents).hexdigest()
     registry.write_text(json.dumps(value, indent=2) + "\n")
 
 
@@ -105,6 +113,113 @@ def exercise_dependency_negatives(work, published, record, request, registry):
             # The injected external writer changed this dependency. Apply must
             # never repair it itself or alter any of the other accepted objects.
             (Path(published.local_dir) / data_key).write_bytes(original_data)
+    return results
+
+
+def exercise_actual_catalog_asset(work, published, staging, registry):
+    """Run the registered terminal asset, consuming its persisted exact output.
+
+    Source/format bytes are reused from the same isolated fixture; no terminal
+    rebuild and no mocked approval or asset compute wrapper is involved here.
+    """
+    home = work / "catalog-asset-dagster"
+    home.mkdir()
+    (home / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
+    partition = "synthetic-native/typed/v0.0.0-fixture"
+    node = publish_portolan_catalog.op.name
+    definitions = Definitions(
+        assets=[AssetSpec(key=["publish", "promote"], partitions_def=PUBLISH_PARTITIONS), publish_portolan_catalog],
+        jobs=[define_asset_job("actual_catalog_asset", selection=[publish_portolan_catalog.key])],
+        resources={"published_storage": published, "staging_storage": staging})
+    job = definitions.resolve_job_def("actual_catalog_asset")
+    env = {"HIFLD_PORTOLAN_ENABLED": "1", "HIFLD_PORTOLAN_COLLECTION": "synthetic",
+           "HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN": "0", "HIFLD_PORTOLAN_RELEASE_POINTER": "1",
+           "HIFLD_PORTOLAN_PUBLIC_ROOT": "https://example.invalid/published", "HIFLD_RELEASE_APPROVALS": str(registry)}
+    previous_env = {key: os.environ.get(key) for key in env}
+    os.environ.update(env)
+    results = {}
+    directory = work / "actual-asset-plan"
+    try:
+        with DagsterInstance.local_temp(str(home)) as instance:
+            instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition, "synthetic-native/other/v0.0.0-fixture"])
+
+            def execute(mode, plan_dir=directory, selected=partition):
+                return job.execute_in_process(instance=instance, partition_key=selected, raise_on_error=False,
+                    run_config={"ops": {node: {"config": {"mode": mode, "plan_dir": str(plan_dir)}}}})
+
+            before = {key: published.object_snapshot(key) for key in published.list_prefix()}
+            prepared = execute("prepare")
+            assert prepared.success
+            assert before == {key: published.object_snapshot(key) for key in published.list_prefix()}
+            plan = json.loads((directory / "bundle_plan.json").read_text())
+            plan_pins = {path.relative_to(directory).as_posix(): sha256_file(path) for path in directory.rglob("*") if path.is_file()}
+            missing = execute("apply")
+            assert not missing.success
+            assert before == {key: published.object_snapshot(key) for key in published.list_prefix()}
+            approve_synthetic_plan(registry, plan)
+            wrong_partition = execute("apply", selected="synthetic-native/other/v0.0.0-fixture")
+            assert not wrong_partition.success
+            os.environ["HIFLD_PORTOLAN_PUBLIC_ROOT"] = "https://different.example.invalid/published"
+            wrong_root = execute("apply")
+            os.environ["HIFLD_PORTOLAN_PUBLIC_ROOT"] = env["HIFLD_PORTOLAN_PUBLIC_ROOT"]
+            assert not wrong_root.success
+            wrong_storage = job.execute_in_process(instance=instance, partition_key=partition, raise_on_error=False,
+                resources={"staging_storage": StagingStorageResource(use_local=True, local_dir=str(work / "different-staging"))},
+                run_config={"ops": {node: {"config": {"mode": "apply", "plan_dir": str(directory)}}}})
+            assert not wrong_storage.success
+            unchanged_plan_bytes = (directory / "bundle_plan.json").read_bytes()
+            altered_plan = copy.deepcopy(plan)
+            altered_plan["classification"] = "deliberately changed after the independent plan decision"
+            (directory / "bundle_plan.json").write_text(json.dumps(altered_plan))
+            repinned_labels = execute("apply")
+            assert not repinned_labels.success
+            (directory / "bundle_plan.json").write_bytes(unchanged_plan_bytes)
+            assert before == {key: published.object_snapshot(key) for key in published.list_prefix()}
+            applied = execute("apply")
+            assert applied.success
+            assert plan_pins == {path.relative_to(directory).as_posix(): sha256_file(path) for path in directory.rglob("*") if path.is_file()}
+            for descriptor in plan["objects"]:
+                assert published.sha256_key(descriptor["key"]) == descriptor["sha256"]
+            assert ReleasePointer.parse(published.read_key(RELEASE_POINTER_KEY)).generation == plan["generation"]
+            drift_directory = work / "actual-asset-drift-plan"
+            second_prepare = execute("prepare", drift_directory)
+            assert second_prepare.success
+            drift_plan = json.loads((drift_directory / "bundle_plan.json").read_text())
+            approve_synthetic_plan(registry, drift_plan)
+            key = next(key for key in published.list_prefix() if "/geoparquet/" in key)
+            original = published.read_key(key)
+            (Path(published.local_dir) / key).write_bytes(b"actual asset dependency drift after reviewed plan")
+            drift_before = {name: published.object_snapshot(name) for name in published.list_prefix()}
+            drift = execute("apply", drift_directory)
+            assert not drift.success
+            assert drift_before == {name: published.object_snapshot(name) for name in published.list_prefix()}
+            assert ReleasePointer.parse(published.read_key(RELEASE_POINTER_KEY)).generation == plan["generation"]
+            (Path(published.local_dir) / key).write_bytes(original)
+            legacy_before = {name: published.object_snapshot(name) for name in published.list_prefix()}
+            for legacy_call in [lambda: _publish_catalog((), None, published),
+                                lambda: rollback_portolan_release(plan["generation"], published=published)]:
+                try:
+                    legacy_call()
+                except ValueError as exc:
+                    assert "disabled" in str(exc)
+                else:
+                    raise AssertionError("Legacy surface did not fail closed")
+            assert legacy_before == {name: published.object_snapshot(name) for name in published.list_prefix()}
+            results = {"classification": "actual registered Dagster catalog asset; synthetic-only decisions",
+                       "prepare_run_id": prepared.run_id, "missing_approval_run_id": missing.run_id,
+                       "wrong_partition_run_id": wrong_partition.run_id, "wrong_public_root_run_id": wrong_root.run_id,
+                       "wrong_staging_identity_run_id": wrong_storage.run_id, "changed_plan_run_id": repinned_labels.run_id,
+                       "apply_run_id": applied.run_id, "drift_prepare_run_id": second_prepare.run_id,
+                       "dependency_drift_run_id": drift.run_id, "generation": plan["generation"],
+                       "exact_persisted_plan_unchanged": True, "legacy_surfaces_blocked": True,
+                       "published_object_roster_preserved_on_failure": len(drift_before), "real_acceptance": False}
+    finally:
+        for key, value in previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    (work / "actual_asset_result.json").write_text(json.dumps(results, indent=2) + "\n")
     return results
 
 
@@ -191,12 +306,14 @@ def run(work: Path) -> dict:
         raise AssertionError("Repinned omitted-input STAC unexpectedly published")
     assert accepted == {key: published.object_snapshot(key) for key in published.list_prefix()}
     dependency_negatives = exercise_dependency_negatives(work, published, record, request, registry)
+    staging = StagingStorageResource(use_local=True, local_dir=str(work / "native/staging"))
+    actual_asset = exercise_actual_catalog_asset(work, published, staging, registry)
     outcome = {"classification": "actual isolated synthetic publication; no real acceptance", "source_input_count": len(expected["inputs"]),
                "generation": generation, "release_pointer_key": RELEASE_POINTER_KEY, "collection_key": collection_key,
                "metadata_assets_roundtripped": len(metadata_assets), "sqlite_metadata_rows": metadata_rows,
                "missing_approval_blocked": True, "removed_dependency_labels_blocked": True, "repinned_omitted_input_blocked": True,
                "prior_published_objects_preserved": len(accepted), "native_graph": native,
-               "asset_dependency_negative_probes": dependency_negatives}
+               "asset_dependency_negative_probes": dependency_negatives, "actual_catalog_asset": actual_asset}
     (work / "roundtrip_result.json").write_text(json.dumps(outcome, indent=2) + "\n")
     return outcome
 

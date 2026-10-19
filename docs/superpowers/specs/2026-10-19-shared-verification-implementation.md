@@ -102,8 +102,8 @@ checks occur between operations and may overshoot by one record/SQLite allocatio
 Conversion, catalogs and downloads have their own memory behavior. Persistent immutable Portolan release planning now retains exact UUID, timestamp,
 SQLite, STAC and pointer bytes for an external decision. The one-shot path still
 blocks without exact acceptance; the new public prepare/apply APIs avoid
-regenerating bytes after review. Legacy in-place root-catalog publication retains
-its existing gates and does not have this persistent planning API.
+regenerating bytes after review. The legacy in-place root-catalog writer and
+unplanned rollback are disabled by the later draft compatibility change below.
 
 Tests labeled mechanics isolate the acceptance boundary explicitly; the new
 boundary and actual Dagster integration tests use no approval mocks. Synthetic
@@ -467,9 +467,9 @@ prevent an arbitrary external writer from altering data after publication. Data
 immutability and excluding uncoordinated writers remain operational
 prerequisites. **Remote prepared apply fails closed**, before any writes, until
 generation-qualified dependency URLs or a transactional remote protocol is
-implemented. The legacy in-place catalog/rollback surface retains its previously
-documented separate scope; this checkpoint does not upgrade its proof. A future
-remote or legacy workflow must not be described as this local prepared proof.
+implemented. At that repair checkpoint the legacy in-place catalog/rollback
+surface retained its separate scope; the later draft change below disables both.
+A future remote or legacy workflow must not be described as this local prepared proof.
 
 The actual synthetic runner now deliberately approves repinned wrong-download
 STAC/SQLite bytes and omitted SQLite rows, mutates a GeoParquet after planning,
@@ -508,3 +508,78 @@ now passes pure structural validation with processor `HIFLD Next`. Earlier
 `f066` processor-label failures and captured bytes remain historical and
 unchanged. This is metadata structure compatibility, not dataset acceptance.
 See the [narrow repair evidence](../evidence/2026-10-19-stac-object-bounds-repair.json).
+
+## Actual Dagster persisted-plan integration and proposed compatibility changes
+
+The registered partitioned asset `publish/portolan_catalog` now requires explicit
+run configuration. With `mode: prepare` it reads already promoted modern metadata
+and GeoParquet from the supplied physical storage prefix, validates metadata and
+quality consistency, and creates a new persistent exact release plan. It does not
+convert formats, generate styles/thumbnails, promote source data or write any
+published object. With `mode: apply` it consumes that same persisted directory;
+it never rerenders UUIDs, timestamps, SQLite or STAC. The same dependency,
+provenance, SQLite, byte-approval and guarded local pointer checks still apply.
+
+Example asset configuration (paths must be outside staging/published storage):
+
+```yaml
+ops:
+  publish__portolan_catalog:
+    config:
+      mode: prepare # a separate reviewed run changes this to apply
+      plan_dir: /workspace/work/reviewable-catalog-plan
+```
+
+The selected collection, dataset/file/version partition, staging and published
+backend/location/prefix identities, public root and storage slug are bound into
+the plan. Apply checks those identities against the actual selected run before
+publication. Exact plan approval is additionally required using the logical key
+`_catalog/reviewed-plans/{generation}.json` in the external registry's
+`published_objects` byte-decision map. This key identifies an **approval-only
+artifact**: no public object is written there. Its SHA-256 is computed from
+`prepared_plan_approval(plan)` canonical UTF-8 JSON bytes, so review includes the
+selection, dependencies, previous pointer and generated object roster, not only
+the individual STAC/SQLite bytes. Preparing or parsing that plan cannot approve
+it. Reusing a plan for another partition/storage/root or modifying its labels
+after the decision fails closed.
+
+These are explicit **proposed compatibility changes in this draft PR**, not
+approval to deploy them: enabled deployments must configure prepare/apply and a
+persistent external plan directory; implicit one-shot asset publication is
+disabled; the previous in-place root STAC/SQLite writer is removed and requests
+for it fail before conversion/promotion; unplanned `rollback_portolan_release`
+fails before any storage access. Equivalent persistent rollback planning and
+full dependency verification must be implemented and reviewed before restoring
+that operation. Existing direct one-shot immutable APIs retain all strict
+guards, including the exact plan decision; they cannot substitute an unreviewed
+random bundle for the persisted asset workflow. Archive public-domain status
+is now opt-in via `HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN=1`, rather than inferred
+for a new producer dataset. Maintainers must decide migration/deployment/API
+compatibility; this code grants no baseline, contract, source, license or
+breaking-change acceptance. Remote apply remains explicitly unsupported.
+
+The actual registered asset was executed in a separate durable Dagster instance
+using preserved own synthetic terminal bytes (no data rebuild or approval
+mocks): prepare succeeded without published writes; missing approval, wrong
+partition, wrong public root, changed staging identity and modified plan values
+failed for their expected audited reasons; an exact synthetic decision applied
+the saved plan without changing any prepared file. A second actual prepare and
+post-plan data mutation failed while preserving the selected prior generation,
+all 57 object keys/snapshots present at the start of the failed attempt, and
+review evidence. In-place and rollback entrypoints also failed with that same
+published storage unchanged. Their deliberately injected external data mutation
+was restored only by the fixture. All actual run IDs and failure-reason event
+records are preserved in the evidence described below.
+
+The frozen implementation passed **505 local tests: 504 passed, one opted-out
+production-write integration, zero failures/errors**, with the unmodified pinned
+real IaC dependency. Actual prepare was
+`66b6b7c0-a135-4bda-a311-0d945abc4cff` and apply was
+`53eef9d0-6cb5-4ffd-aeaf-3f0a2a824795`, selecting generation
+`4b94cbad-9c69-4726-a4cd-d4e409abede5`; actual drift failure was
+`8add275c-7ef9-4a14-af40-1f3c677cff8a`. The
+[persisted-asset evidence](../evidence/2026-10-19-dagster-persisted-catalog-plan.json)
+pins all code/log bytes, nine actual runs, expected failure-reason audits and the
+explicit compatibility proposal. The narrow `d28dbaf` bounds repair has its own
+independent PASS; that review does not cover this new Dagster/API slice. No CI,
+production, source/baseline/contract or compatibility acceptance is claimed.
