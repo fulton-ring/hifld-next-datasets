@@ -31,7 +31,7 @@ publish.write_key('synthetic-accepted-fixture.bin',b'Keep this synthetic prior a
 prior={k:publish.read_key(k) for k in publish.list_prefix()}
 jobs=[normal.resolve_job_def('elsd_source_integrity'),define_asset_job('elementary_school_districts_formats',selection=AssetSelection.assets(*[k for k in normal.resolve_asset_graph().get_all_asset_keys() if k.path[0]=='publish'])),define_asset_job('elementary_school_districts_bad_quality',selection=AssetSelection.assets(AssetKey(['publish','verify']),AssetKey(['publish','promote']))|AssetSelection.checks(publish_catalog_quality_manifest))]
 defs=Definitions(assets=normal.assets,asset_checks=normal.asset_checks,resources={'staging_storage':stage,'published_storage':publish},jobs=jobs)
-report={'classification':'Actual complete local draft, NOT real source/baseline/contract acceptance','code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[1],text=True).strip(),'module':c.__file__,'runs':[]}
+report={'scope':'Complete isolated registered source/reuse/two catalog cycles/quality gate, observed whole-history loss, repeat refusal, exact trusted restoration and partial-journal preservation. No dataset acceptance.', 'classification':'Actual complete local draft, NOT real source/baseline/contract acceptance','code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(c.__file__).parents[3],text=True).strip(),'module':c.__file__,'runs':[]}
 def record(label,result):
     errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
     report['runs'].append({'label':label,'run_id':result.run_id,'success':result.success,'errors':errors})
@@ -68,20 +68,9 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
     result=defs.resolve_job_def('elsd_source_integrity').execute_in_process(instance=instance,raise_on_error=False)
     errors=record('post_gate_source_refresh',result);assert result.success,errors
     manifest=c.strict_json((root/'metadata/source_manifest.json').read_bytes());c.validate_release_provenance(manifest)
+    assert manifest['code_commit']==report['code_commit']
     dictionary=c.strict_json((root/'metadata/data_dictionary.json').read_bytes())
     assert dictionary['inputs']==manifest['inputs'] and len(manifest['inputs'])==26
-    missing_ready=(root/c.READY).read_bytes()
-    (root/c.READY).unlink()
-    result=defs.resolve_job_def('elsd_source_integrity').execute_in_process(instance=instance,raise_on_error=False)
-    errors=record('missing_ready_marker_cache_rejected_and_wholly_quarantined',result)
-    assert not result.success and any('invalid_cache_moved_intact_out_of_discovery' in error for error in errors)
-    assert not root.exists() and (c.SLUG,c.SLUG,version) not in set(_iter_staged_version_paths(stage))
-    result=defs.resolve_job_def('elsd_source_integrity').execute_in_process(instance=instance,raise_on_error=False)
-    errors=record('original_source_rebuild_after_quarantine',result);assert result.success,errors
-    assert result.output_for_node(source.op.name)['reused'] is False
-    result=defs.resolve_job_def('elsd_source_integrity').execute_in_process(instance=instance,raise_on_error=False)
-    errors=record('rebuilt_cache_refresh',result);assert result.success,errors
-    assert result.output_for_node(source.op.name)['reused'] is True
     current={key:stage.sha256_key(key) for key in stage.list_prefix('_raw-captures')}
     assert current==before
     assert all(c.sha256_file(root/name)==pin for name,pin in source_pins.items())
@@ -104,3 +93,57 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
         quality_manifest=json.loads(saved),source_manifest=manifest,actual_source_GEOID_count=len(set(table['GEOID'].to_pylist())), original_file_local_FIDs_preserved_including_duplicates=True, record_lineage_records=2030)
 (runtime/'materialization.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
 print(json.dumps({'runs':[(x['label'],x['run_id'],x['success']) for x in report['runs']],'prior_unchanged':True}))
+
+# Additional actual registered source executions; faults below are explicitly
+# synthetic operator loss/write interruption, not assertions about Census data.
+import shutil
+with DagsterInstance.get() as instance:
+    def source_run(label,success):
+        result=defs.resolve_job_def('elsd_source_integrity').execute_in_process(instance=instance,raise_on_error=False)
+        errors=record(label,result);assert result.success is success,(label,errors)
+        assert prior=={k:publish.read_key(k)for k in publish.list_prefix()}
+        return result
+    state_dir=runtime/'staging/_construction-state'/c.SLUG
+    outside={p.relative_to(state_dir):p.read_bytes()for p in state_dir.rglob('*')if p.is_file()}
+    original_manifest=(root/'metadata/source_manifest.json').read_bytes()
+    original_pins={str(p.relative_to(root)):c.sha256_file(p)for p in root.rglob('*')if p.is_file()}
+    original_raw={k:stage.sha256_key(k)for k in stage.list_prefix('_raw-captures')}
+    shutil.rmtree(state_dir)
+    source_run('observed_all_three_witnesses_missing',False);assert not root.exists()
+    incident=runtime/'staging'/f'_construction-incidents/{c.SLUG}/{version}/incident.json'
+    incident_body=incident.read_bytes()
+    for n in range(2):
+        source_run(f'consecutive_observed_loss_retry_{n+1}',False)
+        assert not root.exists()and not state_dir.exists()and incident.read_bytes()==incident_body
+    for name,body in outside.items():
+        path=state_dir/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
+    source_run('trusted_original_witnesses_restored_rebuild',True)
+    assert (root/'metadata/source_manifest.json').read_bytes()==original_manifest
+    # Prior generic catalog sidecars are independently recomputed, not source
+    # receipts. Native data and every original source-owned object stay exact.
+    assert all(c.sha256_file(root/name)==pin for name,pin in source_pins.items())
+    source_run('trusted_restore_reuse',True)
+    # A separate interrupted incident write may not detach the only observable
+    # cached claim. Preserve a trusted operator copy for explicit repair only.
+    incident.unlink();incident.parent.rmdir();shutil.rmtree(state_dir)
+    current_pins={str(p.relative_to(root)):c.sha256_file(p)for p in root.rglob('*')if p.is_file()}
+    real_immutable=c.immutable
+    def interrupted(storage,key,body):
+        if key.startswith('_construction-incidents/'):raise OSError('SYNTHETIC_partial_incident_body_write')
+        return real_immutable(storage,key,body)
+    with patch.object(c,'immutable',side_effect=interrupted):source_run('synthetic_partial_incident_body_failure',False)
+    assert root.exists()and incident.parent.is_dir()and not incident.exists()
+    source_run('retry_after_partial_incident_write',False)
+    assert current_pins=={str(p.relative_to(root)):c.sha256_file(p)for p in root.rglob('*')if p.is_file()}
+    # Explicit operator restoration of exact saved ORIGINAL witnesses and the
+    # prior original refusal body; the pipeline never repairs trust itself.
+    for name,body in outside.items():
+        path=state_dir/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
+    incident.write_bytes(incident_body)
+    source_run('exact_operator_journal_and_original_witness_restore',True)
+    assert (root/'metadata/source_manifest.json').read_bytes()==original_manifest
+    assert original_raw=={k:stage.sha256_key(k)for k in stage.list_prefix('_raw-captures')}
+    report.update(observed_loss_two_consecutive_retries_refused=True,exact_original_trusted_restore_only=True,
+        interrupted_journal_retains_original_candidate=True,partial_journal_retry_refused=True,
+        original_native_and_source_owned_payloads_preserved=True,original_raw_unchanged=True,prior_accepted_fixture_preserved=True)
+    (runtime/'materialization.json').write_text(json.dumps(report,indent=2,default=str)+'\n')

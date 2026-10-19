@@ -1,0 +1,16 @@
+{
+  "sha": "e016d4350e3d48b3264849b332617406f95c4bbd",
+  "tree": "620cc7466c2c074f91502f2894d299e3205d5f74",
+  "parents": [
+    "a6391d662fd43380ffbc5fed4f1b73c7053f495e"
+  ],
+  "raw_object_SHA_matches_server": true,
+  "body_sha256": "3ebacbf551a92bf8bcab7d0d2ba30648f54553756775da324063ecafc313bb43",
+  "body_bytes": 302,
+  "author_timezone": "-0400",
+  "committer_timezone": "-0400",
+  "appended_message_suffix": "''",
+  "encoding_header": "",
+  "local_object_written": true,
+  "branch_refs_moved": false
+}

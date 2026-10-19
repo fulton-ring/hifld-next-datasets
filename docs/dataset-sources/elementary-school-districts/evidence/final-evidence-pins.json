@@ -1,0 +1,481 @@
+{
+  "schema_version": 1,
+  "issue": 64,
+  "source_head": "e016d4350e3d48b3264849b332617406f95c4bbd",
+  "README_only_positive_head": "05979024d4596e40a55f2a48bd9f6408752140e0",
+  "all_candidates_unapproved": true,
+  "files": {
+    "docs/dataset-sources/elementary-school-districts/README.md": {
+      "bytes": 7936,
+      "sha256": "1211090f8022966b98a65fd7027216cb470e753ec0cae0501d0b5e0137e83eee"
+    },
+    "docs/dataset-sources/elementary-school-districts/compare_captured_baseline.py": {
+      "bytes": 5093,
+      "sha256": "dd5acb66a1187256c54d5034a212ef04656c3c52f2a6eb53ca2fb8ad5a45f245"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/actual-repaired-processing-identity.json": {
+      "bytes": 10881,
+      "sha256": "a1f3d048c3431c59702b1454a8b06e50cdf84bd452cb6e6fd215141e6ac95e31"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/actual-repaired-ready.json": {
+      "bytes": 6481,
+      "sha256": "e333288578ad07bf32ac42eb6855d0c5ca8d62913c9a0ded2f860e89bfa08589"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/actual-repaired-runner.py": {
+      "bytes": 12751,
+      "sha256": "3928ff729e71adfc15caf03d30a0e589c0b5df9af32d3c235e5a1d91118da2c2"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/actual-repaired-source-audit.json": {
+      "bytes": 112030,
+      "sha256": "afc3a07274fba0228f040fc876943a666ff8cb8498c659eeec3b5971c14d97b2"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/actual-repaired-source-manifest.json": {
+      "bytes": 31129,
+      "sha256": "f256457402044c089da634e0f652faef880f9da8274fcc81f3d61b9facef17a4"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/archive.body": {
+      "bytes": 6157,
+      "sha256": "f7019e377374830d50376e383c0a54668d880195b953c805050739a38d2b3329"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/archive.receipt.json": {
+      "bytes": 2533,
+      "sha256": "09a41945702d0c131d45716d702a622ec63cdaff857b39c4f38731a6201f614c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/baseline_collection.body": {
+      "bytes": 17969,
+      "sha256": "de10f6e2f2265736e7bb039ab6054b0c6d17ab72a1fcedc0a770ee9872f5e8b6"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/baseline_collection.receipt.json": {
+      "bytes": 1687,
+      "sha256": "cd4605ded6b0c55cfa0bc06956be05575d420f425b0d37098a317d1869ecaf5c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/crosswalk.body": {
+      "bytes": 217,
+      "sha256": "6d92346a9908aa55ad6b71d0adc18119803a14820e0c71d211982307ae6a0f0e"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/crosswalk.receipt.json": {
+      "bytes": 1299,
+      "sha256": "1b80ec893910835e412b32347eeca17d38c73a0af9821b0c572d7316d651ef18"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/exact_crosswalk_target.body": {
+      "bytes": 6157,
+      "sha256": "6d087e8f3bd95ac0b58d8378212443c7355a5c0cc630b28a6ab4873a8b43b1a7"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/exact_crosswalk_target.receipt.json": {
+      "bytes": 2512,
+      "sha256": "a6cac011267bfe66c5fb24753917c97fed6c00be1215e239c43cf82e59a06a62"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_2025.body": {
+      "bytes": 325362,
+      "sha256": "a991c095f7440843219ee621a17365f57970e30a7a85d53c27b0bdff94969b4c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_2025.receipt.json": {
+      "bytes": 1923,
+      "sha256": "f91350ab706e4efa829a8c038fac90be655724437489aa17e4648cd3caa19950"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_2026.body": {
+      "bytes": 324654,
+      "sha256": "185f89793cdeea5f08bb67f1b1624b132b5c0eee0f89a7a92b3533507c3d5e46"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_2026.receipt.json": {
+      "bytes": 1900,
+      "sha256": "3f807044008d289f9823fba86ce4cac996d873598fbf9abf3a862912e49c81fc"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_elsd_2025.body": {
+      "bytes": 19635,
+      "sha256": "f59b96d2d6f5821ec5d0f683943bac398cab945ec16008325b3525546f4ee14f"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_elsd_2025.receipt.json": {
+      "bytes": 1410,
+      "sha256": "2d1a8cdc8606b4c81df649fa9e801ef6eec7e57101dd2dde08f5e8ffdacc5ac4"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_elsd_2026.body": {
+      "bytes": 19635,
+      "sha256": "195e74f8d6373db1986b0773c47a74b003730ac3686f59cce42352cb4edf8810"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_elsd_2026.receipt.json": {
+      "bytes": 1410,
+      "sha256": "0bb43c28dc8f81cfc597ee7b79776e6ffb4c0ebaab350d3c363eead8c1aa4532"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_gazetteer.body": {
+      "bytes": 532248,
+      "sha256": "1bc37d1ad59e48e0945899afd0d3f1c56b5caaaf81a74389e17640ef50547888"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_gazetteer.receipt.json": {
+      "bytes": 403,
+      "sha256": "5c3331984e2bb65cc00f9c5d22ba5bc199876e45483530577c6166c083040644"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_license.body": {
+      "bytes": 25773,
+      "sha256": "7ee96d141d89d594bed58556ee68da9ebad318650e0ca6fd48ce73c39f95cbba"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_license.receipt.json": {
+      "bytes": 2604,
+      "sha256": "bce2c5c4c70473131b36f4821c068087583ed77b3b66628ef4bcfbaecb57f329"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_school_districts.body": {
+      "bytes": 25773,
+      "sha256": "7ee96d141d89d594bed58556ee68da9ebad318650e0ca6fd48ce73c39f95cbba"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_school_districts.receipt.json": {
+      "bytes": 2642,
+      "sha256": "b26d31ac9b5fd248904b04ca1a78f370a36bbad50ba59d889d7d9261939522a3"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_tiger.body": {
+      "bytes": 348954,
+      "sha256": "f2511bac6679df5650e532c675950709e595cf2d2f08fc9afc86c0ac6e56dd38"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/authority/official_tiger.receipt.json": {
+      "bytes": 1937,
+      "sha256": "40f055d6aea621e9a7398711bc2548ae3cc4f9de326dc332b28ffb4f35afa7c5"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/baseline-collection.json": {
+      "bytes": 17969,
+      "sha256": "de10f6e2f2265736e7bb039ab6054b0c6d17ab72a1fcedc0a770ee9872f5e8b6"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/baseline-pins.json": {
+      "bytes": 2607,
+      "sha256": "3889d6e24d8de00f2fd6e2b2a06ee70e56d4298712e13761cf8bb096689af1db"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/cloud-C0-commit-portability.json": {
+      "bytes": 509,
+      "sha256": "9ec78b4d2db09ca30f8a8bf15c3fbdd79ff425dcaf3c726daa67af8161931822"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/cloud-repaired-commit-portability.json": {
+      "bytes": 509,
+      "sha256": "74df1e357f9e5ba1150d8d427367d731a48a42a3a2b6f66bb0b043742ac45c36"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/complete-source-inspection.json": {
+      "bytes": 166634,
+      "sha256": "1c3de2a5cf171a0cc8674ce6ee456d9b958215aa6d8c2b7780f1ee04d9f11a0e"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/docs-only-refresh.json": {
+      "bytes": 734,
+      "sha256": "7be7181ddc4fc65fef17f09b34d39bd1b49e6457a907ef1e086bfd19f7b037f7"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/docs-only-refresh.log": {
+      "bytes": 2669,
+      "sha256": "0b88099c7f854528eb8a0443972ae204921efacc12a8b7f6a17771682aa240cf"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/docs-positive-portability.json": {
+      "bytes": 509,
+      "sha256": "0d438c54dd64f6c9e98e1d0c3a8fb9001f4e5953db62de055fd7f1eea6e5fd32"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/focused-repaired-26.log": {
+      "bytes": 5056,
+      "sha256": "341ba48b3a5de3b78402b53e7347ac0d96d89fa602a2ff5d926d4370a3ea7828"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/full-baseline-comparison.json": {
+      "bytes": 3455523,
+      "sha256": "279c7cbf96907f4e3258737299f3a7fc6a8563c0bce8a546681bd9becd069dfd"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/full-suite-repaired-563.log": {
+      "bytes": 115239,
+      "sha256": "b58e3fdedac9aa78f5e08a2d3a0116d827173a6446dc9a20b5d2e0b82ff5c94c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-67638-focused.log": {
+      "bytes": 4055,
+      "sha256": "81eb56f394c0dce5043fc8efcddd28931624f1ea4f2c5a79686cb26ad9cad41f"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-67638-prototype.json": {
+      "bytes": 2432,
+      "sha256": "aa6afc8ec82a7920f97a4ce6603c1bafb149b947bfd16871865c8299a86a70a9"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-C0-full-suite-559.log": {
+      "bytes": 114203,
+      "sha256": "5d3e036e96be9ac8bd1a9a8b0f328e45e92bd6dc9e1e461836fade9d0e4619a7"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-C0-materialization.json": {
+      "bytes": 54597,
+      "sha256": "05e2308ff56a5b85877836fb1d9ee6f3b568c18526c5785baf4efed9367453dc"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-C0-omitted-tool-PATH-failure.log": {
+      "bytes": 119379,
+      "sha256": "ae167e9ab1d3011088ef90c9703f0b8a1f1415ebe5d3ca11cd0e37cd1e5c1fcd"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-audit-axis-descriptor-assertion.log": {
+      "bytes": 270,
+      "sha256": "d5d9c0dcd6211035d0db9f6e253d0bc92cfc095db0c0b5981919bc350dd3d4f6"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-docs-default-resource-harness.log": {
+      "bytes": 2359,
+      "sha256": "a3446939dec8e71869813fca070db2e71148e0390bb2463d571f451955cf788b"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-local8c-materialization.json": {
+      "bytes": 61909,
+      "sha256": "2ceec68acdd6d68c3457bd8e7bab283aefa8938add66bf3713f7272539700d10"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/historical-relative-fixture-parent-traversal-failure.log": {
+      "bytes": 9204,
+      "sha256": "c695aeb1e3de99c6b6f81e023d85c22ec1b4ff84da67a742ea7b4c8fc1104292"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/census2026_elsd.body": {
+      "bytes": 19635,
+      "sha256": "195e74f8d6373db1986b0773c47a74b003730ac3686f59cce42352cb4edf8810"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/census2026_elsd.receipt.json": {
+      "bytes": 1410,
+      "sha256": "0bb43c28dc8f81cfc597ee7b79776e6ffb4c0ebaab350d3c363eead8c1aa4532"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_04_elsd.body": {
+      "bytes": 767817,
+      "sha256": "009bbc8b48c2ab6d6dfa74c82951b47d163bb0d7d1115541fb44704e51e2d9d4"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_04_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "45664d6492d8c970aa5a29c34c8845cc8fd7aa1319f7e1307d93daf020cb97e1"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_06_elsd.body": {
+      "bytes": 3726253,
+      "sha256": "d053f3c2f3a461bfb6ffaa5cb0d66279e8c4cf4f6a24fc822459245577bcf247"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_06_elsd.receipt.json": {
+      "bytes": 1543,
+      "sha256": "cb214b9bb5f361029bb3eabca800eb6d37d867e152dafcb799b2758ddbc19a11"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_09_elsd.body": {
+      "bytes": 199327,
+      "sha256": "5c85b7f6df54a98fbb8a259038190a788f000a416952278141954f4f55793882"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_09_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "25f335c7bb8e3085114ee0ab8272f513d199a1b93189b6323948009346b23de8"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_13_elsd.body": {
+      "bytes": 27307,
+      "sha256": "4120a746403bd94ff4e73f11a0a48e149d8b47e5c0501926441cbf669dacc3a2"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_13_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "861da889f09be3bc1669552c9a53b22715bc7304c8c2635457a6b2a6780d6566"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_17_elsd.body": {
+      "bytes": 1846603,
+      "sha256": "2f32ffdc274c919f7fb87a57bc28a223a376129eaa851fce03e06ffa07e76e37"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_17_elsd.receipt.json": {
+      "bytes": 1543,
+      "sha256": "74d29eac1c1ed5d501b04d896198e1dd0814c12ba542df6f9885f1da22d03de6"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_21_elsd.body": {
+      "bytes": 34408,
+      "sha256": "8f9b3b11fd7360dd25f279c6eeea30978a9884e9a77c4306a7b38617daaccfbb"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_21_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "29078a47275436a37d91ddf3f6a8b856f5433563781ea29a55a4a3fdc63611b2"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_23_elsd.body": {
+      "bytes": 504615,
+      "sha256": "67a6af772226f75896589ddff35d37a571c603a0ed92cd3fc40f1c8972da5ac4"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_23_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "7b34c0964c6841e038be74cc9e18dfdc68df04d42ae0609e06ab45d9959c08fe"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_25_elsd.body": {
+      "bytes": 392234,
+      "sha256": "67e83c41e64a6993e364c1902c3a46521260daf393310b03802c25743ee2cc21"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_25_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "41c42753f28fdb417f2bbd39e3505256fe06dd28c8f959ea0ac1d7d2ec7b89e9"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_26_elsd.body": {
+      "bytes": 79550,
+      "sha256": "45b194b46d5ad3092521ee5c572a23147f241689aaf0c419de8eae582146f31f"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_26_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "fb5ab4f39201924f54ef573a4fd4f421f8cfd1812d7d09340014047c3809ff23"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_27_elsd.body": {
+      "bytes": 58267,
+      "sha256": "21fc8d1ff64f0d6f96d049134a58d7efad8c8ead9e85a4788b5e6e3a16c17a80"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_27_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "e0b5f16b9d9f9010dc9c8a3132e16e6a7c7add7a961e152695aba0f80e9067e1"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_29_elsd.body": {
+      "bytes": 436518,
+      "sha256": "eaf45da038dcf9dee17223a8971c8258f21a9126aba8c1ae93aea2f16901ae6f"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_29_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "9d588dc75617f8019c3c11caee9fe7fd0e4e82d42fef7a06c2862ba9e06a717c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_30_elsd.body": {
+      "bytes": 2852330,
+      "sha256": "c7923593d8190c216c0e0f9cf85eebe13c1bb03e05a9ebbe868232909399d21b"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_30_elsd.receipt.json": {
+      "bytes": 1543,
+      "sha256": "603430a9de8fb2ae3c7a6dec0776f70e50891db9d0397189539c5dc83a9a6e04"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_33_elsd.body": {
+      "bytes": 415738,
+      "sha256": "ed330db653aeed863cf81bf9e39d59cbc8b33d7530ba3e2d8380061f6bd18e58"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_33_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "dc37cf9dbcf5fe2b3754c0947bf455bc1ba9c86745b2ad38e7e2a020c5b19ad8"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_34_elsd.body": {
+      "bytes": 1768600,
+      "sha256": "80fd3ac9566f0a51faaa5063b2ac39e8e61cb9c5709cd1b01e16f9ce43c6b009"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_34_elsd.receipt.json": {
+      "bytes": 1543,
+      "sha256": "6fcebddeae03df242114ebe6aac3385e2bd6ad0743d848f5ecbf09c4112e5f9c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_36_elsd.body": {
+      "bytes": 41715,
+      "sha256": "189844fa31cd229449f272316c7dbf7ceafdd9f9f9c2f59e6faf553bc900200e"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_36_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "6ac73cbc9334ce1482da1173ab876b9a5ca5db32cffd56d471949353a1a588c9"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_38_elsd.body": {
+      "bytes": 152230,
+      "sha256": "aa1e8daede776eef0b8394c594a4e2c8f1e4c04aa1389ec8f4cb1944ee4ea7c2"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_38_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "72de81b901f2ed0d6a2451284766e10588d880c0bd837453c9e38b5a263ddbec"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_40_elsd.body": {
+      "bytes": 548072,
+      "sha256": "0ff8959ee7622d5808e2d3886c715c84834c095cd665cce69f972d715b0e8ef0"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_40_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "f5d307447247a1f8660fae118a500002e08cff9170a87921e78e1ed5b34daa0b"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_41_elsd.body": {
+      "bytes": 93288,
+      "sha256": "8d7c76cef173509dd72abc1e5faf6cdf9dba34a535d16fe0a4efdc09c08010cf"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_41_elsd.receipt.json": {
+      "bytes": 1536,
+      "sha256": "19a829f3c063d7f89c6f5de5f6e778a9913d8e7868a376ae3e6d3a6cf72739fa"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_44_elsd.body": {
+      "bytes": 37730,
+      "sha256": "a6bd74e799586183cb1117a0fd3777a42eb5a136124070a2d5ed857ed39b891d"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_44_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "8f8514ad49137946c40af3b651e439cfbfd6878b45d9df3700f2eb63baee5b1c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_47_elsd.body": {
+      "bytes": 300905,
+      "sha256": "a8dbc8894b1c12be02653519e0a4f52ace3d0a46c9466d87aec66c89f0ffb0ff"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_47_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "1eba6150dd479a951aa1c2160dbe1d93e0138d45ce6d25f551a0bd7fa68b8caf"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_48_elsd.body": {
+      "bytes": 17575,
+      "sha256": "5ad225ff144ff07a34e8da4bd9d74952bcda305d4efbd5b23bb730d4b125b81e"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_48_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "2a492564c5a4914143c06eb7c83d37f968b97785057d61a6ac7a2be024b0c1b4"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_50_elsd.body": {
+      "bytes": 220479,
+      "sha256": "e97fa265fcec0ce37f31156e93469b10b3cd81b34ae019d68aff4a9cc8572594"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_50_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "70c1a4a1eb73bb845e5116203a642c7e4db0c6cb0c7074c2aeb29ff3fb679f55"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_51_elsd.body": {
+      "bytes": 17643,
+      "sha256": "148281081703b6f94aa98c5fb519142851779f10ab0399002cb1e3aae8d81645"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_51_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "634c6fd43c326e2212dd894c8b3011ed16b342b83ccb35afc6d8e932034d1646"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_55_elsd.body": {
+      "bytes": 251542,
+      "sha256": "36c3562821aa6ee6141105125be034eb0fd1c76ea1fb805376ff57630d86a454"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_55_elsd.receipt.json": {
+      "bytes": 1540,
+      "sha256": "7187401c034f0460f2ba9b0b5955d85bf75c38680201a6b1c0329b280bf0a58e"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_56_elsd.body": {
+      "bytes": 30572,
+      "sha256": "8383b6511cde85daf88c577f9f5224ac43536da4151d49773626c09e78620a9c"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/inputs/tl_2026_56_elsd.receipt.json": {
+      "bytes": 1537,
+      "sha256": "4357e32b12165fe23447472001a85552a1e8001fbec8ba5e1e760527624e9c89"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/manual-binary-native-audit.json": {
+      "bytes": 35781,
+      "sha256": "973b434a6b8aa1e98dc0f83acdd3d62ddf4e5def095a7f8072cc0f820ac1aeb1"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/manual-binary-native-audit.log": {
+      "bytes": 1672,
+      "sha256": "fc88805378968a21a80f8efc6f448c4e98fa4f076e09e32347ed6a18fe01a181"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/manual-binary-native-audit.py": {
+      "bytes": 7083,
+      "sha256": "22cb48d226d6806cb0966f78bf65ad038de16555278a5cc6533a6743d3e6bffd"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/registered-repaired-materialization.json": {
+      "bytes": 89764,
+      "sha256": "30d0a2851193d80f2cd1f3581aa840ca02046171517ca15ffba3a6ec4a8db961"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/registered-repaired.log": {
+      "bytes": 36426,
+      "sha256": "33bc7d2300dcee7a766bb348583168d812b237d35bcd333813007de867d53184"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/repair-native-scope.json": {
+      "bytes": 2827,
+      "sha256": "d0e6002af5983bd04b30ec2ef5cbd02c8a4e271a6126c71c0d96ed27336344a8"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/runtime-policy.json": {
+      "bytes": 291,
+      "sha256": "35fcd0aefa3294107e7709893966190fe020450fdfa00cf0f1d1a2b62d244764"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/source-pins.json": {
+      "bytes": 3247,
+      "sha256": "d80c6c90e992d0ac823b1af6b3113176cbe6b84daab78eb3db7520ba6897c2bc"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/terminal-prototype.json": {
+      "bytes": 986,
+      "sha256": "081e7bd83c260cb470b0f300ea6cc2e6491a927b912b53d79add362bc51dc8d8"
+    },
+    "docs/dataset-sources/elementary-school-districts/evidence/verify_docs_only_refresh.py": {
+      "bytes": 2814,
+      "sha256": "a28f14a713dc857f5109c82c1a1bcad4a407cab8df47b02e84072cd7e763152b"
+    },
+    "docs/dataset-sources/elementary-school-districts/source.json": {
+      "bytes": 4485,
+      "sha256": "d7d8ecff6ae2bc96d190ce5dbb9c9b257da1bbf5292f3be0dd6be5ec2b61c7c6"
+    },
+    "scripts/verify_elementary_districts_draft.py": {
+      "bytes": 12649,
+      "sha256": "92f94bb7547ecefcdb976152193b78623cc47e699a193c100d36138690eb5d70"
+    },
+    "src/dagster_hifld/assets/census_elementary_districts.py": {
+      "bytes": 1221,
+      "sha256": "4b421156a35e762958d789e7ba93ecd7c982497a0bb4c711c4dc14f2077c3fa8"
+    },
+    "src/dagster_hifld/sources/elementary_school_districts.py": {
+      "bytes": 41964,
+      "sha256": "fea239ddfe674cc7ad31dc9f00b0430a4ed0f4ad9ed5fd0a76f42e27ddb41d11"
+    },
+    "tests/test_elementary_districts.py": {
+      "bytes": 19752,
+      "sha256": "ccdb5b18e3b9ee2000eae1eab19b677c51d90ef8610deca9a1cb554791739519"
+    }
+  }
+}

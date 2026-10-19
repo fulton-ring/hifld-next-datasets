@@ -1,0 +1,41 @@
+{
+  "baseline_public_commit": "a6391d662fd43380ffbc5fed4f1b73c7053f495e",
+  "repaired_public_commit": "e016d4350e3d48b3264849b332617406f95c4bbd",
+  "changed_existing_functions": [
+    "stage_elementary_districts"
+  ],
+  "added_functions": [
+    "observed_trust_loss"
+  ],
+  "all_original_extraction_type_geometry_native_writer_lineage_functions_AST_unchanged": true,
+  "unchanged_function_AST_sha256": {
+    "encode": "12a9c23b1a3290ff9bd3dce858e2e10eddc109e4df755c42298da5b832a7962b",
+    "digest": "1bf83cf633754bc5b364dead5d7d98152f4287819f7cc00affb2f67ac4d3fc60",
+    "strict_json": "e0eaba2c832abb23935bc780cb6d0a32b4baa75d4b808c4ba4f0285b8f727b6b",
+    "local_only": "065f73c1b10d4318109ca71b31c9aecd4c09659ff49bf467d0bae5583de70370",
+    "immutable": "738d42986621f029ff72d71feb4ce3faf3a9c550389a649480fc9ab4dcda0320",
+    "quarantine": "873c242d7f03c02edb66aa8dc6fccd705e3d224c4b388fe0a2186ed6b5b3a0dd",
+    "processing_identity": "8ded72f97853846f55005bed196e66ba338cf10bc48d4326e5fbab3792d1ee5e",
+    "acquire": "89da0501b3ce87aafd75fe744e1057c5c9e1276c33208bb06f7c0c997bde3f88",
+    "dbf_definition": "18755dc6ec9dd9c1834fb38f434d205ce2bc9c476ce3d2f3f571f8cfe74ff97e",
+    "decode_dbf_rows": "d3e39773f9abdc601b77af88160e9e305d34c99f9f256fd1f438c3f35a5f7d1c",
+    "inspect_archives": "605838c59ebbe7ab335f17ef524fab3adcf01268021d97ed41dc9f99dc57f784",
+    "validate_table": "000e08a71c63575da1318fd11e5a5c18426471d2f6da221b4ab7b02140128b03",
+    "validate_receipt": "9efb1e8c67915670e41c49f6684031f1838ba760cd4597dcadecae75a8a44a44",
+    "manifest_for": "002c7840205f4bc5fb3d5b7a2c8e9d530ede2ae5cacc68e81e7c6f6abae21119",
+    "expected_parquet_table": "284c07d4518b8bf792cab18fe132945a2d8897adacd6211a0f315d6ab857ec08",
+    "write_native_gpkg": "cbd96362e9b9cefe5a6d733f944269984f9e0f16c602203144b2c09596d0f9b2",
+    "reconcile_outputs": "59366885b948d0f623d8872179755cb545606aee810c16dced78fce267ee0624",
+    "source_payloads": "46b5ece0d1316ded7ee66a708e8ee16bba763ba4decbc721c90e405bffac363f",
+    "original_bundle": "1d940d17e4189497069cfed37c4be2318b90f21d019e6479e1cc2129406308c8",
+    "reconcile_cache": "62d0365d35ee3ca23212d9be44234bdf76cb71e16b4b0ad5e4f2f936b2c797d1",
+    "record_hash": "2930ef8cc1ae88ac125fb264f75383bdc4762de1f0a5f0de99430a6c68edf934",
+    "lineage_sidecar": "fa59a9519b2a4360d551b9719f1ab6d7b759101d7d0bfd9d84c3dbcf4cb7e26e"
+  },
+  "actual_C0_and_repaired_GPKG_Parquet_lineage_bytes_identical": {
+    "geopackage/elementary-school-districts.gpkg": "0cda0883e47a7dcc892c808602964f9f774246303b9831455db0bf169ebd6f2f",
+    "geoparquet/elementary-school-districts.parquet": "a736e98a9babb61162a31cb06a099847bd44c1dd25d56d042b50861677f242f7",
+    "metadata/source_record_lineage.jsonl": "c3a1b860c2d266d7b78ec1b52aea093a1f004e114af361a9984e52956b3facc6"
+  },
+  "all_asserted_equal": true
+}
