@@ -10,7 +10,7 @@ import sys
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
-from dagster_hifld.assets.fuel_stations import _TYPES, _digest, _strict_json, inspect_capture
+from dagster_hifld.assets.fuel_stations import _TYPES, _digest, _strict_json, inspect_capture, _page_paths
 
 
 def main(capture, candidate, output):
@@ -23,7 +23,7 @@ def main(capture, candidate, output):
     assert parquet.schema_arrow.names==list(source_types)+['geometry']
     rows=values=double_tokens=0
     ids=set();oids=set()
-    for index,path in enumerate(sorted(capture.glob('page-*.body'))):
+    for index,path in enumerate(_page_paths(capture)):
         raw=_strict_json(path.read_bytes())['features']
         generated=parquet.read_row_group(index).to_pylist()
         assert len(raw)==len(generated)

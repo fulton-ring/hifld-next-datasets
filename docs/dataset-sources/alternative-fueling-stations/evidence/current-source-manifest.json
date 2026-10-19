@@ -1,6 +1,6 @@
 {
   "agency": "U.S. Department of Energy / National Laboratory of the Rockies",
-  "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+  "code_commit": "7c94e9807ab4ca16d0ba1cce7260c73a9d4f5ff2",
   "complete_rows": 103502,
   "inputs": [
     {
@@ -1660,9 +1660,9 @@
     "crosswalk": "unverified; DataLumos403 prevents inspecting the mapping",
     "distributor_item": "9010c04bcdf84c36abb74e98778af579",
     "processing_identity": {
-      "builder_fingerprint": "6d3b1756e58904b9bddf94c92961080d15f2266c35bda8d1f016e6657363df4d",
-      "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
-      "installed_pipeline_sha256": "10a172767280ba29758f250bd3845e0a18be6fe01d85112f541946e1469de7ab",
+      "builder_fingerprint": "9f99e91f75cd91e0093302d8517f7e47e0564abb905a5763daf0fd682f40e0b7",
+      "code_commit": "7c94e9807ab4ca16d0ba1cce7260c73a9d4f5ff2",
+      "installed_pipeline_sha256": "2f47f39e2549c2d9738026b0d0c664c4f078c903ef19637f0c6ab71cc3d294b4",
       "meaning": "Original processing identity; replay does not invent a new upstream retrieval.",
       "versions": {
         "distributions": [
@@ -3108,6 +3108,216 @@
         "bytes": 1074,
         "name": "bts_item.receipt.json",
         "sha256": "9c7e9840f81b4d6ca4b206390c69714acee5fd26bf9a48a081cb2cbc07213b79"
+      },
+      {
+        "bytes": 23415,
+        "name": "afdc_about.body",
+        "sha256": "9698238b0f32a7d1bf0d40fd1ac91dbe0c87fa82828150bd5abbc1f69db622af"
+      },
+      {
+        "bytes": 19402,
+        "name": "afdc_about_data.body",
+        "sha256": "f66a20f532d432952ffe76bde17e0338f3355f175906d03f48b8701a884f6aaf"
+      },
+      {
+        "bytes": 1012,
+        "name": "afdc_about_data.receipt.json",
+        "sha256": "5b4d6b607fed3028d68448d5e5b17021e076491f62082b19d2bc0f6a505cdcfd"
+      },
+      {
+        "bytes": 26074,
+        "name": "afdc_data_about.body",
+        "sha256": "82c53447ab64f351d983c6fcbd74eba273930ac93dd306002dca5411b3a8040d"
+      },
+      {
+        "bytes": 1527,
+        "name": "afdc_data_about.receipt.json",
+        "sha256": "91f5c8783a45c07f312cd395faf350dcf978ddadd07e43d493bba2dbef09aa58"
+      },
+      {
+        "bytes": 66696,
+        "name": "afdc_download.body",
+        "sha256": "477fa0af36cdf33ef17335552ec3ea08f9af2ee422003c1dd2be10c8c6463e2e"
+      },
+      {
+        "bytes": 6157,
+        "name": "archive.body",
+        "sha256": "9bbc4b1a3ec3a82ffea29a52bcd0741be98640c8e49f3a7116411c5995d3a6ea"
+      },
+      {
+        "bytes": 2534,
+        "name": "archive.receipt.json",
+        "sha256": "4682d3a7a2efa69955f4058f3c6549fb2ea29af1246c23d63fb049f382a9fba5"
+      },
+      {
+        "bytes": 3486,
+        "name": "baseline.body",
+        "sha256": "8e9c9ae152466ea1f7d1b2d8f05db0a89fc0fc0114c8366b57337a8b32903bf0"
+      },
+      {
+        "bytes": 3855,
+        "name": "baseline_file.body",
+        "sha256": "1d420bc32ac5be2b95a43e4aaf0635bfa4b0aa9ed235cebec69c886b7ed42c9c"
+      },
+      {
+        "bytes": 1650,
+        "name": "baseline_file.receipt.json",
+        "sha256": "44194998ecb690f12f8b5262272d065acc3356c1612eacbe32b9485b8cb41644"
+      },
+      {
+        "bytes": 10134712,
+        "name": "baseline_parquet.body",
+        "sha256": "e61fb6e9c0afedd0c8ead2369fefb957b6abb8af096f3dc956d8f7ab7e6eb907"
+      },
+      {
+        "bytes": 1575,
+        "name": "baseline_parquet.receipt.json",
+        "sha256": "e551093a8cf003a81b40c43007e700c66ef0f35e0679cfe1699f9e9ca0cbc876"
+      },
+      {
+        "bytes": 10134712,
+        "name": "baseline_pinned.body",
+        "sha256": "e61fb6e9c0afedd0c8ead2369fefb957b6abb8af096f3dc956d8f7ab7e6eb907"
+      },
+      {
+        "bytes": 1630,
+        "name": "baseline_pinned.receipt.json",
+        "sha256": "1b16129bf59bbd95e1e9c4fd96d2bb578dcb8a94493b26ef15ba129573e656d4"
+      },
+      {
+        "bytes": 38833,
+        "name": "baseline_version.body",
+        "sha256": "1513fc50892b672bf531909a628f49c06237a799a2ca0214a85570705f2e4484"
+      },
+      {
+        "bytes": 1676,
+        "name": "baseline_version.receipt.json",
+        "sha256": "0e8ba2ed337598b16644c765eb1b7c15819d7cf7ae59c11cb07d748878f04b56"
+      },
+      {
+        "bytes": 803,
+        "name": "bts_account.body",
+        "sha256": "408c9deba2b7eadf044c523a0e3757118f4262631a3b362ba4738af831543104"
+      },
+      {
+        "bytes": 1034,
+        "name": "bts_account.receipt.json",
+        "sha256": "3a85f309bcb2f10227c44b4fb9f7c7f65466c3a3e875e1db865bf9b6974d839f"
+      },
+      {
+        "bytes": 70,
+        "name": "bts_dataset.body",
+        "sha256": "4f0d5f8699f928abf9354df371b066bf8e1a517489c7d2d01d983533e4690a55"
+      },
+      {
+        "bytes": 707,
+        "name": "bts_dataset.receipt.json",
+        "sha256": "1359e644b45e4f4d935fa129652a85b75dc39797c4809bd6df87f4e3c866a1e1"
+      },
+      {
+        "bytes": 31998,
+        "name": "bts_metadata.body",
+        "sha256": "4e118d3e19d7e7ec2f969e699ecae4d4253e95895611fe4886dfece1a2d2cda3"
+      },
+      {
+        "bytes": 1214,
+        "name": "bts_metadata.receipt.json",
+        "sha256": "547d051a3b8ccca81fb2a16fa2fc9e6c2cee39d984c2e51053f4ae3debe6bee4"
+      },
+      {
+        "bytes": 15681,
+        "name": "bts_organization.body",
+        "sha256": "3f62d39da2aeba1c6ada115ce5d86f6cf4424548fc07ab3a14d04f716e483af9"
+      },
+      {
+        "bytes": 1039,
+        "name": "bts_organization.receipt.json",
+        "sha256": "2f65a3cd58837df76110dba9fe2d8ea8c7d5d96a82c4fa1fa2e5918cc83d70d0"
+      },
+      {
+        "bytes": 58,
+        "name": "bts_search.body",
+        "sha256": "b8de9b56529e927c85936ada5477e3fb2b6074f9ed709ef423d16e5b19b11d55"
+      },
+      {
+        "bytes": 1114,
+        "name": "bts_search.receipt.json",
+        "sha256": "f445a2adad13c242c244eb12461bcf41dfc07a8357f38c5a0610b6e2bd216b7c"
+      },
+      {
+        "bytes": 170683,
+        "name": "bts_search2.body",
+        "sha256": "c27071e7c5deeefde393c6c8c1425f9ab25507261577311199250be2731db1e3"
+      },
+      {
+        "bytes": 1111,
+        "name": "bts_search2.receipt.json",
+        "sha256": "1270dc80ec3f1ee6b832abeadf593447cd8853d77fb4b10f2b19f01e05a714d3"
+      },
+      {
+        "bytes": 7305,
+        "name": "bts_service.body",
+        "sha256": "bd066067ef0317341da8158a82f8c364534b5a71b3cdaf34b3d6ebea84999e2e"
+      },
+      {
+        "bytes": 1653,
+        "name": "bts_service.receipt.json",
+        "sha256": "05dee49d27ad3b0b9e952f905f81f930ac231e74e8a2e60d8cbbcf98d1592e40"
+      },
+      {
+        "bytes": 52119,
+        "name": "bts_slug_official.body",
+        "sha256": "3a2f8833e23a6d0cc26bed5239de08efb199a40d4d0491b471b9ea6b95cda569"
+      },
+      {
+        "bytes": 824,
+        "name": "bts_slug_official.receipt.json",
+        "sha256": "f1be8e1e0de5b97cc69afd43044de565182719e49e33084df45c33b2e9440d0a"
+      },
+      {
+        "bytes": 111179,
+        "name": "bulk_form.body",
+        "sha256": "e7dc2fc6aadd0d950e661a3e1b450a99cdd95a52141f1651add4954be533fbe5"
+      },
+      {
+        "bytes": 1371,
+        "name": "bulk_form.receipt.json",
+        "sha256": "a616e7b4c6a33a153d62dd67afb96359ba75a50ff58ae1ece5bbaf3cb313e86a"
+      },
+      {
+        "bytes": 6157,
+        "name": "crosswalk.body",
+        "sha256": "7475737fc86eadaa1fbba3295f084ed72be7e23ebb2e9cfdad2e8e59fff2d1d1"
+      },
+      {
+        "bytes": 2503,
+        "name": "crosswalk.receipt.json",
+        "sha256": "c1afb8e168fec3e4cb3971e0d595de432ce1675b26124f9b0d1a0775fca4d425"
+      },
+      {
+        "bytes": 139,
+        "name": "nlr_api_no_key.body",
+        "sha256": "87539e88d1a16e8f7498692c1b60bb301d2b72e26f6ab6d74b1eb4b30158f76e"
+      },
+      {
+        "bytes": 1014,
+        "name": "nlr_api_no_key.receipt.json",
+        "sha256": "7634ef690fed053408c09e3367cbdfbf7dd567e9d8bf28890872b5bec525f83d"
+      },
+      {
+        "bytes": 302984,
+        "name": "nlr_docs.body",
+        "sha256": "4200aa35c4bbe2f5eb461318cfc2c5abe77f5793a4ed7cd1f4cded8367b18054"
+      },
+      {
+        "bytes": 1424,
+        "name": "nlr_docs.receipt.json",
+        "sha256": "3b5846468bdcc1512ec732e2e0febd949c5f47e271c7344abd853f15c49fcfa7"
+      },
+      {
+        "bytes": 52120,
+        "name": "ntad.body",
+        "sha256": "4ee726902b485818653c162fc084c91110848b2e2eb386fdd0f63d9fa2c56168"
       }
     ],
     "raw_crs": {
@@ -3982,114 +4192,221 @@
         "type": "esriFieldTypeString"
       }
     ],
-    "retrieval_attempt_role": "Noncanonical attempts are raw diagnostic evidence, not successful source inputs; all canonical HTTP bodies are individually represented in inputs."
+    "retrieval_attempt_role": "Noncanonical attempts are raw diagnostic evidence, not successful source inputs; all canonical HTTP bodies are individually represented in inputs.",
+    "untrusted_diagnostic_files": [
+      {
+        "bytes": 23415,
+        "name": "afdc_about.body",
+        "sha256": "9698238b0f32a7d1bf0d40fd1ac91dbe0c87fa82828150bd5abbc1f69db622af"
+      },
+      {
+        "bytes": 19402,
+        "name": "afdc_about_data.body",
+        "sha256": "f66a20f532d432952ffe76bde17e0338f3355f175906d03f48b8701a884f6aaf"
+      },
+      {
+        "bytes": 1012,
+        "name": "afdc_about_data.receipt.json",
+        "sha256": "5b4d6b607fed3028d68448d5e5b17021e076491f62082b19d2bc0f6a505cdcfd"
+      },
+      {
+        "bytes": 26074,
+        "name": "afdc_data_about.body",
+        "sha256": "82c53447ab64f351d983c6fcbd74eba273930ac93dd306002dca5411b3a8040d"
+      },
+      {
+        "bytes": 1527,
+        "name": "afdc_data_about.receipt.json",
+        "sha256": "91f5c8783a45c07f312cd395faf350dcf978ddadd07e43d493bba2dbef09aa58"
+      },
+      {
+        "bytes": 66696,
+        "name": "afdc_download.body",
+        "sha256": "477fa0af36cdf33ef17335552ec3ea08f9af2ee422003c1dd2be10c8c6463e2e"
+      },
+      {
+        "bytes": 6157,
+        "name": "archive.body",
+        "sha256": "9bbc4b1a3ec3a82ffea29a52bcd0741be98640c8e49f3a7116411c5995d3a6ea"
+      },
+      {
+        "bytes": 2534,
+        "name": "archive.receipt.json",
+        "sha256": "4682d3a7a2efa69955f4058f3c6549fb2ea29af1246c23d63fb049f382a9fba5"
+      },
+      {
+        "bytes": 3486,
+        "name": "baseline.body",
+        "sha256": "8e9c9ae152466ea1f7d1b2d8f05db0a89fc0fc0114c8366b57337a8b32903bf0"
+      },
+      {
+        "bytes": 3855,
+        "name": "baseline_file.body",
+        "sha256": "1d420bc32ac5be2b95a43e4aaf0635bfa4b0aa9ed235cebec69c886b7ed42c9c"
+      },
+      {
+        "bytes": 1650,
+        "name": "baseline_file.receipt.json",
+        "sha256": "44194998ecb690f12f8b5262272d065acc3356c1612eacbe32b9485b8cb41644"
+      },
+      {
+        "bytes": 10134712,
+        "name": "baseline_parquet.body",
+        "sha256": "e61fb6e9c0afedd0c8ead2369fefb957b6abb8af096f3dc956d8f7ab7e6eb907"
+      },
+      {
+        "bytes": 1575,
+        "name": "baseline_parquet.receipt.json",
+        "sha256": "e551093a8cf003a81b40c43007e700c66ef0f35e0679cfe1699f9e9ca0cbc876"
+      },
+      {
+        "bytes": 10134712,
+        "name": "baseline_pinned.body",
+        "sha256": "e61fb6e9c0afedd0c8ead2369fefb957b6abb8af096f3dc956d8f7ab7e6eb907"
+      },
+      {
+        "bytes": 1630,
+        "name": "baseline_pinned.receipt.json",
+        "sha256": "1b16129bf59bbd95e1e9c4fd96d2bb578dcb8a94493b26ef15ba129573e656d4"
+      },
+      {
+        "bytes": 38833,
+        "name": "baseline_version.body",
+        "sha256": "1513fc50892b672bf531909a628f49c06237a799a2ca0214a85570705f2e4484"
+      },
+      {
+        "bytes": 1676,
+        "name": "baseline_version.receipt.json",
+        "sha256": "0e8ba2ed337598b16644c765eb1b7c15819d7cf7ae59c11cb07d748878f04b56"
+      },
+      {
+        "bytes": 803,
+        "name": "bts_account.body",
+        "sha256": "408c9deba2b7eadf044c523a0e3757118f4262631a3b362ba4738af831543104"
+      },
+      {
+        "bytes": 1034,
+        "name": "bts_account.receipt.json",
+        "sha256": "3a85f309bcb2f10227c44b4fb9f7c7f65466c3a3e875e1db865bf9b6974d839f"
+      },
+      {
+        "bytes": 70,
+        "name": "bts_dataset.body",
+        "sha256": "4f0d5f8699f928abf9354df371b066bf8e1a517489c7d2d01d983533e4690a55"
+      },
+      {
+        "bytes": 707,
+        "name": "bts_dataset.receipt.json",
+        "sha256": "1359e644b45e4f4d935fa129652a85b75dc39797c4809bd6df87f4e3c866a1e1"
+      },
+      {
+        "bytes": 31998,
+        "name": "bts_metadata.body",
+        "sha256": "4e118d3e19d7e7ec2f969e699ecae4d4253e95895611fe4886dfece1a2d2cda3"
+      },
+      {
+        "bytes": 1214,
+        "name": "bts_metadata.receipt.json",
+        "sha256": "547d051a3b8ccca81fb2a16fa2fc9e6c2cee39d984c2e51053f4ae3debe6bee4"
+      },
+      {
+        "bytes": 15681,
+        "name": "bts_organization.body",
+        "sha256": "3f62d39da2aeba1c6ada115ce5d86f6cf4424548fc07ab3a14d04f716e483af9"
+      },
+      {
+        "bytes": 1039,
+        "name": "bts_organization.receipt.json",
+        "sha256": "2f65a3cd58837df76110dba9fe2d8ea8c7d5d96a82c4fa1fa2e5918cc83d70d0"
+      },
+      {
+        "bytes": 58,
+        "name": "bts_search.body",
+        "sha256": "b8de9b56529e927c85936ada5477e3fb2b6074f9ed709ef423d16e5b19b11d55"
+      },
+      {
+        "bytes": 1114,
+        "name": "bts_search.receipt.json",
+        "sha256": "f445a2adad13c242c244eb12461bcf41dfc07a8357f38c5a0610b6e2bd216b7c"
+      },
+      {
+        "bytes": 170683,
+        "name": "bts_search2.body",
+        "sha256": "c27071e7c5deeefde393c6c8c1425f9ab25507261577311199250be2731db1e3"
+      },
+      {
+        "bytes": 1111,
+        "name": "bts_search2.receipt.json",
+        "sha256": "1270dc80ec3f1ee6b832abeadf593447cd8853d77fb4b10f2b19f01e05a714d3"
+      },
+      {
+        "bytes": 7305,
+        "name": "bts_service.body",
+        "sha256": "bd066067ef0317341da8158a82f8c364534b5a71b3cdaf34b3d6ebea84999e2e"
+      },
+      {
+        "bytes": 1653,
+        "name": "bts_service.receipt.json",
+        "sha256": "05dee49d27ad3b0b9e952f905f81f930ac231e74e8a2e60d8cbbcf98d1592e40"
+      },
+      {
+        "bytes": 52119,
+        "name": "bts_slug_official.body",
+        "sha256": "3a2f8833e23a6d0cc26bed5239de08efb199a40d4d0491b471b9ea6b95cda569"
+      },
+      {
+        "bytes": 824,
+        "name": "bts_slug_official.receipt.json",
+        "sha256": "f1be8e1e0de5b97cc69afd43044de565182719e49e33084df45c33b2e9440d0a"
+      },
+      {
+        "bytes": 111179,
+        "name": "bulk_form.body",
+        "sha256": "e7dc2fc6aadd0d950e661a3e1b450a99cdd95a52141f1651add4954be533fbe5"
+      },
+      {
+        "bytes": 1371,
+        "name": "bulk_form.receipt.json",
+        "sha256": "a616e7b4c6a33a153d62dd67afb96359ba75a50ff58ae1ece5bbaf3cb313e86a"
+      },
+      {
+        "bytes": 6157,
+        "name": "crosswalk.body",
+        "sha256": "7475737fc86eadaa1fbba3295f084ed72be7e23ebb2e9cfdad2e8e59fff2d1d1"
+      },
+      {
+        "bytes": 2503,
+        "name": "crosswalk.receipt.json",
+        "sha256": "c1afb8e168fec3e4cb3971e0d595de432ce1675b26124f9b0d1a0775fca4d425"
+      },
+      {
+        "bytes": 139,
+        "name": "nlr_api_no_key.body",
+        "sha256": "87539e88d1a16e8f7498692c1b60bb301d2b72e26f6ab6d74b1eb4b30158f76e"
+      },
+      {
+        "bytes": 1014,
+        "name": "nlr_api_no_key.receipt.json",
+        "sha256": "7634ef690fed053408c09e3367cbdfbf7dd567e9d8bf28890872b5bec525f83d"
+      },
+      {
+        "bytes": 302984,
+        "name": "nlr_docs.body",
+        "sha256": "4200aa35c4bbe2f5eb461318cfc2c5abe77f5793a4ed7cd1f4cded8367b18054"
+      },
+      {
+        "bytes": 1424,
+        "name": "nlr_docs.receipt.json",
+        "sha256": "3b5846468bdcc1512ec732e2e0febd949c5f47e271c7344abd853f15c49fcfa7"
+      },
+      {
+        "bytes": 52120,
+        "name": "ntad.body",
+        "sha256": "4ee726902b485818653c162fc084c91110848b2e2eb386fdd0f63d9fa2c56168"
+      }
+    ]
   },
   "original_retrieval_receipts": [
-    {
-      "final_url": "https://www.arcgis.com/sharing/rest/community/users/USDOT_BTS?f=json",
-      "http_date": "Mon, 19 Oct 2026 05:10:20 GMT",
-      "name": "bts_account.receipt.json",
-      "observed_at": "2026-10-19T05:10:20.782570+00:00",
-      "url": "https://www.arcgis.com/sharing/rest/community/users/USDOT_BTS?f=json"
-    },
-    {
-      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
-      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
-      "name": "bts_count.receipt.json",
-      "observed_at": "2026-10-19T04:55:29.547655+00:00",
-      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true"
-    },
-    {
-      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
-      "http_date": "Mon, 19 Oct 2026 04:57:56 GMT",
-      "name": "bts_count_after.receipt.json",
-      "observed_at": "2026-10-19T04:57:56.770849+00:00",
-      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true"
-    },
-    {
-      "final_url": "https://geodata.bts.gov/api/v3/datasets/usdot::alternative-fueling-stations",
-      "http_date": "Mon, 19 Oct 2026 04:55:04 GMT",
-      "name": "bts_dataset.receipt.json",
-      "observed_at": "2026-10-19T04:55:04.454758+00:00",
-      "url": "https://geodata.bts.gov/api/v3/datasets/usdot::alternative-fueling-stations"
-    },
-    {
-      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
-      "http_date": "Mon, 19 Oct 2026 04:55:30 GMT",
-      "name": "bts_ids.receipt.json",
-      "observed_at": "2026-10-19T04:55:30.567714+00:00",
-      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true"
-    },
-    {
-      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
-      "http_date": "Mon, 19 Oct 2026 04:57:57 GMT",
-      "name": "bts_ids_after.receipt.json",
-      "observed_at": "2026-10-19T04:57:57.473685+00:00",
-      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true"
-    },
-    {
-      "final_url": "https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579?f=json",
-      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
-      "name": "bts_item.receipt.json",
-      "observed_at": "2026-10-19T04:55:29.514935+00:00",
-      "url": "https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579?f=json"
-    },
-    {
-      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson",
-      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
-      "name": "bts_layer.receipt.json",
-      "observed_at": "2026-10-19T04:55:29.553063+00:00",
-      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson"
-    },
-    {
-      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson",
-      "http_date": "Mon, 19 Oct 2026 04:57:57 GMT",
-      "name": "bts_layer_after.receipt.json",
-      "observed_at": "2026-10-19T04:57:57.954846+00:00",
-      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson"
-    },
-    {
-      "final_url": "https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579/info/metadata/metadata.xml",
-      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
-      "name": "bts_metadata.receipt.json",
-      "observed_at": "2026-10-19T04:55:29.774700+00:00",
-      "url": "https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579/info/metadata/metadata.xml"
-    },
-    {
-      "final_url": "https://www.arcgis.com/sharing/rest/portals/xOi1kZaI0eWDREZv?f=json",
-      "http_date": "Mon, 19 Oct 2026 05:10:20 GMT",
-      "name": "bts_organization.receipt.json",
-      "observed_at": "2026-10-19T05:10:20.957293+00:00",
-      "url": "https://www.arcgis.com/sharing/rest/portals/xOi1kZaI0eWDREZv?f=json"
-    },
-    {
-      "final_url": "https://www.arcgis.com/sharing/rest/search?f=json&q=Alternative%20Fueling%20Stations%20owner%3ABTS_GIS&num=30",
-      "http_date": "Mon, 19 Oct 2026 04:54:50 GMT",
-      "name": "bts_search.receipt.json",
-      "observed_at": "2026-10-19T04:54:50.275868+00:00",
-      "url": "https://www.arcgis.com/sharing/rest/search?f=json&q=Alternative%20Fueling%20Stations%20owner%3ABTS_GIS&num=30"
-    },
-    {
-      "final_url": "https://www.arcgis.com/sharing/rest/search?f=json&q=title%3A%22Alternative%20Fueling%20Stations%22&num=30",
-      "http_date": "Mon, 19 Oct 2026 04:55:04 GMT",
-      "name": "bts_search2.receipt.json",
-      "observed_at": "2026-10-19T04:55:04.288270+00:00",
-      "url": "https://www.arcgis.com/sharing/rest/search?f=json&q=title%3A%22Alternative%20Fueling%20Stations%22&num=30"
-    },
-    {
-      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer?f=pjson",
-      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
-      "name": "bts_service.receipt.json",
-      "observed_at": "2026-10-19T04:55:29.547321+00:00",
-      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer?f=pjson"
-    },
-    {
-      "final_url": "https://geodata.bts.gov/datasets/9010c04bcdf84c36abb74e98778af579_0/about",
-      "http_date": "Mon, 19 Oct 2026 05:10:21 GMT",
-      "name": "bts_slug_official.receipt.json",
-      "observed_at": "2026-10-19T05:10:21.232868+00:00",
-      "url": "https://geodata.bts.gov/datasets/9010c04bcdf84c36abb74e98778af579_0/about"
-    },
     {
       "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=OBJECTID+%3E%3D+1+AND+OBJECTID+%3C%3D+2000&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultRecordCount=2000",
       "http_date": "Mon, 19 Oct 2026 04:56:35 GMT",
@@ -4453,12 +4770,61 @@
       "name": "page-051.receipt.json",
       "observed_at": "2026-10-19T04:57:55.750585+00:00",
       "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=OBJECTID+%3E%3D+102001+AND+OBJECTID+%3C%3D+103502&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultRecordCount=2000"
+    },
+    {
+      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson",
+      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
+      "name": "bts_layer.receipt.json",
+      "observed_at": "2026-10-19T04:55:29.553063+00:00",
+      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson"
+    },
+    {
+      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson",
+      "http_date": "Mon, 19 Oct 2026 04:57:57 GMT",
+      "name": "bts_layer_after.receipt.json",
+      "observed_at": "2026-10-19T04:57:57.954846+00:00",
+      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0?f=pjson"
+    },
+    {
+      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "http_date": "Mon, 19 Oct 2026 04:55:30 GMT",
+      "name": "bts_ids.receipt.json",
+      "observed_at": "2026-10-19T04:55:30.567714+00:00",
+      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true"
+    },
+    {
+      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true",
+      "http_date": "Mon, 19 Oct 2026 04:57:57 GMT",
+      "name": "bts_ids_after.receipt.json",
+      "observed_at": "2026-10-19T04:57:57.473685+00:00",
+      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnIdsOnly=true"
+    },
+    {
+      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
+      "name": "bts_count.receipt.json",
+      "observed_at": "2026-10-19T04:55:29.547655+00:00",
+      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true"
+    },
+    {
+      "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true",
+      "http_date": "Mon, 19 Oct 2026 04:57:56 GMT",
+      "name": "bts_count_after.receipt.json",
+      "observed_at": "2026-10-19T04:57:56.770849+00:00",
+      "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0/query?f=json&where=1%3D1&returnCountOnly=true"
+    },
+    {
+      "final_url": "https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579?f=json",
+      "http_date": "Mon, 19 Oct 2026 04:55:29 GMT",
+      "name": "bts_item.receipt.json",
+      "observed_at": "2026-10-19T04:55:29.514935+00:00",
+      "url": "https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579?f=json"
     }
   ],
   "processing_identity": {
-    "builder_fingerprint": "6d3b1756e58904b9bddf94c92961080d15f2266c35bda8d1f016e6657363df4d",
-    "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
-    "installed_pipeline_sha256": "10a172767280ba29758f250bd3845e0a18be6fe01d85112f541946e1469de7ab",
+    "builder_fingerprint": "9f99e91f75cd91e0093302d8517f7e47e0564abb905a5763daf0fd682f40e0b7",
+    "code_commit": "7c94e9807ab4ca16d0ba1cce7260c73a9d4f5ff2",
+    "installed_pipeline_sha256": "2f47f39e2549c2d9738026b0d0c664c4f078c903ef19637f0c6ab71cc3d294b4",
     "meaning": "Original processing identity; replay does not invent a new upstream retrieval.",
     "versions": {
       "distributions": [

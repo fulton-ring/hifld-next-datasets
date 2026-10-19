@@ -1,8 +1,8 @@
 {
-  "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
-  "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_fuel_review_boundaries tests.test_fuel_crs_witnesses tests.test_refresh_registration_11 tests.test_conversion_integer_fidelity tests.test_source_manifest",
-  "tests_passed": 44,
-  "log_sha256": "67c58c55f72c4f877dcddcf95772d554252ec851e449fa5d224e64df036369db",
+  "code_commit": "7c94e9807ab4ca16d0ba1cce7260c73a9d4f5ff2",
+  "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_fuel_review_boundaries tests.test_fuel_crs_witnesses tests.test_fuel_receipt_inventory tests.test_refresh_registration_11 tests.test_conversion_integer_fidelity tests.test_source_manifest",
+  "tests_passed": 50,
+  "log_sha256": "d74f0dbb84d0b8e6493180b76043c4c27ec52098ebcf27bef1871a4e7ca105d3",
   "repairs_verified": [
     "PublishedStorageResource rejected before network/write at helper and normal registered source job",
     "strict pre/post count/ID integer types, exact cardinality and uniqueness",
@@ -17,7 +17,8 @@
     "top-level error marker in item/layer/count/IDs/page object rejected even when all old fields and new valid receipt checksums remain",
     "entire installeddistribution inventory and native GDAL/GEOS/PROJ/Shapely/pyproj version changes reject immutable reuse",
     "PMTiles source-version exclusion skips before conversion and existing reuse; real diagnostic bytes and prior publication fixture preserved",
-    "Native CRS/service/ending-geometry/extent drift followup: evidence/crs-followup-assertions.json"
+    "Native CRS/service/ending-geometry/extent drift followup: evidence/crs-followup-assertions.json",
+    "Canonical receipt roster, pre-write shared rights/provenance and strict offset followup: evidence/receipt-followup-assertions.json"
   ],
   "scope": "Synthetic negative fixtures and actual registered job boundary tests; no real approval authored. Additional descriptive BTS metadata receipts remain unapproved and are distinct from guarded data queries."
 }

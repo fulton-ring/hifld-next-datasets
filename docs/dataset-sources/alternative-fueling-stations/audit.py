@@ -12,7 +12,7 @@ import pathlib
 import sqlite3
 import sys
 import tempfile
-from dagster_hifld.assets.fuel_stations import _strict_json
+from dagster_hifld.assets.fuel_stations import _strict_json, _page_paths
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
@@ -59,7 +59,7 @@ def run(root, output):
                 insert.append((identifier, canonical(row),geom.x,geom.y))
             db.executemany('insert into rows values (?,?,?,?)',insert)
         db.commit()
-        for path in sorted(root.glob('page-*.body')):
+        for path in _page_paths(root):
             for feature in _strict_json(path.read_bytes())['features']:
                 attrs=feature['attributes']; identifier=attrs['id'];source_ids.add(identifier);all_source_ids.add(attrs['OBJECTID'])
                 if attrs['updated_at'] is not None:row_dates.append(attrs['updated_at'])

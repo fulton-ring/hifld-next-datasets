@@ -1,11 +1,11 @@
 {
   "local_only": true,
   "source_catalog_only": true,
-  "version": "v0.0.0-research-20261019-7",
+  "version": "v0.0.0-research-20261019-9",
   "processing": {
-    "builder_fingerprint": "6d3b1756e58904b9bddf94c92961080d15f2266c35bda8d1f016e6657363df4d",
-    "installed_pipeline_sha256": "10a172767280ba29758f250bd3845e0a18be6fe01d85112f541946e1469de7ab",
-    "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+    "builder_fingerprint": "9f99e91f75cd91e0093302d8517f7e47e0564abb905a5763daf0fd682f40e0b7",
+    "installed_pipeline_sha256": "2f47f39e2549c2d9738026b0d0c664c4f078c903ef19637f0c6ab71cc3d294b4",
+    "code_commit": "7c94e9807ab4ca16d0ba1cce7260c73a9d4f5ff2",
     "working_tree_modified": false,
     "versions": {
       "distributions": [
@@ -874,12 +874,12 @@
     ]
   ],
   "source": {
-    "run_id": "a111bdf8-2c53-4fa9-8a02-05eb2338f523",
+    "run_id": "35a69182-13dc-4a98-8948-5fbaf9fffb84",
     "success": true
   },
   "direct_provenance_validation": true,
   "input_count": 59,
-  "run_id": "d7251dae-18eb-4241-9f6d-83347d94eaa8",
+  "run_id": "031442fc-ea07-43d6-9d2c-c7d0acfeedf1",
   "success": true,
   "successful_steps": [
     "publish__catalog",

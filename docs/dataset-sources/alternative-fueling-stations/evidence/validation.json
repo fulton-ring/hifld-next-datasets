@@ -68,11 +68,18 @@
     "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_conversion_integer_fidelity tests.test_dynamic_partitions tests.test_checks tests.test_full_verification tests.test_catalog -q",
     "log_sha256": "278a6323e1495fda20a43e11c4172193705a1353c50c61353f3ae30f709d3877"
   },
-  "final_implementation_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+  "final_implementation_commit": "7c94e9807ab4ca16d0ba1cce7260c73a9d4f5ff2",
   "final_source_and_catalog": "evidence/current-source-catalog.json",
   "direct_provenance_assertions": "evidence/current-provenance-assertions.json",
   "final_review_regressions": "evidence/review-boundary-regressions.json",
   "repaired_full_format_graph": "evidence/repaired-format-graph.json",
   "pmtiles_final_exclusion_probe": "evidence/pmtiles-policy-assertions.json",
-  "native_crs_followup": "evidence/crs-followup-assertions.json"
+  "native_crs_followup": "evidence/crs-followup-assertions.json",
+  "receipt_followup": "evidence/receipt-followup-assertions.json",
+  "iac_current_status": {
+    "resolved_by_coordinator": true,
+    "unmodified_sibling_revision": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "targeted_real_IaC_test": "coordinator PASS; historical fullsuite counts remain historical",
+    "full_suite_rerun_here": false
+  }
 }

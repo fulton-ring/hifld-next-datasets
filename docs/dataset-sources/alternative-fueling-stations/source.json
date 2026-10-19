@@ -60,17 +60,18 @@
   "pipeline": {
     "dependency_commit": "c7343b802966c566e8f6088bf31f19081b2a0cde",
     "direct_provenance_validation": "evidence/current-provenance-assertions.json",
-    "final_implementation_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+    "final_implementation_commit": "7c94e9807ab4ca16d0ba1cce7260c73a9d4f5ff2",
     "final_provenance_manifest": "evidence/current-source-manifest.json",
     "final_real_graph_receipt": "evidence/repaired-format-graph.json",
     "final_source_and_catalog": "evidence/current-source-catalog.json",
-    "format_scope": "Full unchanged-converter real103502 format graph ataa7253e; final e7f1b1a source/catalog/provenance/native-CRS guard and directgate replay. Shapefile/PMTiles remain excluded; no repeated terminal conversion claimed.",
+    "format_scope": "Full unchanged-converter real103502 format graph ataa7253e; final7c94e98 source/catalog/provenance/native-CRS/canonical-receipt/rights-preflight/UTC-offset guard and directgate replay. Shapefile/PMTiles remain excluded; no repeated terminal conversion claimed.",
     "integer_conversion_fix": "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
     "module": "src/dagster_hifld/assets/fuel_stations.py",
     "native_crs_followup": "evidence/crs-followup-assertions.json",
     "pmtiles_diagnostic_policy": "evidence/pmtiles-policy-assertions.json",
     "previous_generic_format_diagnostic": "evidence/generated-gpkg-audit.json retains full audit of old experimental GeoJSON\u2192GeoPackage coercions; those artifacts are quarantined and not the typed bridge.",
     "promotion": "Independent exact-release approval required by shared #417; missing registry rejects. No registry/approval authored here.",
+    "receipt_followup": "evidence/receipt-followup-assertions.json",
     "refresh_poll": {
       "cron": "0 9 * * *",
       "default_status": "STOPPED",
@@ -86,6 +87,7 @@
     "registry": "src/dagster_hifld/assets/ingest_registry.py",
     "review_repairs": {
       "application_errors": "Every canonical ArcGIS body must be an object with no top-level error marker, including item/layer/count/IDs as well as pages. Repinned old fields plus error is rejected with raw quarantine.",
+      "canonical_receipts": "Only validated canonical receipt summaries feed provenance; all noncanonical captured bytes are pinned untrusted diagnostics. Complete shared provenance/rights preflight precedes canonical writes; offset minutes/hours validated before timestamp parsing.",
       "failure_evidence": "Successful, failed and partial response bytes and receipts stream to durable isolated quarantine before validation; three bounded attempts; failed source/schema/ID/geometry captures remain with blocked reason.",
       "geometry": "Exact source XY to native WKB numeric roundtrip; integer coordinate precision loss is rejected with original bytes preserved.",
       "native_crs_and_geometry_witnesses": "Every layer top/extent/source CRS and page CRS must use integer wkid3857 or known102100 alias, with optional integer latestWkid3857 only. WKT/unknown/contradictory/vertical metadata is rejected. Stable before/after service/geometry/ID/dimension/CRS/extent metadata is compared before candidate creation; native XY coordinates are not reprojected or relabeled from an unverified code.",
