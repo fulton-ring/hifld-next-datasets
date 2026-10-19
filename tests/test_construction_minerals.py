@@ -85,6 +85,19 @@ class MineralsTests(unittest.TestCase):
             else:b+=b'junk'
             with self.subTest(which=which),self.assertRaises(ValueError):s.decode_points(b,i)
 
+    def test_first_malformed_or_invalid_receipt_preserves_full_attempt_before_parse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package=Path(tmp)/'input';shutil.copytree(self.package,package);storage=StagingStorageResource(local_dir=tmp+'/stage');name='legacy_metadata';body=(package/(name+'.body')).read_bytes()
+            for raw in (b'{ malformed receipt',s.encode({'url':'untrusted','status':403})):
+                (package/(name+'.receipt.json')).write_bytes(raw)
+                with self.assertRaises(ValueError):s.acquire(storage,str(package),s.PACKAGE)
+                bodykey=f'_raw-captures/{s.SLUG}/{s.digest(body)}/{name}.body';receiptkey=f'_raw-captures/{s.SLUG}/{s.digest(body)}/{name}.raw-receipt-{s.digest(raw)}.body'
+                self.assertEqual(storage.read_key(bodykey),body);self.assertEqual(storage.read_key(receiptkey),raw)
+                attempts=list((Path(tmp)/'stage/_quarantine').rglob('attempted-inputs.json'));self.assertTrue(attempts)
+                self.assertTrue(any(s.strict_json(p.read_bytes())['objects'].get(name,{}).get('raw_receipt_key')==receiptkey for p in attempts))
+            self.assertEqual(len(list((Path(tmp)/'stage/_raw-captures').rglob(name+'.body'))),1)
+            self.assertFalse((Path(tmp)/'stage/_construction-state').exists())
+
     def test_pinned_drift_incomplete_receipts_and_extra_package_quarantine(self):
         with tempfile.TemporaryDirectory() as tmp:
             package=Path(tmp)/'input';shutil.copytree(self.package,package);storage=StagingStorageResource(local_dir=tmp+'/stage')

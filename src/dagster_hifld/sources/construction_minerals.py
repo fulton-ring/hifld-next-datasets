@@ -74,11 +74,12 @@ def processing_identity():
         'files':{str(p.relative_to(root)):sha256_file(p) for p in sorted((root/'src/dagster_hifld').rglob('*.py'))+[root/'uv.lock',root/'pyproject.toml']},
         'verifier_sha256':verifier_implementation_sha256()}
 
-def retain_failure(storage,captures,reason):
+def retain_failure(storage,captures,reason,attempted=None):
     prefix=f'_quarantine/{SLUG}/acquisitions/{uuid4().hex}'
     for name,(body,receipt) in captures.items():
         immutable(storage,prefix+'/'+name+'.body',body);immutable(storage,prefix+'/'+name+'.receipt.json',encode(receipt))
-    immutable(storage,prefix+'/reason.json',encode({'approved':False,'reason':reason}))
+    if attempted is not None:immutable(storage,prefix+'/attempted-inputs.json',encode({'approved':False,'receipt_metadata_validated':False,'objects':attempted}))
+    immutable(storage,prefix+'/reason.json',encode({'approved':False,'reason':reason,'attempted_inputs':prefix+'/attempted-inputs.json' if attempted is not None else None}))
     return prefix
 
 def validate_capture(name,body,receipt,url):
@@ -147,7 +148,7 @@ def local_only(storage):
 def acquire(storage,capture_dir,package_id):
     local_only(storage)
     if package_id!=PACKAGE or not capture_dir:raise MineralsQuarantineError('explicit_unapproved_preservation_package_selection_required_no_default_fetch')
-    root=Path(capture_dir);captures={}
+    root=Path(capture_dir);captures={};attempted={}
     if '..' in root.parts or not root.is_dir() or any(p.is_symlink() for p in [root,*root.parents]):raise MineralsQuarantineError('unsafe_input_package_root')
     try:
         expected={name+suffix for name in PINS for suffix in ('.body','.receipt.json')}
@@ -156,12 +157,20 @@ def acquire(storage,capture_dir,package_id):
             paths=[root/(name+suffix) for suffix in ('.body','.receipt.json')]
             if any(not p.is_file() or p.is_symlink() or p.stat().st_nlink!=1 for p in paths):raise MineralsQuarantineError('linked_or_nonregular_package_input')
             if paths[0].stat().st_size>2*1024*1024 or paths[1].stat().st_size>65536:raise MineralsQuarantineError('package_input_exceeds_bound')
-            body=paths[0].read_bytes();receipt=strict_json(paths[1].read_bytes());captures[name]=(body,receipt)
+            body=paths[0].read_bytes();raw_receipt=paths[1].read_bytes()
+            # Preserve the full bounded attempted input BEFORE interpreting any
+            # receipt. These CAS bytes are evidence, not validated provenance.
+            body_key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'
+            receipt_key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.raw-receipt-{digest(raw_receipt)}.body'
+            immutable(storage,body_key,body);immutable(storage,receipt_key,raw_receipt)
+            attempted[name]={'body_key':body_key,'body_sha256':digest(body),'body_bytes':len(body),'raw_receipt_key':receipt_key,'raw_receipt_sha256':digest(raw_receipt),'raw_receipt_bytes':len(raw_receipt),'canonical_expected_url':pin['url']}
+            receipt=strict_json(raw_receipt);captures[name]=(body,receipt)
             validate_capture(name,body,receipt,pin['url'])
             if len(body)!=pin['bytes'] or digest(body)!=pin['sha256']:raise MineralsQuarantineError('unreviewed_package_bytes_require_explicit_new_package:'+name)
+        immutable(storage,f'_acquisition-attempts/{SLUG}/{uuid4().hex}.json',encode({'approved':False,'receipt_metadata_validated':True,'objects':attempted}))
         return captures
     except (ValueError,OSError,KeyError,TypeError) as exc:
-        retained=retain_failure(storage,captures,str(exc));raise MineralsQuarantineError(str(exc)+'; retained:'+retained) from exc
+        retained=retain_failure(storage,captures,str(exc),attempted);raise MineralsQuarantineError(str(exc)+'; retained:'+retained) from exc
 
 
 def decode_dbf(body):
