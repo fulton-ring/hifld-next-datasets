@@ -190,7 +190,7 @@ def _parquet(fields: list[dict[str, object]], features: list[dict[str, object]])
     columns["geometry"]=pa.array([Point(r["geometry"]["x"],r["geometry"]["y"],r["geometry"]["z"]).wkb for r in features],type=pa.binary())
     schema=pa.schema([pa.field(f["name"],_arrow_type(f),nullable=f.get("nullable",True)) for f in fields]+
         [pa.field("geometry",pa.binary(),nullable=False)])
-    geo={"version":"1.1.0","primary_column":"geometry","columns":{"geometry":{"encoding":"WKB","geometry_types":["Point Z"],"crs":pyproj.CRS.from_epsg(4326).to_json_dict(),"edges":"spherical"}}}
+    geo={"version":"1.1.0","primary_column":"geometry","columns":{"geometry":{"encoding":"WKB","geometry_types":["Point Z"],"crs":pyproj.CRS.from_epsg(4326).to_json_dict(),"edges":"planar"}}}
     sink=pa.BufferOutputStream();pq.write_table(pa.Table.from_pydict(columns,schema=schema.with_metadata({b"geo":_canonical(geo)})),sink,compression="zstd")
     return sink.getvalue().to_pybytes()
 
