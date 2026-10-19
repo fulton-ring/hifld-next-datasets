@@ -61,7 +61,7 @@ def real_receipt(directory):
         (directory / (name + '.json')).write_bytes(raw)
         req = requests.get(names.get(name, ''))
         url = req['url'] if req else source_module.LAYER_URL + ('?f=pjson' if name == 'layer' else '/query?where=1%3D1&' + ('outFields=*&f=pjson' if name == 'features' else 'returnCountOnly=true&f=pjson'))
-        receipts.append({'capture': name, 'url': url,
+        receipts.append({'capture': name, 'url': url, 'http_status': 200,
             'fetched_at': req['checked_at'] if req else '2026-10-19T04:19:06.917231+00:00',
             'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw),
             'receipt_note': 'Complete composite observed research captures; historical Esri plus equal fresh GeoJSON, not a simultaneous live snapshot or accepted release.'})
@@ -101,7 +101,13 @@ class ContiguousDraftTests(unittest.TestCase):
             changed = copy.deepcopy(captures)
             full = json.loads(changed['features']);full['features'][0]['geometry']['paths'][0][0][0] += 0.01
             changed['features'] = json.dumps(full).encode()
-            with self.assertRaisesRegex(ValueError, 'quarantined'):
+            changed_receipts = copy.deepcopy(receipt['receipts'])
+            for item in changed_receipts:
+                if item['capture'] == 'features':
+                    item['sha256'] = hashlib.sha256(changed['features']).hexdigest()
+                    item['bytes'] = len(changed['features'])
+            kwargs['receipts'] = changed_receipts
+            with self.assertRaisesRegex(ValueError, 'geometry drift'):
                 stage_noaa_candidate(captures=changed, **kwargs)
             self.assertEqual(before, (p / 'staging' / valid['candidate_key']).read_bytes())
             quarantine = list((p / 'staging').rglob('quarantine.json'))
