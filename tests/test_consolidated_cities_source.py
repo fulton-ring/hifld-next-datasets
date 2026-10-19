@@ -27,6 +27,7 @@ class ConsolidatedCityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.capture=captures()
+        cls.identity=c.processing_identity()
         cls.table,cls.audit=c.inspect_archives({n:INPUTS/(n+'.body') for n in c.PINS},cls.capture)
 
     def test_live_transport_complete_gzip_uses_wire_length_and_identity_request(self):
@@ -138,7 +139,7 @@ class ConsolidatedCityTests(unittest.TestCase):
             bad=copy.deepcopy(self.capture);bad['tl_2026_09_concity'][1].update(mutation)
             with tempfile.TemporaryDirectory() as d:
                 storage=StagingStorageResource(local_dir=d);prior=Path(d)/'prior';prior.write_bytes(b'keep')
-                with patch.object(c,'acquire',return_value=bad),patch.object(c,'processing_identity',return_value={'test':True}),self.assertRaises(ValueError):c.stage_consolidated_cities(storage)
+                with patch.object(c,'acquire',return_value=bad),patch.object(c,'processing_identity',return_value=self.identity),self.assertRaises(ValueError):c.stage_consolidated_cities(storage)
                 self.assertFalse((Path(d)/c.SLUG).exists());self.assertEqual(prior.read_bytes(),b'keep')
                 self.assertTrue(list((Path(d)/'_quarantine').rglob('reason.json')))
 
@@ -148,13 +149,13 @@ class ConsolidatedCityTests(unittest.TestCase):
             body=body[:-1] if target!='census2026_concity' else body.replace(b'tl_2026_09_concity.zip',b'tl_2026_99_concity.zip')
             receipt.update(bytes=len(body),sha256=c.digest(body));bad[target]=(body,receipt)
             with tempfile.TemporaryDirectory() as d:
-                with patch.object(c,'acquire',return_value=bad),patch.object(c,'processing_identity',return_value={'test':True}),self.assertRaises(ValueError):c.stage_consolidated_cities(StagingStorageResource(local_dir=d))
+                with patch.object(c,'acquire',return_value=bad),patch.object(c,'processing_identity',return_value=self.identity),self.assertRaises(ValueError):c.stage_consolidated_cities(StagingStorageResource(local_dir=d))
                 self.assertFalse((Path(d)/c.SLUG).exists())
                 self.assertTrue(any(p.read_bytes()==body for p in (Path(d)/'_quarantine').rglob(target+'.body')))
 
     def test_atomic_failure_and_keyboard_interrupt_never_expose_partial_candidate(self):
         for failure in [OSError('injected'),KeyboardInterrupt()]:
-            with tempfile.TemporaryDirectory() as d,patch.object(c,'processing_identity',return_value={'test':True}):
+            with tempfile.TemporaryDirectory() as d,patch.object(c,'processing_identity',return_value=self.identity):
                 with patch.object(c.pq,'write_table',side_effect=failure),self.assertRaises(KeyboardInterrupt if isinstance(failure,KeyboardInterrupt) else ValueError):
                     c.stage_consolidated_cities(StagingStorageResource(local_dir=d),capture_dir=INPUTS)
                 self.assertFalse((Path(d)/c.SLUG).exists())
@@ -162,7 +163,7 @@ class ConsolidatedCityTests(unittest.TestCase):
                 self.assertEqual(len(list((Path(d)/'_raw-captures').rglob('*.body'))),8)
 
     def test_idempotency_and_missing_ready_cache_is_moved_intact(self):
-        with tempfile.TemporaryDirectory() as d,patch.object(c,'processing_identity',return_value={'test':True}):
+        with tempfile.TemporaryDirectory() as d,patch.object(c,'processing_identity',return_value=self.identity):
             storage=StagingStorageResource(local_dir=d);a=c.stage_consolidated_cities(storage,capture_dir=INPUTS);b=c.stage_consolidated_cities(storage,capture_dir=INPUTS)
             self.assertFalse(a['reused']);self.assertTrue(b['reused'])
             root=Path(d)/c.SLUG/c.SLUG/a['version'];(root/c.READY).unlink();before={str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file()}
@@ -171,7 +172,7 @@ class ConsolidatedCityTests(unittest.TestCase):
             self.assertEqual(before,{str(p.relative_to(q)):p.read_bytes() for p in q.rglob('*') if p.is_file()})
 
     def test_repinned_cache_reports_rows_schema_ids_and_geometry_never_authorize_truth(self):
-        with tempfile.TemporaryDirectory() as d,patch.object(c,'processing_identity',return_value={'test':True}):
+        with tempfile.TemporaryDirectory() as d,patch.object(c,'processing_identity',return_value=self.identity):
             storage=StagingStorageResource(local_dir=d);result=c.stage_consolidated_cities(storage,capture_dir=INPUTS)
             root=Path(d)/c.SLUG/c.SLUG/result['version'];saved=Path(d)/'_saved';shutil.copytree(root,saved)
             cases=['placeholder','audit','id','geometry','parquet_crs','gpkg_srs','gpkg_rtree','unknown','resolved','code_commit']
@@ -202,5 +203,41 @@ class ConsolidatedCityTests(unittest.TestCase):
                     c.stage_consolidated_cities(storage,capture_dir=INPUTS)
                 self.assertFalse(root.exists())
                 self.assertEqual(len(list((Path(d)/'_raw-captures').rglob('*.body'))),8)
+
+
+    def test_actual_git_commit_bundle_forgery_missing_anchor_and_trusted_recovery(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d)
+            out=c.stage_consolidated_cities(storage,capture_dir=INPUTS)
+            root=Path(d)/c.SLUG/c.SLUG/out['version']
+            bundle=next((Path(d)/'_source-provenance'/c.SLUG).glob('*/bundle.json'))
+            original_bundle=bundle.read_bytes()
+            original_manifest=(root/'metadata/source_manifest.json').read_bytes()
+            original_native={str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            raw={str(p.relative_to(Path(d))):p.read_bytes() for p in (Path(d)/'_raw-captures').rglob('*') if p.is_file()}
+            for case in ('zeros','wrong_reachable','missing','malformed'):
+                if case in ('zeros','wrong_reachable'):
+                    manifest=json.loads(original_manifest)
+                    manifest['code_commit']='0'*40 if case=='zeros' else '6969d05028352eefd20348a738a829034af9882f'
+                    (root/'metadata/source_manifest.json').write_bytes(c.encode(manifest))
+                    value=json.loads(original_bundle);value['manifest']=manifest;bundle.write_bytes(c.encode(value))
+                    ready=c.strict_json((root/c.READY).read_bytes());ready['objects']['metadata/source_manifest.json']=c.sha256_file(root/'metadata/source_manifest.json');(root/c.READY).write_bytes(c.encode(ready))
+                elif case=='missing':bundle.unlink()
+                else:bundle.write_bytes(b'{}')
+                with self.subTest(case=case),self.assertRaisesRegex(ValueError,'invalid_cache_moved_intact'):
+                    c.stage_consolidated_cities(storage,capture_dir=INPUTS)
+                self.assertFalse(root.exists())
+                bundle.write_bytes(original_bundle)
+                rebuilt=c.stage_consolidated_cities(storage,capture_dir=INPUTS)
+                self.assertFalse(rebuilt['reused'])
+                self.assertEqual({str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file()},original_native)
+            self.assertEqual(raw,{str(p.relative_to(Path(d))):p.read_bytes() for p in (Path(d)/'_raw-captures').rglob('*') if p.is_file()})
+
+    def test_interrupted_build_never_bootstraps_original_binding(self):
+        with tempfile.TemporaryDirectory() as d,patch.object(c,'write_native_gpkg',side_effect=OSError('test private build interruption')):
+            with self.assertRaisesRegex(ValueError,'private build interruption'):
+                c.stage_consolidated_cities(StagingStorageResource(local_dir=d),capture_dir=INPUTS)
+            self.assertFalse(list((Path(d)/'_source-provenance').rglob('bundle.json')))
+            self.assertFalse(list((Path(d)/c.SLUG).glob('*/*/metadata/concity_candidate_ready.json')))
 
 if __name__=='__main__':unittest.main()

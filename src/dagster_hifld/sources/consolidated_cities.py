@@ -29,6 +29,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
@@ -338,7 +339,7 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
 
 
 
-def original_provenance_bundle(storage,fingerprint,captures,identity,manifest):
+def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
     """Pin first construction provenance outside the candidate's self-pinned cache.
 
     A docs-only later commit may reuse identical processing code. Its new fetch
@@ -347,6 +348,8 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest):
     """
     key=f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'
     if not storage.object_exists(key):
+        if not create: raise ConsolidatedCityQuarantineError('missing_original_construction_bundle')
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
         bundle={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt} for name,(body,receipt) in captures.items()}}
         immutable(storage,key,encode(bundle))
     bundle=strict_json(storage.read_key(key))
@@ -362,6 +365,7 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest):
         if name!='code_commit' and bundle['manifest'].get(name)!=value:
             raise ConsolidatedCityQuarantineError('original_provenance_bundle_manifest_drift')
     validate_release_provenance(bundle['manifest'])
+    validate_construction_code_identity(Path(__file__).parents[3],bundle['manifest']['code_commit'],identity['files'])
     return original,bundle['manifest']
 
 
@@ -380,13 +384,18 @@ def stage_consolidated_cities(storage,*,capture_dir=None):
         locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
         with lockpath.open('a+b') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)
-            captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
             if root.exists():
-                try: reconcile_cache(storage,prefix,table,audit,captures,identity)
+                try:
+                    captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                    reconcile_cache(storage,prefix,table,audit,captures,identity)
                 except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error) as exc:
                     target=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
                     raise ConsolidatedCityQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc
                 return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':8,'reused':True}
+            if storage.object_exists(f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'):
+                captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+            else:
+                validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
             build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='candidate-',dir=build) as tmp:
                 temp=Path(tmp)
@@ -397,7 +406,10 @@ def stage_consolidated_cities(storage,*,capture_dir=None):
                 for name,value in source_payloads(captures,identity,table,audit,manifest).items():
                     (temp/name).parent.mkdir(parents=True,exist_ok=True);(temp/name).write_bytes(value)
                 ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p) for p in temp.rglob('*') if p.is_file()}}
-                (temp/READY).write_bytes(encode(ready));root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+                (temp/READY).write_bytes(encode(ready))
+                original_captures,original_manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
+                if original_manifest!=manifest: raise ConsolidatedCityQuarantineError('concurrent_original_manifest_changed')
+                root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':8,'reused':False}
     except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError) as exc:
         where=quarantine(storage,captures,str(exc))
