@@ -6,6 +6,7 @@ first without acceptance, then with a synthetic-only exact decision, then drifte
 """
 
 import argparse
+import csv
 import json
 import os
 import shutil
@@ -89,19 +90,31 @@ def run(work):
         path = version_root / "geopackage" / "typed.gpkg"
         if not path.exists():
             path.parent.mkdir(parents=True)
+            auxiliary = version_root / "raw" / "regions.csv"
+            auxiliary.parent.mkdir()
+            auxiliary.write_text("state,label\nPA,Synthetic region\n")
+            with auxiliary.open() as stream:
+                region = next(csv.DictReader(stream))["state"]
             schema = {"geometry": "Point", "properties": {"id": "int64", "nullable_id": "int64", "state": "str", "name": "str"}}
             with fiona.open(path, "w", driver="GPKG", layer="typed", crs="EPSG:4326", schema=schema) as output:
                 for index, value in enumerate([2 ** 53 + 1, 2 ** 63 - 1]):
                     output.write({"geometry": {"type": "Point", "coordinates": [index, index]},
-                                  "properties": {"id": value, "nullable_id": None if index == 0 else -(2 ** 63), "state": "PA", "name": " "}})
+                                  "properties": {"id": value, "nullable_id": None if index == 0 else -(2 ** 63), "state": region, "name": " "}})
             manifest = {"schema_version": 1, "processor": "HIFLD Next", "code_commit": "synthetic-fixture-only",
                         "unsupported_output_formats": {"shapefile_zip": "Synthetic int64/null/text has no verified lossless DBF rule",
                                                        "pmtiles": "Synthetic archival fixture has no approved visualization comparison rule"},
                         "inputs": [{"input_id": "synthetic", "producer": "Synthetic fixture", "host": "example.invalid",
                                     "role": "producer_publication", "canonical_url": "https://example.invalid/synthetic",
-                                    "retrieval_url": "https://example.invalid/synthetic", "release_date_unknown_reason": "synthetic fixture",
+                                    "retrieval_url": "https://example.invalid/synthetic", "requested_url": "https://example.invalid/synthetic",
+                                    "observed_final_url": "https://example.invalid/synthetic", "release_date_unknown_reason": "synthetic fixture",
                                     "retrieved_at": "2026-10-19T00:00:00Z", "sha256": sha256_file(path), "bytes": path.stat().st_size,
-                                    "license": "synthetic", "attribution": "Synthetic fixture"}],
+                                    "license": "synthetic", "attribution": "Synthetic fixture"},
+                                   {"input_id": "regions", "producer": "Synthetic Region Agency", "host": "example.invalid", "role": "producer_publication",
+                                    "canonical_url": "https://example.invalid/regions", "retrieval_url": "https://example.invalid/regions.csv",
+                                    "request_url": "https://example.invalid/regions-latest", "final_url": "https://example.invalid/regions.csv",
+                                    "release_date_unknown_reason": "synthetic fixture; no producer release date",
+                                    "retrieved_at": "2026-10-19T00:00:00Z", "sha256": sha256_file(auxiliary), "bytes": auxiliary.stat().st_size,
+                                    "license": "Synthetic auxiliary notice", "attribution": "Synthetic Region Agency"}],
                         "transformations": [{"name": "archival format conversion", "parameters": {"no_real_acceptance": True}}]}
             staging.write_key(f"{prefix}/metadata/source_manifest.json", json.dumps(manifest).encode())
         return {"classification": "synthetic source", "rows": 2}
@@ -194,6 +207,26 @@ def run(work):
         for key, data in staged_before.items():
             staging.write_key(key, data)
         registry.write_bytes(registry_before)
+        invalid_manifest = json.loads(staging.read_key(f"{prefix}/metadata/source_manifest.json"))
+        invalid_manifest["inputs"][0]["retrieved_at"] = "not-a-date"
+        staging.write_key(f"{prefix}/metadata/source_manifest.json", json.dumps(invalid_manifest).encode())
+        invalid_registry = json.loads(registry_before)
+        invalid_entry = invalid_registry["releases"][0]
+        manifest_key = f"{prefix}/metadata/source_manifest.json"
+        for inventory in ["staged_objects", "published_objects"]:
+            invalid_entry[inventory][manifest_key] = staging.sha256_key(manifest_key)
+        invalid_entry["provenance_sha256"] = staging.sha256_key(manifest_key)
+        registry.write_text(json.dumps(invalid_registry))
+        try:
+            _copy_version_files(staging, published, "synthetic-native", "typed", "v0.0.0-fixture")
+        except ReleaseApprovalError as exc:
+            assert "retrieved_at" in str(exc), str(exc)
+        else:
+            raise AssertionError("Malformed provenance unexpectedly promoted")
+        assert before == {key: published.object_snapshot(key) for key in published.list_prefix()}
+        for key, data in staged_before.items():
+            staging.write_key(key, data)
+        registry.write_bytes(registry_before)
         state["inject_drift"] = True
         failure = job.execute_in_process(instance=instance, partition_key=prefix, raise_on_error=False)
         assert not failure.success
@@ -201,7 +234,7 @@ def run(work):
         assert state["report"]["status"] in {"fail", "blocked"}
         outcome = {"classification": "actual local synthetic full graph; no real baseline acceptance", "unapproved_run_id": unapproved.run_id,
                    "success_run_id": success.run_id, "failed_drift_run_id": failure.run_id, "published_objects": len(before),
-                   "accepted_objects_unchanged": True, "candidate_evidence_preserved": True, "repinned_false_derivation_blocked": True, "dagster_home": str(home),
+                   "accepted_objects_unchanged": True, "candidate_evidence_preserved": True, "repinned_false_derivation_blocked": True, "invalid_provenance_blocked": True, "source_input_count": 2, "dagster_home": str(home),
                    "archival_formats": ["geopackage", "geoparquet"], "evidenced_skips": ["pmtiles", "shapefile_zip"]}
         (work / "integration_result.json").write_text(json.dumps(outcome, indent=2) + "\n")
         return outcome

@@ -13,6 +13,8 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from uuid import uuid4
 
+from dagster_hifld.provenance import INPUT_URL_FIELDS, validate_provenance
+
 CATALOG_APPLICATION_ID = 0x4849464C
 CATALOG_SCHEMA_VERSION = 2
 PORTOLAN_PROFILE_URI = "https://portolan.dev/profile/0.2"
@@ -160,6 +162,8 @@ class CatalogRecord:
     source_modified_date: str | None = None
     temporal_start: str | None = None
     temporal_end: str | None = None
+    source_provenance: dict[str, object] | None = None
+    metadata_assets: tuple[AssetRecord, ...] = ()
 
     @property
     def collection_path(self) -> str:
@@ -454,7 +458,7 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
         "UPDATE files SET latest_version = ? WHERE file_path = ?",
         (record.version_label, record.file_path),
     )
-    for asset in record.assets:
+    for asset in (*record.assets, *record.metadata_assets):
         format_key, media_type, is_spatial = _format_definition(asset)
         connection.execute(
             "INSERT OR IGNORE INTO formats VALUES (?, ?, ?, ?)",
@@ -812,20 +816,29 @@ def _is_absolute_href(href: str) -> bool:
 
 def _providers(record: CatalogRecord) -> list[dict[str, object]]:
     providers: list[dict[str, object]] = []
-    if record.provider and record.provider != HIFLD_NEXT_HOST_NAME:
+    if record.source_provenance is not None:
+        validate_provenance(record.source_provenance)
+        seen = set()
+        for item in record.source_provenance["inputs"]:
+            producer = item["producer"]
+            if producer not in seen:
+                providers.append({"name": producer, "roles": ["producer"]})
+                seen.add(producer)
+            if item["role"] != "producer_publication":
+                distributor = item.get("distributor") or item["host"]
+                if distributor not in seen:
+                    providers.append({"name": distributor, "roles": ["host"]})
+                    seen.add(distributor)
+    elif record.provider and record.provider != HIFLD_NEXT_HOST_NAME:
         providers.append({"name": record.provider, "roles": ["producer"]})
-    providers.append(
-        {
-            "name": HIFLD_NEXT_HOST_NAME,
-            "roles": ["host"],
-            "url": HIFLD_NEXT_HOST_URL,
-        }
-    )
+    providers.append({"name": HIFLD_NEXT_HOST_NAME,
+                      "roles": ["processor", "host"] if record.source_provenance is not None else ["host"],
+                      "url": HIFLD_NEXT_HOST_URL})
     return providers
 
 
 def _has_source_producer(record: CatalogRecord) -> bool:
-    return bool(record.provider and record.provider != HIFLD_NEXT_HOST_NAME)
+    return bool(record.source_provenance or (record.provider and record.provider != HIFLD_NEXT_HOST_NAME))
 
 
 def _source_dates(record: CatalogRecord) -> dict[str, object]:
@@ -938,6 +951,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
             "title": asset.title,
             "roles": list(asset.roles),
             "file:size": asset.size_bytes,
+            **({"hifld:object_key": asset.object_key} if asset.object_key else {}),
             **(
                 {"file:checksum": asset.checksum_multihash}
                 if asset.checksum_multihash is not None
@@ -948,7 +962,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
                 )
             ),
         }
-        for asset in record.assets
+        for asset in (*record.assets, *record.metadata_assets)
     }
     links: list[dict[str, object]] = [
         {
@@ -974,6 +988,17 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
             }
         )
         links.append({"rel": "derived_from", "href": record.source_url})
+    if record.source_provenance is not None:
+        validate_provenance(record.source_provenance)
+        for item in record.source_provenance["inputs"]:
+            for field in INPUT_URL_FIELDS:
+                relation = "derived_from" if field == "canonical_url" else "via"
+                if item.get(field):
+                    links.append({"rel": relation, "href": item[field], "title": f"{item['input_id']}: {item['producer']}",
+                                  "hifld:input_id": item["input_id"], "hifld:input_url_role": field})
+        for asset in record.metadata_assets:
+            links.append({"rel": "via", "href": asset.href, "type": asset.media_type, "title": asset.title,
+                          "hifld:metadata_asset": asset.key})
     pmtiles_assets = [asset for asset in record.assets if asset.format_key == "pmtiles"]
     for asset in pmtiles_assets:
         links.append(
@@ -1082,6 +1107,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
             "columns_hash": record.source_columns_hash,
             "provenance": record.quality_provenance,
         },
+        **({"hifld:provenance": record.source_provenance, "hifld:processor": "HIFLD Next"} if record.source_provenance is not None else {}),
         "hifld:agency": record.agency,
         "hifld:office": record.office,
         "hifld:metadata_sources": list(record.metadata_sources),

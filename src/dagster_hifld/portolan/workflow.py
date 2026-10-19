@@ -21,14 +21,16 @@ from shapely import from_wkb, total_bounds
 
 from dagster_hifld.assets.publish import run_local_version_pipeline
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
-from dagster_hifld.release_approval import require_generated_object_approval
+from dagster_hifld.release_approval import _storage_identity, require_generated_object_approval, verifier_implementation_sha256
+from dagster_hifld.evidence_io import validate_evidence_directory, write_json_atomic
 from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
     StorageObjectSnapshot,
 )
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
-from dagster_hifld.source_manifest import inventory_source_publisher
+from dagster_hifld.source_manifest import inventory_source_publisher, load_resolved_source_manifest
+from dagster_hifld.provenance import provenance_projection
 
 from .catalog import (
     HIFLD_ARCHIVE_LICENSE_HREF,
@@ -42,6 +44,7 @@ from .catalog import (
     version_sort_key,
 )
 from .pmtiles import extract_vector_layer_ids
+from .provenance import attach_published_provenance, verify_prepared_metadata_dependencies
 from .release import ReleasePointer
 from .thumbnail import render_geoparquet_thumbnail
 from .validation import normalize_candidate_tree, validate_candidate_tree
@@ -654,6 +657,8 @@ def _prepare_portolan_record(
         )
     else:
         published_data = published_base
+    # Validate authored modern claims before conversion or any promotion.
+    provenance_projection(load_resolved_source_manifest(staging_storage, request.dataset_slug, request.file_slug, request.version).metadata)
     if convert:
         run_local_version_pipeline(
             staging_storage,
@@ -853,7 +858,7 @@ def _prepare_portolan_record(
         ),
     }
     inventory_match_value = source_dictionary.get("inventory_match_type")
-    return CatalogRecord(
+    record = CatalogRecord(
         request.collection_slug,
         request.dataset_slug,
         request.file_slug,
@@ -941,6 +946,8 @@ def _prepare_portolan_record(
         temporal_start=normalize_stac_datetime(source_dictionary.get("temporal_start")),
         temporal_end=normalize_stac_datetime(source_dictionary.get("temporal_end")),
     )
+
+    return attach_published_provenance(record, published_data, version_prefix, request.public_root)
 
 
 def _source_publisher_from_storage(
@@ -1073,12 +1080,19 @@ def _publish_catalog(
     return generation
 
 
-def _publish_release_catalog(
-    records: tuple[CatalogRecord, ...],
-    request: PortolanPublishRequest,
-    published_base: PublishedStorageResource,
-) -> str:
-    """Publish one immutable STAC/SQLite bundle then conditionally commit it."""
+def prepare_portolan_release_bundle(
+    records: tuple[CatalogRecord, ...], request: PortolanPublishRequest,
+    published_base: PublishedStorageResource, plan_dir: Path,
+) -> dict:
+    """Prepare exact immutable STAC/SQLite/pointer bytes without public writes.
+
+    A new empty hardened local folder retains the generated UUID, timestamp,
+    schemas and checksums for independent approval; apply never regenerates them.
+    """
+    validate_evidence_directory(plan_dir)
+    if plan_dir.exists() and any(plan_dir.iterdir()):
+        raise ValueError("Use a new empty catalog plan directory")
+    plan_dir.mkdir(parents=True, exist_ok=True)
     published = published_base.model_copy(update={"prefix": ""})
     previous_pointer_snapshot = published.object_snapshot(RELEASE_POINTER_KEY)
     previous_pointer = (
@@ -1089,81 +1103,158 @@ def _publish_release_catalog(
     generation = str(uuid4())
     release_prefix = f"releases/{generation}"
     release_root = f"{request.public_root.rstrip('/')}/{release_prefix}"
-    with tempfile.TemporaryDirectory(prefix="hifld-portolan-release-") as temporary:
-        root = Path(temporary)
-        previous_documents = _seed_release_bundle(published, root, previous_pointer)
-        database = root / "_catalog" / "catalog.sqlite"
-        database.parent.mkdir(parents=True, exist_ok=True)
-        root_href = f"{release_root}/catalog.json"
-        if database.exists():
-            try:
-                database_generation = update_catalog_sqlite(
-                    database, records, catalog_generation=generation
-                )
-            except ValueError:
-                if previous_pointer is not None:
-                    raise
-                database.unlink()
-                database_generation = build_catalog_sqlite(
-                    database,
-                    records,
-                    catalog_generation=generation,
-                    root_href=root_href,
-                )
-        else:
+    root = plan_dir / "tree"
+    root.mkdir()
+    previous_documents = _seed_release_bundle(published, root, previous_pointer)
+    database = root / "_catalog" / "catalog.sqlite"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    root_href = f"{release_root}/catalog.json"
+    if database.exists():
+        try:
+            database_generation = update_catalog_sqlite(
+                database, records, catalog_generation=generation
+            )
+        except ValueError:
+            if previous_pointer is not None:
+                raise
+            database.unlink()
             database_generation = build_catalog_sqlite(
                 database,
                 records,
                 catalog_generation=generation,
                 root_href=root_href,
             )
-        if database_generation != generation:
-            raise RuntimeError("Catalog generation did not match release generation.")
-        render_portolan_tree(root, records, public_root=release_root)
-        _merge_and_rebase_release_documents(
-            root,
-            previous_documents,
-            (
-                f"{request.public_root.rstrip('/')}/releases/{previous_pointer.generation}"
-                if previous_pointer is not None
-                else request.public_root
-            ),
-            release_root,
-            previous_release=previous_pointer is not None,
+    else:
+        database_generation = build_catalog_sqlite(
+            database,
+            records,
+            catalog_generation=generation,
+            root_href=root_href,
         )
-        normalize_candidate_tree(
-            root,
-            source_publisher=lambda version_path: _source_publisher_from_storage(
-                published, version_path
-            ),
-        )
-        _sync_corrected_spatial_extents(database, root)
-        validate_candidate_tree(root)
-        pending_documents = []
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            relative_path = path.relative_to(root).as_posix()
-            pending_documents.append((f"{release_prefix}/{relative_path}", path.read_bytes()))
-        database_bytes = database.read_bytes()
-        pointer = ReleasePointer(
-            generation=generation,
-            catalog_key=f"{release_prefix}/{CATALOG_KEY}",
-            root_key=f"{release_prefix}/catalog.json",
-            sha256=hashlib.sha256(database_bytes).hexdigest(),
-            size_bytes=len(database_bytes),
-            published_at=_release_timestamp(),
-        )
-        for key, body in [*pending_documents, (RELEASE_POINTER_KEY, pointer.to_bytes())]:
-            require_generated_object_approval(published, key, body)
-        for key, body in pending_documents:
-            published.write_key_if_unchanged(key, body, None)
-        published.write_key_if_unchanged(
-            RELEASE_POINTER_KEY,
-            pointer.to_bytes(),
-            previous_pointer_snapshot,
-        )
-    return generation
+    if database_generation != generation:
+        raise RuntimeError("Catalog generation did not match release generation.")
+    render_portolan_tree(root, records, public_root=release_root)
+    _merge_and_rebase_release_documents(
+        root,
+        previous_documents,
+        (
+            f"{request.public_root.rstrip('/')}/releases/{previous_pointer.generation}"
+            if previous_pointer is not None
+            else request.public_root
+        ),
+        release_root,
+        previous_release=previous_pointer is not None,
+    )
+    normalize_candidate_tree(
+        root,
+        source_publisher=lambda version_path: _source_publisher_from_storage(
+            published, version_path
+        ),
+    )
+    _sync_corrected_spatial_extents(database, root)
+    validate_candidate_tree(root)
+    pending_documents = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative_path = path.relative_to(root).as_posix()
+        pending_documents.append((f"{release_prefix}/{relative_path}", path.read_bytes()))
+    database_bytes = database.read_bytes()
+    pointer = ReleasePointer(
+        generation=generation,
+        catalog_key=f"{release_prefix}/{CATALOG_KEY}",
+        root_key=f"{release_prefix}/catalog.json",
+        sha256=hashlib.sha256(database_bytes).hexdigest(),
+        size_bytes=len(database_bytes),
+        published_at=_release_timestamp(),
+    )
+    pointer_file = plan_dir / "pointer.json"
+    pointer_file.write_bytes(pointer.to_bytes())
+    objects = [{"key": key, "path": "tree/" + key.removeprefix(release_prefix + "/"),
+                "sha256": hashlib.sha256(contents).hexdigest(), "bytes": len(contents)} for key, contents in pending_documents]
+    objects.append({"key": RELEASE_POINTER_KEY, "path": "pointer.json", "sha256": hashlib.sha256(pointer.to_bytes()).hexdigest(), "bytes": len(pointer.to_bytes())})
+    dependencies = {}
+    for record in records:
+        for asset in record.metadata_assets:
+            if not asset.object_key or not asset.sha256:
+                raise ValueError("Prepared provenance metadata requires actual object byte pins")
+            snapshot = published.object_snapshot(asset.object_key)
+            if (snapshot is None or snapshot.size != asset.size_bytes or published.sha256_key(asset.object_key) != asset.sha256
+                    or published.object_snapshot(asset.object_key) != snapshot):
+                raise ValueError("Published metadata differs from prepared provenance")
+            dependencies[asset.object_key] = {"sha256": asset.sha256, "bytes": asset.size_bytes, "snapshot": snapshot.to_dict()}
+    plan = {"schema_version": 1, "classification": "prepared bytes; no acceptance", "generation": generation,
+            "destination": _storage_identity(published), "implementation_sha256": verifier_implementation_sha256(),
+            "previous_pointer_snapshot": previous_pointer_snapshot.to_dict() if previous_pointer_snapshot else None,
+            "objects": objects, "metadata_dependencies": dependencies}
+    write_json_atomic(plan_dir / "bundle_plan.json", plan)
+    return plan
+
+
+def apply_portolan_release_bundle(plan_dir: Path, published_base: PublishedStorageResource) -> str:
+    """Preflight every prepared object, then conditionally select the bundle last."""
+    validate_evidence_directory(plan_dir)
+    plan = json.loads((plan_dir / "bundle_plan.json").read_text())
+    published = published_base.model_copy(update={"prefix": ""})
+    if (plan.get("schema_version") != 1 or plan.get("destination") != _storage_identity(published)
+            or plan.get("implementation_sha256") != verifier_implementation_sha256()):
+        raise ValueError("Catalog plan destination/implementation mismatch")
+    objects = plan.get("objects")
+    if not isinstance(objects, list) or not objects:
+        raise ValueError("Missing exact prepared catalog inventory")
+    selected = []
+    keys, paths = set(), set()
+    for descriptor in objects:
+        key, relative = descriptor["key"], descriptor["path"]
+        if (not isinstance(key, str) or not key or Path(key).is_absolute() or ".." in Path(key).parts
+                or Path(key).as_posix() != key or "\\" in key):
+            raise ValueError("Unsafe prepared publication object key")
+        path = Path(relative)
+        if path.is_absolute() or path.as_posix() != relative or any(part in {".", ".."} for part in path.parts) or relative in paths or key in keys:
+            raise ValueError("Unsafe or duplicate prepared catalog object")
+        path = plan_dir / path
+        contents = path.read_bytes()
+        if len(contents) != descriptor.get("bytes") or hashlib.sha256(contents).hexdigest() != descriptor.get("sha256"):
+            raise ValueError("Prepared catalog bytes changed")
+        if key != RELEASE_POINTER_KEY and not key.startswith(f"releases/{plan['generation']}/"):
+            raise ValueError("Prepared object is outside immutable release")
+        selected.append((key, contents))
+        keys.add(key); paths.add(relative)
+    actual = {path.relative_to(plan_dir).as_posix() for path in plan_dir.rglob("*") if path.is_file()}
+    if actual != paths | {"bundle_plan.json"}:
+        raise ValueError("Prepared catalog inventory has missing or extra files")
+    pointer_pairs = [(key, contents) for key, contents in selected if key == RELEASE_POINTER_KEY]
+    if len(pointer_pairs) != 1:
+        raise ValueError("Prepared catalog requires one release pointer")
+    pointer = ReleasePointer.parse(pointer_pairs[0][1])
+    bodies = dict(selected)
+    if (pointer.generation != plan["generation"] or pointer.catalog_key not in bodies or pointer.root_key not in bodies
+            or hashlib.sha256(bodies[pointer.catalog_key]).hexdigest() != pointer.sha256 or len(bodies[pointer.catalog_key]) != pointer.size_bytes
+            or _catalog_generation(bodies[pointer.catalog_key]) != pointer.generation):
+        raise ValueError("Prepared pointer does not match the actual catalog")
+    validate_candidate_tree(plan_dir / "tree")
+    current = published.object_snapshot(RELEASE_POINTER_KEY)
+    if (current.to_dict() if current else None) != plan.get("previous_pointer_snapshot"):
+        raise ValueError("Release pointer changed since planning")
+    verify_prepared_metadata_dependencies(plan_dir / "tree", published, plan.get("metadata_dependencies", {}))
+    # Approval is external configuration. A plan can never approve itself.
+    for key, contents in selected:
+        require_generated_object_approval(published, key, contents)
+        if key != RELEASE_POINTER_KEY and published.object_exists(key):
+            raise ValueError("Prepared immutable release object already exists")
+    for key, contents in selected:
+        if key != RELEASE_POINTER_KEY:
+            published.write_key_if_unchanged(key, contents, None)
+    published.write_key_if_unchanged(RELEASE_POINTER_KEY, pointer_pairs[0][1], current)
+    return pointer.generation
+
+
+def _publish_release_catalog(records: tuple[CatalogRecord, ...], request: PortolanPublishRequest,
+                             published_base: PublishedStorageResource) -> str:
+    with tempfile.TemporaryDirectory(prefix="hifld-portolan-release-") as temporary:
+        directory = Path(temporary) / "plan"
+        prepare_portolan_release_bundle(records, request, published_base, directory)
+        return apply_portolan_release_bundle(directory, published_base)
 
 
 def rollback_portolan_release(

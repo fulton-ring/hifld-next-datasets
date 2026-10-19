@@ -87,8 +87,10 @@ No real accepted-baseline pilot exists. The native-reader follow-up below delive
 pinned GeoPackage, Parquet/GeoParquet and Arrow IPC normalization, homogeneous
 multi-file rosters and full retained-row field summaries. Upstream pagination
 proof, all transformation/lineage reconciliation rules, additional native source
-formats, full domain/quality accounting, all-source STAC attribution/links and
-published metadata roundtrip remain unfinished. The registry still requires manual acceptance of exact changes and terminal
+formats, full domain/quality accounting and general source→terminal transformation rules
+remain unfinished. The direct modern publication path now delivers all-input
+STAC attribution, links and metadata roundtrip below; the inventory-only builder
+explicitly refuses modern inputs without exact metadata byte pins. The registry still requires manual acceptance of exact changes and terminal
 object bytes. The JSONL mode explicitly retains a reviewed-normalization trust
 scope; native mode now also performs original-object re-derivation and comparison
 replay at the release boundary, as described below. Neither mode supplies source
@@ -97,15 +99,17 @@ acceptance or the remaining extraction/transformation rules.
 SQLite cache/record/scratch limits and measured scaling bound this comparator's
 engineering scope; they do not establish an OS-enforced RSS or disk quota. Quota
 checks occur between operations and may overshoot by one record/SQLite allocation.
-Conversion, catalogs and downloads have their own memory behavior. Current
-Portolan random-generation bundles do not yet provide a reusable pre-review
-planning/replay command for exact catalog-byte approval, so they remain blocked
-without an independently prepared exact bundle decision.
+Conversion, catalogs and downloads have their own memory behavior. Persistent immutable Portolan release planning now retains exact UUID, timestamp,
+SQLite, STAC and pointer bytes for an external decision. The one-shot path still
+blocks without exact acceptance; the new public prepare/apply APIs avoid
+regenerating bytes after review. Legacy in-place root-catalog publication retains
+its existing gates and does not have this persistent planning API.
 
 Tests labeled mechanics isolate the acceptance boundary explicitly; the new
 boundary and actual Dagster integration tests use no approval mocks. Synthetic
-acceptance is a test fixture, not approval of any HIFLD dataset. The full suite
-still cannot pass without sibling `hifld-next-iac/environments/prod/dagster.tf`.
+acceptance is a test fixture, not approval of any HIFLD dataset. The historical full-suite runs below lacked sibling
+`hifld-next-iac/environments/prod/dagster.tf`. The final provenance run uses the
+restored unmodified real sibling source snapshot and passes as recorded below.
 
 ## Executed validation
 
@@ -346,3 +350,86 @@ captured `http_status` is non-2xx. Separately retained diagnostic attempts remai
 untrusted evidence and do not require fabricated successful-source metadata.
 The `provenance_projection` helper preserves complete selected input/code/lineage
 claims for the upcoming dictionary/STAC integration; it performs no acceptance.
+
+
+## Complete input metadata and reviewable immutable catalog bundles
+
+Modern source resolution validates the complete metadata after dataset/file/
+version input merging. The generated dictionary retains every input and explicit
+empty transformation list. `metadata/resolved_provenance.json` is a complete
+projection of processor, inputs, transformations, code identity and lineage.
+Content-addressed snapshots preserve every authored manifest layer without
+overwriting older receipts; `manifest_layers` records its original hash, source
+key, input identities, processor/code and transformation claims. Raw layer
+metadata is retained as evidence, not upgraded into source authority. Catalog
+metadata writes reject linked local output trees and use conditional atomic
+replacement rather than truncating aliases.
+
+The release boundary checks the resolved manifest and dictionary against current
+complete source metadata, requires all original layer snapshots to be pinned and
+downloadable, and blocks missing/lost/changed input attribution. Diagnostic failed
+attempts remain separate evidence. No producer/license/date/delegation decision
+is inferred. Modern metadata is structurally required before conversion or
+promotion in the direct Portolan workflow.
+
+`portolan.provenance.attach_published_provenance` reads actual published metadata
+and binds its checksummed byte assets to a `CatalogRecord`. STAC retains complete
+input objects with original notices, request/final URL spellings, retrieval dates,
+unknown release explanations, transformations and code identity. Every producer
+appears separately from the HIFLD Next processor/host. Canonical URLs receive
+`derived_from` links; retrieval/request/final URL aliases each receive explicit
+input-scoped links. All metadata files, original layer snapshots, comparison
+receipts and lineage sidecars become checksummed metadata assets and SQLite asset
+rows. Declared roles, input links and complete metadata assets are validated.
+The inventory-only importer explicitly fails modern multi-input records without
+original metadata SHA-256 pins; it never silently projects them into legacy
+single-publisher records. The existing archive-only mode stays distinct.
+
+`prepare_portolan_release_bundle(records, request, published, plan_dir)` writes a
+new local plan containing exact immutable STAC/SQLite/pointer bytes, destination,
+implementation and metadata dependency snapshots. It performs no public write or
+acceptance. `apply_portolan_release_bundle(plan_dir, published)` validates the
+whole file roster and byte hashes, STAC semantics, actual published metadata
+contents and dependency snapshots, current pointer identity and independently
+accepted bytes for every object. It writes a new immutable release and changes
+the pointer last. Missing approval, changed bytes, removed dependency labels,
+conflicting metadata or an omitted input fail before publication. It does not
+regenerate UUIDs/timestamps/SQLite after review. Partial immutable bundles from a
+storage failure are retained; the accepted pointer stays unchanged unless its
+final conditional update succeeds. Arbitrary concurrent filesystem directory
+replacement and hard OS quotas remain outside this local trust/engineering scope.
+
+Reproduce the actual isolated synthetic roundtrip (fixture-only decisions):
+
+```sh
+PYTHONPATH=src:. uv run python -m scripts.verification.provenance_roundtrip_local \
+  --work-dir /workspace/work/new-empty-synthetic-roundtrip
+```
+
+The final run retained two fixture inputs and roundtripped all 19 metadata assets
+and 19 corresponding SQLite rows. Missing bundle approval, removed dependency
+labels and deliberately repinned omitted-input STAC were blocked while all 40
+published fixture objects remained unchanged. Its native full graph published
+22 fixture objects only after an exact synthetic decision; bad provenance, false
+native derivation and extra-shard attempts preserved them. The pointer selected
+generation `55b31d63-dc3d-49ff-8da1-f1a411bfc3f1`. No real acceptance or production
+write occurred.
+
+Final local repository suite: **504 tests, 503 passed, one opt-in production-write
+integration skipped, no errors**. The real sibling IaC snapshot at commit
+`56aa10757129c457c530d707d9a40bae13e0907f` was present; no fixture replacement or
+infrastructure command was used. Historical missing-IaC results remain unchanged
+as historical evidence. This is local validation, not a CI assertion.
+
+Seven current canonical source manifests pass structural compatibility. Both
+provided AIANNH #8 captures retain processor `HIFLD Next draft AIANNH source
+adapter`, which fails the already established exact `HIFLD Next` processor rule.
+A processor-only in-memory diagnostic found no additional structural failure;
+source-owned repair was requested without modifying captures or approving any
+source. This actual blocked case is recorded explicitly, not counted as valid.
+
+The bounded [evidence record](../evidence/2026-10-19-provenance-stac-roundtrip.json)
+pins implementation bytes, commands, logs, exact run IDs, metadata roundtrip and
+compatibility outcomes. Real accepted pilot/source/contract decisions remain
+external. Additional native formats, complete pagination proof, all transformation
+reconciliation and domain/quality policy still require further implementation.
