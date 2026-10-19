@@ -1,0 +1,400 @@
+{
+  "classification": "Lossless verified archival relocation of closed generated historical copies; original source captures and all final review fixtures remain in place",
+  "observed_at": "2026-10-19T11:08:35.110099+00:00",
+  "original_parent": "/workspace/work/hifld-coordinator/114",
+  "original_roots": [
+    "actual-dagster-6928c8d",
+    "actual-dagster-f9f89b7"
+  ],
+  "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/tsunami114-closed-6928-f9-interrupted-graphs.tar.zst",
+  "archive_bytes": 17345182,
+  "archive_sha256": "8c09891ab34186b1fa25637825bcf028f4af4c224a8d23ba4adc2a3cd7a83d33",
+  "files": {
+    "actual-dagster-6928c8d/execution-progress.json": {
+      "bytes": 5337,
+      "sha256": "d13f18332cde58ed5ddd21ea7ebaf7d4ee64ac4f9ee914a5afb717440484fa2a"
+    },
+    "actual-dagster-6928c8d/dagster/dagster.yaml": {
+      "bytes": 28,
+      "sha256": "f8805dc9e6f614c7063da7dcf3562d13a17819c1c5a14d3156d9974de6353777"
+    },
+    "actual-dagster-6928c8d/published/synthetic-accepted-fixture.bin": {
+      "bytes": 47,
+      "sha256": "f056b1a4460c9dc83d3222ec07592629fdae54fdcd6efdf36d17aeaa750de038"
+    },
+    "actual-dagster-6928c8d/dagster/schedules/schedules.db": {
+      "bytes": 77824,
+      "sha256": "25ac9aaa2293ba285b03c69f271abe586784534b19ccfbe187afc7efe7ebf30f"
+    },
+    "actual-dagster-6928c8d/dagster/history/runs.db": {
+      "bytes": 135168,
+      "sha256": "5bf0da8e7c5acbfd9ca8c2dc4f8f1e5eecb3690551ca8af160e65170cadc0311"
+    },
+    "actual-dagster-6928c8d/dagster/storage/4d325def-16a8-49e4-903c-676c4b398918/compute_logs/hbebdoga.complete": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-6928c8d/dagster/storage/4d325def-16a8-49e4-903c-676c4b398918/compute_logs/hbebdoga.err": {
+      "bytes": 2168,
+      "sha256": "8ef2cd97ca257d1812ee82a69a85c819ae790f54d6603a739c644d4a965dbbcd"
+    },
+    "actual-dagster-6928c8d/dagster/storage/4d325def-16a8-49e4-903c-676c4b398918/compute_logs/hbebdoga.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-6928c8d/dagster/storage/e34e0070-18eb-46e6-a073-c06cf0cebcb9/compute_logs/smvxrhga.err": {
+      "bytes": 5327,
+      "sha256": "17f7a4082842be4583182f321d31ad6c0c12380278bcf8fcf8201d7d2d7e52e7"
+    },
+    "actual-dagster-6928c8d/dagster/storage/e34e0070-18eb-46e6-a073-c06cf0cebcb9/compute_logs/smvxrhga.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-6928c8d/dagster/storage/ingest/historical-tsunami-observations/historical-tsunami-observations": {
+      "bytes": 303,
+      "sha256": "01404d196b261735857a7c7637d5f2515bd431b9faade18c20f43ac119de102c"
+    },
+    "actual-dagster-6928c8d/dagster/history/runs/e34e0070-18eb-46e6-a073-c06cf0cebcb9.db": {
+      "bytes": 143360,
+      "sha256": "73bee82c157f511126b663f17ce4b3fc6db758376b599698acc8792bb9cfe777"
+    },
+    "actual-dagster-6928c8d/dagster/history/runs/index.db": {
+      "bytes": 135168,
+      "sha256": "5bbf2f30be979ea202313cd3e7a4694350c5d8d3ea75e511d5093f4fe9b656d1"
+    },
+    "actual-dagster-6928c8d/dagster/history/runs/4d325def-16a8-49e4-903c-676c4b398918.db": {
+      "bytes": 143360,
+      "sha256": "65fa57d3ac0580d97ffd46fad3f1b9252c15e46083d3c71a33e0802f6f7f0cfd"
+    },
+    "actual-dagster-6928c8d/staging/_candidate-construction/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4.json": {
+      "bytes": 171520,
+      "sha256": "ae5773480acd2ea7fd38385dad16ca454b12b7019ed33339d88ecfa57d808fe9"
+    },
+    "actual-dagster-6928c8d/staging/_candidate-first-construction/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4.json": {
+      "bytes": 185,
+      "sha256": "1304e5b1fbd9fa38b827a6420b1f48f67fd44ae82bd7c73db86db55929b503fc"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/.v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4.lock": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/geopackage/historical-tsunami-observations.gpkg": {
+      "bytes": 24678400,
+      "sha256": "3990899f6bb3d5d3d72d624f0a9901189f9c69cbd836bdcd08fcb5da78ea65ed"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/raw/source_http.zip": {
+      "bytes": 4572619,
+      "sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/raw/authority_http.zip": {
+      "bytes": 650448,
+      "sha256": "afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/candidate/typed-source.parquet": {
+      "bytes": 3125663,
+      "sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/geoparquet/historical-tsunami-observations.parquet": {
+      "bytes": 3125663,
+      "sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/processing_identity.json": {
+      "bytes": 10786,
+      "sha256": "79f1f7d54e22c6b4ba523d2465eb853c275b49b96fff591f3937673929b0cfcb"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/physical_numeric_decodes.jsonl.gz": {
+      "bytes": 580877,
+      "sha256": "df6208bb9c01fc540aa18da756a28e5ecd9066a8efcbf241b5749adc9f6b610a"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/observations_source_audit.json": {
+      "bytes": 28966,
+      "sha256": "ef722493748e29624f6a9ffe2472b1c1f5bf294171d60de40986d3f26f5f336e"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/candidate.records.jsonl.gz": {
+      "bytes": 4312810,
+      "sha256": "5d561aef43e4e2c55aa0335bc6c65cb4462b70b62bf784c9e224f65d64c469c6"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/geopackage_source_fidelity.json": {
+      "bytes": 1739,
+      "sha256": "e1f38d9eed9ade6b3982c97d6e0979bdc9002d6e6c77b0fc61032d9469fd9592"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/observations_candidate_ready.json": {
+      "bytes": 2367,
+      "sha256": "23b3827787e34742dcc9f26a3e844e9f6649378b017c97cd8f99e359e42b5c61"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/source_manifest.json": {
+      "bytes": 170902,
+      "sha256": "2ab1ea74641d2f1d97932878594609c6daa7233f1a6f619f8a34e49557e23082"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/baseline_comparison.json": {
+      "bytes": 185,
+      "sha256": "3c5c7179172e10f3f7da0b9e35616fae78c28d0252cc986f7c82bcc01496ff26"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/parquet_source_fidelity.json": {
+      "bytes": 1739,
+      "sha256": "e1f38d9eed9ade6b3982c97d6e0979bdc9002d6e6c77b0fc61032d9469fd9592"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/proposed_source_contract.json": {
+      "bytes": 2684,
+      "sha256": "3c00829de1c4fa9e3ca7f8babe7cc5eac7e337b7ee8234747bbbf02180c9e71b"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/source-fidelity/baseline_comparison.md": {
+      "bytes": 364,
+      "sha256": "42c00808a90fb5e7106ad24caa09366db94dff132317636783a41b70410b08c3"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/source-fidelity/baseline_field_changes.jsonl": {
+      "bytes": 3656,
+      "sha256": "64303aed80e3276828920cde1ad8a67e09ac108da0c0b917ba19ec28a6257522"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/source-fidelity/baseline_differences.jsonl": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-6928c8d/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-79f1f7d54e22c6b4/metadata/source-fidelity/baseline_comparison.json": {
+      "bytes": 1844,
+      "sha256": "562486f1f5751caaecb975c28f0554dcc0798928cdf09fc9e6f27cda15c05908"
+    },
+    "actual-dagster-6928c8d/staging/_raw-http-archives/historical-tsunami-observations/36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8/source_http.zip": {
+      "bytes": 4572619,
+      "sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8"
+    },
+    "actual-dagster-6928c8d/staging/_raw-http-archives/historical-tsunami-observations/afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736/authority_http.zip": {
+      "bytes": 650448,
+      "sha256": "afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736"
+    },
+    "actual-dagster-f9f89b7/execution-progress.json": {
+      "bytes": 10460,
+      "sha256": "16e082365922a5c2f28dba600be0a849b3274acd6574d81ec8319cf6dc47780b"
+    },
+    "actual-dagster-f9f89b7/dagster/dagster.yaml": {
+      "bytes": 28,
+      "sha256": "f8805dc9e6f614c7063da7dcf3562d13a17819c1c5a14d3156d9974de6353777"
+    },
+    "actual-dagster-f9f89b7/published/synthetic-accepted-fixture.bin": {
+      "bytes": 47,
+      "sha256": "f056b1a4460c9dc83d3222ec07592629fdae54fdcd6efdf36d17aeaa750de038"
+    },
+    "actual-dagster-f9f89b7/dagster/schedules/schedules.db": {
+      "bytes": 77824,
+      "sha256": "e53ddeeb13098d39050e6d55ad4e5eb07590ce3fb7c6ebc899ff6986db878eb1"
+    },
+    "actual-dagster-f9f89b7/dagster/history/runs.db": {
+      "bytes": 147456,
+      "sha256": "54144e55b7b85df107399e078ffc6ee9194a4aa209297810767013902faf84f8"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/09de7fc0-50df-454d-ac60-c4bdcabbdf95/compute_logs/vjxuxhbc.err": {
+      "bytes": 5585,
+      "sha256": "5d4f40acea3eadecd0511d23c6a7c6e1a5f88644f6d0b0dbff9c1d94cfa87922"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/09de7fc0-50df-454d-ac60-c4bdcabbdf95/compute_logs/vjxuxhbc.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/9e5bd464-6832-41eb-9f7f-fe44882ad488/compute_logs/mbvxvpul.err": {
+      "bytes": 11475,
+      "sha256": "10dbbf85758e19faef203a1a799d772bc0fbbe437cd517850de833a220e9ed20"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/9e5bd464-6832-41eb-9f7f-fe44882ad488/compute_logs/mbvxvpul.complete": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/9e5bd464-6832-41eb-9f7f-fe44882ad488/compute_logs/mbvxvpul.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/b7514364-31f0-4cd7-84c3-8bb463fc68ff/compute_logs/buouankm.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/b7514364-31f0-4cd7-84c3-8bb463fc68ff/compute_logs/buouankm.complete": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/b7514364-31f0-4cd7-84c3-8bb463fc68ff/compute_logs/buouankm.err": {
+      "bytes": 2167,
+      "sha256": "584dca091df60f62ef3c34f26c47e4df128bfc72f8a945add6513793187fa1d8"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/publish/formats/geopackage/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce": {
+      "bytes": 273,
+      "sha256": "cf1f5f5e77ab5b22889d75d201318c4880cd56097be259212b9462f0329e23cd"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/publish/formats/pmtiles/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce": {
+      "bytes": 98,
+      "sha256": "b1429ebc936ad6a7431cad35a022e9f55e57672f0e9cfbec0d15a42cfe57e4a9"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/publish/formats/shapefile_zip/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce": {
+      "bytes": 98,
+      "sha256": "b1429ebc936ad6a7431cad35a022e9f55e57672f0e9cfbec0d15a42cfe57e4a9"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/publish/formats/geoparquet/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce": {
+      "bytes": 276,
+      "sha256": "4b31c06983e6c707095116e374f719a17bfcf6d38c90a40477aa19228ef0a916"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/publish/catalog/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce": {
+      "bytes": 87,
+      "sha256": "c27ee4a64a2bba322e66fe45caf83861e5851be1f2ed9858e8349a16824c1a5d"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/ingest/historical-tsunami-observations/historical-tsunami-observations": {
+      "bytes": 303,
+      "sha256": "6ee0581b649886528dfc01de01adf62f9bc168eb587f446b517131352db7968a"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/e6e22789-2a8d-46fc-93d5-8be9e2a034e6/compute_logs/dinnozzu.complete": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/e6e22789-2a8d-46fc-93d5-8be9e2a034e6/compute_logs/dinnozzu.err": {
+      "bytes": 2168,
+      "sha256": "2f3120d5315c38ca3c250819ea731161b842867bea12e3ea528d14f4dffdee5b"
+    },
+    "actual-dagster-f9f89b7/dagster/storage/e6e22789-2a8d-46fc-93d5-8be9e2a034e6/compute_logs/dinnozzu.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/dagster/history/runs/e6e22789-2a8d-46fc-93d5-8be9e2a034e6.db": {
+      "bytes": 143360,
+      "sha256": "ddd0cd48f9353b75fd4648620adb2b5cb7a48d00f91819b2b0db921a0db8d98b"
+    },
+    "actual-dagster-f9f89b7/dagster/history/runs/b7514364-31f0-4cd7-84c3-8bb463fc68ff.db": {
+      "bytes": 143360,
+      "sha256": "dc214cca4d8eebc27d27983a4ff3f29022c1581bbed773993dbf039555e11ba6"
+    },
+    "actual-dagster-f9f89b7/dagster/history/runs/9e5bd464-6832-41eb-9f7f-fe44882ad488.db": {
+      "bytes": 278528,
+      "sha256": "72aa8f6720c54d0e4e2ddfd76f1a5f8fcd10528b322be196d47bc4422c350e49"
+    },
+    "actual-dagster-f9f89b7/dagster/history/runs/index.db": {
+      "bytes": 253952,
+      "sha256": "f5de5778662582de68b61504663c44b8bc84fcfe3c0ce1eef2d436aeb635a366"
+    },
+    "actual-dagster-f9f89b7/dagster/history/runs/09de7fc0-50df-454d-ac60-c4bdcabbdf95.db": {
+      "bytes": 143360,
+      "sha256": "9ab044c176b81fdd569fb9e535797bcd5609ce152f4b096a41585106a51fb084"
+    },
+    "actual-dagster-f9f89b7/staging/_candidate-construction/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce.json": {
+      "bytes": 171520,
+      "sha256": "3c526210132203ba8e731a344090500afafa48160a89a04f5f60c2a4972c8644"
+    },
+    "actual-dagster-f9f89b7/staging/_candidate-first-construction/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce.json": {
+      "bytes": 185,
+      "sha256": "04c2f870fbc577839b3543c3c44eedc556a707566c3d8c4c26383ea7af46915f"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/.v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce.lock": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/geopackage/historical-tsunami-observations.gpkg": {
+      "bytes": 24678400,
+      "sha256": "3990899f6bb3d5d3d72d624f0a9901189f9c69cbd836bdcd08fcb5da78ea65ed"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/raw/source_http.zip": {
+      "bytes": 4572619,
+      "sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/raw/authority_http.zip": {
+      "bytes": 650448,
+      "sha256": "afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/candidate/typed-source.parquet": {
+      "bytes": 3125663,
+      "sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/geoparquet/historical-tsunami-observations.parquet": {
+      "bytes": 3125663,
+      "sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/quality_manifest.json": {
+      "bytes": 527,
+      "sha256": "e134415dd5f2a5947084012f3ec4f8f999105e0000d6a21377ea780816e632e2"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/processing_identity.json": {
+      "bytes": 10786,
+      "sha256": "e2c1c5d31ff996cebb0fe2369bc91ef46305877d42ad07cdabe8269148a71779"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/data_dictionary.json": {
+      "bytes": 218002,
+      "sha256": "277cc52fd2695d87b7b4fd779e48686aef0e0f7f26038fb0073cc8ced98c8f8b"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/physical_numeric_decodes.jsonl.gz": {
+      "bytes": 580877,
+      "sha256": "df6208bb9c01fc540aa18da756a28e5ecd9066a8efcbf241b5749adc9f6b610a"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/observations_source_audit.json": {
+      "bytes": 28966,
+      "sha256": "ef722493748e29624f6a9ffe2472b1c1f5bf294171d60de40986d3f26f5f336e"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/resolved_provenance.json": {
+      "bytes": 195650,
+      "sha256": "4377a271fb60de9adc8f0960c007c9436a28e30326f2fea309eafb7bcea43fbc"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/candidate.records.jsonl.gz": {
+      "bytes": 4312810,
+      "sha256": "5d561aef43e4e2c55aa0335bc6c65cb4462b70b62bf784c9e224f65d64c469c6"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/geopackage_source_fidelity.json": {
+      "bytes": 1739,
+      "sha256": "e1f38d9eed9ade6b3982c97d6e0979bdc9002d6e6c77b0fc61032d9469fd9592"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/observations_candidate_ready.json": {
+      "bytes": 2367,
+      "sha256": "4e0da9a8e473311f154a906fdeb15c38af5241e149b97e4c47e78a6c84e5dfc4"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/source_manifest.json": {
+      "bytes": 170902,
+      "sha256": "762b08020fe459168b114f4ac5a6ed6b9357358b5d54cde2809f089b58ca1c3f"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/baseline_comparison.json": {
+      "bytes": 185,
+      "sha256": "3c5c7179172e10f3f7da0b9e35616fae78c28d0252cc986f7c82bcc01496ff26"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/parquet_source_fidelity.json": {
+      "bytes": 1739,
+      "sha256": "e1f38d9eed9ade6b3982c97d6e0979bdc9002d6e6c77b0fc61032d9469fd9592"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/proposed_source_contract.json": {
+      "bytes": 2684,
+      "sha256": "3c00829de1c4fa9e3ca7f8babe7cc5eac7e337b7ee8234747bbbf02180c9e71b"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/source-fidelity/baseline_comparison.md": {
+      "bytes": 364,
+      "sha256": "42c00808a90fb5e7106ad24caa09366db94dff132317636783a41b70410b08c3"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/source-fidelity/baseline_field_changes.jsonl": {
+      "bytes": 3656,
+      "sha256": "64303aed80e3276828920cde1ad8a67e09ac108da0c0b917ba19ec28a6257522"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/source-fidelity/baseline_differences.jsonl": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/source-fidelity/baseline_comparison.json": {
+      "bytes": 1844,
+      "sha256": "562486f1f5751caaecb975c28f0554dcc0798928cdf09fc9e6f27cda15c05908"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/source/version_762b08020fe459168b114f4ac5a6ed6b9357358b5d54cde2809f089b58ca1c3f_source_manifest.json": {
+      "bytes": 170902,
+      "sha256": "762b08020fe459168b114f4ac5a6ed6b9357358b5d54cde2809f089b58ca1c3f"
+    },
+    "actual-dagster-f9f89b7/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-e2c1c5d31ff996ce/metadata/source/source_manifest.json": {
+      "bytes": 170902,
+      "sha256": "762b08020fe459168b114f4ac5a6ed6b9357358b5d54cde2809f089b58ca1c3f"
+    },
+    "actual-dagster-f9f89b7/staging/_raw-http-archives/historical-tsunami-observations/36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8/source_http.zip": {
+      "bytes": 4572619,
+      "sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8"
+    },
+    "actual-dagster-f9f89b7/staging/_raw-http-archives/historical-tsunami-observations/afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736/authority_http.zip": {
+      "bytes": 650448,
+      "sha256": "afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736"
+    }
+  },
+  "verified_member_count": 94,
+  "compression_long_window": 27,
+  "restore": [
+    "tar",
+    "--use-compress-program=zstd -d --long=29",
+    "-xf",
+    "/workspace/work/hifld-coordinator/closed-generated-archives/tsunami114-closed-6928-f9-interrupted-graphs.tar.zst",
+    "-C",
+    "/workspace/work/hifld-coordinator/114"
+  ]
+}

@@ -5,7 +5,7 @@ from datetime import datetime,timedelta
 import io,json,os,subprocess,zipfile
 from pathlib import Path
 
-parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=Path,required=True);parser.add_argument('--repo',type=Path,required=True);args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--bounded-history',action='store_true');parser.add_argument('--runtime',type=Path,required=True);parser.add_argument('--repo',type=Path,required=True);args=parser.parse_args()
 repo=args.repo.resolve();runtime=args.runtime.resolve();captures=repo/'docs/dataset-sources/historical-tsunami-observations/evidence/captures'
 seed=json.loads((runtime/'execution.json').read_bytes());original_commit=seed['code_head'];current_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
 assert current_commit!=original_commit
@@ -37,7 +37,7 @@ for name in source.ARCHIVE_NAMES:
    zout.writestr(n,body)
 original_http=source.unpack_captures({n:(captures/(n+'.zip')).read_bytes() for n in source.ARCHIVE_NAMES});new_http=source.unpack_captures({n:(newer/(n+'.zip')).read_bytes() for n in source.ARCHIVE_NAMES})
 assert all(original_http[n][0]==new_http[n][0] for n in original_http)
-report={'approved':False,'fixture_scope':'SYNTHETIC newer receipt timestamps on all82complete REAL bodies; NOT new LIVE retrievals.','original_construction_commit':original_commit,'genuine_docs_only_current_head':current_commit,'changed_git_paths':changed,'runs':[]}
+report={'approved':False,'fixture_scope':'SYNTHETIC newer receipt timestamps on all82complete REAL bodies; NOT new LIVE retrievals.','original_construction_commit':original_commit,'genuine_docs_only_current_head':current_commit,'changed_git_paths':changed,'full_source_history_mode':'bounded_core' if args.bounded_history else 'all_cases','runs':[]}
 config={'ops':{asset.op.name:{'config':{'capture_dir':str(newer)}}}}
 def record(kind,result):
  errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
@@ -56,7 +56,7 @@ with DagsterInstance.get() as instance:
  ready_path=root/'metadata/observations_candidate_ready.json';ready_path.unlink();missing_objects=snapshot(root)
  failed,errors=run('missing_candidate_ready_whole_quarantine');assert not failed.success and any('missing_candidate_ready' in e for e in errors);quarantine_preserved(missing_objects)
  rebuilt,_=run('cold_reconstruction_retains_original_manifest_82receipts');assert rebuilt.success;restored_exact()
- for label in ['bundle_missing','first_marker_missing','both_records_missing']:
+ for label in (['bundle_missing'] if args.bounded_history else ['bundle_missing','first_marker_missing','both_records_missing']):
   before=snapshot(root)
   if label in ['bundle_missing','both_records_missing']:binding.unlink()
   if label in ['first_marker_missing','both_records_missing']:first.unlink()
@@ -66,7 +66,7 @@ with DagsterInstance.get() as instance:
   # Explicit operator-fixture restoration, not source code healing.
   binding.write_bytes(original_binding);first.write_bytes(original_first)
   rebuilt,_=run(label+'_after_explicit_trusted_record_restore');assert rebuilt.success;restored_exact()
- for label,claimed in [('zero_commit','0'*40),('real_reachable_wrong_processing_source','6f79b762f02839f00a51a75a1e002f864d0146ec')]:
+ for label,claimed in ([] if args.bounded_history else [('zero_commit','0'*40),('real_reachable_wrong_processing_source','6f79b762f02839f00a51a75a1e002f864d0146ec')]):
   if label.startswith('real'):
    files=json.loads((root/'metadata/processing_identity.json').read_bytes())['files']
    for path in files:subprocess.run(['git','cat-file','-e',claimed+':'+path],cwd=repo,check=True)
@@ -84,5 +84,5 @@ with DagsterInstance.get() as instance:
   original=(captures/(n+'.zip')).read_bytes();later=(newer/(n+'.zip')).read_bytes()
   assert staging.read_key(source.archive_key(n,later))==later;assert staging.read_key(bundle['archives'][n]['key'])==original and later!=original
  assert snapshot(captures)==original_raw and published_snapshot()==prior
- report.update(status='PASS',all_original_candidate_bytes_and_full_first_manifest_restored=True,all82original_and_synthetic_newer_receipts_retained=True,all_original_inputs_and_prior_local_publication_unchanged=True,missing_record_second_attempts_never_bootstrapped=True)
+ report.update(status='PASS',all_original_candidate_bytes_and_full_first_manifest_restored=True,all82original_and_synthetic_newer_receipts_retained=True,all_original_inputs_and_prior_local_publication_unchanged=True,tested_missing_record_second_attempts_never_bootstrapped=True)
 (runtime/'provenance-recovery.json').write_bytes(source.encode(report));print(source.encode(report).decode())
