@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 import zipfile
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -144,16 +145,20 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
             for attempt in range(3):
                 body=b'';receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
-                    with httpx.Client(follow_redirects=False,timeout=45) as client:
+                    with httpx.Client(follow_redirects=False,timeout=45,headers={'Accept-Encoding':'identity'}) as client:
                         with client.stream('GET',url) as response:
                             receipt.update(final_url=str(response.url),status=response.status_code)
-                            for block in response.iter_bytes(chunk_size=65536):
+                            for block in response.iter_bytes():
                                 body+=block
                                 if len(body)>MAX_BYTES: raise CBRSQuarantineError('response_size_limit')
                             receipt.update(byte_length=len(body),sha256=sha(body))
                             validate_receipt(body,receipt,url)
-                            if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=len(body):
-                                raise CBRSQuarantineError('incomplete_content_length')
+                            wire=response.num_bytes_downloaded
+                            receipt.update(wire_bytes_downloaded=wire,content_encoding=response.headers.get('content-encoding','identity'),response_content_length=response.headers.get('content-length'))
+                            if wire>MAX_BYTES:
+                                raise CBRSQuarantineError('wire_response_size_limit')
+                            if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=wire:
+                                raise CBRSQuarantineError('incomplete_wire_content_length')
                     break
                 except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                     receipt.update(byte_length=len(body),sha256=sha(body),partial=True)
@@ -414,26 +419,31 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     validate_source_verification_payloads(root,b''.join(encode(r) for r in rows))
 
 
-def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
-    """Install one fully built local version atomically; partial builds are never discoverable."""
+
+@contextmanager
+def candidate_lock(storage: StagingStorageResource, prefix: str):
+    """Same cooperating-writer lock for lookup, validation, detach and installation."""
     target=local_candidate_path(storage,prefix)
     target.parent.mkdir(parents=True,exist_ok=True)
-    # Cooperating refresh processes cannot replace an existing version or race its first commit.
-    lock=target.parent/('.'+target.name+'.lock')
-    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
     with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1: raise CBRSQuarantineError('linked_candidate_lock')
+        if os.fstat(held.fileno()).st_nlink!=1:
+            raise CBRSQuarantineError('linked_candidate_lock')
         fcntl.flock(held,fcntl.LOCK_EX)
+        yield target
+    # Keep the tiny lock inode: unlinking permits a third process to bypass a waiter.
+
+
+def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
+    """Install a fully built version; conflicts never enter existing-cache cleanup."""
+    with candidate_lock(storage,prefix) as target:
         if target.exists() or target.is_symlink():
             raise CBRSQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
-            for name,value in payloads.items(): immutable(private,name,value)
+            for name,value in payloads.items():immutable(private,name,value)
             immutable(private,'metadata/cbrs_units_candidate_ready.json',encode(ready))
             os.rename(tmp,target)
-    # Keep the tiny lock inode: unlinking permits a third process to bypass a waiter.
-
-
 
 
 def candidate_inventory(root: Path) -> dict:
@@ -449,32 +459,58 @@ def candidate_inventory(root: Path) -> dict:
     return inventory
 
 
-def quarantine_existing_candidate(storage: StagingStorageResource, prefix: str,
-                                  expected_inode: tuple[int,int], reason: str) -> str:
-    """Atomically retain an invalid existing draft outside discovery, without replacement."""
-    target=local_candidate_path(storage,prefix)
-    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:
-            raise CBRSQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
-        info=target.lstat()
-        if (info.st_dev,info.st_ino)!=expected_inode:
-            raise CBRSQuarantineError('existing_candidate_changed_concurrently_not_quarantined')
-        inventory=candidate_inventory(target)
-        location=f'_quarantine/{SLUG}/versions/{uuid4().hex}'
-        destination=Path(storage.local_dir)/storage._ensure_prefixed(location)
-        destination.mkdir(parents=True,exist_ok=False)
-        os.rename(target,destination/'candidate')
-        immutable(storage,location+'/report.json',encode({'status':'invalid_draft_candidate_quarantined',
-            'approved':False,'original_prefix':prefix,'reason':reason,'inventory':inventory}))
-        return location
+def _quarantine_existing_candidate_locked(storage: StagingStorageResource, prefix: str,
+                                         expected_inode: tuple[int,int], reason: str) -> str:
+    """Caller holds candidate_lock through lookup, validation and this atomic move."""
+    target=local_candidate_path(storage,prefix);info=target.lstat()
+    if (info.st_dev,info.st_ino)!=expected_inode:
+        raise CBRSQuarantineError('existing_candidate_changed_concurrently_not_quarantined')
+    inventory=candidate_inventory(target)
+    location=f'_quarantine/{SLUG}/versions/{uuid4().hex}'
+    destination=Path(storage.local_dir)/storage._ensure_prefixed(location)
+    destination.mkdir(parents=True,exist_ok=False)
+    os.rename(target,destination/'candidate')
+    immutable(storage,location+'/report.json',encode({'status':'invalid_draft_candidate_quarantined',
+        'approved':False,'original_prefix':prefix,'reason':reason,'inventory':inventory}))
+    return location
+
+
+
+
+def reuse_existing_candidate(storage: StagingStorageResource,prefix: str,version: str,records: bytes,
+                             fingerprint: str,rows: list[dict],audit: dict,captures: dict,
+                             identity: dict,members: dict) -> dict | None:
+    with candidate_lock(storage,prefix) as target:
+        if not target.exists():return None
+        info=target.lstat();inode=(info.st_dev,info.st_ino)
+        ready_key=f'{prefix}/metadata/cbrs_units_candidate_ready.json'
+        try:
+            if not storage.object_exists(ready_key):
+                raise CBRSQuarantineError('incomplete_existing_candidate_missing_ready')
+            ready = strict_json(storage.read_key(ready_key))
+            expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', f'geoparquet/{SLUG}.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_units_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json','metadata/baseline_differences.jsonl','metadata/baseline_field_changes.jsonl'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
+            if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
+                raise CBRSQuarantineError('existing_candidate_inventory_conflict')
+            if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
+                    or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
+                raise CBRSQuarantineError('existing_candidate_identity_conflict')
+            for name, expected in ready['objects'].items():
+                key = f'{prefix}/{name}'
+                snapshot = storage.object_snapshot(key)
+                if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
+                    raise CBRSQuarantineError(f'existing_candidate_object_changed:{name}')
+            reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)
+            return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
+                    'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
+
+        except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
+            retained=_quarantine_existing_candidate_locked(storage,prefix,inode,str(exc))
+            raise CBRSQuarantineError(f'{exc}; candidate_quarantined:{retained}') from exc
 
 def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
     body,receipt = captures['official_zip']
-    existing_candidate=None
     try:
         manifest=provenance(captures)
         with tempfile.TemporaryDirectory(prefix='cbrs_units-source-') as tmp:
@@ -486,28 +522,8 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
             capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
             version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
-            ready_key = f'{prefix}/metadata/cbrs_units_candidate_ready.json'
-            target=local_candidate_path(storage,prefix)
-            if target.exists():
-                info=target.lstat();existing_candidate=(prefix,(info.st_dev,info.st_ino))
-                if not storage.object_exists(ready_key):
-                    raise CBRSQuarantineError('incomplete_existing_candidate_missing_ready')
-            if storage.object_exists(ready_key):
-                ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', f'geoparquet/{SLUG}.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_units_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json','metadata/baseline_differences.jsonl','metadata/baseline_field_changes.jsonl'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
-                if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
-                    raise CBRSQuarantineError('existing_candidate_inventory_conflict')
-                if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
-                        or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
-                    raise CBRSQuarantineError('existing_candidate_identity_conflict')
-                for name, expected in ready['objects'].items():
-                    key = f'{prefix}/{name}'
-                    snapshot = storage.object_snapshot(key)
-                    if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
-                        raise CBRSQuarantineError(f'existing_candidate_object_changed:{name}')
-                reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)
-                return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
-                        'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
+            cached=reuse_existing_candidate(storage,prefix,version,records,fingerprint,rows,audit,captures,identity,members)
+            if cached is not None:return cached
             geopackage = directory / f'{SLUG}.gpkg'
             write_geopackage(geopackage,rows)
             source_records = directory / 'source.jsonl'
@@ -549,8 +565,5 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
-        retained_version=None
-        if existing_candidate is not None:
-            retained_version=quarantine_existing_candidate(storage,*existing_candidate,str(exc))
         location = quarantine(storage, body, receipt, str(exc))
-        raise CBRSQuarantineError(f'{exc}; retained:{location}; candidate_quarantined:{retained_version}') from exc
+        raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc

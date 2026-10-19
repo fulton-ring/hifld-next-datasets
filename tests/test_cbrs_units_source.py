@@ -1,5 +1,7 @@
 """Faithful draft mechanics and failure isolation; fixtures do not grant acceptance."""
 import copy
+import gzip
+import threading
 import json
 import tempfile
 import sqlite3
@@ -200,5 +202,72 @@ class CBRSTests(unittest.TestCase):
             reports=list(Path(d,'_quarantine',s.SLUG,'versions').glob('*/report.json'));self.assertEqual(len(reports),1)
             self.assertEqual(s.candidate_inventory(reports[0].parent/'candidate'),before)
             self.assertEqual(json.loads(reports[0].read_bytes())['inventory'],before)
+
+
+    def test_live_transport_counts_wire_bytes_when_server_ignores_identity(self):
+        payload=b'complete original decoded bytes '*100
+        compressed=gzip.compress(payload)
+        seen=[]
+        def handler(request):
+            self.assertEqual(request.headers['Accept-Encoding'],'identity');seen.append(str(request.url))
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed))},stream=httpx.ByteStream(compressed))
+        original_client=httpx.Client
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=lambda **kw:original_client(transport=httpx.MockTransport(handler),**kw)):
+            captures=s.acquire(StagingStorageResource(local_dir=d),None)
+        self.assertEqual(set(seen),set(s.URLS.values()))
+        for body,receipt in captures.values():
+            self.assertEqual(body,payload);self.assertEqual(receipt['wire_bytes_downloaded'],len(compressed))
+            self.assertEqual(receipt['byte_length'],len(payload));self.assertEqual(receipt['content_encoding'],'gzip')
+
+    def test_real_httpx_partial_chunks_retained_without_decode_buffer_loss(self):
+        payload=b'every decoded byte received before reset'
+        class Interrupted(httpx.SyncByteStream):
+            def __iter__(self):
+                yield payload
+                raise httpx.ReadError('synthetic interrupted response')
+        def handler(request):return httpx.Response(200,headers={'Content-Length':str(len(payload)+1)},stream=Interrupted())
+        original_client=httpx.Client
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=lambda **kw:original_client(transport=httpx.MockTransport(handler),**kw)):
+            with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):
+                s.acquire(StagingStorageResource(local_dir=d),None)
+            responses=list(Path(d).rglob('response.body'));self.assertEqual(len(responses),3)
+            self.assertTrue(all(p.read_bytes()==payload for p in responses))
+
+    def test_same_version_lock_preserves_winner_after_invalid_cache_detach(self):
+        # Real stage control flow and real concurrent install, with clearly
+        # synthetic rows/identity; no source or dataset acceptance is implied.
+        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        identity={'synthetic_test_identity':'deterministic-interleaving'}
+        fingerprint=s.sha(s.encode(identity));capture=s.sha(s.encode({n:s.sha(v[0]) for n,v in captures.items()}))
+        version=f'v0.0.0-draft-cbrs20241219-{capture[:16]}-{fingerprint[:16]}';prefix=f'{s.SLUG}/{s.SLUG}/{version}'
+        at_detach=threading.Event();allow_detach=threading.Event();winner_started=threading.Event();winner_done=threading.Event();failures=[]
+        original_detach=s._quarantine_existing_candidate_locked
+        def paused_detach(*args):
+            at_detach.set()
+            if not allow_detach.wait(10):raise RuntimeError('test synchronization timeout')
+            return original_detach(*args)
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);target=Path(d)/prefix
+            (target/'geopackage').mkdir(parents=True);(target/'geopackage/old.gpkg').write_bytes(b'incomplete synthetic prior')
+            old=s.candidate_inventory(target)
+            def stale_refresh():
+                try:s.stage_cbrs_units_candidate(storage,capture_dir=CAPTURE)
+                except Exception as exc:failures.append(exc)
+            def valid_winner():
+                winner_started.set()
+                try:s.commit_complete_candidate(storage,prefix,{'geopackage/winner.gpkg':b'valid synthetic winning object'}, {'status':'synthetic_not_approved'})
+                except Exception as exc:failures.append(exc)
+                finally:winner_done.set()
+            with patch.object(s,'acquire',return_value=captures),patch.object(s,'processing_identity',return_value=identity),patch.object(s,'inspect_archive',return_value=([],{},{})),patch.object(s,'_quarantine_existing_candidate_locked',side_effect=paused_detach):
+                a=threading.Thread(target=stale_refresh);a.start();self.assertTrue(at_detach.wait(10))
+                b=threading.Thread(target=valid_winner);b.start();self.assertTrue(winner_started.wait(10))
+                self.assertFalse(winner_done.wait(0.1));self.assertTrue((target/'geopackage/old.gpkg').exists())
+                allow_detach.set();a.join(10);b.join(10)
+                self.assertFalse(a.is_alive() or b.is_alive())
+            self.assertEqual(len(failures),1);self.assertIn('incomplete_existing_candidate_missing_ready',str(failures[0]))
+            self.assertEqual((target/'geopackage/winner.gpkg').read_bytes(),b'valid synthetic winning object')
+            self.assertEqual(json.loads((target/'metadata/cbrs_units_candidate_ready.json').read_bytes())['status'],'synthetic_not_approved')
+            retained=list(Path(d,'_quarantine',s.SLUG,'versions').glob('*/candidate'))
+            self.assertEqual(len(retained),1);self.assertEqual(s.candidate_inventory(retained[0]),old)
 
 if __name__=='__main__':unittest.main()
