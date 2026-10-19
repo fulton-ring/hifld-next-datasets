@@ -1,0 +1,688 @@
+{
+  "classification": "EXPLICIT_SYNTHETIC two-row regression fixture. Not real NOAA observations, not real HTTP/delegation evidence, not source/baseline/contract/rights acceptance. Field declarations model the preserved interface; all datum/ID values below are invented test data.",
+  "layer_metadata": {
+    "fields": [
+      {
+        "name": "ID",
+        "type": "esriFieldTypeInteger",
+        "actualType": "int",
+        "alias": "ID",
+        "sqlType": "sqlTypeInteger",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "ObjectId",
+        "type": "esriFieldTypeOID",
+        "actualType": "int",
+        "alias": "ObjectId",
+        "sqlType": "sqlTypeInteger",
+        "nullable": false,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "TSEVENT_ID",
+        "type": "esriFieldTypeInteger",
+        "alias": "TSEVENT_ID",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "YEAR",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "YEAR",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "MONTH",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "MONTH",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DAY",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "DAY",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DATE_STRING",
+        "type": "esriFieldTypeString",
+        "alias": "Date",
+        "sqlType": "sqlTypeOther",
+        "length": 13,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "ARR_DAY",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "ARR_DAY",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "ARR_HOUR",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "ARR_HOUR",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "ARR_MIN",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "ARR_MIN",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "TRAV_HOURS",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "TRAV_HOURS",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "TRAV_MINS",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "TRAV_MINS",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "PERIOD",
+        "type": "esriFieldTypeSingle",
+        "alias": "PERIOD",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "FIRST_MOTION",
+        "type": "esriFieldTypeString",
+        "alias": "FIRST_MOTION",
+        "sqlType": "sqlTypeOther",
+        "length": 1,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "LATITUDE",
+        "type": "esriFieldTypeDouble",
+        "alias": "LATITUDE",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "LONGITUDE",
+        "type": "esriFieldTypeDouble",
+        "alias": "LONGITUDE",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "LOCATION_NAME",
+        "type": "esriFieldTypeString",
+        "alias": "Location Name",
+        "sqlType": "sqlTypeOther",
+        "length": 400,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "AREA",
+        "type": "esriFieldTypeString",
+        "alias": "AREA",
+        "sqlType": "sqlTypeOther",
+        "length": 100,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "COUNTRY",
+        "type": "esriFieldTypeString",
+        "alias": "Country",
+        "sqlType": "sqlTypeOther",
+        "length": 100,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "REGION_CODE",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "REGION_CODE",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "RUNUP_HT",
+        "type": "esriFieldTypeSingle",
+        "alias": "Runup Height (m)",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "RUNUP_HT_RANK",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "RUNUP_HT_RANK",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "RUNUP_HORIZ",
+        "type": "esriFieldTypeSingle",
+        "alias": "RUNUP_HORIZ",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "TYPE_MEASUREMENT_ID",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "TYPE_MEASUREMENT_ID",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "TYPE_MEASUREMENT",
+        "type": "esriFieldTypeString",
+        "alias": "Type of Measurement",
+        "sqlType": "sqlTypeOther",
+        "length": 50,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DAMAGE_MILLIONS_DOLLARS",
+        "type": "esriFieldTypeDouble",
+        "alias": "DAMAGE_MILLIONS_DOLLARS",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DAMAGE_AMOUNT_ORDER",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "DAMAGE_AMOUNT_ORDER",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DAMAGE_DESCRIPTION",
+        "type": "esriFieldTypeString",
+        "alias": "DAMAGE_DESCRIPTION",
+        "sqlType": "sqlTypeOther",
+        "length": 40,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DEATHS",
+        "type": "esriFieldTypeInteger",
+        "alias": "DEATHS",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DEATHS_AMOUNT_ORDER",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "DEATHS_AMOUNT_ORDER",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DEATHS_DESCRIPTION",
+        "type": "esriFieldTypeString",
+        "alias": "DEATHS_DESCRIPTION",
+        "sqlType": "sqlTypeOther",
+        "length": 40,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "INJURIES",
+        "type": "esriFieldTypeInteger",
+        "alias": "INJURIES",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "INJURIES_AMOUNT_ORDER",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "INJURIES_AMOUNT_ORDER",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "INJURIES_DESCRIPTION",
+        "type": "esriFieldTypeString",
+        "alias": "INJURIES_DESCRIPTION",
+        "sqlType": "sqlTypeOther",
+        "length": 40,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "HOUSES_DESTROYED",
+        "type": "esriFieldTypeInteger",
+        "alias": "HOUSES_DESTROYED",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "HOUSES_AMOUNT_ORDER",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "HOUSES_AMOUNT_ORDER",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "HOUSES_DESCRIPTION",
+        "type": "esriFieldTypeString",
+        "alias": "HOUSES_DESCRIPTION",
+        "sqlType": "sqlTypeOther",
+        "length": 40,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "HOUSES_DAMAGED",
+        "type": "esriFieldTypeInteger",
+        "alias": "HOUSES_DAMAGED",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "HOUSES_DAMAGED_AMOUNT_ORDER",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "HOUSES_DAMAGED_AMOUNT_ORDER",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "HOUSES_DAM_DESCRIPTION",
+        "type": "esriFieldTypeString",
+        "alias": "HOUSES_DAM_DESCRIPTION",
+        "sqlType": "sqlTypeOther",
+        "length": 40,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "COMMENTS",
+        "type": "esriFieldTypeString",
+        "alias": "Comments",
+        "sqlType": "sqlTypeOther",
+        "length": 4000,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DOUBTFUL",
+        "type": "esriFieldTypeString",
+        "alias": "DOUBTFUL",
+        "sqlType": "sqlTypeOther",
+        "length": 2,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DIST_FROM_SOURCE",
+        "type": "esriFieldTypeInteger",
+        "alias": "DIST_FROM_SOURCE",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "EVENT_REGION_CODE",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "EVENT_REGION_CODE",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "EVENT_REGION",
+        "type": "esriFieldTypeString",
+        "alias": "EVENT_REGION",
+        "sqlType": "sqlTypeOther",
+        "length": 54,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "PRED_TRAV_HOURS",
+        "type": "esriFieldTypeSingle",
+        "alias": "PRED_TRAV_HOURS",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "PRED_TRAV_MINS",
+        "type": "esriFieldTypeSmallInteger",
+        "alias": "PRED_TRAV_MINS",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "URL",
+        "type": "esriFieldTypeString",
+        "alias": "More information about runup",
+        "sqlType": "sqlTypeOther",
+        "length": 400,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "TSEVENT_URL",
+        "type": "esriFieldTypeString",
+        "alias": "More information about tsunami event",
+        "sqlType": "sqlTypeOther",
+        "length": 400,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DRAWING_ORDER",
+        "type": "esriFieldTypeDouble",
+        "alias": "DRAWING_ORDER",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      }
+    ],
+    "objectIdField": "ObjectId",
+    "geometryType": "esriGeometryPoint",
+    "editingInfo": {
+      "lastEditDate": 0,
+      "EXPLICIT_SYNTHETIC": true
+    },
+    "extent": {
+      "spatialReference": {
+        "wkid": 102100,
+        "latestWkid": 3857
+      }
+    }
+  },
+  "page": {
+    "objectIdFieldName": "ObjectId",
+    "geometryType": "esriGeometryPoint",
+    "spatialReference": {
+      "wkid": 102100,
+      "latestWkid": 3857
+    },
+    "features": [
+      {
+        "attributes": {
+          "ID": 5001,
+          "ObjectId": 1001,
+          "TSEVENT_ID": 9001,
+          "YEAR": -1610,
+          "MONTH": null,
+          "DAY": null,
+          "DATE_STRING": "-1610/??/??",
+          "ARR_DAY": null,
+          "ARR_HOUR": null,
+          "ARR_MIN": null,
+          "TRAV_HOURS": null,
+          "TRAV_MINS": null,
+          "PERIOD": 0.1,
+          "FIRST_MOTION": "?",
+          "LATITUDE": 0.0,
+          "LONGITUDE": 0.0,
+          "LOCATION_NAME": "EXPLICIT SYNTHETIC 0001",
+          "AREA": "0007",
+          "COUNTRY": "Synthetic Country",
+          "REGION_CODE": 1,
+          "RUNUP_HT": 0.1,
+          "RUNUP_HT_RANK": null,
+          "RUNUP_HORIZ": 2.5,
+          "TYPE_MEASUREMENT_ID": null,
+          "TYPE_MEASUREMENT": null,
+          "DAMAGE_MILLIONS_DOLLARS": null,
+          "DAMAGE_AMOUNT_ORDER": null,
+          "DAMAGE_DESCRIPTION": null,
+          "DEATHS": null,
+          "DEATHS_AMOUNT_ORDER": null,
+          "DEATHS_DESCRIPTION": null,
+          "INJURIES": null,
+          "INJURIES_AMOUNT_ORDER": null,
+          "INJURIES_DESCRIPTION": null,
+          "HOUSES_DESTROYED": null,
+          "HOUSES_AMOUNT_ORDER": null,
+          "HOUSES_DESCRIPTION": null,
+          "HOUSES_DAMAGED": null,
+          "HOUSES_DAMAGED_AMOUNT_ORDER": null,
+          "HOUSES_DAM_DESCRIPTION": null,
+          "COMMENTS": null,
+          "DOUBTFUL": null,
+          "DIST_FROM_SOURCE": null,
+          "EVENT_REGION_CODE": null,
+          "EVENT_REGION": null,
+          "PRED_TRAV_HOURS": 0.2,
+          "PRED_TRAV_MINS": null,
+          "URL": "https://example.invalid/synthetic/0001",
+          "TSEVENT_URL": "https://example.invalid/synthetic-event/9001",
+          "DRAWING_ORDER": 7.25
+        },
+        "geometry": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      {
+        "attributes": {
+          "ID": 5002,
+          "ObjectId": 1002,
+          "TSEVENT_ID": 9001,
+          "YEAR": 2000,
+          "MONTH": 1,
+          "DAY": 2,
+          "DATE_STRING": "2000/01/02",
+          "ARR_DAY": null,
+          "ARR_HOUR": null,
+          "ARR_MIN": null,
+          "TRAV_HOURS": null,
+          "TRAV_MINS": null,
+          "PERIOD": null,
+          "FIRST_MOTION": "?",
+          "LATITUDE": null,
+          "LONGITUDE": null,
+          "LOCATION_NAME": "EXPLICIT SYNTHETIC 0002",
+          "AREA": "0007",
+          "COUNTRY": "Synthetic Country",
+          "REGION_CODE": 2,
+          "RUNUP_HT": null,
+          "RUNUP_HT_RANK": null,
+          "RUNUP_HORIZ": null,
+          "TYPE_MEASUREMENT_ID": null,
+          "TYPE_MEASUREMENT": null,
+          "DAMAGE_MILLIONS_DOLLARS": 123.12345678901234,
+          "DAMAGE_AMOUNT_ORDER": null,
+          "DAMAGE_DESCRIPTION": null,
+          "DEATHS": null,
+          "DEATHS_AMOUNT_ORDER": null,
+          "DEATHS_DESCRIPTION": null,
+          "INJURIES": null,
+          "INJURIES_AMOUNT_ORDER": null,
+          "INJURIES_DESCRIPTION": null,
+          "HOUSES_DESTROYED": null,
+          "HOUSES_AMOUNT_ORDER": null,
+          "HOUSES_DESCRIPTION": null,
+          "HOUSES_DAMAGED": null,
+          "HOUSES_DAMAGED_AMOUNT_ORDER": null,
+          "HOUSES_DAM_DESCRIPTION": null,
+          "COMMENTS": null,
+          "DOUBTFUL": null,
+          "DIST_FROM_SOURCE": null,
+          "EVENT_REGION_CODE": null,
+          "EVENT_REGION": null,
+          "PRED_TRAV_HOURS": null,
+          "PRED_TRAV_MINS": null,
+          "URL": "https://example.invalid/synthetic/0002",
+          "TSEVENT_URL": "https://example.invalid/synthetic-event/9001",
+          "DRAWING_ORDER": null
+        },
+        "geometry": {
+          "x": 123.25,
+          "y": -456.5
+        }
+      }
+    ],
+    "exceededTransferLimit": false
+  },
+  "authority_bodies": {
+    "ncei_tsunamis": "<html>EXPLICIT SYNTHETIC mechanics fixture only <a href=\"/maps/tsunami-events/\">fixture</a></html>",
+    "time_lapse": "<html>EXPLICIT SYNTHETIC <script src=\"assets/index-LsW0PzVb.js\"></script></html>",
+    "time_lapse_js": "/* EXPLICIT SYNTHETIC, no actual producer capture */ const fixture=\"8bed3e9c40114d6a8b2708ceaee0b329\";",
+    "webmap_item": {
+      "owner": "ncei_noaa",
+      "EXPLICIT_SYNTHETIC": true
+    },
+    "source_item": {
+      "owner": "ncei_noaa",
+      "url": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_observations/FeatureServer",
+      "EXPLICIT_SYNTHETIC": true
+    },
+    "webmap": {
+      "operationalLayers": [
+        {
+          "id": "EXPLICIT_SYNTHETIC_LAYER",
+          "url": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_observations/FeatureServer/0"
+        }
+      ],
+      "EXPLICIT_SYNTHETIC": true
+    },
+    "doi": "EXPLICIT SYNTHETIC placeholder, no actual DOI lookup, rights grant or source acceptance."
+  }
+}

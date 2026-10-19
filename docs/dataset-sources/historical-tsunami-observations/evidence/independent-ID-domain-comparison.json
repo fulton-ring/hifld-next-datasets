@@ -1,9 +1,0 @@
-{
-  "classification": "complete ID-domain diagnostic only, no approved canonical ID or correspondence",
-  "historical_geojson_Feature_id_equals_historical_ObjectId": 32614,
-  "historical_FGDB_intrinsic_FID_equals_historical_ObjectId_as_distinct_string_domain": true,
-  "diagnostic_currentID_vs_historicalID_shared": 32595,
-  "changed_ObjectId_value_under_diagnostic_ID_match": 32595,
-  "current_ObjectId_value_set_overlap_historical_ObjectId": 0,
-  "note": "Preserve both current ID and ObjectId plus all historical physical IDs. No derived row index replaces them."
-}

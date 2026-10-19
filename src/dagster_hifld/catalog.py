@@ -19,6 +19,8 @@ from dagster_hifld.file_geodatabase import iter_file_geodatabases
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.evidence_io import validate_evidence_directory
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.native_geoparquet_catalog import has_other_source, pinned_native_path, summarize_native_path, resolve_native_metadata
+from dagster_hifld.output_policy import prebuilt_output_spec
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     discover_canonical_source_file,
@@ -62,6 +64,15 @@ def summarize_staged_catalog(
 ) -> CatalogSummary:
     if source_metadata is not None:
         provenance_projection(source_metadata)
+    prefix = f"{dataset_slug}/{file_slug}/{version}"
+    if not has_other_source(staging, prefix):
+        proposed = source_metadata if source_metadata is not None else resolve_native_metadata(staging, prefix)
+        if prebuilt_output_spec(proposed, "geoparquet") is not None:
+            with pinned_native_path(staging, prefix, proposed) as native_path:
+                quality, native_dictionary = summarize_native_path(native_path, dictionary_name, proposed)
+            dictionary = generate_data_dictionary(gpd.GeoDataFrame(), dictionary_name, source_metadata=proposed)
+            dictionary.update(native_dictionary)
+            return CatalogSummary(quality, dictionary)
     with staging.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
         version_path = Path(version_dir)
         reader_errors: list[str] = []

@@ -40,9 +40,10 @@
   "implementation_commit": "7ea570c77769db46f3fab41cf484d34a8e7ec3b8",
   "actual_complete_source_run": "fc66248e-574b-4840-9b7c-901b21901cbc",
   "evidence": {
-    "normal_graph": "evidence/dagster-execution-7ea570c.json",
-    "full_input_history": "evidence/provenance-recovery.json",
-    "verification": "evidence/verification.json",
-    "baseline_complete_native_inventory": "evidence/baseline-audit.json"
-  }
+    "artifact_manifest": "artifact-manifest.json",
+    "historical_processing_commit": "7ea570c77769db46f3fab41cf484d34a8e7ec3b8",
+    "historical_full_source_run": "fc66248e-574b-4840-9b7c-901b21901cbc",
+    "current_cleanup_validation": "Pending committed shared-base actual replay; prior results remain historical."
+  },
+  "cleanup_worker": "/root/review_research"
 }
