@@ -199,6 +199,30 @@ class CBRSTests(unittest.TestCase):
             try:s.acquire(StagingStorageResource(local_dir=d),None)
             finally:self.assertEqual(len(list(Path(d).rglob('report.json'))),3)
 
+    def test_original_provenance_pin_retains_first_commit_and_receipts(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d)
+            captures=s.acquire(storage,CAPTURE);manifest=s.provenance(captures)
+            manifest['processing_fingerprint']='test-fixture-not-acceptance'
+            version='v0.0.0-fixture';prefix=s.SLUG+'/'+s.SLUG+'/'+version
+            with s.candidate_lock(storage,prefix):
+                with self.assertRaisesRegex(ValueError,'missing_original_construction'):
+                    s.original_provenance_bundle(storage,version,captures,manifest)
+                original,first=s.original_provenance_bundle(storage,version,captures,manifest,create=True)
+            key=f'_source-provenance/{s.SLUG}/{version}/bundle.json';pin=storage.read_key(key)
+            changed={n:(body,{**receipt,'observed_at':'2026-10-20T01:02:03+00:00'}) for n,(body,receipt) in captures.items()}
+            # Real construction may precede later docs-only HEADs and observations.
+            with patch.object(s.subprocess,'check_output',return_value='a'*40):
+                later=s.provenance(changed);later['processing_fingerprint']=manifest['processing_fingerprint']
+                with s.candidate_lock(storage,prefix):
+                    reused,replayed=s.original_provenance_bundle(storage,version,changed,later)
+                    rebuilt,reconstructed=s.original_provenance_bundle(storage,version,changed,later,create=True)
+            self.assertEqual(first,manifest);self.assertEqual(replayed,first);self.assertEqual(reconstructed,first)
+            self.assertEqual(reused,original);self.assertEqual(rebuilt,original)
+            self.assertEqual(storage.read_key(key),pin)
+            self.assertNotEqual(replayed['code_commit'],'a'*40)
+            self.assertTrue(all(reused[n][1]['observed_at']!=changed[n][1]['observed_at'] for n in s.URLS))
+
     def test_invalid_lookup_quarantine_and_concurrent_valid_winner_share_lock(self):
         # These are explicitly synthetic implementation fixtures, not dataset approval.
         captures={'official_zip':(b'synthetic-body',{})};identity={'fixture':True}

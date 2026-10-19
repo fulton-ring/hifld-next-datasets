@@ -406,6 +406,45 @@ def quarantine_rejected_cache_held(storage: StagingStorageResource, prefix: str,
     return relative
 
 
+def original_provenance_bundle(storage: StagingStorageResource, version: str,
+                               captures: dict, manifest: dict, *, create: bool=False) -> tuple[dict,dict]:
+    """Pin first construction outside the candidate, under the stable version lock.
+
+    Later equal-body observations and docs-only commits cannot rewrite the original
+    construction commit or receipts. An existing candidate must never seed a pin.
+    """
+    key=f'_source-provenance/{SLUG}/{version}/bundle.json'
+    if not storage.object_exists(key):
+        if not create:
+            raise CBRSQuarantineError('missing_original_construction_provenance_bundle')
+        bundle={'manifest':manifest,'captures':{name:{
+            'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
+            'receipt':receipt} for name,(body,receipt) in captures.items()}}
+        immutable(storage,key,encode(bundle))
+    bundle=strict_json(storage.read_key(key))
+    if set(bundle)!= {'manifest','captures'} or set(bundle['captures'])!=set(URLS):
+        raise CBRSQuarantineError('original_construction_bundle_roster_drift')
+    original={}
+    for name in URLS:
+        item=bundle['captures'][name]
+        if set(item)!= {'body_key','receipt'}:
+            raise CBRSQuarantineError('original_construction_capture_roster_drift')
+        expected=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{name}.body"
+        if item['body_key']!=expected:
+            raise CBRSQuarantineError('original_construction_capture_key_drift')
+        body=storage.read_key(expected)
+        if body!=captures[name][0]:
+            raise CBRSQuarantineError('original_construction_capture_bytes_changed')
+        original[name]=(body,item['receipt'])
+    expected_manifest=provenance(original)
+    expected_manifest['processing_fingerprint']=manifest['processing_fingerprint']
+    actual=bundle['manifest']
+    validate_release_provenance(actual)
+    if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
+        raise CBRSQuarantineError('original_construction_manifest_drift')
+    return original,actual
+
+
 def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready: dict,
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
@@ -422,15 +461,13 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     if not expected.issubset(actual) or actual-expected-allowed_derivatives:
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
-    expected_manifest=provenance(cached)
-    if any(cached[name][0]!=captures[name][0] for name in URLS):
-        raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
+    if cached!=captures:
+        raise CBRSQuarantineError('cached_capture_differs_from_original_construction_bundle')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(manifest)
-    # code_commit identifies the original immutable construction, including later docs-only commits.
-    for name,value in expected_manifest.items():
-        if name!='code_commit' and manifest.get(name)!=value:
-            raise CBRSQuarantineError('cached_provenance_differs_from_original_capture')
+    pinned=strict_json(storage.read_key(f'_source-provenance/{SLUG}/{ready["version"]}/bundle.json'))
+    if manifest!=pinned['manifest']:
+        raise CBRSQuarantineError('cached_original_construction_manifest_changed')
     snapshot=root/'metadata/source/source_manifest.json'
     if snapshot.exists():
         nested=strict_json(snapshot.read_bytes())
@@ -499,12 +536,14 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
             version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/cbrs_buffer_candidate_ready.json'
+            manifest['processing_fingerprint']=fingerprint
             with candidate_lock(storage,prefix) as target:
                 if target.exists() or target.is_symlink():
                     try:
                         if target.is_symlink():raise CBRSQuarantineError('linked_candidate_path')
                         if not storage.object_exists(ready_key):
                             raise CBRSQuarantineError('incomplete_existing_candidate_missing_ready_receipt')
+                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest)
                         ready = strict_json(storage.read_key(ready_key))
                         expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_buffer_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {'metadata/source_fidelity/baseline_comparison.json','metadata/source_fidelity/baseline_comparison.md','metadata/source_fidelity/baseline_differences.jsonl','metadata/source_fidelity/baseline_field_changes.jsonl'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
                         if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
@@ -523,6 +562,8 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
                         quarantine_rejected_cache_held(storage,prefix,str(exc))
                         raise
+                captures,manifest=original_provenance_bundle(storage,version,captures,manifest,create=True)
+                body,receipt=captures['official_zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_native_geopackage(rows,geopackage)
             source_records = directory / 'source.jsonl'
@@ -546,8 +587,6 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
             evidence_payloads=fidelity_payloads(records,fingerprint,completed=fidelity,comparison_directory=directory/'comparison')
-            commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(),
