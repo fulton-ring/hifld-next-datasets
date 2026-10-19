@@ -21,6 +21,7 @@ from dagster_hifld.evidence_io import validate_evidence_directory
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.native_geoparquet_catalog import has_other_source, pinned_native_path, summarize_native_path, resolve_native_metadata
 from dagster_hifld.output_policy import prebuilt_output_spec
+from dagster_hifld.literal_geojson_catalog import resolve_literal_metadata, summarize_literal_geojson
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     discover_canonical_source_file,
@@ -65,6 +66,16 @@ def summarize_staged_catalog(
     if source_metadata is not None:
         provenance_projection(source_metadata)
     prefix = f"{dataset_slug}/{file_slug}/{version}"
+    # Existing callers with resolved legacy metadata retain their reader/I/O
+    # behavior. Explicit profiles (including malformed/null ones) are validated
+    # against actual authored manifests before any generic reader can run.
+    literal = (resolve_literal_metadata(staging, prefix, source_metadata)
+               if source_metadata is None or 'literal_geojson_catalog' in source_metadata else None)
+    if literal is not None:
+        quality, native_dictionary = summarize_literal_geojson(staging, prefix, dictionary_name, literal)
+        dictionary = generate_data_dictionary(gpd.GeoDataFrame(), dictionary_name, source_metadata=literal)
+        dictionary.update(native_dictionary)
+        return CatalogSummary(quality, dictionary)
     if not has_other_source(staging, prefix):
         proposed = source_metadata if source_metadata is not None else resolve_native_metadata(staging, prefix)
         if prebuilt_output_spec(proposed, "geoparquet") is not None:
@@ -271,6 +282,7 @@ def generate_data_dictionary(
             "lineage",
             "unsupported_output_formats",
             "prebuilt_output_policy",
+            "literal_geojson_catalog",
             "manifest_layers",
         ):
             if key in source_metadata and (key == "transformations" or source_metadata[key] not in (None, "", [], {})):
