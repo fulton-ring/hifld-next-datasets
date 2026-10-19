@@ -3,6 +3,14 @@
     "bytes": 40751,
     "sha256": "33e2350230be58db432955a6776ef5d232e88f2cd19f2577cd87e139a72deb86"
   },
+  "docs-only-refresh.json": {
+    "bytes": 2203,
+    "sha256": "5cca17dcf165cc3b260714da4215f55f24c244cda87ce2bba1145efc7c33e26e"
+  },
+  "docs-only-refresh.log": {
+    "bytes": 4059,
+    "sha256": "e095e24320532b8e4cede33affa9e6e1bde7d01925f9397b3da7daf74284ed26"
+  },
   "first-construction-actual.json": {
     "bytes": 23028,
     "sha256": "7417f2b508a65fda73d75366857019b17b39536b9a6f2eb98b05cf520a5c7ce4"
