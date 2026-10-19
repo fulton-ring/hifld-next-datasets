@@ -9,12 +9,17 @@ from pathlib import Path
 from typing import Iterable
 
 from dagster import (
+    AssetSelection,
+    DefaultScheduleStatus,
     Definitions,
+    ScheduleDefinition,
     SensorResult,
+    define_asset_job,
     sensor,
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.census_cd119 import census_119th_congressional_districts
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -36,6 +41,17 @@ from dagster_hifld.source_formats import (
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
+
+cd119_source_refresh_job = define_asset_job(
+    name="census_cd119_source_refresh",
+    selection=AssetSelection.assets(census_119th_congressional_districts),
+)
+cd119_source_refresh_schedule = ScheduleDefinition(
+    name="census_cd119_monthly_source_refresh",
+    job=cd119_source_refresh_job,
+    cron_schedule="0 10 1 * *",
+    default_status=DefaultScheduleStatus.STOPPED,
+)
 MAX_SENSOR_RUN_REQUESTS_PER_TICK = int(
     os.environ.get("HIFLD_SENSOR_MAX_RUN_REQUESTS_PER_TICK", "25")
 )
@@ -409,6 +425,8 @@ def _configured_sensors():
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
+    jobs=[cd119_source_refresh_job],
+    schedules=[cd119_source_refresh_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
