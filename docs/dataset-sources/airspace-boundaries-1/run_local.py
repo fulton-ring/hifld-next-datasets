@@ -24,7 +24,7 @@ assert 'HIFLD_RELEASE_APPROVALS' not in os.environ
 stage=StagingStorageResource(local_dir=str(runtime/'staging'));published=PublishedStorageResource(local_dir=str(runtime/'published'))
 resources={'staging_storage':stage,'published_storage':published}
 state=runtime/'dagster';state.mkdir(exist_ok=True);(state/'dagster.yaml').write_text('telemetry:\n  enabled: false\n');os.environ['DAGSTER_HOME']=str(state)
-result={'adapter_module_path':str(pathlib.Path(adapter.__file__).resolve()),'capture_dir':str(capture.resolve()),'local_storage':str(runtime.resolve()),'approval_registry_present':False,'shared_verifier_dependency':'15a515241e16e5cda8c8b30d9599f321dc9aabcd'}
+result={'adapter_module_path':str(pathlib.Path(adapter.__file__).resolve()),'capture_dir':str(capture.resolve()),'local_storage':str(runtime.resolve()),'approval_registry_present':False,'shared_verifier_dependency':'c7343b802966c566e8f6088bf31f19081b2a0cde'}
 with DagsterInstance.from_config(str(state)) as instance:
     ingest_job=define_asset_job('faa_ingest_replay',selection=AssetSelection.assets(faa_airspace_boundaries))
     defs=Definitions(assets=hifld_dataset_assets,asset_checks=hifld_asset_checks,resources=resources,jobs=[ingest_job])
@@ -43,7 +43,14 @@ with DagsterInstance.from_config(str(state)) as instance:
     # Deliberately isolated conversion sandbox; this copy is not acceptance.
     version='v0.0.10-draft';prefix=f'{adapter.SLUG}/{adapter.SLUG}/{version}'
     stage.write_key(prefix+'/geopackage/airspace.gpkg',stage.read_key(out['quarantine_prefix']+'/candidate/airspace-native.gpkg'))
-    stage.write_key(prefix+'/metadata/source_manifest.json',json.dumps({'publisher':manifest['publisher'],'source_url':adapter.LAYER_URL,'transformations':manifest['transformations'],'lineage':{'quarantine_only':True,'approval':None},'unsupported_output_formats':adapter.UNSUPPORTED_OUTPUT_FORMATS}).encode())
+    inputs=[]
+    for name,receipt in manifest['captures'].items():
+        raw_key=prefix+'/raw/'+name+'.json'
+        stage.write_key(raw_key,stage.read_key(out['quarantine_prefix']+'/raw/'+name+'.json'))
+        stage.write_key(prefix+'/raw/receipts/'+name+'.json',json.dumps(receipt,sort_keys=True).encode())
+        inputs.append({'input_id':name,'url':receipt['url'],'sha256':receipt['sha256'],'bytes':receipt['bytes'],'raw_key':raw_key,'fetched_at':receipt['checked_at'],'role':'producer_capture'})
+    stage.write_key(prefix+'/metadata/provenance.json',json.dumps(manifest,sort_keys=True,indent=2).encode())
+    stage.write_key(prefix+'/metadata/source_manifest.json',json.dumps({'publisher':manifest['publisher'],'source_url':adapter.LAYER_URL,'inputs':inputs,'transformations':manifest['transformations'],'lineage':{'quarantine_only':True,'approval':None,'native_crs':'EPSG:4269','durable_capture_prefix':manifest['durable_capture_prefix']},'unsupported_output_formats':adapter.UNSUPPORTED_OUTPUT_FORMATS}).encode())
     key=build_publish_partition_key(adapter.SLUG,adapter.SLUG,version);instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[key])
     sentinel='accepted/sentinel.json';published.write_key(sentinel,b'{"historical":"preserve"}')
     before={k:hashlib.sha256(published.read_key(k)).hexdigest() for k in published.list_prefix()}
@@ -52,6 +59,10 @@ with DagsterInstance.from_config(str(state)) as instance:
     r=defs.resolve_job_def('faa_draft_graph').execute_in_process(instance=instance,partition_key=key,raise_on_error=False)
     result['normal_graph']={'run_id':r.run_id,'success':r.success,'checks':[{'name':e.event_specific_data.check_name,'passed':e.event_specific_data.passed} for e in r.all_events if e.event_type_value=='ASSET_CHECK_EVALUATION']}
     assert not r.success
+    failures=[{'step':event.step_key,'reason':event.event_specific_data.error.cause.message.strip()} for event in r.get_step_failure_events()]
+    assert len(failures)==1 and failures[0]['step']=='publish__verify' and 'missing_independent_release_approval_registry' in failures[0]['reason']
+    result['normal_graph']['failures']=failures
+    result['normal_graph']['formats']={event.asset_key.path[-1]:{key:value.value for key,value in event.event_specific_data.materialization.metadata.items() if key in ('file_count','skip_reason')} for event in r.get_asset_materialization_events() if 'formats' in event.asset_key.path}
     quality=json.loads(stage.read_key(prefix+'/metadata/quality_manifest.json'));result['normal_graph']['quality_manifest']=quality
     assert quality['feature_count']==477 and quality['invalid_geometry_count']==0
     assert any(e.asset_key==AssetKey(['publish','formats','geopackage']) for e in r.get_asset_materialization_events())

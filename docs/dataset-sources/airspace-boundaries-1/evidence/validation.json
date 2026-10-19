@@ -1,33 +1,48 @@
 {
-  "targeted_tests": {
-    "command": "PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p test_faa_airspace.py",
-    "tests": 9,
+  "source_code_snapshot": "71fe07296626a4b1e2f3498fc8cdf4d3df7247b6 (source/shared/registration code unchanged after this; evidence/replay documentation updated)",
+  "focused_adapter_tests": {
+    "command": "PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_faa*.py'",
+    "tests": 18,
     "success": true
   },
-  "full_suite": {
-    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src .venv/bin/python -m unittest discover tests",
-    "tests": 474,
+  "normal_repository_registration_test": {
+    "command": "PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p test_refresh_registration_10.py",
+    "tests": 1,
+    "success": true
+  },
+  "most_recent_full_suite": {
+    "tests": 488,
     "errors": 1,
     "skipped": 1,
     "success": false,
-    "only_error": "test_hifld_user_code_has_pod_disruption_budget: missing /workspace/hifld-worker-worktrees/hifld-next-iac/environments/prod/dagster.tf"
+    "scope": "Earlier work-in-progress native implementation with shared15a5152; not a final-head full-suite run. Final source/registration code verified by focused tests and actual full-population graph.",
+    "only_error": "test_hifld_user_code_has_pod_disruption_budget: missing sibling /workspace/hifld-worker-worktrees/hifld-next-iac/environments/prod/dagster.tf"
   },
-  "graph": "evidence/local-materialization.json",
+  "actual_live_ingest": "evidence/live-ingest.json",
+  "actual_native_graph_and_full_terminal_roundtrips": "evidence/local-materialization.json",
+  "source_geometry": "477 native Esri geometries valid, original ring sequences unchanged;22invalid serverGeoJSON export geometries retained only as diagnostic",
+  "approval": "No real registry/source/baseline/schema/migration acceptance. Gate rejects all promotion and preserves staged candidate plus prior local historical sentinel.",
+  "ci": "Query exact final GitHub head after push; no result inferred",
   "logs": {
-    "unit.log": {
-      "runtime_path": "/workspace/work/hifld-coordinator/10/unit.log",
-      "sha256": "434e9da466bf116de2d28aba4b4edda592d005783e6f7aee4aca24c3857be00d"
+    "final-focused.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/final-focused.log",
+      "sha256": "689e986c65fcbed677fcc95514867833b6ffd3ab85a03c1da54e1b01e173f7ba"
     },
-    "full-suite-final.log": {
-      "runtime_path": "/workspace/work/hifld-coordinator/10/full-suite-final.log",
-      "sha256": "e90cc113d44bbbe47b8c9bb3fabf9e5adbfb294925c3564e4d8869666e324239"
+    "registration-test.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/registration-test.log",
+      "sha256": "37809ebb661d555eb405c89f14077d1787f2ca06b39511fdda747b5a19f39fcf"
     },
-    "e2e-final-head.log": {
-      "runtime_path": "/workspace/work/hifld-coordinator/10/e2e-final-head.log",
-      "sha256": "927134e5c6c0d529d63d41c84d03b28213fc85ed138833044bfbdd494adb499f"
+    "e2e-native-final-2.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/e2e-native-final-2.log",
+      "sha256": "33dee57163c2224840f6f291aca6ed6c77858d441badf7b4d2ea1c7449717553"
+    },
+    "live-native-ingest.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/live-native-ingest.log",
+      "sha256": "352202e20ebc38af083ec3c8ef52fb0c4bfc58155f5800d3e0b15321edc829ca"
+    },
+    "full-suite-native.log": {
+      "runtime_path": "/workspace/work/hifld-coordinator/10/full-suite-native.log",
+      "sha256": "544c915ac5be86193f81f5f0ccc57ad6d9ce9b73b8c8cf85018914f3514f0dec"
     }
-  },
-  "ci": "not claimed; query actual GitHub checks separately",
-  "limitation": "Sourcequality/acceptance failures expected and preserved; no successful end-to-end publication claimed",
-  "live_ingest": "evidence/live-ingest.json"
+  }
 }
