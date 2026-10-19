@@ -199,6 +199,22 @@ def _code_identity():
     return processing_identity(Path(__file__).parents[3])
 
 
+def _candidate_result(version: str, audit: Mapping[str, object], prefix: str, *,
+                      reused: bool, capture_directory: str | None = None) -> dict[str, object]:
+    """Return the same quality-check contract for first build and cache reuse."""
+    result = {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
+              "feature_count":audit["source_feature_count"],
+              "source_null_geometry_count":audit["null_geometry_count"],
+              "source_invalid_geometry_count":audit["invalid_geometry_count"],
+              "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":reused,
+              "source_release_accepted":False,"freshness_accepted":False,
+              "schema_contract_accepted":False,"id_contract_accepted":False,
+              "rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+    if capture_directory is not None:
+        result["capture_directory"] = capture_directory
+    return result
+
+
 def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None) -> dict[str, object]:
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
@@ -265,7 +281,7 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
         bundle=json.loads(load_first_construction(storage,state_key,version,fingerprint)); payload=bundle.get("payload")
         if not isinstance(payload,dict): raise ValueError("cached_first_candidate_invalid")
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload.get("objects",{}),payload.get("capture_receipts",{}))
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"release_accepted":False}
+        return _candidate_result(version,audit,prefix,reused=True)
     for name,value in outputs.items(): write_immutable(storage,f"{prefix}/{name}",value)
     descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
     for name,desc in descriptors.items():
@@ -274,4 +290,4 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{n:r for n,(b,r) in captures.items()},"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_null_geometry_count":audit["null_geometry_count"],"source_invalid_geometry_count":audit["invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","release_accepted":False,"capture_directory":str(caproot)}
+    return _candidate_result(version,audit,prefix,reused=False,capture_directory=str(caproot))

@@ -5,7 +5,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
-from dagster_hifld.sources.fuds_irm_property_point import _parquet
+from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_complete, fuds_irm_property_point_geometry_quality
+from dagster_hifld.sources.fuds_irm_property_point import _candidate_result, _parquet
 
 
 class IrmPropertyPointNativeTests(unittest.TestCase):
@@ -47,6 +48,15 @@ class IrmPropertyPointNativeTests(unittest.TestCase):
         native = table.column("source_geometry")[0].as_py()
         self.assertEqual(native["point"], None)
         self.assertEqual(native["raw_json"], '{"x":500.0,"y":4.0}')
+
+    def test_cached_candidate_keeps_fields_required_by_blocking_checks(self):
+        result = _candidate_result("v-cache", {"source_feature_count":601,
+            "null_geometry_count":0,"invalid_geometry_count":0}, "candidate", reused=True)
+        self.assertTrue(result["reused"])
+        self.assertEqual(result["source_null_geometry_count"], 0)
+        self.assertEqual(result["source_invalid_geometry_count"], 0)
+        self.assertTrue(fuds_irm_property_point_complete(result).passed)
+        self.assertTrue(fuds_irm_property_point_geometry_quality(result).passed)
 
 
 if __name__ == "__main__":
