@@ -1,0 +1,26 @@
+{
+  "full-suite.log.gz": {
+    "bytes": 15042,
+    "sha256": "016eabd71a76e90dabeccd291eb2f7b7f5fb0ec2d14c9dd23903fb3a0000f1ae"
+  },
+  "actual-native-graph.json": {
+    "bytes": 713,
+    "sha256": "43b0209f6a8e7aab45dca9c91ef22d5c8210375c1d00655895f1ad860edd4256"
+  },
+  "focused-tests.log": {
+    "bytes": 359,
+    "sha256": "cf9b241b95b6654f6d313447020816bd1e0ae1dd8cf515c6e33d066da0cd2572"
+  },
+  "validation.json": {
+    "bytes": 1983,
+    "sha256": "a8cda39218327cd1ee9411f02113ca4eaf4759b2edf83c8bed2ec5828aee361a"
+  },
+  "independent-original-catalog-review.json": {
+    "bytes": 5128,
+    "sha256": "443c949eb33f3641f807136bd2eb853c9abbc2359d1e8a974a89160f963a3a37"
+  },
+  "actual-native-graph.log.gz": {
+    "bytes": 2183,
+    "sha256": "6945b9832738d485bf9ab60bed18e22ec88b57940a32effdf492c0c7865d5264"
+  }
+}

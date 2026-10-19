@@ -46,7 +46,7 @@ class ContiguousDraftConfig(Config):
 def read_contiguous_receipt(directory: Path) -> tuple[dict[str, bytes], dict]:
     """Read every pinned raw body; reject missing or mutated receipt bytes."""
     receipt = json.loads((directory / 'receipt.json').read_text())
-    if receipt.get('schema_version') != 1 or receipt.get('layer_url') != LAYER_URL:
+    if type(receipt.get('schema_version')) is not int or receipt['schema_version'] != 1 or receipt.get('layer_url') != LAYER_URL:
         raise ValueError('wrong NOAA capture receipt identity')
     bodies = {}
     for name, pin in receipt['objects'].items():

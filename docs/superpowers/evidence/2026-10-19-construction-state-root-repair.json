@@ -1,0 +1,300 @@
+{
+  "classification": "narrow root-alias repair to additive local first-construction helper; no acceptance",
+  "code_checkpoint": "ef8589a1f12c1c10140c29999c99cc3064573b0c",
+  "parent_checkpoint": "6898bb30c099d8dd59deb0e1d150a4e11ea78f33",
+  "independent_original_finding": {
+    "head": "a86e831bf5532722f1cec867e8593eaec912f0b2",
+    "severity": "P2",
+    "reason": "resolve() erased root/ancestor symlinks before NOFOLLOW, permitting redirected state writes",
+    "proof": {
+      "path": "/workspace/work/review-state417-a86-probes/result.json",
+      "sha256": "d83e7b5394eaa4fd7618cf4c04cb0369a16071da9fa0ec3166c699e3dcea42a7",
+      "bytes": 2111
+    },
+    "parent_pass_claimed": false
+  },
+  "repair": "Preserve lexical absolute root; descriptor walk from filesystem anchor O_DIRECTORY|O_NOFOLLOW for every root ancestor before context acceptance and all later reads/writes; reject Published/nonstorage resources first.",
+  "resource_contract": {
+    "supported": "local StagingStorageResource only",
+    "published": "reject construction_staging_resource_required before mkdir",
+    "remote": "reject construction_remote_protocol_unsupported"
+  },
+  "input_pins": [
+    {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/construction_state.py",
+      "sha256": "03e897aed3940c06810e2daf2c78abdc6f36bd9ec31e2f8cdc4368f9f64283f2",
+      "bytes": 12288
+    },
+    {
+      "path": "/workspace/hifld-worker-worktrees/417/tests/test_construction_state.py",
+      "sha256": "2d9755b63e78df5c94d72de90946730233b825df59e2e7f6f88da7732afc1b06",
+      "bytes": 12979
+    },
+    {
+      "path": "/workspace/hifld-worker-worktrees/417/scripts/verification/construction_state_local.py",
+      "sha256": "9c977601386d6f8cd134e2a45de0fa0aa9ab6044988ad93e66346d97c0a2c028",
+      "bytes": 5944
+    }
+  ],
+  "focused": {
+    "new_state_tests": 12,
+    "git_tests": 11,
+    "passed": 23,
+    "logs": [
+      {
+        "path": "/workspace/work/hifld-coordinator/417-state-root-focused.log",
+        "sha256": "ddfd9ecf7f18a3a77f1fbe04161164f3a44693965879a9c5d0b779d8adec6e4f",
+        "bytes": 2602
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/417-state-root-git-focused.log",
+        "sha256": "768ab2b9a11c1b0ddbc9ddf018fccc0a04afb4b05c1743e09351a85406c8b6aa",
+        "bytes": 2173
+      }
+    ],
+    "commands": [
+      "PYTHONPATH=/workspace/hifld-worker-worktrees/417:/workspace/hifld-worker-worktrees/417/src /workspace/hifld-worker-worktrees/19/.venv/bin/python -m unittest discover -s tests -p test_construction_state.py -v",
+      "PYTHONPATH=/workspace/hifld-worker-worktrees/417:/workspace/hifld-worker-worktrees/417/src /workspace/hifld-worker-worktrees/19/.venv/bin/python -m unittest discover -s tests -p test_construction_provenance.py -v"
+    ]
+  },
+  "full_suite": {
+    "tested_head": "ef8589a1f12c1c10140c29999c99cc3064573b0c",
+    "run": 534,
+    "passed": 533,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 106.045,
+    "skip": "production-write opt-in",
+    "real_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-state-root-full-suite.log",
+      "sha256": "c71aa5e08e97a13cdcbc023c588caf14010deab064a7d06455bed180b8bd9253",
+      "bytes": 18913
+    },
+    "command": "DAGSTER_HOME=/workspace/hifld-worker-runtime/417/construction-root-suite-dagster PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=/workspace/hifld-worker-worktrees/417:/workspace/hifld-worker-worktrees/417/src /workspace/hifld-worker-worktrees/19/.venv/bin/python -m unittest discover tests",
+    "ci_success_inferred": false
+  },
+  "root_alias_replay": {
+    "result": {
+      "classification": "actual local staging resources/root-ancestor safety proof, synthetic only",
+      "cases": [
+        {
+          "kind": "root",
+          "existing_state": false,
+          "relative": false,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "root",
+          "existing_state": false,
+          "relative": false,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "root",
+          "existing_state": false,
+          "relative": true,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "root",
+          "existing_state": false,
+          "relative": true,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": false,
+          "relative": false,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": false,
+          "relative": false,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": false,
+          "relative": true,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": false,
+          "relative": true,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "root",
+          "existing_state": true,
+          "relative": false,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "root",
+          "existing_state": true,
+          "relative": false,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "root",
+          "existing_state": true,
+          "relative": true,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "root",
+          "existing_state": true,
+          "relative": true,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": true,
+          "relative": false,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": true,
+          "relative": false,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": true,
+          "relative": true,
+          "action": "seal",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        },
+        {
+          "kind": "ancestor",
+          "existing_state": true,
+          "relative": true,
+          "action": "load",
+          "blocked": "construction_invalid_storage_root",
+          "outside_unchanged": true
+        }
+      ],
+      "published_resources_rejected_without_mkdir": true,
+      "module_sha256": "03e897aed3940c06810e2daf2c78abdc6f36bd9ec31e2f8cdc4368f9f64283f2"
+    },
+    "script": {
+      "path": "/workspace/work/hifld-coordinator/417_state_root_replay.py",
+      "sha256": "3e5c11dfe9ed01af69a7ce02741d81bea05aa6e1272fc792a21e102b237e10d0",
+      "bytes": 3063
+    },
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-state-root-replay.log",
+      "sha256": "5f00b603e88bed3f925c24929c6e3edb2d92aafb0a213124e0d17d7f0e1e6c57",
+      "bytes": 356
+    },
+    "command": "PYTHONPATH=/workspace/hifld-worker-worktrees/417:/workspace/hifld-worker-worktrees/417/src /workspace/hifld-worker-worktrees/19/.venv/bin/python /workspace/work/hifld-coordinator/417_state_root_replay.py"
+  },
+  "actual_dagster": {
+    "result": {
+      "classification": "actual isolated registered Dagster synthetic construction; no real acceptance",
+      "runs": {
+        "first_construction": {
+          "run_id": "8cf9ea28-1f66-4065-8adf-80e5f7902786",
+          "success": true
+        },
+        "refresh_preserves_original": {
+          "run_id": "6f69bb36-3b24-4124-8260-f2271cc48a40",
+          "success": true
+        },
+        "source_failure": {
+          "run_id": "7332b77a-2955-4f33-a9c0-af19a301ef96",
+          "success": false
+        },
+        "missing_alias_preparation": {
+          "run_id": "44a793fc-7e20-46dc-acf0-21df1acc08e5",
+          "success": false
+        },
+        "missing_alias_refresh_first": {
+          "run_id": "693197ce-c825-43a1-a38b-05f19f106982",
+          "success": false
+        },
+        "missing_alias_refresh_second": {
+          "run_id": "f14e3e8f-0ccf-4c33-b045-539be4baad77",
+          "success": false
+        },
+        "restored_original": {
+          "run_id": "0d1306fc-830e-4278-8331-f6d8ff3c895e",
+          "success": true
+        },
+        "missing_approval_promotion": {
+          "run_id": "7bbed1b7-4a41-4218-ad7f-65c403530773",
+          "success": false
+        }
+      },
+      "original_bundle_sha256": "0bb417a72155bbe7b620ec4a34cd75c385ff4862fd0efa074cf7e5beebd279e9",
+      "staged_objects_preserved": 4,
+      "prior_published_objects_preserved": 1,
+      "raw_sha256": "fdce30ce5fc10d8c29fb69514ceac8fa66550986b36371b540d4fa89f42bf462",
+      "newer_receipts_not_rebound": true,
+      "missing_alias_second_refresh_blocked": true,
+      "operator_restoration": "exact trusted original bytes, fixture only",
+      "dagster_home": "/workspace/hifld-worker-runtime/417/construction-state-root-repair/dagster"
+    },
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-state-root-dagster.log",
+      "sha256": "35395711cedf1f0b4b6fc1c9e9416ddb1026e2a11d1cdd1e152c7a97abe68538",
+      "bytes": 11071
+    },
+    "command": "DAGSTER_HOME=/workspace/hifld-worker-runtime/417/construction-state-root-repair/dagster PYTHONPATH=/workspace/hifld-worker-worktrees/417:/workspace/hifld-worker-worktrees/417/src /workspace/hifld-worker-worktrees/19/.venv/bin/python scripts/verification/construction_state_local.py --work-dir /workspace/hifld-worker-runtime/417/construction-state-root-repair"
+  },
+  "review": {
+    "head": "ef8589a1f12c1c10140c29999c99cc3064573b0c",
+    "outcome": "pending independent narrow exact-head review"
+  },
+  "scope_limits": [
+    "No dataset callers changed or silently integrated",
+    "Caller still owns common lock/private candidate validation/original capture/Git semantics",
+    "No remote transaction or release acceptance invented",
+    "Complete outside-witness deletion requires protected inventory to detect"
+  ],
+  "runtime_metadata": {
+    "configured_revision": "11",
+    "observed_revision": "11",
+    "observations_current": true,
+    "network": "unrestricted enforced",
+    "credential_readiness_metadata": "ready for api.github.com; no credential values inspected",
+    "changed": false
+  },
+  "production_write": false,
+  "real_acceptance": false,
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8"
+}

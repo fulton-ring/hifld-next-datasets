@@ -8,6 +8,7 @@ from http.client import IncompleteRead
 from urllib.error import HTTPError
 import io
 import hashlib
+import sqlite3
 from unittest.mock import patch
 
 import pyarrow as pa
@@ -43,6 +44,37 @@ def receipt_fixture(captures):
 
 
 class NoaaExtractionTests(unittest.TestCase):
+    def test_declared_integer_boundaries_keep_int32_in_candidate_and_geopackage(self):
+        captures, kwargs = fixture()
+        layer = json.loads(captures['layer'])
+        layer['fields'].append({'name': 'RULEID', 'type': 'esriFieldTypeInteger'})
+        full = json.loads(captures['features'])
+        geo = json.loads(captures['geojson'])
+        for feature, independent, value in zip(full['features'], geo['features'], [-(2**31), 2**31-1]):
+            feature['attributes']['RULEID'] = value
+            independent['properties']['RULEID'] = value
+        captures.update(layer=json.dumps(layer).encode(), features=json.dumps(full).encode(), geojson=json.dumps(geo).encode())
+        kwargs.update(expected_fields=dict(kwargs['expected_fields'], RULEID='esriFieldTypeInteger'), expected_fingerprints=noaa_reference_fingerprints(layer, full))
+        table, report = validate_noaa_capture(captures, **kwargs)
+        self.assertEqual(table.schema.field('RULEID').type, pa.int32())
+        self.assertEqual(sorted(table['RULEID'].to_pylist()), [-(2**31), 2**31-1])
+        self.assertIn('OID', report['proposed_storage_encodings'])
+        with tempfile.TemporaryDirectory() as directory:
+            staging = StagingStorageResource(local_dir=directory, use_local=True)
+            output = stage_noaa_candidate(staging=staging, dataset_slug='synthetic32', file_slug='synthetic32', captures=captures, receipts=receipt_fixture(captures), expected_layer_url=TEST_LAYER, **kwargs)
+            self.assertEqual(pq.read_table(Path(directory)/output['candidate_key']).schema.field('RULEID').type, pa.int32())
+            with sqlite3.connect(Path(directory)/output['catalog_source_key']) as connection:
+                declarations = {row[1]: row[2] for row in connection.execute('PRAGMA table_info("synthetic32")')}
+            self.assertEqual(declarations['RULEID'], 'MEDIUMINT')
+        for value in [-(2**31)-1, 2**31, True, 1.0]:
+            changed = json.loads(captures['features'])
+            independently_changed = json.loads(captures['geojson'])
+            changed['features'][0]['attributes']['RULEID'] = value
+            independently_changed['features'][0]['properties']['RULEID'] = value
+            bad = dict(captures, features=json.dumps(changed).encode(), geojson=json.dumps(independently_changed).encode())
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_noaa_capture(bad, **kwargs)
+
     def test_native_types_ids_vertices_and_staging_are_lossless_idempotent(self):
         captures, kwargs = fixture()
         table, report = validate_noaa_capture(captures, **kwargs)

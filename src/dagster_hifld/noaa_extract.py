@@ -276,7 +276,11 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
             data, dtype = [g.wkb for g in geometries], pa.binary()
         else:
             data = [f["attributes"][name] for f in ordered]
-            if kind in ("esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeDate"):
+            if kind == "esriFieldTypeInteger":
+                dtype = pa.int32()
+                if any(v is not None and (type(v) is not int or not -(2**31) <= v < 2**31) for v in data):
+                    raise ValueError(f"NOAA declared int32 physical type/range loss: {name}")
+            elif kind in ("esriFieldTypeOID", "esriFieldTypeDate"):
                 dtype = pa.int64()
                 if any(v is not None and type(v) is not int for v in data):
                     raise ValueError(f"NOAA integer/date physical type loss: {name}")
@@ -294,8 +298,14 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
             raise ValueError(f"NOAA nonnullable source field has NULL: {name}")
         arrow_fields.append(pa.field(name, dtype, nullable=field.get("nullable", True)))
         arrays.append(pa.array(data, type=dtype))
+    proposed_encodings = {
+        "OID": "Signed int64 candidate encoding; source OID bit width is not established by the captured declaration. No identifier substitution or width approval.",
+        "Date": "Original epoch-millisecond integers retained as int64, not a claim of native logical Date preservation or approved published datetime mapping.",
+        "String": "Exact string values retained; original declared lengths remain in raw field metadata, not an approved output width constraint.",
+    }
     metadata = {b"geo": _json_bytes({"version": "1.1.0", "primary_column": "SHAPE", "columns": {"SHAPE": {"encoding": "WKB", "geometry_types": sorted({g.geom_type for g in geometries}), "crs": CRS.from_epsg(4326).to_json_dict()}}}),
                 b"hifld:noaa_field_declarations": _json_bytes(layer["fields"]),
+                b"hifld:proposed_storage_encodings": _json_bytes(proposed_encodings),
                 b"hifld:acceptance": b"unapproved_draft"}
     table = pa.Table.from_arrays(arrays, schema=pa.schema(arrow_fields, metadata=metadata))
     quality = {"feature_count": count, "ids": ids, "identifier_columns": ["OBJECTID", "BOUND_ID"], "fingerprints": fingerprints,
@@ -304,7 +314,8 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
                "coverage": {name: dict(sorted(Counter(f["attributes"][name] for f in ordered).items())) for name in ("REGION", "FEAT_TYPE")},
                "schema": [{"name": f.name, "type": str(f.type), "nullable": f.nullable} for f in table.schema],
                "invalid_geometry_count": 0, "completeness_passed": True, "promotion_approved": False,
-               "mapping": "Esri SHAPE paths -> same-named WKB; one path LineString, multiple paths MultiLineString; declared source Double float64, dates epoch-ms int64; all source fields retained; no generated id/bbox or coordinate changes"}
+               "proposed_storage_encodings": proposed_encodings,
+               "mapping": "Esri SHAPE paths -> same-named WKB; one path LineString, multiple paths MultiLineString; declared Integer int32 with range checks, Double float64. OID int64, Date epoch-ms int64 and output string width constraints remain explicitly unapproved encodings; original field declarations and all raw inputs retained; no generated id/bbox or coordinate changes"}
     return table, quality
 
 
@@ -359,7 +370,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     # All declared source identifier properties remain explicit and unchanged.
     with tempfile.TemporaryDirectory(prefix="hifld_noaa_candidate_") as directory:
         path = Path(directory) / "source.gpkg"
-        properties = {f.name: ("int64" if pa.types.is_integer(f.type) else "float" if pa.types.is_floating(f.type) else "str") for f in table.schema if f.name != "SHAPE"}
+        properties = {f.name: ("int32" if pa.types.is_int32(f.type) else "int64" if pa.types.is_integer(f.type) else "float" if pa.types.is_floating(f.type) else "str") for f in table.schema if f.name != "SHAPE"}
         with fiona.open(path, "w", driver="GPKG", layer=file_slug, crs="EPSG:4326", schema={"geometry": "Unknown", "properties": properties}, GEOMETRY_NAME="SHAPE") as destination:
             for row in table.to_pylist():
                 from_geometry = from_wkb(row.pop("SHAPE"))

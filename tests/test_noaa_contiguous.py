@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import json
 import os
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -24,12 +25,12 @@ from dagster_hifld.assets.publish import (
     publish_version, verify_release,
 )
 from dagster_hifld.definitions import defs as registered_defs
-from dagster_hifld.noaa_extract import stage_noaa_candidate
+from dagster_hifld.noaa_extract import noaa_capture_urls, stage_noaa_candidate
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
-EVIDENCE = Path(__file__).resolve().parents[1] / 'docs/dataset-sources/24nm-contiguous-zone/evidence'
+EVIDENCE = Path(os.environ.get('HIFLD_NOAA_CONTIGUOUS_CAPTURE_EVIDENCE_DIR', '.'))
 
 
 def real_receipt(directory):
@@ -42,6 +43,8 @@ def real_receipt(directory):
             (directory / (name + '.json')).write_bytes(body)
         (directory / 'receipt.json').write_text(json.dumps(receipt))
         return captures, receipt
+    if not os.environ.get('HIFLD_NOAA_CONTIGUOUS_CAPTURE_EVIDENCE_DIR'):
+        raise unittest.SkipTest('Complete real inputs are external checksummed artifacts; set HIFLD_NOAA_CONTIGUOUS_CAPTURE_EVIDENCE_DIR or HIFLD_NOAA_CONTIGUOUS_LIVE_RECEIPT')
     receipt = json.loads((EVIDENCE / 'verified-capture-receipt.json').read_text())
     captures = {item['capture']: gzip.decompress((EVIDENCE / ('verified-capture-' + item['capture'] + '.json.gz')).read_bytes()) for item in receipt['receipts']}
     directory.mkdir(parents=True)
@@ -72,8 +75,24 @@ class ContiguousDraftTests(unittest.TestCase):
     def test_receipt_rejects_wrong_identity_and_mutation(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'receipt'
-            real_receipt(p)
+            p.mkdir()
+            # Small transport-only fixture, not a valid producer population.
+            urls = noaa_capture_urls(source_module.LAYER_URL)
+            receipt = {'schema_version': 1, 'layer_url': source_module.LAYER_URL, 'objects': {}, 'receipts': []}
+            for name, url in urls.items():
+                body = json.dumps({'synthetic_transport_only': True, 'capture': name}).encode()
+                (p / (name + '.json')).write_bytes(body)
+                pin = {'sha256': hashlib.sha256(body).hexdigest(), 'bytes': len(body)}
+                receipt['objects'][name + '.json'] = pin
+                receipt['receipts'].append(dict(pin, capture=name, url=url, final_url=url, http_status=200, fetched_at='2026-10-19T12:00:00+00:00'))
+            (p / 'receipt.json').write_text(json.dumps(receipt))
             source_module.read_contiguous_receipt(p)
+            for invalid_version in (True, 1.0, '1'):
+                changed = dict(receipt, schema_version=invalid_version)
+                (p / 'receipt.json').write_text(json.dumps(changed))
+                with self.assertRaisesRegex(ValueError, 'identity'):
+                    source_module.read_contiguous_receipt(p)
+            (p / 'receipt.json').write_text(json.dumps(receipt))
             (p / 'features.json').write_bytes(b'changed')
             with self.assertRaisesRegex(ValueError, 'checksum'):
                 source_module.read_contiguous_receipt(p)
@@ -141,6 +160,7 @@ class ContiguousDraftTests(unittest.TestCase):
                 self.assertEqual(table.num_rows, 63)
                 self.assertEqual(table.schema.field('UNILATERAL').type, pa.float64())
                 self.assertEqual(table.schema.field('PUB_DATE').type, pa.int64())
+                self.assertEqual(table.schema.field('RULEID').type, pa.int32())
                 self.assertEqual(set(table.column_names), set(source_module.EXPECTED_FIELDS))
                 src = {f['attributes']['OBJECTID']: f for f in json.loads(captures['features'])['features']}
                 for row in table.to_pylist():
@@ -184,7 +204,12 @@ class ContiguousDraftTests(unittest.TestCase):
                     self.assertTrue(as_multi.equals_exact(MultiLineString(original['geometry']['paths']), 0))
                     self.assertEqual(list(terminal_geometry.bounds), [row['bbox'][n] for n in ['xmin', 'ymin', 'xmax', 'ymax']])
                 terminal_schema = pq.read_table(terminal[0]).schema
-                for name in ['OBJECTID', 'RULEID', 'PUB_DATE', 'APPRV_DATE']:
+                self.assertEqual(terminal_schema.field('RULEID').type, pa.int32())
+                gpkg = next((version_dir / 'geopackage').glob('*.gpkg'))
+                with sqlite3.connect(gpkg) as connection:
+                    columns = {row[1]: row[2] for row in connection.execute(f'PRAGMA table_info("{source_module.FILE}")')}
+                self.assertEqual(columns['RULEID'], 'MEDIUMINT')
+                for name in ['OBJECTID', 'PUB_DATE', 'APPRV_DATE']:
                     self.assertEqual(terminal_schema.field(name).type, pa.int64())
                 self.assertEqual(set(row['REGION'] for row in terminal_rows), set(report['coverage']['REGION']))
                 terminal_type = terminal_schema.field('UNILATERAL').type
