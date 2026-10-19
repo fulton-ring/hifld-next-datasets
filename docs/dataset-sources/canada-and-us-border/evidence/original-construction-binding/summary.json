@@ -1,0 +1,30 @@
+{
+  "source_code_head": "147ad2eb41de5ca5de34b401b111de56ac566a17",
+  "scope": "Verified partial construction-binding repair; NOT ready for final handoff",
+  "focused_tests": {
+    "tests": 17,
+    "passed": 17,
+    "seconds": 101.834
+  },
+  "full_local_suite": {
+    "total": 522,
+    "passed": 521,
+    "skipped": 1,
+    "errors": 0,
+    "seconds": 145.514,
+    "production_opt_in_skipped": true,
+    "real_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f"
+  },
+  "actual_registered_13_run_lifecycle": "actual13-execution.json",
+  "all30_original_values_types_wkb_preserved": true,
+  "normal_two_catalogs_missing_registry_and_quality_failure_preserve_prior": true,
+  "remaining_actual_code_authenticity_gap": {
+    "probe": "remaining-coforged-anchor-probe.json",
+    "run_id": "3f1f2336-01ee-4543-ac7f-aae25adf1d2e",
+    "description": "Co-forged outside original manifest and canonical candidate code_commit40zeros still accepted; all original bytes restored afterwards",
+    "shared_fix_owner": "#417 verifier_417 additive construction_provenance helper0223 under independent review"
+  },
+  "handoff_ready": false,
+  "approved": false,
+  "ci_claim": false
+}

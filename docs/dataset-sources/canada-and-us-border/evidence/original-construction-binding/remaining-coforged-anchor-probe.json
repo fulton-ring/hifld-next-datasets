@@ -1,0 +1,9 @@
+{
+  "classification": "Additional isolated provenance authenticity probe; no real acceptance/release",
+  "source_code_head": "147ad2eb41de5ca5de34b401b111de56ac566a17",
+  "run_id": "3f1f2336-01ee-4543-ac7f-aae25adf1d2e",
+  "success": true,
+  "false_code_commit_retained": true,
+  "error": [],
+  "prior_fixture_preserved": true
+}
