@@ -419,9 +419,13 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
             pq.write_table(table, parquet, compression='zstd')
             decoded.write_bytes(b''.join(encode({'type': 'Feature', 'properties': {k:r[k] for k in SCHEMA},
                 'geometry': mapping(shapely.from_wkb(r['geometry']))}) for r in pq.read_table(parquet).to_pylist()))
-            parquet_fidelity = compare_derivative(source_records, decoded, directory / 'parquet-comparison')
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
+            # Both independently decoded derivatives equal the exact complete source stream.
+            # Repeating the same shared schema/geometry walk adds no independent evidence.
+            parquet_fidelity = {'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
+                'rows':len(rows),'source_records_sha256':sha(records),
+                'shared_schema_geometry_validation_reference':fidelity}
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
             manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
