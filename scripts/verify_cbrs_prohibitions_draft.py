@@ -62,6 +62,15 @@ with DagsterInstance.get() as instance:
  post=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
  record('real_complete_post_formats_refresh',post);assert post.success and post.output_for_node(fws_cbrs_prohibitions.op.name)==output
  assert snapshot(published)==prior
+ # The second normal catalog snapshots its previously generated dictionary/quality.
+ second_formats=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False)
+ second_errors=record('second_normal_formats_missing_approval',second_formats)
+ assert not second_formats.success and second_errors and all('missing_independent_release_approval_registry' in e for e in second_errors)
+ assert (root/'metadata/source/data_dictionary.json').exists() and (root/'metadata/source/quality_manifest.json').exists()
+ second_refresh=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+ record('real_complete_post_second_catalog_refresh',second_refresh)
+ assert second_refresh.success and second_refresh.output_for_node(fws_cbrs_prohibitions.op.name)==output
+ assert snapshot(published)==prior
  rows=pq.read_table(root/'candidate/typed-source.parquet').to_pylist();assert len(rows)==1693
  with fiona.open(root/'geopackage'/f'{source.SLUG}.gpkg') as f:gp={r['properties']['__source_fid']:r for r in f}
  for row in rows:

@@ -336,7 +336,8 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     root=local_candidate_path(storage,prefix)
     # The normal graph adds only these derivative files. Source-owned directories remain exact.
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
-        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json'}
+        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json',
+        'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise CBRSQuarantineError('linked_candidate_object')
@@ -350,6 +351,9 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(manifest)
+    snapshot_manifest=root/'metadata/source/source_manifest.json'
+    if snapshot_manifest.exists() and strict_json(snapshot_manifest.read_bytes())!=manifest:
+        raise CBRSQuarantineError('cached_source_provenance_snapshot_differs')
     # code_commit identifies the original immutable construction, including later docs-only commits.
     for name,value in expected_manifest.items():
         if name!='code_commit' and manifest.get(name)!=value:
