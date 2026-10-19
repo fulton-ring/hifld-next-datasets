@@ -9,7 +9,9 @@ import shapely
 
 from dagster_hifld.partitions import build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_disaster_debris import _native_parquet, _sha
+from dagster_hifld.sources.epa_disaster_debris import (
+    _native_parquet, _portal_publication_snapshot, _sha, _source_layer_stable,
+)
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -17,6 +19,17 @@ from dagster_hifld.sources.epa_frs_common import (
 
 
 class EpaDisasterDebrisTests(unittest.TestCase):
+    def test_portal_view_counter_is_the_only_ignored_publication_change(self):
+        before = {"id": "item", "owner": "EPA_GEO", "url": "https://example.gov/service",
+                  "title": "EPA 2026", "type": "Feature Service", "access": "public", "numViews": 12}
+        after = {**before, "numViews": 13}
+        self.assertEqual(_portal_publication_snapshot(before), _portal_publication_snapshot(after))
+        self.assertNotEqual(_portal_publication_snapshot(before), _portal_publication_snapshot({**after, "owner": "other"}))
+        layer_before = {"name": "layer", "geometryType": "esriGeometryPoint",
+                        "fields": [{"name": "OBJECTID", "type": "esriFieldTypeOID"}]}
+        self.assertTrue(_source_layer_stable(layer_before, dict(layer_before)))
+        self.assertFalse(_source_layer_stable(layer_before, {**layer_before, "fields": [{"name": "OBJECTID", "type": "esriFieldTypeString"}]}))
+
     def test_native_schema_preserves_zeroes_nulls_global_ids_and_native_points(self):
         fields = [
             {"name": "OBJECTID", "type": "esriFieldTypeOID", "nullable": False},

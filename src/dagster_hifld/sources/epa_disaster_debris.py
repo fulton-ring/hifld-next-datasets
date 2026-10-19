@@ -55,6 +55,16 @@ def _field_profile(field: Mapping[str, object]) -> dict[str, object]:
     return {k: field[k] for k in keys if k in field}
 
 
+def _portal_publication_snapshot(item: Mapping[str, object]) -> dict[str, object]:
+    """Exclude only ArcGIS's request-incremented view counter from item stability."""
+    return {key: value for key, value in item.items() if key != "numViews"}
+
+
+def _source_layer_stable(before: Mapping[str, object], after: Mapping[str, object]) -> bool:
+    """Require the full layer/service metadata snapshot to remain unchanged."""
+    return dict(before) == dict(after)
+
+
 def _type(field: Mapping[str, object]) -> pa.DataType:
     kind = field["type"]
     if kind == "esriFieldTypeOID": return pa.int64()
@@ -99,7 +109,7 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[lis
             or portal.get("type") != "Feature Service" or portal.get("url") != SERVICE_URL
             or portal.get("title") != "National Disaster Debris Recovery Facilities (EPA 2026)"):
         raise ValueError("epa_portal_identity_or_delegation_drift")
-    if portal != docs["portal_item_after"]:
+    if _portal_publication_snapshot(portal) != _portal_publication_snapshot(docs["portal_item_after"]):
         raise ValueError("epa_portal_metadata_changed_during_capture")
     if service.get("serviceItemId") != ITEM_ID or not any(x.get("id") == LAYER_ID and x.get("name") == LAYER_NAME for x in service.get("layers",[]) if isinstance(x,dict)):
         raise ValueError("epa_service_layer_identity_drift")
@@ -113,7 +123,8 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[lis
     profile = [_field_profile(f) for f in fields]
     if docs["layer_after"].get("name") != LAYER_NAME or [_field_profile(f) for f in docs["layer_after"].get("fields",[])] != profile:
         raise ValueError("source_schema_changed_during_capture")
-    if docs["layer_before"] != docs["layer_after"] or docs["service_before"] != docs["service_after"]:
+    if (not _source_layer_stable(docs["layer_before"], docs["layer_after"])
+            or not _source_layer_stable(docs["service_before"], docs["service_after"])):
         raise ValueError("source_metadata_changed_during_capture")
     before, after, seed = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds"), docs["ids_seed"].get("objectIds")
     count = docs["count_before"].get("count")
@@ -161,6 +172,7 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[lis
            "source_fields":profile,"source_crs_epsg":3857,"source_geometry_type":"Point","source_null_geometry_count":nulls,
            "source_invalid_coordinate_count":invalid,"portal_item_id":ITEM_ID,"portal_owner":portal["owner"],
            "portal_modified_epoch_ms":portal.get("modified"),"portal_modified_is_source_release_date":False,
+           "portal_volatile_fields_excluded_from_stability_check":["numViews"],
            "layer_editing_info":layer.get("editingInfo"),"layer_edit_timestamps_are_source_release_dates":False,
            "source_release_month":SOURCE_RELEASE,"source_release_evidence":EPA_PAGE}
     return fields,features,audit
