@@ -391,6 +391,14 @@
     "bytes": 11312,
     "sha256": "4f0fff5e9f357ddba1221c77a9a453530d11313671c441bbc719c95d16d1df11"
   },
+  "state-schema-docs-only.json": {
+    "bytes": 889,
+    "sha256": "1d52c64172a271f9b1b7a9394ed97f4e65d2f6e4ad5e48838eb830509da9e3f5"
+  },
+  "state-schema-docs-only.log": {
+    "bytes": 2809,
+    "sha256": "be7451d0e997385fefeaf10ce5d0472770d03c826dfc36df29f626b89ee1a367"
+  },
   "state-schema-targeted.log": {
     "bytes": 339,
     "sha256": "a41e498991dc9eebe7ca2a13d74b6f6d524de13a50c7edf55a1a4d6a15fc3a92"
