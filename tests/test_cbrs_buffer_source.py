@@ -20,6 +20,16 @@ from dagster_hifld.sources import cbrs_buffer as s
 CAPTURE=Path(__file__).parents[1]/'docs/dataset-sources/cbrs-buffer-zone-1/evidence/captures'
 
 class CBRSTests(unittest.TestCase):
+    @staticmethod
+    def atomic_fixture(name='geopackage/test.gpkg',body=b'fixture'):
+        # Only atomic installation mechanics are synthetic in these fixtures.
+        manifest={'synthetic_fixture':True}
+        payloads={name:body,'metadata/source_manifest.json':s.encode(manifest),
+                  'metadata/processing_identity.json':s.encode({'files':{}})}
+        payloads.update({f'raw/captures/{n}.body':b'fixture' for n in s.URLS})
+        payloads.update({f'raw/captures/{n}.receipt.json':b'{}' for n in s.URLS})
+        return payloads,{'version':'v0.0.0-fixture'},manifest
+
     def test_complete_original_release(self):
         with tempfile.TemporaryDirectory() as d:
             rows,audit,members=s.inspect_archive((CAPTURE/'official_zip.body').read_bytes(),Path(d))
@@ -82,10 +92,36 @@ class CBRSTests(unittest.TestCase):
             with self.subTest(failure=type(failure).__name__),tempfile.TemporaryDirectory() as d:
                 storage=StagingStorageResource(local_dir=d)
                 target='cbrs-buffer-zone-1/cbrs-buffer-zone-1/v0.0.0-draft-fixture'
-                with patch.object(s.os,'rename',side_effect=failure),self.assertRaises(type(failure)):
-                    s.commit_complete_candidate(storage,target,{'geopackage/test.gpkg':b'fixture'}, {})
+                payloads,ready,manifest=self.atomic_fixture()
+                with patch.object(s,'original_provenance_bundle',return_value=({},manifest)),patch.object(s.os,'rename',side_effect=failure),self.assertRaises(type(failure)):
+                    s.commit_complete_candidate(storage,target,payloads,ready)
                 self.assertFalse(Path(d,target).exists())
                 self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
+
+    def test_failed_private_payload_or_ready_write_cannot_establish_first_binding(self):
+        for failed_key in ['geopackage/test.gpkg','metadata/cbrs_buffer_candidate_ready.json']:
+            for failure in [OSError('private write failed'),KeyboardInterrupt()]:
+                with self.subTest(key=failed_key,failure=type(failure).__name__),tempfile.TemporaryDirectory() as d:
+                    storage=StagingStorageResource(local_dir=d);payloads,ready,_=self.atomic_fixture()
+                    original=s.immutable
+                    def write(resource,key,body):
+                        if key==failed_key:raise failure
+                        return original(resource,key,body)
+                    with patch.object(s,'immutable',side_effect=write),patch.object(s,'original_provenance_bundle') as binding,self.assertRaises(type(failure)):
+                        s.commit_complete_candidate(storage,s.SLUG+'/'+s.SLUG+'/v0.0.0-fixture',payloads,ready)
+                    binding.assert_not_called()
+                    self.assertFalse(Path(d,'_source-provenance').exists())
+                    self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
+                    self.assertFalse(Path(d,s.SLUG,s.SLUG,'v0.0.0-fixture').exists())
+
+    def test_authentic_complete_source_first_native_writer_failure_has_no_binding(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d)
+            with patch.object(s,'write_native_geopackage',side_effect=OSError('first native writer failed')),self.assertRaisesRegex(ValueError,'first native writer failed'):
+                s.stage_cbrs_buffer_candidate(storage,capture_dir=CAPTURE)
+            self.assertFalse(Path(d,'_source-provenance').exists())
+            self.assertFalse(list(Path(d,s.SLUG).rglob('cbrs_buffer_candidate_ready.json')))
+            self.assertTrue(any(s.sha256_file(p)==s.PIN for p in Path(d,'_raw-captures').rglob('official_zip.body')))
 
     def test_archive_pin_and_zip_roster_changes_fail_before_decode(self):
         body=(CAPTURE/'official_zip.body').read_bytes()
@@ -123,7 +159,9 @@ class CBRSTests(unittest.TestCase):
     def test_atomic_target_does_not_replace_existing_release(self):
         with tempfile.TemporaryDirectory() as d:
             storage=StagingStorageResource(local_dir=d);prefix='a/a/v0.0.0-fixture'
-            s.commit_complete_candidate(storage,prefix,{'geopackage/a.gpkg':b'prior'}, {'status':'fixture'})
+            payloads,ready,manifest=self.atomic_fixture('geopackage/a.gpkg',b'prior')
+            with patch.object(s,'original_provenance_bundle',return_value=({},manifest)):
+                s.commit_complete_candidate(storage,prefix,payloads,ready)
             with self.assertRaises(ValueError):s.commit_complete_candidate(storage,prefix,{'geopackage/a.gpkg':b'new'}, {})
             self.assertEqual(Path(d,prefix,'geopackage/a.gpkg').read_bytes(),b'prior')
 
@@ -249,7 +287,11 @@ class CBRSTests(unittest.TestCase):
                 try:s.stage_cbrs_buffer_candidate(storage)
                 except Exception as e:errors.append(str(e))
             def install():
-                started.set();s.commit_complete_candidate(storage,prefix,{'geopackage/winner.gpkg':b'valid winner fixture'},{'synthetic':True});winner.set()
+                payloads,ready,manifest=self.atomic_fixture('geopackage/winner.gpkg',b'valid winner fixture')
+                started.set()
+                with patch.object(s,'original_provenance_bundle',return_value=({},manifest)):
+                    s.commit_complete_candidate(storage,prefix,payloads,ready)
+                winner.set()
             with patch.object(s,'acquire',return_value=captures),patch.object(s,'provenance',return_value={}),patch.object(s,'inspect_archive',return_value=([],{},{})),patch.object(s,'processing_identity',return_value=identity),patch.object(s,'quarantine_rejected_cache_held',side_effect=pause_q),patch.object(s,'quarantine',side_effect=diagnostic):
                 a=threading.Thread(target=source);a.start();self.assertTrue(held.wait(10))
                 b=threading.Thread(target=install);b.start();self.assertTrue(started.wait(10))

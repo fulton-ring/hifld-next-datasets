@@ -64,11 +64,11 @@ with DagsterInstance.get() as instance:
     x=json.loads(p.read_bytes());x['code_commit']=claim;p.write_bytes(s.encode(x))
     if name in marker['objects']:marker['objects'][name]=s.sha256_file(p)
    ready.write_bytes(s.encode(marker))
-  bad=inventory(root);qroot=runtime/'staging/_quarantine'/s.SLUG/'rejected-cache';before=set(qroot.glob('*'))
+  bad=inventory(root);qroot=runtime/'staging/_quarantine'/s.SLUG/'rejected-cache';before={p for p in qroot.glob('*') if p.is_dir()}
   result=job.execute_in_process(instance=instance,run_config=config,raise_on_error=False);errors=record(mode,result);assert not result.success
   reason={'coforged_nonexistent_commit':'construction_invalid_commit','coforged_wrong_real_commit':'construction_processing_blob_missing','missing_external_binding':'missing_original_construction_provenance_bundle'}[mode]
   assert any(reason in e for e in errors),errors
-  added=set(qroot.glob('*'))-before;assert len(added)==1;retained=next(iter(added))/root.name
+  added={p for p in qroot.glob('*') if p.is_dir()}-before;assert len(added)==1;retained=next(iter(added))/root.name
   assert inventory(retained)==bad and s.sha256_file(retained/'raw'/s.ARCHIVE_NAME)==s.PIN
   assert not root.exists() and (s.SLUG,s.SLUG,output['version']) not in list(_iter_staged_version_paths(stage))
   assert inventory(runtime/'published')==prior

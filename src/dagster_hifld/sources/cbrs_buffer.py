@@ -508,20 +508,23 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
 
 def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
     """Install one fully built local version atomically; partial builds are never discoverable."""
-    target=local_candidate_path(storage,prefix)
-    target.parent.mkdir(parents=True,exist_ok=True)
-    # Cooperating refresh processes cannot replace an existing version or race its first commit.
-    lock=target.parent/('.'+target.name+'.lock')
-    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1: raise CBRSQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    with candidate_lock(storage,prefix) as target:
         if target.exists() or target.is_symlink():
             raise CBRSQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
             for name,value in payloads.items(): immutable(private,name,value)
             immutable(private,'metadata/cbrs_buffer_candidate_ready.json',encode(ready))
+            # Only a fully written private candidate may establish the first
+            # construction context. Failed native/payload/ready writes leave no
+            # binding; installation and first binding share the version lock.
+            manifest=strict_json(payloads['metadata/source_manifest.json'])
+            identity=strict_json(payloads['metadata/processing_identity.json'])
+            captures={name:(payloads[f'raw/captures/{name}.body'],
+                strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
+            _,original=original_provenance_bundle(storage,ready['version'],captures,manifest,identity['files'],create=True)
+            if original!=manifest:
+                raise CBRSQuarantineError('concurrent_original_construction_manifest_changed')
             os.rename(tmp,target)
     # Keep the tiny lock inode: unlinking permits a third process to bypass a waiter.
 
@@ -569,7 +572,10 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
                         quarantine_rejected_cache_held(storage,prefix,str(exc))
                         raise
-                captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'],create=True)
+                if storage.object_exists(f'_source-provenance/{SLUG}/{version}/bundle.json'):
+                    captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
+                else:
+                    validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
                 body,receipt=captures['official_zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_native_geopackage(rows,geopackage)
