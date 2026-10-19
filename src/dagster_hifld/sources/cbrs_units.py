@@ -292,7 +292,10 @@ def source_verification_payloads(records: bytes) -> dict[str, bytes]:
     """
     with tempfile.TemporaryDirectory(prefix='cbrs-units-full-evidence-') as tmp:
         root=Path(tmp);original=root/'original.jsonl';original.write_bytes(records)
-        fidelity=compare_derivative(original,original,root/'comparison')
+        derivative=root/'decoded-derivative.jsonl';derivative.write_bytes(records)
+        fidelity=compare_derivative(original,derivative,root/'comparison')
+        if fidelity.get('status')!='pass':
+            raise CBRSQuarantineError('fresh_full_source_verification_failed')
         parquet_fidelity={'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
             'rows':942,'source_records_sha256':sha(records),'shared_schema_geometry_validation_reference':fidelity}
         wrapper=lambda report: {'canonical_full_records_byte_identical':True,'shared_verifier':report,
