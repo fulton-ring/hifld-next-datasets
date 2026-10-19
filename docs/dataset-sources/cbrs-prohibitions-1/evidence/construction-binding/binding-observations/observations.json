@@ -1,0 +1,46 @@
+[
+  {
+    "observed_at_unix": 1792400707.8287678,
+    "state": []
+  },
+  {
+    "observed_at_unix": 1792400710.8426867,
+    "state": [
+      [
+        "/workspace/work/hifld-coordinator/30/repairs/construction-graph/staging/_source-provenance/cbrs-prohibitions-1/v0.0.0-draft-cbrs20241219-38ffce9d53efe08a-b6bb5c89abe78172/bundle.json",
+        "97bdcead8de9d0c1a1715d2ab4e961d1567ff6cf492dee11286db48af2d98828"
+      ]
+    ]
+  },
+  {
+    "observed_at_unix": 1792400946.510346,
+    "state": []
+  },
+  {
+    "observed_at_unix": 1792400961.3549192,
+    "state": [
+      [
+        "/workspace/work/hifld-coordinator/30/repairs/construction-graph/staging/_source-provenance/cbrs-prohibitions-1/v0.0.0-draft-cbrs20241219-38ffce9d53efe08a-b6bb5c89abe78172/bundle.json",
+        "97bdcead8de9d0c1a1715d2ab4e961d1567ff6cf492dee11286db48af2d98828"
+      ]
+    ]
+  },
+  {
+    "observed_at_unix": 1792400961.606203,
+    "state": [
+      [
+        "/workspace/work/hifld-coordinator/30/repairs/construction-graph/staging/_source-provenance/cbrs-prohibitions-1/v0.0.0-draft-cbrs20241219-38ffce9d53efe08a-b6bb5c89abe78172/bundle.json",
+        "005fb3555014985339411643e7fe3b07a8fc513e53da086b768e367cafb84f8d"
+      ]
+    ]
+  },
+  {
+    "observed_at_unix": 1792400977.5068638,
+    "state": [
+      [
+        "/workspace/work/hifld-coordinator/30/repairs/construction-graph/staging/_source-provenance/cbrs-prohibitions-1/v0.0.0-draft-cbrs20241219-38ffce9d53efe08a-b6bb5c89abe78172/bundle.json",
+        "97bdcead8de9d0c1a1715d2ab4e961d1567ff6cf492dee11286db48af2d98828"
+      ]
+    ]
+  }
+]

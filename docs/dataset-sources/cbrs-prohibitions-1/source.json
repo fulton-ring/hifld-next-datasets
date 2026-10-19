@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 30,
   "dataset_slug": "cbrs-prohibitions-1",
-  "status": "locally_verified_working_draft_independent_exact_head_review_pending",
+  "status": "locally_verified_working_draft_exact_head_review_pending",
   "approvals": {
     "source": false,
     "baseline": false,
@@ -80,7 +80,8 @@
         }
       },
       "schema_version": 1
-    }
+    },
+    "construction_provenance": "Outside-version first-writer immutable full-manifest and original capture receipt/depot bundle under common version lock; cache cannot self-bootstrap or rewrite construction commit/policy/receipts; real Git commit source/lock/project blobs validated; fresh rebuild preserves original binding."
   },
   "release_decisions": [
     "Accept exact intended source edition/rights and two ZIP-versus-service geometry differences.",
@@ -93,7 +94,7 @@
     "classification": "Historical background only, not fresh endpoint audit; preserved issue and all3comments contain no CBRS-specific findings."
   },
   "physical_dbf_audit": "evidence/physical-dbf-audit.json",
-  "implementation_head": "a5bb99654cd66148341a615b4d2826b3b498d42f",
+  "implementation_head": "264cdd2b58e6e717a28337bb00a78e38d931ebfd",
   "review_repair_checkpoint": {
     "head": "c84febb6bc6c6d047d2b0e6cc85f82c131e64e80",
     "focused_tests": 13,
@@ -142,6 +143,31 @@
     "review": "Native independent exact final-head review pending"
   },
   "verification": {
+    "execution": "evidence/construction-binding/execution.json",
+    "code_head": "264cdd2b58e6e717a28337bb00a78e38d931ebfd",
+    "actual_runs": 13,
+    "real_rows": 1693,
+    "two_normal_catalog_refresh_cycles": "PASS",
+    "construction_binding_cache_forgery_missing_and_forged_external": "PASS",
+    "fresh_rebuild_preserves_original_full_manifest_receipts_and_native_bytes": true,
+    "native_DATE_date32_all_values_IDs_WKB_schema_coverage": "PASS",
+    "SU_Date_nulls": 564,
+    "generic_converter_calls": 0,
+    "exact_reason_construction_cache_negatives": 3,
+    "whole_bad_cache_raw_and_prior_publication_preserved": true,
+    "full_suite": {
+      "total": 527,
+      "passed": 526,
+      "skipped": 1,
+      "seconds": 243.139,
+      "skip": "Real production GCS write E2E intentionally not enabled",
+      "real_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f"
+    },
+    "independent_exact_final_head_review": "pending",
+    "release_approval": false,
+    "CI": "No full-suite CI claim"
+  },
+  "historical_policy_verification": {
     "execution": "evidence/policy-integration/execution.json",
     "code_head": "a5bb99654cd66148341a615b4d2826b3b498d42f",
     "actual_runs": 15,
@@ -163,5 +189,13 @@
     "independent_exact_final_head_review": "pending",
     "release_approval": false,
     "CI": "No CI/full-suite success inferred from build-only workflow"
+  },
+  "construction_review_finding": {
+    "reviewed_source_head": "a5bb99654cd66148341a615b4d2826b3b498d42f",
+    "issue_comment": "https://github.com/fulton-ring/hifld-next-datasets/issues/30#issuecomment-6263526100",
+    "pr_comment": "https://github.com/fulton-ring/hifld-next-datasets/pull/439#issuecomment-6263526396",
+    "defect": "Candidate code_commit could be forged and self-repinned; no original-construction binding outside mutable version. No release approval bypass.",
+    "repair_head": "264cdd2b58e6e717a28337bb00a78e38d931ebfd",
+    "verification": "evidence/construction-binding/execution.json"
   }
 }

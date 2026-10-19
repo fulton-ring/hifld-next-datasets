@@ -1,0 +1,57 @@
+{
+  "acceptance": "not_established_by_comparison",
+  "adapter": "typed-geojson-feature-jsonl-v1",
+  "attribute_field_changes": {
+    "bytes": 479,
+    "fields": 7,
+    "path": "baseline_field_changes.jsonl",
+    "sha256": "8196cd36c3bd93a677476daf4f7720f9ee52048573cfc84aadadbac84211750f"
+  },
+  "baseline": {
+    "approved": false,
+    "comparison_input": {
+      "adapter": "typed-geojson-feature-jsonl-v1",
+      "bytes": 24410990,
+      "sha256": "5c47badb8ad915e8538157b1a24d35dcdee645c3b7af98b236e5b41ca15ed507"
+    },
+    "role": "unapproved_producer_source_fidelity_reference",
+    "source_archive_sha256": "8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0"
+  },
+  "baseline_input_bytes": 24410990,
+  "baseline_sha256": "5c47badb8ad915e8538157b1a24d35dcdee645c3b7af98b236e5b41ca15ed507",
+  "candidate_input_bytes": 24410990,
+  "candidate_sha256": "5c47badb8ad915e8538157b1a24d35dcdee645c3b7af98b236e5b41ca15ed507",
+  "comparator_sha256": "e09afaf16c27df65b9a8e0bbfde9c46e89c436d4335bdfaef9436609876ff206",
+  "contract_sha256": "c1dd0a2609a904f70e4a3c40055baef252ac49012a04300f4fb1afbedf55b438",
+  "differences": {
+    "added": 0,
+    "attributes": 0,
+    "coverage_buckets": 0,
+    "geometry": 0,
+    "removed": 0
+  },
+  "populations": {
+    "baseline": {
+      "duplicate_keys": 0,
+      "invalid_records": 0,
+      "null_keys": 0,
+      "rows": 1693
+    },
+    "candidate": {
+      "duplicate_keys": 0,
+      "invalid_records": 0,
+      "null_keys": 0,
+      "rows": 1693
+    }
+  },
+  "reason_codes": [],
+  "retained_rows_compared": 1693,
+  "schema_version": 1,
+  "sidecar": {
+    "bytes": 0,
+    "path": "baseline_differences.jsonl",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "status": "pass",
+  "verification_scope": "reviewed_jsonl_normalization"
+}
