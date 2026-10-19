@@ -1,0 +1,235 @@
+{
+  "approved": false,
+  "classification": "complete unapproved published baseline candidate versus exact inventory2024 producer layer; compatibility and mapping pending",
+  "source_rows": 12884,
+  "baseline_rows": 12896,
+  "source_crs": "EPSG:4269",
+  "baseline_geo_metadata": {
+    "primary_column": "geometry",
+    "columns": {
+      "geometry": {
+        "encoding": "WKB",
+        "crs": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "WGS 84 / Pseudo-Mercator",
+          "base_crs": {
+            "name": "WGS 84",
+            "datum": {
+              "type": "GeodeticReferenceFrame",
+              "name": "World Geodetic System 1984",
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Latitude",
+                  "abbreviation": "lat",
+                  "direction": "north",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Longitude",
+                  "abbreviation": "lon",
+                  "direction": "east",
+                  "unit": "degree"
+                }
+              ]
+            },
+            "id": {
+              "authority": "EPSG",
+              "code": 4326
+            }
+          },
+          "conversion": {
+            "name": "unnamed",
+            "method": {
+              "name": "Popular Visualisation Pseudo Mercator",
+              "id": {
+                "authority": "EPSG",
+                "code": 1024
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8801
+                }
+              },
+              {
+                "name": "Longitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8802
+                }
+              },
+              {
+                "name": "False easting",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8806
+                }
+              },
+              {
+                "name": "False northing",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8807
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 3857
+          }
+        },
+        "geometry_types": [
+          "MultiPolygon",
+          "Polygon"
+        ],
+        "covering": {
+          "bbox": {
+            "xmin": [
+              "bbox",
+              "xmin"
+            ],
+            "ymin": [
+              "bbox",
+              "ymin"
+            ],
+            "xmax": [
+              "bbox",
+              "xmax"
+            ],
+            "ymax": [
+              "bbox",
+              "ymax"
+            ]
+          }
+        }
+      }
+    },
+    "version": "1.1.0",
+    "creator": {
+      "library": "geopandas",
+      "version": "1.1.3"
+    }
+  },
+  "source_schema": "OBJECTID: int64 not null\nPLACENS: string\n  -- field metadata --\n  GDAL:OGR:width: '8'\nGEOID: string\n  -- field metadata --\n  GDAL:OGR:width: '7'\nGEOIDFQ: string\n  -- field metadata --\n  GDAL:OGR:width: '16'\nNAMELSAD: string\n  -- field metadata --\n  GDAL:OGR:width: '100'\nCLASSFP: string\n  -- field metadata --\n  GDAL:OGR:width: '2'\nFUNCSTAT: string\n  -- field metadata --\n  GDAL:OGR:width: '1'\nALAND: double\nAWATER: double\nINTPTLAT: string\n  -- field metadata --\n  GDAL:OGR:width: '11'\nINTPTLON: string\n  -- field metadata --\n  GDAL:OGR:width: '12'\nSHAPE: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\":{\n  \"$schema\": \"https://proj.org/sche' + 701",
+  "baseline_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 1416\nAREALAND: string\nAREAWATER: string\nBASENAME: string\nCBSAPCI: string\nCENTLAT: string\nCENTLON: string\nFUNCSTAT: string\nGEOID: string\nINTPTLAT: string\nINTPTLON: string\nLSADC: string\nMTFCC: string\nNAME: string\nNECTAPCI: string\nOBJECTID: int64\nOID: string\nPLACE: string\nPLACECC: string\nPLACENS: string\nSTATE: string\nDISP_CLR: int64\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 2682\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 1564",
+  "source_GEOID_unique": true,
+  "baseline_GEOID_unique": true,
+  "diagnostic_GEOID_common": 12863,
+  "source_only_GEOIDs": [
+    "0127640",
+    "0649582",
+    "0681312",
+    "0840550",
+    "1806904",
+    "1837908",
+    "2226746",
+    "2226757",
+    "2237270",
+    "2256855",
+    "2257705",
+    "2269225",
+    "2278680",
+    "2280920",
+    "3020950",
+    "4826736",
+    "5108708",
+    "5129152",
+    "5173760",
+    "5174916",
+    "5531375"
+  ],
+  "baseline_only_GEOIDs": [
+    "0127604",
+    "0622188",
+    "0654064",
+    "1221100",
+    "1248725",
+    "1965550",
+    "2226674",
+    "2226676",
+    "3066910",
+    "3236700",
+    "3246400",
+    "3264000",
+    "3268289",
+    "3276200",
+    "3283900",
+    "3626880",
+    "4826666",
+    "5103648",
+    "5115016",
+    "5118428",
+    "5119592",
+    "5125736",
+    "5125848",
+    "5127252",
+    "5127736",
+    "5129098",
+    "5132080",
+    "5135035",
+    "5143348",
+    "5144901",
+    "5160666",
+    "5174922",
+    "5182232"
+  ],
+  "source_original_OBJECTID_range": [
+    1,
+    12884
+  ],
+  "baseline_OBJECTID_range": [
+    2,
+    32621
+  ],
+  "diagnostic_common_OBJECTID_equal": 0,
+  "diagnostic_proposed_field_value_difference_counts": {
+    "GEOID->GEOID": 0,
+    "PLACENS->PLACENS": 0,
+    "NAMELSAD->NAME": 2,
+    "CLASSFP->PLACECC": 0,
+    "FUNCSTAT->FUNCSTAT": 0,
+    "INTPTLAT->INTPTLAT": 604,
+    "INTPTLON->INTPTLON": 9088
+  },
+  "no_accepted_join": "GEOID is only a diagnostic semantic cross-check, not an approved replacement ID mapping. All original published OBJECTID/id/OID/STATE/PLACE and all source IDs remain retained independently.",
+  "geometry": "Source native4269 and published3857 differ. No coordinate conversion or geometry equivalence claim is made by the pipeline; any diagnostic transformation and historical geometry mapping needs review.",
+  "areas": "Source ALAND/AWATER native doubles and published AREALAND/AREAWATER strings are not silently cast or renamed."
+}

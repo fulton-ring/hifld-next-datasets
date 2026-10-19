@@ -1,0 +1,12 @@
+{
+  "url": "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_substategeo.gdb.zip",
+  "final_url": "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_substategeo.gdb.zip",
+  "status": 200,
+  "observed_at": "2026-10-19T09:31:54.634014+00:00",
+  "bytes": 736048475,
+  "wire_bytes_downloaded": 736048475,
+  "sha256": "e2409cd4ddb1a9302b130096fbcf9925ca3a701f720b8991045602bcb99d6b35",
+  "content_length": "736048475",
+  "last_modified": "Thu, 08 Aug 2024 13:11:52 GMT",
+  "complete_body": true
+}

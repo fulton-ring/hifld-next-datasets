@@ -1,0 +1,25 @@
+{
+  "url": "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_substategeo.gdb.zip",
+  "status": 200,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 09:30:50 GMT",
+    "content-type": "application/zip",
+    "content-length": "736048475",
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' census.gov *.census.gov http://www.census.gov assets.adobedtm.com www.googletagmanager.com https://dpm.demdex.net https://cm.everesttech.net https://uscensusbureau.demdex.net dap.digitalgov.gov www.google-analytics.com https://static.cloudflareinsights.com; frame-ancestors 'self';",
+    "x-frame-options": "SAMEORIGIN",
+    "x-content-type-options": "nosniff",
+    "cache-control": "public, max-age=14400",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "last-modified": "Thu, 08 Aug 2024 13:11:52 GMT",
+    "accept-ranges": "bytes",
+    "vary": "Accept-Encoding",
+    "x-xss-protection": "1; mode=block",
+    "strict-transport-security": "max-age=31536000",
+    "expires": "Mon, 19 Oct 2026 13:30:50 GMT",
+    "cf-cache-status": "REVALIDATED",
+    "set-cookie": "__cf_bm=U2QcEikCWncr_Ia5ho_Q5a1LogYCm8KlpsN6C0Ey.RE-1792402249.9927948-1.0.1.1-trwiueIMmnuDKGWeAFZKQS78dg1zyjEPR4A0lw6hLdbanAsLR8UStcoe1H.9iDIylZLid2ocWUUUoKGFnh.R375N6rAdGXn8iRvrh6QIl1gZh9Uup8SGfII1JJhaLkfH; HttpOnly; SameSite=None; Secure; Path=/; Domain=www2.census.gov; Expires=Mon, 19 Oct 2026 10:00:50 GMT, _cfuvid=J.M4jC_dwVha03lqG0TksG.7WpUHuZ7FwqYj2Of5F0o-1792402249.9927948-1.0.1.1-BNgeX5AUsdFA3p28Fev0zaQ9kNpJfet6EcTn3A7VhFI; HttpOnly; SameSite=None; Secure; Path=/; Domain=www2.census.gov",
+    "server": "envoy",
+    "cf-ray": "a4cec42e6a16275c-SEA",
+    "x-envoy-upstream-service-time": "832"
+  }
+}

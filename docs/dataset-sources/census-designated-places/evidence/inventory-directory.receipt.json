@@ -1,0 +1,27 @@
+{
+  "url": "https://www2.census.gov/geo/tiger/TGRGDB24/",
+  "status": 200,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 09:30:49 GMT",
+    "content-type": "text/html;charset=ISO-8859-1",
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' census.gov *.census.gov http://www.census.gov assets.adobedtm.com www.googletagmanager.com https://dpm.demdex.net https://cm.everesttech.net https://uscensusbureau.demdex.net dap.digitalgov.gov www.google-analytics.com https://static.cloudflareinsights.com; frame-ancestors 'self';",
+    "x-frame-options": "SAMEORIGIN",
+    "x-content-type-options": "nosniff",
+    "cache-control": "public, max-age=14400",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "vary": "Accept-Encoding",
+    "x-xss-protection": "1; mode=block",
+    "set-cookie": "__cf_bm=J5KX9EalrrXBYKAvHf.XtXefZPHK1gXRnsOUmbl3.Jo-1792402249.6411507-1.0.1.1-q88xrpTBXeAj9DvSMpn3TlqqpDqLTjkpwf2xIoi3YCfZsgghZ015wejJuLJNkaWBaMZYNk3Z.oV4loykHQ1CvnqSwhq1D9tLbDpHjsuckC6.9vse1FyDnc9lAt3tl2Ul; HttpOnly; SameSite=None; Secure; Path=/; Domain=www2.census.gov; Expires=Mon, 19 Oct 2026 10:00:49 GMT",
+    "strict-transport-security": "max-age=31536000",
+    "age": "8835",
+    "last-modified": "Mon, 19 Oct 2026 07:03:33 GMT",
+    "expires": "Mon, 19 Oct 2026 13:30:49 GMT",
+    "cf-cache-status": "HIT",
+    "content-encoding": "zstd",
+    "server": "envoy",
+    "cf-ray": "a4cec42c3ec975bf-SEA",
+    "x-envoy-upstream-service-time": "82",
+    "transfer-encoding": "chunked"
+  },
+  "observed_at": "2026-10-19T09:30:49.666452+00:00"
+}
