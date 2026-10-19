@@ -241,7 +241,7 @@
     "asset": "ingest/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries",
     "adapter": "src/dagster_hifld/noaa_extract.py",
     "asset_module": "src/dagster_hifld/assets/noaa.py",
-    "dependency_417": "62977c91ebaf2740f654f3be7cc98490b607b224",
+    "dependency_417": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
     "source_accepted": false,
     "baseline_accepted": false,
     "contract_approved": false,
