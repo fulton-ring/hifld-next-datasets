@@ -6,6 +6,7 @@ import re
 from datetime import date, datetime
 from pathlib import PurePosixPath
 from urllib.parse import parse_qsl, urlsplit
+from dagster_hifld.output_policy import validate_output_policy
 
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
 INPUT_URL_FIELDS = ("canonical_url", "retrieval_url", "requested_url", "request_url", "observed_final_url", "final_url")
@@ -61,6 +62,7 @@ def validate_provenance(manifest: object) -> None:
     if (not isinstance(manifest, dict) or type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1
             or manifest.get("processor") != "HIFLD Next" or not isinstance(manifest.get("inputs"), list) or not manifest["inputs"]):
         raise ValueError("missing_versioned_multi_input_provenance")
+    validate_output_policy(manifest)
     try:
         json.dumps(manifest, allow_nan=False)
     except (TypeError, ValueError, RecursionError) as exc:
@@ -158,7 +160,8 @@ def validate_provenance(manifest: object) -> None:
         raise ValueError("authored_manifest_layer_has_unresolved_input_identity")
 
 
-PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "lineage", "manifest_layers")
+PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "lineage", "manifest_layers",
+                     "unsupported_output_formats", "prebuilt_output_policy")
 
 
 def provenance_projection(metadata: dict) -> dict | None:

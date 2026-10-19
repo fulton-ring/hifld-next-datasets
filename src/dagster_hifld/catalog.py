@@ -258,6 +258,7 @@ def generate_data_dictionary(
             "code_commit",
             "lineage",
             "unsupported_output_formats",
+            "prebuilt_output_policy",
             "manifest_layers",
         ):
             if key in source_metadata and (key == "transformations" or source_metadata[key] not in (None, "", [], {})):
