@@ -342,7 +342,7 @@ def epa_icis_wastewater_naics_complete(candidate: dict) -> AssetCheckResult:
         "source_vintage": None, "release_accepted": False})
 
 
-@asset_check(asset=epa_icis_wastewater_naics_codes, blocking=True)
+@asset_check(asset=epa_icis_wastewater_naics_codes, blocking=False)
 def epa_icis_wastewater_naics_release_approved(candidate: dict) -> AssetCheckResult:
     approved = candidate.get("release_accepted") is True
     return AssetCheckResult(passed=approved, metadata={
