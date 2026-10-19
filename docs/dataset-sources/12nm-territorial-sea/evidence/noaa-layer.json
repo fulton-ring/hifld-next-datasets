@@ -1,0 +1,378 @@
+{
+  "currentVersion": 10.91,
+  "id": 1,
+  "name": "12NM Territorial Sea",
+  "type": "Feature Layer",
+  "description": "This layer is the 12nm territorial sea.  ",
+  "geometryType": "esriGeometryPolyline",
+  "sourceSpatialReference": {
+    "wkid": 4326,
+    "latestWkid": 4326
+  },
+  "copyrightText": "National Oceanic and Atmospheric Administration (NOAA), National Ocean Service (NOS), Office of Coast Survey (OCS)",
+  "parentLayer": null,
+  "subLayers": [],
+  "minScale": 40000000,
+  "maxScale": 0,
+  "drawingInfo": {
+    "renderer": {
+      "type": "uniqueValue",
+      "field1": "RULEID",
+      "field2": null,
+      "field3": null,
+      "fieldDelimiter": ", ",
+      "defaultSymbol": {
+        "type": "esriSLS",
+        "style": "esriSLSSolid",
+        "color": [
+          255,
+          0,
+          0,
+          255
+        ],
+        "width": 4
+      },
+      "defaultLabel": "Invalid Rule",
+      "uniqueValueInfos": [
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSDash",
+            "color": [
+              188,
+              188,
+              188,
+              255
+            ],
+            "width": 1.1338582677165356
+          },
+          "value": "2",
+          "label": "US EEZ",
+          "description": null
+        },
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSDash",
+            "color": [
+              219,
+              73,
+              150,
+              255
+            ],
+            "width": 1
+          },
+          "value": "5",
+          "label": "Int'l Maritime Boundary",
+          "description": null
+        },
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSDash",
+            "color": [
+              219,
+              73,
+              150,
+              255
+            ],
+            "width": 1
+          },
+          "value": "4",
+          "label": "Int'l Maritime Boundary N' EEZ",
+          "description": null
+        },
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSSolid",
+            "color": [
+              178,
+              178,
+              178,
+              255
+            ],
+            "width": 1
+          },
+          "value": "8",
+          "label": "Eastern Special Area",
+          "description": null
+        },
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSSolid",
+            "color": [
+              178,
+              178,
+              178,
+              255
+            ],
+            "width": 1
+          },
+          "value": "3",
+          "label": "Territorial Sea",
+          "description": null
+        },
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSSolid",
+            "color": [
+              178,
+              178,
+              178,
+              255
+            ],
+            "width": 1
+          },
+          "value": "7",
+          "label": "Contiguous Zone",
+          "description": null
+        },
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSSolid",
+            "color": [
+              0,
+              0,
+              0,
+              255
+            ],
+            "width": 5
+          },
+          "value": "1",
+          "label": "Int'l Boundary",
+          "description": null
+        },
+        {
+          "symbol": {
+            "type": "esriSLS",
+            "style": "esriSLSSolid",
+            "color": [
+              230,
+              230,
+              0,
+              255
+            ],
+            "width": 1
+          },
+          "value": "6",
+          "label": "Not used",
+          "description": null
+        }
+      ]
+    },
+    "transparency": 0,
+    "labelingInfo": null
+  },
+  "defaultVisibility": true,
+  "extent": {
+    "xmin": -180,
+    "ymin": -17.555000002,
+    "xmax": 180,
+    "ymax": 74.70884000400001,
+    "spatialReference": {
+      "wkid": 4326,
+      "latestWkid": 4326
+    }
+  },
+  "hasAttachments": false,
+  "htmlPopupType": "esriServerHTMLPopupTypeAsHTMLText",
+  "displayField": "REGION",
+  "typeIdField": null,
+  "subtypeFieldName": null,
+  "subtypeField": null,
+  "defaultSubtypeCode": null,
+  "fields": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "domain": null
+    },
+    {
+      "name": "BOUND_ID",
+      "type": "esriFieldTypeString",
+      "alias": "Boundary ID",
+      "length": 5,
+      "domain": null
+    },
+    {
+      "name": "REGION",
+      "type": "esriFieldTypeString",
+      "alias": "Region Name",
+      "length": 100,
+      "domain": null
+    },
+    {
+      "name": "FEAT_TYPE",
+      "type": "esriFieldTypeString",
+      "alias": "Type of Feature",
+      "length": 100,
+      "domain": null
+    },
+    {
+      "name": "PUB_DATE",
+      "type": "esriFieldTypeDate",
+      "alias": "Publication Date",
+      "length": 8,
+      "domain": null
+    },
+    {
+      "name": "APPRV_DATE",
+      "type": "esriFieldTypeDate",
+      "alias": "Date of Baseline Committee Approval",
+      "length": 8,
+      "domain": null
+    },
+    {
+      "name": "LEGAL_AUTH",
+      "type": "esriFieldTypeString",
+      "alias": "Legal Authority",
+      "length": 100,
+      "domain": null
+    },
+    {
+      "name": "AOR",
+      "type": "esriFieldTypeString",
+      "alias": "Agency of Responsibility",
+      "length": 20,
+      "domain": null
+    },
+    {
+      "name": "NOTE",
+      "type": "esriFieldTypeString",
+      "alias": "Note",
+      "length": 1000,
+      "domain": null
+    },
+    {
+      "name": "SUPP_INFO",
+      "type": "esriFieldTypeString",
+      "alias": "Supplemental Information Document",
+      "length": 500,
+      "domain": null
+    },
+    {
+      "name": "UNILATERAL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Unilateral Claim",
+      "domain": null
+    },
+    {
+      "name": "RULEID",
+      "type": "esriFieldTypeInteger",
+      "alias": "Description",
+      "domain": {
+        "type": "codedValue",
+        "name": "LIMIT_Rep_2_1_Rules",
+        "description": "Representation rules",
+        "codedValues": [
+          {
+            "name": "US EEZ",
+            "code": 2
+          },
+          {
+            "name": "Int'l Maritime Boundary",
+            "code": 5
+          },
+          {
+            "name": "Int'l Maritime Boundary N' EEZ",
+            "code": 4
+          },
+          {
+            "name": "Eastern Special Area",
+            "code": 8
+          },
+          {
+            "name": "Territorial Sea",
+            "code": 3
+          },
+          {
+            "name": "Contiguous Zone",
+            "code": 7
+          },
+          {
+            "name": "Int'l Boundary",
+            "code": 1
+          },
+          {
+            "name": "Not used",
+            "code": 6
+          },
+          {
+            "name": "Free Representation",
+            "code": -1
+          }
+        ],
+        "mergePolicy": "esriMPTDefaultValue",
+        "splitPolicy": "esriSPTDefaultValue"
+      }
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry",
+      "alias": "Shape",
+      "domain": null
+    }
+  ],
+  "geometryField": {
+    "name": "SHAPE",
+    "type": "esriFieldTypeGeometry",
+    "alias": "Shape"
+  },
+  "indexes": [
+    {
+      "name": "R5664_SDE_ROWID_UK",
+      "fields": "OBJECTID",
+      "isAscending": true,
+      "isUnique": true,
+      "description": ""
+    },
+    {
+      "name": "A5248_IX1",
+      "fields": "SHAPE",
+      "isAscending": true,
+      "isUnique": true,
+      "description": ""
+    }
+  ],
+  "subtypes": [],
+  "relationships": [],
+  "canModifyLayer": true,
+  "canScaleSymbols": false,
+  "hasLabels": false,
+  "capabilities": "Map,Query,Data",
+  "maxRecordCount": 1000,
+  "supportsStatistics": true,
+  "supportsAdvancedQueries": true,
+  "supportedQueryFormats": "JSON, geoJSON",
+  "isDataVersioned": true,
+  "ownershipBasedAccessControlForFeatures": {
+    "allowOthersToQuery": true
+  },
+  "useStandardizedQueries": true,
+  "advancedQueryCapabilities": {
+    "useStandardizedQueries": true,
+    "supportsStatistics": true,
+    "supportsHavingClause": true,
+    "supportsCountDistinct": true,
+    "supportsOrderBy": true,
+    "supportsDistinct": true,
+    "supportsPagination": true,
+    "supportsTrueCurve": true,
+    "supportsReturningQueryExtent": true,
+    "supportsQueryWithDistance": true,
+    "supportsSqlExpression": true
+  },
+  "supportsDatumTransformation": true,
+  "hasGeometryProperties": true,
+  "geometryProperties": {
+    "shapeLengthFieldName": "SHAPE.LEN",
+    "units": "esriDecimalDegrees"
+  },
+  "dateFieldsTimeReference": null,
+  "supportsCoordinatesQuantization": true
+}

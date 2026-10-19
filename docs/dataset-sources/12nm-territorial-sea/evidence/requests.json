@@ -1,0 +1,313 @@
+[
+  {
+    "key": "landing",
+    "url": "https://www.nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+    "checked_at": "2026-10-19T03:47:10.558463+00:00",
+    "status": 200,
+    "final_url": "https://www.nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+    "bytes": 67687,
+    "sha256": "b089d259c5fc98f575bca762b1d752f463579bf42ca95c4e22dad991865d338f"
+  },
+  {
+    "key": "layer",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=pjson",
+    "checked_at": "2026-10-19T03:47:10.559900+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=pjson",
+    "bytes": 173,
+    "sha256": "a0adda6785a012bcfa2129f8d3b497d0bd219db83ca5270d9ee7e55d90a1557f",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    }
+  },
+  {
+    "key": "service",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer?f=pjson",
+    "checked_at": "2026-10-19T03:47:10.560878+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer?f=pjson",
+    "bytes": 5035,
+    "sha256": "97809f0a68927620fcf9a797dbea3b5cf89193c263897c0802cb707a996bb493"
+  },
+  {
+    "key": "metadata",
+    "url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "checked_at": "2026-10-19T03:47:10.561900+00:00",
+    "status": 200,
+    "final_url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "bytes": 112260,
+    "sha256": "59f560eea8bb1c31e15b4875e9aadab87205acdeab47c29746cb15e748de58ed"
+  },
+  {
+    "key": "crosswalk",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "checked_at": "2026-10-19T03:47:10.563002+00:00",
+    "error": "URLError",
+    "message": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+    "key": "layer-json",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=json",
+    "checked_at": "2026-10-19T03:47:42.574892+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=json",
+    "bytes": 155,
+    "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    }
+  },
+  {
+    "key": "count",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnCountOnly=true&f=json",
+    "checked_at": "2026-10-19T03:47:42.594938+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnCountOnly=true&f=json",
+    "bytes": 12,
+    "sha256": "609946be7102a497ce9ddfbd1770aa8c2e7dd73925e5f48f93f3e9c2d8a01e68"
+  },
+  {
+    "key": "ids",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "checked_at": "2026-10-19T03:47:42.597194+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "bytes": 470,
+    "sha256": "ebb94792202a0fc265234e8df69cb3a39801f9fb6b58f88fc1ab9bab49fa0b3f"
+  },
+  {
+    "key": "geojson",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=*&f=geojson",
+    "checked_at": "2026-10-19T03:47:42.601986+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=*&f=geojson",
+    "bytes": 3834898,
+    "sha256": "35a1a81a3c575975b6652512ba25030295675dad1f1dcac01115b0b9eda340e1"
+  },
+  {
+    "key": "shp",
+    "url": "https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesSHP.zip",
+    "checked_at": "2026-10-19T03:47:42.604741+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesSHP.zip",
+    "bytes": 2381537,
+    "sha256": "48965b82bef1bc7611d94c2d52d4cd45ef5fd9e63897c650b00d9f739e9e11b6"
+  },
+  {
+    "key": "kmz",
+    "url": "https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesKML.kmz",
+    "checked_at": "2026-10-19T03:47:42.860953+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesKML.kmz",
+    "bytes": 2328287,
+    "sha256": "1037e89309aeea09331f95167102f8e1d5077522c468a02f15bdf9972c3cb668"
+  },
+  {
+    "key": "enc-layer",
+    "url": "https://encdirect.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=pjson",
+    "checked_at": "2026-10-19T03:47:42.900108+00:00",
+    "status": 200,
+    "final_url": "https://encdirect.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=pjson",
+    "bytes": 7294,
+    "sha256": "71156c7881f415829d144368b5ad5bb95eef02fa74e5640a046c1005da8c9ac4"
+  },
+  {
+    "key": "iso",
+    "url": "https://www.fisheries.noaa.gov/inport/item/39963/iso19115",
+    "checked_at": "2026-10-19T03:47:43.179023+00:00",
+    "status": 200,
+    "final_url": "https://www.fisheries.noaa.gov/inport/item/39963/iso19115",
+    "bytes": 87982,
+    "sha256": "ac8ced06cd43fde46fc81ffd7afaef00a6519ed6461ea3509da8e7c72b93e12d"
+  },
+  {
+    "key": "crosswalk-direct",
+    "url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "checked_at": "2026-10-19T03:47:43.490202+00:00",
+    "error": "URLError",
+    "message": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+    "key": "archive",
+    "url": "https://www.datalumos.org/datalumos/project/238490/version/V1/view",
+    "checked_at": "2026-10-19T03:47:43.503684+00:00",
+    "error": "URLError",
+    "message": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+    "key": "page-0",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=0&resultRecordCount=25&outSR=4326&f=json",
+    "checked_at": "2026-10-19T03:48:43.917427+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=0&resultRecordCount=25&outSR=4326&f=json",
+    "bytes": 639252,
+    "sha256": "4a84f605931e0ba56bb9a73faaa711d7ae521abfea9f563643aef3509c9180c0"
+  },
+  {
+    "key": "page-25",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=25&resultRecordCount=25&outSR=4326&f=json",
+    "checked_at": "2026-10-19T03:48:43.918404+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=25&resultRecordCount=25&outSR=4326&f=json",
+    "bytes": 1589817,
+    "sha256": "0b3e29020339f7c7ad2c20d23ddbf4b1813e64d8c0787fad361b52fe576b3b01"
+  },
+  {
+    "key": "page-50",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=50&resultRecordCount=25&outSR=4326&f=json",
+    "checked_at": "2026-10-19T03:48:43.919480+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=50&resultRecordCount=25&outSR=4326&f=json",
+    "bytes": 155,
+    "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    }
+  },
+  {
+    "key": "page-75",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=75&resultRecordCount=25&outSR=4326&f=json",
+    "checked_at": "2026-10-19T03:48:43.920936+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=75&resultRecordCount=25&outSR=4326&f=json",
+    "bytes": 439168,
+    "sha256": "bd945a441ce66864f0d80a710dd86bcaa056868f8530ec17c23bc27f73775979"
+  },
+  {
+    "key": "page-100",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=100&resultRecordCount=25&outSR=4326&f=json",
+    "checked_at": "2026-10-19T03:48:44.276922+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=100&resultRecordCount=25&outSR=4326&f=json",
+    "bytes": 155,
+    "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    }
+  },
+  {
+    "key": "ids-after",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "checked_at": "2026-10-19T03:48:44.431635+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "bytes": 470,
+    "sha256": "ebb94792202a0fc265234e8df69cb3a39801f9fb6b58f88fc1ab9bab49fa0b3f"
+  },
+  {
+    "key": "layer-retry",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=pjson&audit=20261019",
+    "checked_at": "2026-10-19T03:48:44.559582+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1?f=pjson&audit=20261019",
+    "bytes": 7294,
+    "sha256": "71156c7881f415829d144368b5ad5bb95eef02fa74e5640a046c1005da8c9ac4"
+  },
+  {
+    "key": "baseline-geojson",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/12nm-territorial-sea/12nm-territorial-sea/v1.0.0/geojson/12nm-territorial-sea.geojson",
+    "checked_at": "2026-10-19T03:48:44.778819+00:00",
+    "error": "URLError",
+    "message": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+    "key": "baseline-metadata",
+    "url": "https://hifld.publicenvirodata.org/api/collections/hifld/datasets/12nm-territorial-sea/files/12nm-territorial-sea/metadata?version=v1.0.0",
+    "checked_at": "2026-10-19T03:48:44.780964+00:00",
+    "error": "URLError",
+    "message": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+    "key": "page-50-retry",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=50&resultRecordCount=25&outSR=4326&f=json&audit=20261019",
+    "checked_at": "2026-10-19T03:49:01.543929+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=50&resultRecordCount=25&outSR=4326&f=json&audit=20261019",
+    "bytes": 155,
+    "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    },
+    "features": 0,
+    "exceededTransferLimit": null
+  },
+  {
+    "key": "page-100-retry",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=100&resultRecordCount=25&outSR=4326&f=json&audit=20261019",
+    "checked_at": "2026-10-19T03:49:01.685111+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=100&resultRecordCount=25&outSR=4326&f=json&audit=20261019",
+    "bytes": 1541,
+    "sha256": "1c021b38fe6ac67ab08bf16c037f6b0706fa91f4ab2196245ee4f8529883e2bc",
+    "arcgis_error": null,
+    "features": 0,
+    "exceededTransferLimit": null
+  },
+  {
+    "key": "ids-chunk-50",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?objectIds=1117%2C1118%2C1120%2C1122%2C1124%2C1129%2C1131%2C1145%2C1146%2C1149%2C1151%2C1154%2C1155%2C1156%2C1157%2C1158%2C1159%2C1160%2C1161%2C1168%2C1175%2C1177%2C1182%2C1184%2C1185&outFields=%2A&returnGeometry=true&outSR=4326&f=json",
+    "checked_at": "2026-10-19T03:49:21.650120+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?objectIds=1117%2C1118%2C1120%2C1122%2C1124%2C1129%2C1131%2C1145%2C1146%2C1149%2C1151%2C1154%2C1155%2C1156%2C1157%2C1158%2C1159%2C1160%2C1161%2C1168%2C1175%2C1177%2C1182%2C1184%2C1185&outFields=%2A&returnGeometry=true&outSR=4326&f=json",
+    "bytes": 1168537,
+    "sha256": "74e3dcd795f3555068cefe644ae93ebc973f6a1a6371ca69e1ef07dabe56b906",
+    "arcgis_error": null,
+    "features": 25
+  },
+  {
+    "key": "dictionary",
+    "url": "https://www.fisheries.noaa.gov/inport/item/41512",
+    "checked_at": "2026-10-19T03:49:54.965991+00:00",
+    "status": 200,
+    "final_url": "https://www.fisheries.noaa.gov/inport/item/41512",
+    "bytes": 67252,
+    "sha256": "9bf4b7f97e677460620c5f806035d30b9895aedf407d02185f4f9e381c15ce24"
+  },
+  {
+    "key": "count-final",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnCountOnly=true&f=json",
+    "checked_at": "2026-10-19T03:49:55.537268+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnCountOnly=true&f=json",
+    "bytes": 12,
+    "sha256": "609946be7102a497ce9ddfbd1770aa8c2e7dd73925e5f48f93f3e9c2d8a01e68"
+  },
+  {
+    "key": "ids-final",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "checked_at": "2026-10-19T03:49:55.684106+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "bytes": 155,
+    "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    }
+  },
+  {
+    "key": "ids-final-retry",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=pjson",
+    "checked_at": "2026-10-19T03:50:14.947686+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=pjson",
+    "bytes": 173,
+    "sha256": "a0adda6785a012bcfa2129f8d3b497d0bd219db83ca5270d9ee7e55d90a1557f",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    }
+  }
+]

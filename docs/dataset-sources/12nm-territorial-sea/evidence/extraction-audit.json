@@ -1,0 +1,331 @@
+{
+  "scope": "Anonymous NOAA layer extraction only; no output conversion or accepted-baseline verification",
+  "count_before": 87,
+  "count_after": 87,
+  "geojson_count": 87,
+  "reconciled_count": 87,
+  "object_ids": [
+    961,
+    964,
+    965,
+    966,
+    981,
+    983,
+    988,
+    989,
+    991,
+    992,
+    994,
+    1005,
+    1006,
+    1007,
+    1016,
+    1019,
+    1022,
+    1023,
+    1024,
+    1025,
+    1026,
+    1027,
+    1028,
+    1029,
+    1034,
+    1037,
+    1039,
+    1049,
+    1052,
+    1053,
+    1057,
+    1058,
+    1059,
+    1060,
+    1062,
+    1063,
+    1064,
+    1065,
+    1066,
+    1070,
+    1075,
+    1082,
+    1085,
+    1087,
+    1088,
+    1091,
+    1094,
+    1095,
+    1113,
+    1116,
+    1117,
+    1118,
+    1120,
+    1122,
+    1124,
+    1129,
+    1131,
+    1145,
+    1146,
+    1149,
+    1151,
+    1154,
+    1155,
+    1156,
+    1157,
+    1158,
+    1159,
+    1160,
+    1161,
+    1168,
+    1175,
+    1177,
+    1182,
+    1184,
+    1185,
+    1186,
+    1187,
+    1190,
+    1191,
+    1192,
+    1193,
+    1194,
+    1196,
+    1213,
+    1215,
+    1216,
+    1218
+  ],
+  "boundary_ids": [
+    "B0107",
+    "B0109",
+    "B0113",
+    "B0114",
+    "B0121",
+    "B0123",
+    "B0124",
+    "B0125",
+    "B0126",
+    "B0133",
+    "B0135",
+    "B0138",
+    "B0144",
+    "B0148",
+    "B0153",
+    "B0159",
+    "B0160",
+    "B0161",
+    "B0162",
+    "B0163",
+    "B0164",
+    "B0165",
+    "B0167",
+    "B0168",
+    "B0169",
+    "B0170",
+    "B0172",
+    "B0173",
+    "B0174",
+    "B0175",
+    "B0176",
+    "B0258",
+    "B0259",
+    "B0261",
+    "B0265",
+    "B0270",
+    "B0271",
+    "B0272",
+    "B0273",
+    "B0274",
+    "B0275",
+    "B0276",
+    "B0277",
+    "B0278",
+    "B0279",
+    "B0295",
+    "B0296",
+    "B0297",
+    "B0303",
+    "B0306",
+    "B0315",
+    "B0320",
+    "B0322",
+    "B0326",
+    "B0327",
+    "B0330",
+    "B0334",
+    "B0336",
+    "B0340",
+    "B0342",
+    "B0345",
+    "B0347",
+    "B0353",
+    "B0357",
+    "B0361",
+    "B0362",
+    "B0376",
+    "B0380",
+    "B0384",
+    "B0386",
+    "B0427",
+    "B0428",
+    "B0445",
+    "B0458",
+    "B0469",
+    "B0474",
+    "B0476",
+    "B0483",
+    "B0486",
+    "B0489",
+    "B0493",
+    "B0498",
+    "B0501",
+    "B0503",
+    "B0507",
+    "B0508",
+    "B0516"
+  ],
+  "object_id_sets_equal": true,
+  "id_and_OBJECTID_equal": true,
+  "all_attributes_equal_across_encodings": true,
+  "all_coordinates_equal_across_encodings": true,
+  "page_accounting": [
+    {
+      "key": "page-0",
+      "features": 25,
+      "exceededTransferLimit": true
+    },
+    {
+      "key": "page-25",
+      "features": 25,
+      "exceededTransferLimit": true
+    },
+    {
+      "key": "ids-chunk-50",
+      "features": 25,
+      "exceededTransferLimit": null
+    },
+    {
+      "key": "page-75",
+      "features": 12,
+      "exceededTransferLimit": null
+    }
+  ],
+  "snapshot_consistency": "IDs equal at 03:47 and 03:48 UTC; final 03:49 and 03:50 ID requests returned error 500. Counts stable. No atomic snapshot guarantee.",
+  "field_stats": {
+    "OBJECTID": {
+      "null_count": 0,
+      "distinct_non_null": 87,
+      "json_types": [
+        "int"
+      ]
+    },
+    "BOUND_ID": {
+      "null_count": 0,
+      "distinct_non_null": 87,
+      "json_types": [
+        "str"
+      ]
+    },
+    "REGION": {
+      "null_count": 0,
+      "distinct_non_null": 11,
+      "json_types": [
+        "str"
+      ]
+    },
+    "FEAT_TYPE": {
+      "null_count": 0,
+      "distinct_non_null": 1,
+      "json_types": [
+        "str"
+      ]
+    },
+    "PUB_DATE": {
+      "null_count": 9,
+      "distinct_non_null": 19,
+      "json_types": [
+        "NoneType",
+        "int"
+      ],
+      "min_date": "2003-08-27",
+      "max_date": "2013-09-13"
+    },
+    "APPRV_DATE": {
+      "null_count": 0,
+      "distinct_non_null": 27,
+      "json_types": [
+        "int"
+      ],
+      "min_date": "2003-04-02",
+      "max_date": "2013-09-10"
+    },
+    "LEGAL_AUTH": {
+      "null_count": 0,
+      "distinct_non_null": 1,
+      "json_types": [
+        "str"
+      ]
+    },
+    "AOR": {
+      "null_count": 0,
+      "distinct_non_null": 1,
+      "json_types": [
+        "str"
+      ]
+    },
+    "NOTE": {
+      "null_count": 17,
+      "distinct_non_null": 2,
+      "json_types": [
+        "NoneType",
+        "str"
+      ]
+    },
+    "SUPP_INFO": {
+      "null_count": 0,
+      "distinct_non_null": 36,
+      "json_types": [
+        "str"
+      ]
+    },
+    "UNILATERAL": {
+      "null_count": 0,
+      "distinct_non_null": 1,
+      "json_types": [
+        "int"
+      ]
+    },
+    "RULEID": {
+      "null_count": 0,
+      "distinct_non_null": 1,
+      "json_types": [
+        "int"
+      ]
+    }
+  },
+  "regions": {
+    "Alaska": 29,
+    "American Samoa": 4,
+    "Atlantic Coast and Gulf of Mexico": 15,
+    "Commonwealth of the Northern Mariana Islands and Territory of Guam": 11,
+    "Hawaiian Islands": 13,
+    "Howland Island, Baker Island and Jarvis Island": 3,
+    "Johnston Atoll": 1,
+    "Pacific Coast": 4,
+    "Palmyra Atoll and Kingman Reef": 2,
+    "Puerto Rico and U.S. Virgin Islands": 4,
+    "Wake Island": 1
+  },
+  "geometry_types": {
+    "LineString": 80,
+    "MultiLineString": 7
+  },
+  "null_geometry_count": 0,
+  "empty_geometry_count": 0,
+  "invalid_geometry_count": 0,
+  "bbox": [
+    -180.0,
+    -14.760835789999987,
+    180.0,
+    71.588953446
+  ],
+  "geojson_sha256": "35a1a81a3c575975b6652512ba25030295675dad1f1dcac01115b0b9eda340e1"
+}
