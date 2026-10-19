@@ -196,8 +196,8 @@ def acquire(storage,capture_dir=None):
 
 
 def validate_metadata(meta):
-    if (meta.get('fields')!=FIELD_DEFINITIONS or meta.get('id')!=0 or meta.get('name')!='FEMA Regional Offices' or meta.get('objectIdField')!='objectid' or meta.get('geometryType')!='esriGeometryPoint'
-        or meta.get('hasZ') is not False or meta.get('hasM') is not False or meta.get('extent',{}).get('spatialReference',{}).get('latestWkid')!=4326 or meta.get('maxRecordCount',0)<BATCH):
+    if (encode(meta.get('fields'))!=encode(FIELD_DEFINITIONS) or type(meta.get('id'))is not int or meta.get('id')!=0 or meta.get('name')!='FEMA Regional Offices' or meta.get('objectIdField')!='objectid' or meta.get('geometryType')!='esriGeometryPoint'
+        or meta.get('hasZ') is not False or meta.get('hasM') is not False or type(meta.get('extent',{}).get('spatialReference',{}).get('latestWkid'))is not int or meta.get('extent',{}).get('spatialReference',{}).get('latestWkid')!=4326 or type(meta.get('maxRecordCount'))is not int or meta.get('maxRecordCount',0)<BATCH):
         raise FemaOfficesQuarantineError('source_schema_physical_types_geometry_or_layer_identity_drift')
 
 def semantic_metadata(meta):
@@ -230,7 +230,7 @@ def inspect_captures(captures):
         or not any(layer.get('id')==0 and layer.get('name')=='FEMA Regional Offices' and layer.get('geometryType')=='esriGeometryPoint' for layer in service.get('layers',[]))
         or service.get('copyrightText')!='FEMA' or 'FEMA' not in text or 'RegHQs' not in text):raise FemaOfficesQuarantineError('official_FEMA_root_folder_service_or_metadata_authority_drift')
     before=strict_json(captures['metadata_before'][0]);after=strict_json(captures['metadata_after'][0]);validate_metadata(before);validate_metadata(after)
-    if semantic_metadata(before)!=semantic_metadata(after) or source_ids(strict_json(captures['ids_after'][0]))!=ids:raise FemaOfficesQuarantineError('source_changed_during_complete_extraction')
+    if encode(semantic_metadata(before))!=encode(semantic_metadata(after)) or source_ids(strict_json(captures['ids_after'][0]))!=ids:raise FemaOfficesQuarantineError('source_changed_during_complete_extraction')
     for name in ('count_before','count_after'):
         count=strict_json(captures[name][0])
         if set(count)!={'count'} or type(count['count'])is not int or count['count']!=len(ids):raise FemaOfficesQuarantineError('source_count_roster_or_completeness_mismatch')
@@ -339,7 +339,7 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         if set(item)!={'body_key','receipt'} or item['body_key']!=f"_raw-captures/{SLUG}/{item['receipt'].get('sha256')}/{name}.body":raise FemaOfficesQuarantineError('original_capture_body_key_drift')
         body=storage.read_key(item['body_key'])
         if name not in ('metadata_before','metadata_after') and body!=captures[name][0]:raise FemaOfficesQuarantineError('original_capture_bytes_differ')
-        if name in ('metadata_before','metadata_after') and semantic_metadata(strict_json(body))!=semantic_metadata(strict_json(captures[name][0])):raise FemaOfficesQuarantineError('original_source_semantics_changed')
+        if name in ('metadata_before','metadata_after') and encode(semantic_metadata(strict_json(body)))!=encode(semantic_metadata(strict_json(captures[name][0]))):raise FemaOfficesQuarantineError('original_source_semantics_changed')
         original[name]=(body,item['receipt'])
     original_table,original_audit=inspect_captures(original)
     current_table,current_audit=inspect_captures(captures)

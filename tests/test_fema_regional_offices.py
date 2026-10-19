@@ -68,6 +68,23 @@ class FemaOfficeTests(unittest.TestCase):
             c=fixture();mutate(c,name,change)
             with self.subTest(name=name),self.assertRaises(ValueError):s.inspect_captures(c)
 
+    def test_json_metadata_boolean_integer_float_drift_never_compares_equal(self):
+        # Reviewer actual reproducer: False==0 must NOT make typed metadata equal.
+        cases=[lambda d:d['fields'][0].update(nullable=0),lambda d:d['fields'][0].update(nullable=0.0),lambda d:d['fields'][0].update(editable=0),lambda d:d['fields'][1].update(length=40.0),lambda d:d.update(id=False),lambda d:d.update(id=0.0),lambda d:d['extent']['spatialReference'].update(latestWkid=4326.0),lambda d:d.update(maxRecordCount=2000.0),lambda d:d.update(minScale=False)]
+        for change in cases:
+            c=fixture();mutate(c,'metadata_after',change)
+            with self.subTest(change=change),self.assertRaises(ValueError):s.inspect_captures(c)
+
+    def test_original_refresh_semantic_json_types_are_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp);c=fixture();identity={'files':{}};pin={'bytes':1,'sha256':'a'*64}
+            for name,(body,receipt) in c.items():s.immutable(storage,f'_raw-captures/{s.SLUG}/{s.digest(body)}/{name}.body',body)
+            with patch.object(s,'validate_construction_code_identity'):
+                s.original_bundle(storage,'v1',c,identity,s.manifest_for(c,identity,pin),create=True)
+                for name in ('metadata_before','metadata_after'):mutate(c,name,lambda d:d.update(minScale=False))
+                s.inspect_captures(c) # Consistent new semantics may form a NEW draft version.
+                with self.assertRaisesRegex(ValueError,'original_source_semantics_changed'):s.original_bundle(storage,'v1',c,identity,s.manifest_for(c,identity,pin))
+
     def test_physical_values_no_coercion(self):
         for field,value in [('objectid',True),('region_number',32768),('zip',123),('name','x'*41),('objectid',None)]:
             with self.subTest(field=field),self.assertRaises(ValueError):s.physical_value(next(f for f in s.FIELD_DEFINITIONS if f['name']==field),value)
