@@ -1,6 +1,7 @@
 """Complete real845-row NCFO source plus adversarial draft-pipeline behavior."""
 from pathlib import Path
 from unittest import TestCase,mock
+import unittest
 from datetime import datetime,timedelta
 import copy,fcntl,gzip,json,os,sqlite3,tempfile
 
@@ -9,7 +10,15 @@ import pyarrow.parquet as pq
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import ferry_terminals as s
 
-C=Path(__file__).parents[1]/'docs/dataset-sources/ferry-terminals/evidence/captures'
+_CAPTURE_DIR_ENV='HIFLD_FERRY_TERMINALS_CAPTURE_DIR'
+_CAPTURE_DIR=Path(os.environ[_CAPTURE_DIR_ENV]).resolve() if os.environ.get(_CAPTURE_DIR_ENV) else None
+_REPO_ROOT=Path(__file__).resolve().parents[1]
+C=_CAPTURE_DIR
+def _capture_dir_is_external():
+    if C is None or not C.is_dir():return False
+    try:C.relative_to(_REPO_ROOT);return False
+    except ValueError:return True
+@unittest.skipUnless(_capture_dir_is_external(), 'set HIFLD_FERRY_TERMINALS_CAPTURE_DIR to the complete capture directory restored outside Git')
 class FerryTerminalsTests(TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.storage=StagingStorageResource(local_dir=self.tmp.name,use_local=True)
@@ -189,9 +198,6 @@ class FerryTerminalsTests(TestCase):
         with mock.patch.object(s,'commit_complete_candidate',side_effect=lose):
             with self.assertRaisesRegex(s.FerryQuarantineError,'concurrent_or_incomplete'):self.stage()
         self.assertEqual(self.snap(winning[0][0]),winning[0][1]);self.stage()
-    def test_published_and_remote_storage_reject_unapproved_draft(self):
-        for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
-            with self.assertRaisesRegex(s.FerryQuarantineError,'draft_requires'):s.stage_ferry_terminals_candidate(storage,capture_dir=C)
     def test_live_compressed_wire_counter_retains_complete_decoded_source(self):
         original=httpx.Client
         def handle(request):
@@ -199,6 +205,12 @@ class FerryTerminalsTests(TestCase):
             return httpx.Response(200,stream=httpx.ByteStream(wire),headers={'Content-Encoding':'gzip','Content-Length':str(len(wire))},request=request)
         with mock.patch.object(s.httpx,'Client',side_effect=lambda **kwargs:original(transport=httpx.MockTransport(handle),**kwargs)):got=s.acquire(self.storage,None)
         self.assertEqual(len(got),9);self.assertEqual(got['features'][0],(C/'features.body').read_bytes())
+
+
+class FerryTerminalsMechanicsTests(TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.storage=StagingStorageResource(local_dir=self.tmp.name,use_local=True)
+
     def test_partial_download_bounded_retries_preserve_original_partial_bytes(self):
         original=httpx.Client;calls=[]
         def handle(request):
@@ -206,3 +218,7 @@ class FerryTerminalsTests(TestCase):
         with mock.patch.object(s.httpx,'Client',side_effect=lambda **kwargs:original(transport=httpx.MockTransport(handle),**kwargs)):
             with self.assertRaisesRegex(s.FerryQuarantineError,'bounded_fetch_exhausted'):s.acquire(self.storage,None)
         self.assertEqual(len(calls),3);bodies=list((Path(self.tmp.name)/'_quarantine'/s.SLUG).rglob('response.body'));self.assertEqual(len(bodies),3);self.assertTrue(all(p.read_bytes()==b'partial' for p in bodies))
+
+    def test_published_and_remote_storage_reject_unapproved_draft(self):
+        for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'draft_requires'):s.stage_ferry_terminals_candidate(storage,capture_dir=C)
