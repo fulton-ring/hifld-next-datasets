@@ -1,6 +1,7 @@
 """Complete real historical inputs exercise draft mechanics, never acceptance."""
 import copy
 import json
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -11,10 +12,11 @@ from unittest.mock import patch
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from dagster import DefaultScheduleStatus
+from dagster import DefaultScheduleStatus, Definitions, validate_run_config
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import campus_preservation as s
-from dagster_hifld.assets.campus_preservation import ornl_campus_historical_integrity_schedule
+from dagster_hifld.assets.campus_preservation import (ornl_campus_historical_integrity_schedule,
+    ornl_campus_historical_preservation, ornl_campus_historical_reconstruction_job, campus_historical_full_quality)
 
 
 class CampusPreservationTests(unittest.TestCase):
@@ -149,6 +151,39 @@ class CampusPreservationTests(unittest.TestCase):
             state.with_name(state.name+'.first-construction.json').write_bytes(json.dumps(marker,sort_keys=True,separators=(',',':')).encode())
             with self.assertRaisesRegex(ValueError,'construction_'):s.stage_campus_preservation(storage,s.CAPTURES)
             self.assertFalse(path.exists())
+
+    def test_observed_total_witness_loss_blocks_rebind_with_later_receipts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            storage,path=self.clone(temporary);base=Path(storage.local_dir)
+            outside=base/'_construction-state'/s.SLUG
+            trusted=Path(temporary)/'trusted-originals';shutil.copytree(outside,trusted)
+            shutil.rmtree(outside)
+            with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
+                s.stage_campus_preservation(storage,s.CAPTURES)
+            self.assertFalse(path.exists())
+            incident=base/'_construction-incidents'/s.SLUG/(self.output['version']+'.json')
+            first_incident=incident.read_bytes()
+            captures=Path(temporary)/'later-simulated-receipts';shutil.copytree(s.CAPTURES,captures)
+            for name in s.INPUTS:
+                receipt=s.strict_json((captures/(name+'.receipt.json')).read_bytes())
+                receipt['started_at']='2026-10-20T01:02:03+00:00';receipt['observed_at']='2026-10-20T01:02:04+00:00'
+                (captures/(name+'.receipt.json')).write_bytes(s.encode(receipt))
+            for retry in [2,3]:
+                with self.subTest(retry=retry),self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
+                    s.stage_campus_preservation(storage,captures)
+                self.assertFalse(path.exists());self.assertEqual(incident.read_bytes(),first_incident)
+                self.assertFalse(list(outside.glob('*.json')))
+            shutil.copytree(trusted,outside) # Exact explicit operator restoration, not inferred repair.
+            result=s.stage_campus_preservation(storage,captures)
+            self.assertFalse(result['reused']);self.assertEqual(incident.read_bytes(),first_incident)
+            self.assertEqual((path/'metadata/source_manifest.json').read_bytes(),(self.base/self.prefix/'metadata/source_manifest.json').read_bytes())
+
+    def test_stopped_schedule_config_matches_actual_asset_op_name(self):
+        defs=Definitions(assets=[ornl_campus_historical_preservation],asset_checks=[campus_historical_full_quality],
+            resources={'staging_storage':StagingStorageResource(local_dir=str(self.base))},jobs=[ornl_campus_historical_reconstruction_job])
+        with patch.dict(os.environ,{'HIFLD_CAMPUS_CAPTURE_DIR':str(s.CAPTURES)}):
+            validate_run_config(defs.resolve_job_def(ornl_campus_historical_reconstruction_job.name),
+                                ornl_campus_historical_integrity_schedule.run_config)
 
 
 if __name__=='__main__':unittest.main()

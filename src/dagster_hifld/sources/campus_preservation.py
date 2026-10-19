@@ -15,6 +15,7 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import sqlite3
 import stat
@@ -415,6 +416,41 @@ def original_context(storage, key, version, fp, captures, identity, proposed):
     return original,manifest
 
 
+def observed_trust_loss(storage, version, fp, *, candidate=None, restored_manifest=None):
+    """Remember an OBSERVED missing/invalid witness before detaching its cache.
+
+    This is a refusal journal, not authority to recreate the original context.
+    Exact trusted outside records must be restored; a cached manifest is merely
+    an additional observed claim against which that restoration is checked.
+    Unobserved simultaneous loss of every outside record cannot be detected.
+    """
+    key = '_construction-incidents/'+SLUG+'/'+version+'.json'
+    path = checked_path(storage,key)
+    if not path.exists() and candidate is None: return False
+    if not path.exists():
+        claim = None; manifest_path = candidate/'metadata/source_manifest.json'
+        try:
+            descriptor = os.open(manifest_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                info = os.fstat(descriptor)
+                if stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size <= 2_000_000:
+                    with os.fdopen(os.dup(descriptor),'rb') as stream: claim = digest(stream.read())
+            finally: os.close(descriptor)
+        except FileNotFoundError: pass
+        immutable(storage,key,encode({'schema_version':1,'version':version,'processing_fingerprint':fp,
+            'status':'observed_original_construction_trust_loss','approved':False,
+            'observed_cached_manifest_sha256':claim}))
+    body = path.read_bytes(); value = strict_json(body); claim = value.get('observed_cached_manifest_sha256')
+    if claim is not None and (type(claim) is not str or re.fullmatch('[0-9a-f]{64}',claim) is None):
+        raise CampusQuarantineError('invalid_observed_trust_loss_claim')
+    expected = {'schema_version':1,'version':version,'processing_fingerprint':fp,
+        'status':'observed_original_construction_trust_loss','approved':False,'observed_cached_manifest_sha256':claim}
+    if body != encode(expected): raise CampusQuarantineError('invalid_observed_trust_loss_journal')
+    if restored_manifest is not None and claim is not None and digest(encode(restored_manifest)) != claim:
+        raise CampusQuarantineError('restored_original_manifest_differs_from_observed_candidate_claim')
+    return True
+
+
 def reconcile_cache(storage, prefix, expected, table, version, fp):
     root = checked_path(storage,prefix); safe_tree(root)
     ready = strict_json((root/READY).read_bytes())
@@ -467,7 +503,15 @@ def stage_campus_preservation(storage, capture_directory):
         has_history = state.exists() or state.with_name(state.name+'.first-construction.json').exists() or state.with_name(state.name+'.evidence').exists()
         if target.exists():
             try:
-                captures,manifest = original_context(storage,key,version,fp,captures,identity,tables[PRIMARY])
+                try:
+                    captures,manifest = original_context(storage,key,version,fp,captures,identity,tables[PRIMARY])
+                    observed_trust_loss(storage,version,fp,restored_manifest=manifest)
+                except (ValueError,OSError,TypeError,KeyError,RuntimeError):
+                    # Commit the refusal outside the candidate BEFORE detach.
+                    # Otherwise total witness loss followed by quarantine could
+                    # look like first use on the next call and reset receipts.
+                    observed_trust_loss(storage,version,fp,candidate=target)
+                    raise
                 expected = source_payloads(captures,identity,audits,report,manifest,tables)
                 reconcile_cache(storage,prefix,expected,tables[PRIMARY],version,fp)
             except (ValueError,OSError,TypeError,KeyError,RuntimeError,sqlite3.Error) as exc:
@@ -476,8 +520,9 @@ def stage_campus_preservation(storage, capture_directory):
                 raise CampusQuarantineError('invalid_candidate_preserved_outside_discovery:'+str(quarantine)+':'+str(exc)) from exc
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':len(tables[PRIMARY]),'reused':True,
                     'source_invalid_geometry_count':audits[PRIMARY]['invalid_geometry_count'],'source_selection_approved':False}
-        if has_history:
+        if has_history or observed_trust_loss(storage,version,fp):
             captures,manifest = original_context(storage,key,version,fp,captures,identity,tables[PRIMARY])
+            observed_trust_loss(storage,version,fp,restored_manifest=manifest)
         else:
             validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
         expected = source_payloads(captures,identity,audits,report,manifest,tables)

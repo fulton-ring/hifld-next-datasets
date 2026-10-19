@@ -33,4 +33,4 @@ ornl_campus_historical_reconstruction_job = define_asset_job('ornl_campus_histor
 ornl_campus_historical_integrity_schedule = ScheduleDefinition(
     name='ornl_campus_historical_integrity',job=ornl_campus_historical_reconstruction_job,
     cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED,
-    run_config={'ops':{'ornl_campus_historical_preservation':{'config':{'capture_directory':{'env':'HIFLD_CAMPUS_CAPTURE_DIR'}}}}})
+    run_config={'ops':{ornl_campus_historical_preservation.op.name:{'config':{'capture_directory':{'env':'HIFLD_CAMPUS_CAPTURE_DIR'}}}}})
