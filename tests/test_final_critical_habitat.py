@@ -33,14 +33,29 @@ class FinalCriticalHabitatTests(unittest.TestCase):
         self.assertEqual(list(geom.geoms[0].exterior.coords), [tuple(x) for x in shell])
         self.assertEqual(list(geom.geoms[0].interiors[0].coords), [tuple(x) for x in hole])
 
+    def test_nested_esri_island_rings_attach_holes_to_nearest_shell(self):
+        outer=[[0,0],[0,10],[10,10],[10,0],[0,0]]
+        outer_hole=[[1,1],[9,1],[9,9],[1,9],[1,1]]
+        island=[[3,3],[3,7],[7,7],[7,3],[3,3]]
+        island_hole=[[4,4],[6,4],[6,6],[4,6],[4,4]]
+        geom=_esri_polygon({"rings":[outer,outer_hole,island,island_hole]})
+        self.assertEqual(len(geom.geoms),2)
+        self.assertEqual(sorted(len(p.interiors) for p in geom.geoms),[1,1])
+        output_rings=[]
+        for p in geom.geoms:
+            output_rings.append([list(x) for x in p.exterior.coords])
+            output_rings.extend([[list(x) for x in r.coords] for r in p.interiors])
+        self.assertEqual({tuple(map(tuple,r)) for r in output_rings},
+                         {tuple(map(tuple,r)) for r in (outer,outer_hole,island,island_hole)})
+
     def test_complete_capture_validator_preserves_all_fields_and_ids(self):
         fields = [{"name":"OBJECTID","type":"esriFieldTypeOID","nullable":False},
                   {"name":"entity_id","type":"esriFieldTypeInteger","nullable":True},
                   {"name":"code","type":"esriFieldTypeString","length":8,"nullable":True}]
         layer = {"name":"Final Critical Habitat Features","geometryType":"esriGeometryPolygon",
-                 "extent":{"spatialReference":{"wkid":102100,"latestWkid":3857}},"fields":fields}
+                 "extent":{"spatialReference":{"wkid":102100,"latestWkid":3857}},"fields":fields,"hasZ":False,"hasM":False}
         service = {"layers":[{"id":0,"name":"Final Critical Habitat Features"},{"id":2,"name":"Proposed Critical Habitat Features"}]}
-        ids = [7, 9]
+        ids = [9, 7]
         ring1 = [[0,0],[0,2],[2,2],[2,0],[0,0]]
         ring2 = [[3,0],[3,2],[5,2],[5,0],[3,0]]
         features = [
@@ -56,7 +71,7 @@ class FinalCriticalHabitatTests(unittest.TestCase):
         }
         captures = {name:(json.dumps(value).encode(),{}) for name,value in docs.items()}
         rows,audit = _feature_rows(captures,fields)
-        self.assertEqual([r["attributes"]["OBJECTID"] for r in rows],ids)
+        self.assertEqual([r["attributes"]["OBJECTID"] for r in rows],sorted(ids))
         self.assertEqual(rows[0]["attributes"]["code"],"007")
         self.assertIsNone(rows[0]["attributes"]["entity_id"])
         self.assertEqual(audit["source_unique_id_count"],2)
@@ -70,13 +85,13 @@ class FinalCriticalHabitatTests(unittest.TestCase):
         layer = {"name":"Final Critical Habitat Features","geometryType":"esriGeometryPolygon",
                  "extent":{"spatialReference":{"wkid":102100,"latestWkid":3857}},"fields":fields}
         service = {"layers":[{"id":0,"name":"Final Critical Habitat Features"},{"id":2,"name":"Proposed Critical Habitat Features"}]}
-        ids = [7, 9]
+        ids = [9, 7]
         features = [{"attributes":{"OBJECTID":7,"entity_id":None,"code":"007"},"geometry":{"rings":[[[0,0],[0,2],[2,2],[2,0],[0,0]]]}},
                     {"attributes":{"OBJECTID":9,"entity_id":4001,"code":"0009"},"geometry":{"rings":[[[3,0],[3,2],[5,2],[5,0],[3,0]]]}}]
         payloads = {
             "/sharing/rest/content/items/794de45b9d774d21aed3bf9b5313ee24": {"id":source.ITEM_ID,"owner":"aditya_sastry@fws.gov_fws","url":source.SERVICE_URL},
             "/USFWS_Critical_Habitat/FeatureServer":service,
-            "/USFWS_Critical_Habitat/FeatureServer/0":{"name":source.LAYER_NAME,"geometryType":"esriGeometryPolygon","extent":layer["extent"],"fields":fields},
+            "/USFWS_Critical_Habitat/FeatureServer/0":{"name":source.LAYER_NAME,"geometryType":"esriGeometryPolygon","extent":layer["extent"],"fields":fields,"hasZ":False,"hasM":False},
             "/USFWS_Critical_Habitat/FeatureServer/0/query":None,
         }
         def handler(request):
@@ -85,7 +100,10 @@ class FinalCriticalHabitatTests(unittest.TestCase):
                 params=dict(request.url.params)
                 if params.get("returnIdsOnly")=="true": body={"objectIds":ids}
                 elif params.get("returnCountOnly")=="true": body={"count":len(ids)}
-                else: body={"spatialReference":{"wkid":102100,"latestWkid":3857},"features":features}
+                else:
+                    selected=set(map(int,params.get("objectIds","").split(",")))
+                    body={"spatialReference":{"wkid":102100,"latestWkid":3857},
+                          "features":[x for x in features if x["attributes"]["OBJECTID"] in selected]}
             elif path.endswith("/0"): body=payloads["/USFWS_Critical_Habitat/FeatureServer/0"]
             elif path.endswith("/FeatureServer"): body=service
             else: body=payloads["/sharing/rest/content/items/794de45b9d774d21aed3bf9b5313ee24"]
@@ -101,10 +119,11 @@ class FinalCriticalHabitatTests(unittest.TestCase):
             real_client=httpx.Client
             client_factory=lambda *args,**kwargs:real_client(transport=transport,**kwargs)
             patches=[patch.object(source.httpx,"Client",side_effect=client_factory),
+                     patch.object(source,"PAGE_SIZE",1),
                      patch.object(source,"processing_identity",side_effect=identity),
                      patch.object(source,"validate_construction_code_identity"),
                      patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity")]
-            with patches[0],patches[1],patches[2],patches[3]:
+            with patches[0],patches[1],patches[2],patches[3],patches[4]:
                 first=source.capture_final_critical_habitat(staging,version="fixture",capture_directory=str(Path(temp)/"captures"))
                 partition=build_publish_partition_key(source.DATASET_SLUG,source.FILE_SLUG,first["version"])
                 with DagsterInstance.ephemeral() as instance:

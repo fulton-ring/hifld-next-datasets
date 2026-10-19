@@ -10,6 +10,7 @@ import hashlib
 import json
 import gzip
 import io
+import math
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -195,12 +196,16 @@ def _esri_type(field: dict[str, Any]) -> pa.DataType:
 
 
 def _ring_area(ring: list[list[float]]) -> float:
-    return sum(ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1]
-               for i in range(len(ring) - 1)) / 2
+    # Translate to a local origin before shoelace accumulation. Global Web
+    # Mercator coordinates can otherwise cancel small rings to a false zero.
+    x0,y0=ring[0]
+    return math.fsum((ring[i][0]-x0)*(ring[i+1][1]-y0)
+                     -(ring[i+1][0]-x0)*(ring[i][1]-y0)
+                     for i in range(len(ring)-1))/2
 
 
 def _esri_polygon(geometry: dict[str, Any]) -> MultiPolygon:
-    """Convert Esri clockwise-shell rings without dissolving or repairing them."""
+    """Assign each hole to its nearest containing shell without ring repair."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
@@ -213,13 +218,18 @@ def _esri_polygon(geometry: dict[str, Any]) -> MultiPolygon:
         else: holes.append((ring, polygon))
     if not shells:
         raise ValueError("source_polygon_shell_missing")
-    members = []
-    for shell, polygon in shells:
-        contained = [ring for ring, hole in holes if polygon.contains(hole.representative_point())]
-        members.append(Polygon(shell, contained))
-    if len(holes) != sum(len([1 for ring, polygon in holes if shell_poly.contains(polygon.representative_point())]) for _, shell_poly in shells):
-        # Nested islands / ambiguous ring assignment cannot be safely inferred.
-        raise ValueError("source_polygon_ring_nesting_ambiguous")
+    assigned: dict[int, list[list[list[float]]]] = {index: [] for index in range(len(shells))}
+    for ring, hole in holes:
+        # Esri permits islands (clockwise shells) inside counterclockwise
+        # holes. A hole may therefore be contained by both its nearest island
+        # and an outer shell; choose the smallest containing shell as parent.
+        parents = [(shell_poly.area, index) for index, (_, shell_poly) in enumerate(shells)
+                   if shell_poly.contains(hole)]
+        if not parents:
+            raise ValueError("source_polygon_hole_without_containing_shell")
+        _, parent = min(parents)
+        assigned[parent].append(ring)
+    members = [Polygon(shell, assigned[index]) for index, (shell, _) in enumerate(shells)]
     return MultiPolygon(members)
 
 
@@ -236,7 +246,8 @@ def _feature_rows(captures: dict[str, tuple[bytes, dict[str, Any]]], fields: lis
         raise ValueError("official_fws_item_identity_changed")
     spatial = before.get("extent",{}).get("spatialReference",{})
     if (before.get("name") != LAYER_NAME or before.get("geometryType") != "esriGeometryPolygon"
-            or spatial.get("latestWkid",spatial.get("wkid")) not in (3857,102100)):
+            or spatial.get("latestWkid",spatial.get("wkid")) not in (3857,102100)
+            or before.get("hasZ") is not False or before.get("hasM") is not False):
         raise ValueError("exact_final_polygon_layer_changed")
     if _schema(before) != fields or _schema(after) != fields:
         raise ValueError("source_schema_changed_during_capture")
@@ -325,6 +336,7 @@ def capture_final_critical_habitat(storage: StagingStorageResource, *, version: 
             seed, receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed", budget_roots)
             ids = json.loads(_capture_body(seed)).get("objectIds")
             if not isinstance(ids, list) or not ids: raise ValueError("source_seed_ids_missing")
+            ids = sorted(ids)
             captures["ids_seed"] = (seed, receipt)
             for name, url in _urls(ids):
                 body, receipt = _fetch(client, url, capture_root, name, budget_roots)
