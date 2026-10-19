@@ -10,7 +10,7 @@ import pyarrow as pa
 from pathlib import Path
 from unittest.mock import patch
 
-parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=Path,required=True);parser.add_argument('--resume-after-integrity',action='store_true');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=Path,required=True);parser.add_argument('--resume-after-integrity',action='store_true');parser.add_argument('--live-followup',action='store_true');args=parser.parse_args()
 repo=Path(__file__).resolve().parents[1];capture=repo/'docs/dataset-sources/cbrs-units-2/evidence/captures'
 runtime=args.runtime.resolve();assert runtime.is_dir() if args.resume_after_integrity else not runtime.exists()
 for name in ['dagster','staging','published']:(runtime/name).mkdir(parents=True,exist_ok=args.resume_after_integrity)
@@ -66,7 +66,7 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
   attacked=source.candidate_inventory(root)
   control=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
   control_errors=record('complete_source_cache_self_repin_prebuilt_policy_control',control)
-  assert not control.success and any('cached_provenance_differs_from_original_capture' in e for e in control_errors)
+  assert not control.success and any('cached_original_construction_manifest_or_receipts_changed' in e for e in control_errors)
   assert not root.exists() and (source.SLUG,source.SLUG,output['version']) not in list(_iter_staged_version_paths(staging))
   retained=list((runtime/'staging/_quarantine'/source.SLUG/'versions').glob('*/candidate'))
   assert len(retained)==1 and source.candidate_inventory(retained[0])==attacked
@@ -99,6 +99,46 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
   record('real_complete_post_second_catalog_refresh',second_refresh)
   assert second_refresh.success and second_refresh.output_for_node(fws_cbrs_units.op.name)==output
   assert snapshot(published)==prior
+  # Bind all original construction claims and capture receipts outside mutable
+  # candidates. Re-pin ready/snapshots just as the independent reviewer did.
+  manifestfile=root/'metadata/source_manifest.json';readyfile=root/'metadata/cbrs_units_candidate_ready.json'
+  binding=runtime/'staging/_source-provenance'/source.SLUG/output['version']/'bundle.json'
+  binding_original=binding.read_bytes();report['construction_binding_probes']=[]
+  for attack in ['forged_code_commit','forged_original_receipt','missing_external_binding']:
+   saved={str(p.relative_to(root)):p.read_bytes() for p in root.rglob('*') if p.is_file() and (p.suffix=='.json')}
+   if attack=='missing_external_binding':binding.unlink()
+   else:
+    value=json.loads(manifestfile.read_bytes())
+    if attack=='forged_code_commit':value['code_commit']='0'*40
+    else:
+     receiptfile=root/'raw/captures/official_zip.receipt.json';receipt=json.loads(receiptfile.read_bytes());receipt['observed_at']='2020-01-01T00:00:00+00:00';receiptfile.write_bytes(source.encode(receipt))
+     value['inputs'][0]['retrieved_at']=receipt['observed_at']
+    manifestfile.write_bytes(source.encode(value))
+    # Keep all existing snapshot names but alter their bytes too; the external
+    # binding, not a candidate-local snapshot or ready self-pin, must reject.
+    for snapshotfile in (root/'metadata/source').glob('*source_manifest.json'):
+     snapshotfile.write_bytes(manifestfile.read_bytes())
+     if snapshotfile.name.startswith('version_'):snapshotfile.rename(snapshotfile.with_name('version_'+source.sha(manifestfile.read_bytes())+'_source_manifest.json'))
+    ready=json.loads(readyfile.read_bytes())
+    for name in ready['objects']:ready['objects'][name]=source.sha((root/name).read_bytes())
+    readyfile.write_bytes(source.encode(ready))
+   attacked=source.candidate_inventory(root)
+   failed=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+   errors=record('construction_binding_'+attack,failed)
+   assert not failed.success and any(('cached_original_construction_manifest_or_receipts_changed' if attack!='missing_external_binding' else 'missing_original_construction_provenance_bundle') in e for e in errors),errors
+   assert not root.exists() and (source.SLUG,source.SLUG,output['version']) not in list(_iter_staged_version_paths(staging))
+   retained=[p for p in (runtime/'staging/_quarantine'/source.SLUG/'versions').glob('*/candidate') if p.exists()]
+   assert len(retained)==1 and source.candidate_inventory(retained[0])==attacked
+   assert snapshot(published)==prior
+   report['construction_binding_probes'].append({'attack':attack,'run_id':failed.run_id,'rejected':True,'all_remaining_bytes_preserved':True,'prior_published_preserved':True,'not_discoverable':True})
+   os.rename(retained[0],root)
+   for file in root.rglob('*.json'):
+    if str(file.relative_to(root)) not in saved:file.unlink()
+   for name,body in saved.items():(root/name).write_bytes(body)
+   binding.write_bytes(binding_original)
+  restored=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+  record('real_refresh_after_construction_binding_attacks',restored);assert restored.success
+  assert restored.output_for_node(fws_cbrs_units.op.name)==output
   rows=pq.read_table(root/'candidate/typed-source.parquet').to_pylist();assert len(rows)==942
   with fiona.open(root/'geopackage'/f'{source.SLUG}.gpkg') as f:gp={r['properties']['__source_fid']:r for r in f}
   for row in rows:
@@ -114,7 +154,8 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
    expected=bysection[row['__source_fid']]
    assert {key:row[key] for key in source.SCHEMA}=={key:expected[key] for key in source.SCHEMA}
    assert row['geometry']==expected['geometry']
-  report['terminal_parquet']={'rows':942,'all_source_values_types_wkb_exact':True,'extra_columns':[],'nullable_inference_requires_review':True}
+  assert bysection['679']['Name']==' Brigantine' and bysection['680']['Name']==' Island Beach'
+  report['terminal_parquet']={'preserved_original_leading_names':{'679':' Brigantine','680':' Island Beach'},'rows':942,'all_source_values_types_wkb_exact':True,'extra_columns':[],'nullable_inference_requires_review':True}
   # Authentic complete-candidate self-repin attacks exercise the actual registered Dagster asset.
   readyfile=root/'metadata/cbrs_units_candidate_ready.json';ready_original=readyfile.read_bytes()
   evidence_original={n:(root/'metadata'/n).read_bytes() for n in ['geopackage_source_fidelity.json','baseline_comparison.json']}
@@ -227,5 +268,17 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
  report['generic_converter_calls']=converter.call_count
  report.update(output=output,all_942_ids_values_types_wkb_preserved=True,source_discoverable_without_manual_copy=True,refresh_byte_idempotent=True,prior_published_fixture_preserved=True,
   quality=json.loads((root/'metadata/quality_manifest.json').read_text()),provenance_input_count=len(json.loads((root/'metadata/source_manifest.json').read_text())['inputs']))
+ if args.live_followup:
+  live=sourcejob.execute_in_process(instance=instance,run_config={'ops':{fws_cbrs_units.op.name:{'config':{'capture_dir':''}}}},raise_on_error=False)
+  errors=record('live_all_official_inputs_source_refresh',live);assert live.success,errors
+  liveoutput=live.output_for_node(fws_cbrs_units.op.name);assert liveoutput['feature_count']==942
+  liveroot=runtime/'staging'/source.SLUG/source.SLUG/liveoutput['version']
+  liveparquet=pq.read_table(liveroot/'geoparquet'/f'{source.SLUG}.parquet')
+  assert liveparquet.equals(pq.read_table(root/'geoparquet'/f'{source.SLUG}.parquet'),check_metadata=True)
+  observations={name:json.loads((liveroot/f'raw/captures/{name}.receipt.json').read_bytes()) for name in source.URLS}
+  assert all(value['status']==200 for value in observations.values())
+  assert (runtime/'staging/_source-provenance'/source.SLUG/liveoutput['version']/'bundle.json').is_file()
+  assert snapshot(published)==prior and converter.call_count==0
+  report['live_followup']={'run_id':live.run_id,'output':liveoutput,'observations':observations,'all_942_corrected_values_types_native_wkb_equal':True,'new_observations_preserved':True,'prior_published_preserved':True}
 (runtime/'execution.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
 print(json.dumps({'code_head':report['code_head'],'runs':[(r['kind'],r['run_id'],r['success']) for r in report['runs']]}))

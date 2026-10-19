@@ -197,7 +197,7 @@ def provenance(captures: dict, *, prebuilt_body: bytes | None = None) -> dict:
         'source_url':LANDING,'license':METADATA,'date_issued':'2024-12-19','inputs':inputs,
         'source_anomalies':[],
         'license_review_required':'Preserve official use constraints; maintainer acceptance required before release.',
-        'transformations':[{'operation':'decode_original_shapefile','preserved':'All eight DBF columns, decoded values and original physical declarations/decimal bytes (retained in the raw ZIP), native NAD83 coordinates and original shapefile FID under proposed __source_fid. Complete ZIP and25members retained.',
+        'transformations':[{'operation':'decode_original_shapefile','preserved':'All eight DBF columns; character values decoded directly from original UTF-8 DBF with fixed-width right padding excluded and leading characters preserved; numeric values and original physical declarations/decimal bytes (retained in the raw ZIP), native NAD83 coordinates and original shapefile FID under proposed __source_fid. Complete ZIP and25members retained.',
             'repair_or_projection':False,'mapping_approval':'not established; full published candidate compatibility and original FID/OBJECTID/id crosswalk remain unapproved'}],
         'unsupported_output_formats':{'shapefile_zip':'The full original producer archive is retained in raw/. Regenerated DBF loses the proposed explicit original source FID or renames it; no regenerated mapping approval.',
             'pmtiles':'Tile reprojection and quantization alter native geometry. No visualization mapping approved.'}}
@@ -230,6 +230,46 @@ def processing_identity() -> dict:
             'verifier_sha256': verifier_implementation_sha256()}
 
 
+def decode_physical_dbf(body: bytes, encoding: bytes) -> tuple[list[dict], list[dict]]:
+    """Decode original physical values; C-field right padding is not source text.
+
+    Fiona strips leading blanks from DBF character cells. Decode all character
+    fields directly instead, and independently check the numeric representations.
+    The pinned source has UTF-8 C fields and F numeric fields, and no DATE/OID.
+    """
+    if encoding != b'UTF-8' or len(body)<33:
+        raise CBRSQuarantineError('physical_dbf_encoding_or_header_drift')
+    count=struct.unpack_from('<I',body,4)[0]
+    header,width=struct.unpack_from('<HH',body,8)
+    declarations=[];offset=1
+    if header<33 or (header-33)%32 or header+count*width>len(body):
+        raise CBRSQuarantineError('physical_dbf_incomplete_header_or_records')
+    for position in range(32,header-1,32):
+        field=body[position:position+32]
+        name=field[:11].split(b'\x00',1)[0].decode('ascii')
+        kind=chr(field[11]);length=field[16];decimals=field[17]
+        declarations.append({'name':name,'type':kind,'width':length,'decimals':decimals,'offset':offset})
+        offset+=length
+    expected=[(name,'C' if kind.startswith('str') else 'F',
+               int(kind.split(':')[1].split('.')[0]),0 if kind.startswith('str') else int(kind.split('.')[1]))
+              for name,kind in NATIVE_SCHEMA.items()]
+    if ([(f['name'],f['type'],f['width'],f['decimals']) for f in declarations]!=expected
+            or offset!=width or body[header-1]!=13 or body[header+count*width:] not in (b'',b'\x1a')):
+        raise CBRSQuarantineError('physical_dbf_declarations_or_record_width_drift')
+    records=[]
+    for index in range(count):
+        record=body[header+index*width:header+(index+1)*width]
+        if record[0:1]!=b' ':
+            raise CBRSQuarantineError('physical_dbf_deleted_or_invalid_record')
+        decoded={}
+        for field in declarations:
+            value=record[field['offset']:field['offset']+field['width']]
+            decoded[field['name']]=(value.rstrip(b' ').decode('utf-8',errors='strict')
+                                    if field['type']=='C' else float(value.decode('ascii')))
+        records.append(decoded)
+    return records,declarations
+
+
 def inspect_archive(body: bytes, directory: Path) -> tuple[list[dict], dict, dict[str, bytes]]:
     if len(body) != ARCHIVE_BYTES or sha(body) != PIN or not body.startswith(b'PK\x03\x04'):
         raise CBRSQuarantineError('changed_truncated_or_unknown_producer_archive')
@@ -259,6 +299,7 @@ def inspect_archive(body: bytes, directory: Path) -> tuple[list[dict], dict, dic
     if set(ids) != {str(i) for i in range(942)} or len(set(ids)) != len(rows):
         raise CBRSQuarantineError('original_fid_population_drift')
     rows.sort(key=lambda r: int(r['properties']['__source_fid']))
+    physical,declarations=decode_physical_dbf(members[f'{STEM}.dbf'],members[f'{STEM}.cpg'])
     for row in rows:
         if set(row['properties']) != set(SCHEMA):
             raise CBRSQuarantineError('unexpected_or_missing_source_columns')
@@ -271,6 +312,12 @@ def inspect_archive(body: bytes, directory: Path) -> tuple[list[dict], dict, dic
                 raise CBRSQuarantineError(f'source_type_or_null_drift:{name}')
             if isinstance(value, int) and not -(2**31) <= value < 2**31:
                 raise CBRSQuarantineError(f'source_integer_width_drift:{name}')
+        original=physical[int(row['properties']['__source_fid'])]
+        for name,value in original.items():
+            driver=row['properties'][name]
+            if driver!=(value.strip() if isinstance(value,str) else value):
+                raise CBRSQuarantineError(f'physical_dbf_driver_value_drift:{name}')
+            row['properties'][name]=value
         if row['geometry'] is None:
             raise CBRSQuarantineError('missing_native_geometry')
         g = shape(row['geometry'])
@@ -281,7 +328,7 @@ def inspect_archive(body: bytes, directory: Path) -> tuple[list[dict], dict, dic
     invalid = {r['properties']['__source_fid']: shapely.is_valid_reason(shape(r['geometry'])) for r in rows if not shape(r['geometry']).is_valid}
     if invalid: raise CBRSQuarantineError('invalid_native_geometry')
     audit = {'invalid_geometry_count': len(invalid), 'native_invalid_geometries': invalid, 'source_quality': 'native_fidelity_pass_unapproved_release', 'approved': False, 'status': 'producer_source_fidelity_pass', 'feature_count': len(rows),
-             'schema': schema, 'crs': 'EPSG:4269', 'bounds': shapely.total_bounds([shape(r['geometry']) for r in rows]).tolist(),
+             'schema': schema, 'physical_dbf_fields':declarations, 'character_decoding':'UTF-8; remove fixed-width right-padding spaces only; preserve leading characters', 'crs': 'EPSG:4269', 'bounds': shapely.total_bounds([shape(r['geometry']) for r in rows]).tolist(),
              'nulls': {name: sum(r['properties'][name] is None for r in rows) for name in SCHEMA},
              'identifiers': {'__source_fid': {'unique': len(set(ids)), 'nulls': 0}},
              'coverage': {name: dict(collections.Counter(r['properties'][name] for r in rows)) for name in ('Unit_Type',)},
@@ -379,6 +426,47 @@ def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
     return target
 
 
+def original_construction_bundle(storage: StagingStorageResource, version: str, captures: dict,
+                                 manifest: dict, *, create: bool=False) -> tuple[dict,dict]:
+    """Bind full first-construction provenance outside the mutable candidate.
+
+    Caller holds the stable version lock for creation/cache lookup. Identical
+    fresh observations remain in the raw depot without rewriting original times.
+    Existing candidates may never bootstrap a missing binding from their cache.
+    """
+    key=f'_source-provenance/{SLUG}/{version}/bundle.json'
+    if not storage.object_exists(key):
+        if not create:
+            raise CBRSQuarantineError('missing_original_construction_provenance_bundle')
+        bundle={'manifest':manifest,'captures':{name:{
+            'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
+            'receipt':receipt} for name,(body,receipt) in captures.items()}}
+        immutable(storage,key,encode(bundle))
+    bundle=strict_json(storage.read_key(key))
+    if set(bundle)!={'manifest','captures'} or set(bundle['captures'])!=set(URLS):
+        raise CBRSQuarantineError('original_construction_bundle_roster_drift')
+    original={}
+    for name in URLS:
+        item=bundle['captures'][name]
+        if set(item)!={'body_key','receipt'}:
+            raise CBRSQuarantineError('original_construction_capture_roster_drift')
+        expected=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{name}.body"
+        if item['body_key']!=expected:
+            raise CBRSQuarantineError('original_construction_capture_key_drift')
+        body=storage.read_key(expected)
+        if body!=captures[name][0]:
+            raise CBRSQuarantineError('original_construction_capture_bytes_changed')
+        original[name]=(body,item['receipt'])
+    expected=provenance(original)
+    expected['processing_fingerprint']=manifest['processing_fingerprint']
+    expected['prebuilt_output_policy']=manifest['prebuilt_output_policy']
+    actual=bundle['manifest']
+    validate_output_policy(actual);validate_release_provenance(actual)
+    if set(actual)!=set(expected) or any(actual[k]!=v for k,v in expected.items() if k!='code_commit'):
+        raise CBRSQuarantineError('original_construction_manifest_drift')
+    return original,actual
+
+
 def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready: dict,
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
@@ -397,11 +485,15 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     expected_manifest=provenance(cached,prebuilt_body=derive_native_parquet_bytes(rows,audit))
+    expected_manifest['processing_fingerprint']=sha(encode(identity))
     if any(cached[name][0]!=captures[name][0] for name in URLS):
         raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_output_policy(manifest)
     validate_release_provenance(manifest)
+    original,anchored=original_construction_bundle(storage,ready['version'],captures,expected_manifest)
+    if manifest!=anchored or cached!=original:
+        raise CBRSQuarantineError('cached_original_construction_manifest_or_receipts_changed')
     prebuilt_output_keys(manifest,storage,prefix,'geoparquet')
     for relative in ('metadata/source/source_manifest.json',
                      'metadata/source/version_'+sha((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'):
@@ -502,7 +594,11 @@ def reuse_existing_candidate(storage: StagingStorageResource,prefix: str,version
                              fingerprint: str,rows: list[dict],audit: dict,captures: dict,
                              identity: dict,members: dict) -> dict | None:
     with candidate_lock(storage,prefix) as target:
-        if not target.exists():return None
+        if not target.exists():
+            manifest=provenance(captures,prebuilt_body=derive_native_parquet_bytes(rows,audit))
+            manifest['processing_fingerprint']=fingerprint
+            original_construction_bundle(storage,version,captures,manifest,create=True)
+            return None
         info=target.lstat();inode=(info.st_dev,info.st_ino)
         ready_key=f'{prefix}/metadata/cbrs_units_candidate_ready.json'
         try:
@@ -547,6 +643,9 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
             manifest=provenance(captures,prebuilt_body=expected_prebuilt)
             cached=reuse_existing_candidate(storage,prefix,version,records,fingerprint,rows,audit,captures,identity,members)
             if cached is not None:return cached
+            manifest['processing_fingerprint']=fingerprint
+            captures,manifest=original_construction_bundle(storage,version,captures,manifest)
+            body,receipt=captures['official_zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_geopackage(geopackage,rows)
             source_records = directory / 'source.jsonl'
@@ -570,8 +669,6 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
             if parquet.read_bytes()!=expected_prebuilt:
                 raise CBRSQuarantineError('canonical_prebuilt_artifact_bytes_disagree_with_original_reconstruction')
-            commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(), f'geoparquet/{SLUG}.parquet':parquet.read_bytes(),

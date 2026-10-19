@@ -29,6 +29,52 @@ class CBRSTests(unittest.TestCase):
         self.assertEqual(audit['coverage']['Unit_Type'],{'System Unit':592,'Otherwise Protected Area':350})
         self.assertEqual({r['properties']['__source_fid'] for r in rows},{str(i) for i in range(942)})
 
+    def test_all_original_binary_dbf_values_and_declarations(self):
+        with tempfile.TemporaryDirectory() as d:
+            rows,audit,members=s.inspect_archive((CAPTURE/'official_zip.body').read_bytes(),Path(d))
+        dbf=members[s.STEM+'.dbf'];header,width=struct.unpack_from('<HH',dbf,8)
+        fields=[]
+        for position in range(32,header-1,32):
+            field=dbf[position:position+32]
+            fields.append((field[:11].split(b'\x00')[0].decode('ascii'),chr(field[11]),field[16],field[17]))
+        self.assertEqual(fields,[(k,'C' if v.startswith('str') else 'F',int(v.split(':')[1].split('.')[0]),0 if v.startswith('str') else 11) for k,v in s.NATIVE_SCHEMA.items()])
+        self.assertNotIn('D',[f[1] for f in fields]);self.assertNotIn('OBJECTID',[f[0] for f in fields])
+        for index,row in enumerate(rows):
+            self.assertEqual(row['properties']['__source_fid'],str(index));offset=header+index*width+1
+            for name,kind,length,decimals in fields:
+                original=dbf[offset:offset+length];offset+=length
+                expected=original.decode('utf-8').rstrip(' ') if kind=='C' else float(original.decode('ascii'))
+                self.assertEqual(row['properties'][name],expected,(index,name))
+        self.assertEqual(rows[679]['properties']['Name'],' Brigantine')
+        self.assertEqual(rows[680]['properties']['Name'],' Island Beach')
+        # Test the general decoder, not just the two names found by review.
+        changed=bytearray(dbf);changed[header+1:header+9]=b'  AB    '
+        self.assertEqual(s.decode_physical_dbf(bytes(changed),b'UTF-8')[0][0]['Unit'],'  AB')
+        self.assertEqual(audit['physical_dbf_fields'][1]['width'],254)
+        for bad in [dbf[:-100],bytes(changed[:32]),b'']:
+            with self.assertRaises(ValueError):s.decode_physical_dbf(bad,b'UTF-8')
+
+    def test_first_construction_bundle_preserves_original_full_manifest_and_receipts(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)
+            manifest=s.provenance(captures,prebuilt_body=b'clearly synthetic policy fixture')
+            manifest['processing_fingerprint']='fixture'
+            version='v0.0.0-draft-original-fixture'
+            with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
+                original,bound=s.original_construction_bundle(storage,version,captures,manifest,create=True)
+                self.assertEqual(bound,manifest);self.assertEqual(original,captures)
+                later={name:(body,dict(receipt,observed_at='2026-10-20T12:00:00+00:00')) for name,(body,receipt) in captures.items()}
+                with patch.object(s.subprocess,'check_output',return_value='f'*40+'\n'):
+                    latest=s.provenance(later,prebuilt_body=b'clearly synthetic policy fixture');latest['processing_fingerprint']='fixture'
+                    restored,bound=s.original_construction_bundle(storage,version,later,latest)
+                self.assertEqual(restored,captures);self.assertEqual(bound,manifest)
+                key=f'_source-provenance/{s.SLUG}/{version}/bundle.json';bundle=storage.read_key(key)
+                self.assertEqual(json.loads(bundle)['manifest']['code_commit'],manifest['code_commit'])
+                Path(d,key).unlink()
+                with self.assertRaisesRegex(ValueError,'missing_original_construction'):
+                    s.original_construction_bundle(storage,version,later,latest)
+                self.assertFalse(storage.object_exists(key))
+
     def test_registry_schedule_and_published_rejected_before_acquisition(self):
         self.assertEqual(sum(a is fws_cbrs_units for a in hifld_ingest_assets),1)
         self.assertEqual(fws_cbrs_units_draft_refresh_schedule.default_status,DefaultScheduleStatus.STOPPED)
@@ -271,13 +317,13 @@ class CBRSTests(unittest.TestCase):
             self.assertEqual(len(retained),1);self.assertEqual(s.candidate_inventory(retained[0]),old)
 
 
-    def test_native_prebuilt_capability_is_closed_and_preserves_exact_prior_bytes(self):
+    def test_native_prebuilt_capability_is_closed_and_pins_corrected_source_text(self):
         captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
         with tempfile.TemporaryDirectory() as d:
             rows,audit,_=s.inspect_archive(captures['official_zip'][0],Path(d))
             body=s.derive_native_parquet_bytes(rows,audit)
-        self.assertEqual(len(body),6555616)
-        self.assertEqual(s.sha(body),'5f5155eb565c4b566948d4e11e2a946ced98ef48ea0b9682c880315566e93b5b')
+        self.assertEqual(len(body),6555610)
+        self.assertEqual(s.sha(body),'64f1bb9b98ff27b76bcfbeb8f6dc049815c0a828f022c87f261b1f797707520a')
         manifest=s.provenance(captures,prebuilt_body=body)
         self.assertNotIn('geoparquet',manifest['unsupported_output_formats'])
         self.assertEqual(set(manifest['unsupported_output_formats']),{'shapefile_zip','pmtiles'})

@@ -9,7 +9,7 @@ from dagster_hifld.sources.cbrs_units import require_local, stage_cbrs_units_can
 
 
 @asset(key=AssetKey(['ingest','cbrs-units-2','cbrs-units-2']),group_name='fws',compute_kind='http',
-       description='Official FWS2024-12-19 Prohibitions: 942 native NAD83 mixed Polygon/MultiPolygon units with all eight original DBF fields. Faithful draft, not a legal determination or accepted HIFLD replacement.',
+       description='Official FWS2024-12-19 Units: 942 native NAD83 mixed Polygon/MultiPolygon units with all eight original DBF fields. Faithful draft, not a legal determination or accepted HIFLD replacement.',
        config_schema={'capture_dir':Field(str,default_value='')})
 def fws_cbrs_units(context,staging_storage:StagingStorageResource)->dict:
     require_local(staging_storage)
