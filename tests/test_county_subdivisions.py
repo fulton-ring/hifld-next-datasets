@@ -4,6 +4,7 @@ Synthetic fixtures test implementation behavior; they do not approve Census data
 """
 import copy
 import hashlib
+import gzip
 import json
 import os
 import sqlite3
@@ -13,6 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
@@ -45,6 +47,22 @@ def synthetic_population():
 
 class CountySubdivisionTests(unittest.TestCase):
     def stage(self,storage,raw,receipt):return source.stage_county_subdivisions_candidate(storage,archive_path=raw,receipt_path=receipt)
+
+    def test_actual_httpx_gzip_wire_length_and_lossless_decoded_capture(self):
+        body=b'EXPLICIT_SYNTHETIC_GZIP_TRANSPORT_BEHAVIOR'*100;compressed=gzip.compress(body,mtime=0);original_client=httpx.Client
+        transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed))},stream=httpx.ByteStream(compressed)))
+        with tempfile.TemporaryDirectory() as tmp,patch.multiple(source,BYTES=len(body),SHA256=hashlib.sha256(body).hexdigest(),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)):
+            storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'));path,receipt,pointer=source.acquire(storage)
+            self.assertEqual(path.read_bytes(),body);self.assertEqual(receipt['wire_bytes_downloaded'],len(compressed));self.assertEqual(receipt['bytes'],len(body));self.assertTrue(receipt['complete_body']);self.assertEqual(pointer['kind'],'owned_content_addressed_capture')
+
+    def test_actual_httpx_truncated_wire_retains_partial_and_blocks(self):
+        body=b'EXPLICIT_SYNTHETIC_SHORT_ENCODED_TRANSPORT'*100;compressed=gzip.compress(body,mtime=0);original_client=httpx.Client
+        transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed)+7)},stream=httpx.ByteStream(compressed)))
+        with tempfile.TemporaryDirectory() as tmp,patch.multiple(source,BYTES=len(body),SHA256=hashlib.sha256(body).hexdigest(),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)):
+            storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'))
+            with self.assertRaisesRegex(ValueError,'encoded_transport_truncation'):source.acquire(storage)
+            self.assertFalse((Path(storage.local_dir)/source.RAW_KEY).exists());partials=list(Path(storage.local_dir).rglob('*.partial'));self.assertEqual(len(partials),1);self.assertEqual(partials[0].read_bytes(),body)
+            reports=list((Path(storage.local_dir)/'_quarantine').rglob('*.json'));self.assertEqual(len(reports),1);self.assertFalse(source.strict_json(reports[0].read_bytes())['receipt']['complete_body'])
 
     def test_complete_real_population_schema_and_physical_width(self):
         raw=os.environ.get('HIFLD_COUSUB_TEST_ARCHIVE')
@@ -87,15 +105,18 @@ class CountySubdivisionTests(unittest.TestCase):
             self.assertFalse(key.exists());self.assertTrue(any(p.read_bytes()==original for p in Path(str(key)+'.evidence').glob('*.json')))
 
     def test_self_repinned_report_and_native_metadata_still_quarantine(self):
-        for kind in ['report','container','unknown']:
+        for kind in ['report','container','unknown','ready_sha','ready_extra']:
             with self.subTest(kind=kind),synthetic_population() as (_,storage,raw,receipt,_):
                 r=self.stage(storage,raw,receipt);base=Path(storage.local_dir);root=base/source.SLUG/source.SLUG/r['version'];ready=source.strict_json((root/source.READY).read_bytes())
                 if kind=='report':name='metadata/geopackage_source_fidelity.json';(root/name).write_bytes(source.encode({'status':'forged'}))
                 elif kind=='container':
                     name=f'geopackage/{source.SLUG}.gpkg'
                     with sqlite3.connect(root/name) as db:db.execute("UPDATE gpkg_spatial_ref_sys SET organization='forged' WHERE srs_id=4269")
-                else:name='metadata/unknown.json';(root/name).write_bytes(b'{}')
-                ready['objects'][name]=source.sha256_file(root/name);(root/source.READY).write_bytes(source.encode(ready))
+                elif kind=='unknown':name='metadata/unknown.json';(root/name).write_bytes(b'{}')
+                elif kind=='ready_sha':ready['source_sha256']='0'*64
+                else:ready['unreviewed_extra_field']=True
+                if kind not in ('ready_sha','ready_extra'):ready['objects'][name]=source.sha256_file(root/name)
+                (root/source.READY).write_bytes(source.encode(ready))
                 with self.assertRaisesRegex(ValueError,'whole_candidate_detached'):self.stage(storage,raw,receipt)
                 self.assertFalse(root.exists());self.assertTrue(list((base/'_quarantine'/source.SLUG).glob('invalid-*')))
 

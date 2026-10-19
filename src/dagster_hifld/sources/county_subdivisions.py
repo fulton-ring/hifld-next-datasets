@@ -273,7 +273,7 @@ def source_payloads(receipt,pointer,identity,audit,manifest):
 
 def reconcile_cache(storage,target,version,path,audit,identity,pin,original):
     receipt,pointer,manifest=original;expected=source_payloads(receipt,pointer,identity,audit,manifest);names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'};ready=strict_json((target/READY).read_bytes())
-    if ready.get('version')!=version or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise CountySubdivisionQuarantineError('ready_identity_roster_drift')
+    if set(ready)!={'version','approved','processing_fingerprint','source_sha256','objects'} or ready.get('source_sha256')!=SHA256 or ready.get('version')!=version or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise CountySubdivisionQuarantineError('ready_identity_roster_drift')
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json';derived={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
     actual={str(p.relative_to(target)) for p in target.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derived) or not (names|{READY}).issubset(actual):raise CountySubdivisionQuarantineError('unknown_or_missing_candidate_object')
