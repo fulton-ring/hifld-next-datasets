@@ -1,0 +1,1387 @@
+{
+  "schema_version": 1,
+  "inventory_id": "historical-tsunami-event-locations-",
+  "issue": 113,
+  "status": "working_draft_implementation_not_accepted",
+  "worker": "/root/census_places_34",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "scope_authorization": "User explicitly authorizes reviewable draft code/local tests before source/baseline/contract acceptance; all real release gates remain hard.",
+  "producer": "NOAA National Centers for Environmental Information",
+  "official_publisher": "NOAA NCEI ncei_noaa account, ArcGIS organization C8EMgrsFcRFL6LrL",
+  "source_classification": "Current producer-delegated spatial tsunami-event layer; not all underlying nonspatial/invalid database records and never tsunami observations/runups. Exact baseline continuity not accepted.",
+  "producer_landing": "https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis",
+  "authority_chain": {
+    "landing": "NCEI page links official TimeLapse app and cites DOI10.7289/V5PN93H7",
+    "viewer": "https://www.ncei.noaa.gov/maps/tsunami-events/",
+    "shipped_app_JS": "index-LsW0PzVb.js contains webmap-id8bed3e9c40114d6a8b2708ceaee0b329",
+    "webmap": "https://www.arcgis.com/sharing/rest/content/items/8bed3e9c40114d6a8b2708ceaee0b329?f=json",
+    "webmap_owner": "ncei_noaa",
+    "webmap_data": "Explicit tsunami_events/FeatureServer/0 operational layer; separate tsunami_observations/FeatureServer/0 not substituted",
+    "machine_layer": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_events/FeatureServer/0"
+  },
+  "complete_extraction": {
+    "responses": 35,
+    "total_original_body_bytes": 8640395,
+    "pages": 26,
+    "ID_batch_limit": 100,
+    "completeness": "Before/after exact full UNIQUE_ID rosters/counts/metadata agree; all targeted IDs returned exactly once, no transfer-limit flags, native3857 Point geometry.",
+    "source_audit": {
+      "Single_wire_decimal_to_declared_binary32_differences": {
+        "SECOND": 515
+      },
+      "approved": false,
+      "country_counts": [
+        {
+          "count": 12,
+          "value": "ALBANIA"
+        },
+        {
+          "count": 15,
+          "value": "ALGERIA"
+        },
+        {
+          "count": 8,
+          "value": "ANTARCTICA"
+        },
+        {
+          "count": 2,
+          "value": "ANTIGUA AND BARBUDA"
+        },
+        {
+          "count": 2,
+          "value": "ARGENTINA"
+        },
+        {
+          "count": 4,
+          "value": "ATLANTIC OCEAN"
+        },
+        {
+          "count": 28,
+          "value": "AUSTRALIA"
+        },
+        {
+          "count": 4,
+          "value": "AZERBAIJAN"
+        },
+        {
+          "count": 5,
+          "value": "BANGLADESH"
+        },
+        {
+          "count": 4,
+          "value": "BRAZIL"
+        },
+        {
+          "count": 4,
+          "value": "BULGARIA"
+        },
+        {
+          "count": 2,
+          "value": "CAMEROON"
+        },
+        {
+          "count": 28,
+          "value": "CANADA"
+        },
+        {
+          "count": 155,
+          "value": "CHILE"
+        },
+        {
+          "count": 40,
+          "value": "CHINA"
+        },
+        {
+          "count": 8,
+          "value": "COLOMBIA"
+        },
+        {
+          "count": 2,
+          "value": "CONGO"
+        },
+        {
+          "count": 2,
+          "value": "COOK ISLANDS"
+        },
+        {
+          "count": 17,
+          "value": "COSTA RICA"
+        },
+        {
+          "count": 7,
+          "value": "CROATIA"
+        },
+        {
+          "count": 6,
+          "value": "CUBA"
+        },
+        {
+          "count": 5,
+          "value": "CYPRUS"
+        },
+        {
+          "count": 1,
+          "value": "DEAD SEA"
+        },
+        {
+          "count": 1,
+          "value": "DOMINICA"
+        },
+        {
+          "count": 5,
+          "value": "DOMINICAN REPUBLIC"
+        },
+        {
+          "count": 1,
+          "value": "EAST CHINA SEA"
+        },
+        {
+          "count": 8,
+          "value": "ECUADOR"
+        },
+        {
+          "count": 4,
+          "value": "EGYPT"
+        },
+        {
+          "count": 8,
+          "value": "EL SALVADOR"
+        },
+        {
+          "count": 1,
+          "value": "ERITREA"
+        },
+        {
+          "count": 1,
+          "value": "ESTONIA"
+        },
+        {
+          "count": 8,
+          "value": "FIJI"
+        },
+        {
+          "count": 9,
+          "value": "FRANCE"
+        },
+        {
+          "count": 4,
+          "value": "FRENCH POLYNESIA"
+        },
+        {
+          "count": 2,
+          "value": "GEORGIA"
+        },
+        {
+          "count": 1,
+          "value": "GERMANY"
+        },
+        {
+          "count": 3,
+          "value": "GHANA"
+        },
+        {
+          "count": 161,
+          "value": "GREECE"
+        },
+        {
+          "count": 9,
+          "value": "GREENLAND"
+        },
+        {
+          "count": 2,
+          "value": "GRENADA"
+        },
+        {
+          "count": 6,
+          "value": "GUADELOUPE (FRENCH TERRITORY)"
+        },
+        {
+          "count": 8,
+          "value": "GUATEMALA"
+        },
+        {
+          "count": 10,
+          "value": "HAITI"
+        },
+        {
+          "count": 1,
+          "value": "HOLLAND"
+        },
+        {
+          "count": 7,
+          "value": "HONDURAS"
+        },
+        {
+          "count": 6,
+          "value": "ICELAND"
+        },
+        {
+          "count": 17,
+          "value": "INDIA"
+        },
+        {
+          "count": 241,
+          "value": "INDONESIA"
+        },
+        {
+          "count": 5,
+          "value": "IRAN"
+        },
+        {
+          "count": 6,
+          "value": "ISRAEL"
+        },
+        {
+          "count": 116,
+          "value": "ITALY"
+        },
+        {
+          "count": 9,
+          "value": "JAMAICA"
+        },
+        {
+          "count": 331,
+          "value": "JAPAN"
+        },
+        {
+          "count": 2,
+          "value": "JORDAN"
+        },
+        {
+          "count": 1,
+          "value": "KENYA"
+        },
+        {
+          "count": 4,
+          "value": "KERMADEC ISLANDS"
+        },
+        {
+          "count": 5,
+          "value": "LEBANON"
+        },
+        {
+          "count": 12,
+          "value": "MARTINIQUE (FRENCH TERRITORY)"
+        },
+        {
+          "count": 79,
+          "value": "MEXICO"
+        },
+        {
+          "count": 5,
+          "value": "MICRONESIA, FED. STATES OF"
+        },
+        {
+          "count": 4,
+          "value": "MONTENEGRO"
+        },
+        {
+          "count": 5,
+          "value": "MONTSERRAT"
+        },
+        {
+          "count": 4,
+          "value": "MOROCCO"
+        },
+        {
+          "count": 3,
+          "value": "MYANMAR (BURMA)"
+        },
+        {
+          "count": 1,
+          "value": "NAOERO"
+        },
+        {
+          "count": 1,
+          "value": "NEPAL"
+        },
+        {
+          "count": 1,
+          "value": "NETHERLANDS"
+        },
+        {
+          "count": 25,
+          "value": "NEW CALEDONIA"
+        },
+        {
+          "count": 83,
+          "value": "NEW ZEALAND"
+        },
+        {
+          "count": 6,
+          "value": "NICARAGUA"
+        },
+        {
+          "count": 3,
+          "value": "NORTH KOREA"
+        },
+        {
+          "count": 2,
+          "value": "NORTHWEST PACIFIC OCEAN"
+        },
+        {
+          "count": 33,
+          "value": "NORWAY"
+        },
+        {
+          "count": 1,
+          "value": "PACIFIC OCEAN"
+        },
+        {
+          "count": 4,
+          "value": "PAKISTAN"
+        },
+        {
+          "count": 12,
+          "value": "PANAMA"
+        },
+        {
+          "count": 80,
+          "value": "PAPUA NEW GUINEA"
+        },
+        {
+          "count": 66,
+          "value": "PERU"
+        },
+        {
+          "count": 103,
+          "value": "PHILIPPINES"
+        },
+        {
+          "count": 32,
+          "value": "PORTUGAL"
+        },
+        {
+          "count": 3,
+          "value": "ROMANIA"
+        },
+        {
+          "count": 102,
+          "value": "RUSSIA"
+        },
+        {
+          "count": 2,
+          "value": "SAINT VINCENT AND THE GRENADINES"
+        },
+        {
+          "count": 15,
+          "value": "SAMOA"
+        },
+        {
+          "count": 1,
+          "value": "SENEGAL"
+        },
+        {
+          "count": 48,
+          "value": "SOLOMON ISLANDS"
+        },
+        {
+          "count": 3,
+          "value": "SOUTH AFRICA"
+        },
+        {
+          "count": 10,
+          "value": "SOUTH KOREA"
+        },
+        {
+          "count": 13,
+          "value": "SPAIN"
+        },
+        {
+          "count": 1,
+          "value": "SRI LANKA"
+        },
+        {
+          "count": 1,
+          "value": "SUDAN"
+        },
+        {
+          "count": 2,
+          "value": "SWEDEN"
+        },
+        {
+          "count": 4,
+          "value": "SWITZERLAND"
+        },
+        {
+          "count": 6,
+          "value": "SYRIA"
+        },
+        {
+          "count": 26,
+          "value": "TAIWAN"
+        },
+        {
+          "count": 2,
+          "value": "TOGO"
+        },
+        {
+          "count": 20,
+          "value": "TONGA"
+        },
+        {
+          "count": 4,
+          "value": "TRINIDAD AND TOBAGO"
+        },
+        {
+          "count": 1,
+          "value": "TUNISIA"
+        },
+        {
+          "count": 66,
+          "value": "TURKEY"
+        },
+        {
+          "count": 3,
+          "value": "TURKMENISTAN"
+        },
+        {
+          "count": 19,
+          "value": "UK"
+        },
+        {
+          "count": 5,
+          "value": "UK TERRITORY"
+        },
+        {
+          "count": 11,
+          "value": "UKRAINE"
+        },
+        {
+          "count": 4,
+          "value": "URUGUAY"
+        },
+        {
+          "count": 187,
+          "value": "USA"
+        },
+        {
+          "count": 22,
+          "value": "USA TERRITORY"
+        },
+        {
+          "count": 49,
+          "value": "VANUATU"
+        },
+        {
+          "count": 24,
+          "value": "VENEZUELA"
+        },
+        {
+          "count": 6,
+          "value": "VIETNAM"
+        },
+        {
+          "count": 1,
+          "value": "WALLIS AND FUTUNA (FRENCH TERRITORY)"
+        }
+      ],
+      "coverage": "Complete current delegated FeatureServer event-location layer, not a claim to include every nonspatial/invalid underlying database record. No observation/runup rows or volcano-only subset substituted.",
+      "current_source_count": 2590,
+      "feature_count": 2590,
+      "geometry": "Point",
+      "initial_verified_count": 2590,
+      "invalid_geometries": 0,
+      "original_field_definitions": [
+        {
+          "alias": "Unique ID",
+          "defaultValue": null,
+          "description": "{\"value\":\"Unique identifier for each tsunami event record.\",\"fieldValueType\":\"uniqueIdentifier\"}",
+          "domain": null,
+          "editable": false,
+          "name": "UNIQUE_ID",
+          "nullable": false,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeOID"
+        },
+        {
+          "alias": "Year",
+          "defaultValue": null,
+          "description": "{\"value\":\"Year when the tsunami event occurred.\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "name": "YEAR",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Month",
+          "defaultValue": null,
+          "description": "{\"value\":\"Month when the tsunami event occurred, represented as a number from 1 to 12.\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MONTH",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Day",
+          "defaultValue": null,
+          "description": "{\"value\":\"Day of the month when the tsunami event occurred.\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DAY",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Hour",
+          "defaultValue": null,
+          "description": "{\"value\":\"Hour of the day (0-23) when the tsunami event occurred.\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUR",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Minute",
+          "defaultValue": null,
+          "description": "{\"value\":\"Minute of the hour (0-59) when the tsunami event occurred.\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MINUTE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Second",
+          "defaultValue": null,
+          "description": "{\"value\":\"Second of the minute (0-59.9) when the tsunami event occurred.\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "name": "SECOND",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSingle"
+        },
+        {
+          "alias": "Date String",
+          "defaultValue": null,
+          "description": "{\"value\":\"Date of the tsunami event formatted as a string (YYYY/MM/DD).\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "length": 13,
+          "name": "DATE_STRING",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Event Date",
+          "defaultValue": null,
+          "description": "{\"value\":\"Date and time of the tsunami event (stored as a date/time value).\",\"fieldValueType\":\"dateAndTime\"}",
+          "domain": null,
+          "editable": true,
+          "length": 8,
+          "name": "EVENT_DATE",
+          "nullable": true,
+          "precision": 1,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDate"
+        },
+        {
+          "alias": "Latitude",
+          "defaultValue": null,
+          "description": "{\"value\":\"Latitude coordinate of the tsunami event's location in decimal degrees.\",\"fieldValueType\":\"coordinate\"}",
+          "domain": null,
+          "editable": true,
+          "name": "LATITUDE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Longitude",
+          "defaultValue": null,
+          "description": "{\"value\":\"Longitude coordinate of the tsunami event's location in decimal degrees.\",\"fieldValueType\":\"coordinate\"}",
+          "domain": null,
+          "editable": true,
+          "name": "LONGITUDE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Location Name",
+          "defaultValue": null,
+          "description": "{\"value\":\"Name of the specific location where the tsunami event occurred.\",\"fieldValueType\":\"locationOrPlaceName\"}",
+          "domain": null,
+          "editable": true,
+          "length": 35,
+          "name": "LOCATION_NAME",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Area",
+          "defaultValue": null,
+          "description": "{\"value\":\"Area code or abbreviation related to the tsunami event's location.\",\"fieldValueType\":\"typeOrCategory\"}",
+          "domain": null,
+          "editable": true,
+          "length": 2,
+          "name": "AREA",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Country",
+          "defaultValue": null,
+          "description": "{\"value\":\"Name of the country where the tsunami event occurred.\",\"fieldValueType\":\"locationOrPlaceName\"}",
+          "domain": null,
+          "editable": true,
+          "length": 50,
+          "name": "COUNTRY",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Region Code",
+          "defaultValue": null,
+          "description": "{\"value\":\"Numeric code representing the region for the tsunami event.\",\"fieldValueType\":\"typeOrCategory\"}",
+          "domain": null,
+          "editable": true,
+          "name": "REGION_CODE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Region",
+          "defaultValue": null,
+          "description": "{\"value\":\"Name of the broader geographic region associated with the tsunami event.\",\"fieldValueType\":\"locationOrPlaceName\"}",
+          "domain": null,
+          "editable": true,
+          "length": 54,
+          "name": "REGION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Cause Code",
+          "defaultValue": null,
+          "description": "{\"value\":\"Numeric code indicating the cause of the tsunami event.\",\"fieldValueType\":\"typeOrCategory\"}",
+          "domain": null,
+          "editable": true,
+          "name": "CAUSE_CODE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Cause",
+          "defaultValue": null,
+          "description": "{\"value\":\"Primary cause of the tsunami event (e.g., Earthquake, Landslide, Volcano).\",\"fieldValueType\":\"typeOrCategory\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "CAUSE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Event Validity Code",
+          "defaultValue": null,
+          "description": "{\"value\":\"Numeric code representing the validity or reliability of the tsunami event record.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EVENT_VALIDITY_CODE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Event Validity",
+          "defaultValue": null,
+          "description": "{\"value\":\"Assessment of the tsunami event's validity (e.g., Definite, Probable, Questionable).\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "length": 100,
+          "name": "EVENT_VALIDITY",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Unknown Magnitude",
+          "defaultValue": null,
+          "description": "{\"value\":\"Earthquake magnitude with unknown scale, representing the strength of the earthquake associated with the tsunami event.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAG_UNK",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Body Wave Magnitude (MB)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Earthquake magnitude measured using the Body Wave Magnitude (MB) scale; indicates earthquake strength.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAG_MB",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Surface Wave Magnitude (MS)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Earthquake magnitude measured using the Surface Wave Magnitude (MS) scale; indicates earthquake strength.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAG_MS",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Moment Magnitude (MW)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Earthquake magnitude measured using the Moment Magnitude (MW) scale; widely used for measuring large earthquakes.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAG_MW",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Local Magnitude (ML)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Earthquake magnitude measured using the Local Magnitude (ML) scale, often referred to as the Richter scale.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAG_ML",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Magnitude from Amplitude (MFA)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Earthquake magnitude measured using the Magnitude from Amplitude (MFA) scale; indicates earthquake strength.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAG_MFA",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Earthquake Magnitude",
+          "defaultValue": null,
+          "description": "{\"value\":\"General earthquake magnitude representing the strength of the earthquake triggering the tsunami event, regardless of scale.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAGNITUDE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Earthquake Magnitude Rank",
+          "defaultValue": null,
+          "description": "{\"value\":\"Rank or order of earthquake magnitude for the event, reflecting its relative size or strength among events.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_MAGNITUDE_RANK",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Earthquake Depth (km)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Depth of the earthquake focus in kilometers, indicating how deep below the earth's surface the earthquake occurred.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "EQ_DEPTH",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Maximum Tsunami Runup (m)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Maximum height of the tsunami wave runup above sea level measured in meters during the event.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MAX_EVENT_RUNUP",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Tsunami Magnitude Abe (TS_MT_ABE)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Tsunami magnitude measured by the Abe method; quantifies tsunami wave strength.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "TS_MT_ABE",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Tsunami Magnitude II (TS_MT_II)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Tsunami magnitude according to the Imamura-Iwasaki method; used to assess tsunami intensity.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "TS_MT_II",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Tsunami Intensity",
+          "defaultValue": null,
+          "description": "{\"value\":\"Intensity rating of the tsunami event, indicating its strength or impact severity on a standardized scale.\",\"fieldValueType\":\"measurement\"}",
+          "domain": null,
+          "editable": true,
+          "name": "TS_INTENSITY",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Damage (Million USD)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Estimated property damage caused by the tsunami event, measured in millions of US dollars.\",\"fieldValueType\":\"currency\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DAMAGE_MILLIONS_DOLLARS",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Damage Amount Rank",
+          "defaultValue": null,
+          "description": "{\"value\":\"Rank or categorical order of the damage amount, scaling damage severity from limited to extreme.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DAMAGE_AMOUNT_ORDER",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Damage Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Text description categorizing the extent of property damage caused by the tsunami event.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "DAMAGE_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Houses Destroyed",
+          "defaultValue": null,
+          "description": "{\"value\":\"Total number of houses destroyed due to the tsunami event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_DESTROYED",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Houses Destroyed Rank",
+          "defaultValue": null,
+          "description": "{\"value\":\"Rank or category representing the severity of house destruction, from few to very many houses.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_AMOUNT_ORDER",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Houses Destroyed Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative description of the extent of house destruction caused by the tsunami, e.g., few, some, many, very many houses.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "HOUSES_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Deaths",
+          "defaultValue": null,
+          "description": "{\"value\":\"Total number of confirmed fatalities resulting from the tsunami event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DEATHS",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Deaths Amount Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"An ordinal scale representing the number of deaths caused by the tsunami event, ranging from none to a very large number.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DEATHS_AMOUNT_ORDER",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Deaths Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative description of the number of deaths resulting from the tsunami, categorized by approximate ranges.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "DEATHS_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Injuries",
+          "defaultValue": null,
+          "description": "{\"value\":\"The total count of injuries reported due to the tsunami event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "INJURIES",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Injuries Amount Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"An ordinal ranking describing the quantity of injuries sustained, from few to very many.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "INJURIES_AMOUNT_ORDER",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Injuries Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Descriptive category indicating the approximate number of injuries caused by the tsunami.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "INJURIES_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Missing Persons",
+          "defaultValue": null,
+          "description": "{\"value\":\"Number of people reported missing as a result of the tsunami event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MISSING",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Missing Persons Amount Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Ranked category indicating the scale of missing persons, from few to many.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MISSING_AMOUNT_ORDER",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Missing Persons Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative description of the number of missing persons associated with the tsunami event.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "MISSING_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Number of Runup Measurements",
+          "defaultValue": null,
+          "description": "{\"value\":\"Count of measured tsunami wave runup height observations taken for the event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "NUM_RUNUP",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Total Damage (Million USD)",
+          "defaultValue": null,
+          "description": "{\"value\":\"Total estimated property and economic damage from the tsunami expressed in millions of US dollars.\",\"fieldValueType\":\"currency\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DAMAGE_MILLIONS_DOLLARS_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Damage Severity Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Ordinal value indicating the severity level of total damage, from limited to extreme.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DAMAGE_AMOUNT_ORDER_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Damage Severity Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Descriptive category of the overall damage extent with approximate monetary ranges.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "DAMAGE_TOTAL_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Total Houses Destroyed",
+          "defaultValue": null,
+          "description": "{\"value\":\"Total quantity of houses destroyed or severely damaged by the tsunami event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_DESTROYED_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Houses Destroyed Amount Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Ordinal ranking of the number of houses destroyed, from few to very many.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_AMOUNT_ORDER_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Houses Destroyed Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Descriptive category of houses destroyed indicating approximate scale of housing loss.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "HOUSES_TOTAL_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Total Deaths",
+          "defaultValue": null,
+          "description": "{\"value\":\"Aggregate number of deaths attributed to the tsunami event globally or for all affected areas combined.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DEATHS_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Total Deaths Amount Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Overall ordinal ranking of total deaths, describing severity levels from few to very many.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "DEATHS_AMOUNT_ORDER_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Total Deaths Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative summary describing total deaths in categories based on approximate counts.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "DEATHS_TOTAL_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Total Injuries",
+          "defaultValue": null,
+          "description": "{\"value\":\"Cumulative number of injuries reported across all affected areas due to the tsunami.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "INJURIES_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Total Injuries Amount Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Ranked level indicating the severity of total injuries, from few to very many.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "INJURIES_AMOUNT_ORDER_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Total Injuries Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative description of the total number of injuries caused by the tsunami event, ranging from 'Few' to 'Very Many'.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "INJURIES_TOTAL_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Total Missing People",
+          "defaultValue": null,
+          "description": "{\"value\":\"Total number of people reported missing as a result of the tsunami event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MISSING_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Missing Persons Scale Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Rank order indicating the scale of missing persons for the event, with higher values representing larger numbers.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MISSING_AMOUNT_ORDER_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Total Missing Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative description of the total number of people reported missing, such as 'Few', 'Some', or 'Very Many'.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "MISSING_TOTAL_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Houses Damaged",
+          "defaultValue": null,
+          "description": "{\"value\":\"Number of individual houses damaged by the tsunami event in the affected area.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_DAMAGED",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Houses Damaged Scale Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Rank order indicating the scale of damaged houses, with higher values denoting greater damage.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_DAMAGED_AMOUNT_ORDER",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Houses Damaged Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative description of the number of houses damaged during the event, e.g., 'Few', 'Many', or 'Very Many'.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "HOUSES_DAM_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Total Houses Damaged",
+          "defaultValue": null,
+          "description": "{\"value\":\"Total count of houses damaged from all related impacts of the tsunami event.\",\"fieldValueType\":\"countOrAmount\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_DAMAGED_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Total Houses Damaged Scale Order",
+          "defaultValue": null,
+          "description": "{\"value\":\"Rank order for the total amount of houses damaged, indicating damage severity on an ordered scale.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "name": "HOUSES_DAM_AMOUNT_ORDER_TOTAL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "Total Houses Damaged Description",
+          "defaultValue": null,
+          "description": "{\"value\":\"Qualitative description summarizing the total houses damaged, such as 'Few', 'Some', or 'Very Many'.\",\"fieldValueType\":\"orderedOrRanked\"}",
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "name": "HOUSES_DAM_TOTAL_DESCRIPTION",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Cause Code",
+          "defaultValue": null,
+          "description": "{\"value\":\"Numeric code representing the cause type of the tsunami event, such as earthquake, volcanic activity, or landslide.\",\"fieldValueType\":\"typeOrCategory\"}",
+          "domain": null,
+          "editable": true,
+          "name": "CAUSE_SYMBOL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeDouble"
+        },
+        {
+          "alias": "Reference URL",
+          "defaultValue": null,
+          "description": "{\"value\":\"Web link to detailed information or data source about the tsunami event.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 109,
+          "name": "URL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Comments",
+          "defaultValue": null,
+          "description": "{\"value\":\"Additional notes or remarks providing context, observations, or supplementary details about the tsunami event.\",\"fieldValueType\":\"description\"}",
+          "domain": null,
+          "editable": true,
+          "length": 4000,
+          "name": "COMMENTS",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Event ID",
+          "defaultValue": null,
+          "description": "{\"value\":\"Unique identifier number for each tsunami event record in the dataset.\",\"fieldValueType\":\"uniqueIdentifier\"}",
+          "domain": null,
+          "editable": true,
+          "name": "ID",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Map Symbol Code",
+          "defaultValue": null,
+          "description": "{\"value\":\"Symbol code used in mapping applications to graphically represent the tsunami event location or type.\",\"fieldValueType\":\"typeOrCategory\"}",
+          "domain": null,
+          "editable": true,
+          "name": "MAP_SYMBOL",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeInteger"
+        },
+        {
+          "alias": "Oceanic Tsunami",
+          "defaultValue": null,
+          "description": "{\"value\":\"Indicates whether the record is associated with an oceanic tsunami event.\",\"fieldValueType\":\"binary\"}",
+          "domain": null,
+          "editable": true,
+          "length": 1,
+          "name": "OCEANIC_TSUNAMI",
+          "nullable": true,
+          "sqlType": "sqlTypeOther",
+          "type": "esriFieldTypeString"
+        }
+      ],
+      "physical_decode": "SmallInteger=int16; Integer=int32; Single=IEEE754binary32; Double=float64; Date=timestamp(ms,UTC) exactly retaining original wire epochms. Strings unchanged, all nulls preserved.",
+      "release_day": "unknown; service lastEdit is an upstream edit observation, not a verified release day",
+      "roster_change_from_initial_requires_review": false,
+      "source_crs": "EPSG:3857",
+      "source_editingInfo": {
+        "dataLastEditDate": 1792404026834,
+        "lastEditDate": 1792404026834,
+        "schemaLastEditDate": 1792404026834
+      },
+      "source_original_OID": "UNIQUE_ID is the system-maintained service OID; ID remains the separate source event identifier. Neither replaces a published ID. OID width not declared by sqlTypeOther; Arrowint64 representation is proposed, not accepted.",
+      "year_max": 2026,
+      "year_min": -2000
+    }
+  },
+  "source_release_day": "Unknown. Upstream editingInfo is preserved separately from retrieval and is not invented as a publication day.",
+  "published_baseline_candidate": {
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/historical-tsunami-event-locations-/historical-tsunami-event-locations-/v1.0.0/geoparquet/historical-tsunami-event-locations-.parquet",
+    "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/historical-tsunami-event-locations-/historical-tsunami-event-locations-/v1.0.0/geoparquet/historical-tsunami-event-locations-.parquet",
+    "status": 200,
+    "bytes": 973395,
+    "sha256": "738e1abff9ee1907ad47e7b209867a19abdfd14552ba6224dce7ec3ed2ba9074",
+    "observed_at": "2026-10-19T09:54:04.232591+00:00",
+    "generation": "1791506377676900",
+    "classification": "complete unapproved published baseline candidate"
+  },
+  "discovery_rejections": {
+    "MapServer0": "Only168 volcano-caused events; explicitly rejected as complete event layer.",
+    "500_ID_GET": "HTTP404 for long query URL, all response/receipt retained in runtime quarantine. 100-ID pages give complete coherent extraction. No CONNECT denial.",
+    "hazel_api_guess": "404; guessed API path is not evidence of unavailable official source."
+  },
+  "proposed_contract": {
+    "source_columns": "All76 original fields including original UNIQUE_ID and separate event ID; no replacement row ID",
+    "physical_types": "Int16/Int32/Float32/Float64/timestamp(ms,UTC); unchanged string values and nulls; producer field declarations stored in Arrow field metadata and audit",
+    "source_OID": "UNIQUE_ID physical width not specified by source sqlTypeOther. Arrowint64 is explicitly proposed representation, not acceptance.",
+    "Single_values": "515 original SECOND JSON decimal values differ from their explicitly decoded original declared binary32 physical representation; every raw JSON byte remains preserved. No generic Float64 widening.",
+    "geometry": "Native3857 Point x/y doubles; no projection, snapping, repair or simplification",
+    "baseline_mapping": "No accepted mapping; current2590 vs published2637, extra IDs/columns, physical schema/date/geometry/coverage decisions pending"
+  },
+  "refresh": "STOPPED weekly complete-source refresh; source-content+processing fingerprints create new draft versions, old candidates/raw inputs preserved. Unknown source-schema or completeness/authority drift quarantines complete captured inputs. No automatic release.",
+  "validation": "11focused tests pass including complete real35-response extraction. Actual registered Dagster source/reuse/normalcatalog/gate proof and native independent review pending."
+}
