@@ -346,6 +346,62 @@ def write_canonical_geopackage(destination: Path, rows: list[dict]) -> None:
         db.execute("UPDATE gpkg_contents SET last_change='2000-01-01T00:00:00.000Z'")
 
 
+def native_prebuilt_policy(body: bytes) -> dict:
+    return {'schema_version':1,'formats':{'geoparquet':{
+        'reason':'Preserve source Esri int32 physical widths, native CRS and full typed metadata; no inferred widening or extra bbox schema accepted.',
+        'objects':[{'path':f'geoparquet/{SLUG}.parquet','sha256':sha(body),'bytes':len(body)}]}}}
+
+
+def original_provenance_bundle(storage: StagingStorageResource, version: str,
+                               captures: dict, manifest: dict, *, create: bool=False) -> tuple[dict,dict]:
+    """Full immutable construction provenance outside self-pinned candidate caches.
+
+    Caller holds the common version lock. Creation occurs only after the entire
+    private candidate has been built and verified. Fresh observations have already
+    been retained in the independent raw depot and never rewrite original receipts.
+    """
+    key=f'_candidate-construction/{SLUG}/{version}.json'
+    if not storage.object_exists(key):
+        if not create:
+            raise DartQuarantineError('missing_original_construction_provenance_bundle')
+        bundle={'schema_version':1,'version':version,'manifest':manifest,'captures':{
+            name:{'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
+                  'receipt_key':f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json'}
+            for name,(body,receipt) in captures.items()}}
+        immutable(storage,key,encode(bundle))
+    bundle=strict_json(storage.read_key(key))
+    if set(bundle)!={'schema_version','version','manifest','captures'} or bundle['schema_version']!=1 or bundle['version']!=version or set(bundle['captures'])!=set(URLS):
+        raise DartQuarantineError('original_construction_bundle_roster_drift')
+    original={}
+    for name in URLS:
+        item=bundle['captures'][name]
+        if set(item)!={'body_key','receipt_key'}:
+            raise DartQuarantineError('original_construction_capture_roster_drift')
+        expected_body=f'_raw-captures/{SLUG}/{sha(captures[name][0])}/{name}.body'
+        if item['body_key']!=expected_body:
+            raise DartQuarantineError('original_construction_capture_key_drift')
+        body=storage.read_key(expected_body)
+        if body!=captures[name][0]:
+            raise DartQuarantineError('original_construction_capture_bytes_changed')
+        receipt_key=item['receipt_key']
+        # Read only a canonical immutable raw-depot key, never an arbitrary path.
+        prefix=f'_raw-captures/{SLUG}/{sha(body)}/'
+        if not isinstance(receipt_key,str) or not receipt_key.startswith(prefix) or not re.fullmatch(r'[0-9a-f]{64}\.receipt\.json',receipt_key[len(prefix):]):
+            raise DartQuarantineError('original_construction_receipt_key_drift')
+        receipt_body=storage.read_key(receipt_key);receipt=strict_json(receipt_body)
+        if receipt_key!=prefix+sha(receipt_body)+'.receipt.json' or receipt_body!=encode(receipt):
+            raise DartQuarantineError('original_construction_receipt_bytes_changed')
+        validate_receipt(body,receipt,URLS[name]);original[name]=(body,receipt)
+    validate_complete_bundle(original)
+    expected_manifest=provenance(original)
+    expected_manifest.update(processing_fingerprint=manifest['processing_fingerprint'],
+                             prebuilt_output_policy=manifest['prebuilt_output_policy'])
+    actual=bundle['manifest'];validate_release_provenance(actual)
+    if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
+        raise DartQuarantineError('original_construction_manifest_drift')
+    return original,actual
+
+
 def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready: dict,
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
@@ -370,13 +426,13 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     validate_complete_bundle(cached)
     expected_manifest=provenance(cached)
-    if any(cached[name][0]!=captures[name][0] for name in URLS):
+    if any(cached[name]!=captures[name] for name in URLS):
         raise DartQuarantineError('cached_capture_differs_from_fresh_source')
     expected_manifest['prebuilt_output_policy']={'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve source Esri int32 physical widths, native CRS and full typed metadata; no inferred widening or extra bbox schema accepted.','objects':[{'path':f'geoparquet/{SLUG}.parquet','sha256':sha((root/'candidate/typed-source.parquet').read_bytes()),'bytes':(root/'candidate/typed-source.parquet').stat().st_size}]}}}
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(manifest)
     binding=strict_json(storage.read_key(f'_candidate-construction/{SLUG}/{ready["version"]}.json'))
-    if binding.get('source_manifest_sha256')!=sha(manifest_body):
+    if binding.get('manifest')!=manifest:
         raise DartQuarantineError('cached_original_construction_manifest_changed')
     # code_commit identifies the original immutable construction, including later docs-only commits.
     for name,value in expected_manifest.items():
@@ -439,6 +495,11 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
             private=StagingStorageResource(local_dir=tmp,use_local=True)
             for name,value in payloads.items(): immutable(private,name,value)
             immutable(private,'metadata/current_dart_candidate_ready.json',encode(ready))
+            captures={name:(payloads[f'raw/captures/{name}.body'],strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
+            manifest=strict_json(payloads['metadata/source_manifest.json'])
+            original_captures,original_manifest=original_provenance_bundle(storage,ready['version'],captures,manifest,create=True)
+            if original_captures!=captures or original_manifest!=manifest:
+                raise DartQuarantineError('concurrent_original_construction_bundle_changed_retry_with_original')
             os.rename(tmp,target)
 
 
@@ -474,9 +535,12 @@ def stage_current_dart_candidate(storage: StagingStorageResource, *, capture_dir
             version = f'v0.0.0-draft-dart-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/current_dart_candidate_ready.json'
+            native_buffer=io.BytesIO();pq.write_table(typed_table(rows,audit),native_buffer,compression='zstd')
+            manifest.update(processing_fingerprint=fingerprint,prebuilt_output_policy=native_prebuilt_policy(native_buffer.getvalue()))
             with candidate_version_lock(storage,prefix) as target:
                 if target.exists():
                     try:
+                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest)
                         if not storage.object_exists(ready_key):
                             raise DartQuarantineError('concurrent_or_incomplete_existing_candidate:missing_candidate_ready')
                         ready = strict_json(storage.read_key(ready_key))
@@ -497,6 +561,10 @@ def stage_current_dart_candidate(storage: StagingStorageResource, *, capture_dir
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
                         retained=quarantine_cached_candidate(storage,prefix,str(exc),already_locked=True)
                         raise DartQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc
+                binding_key=f'_candidate-construction/{SLUG}/{version}.json'
+                if storage.object_exists(binding_key):
+                    captures,manifest=original_provenance_bundle(storage,version,captures,manifest)
+                    body,receipt=captures['features']
             geopackage = directory / f'{SLUG}.gpkg'
             write_canonical_geopackage(geopackage,rows)
             source_records = directory / 'source.jsonl'
@@ -520,12 +588,8 @@ def stage_current_dart_candidate(storage: StagingStorageResource, *, capture_dir
             parquet_fidelity = compare_derivative(source_records, decoded, directory / 'parquet-comparison')
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise DartQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
-            commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            binding_key=f'_candidate-construction/{SLUG}/{version}.json'
-            if storage.object_exists(binding_key):
-                commit=strict_json(storage.read_key(binding_key))['code_commit']
-            manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
-            manifest['prebuilt_output_policy']={'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve source Esri int32 physical widths, native CRS and full typed metadata; no inferred widening or extra bbox schema accepted.','objects':[{'path':f'geoparquet/{SLUG}.parquet','sha256':sha(parquet.read_bytes()),'bytes':parquet.stat().st_size}]}}}
+            if native_prebuilt_policy(parquet.read_bytes())!=manifest['prebuilt_output_policy']:
+                raise DartQuarantineError('native_prebuilt_bytes_changed_during_construction')
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(),f'geoparquet/{SLUG}.parquet':parquet.read_bytes(),
@@ -543,7 +607,6 @@ def stage_current_dart_candidate(storage: StagingStorageResource, *, capture_dir
             ready = {'status':'working_draft_candidate_ready', 'approved':False, 'source_sha256':PIN,
                 'candidate_records_sha256':sha(records), 'processing_fingerprint':fingerprint, 'version':version,
                 'objects':{name:sha(value) for name,value in payloads.items()}}
-            immutable(storage,binding_key,encode({'code_commit':commit,'source_manifest_sha256':sha(encode(manifest))}))
             commit_complete_candidate(storage,prefix,payloads,ready)
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}

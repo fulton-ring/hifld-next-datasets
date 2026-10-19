@@ -2,6 +2,7 @@
 from pathlib import Path
 from unittest import TestCase, mock
 import copy
+from datetime import datetime, timedelta
 import fcntl
 import gzip
 import json
@@ -122,6 +123,61 @@ class CurrentDartTests(TestCase):
     def test_published_storage_or_remote_backend_cannot_run_unapproved_source(self):
         for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
             with self.assertRaisesRegex(source.DartQuarantineError,'draft_requires'):source.stage_current_dart_candidate(storage,capture_dir=CAPTURES)
+    def changed_receipt_capture_dir(self):
+        # Explicitly synthetic newer timestamps on COMPLETE REAL bodies, not LIVE evidence.
+        directory=Path(self.tmp.name)/'synthetic-newer-receipts';directory.mkdir(exist_ok=True)
+        for name in source.URLS:
+            body=(CAPTURES/(name+'.body')).read_bytes();receipt=json.loads((CAPTURES/(name+'.receipt.json')).read_bytes())
+            receipt['fetched_at']=(datetime.fromisoformat(receipt['fetched_at'])+timedelta(hours=1)).isoformat()
+            (directory/(name+'.body')).write_bytes(body);(directory/(name+'.receipt.json')).write_bytes(source.encode(receipt))
+        return directory
+    def test_quarantined_cache_rebuild_reuses_full_original_receipts_and_manifest(self):
+        result=self.stage();root=self.root(result);original=self.snapshot(root)
+        key=Path(self.tmp.name)/'_candidate-construction'/source.SLUG/(result['version']+'.json')
+        binding=key.read_bytes();newer=self.changed_receipt_capture_dir()
+        self.assertEqual(source.stage_current_dart_candidate(self.storage,capture_dir=newer),result)
+        self.assertEqual(self.snapshot(root),original)
+        (root/'metadata/current_dart_candidate_ready.json').unlink()
+        with self.assertRaisesRegex(source.DartQuarantineError,'missing_candidate_ready'):
+            source.stage_current_dart_candidate(self.storage,capture_dir=newer)
+        self.assertFalse(root.exists());self.assertEqual(key.read_bytes(),binding)
+        self.assertEqual(source.stage_current_dart_candidate(self.storage,capture_dir=newer),result)
+        self.assertEqual(self.snapshot(root),original);self.assertEqual(key.read_bytes(),binding)
+        bundle=json.loads(binding)
+        for name in source.URLS:
+            receipt=json.loads((newer/(name+'.receipt.json')).read_bytes());body=(newer/(name+'.body')).read_bytes()
+            raw=Path(self.tmp.name)/'_raw-captures'/source.SLUG/source.sha(body)/(source.sha(source.encode(receipt))+'.receipt.json')
+            self.assertEqual(raw.read_bytes(),source.encode(receipt))
+            originalreceipt=Path(self.tmp.name)/bundle['captures'][name]['receipt_key']
+            self.assertNotEqual(raw.read_bytes(),originalreceipt.read_bytes())
+    def test_missing_or_invalid_outside_bundle_detaches_existing_whole_cache(self):
+        result=self.stage();root=self.root(result)
+        key=Path(self.tmp.name)/'_candidate-construction'/source.SLUG/(result['version']+'.json');binding=key.read_bytes()
+        for altered in (None,b'{}'):
+            with self.subTest(altered=altered):
+                before=self.snapshot(root)
+                if altered is None:key.unlink()
+                else:key.write_bytes(altered)
+                with self.assertRaises(source.DartQuarantineError):self.stage()
+                self.assertFalse(root.exists())
+                self.assertTrue(any(self.snapshot(p)==before for p in (Path(self.tmp.name)/'_quarantine'/source.SLUG).glob('invalid-cache-*/candidate')))
+                if altered is None:self.assertFalse(key.exists())
+                else:self.assertEqual(key.read_bytes(),altered)
+                # Explicit operator-fixture restoration, never adapter healing from a cache.
+                key.write_bytes(binding);self.assertEqual(self.stage(),result)
+    def test_failed_source_writer_does_not_create_construction_bundle(self):
+        with mock.patch.object(source,'write_canonical_geopackage',side_effect=OSError('test_source_writer_failure')):
+            with self.assertRaisesRegex(source.DartQuarantineError,'test_source_writer_failure'):self.stage()
+        self.assertFalse((Path(self.tmp.name)/'_candidate-construction').exists())
+    def test_failed_private_install_does_not_create_construction_bundle(self):
+        original=source.immutable
+        def fail(storage,key,body):
+            if '.candidate-build-' in storage.local_dir and key=='metadata/current_dart_candidate_ready.json':
+                raise OSError('test_private_ready_write_failure')
+            return original(storage,key,body)
+        with mock.patch.object(source,'immutable',side_effect=fail):
+            with self.assertRaisesRegex(source.DartQuarantineError,'test_private_ready_write_failure'):self.stage()
+        self.assertFalse((Path(self.tmp.name)/'_candidate-construction').exists())
     def test_live_wire_length_uses_encoded_counter_not_decoded_length(self):
         original=httpx.Client
         def handle(request):
