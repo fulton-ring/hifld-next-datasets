@@ -269,6 +269,28 @@ class CBRSTests(unittest.TestCase):
             self.assertNotEqual(replayed['code_commit'],'a'*40)
             self.assertTrue(all(reused[n][1]['observed_at']!=changed[n][1]['observed_at'] for n in s.URLS))
 
+    def test_real_first_marker_storage_fault_retains_orphan_and_blocks_new_context(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)
+            manifest=s.provenance(captures);manifest['processing_fingerprint']='partial-anchor-fixture-not-acceptance'
+            files=s.processing_identity()['files'];version='v0.0.0-orphan-fixture';prefix=s.SLUG+'/'+s.SLUG+'/'+version
+            original=StagingStorageResource.write_key_if_unchanged
+            def fail_marker(resource,key,body,expected):
+                if key.endswith('.first-construction.json'):raise OSError('first marker storage failure')
+                return original(resource,key,body,expected)
+            with patch.object(StagingStorageResource,'write_key_if_unchanged',new=fail_marker),s.candidate_lock(storage,prefix),self.assertRaisesRegex(OSError,'first marker storage failure'):
+                s.original_provenance_bundle(storage,version,captures,manifest,files,create=True)
+            key=Path(d,f'_source-provenance/{s.SLUG}/{version}/bundle.json')
+            evidence=list(key.with_name(key.name+'.evidence').glob('*.json'));self.assertEqual(len(evidence),1)
+            body=evidence[0].read_bytes();self.assertEqual(s.strict_json(body)['manifest'],manifest)
+            self.assertFalse(key.exists());self.assertFalse(key.with_name(key.name+'.first-construction.json').exists())
+            changed={n:(b,{**receipt,'observed_at':'2026-10-20T01:02:03+00:00'}) for n,(b,receipt) in captures.items()}
+            later=s.provenance(changed);later['processing_fingerprint']=manifest['processing_fingerprint']
+            for retry in [1,2]:
+                with self.subTest(retry=retry),s.candidate_lock(storage,prefix),self.assertRaisesRegex(ValueError,'orphaned_original_construction_evidence_without_history'):
+                    s.original_provenance_bundle(storage,version,changed,later,files,create=True)
+                self.assertFalse(key.exists());self.assertEqual(evidence[0].read_bytes(),body)
+
     def test_first_construction_marker_blocks_missing_alias_and_marker_on_repeated_calls(self):
         with tempfile.TemporaryDirectory() as d:
             storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)

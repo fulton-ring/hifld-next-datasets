@@ -419,6 +419,8 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     if not storage.object_exists(key):
         if storage.object_exists(started):
             raise CBRSQuarantineError('missing_original_construction_bundle_after_first_construction')
+        if storage.list_prefix(key+'.evidence/'):
+            raise CBRSQuarantineError('orphaned_original_construction_evidence_without_history')
         if not create:
             raise CBRSQuarantineError('missing_original_construction_provenance_bundle')
         validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
@@ -592,7 +594,8 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                         quarantine_rejected_cache_held(storage,prefix,str(exc))
                         raise
                 bundle_key=f'_source-provenance/{SLUG}/{version}/bundle.json'
-                if storage.object_exists(bundle_key) or storage.object_exists(bundle_key+'.first-construction.json'):
+                if (storage.object_exists(bundle_key) or storage.object_exists(bundle_key+'.first-construction.json')
+                        or storage.list_prefix(bundle_key+'.evidence/')):
                     captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
                 else:
                     validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])

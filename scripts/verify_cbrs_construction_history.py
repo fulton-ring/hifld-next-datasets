@@ -100,10 +100,11 @@ with DagsterInstance.get() as instance:
    for name in basepins:stream.add(root/name,arcname=name,recursive=False)
   assert tar_pins(base)==basepins and pins(root)==basepins
   report['healthy_base_archive']={'path':str(base),'sha256':s.sha256_file(base),'complete_file_roster':basepins}
-  for mode in ['primary_missing','marker_missing','marker_malformed']:
+  for mode in ['primary_missing','marker_missing','marker_malformed','cas_only']:
    if not root.exists():restore()
    key.write_bytes(bundle);marker.write_bytes(first)
    if mode=='primary_missing':key.unlink();reason='missing_original_construction_bundle_after_first_construction'
+   elif mode=='cas_only':key.unlink();marker.unlink();reason='orphaned_original_construction_evidence_without_history'
    elif mode=='marker_missing':marker.unlink();reason='missing_or_invalid_first_construction_marker'
    else:marker.write_bytes(b'{');reason='Expecting property name'
    bad_primary=key.read_bytes() if key.exists() else None;bad_marker=marker.read_bytes() if marker.exists() else None
