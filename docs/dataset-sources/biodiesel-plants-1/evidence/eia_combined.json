@@ -1,0 +1,22 @@
+{
+  "requested_url": "https://www.eia.gov/biofuels/capacity/",
+  "observed_url": "https://www.eia.gov/biofuels/capacity/",
+  "status": 200,
+  "sha256": "71384b946c4f94d6a740c69d86636925e584094ec5e1597ace4cf692575eaf97",
+  "bytes": 53699,
+  "headers": {
+    "content-type": "text/html; charset=UTF-8",
+    "server": "envoy",
+    "x-powered-by": "ASP.NET",
+    "strict-transport-security": "max-age=31536000",
+    "content-length": "53699",
+    "expires": "Mon, 19 Oct 2026 06:20:38 GMT",
+    "cache-control": "max-age=0, no-cache, no-store",
+    "pragma": "no-cache",
+    "date": "Mon, 19 Oct 2026 06:20:38 GMT",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "x-envoy-upstream-service-time": "145",
+    "connection": "close"
+  },
+  "retrieved": "2026-10-19T06:20:38.886364+00:00"
+}

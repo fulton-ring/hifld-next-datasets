@@ -1,0 +1,26 @@
+{
+  "requested_url": "https://www.arcgis.com/sharing/rest/search?f=json&q=orgid%3AFGr1D95XCGALKXqM%20biodiesel&num=100",
+  "observed_url": "https://www.arcgis.com/sharing/rest/search?f=json&q=orgid%3AFGr1D95XCGALKXqM%20biodiesel&num=100",
+  "status": 200,
+  "sha256": "81b6da8c5348698babe7e35590f3e494ce8b6fadc4e0e1df3d232b34eecd4f97",
+  "bytes": 988,
+  "headers": {
+    "content-type": "application/json;charset=utf-8",
+    "date": "Mon, 19 Oct 2026 06:19:52 GMT",
+    "strict-transport-security": "max-age=31536000",
+    "server": "envoy",
+    "x-content-type-options": "nosniff",
+    "cache-control": "no-cache",
+    "pragma": "no-cache",
+    "expires": "-1",
+    "vary": "Origin",
+    "x-cache": "Miss from cloudfront",
+    "via": "1.1 26c9d43b9089eee93b9e4ad4293d02c0.cloudfront.net (CloudFront)",
+    "x-amz-cf-pop": "HIO52-P2",
+    "x-amz-cf-id": "YPWHrVOYtWRURhFspDAO6-YfXCVDsUw2krEPisJi_6Kb0uZBxyipGw==",
+    "x-envoy-upstream-service-time": "344",
+    "connection": "close",
+    "transfer-encoding": "chunked"
+  },
+  "retrieved": "2026-10-19T06:19:52.708763+00:00"
+}

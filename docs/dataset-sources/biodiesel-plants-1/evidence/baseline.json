@@ -1,0 +1,31 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/biodiesel-plants-1/biodiesel-plants-1/v1.0.0/geoparquet/biodiesel-plants-1.parquet",
+  "observed_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/biodiesel-plants-1/biodiesel-plants-1/v1.0.0/geoparquet/biodiesel-plants-1.parquet",
+  "status": 200,
+  "sha256": "0d52e6312eefd3ebcb45879eb29e3ccf6841b93224d26fc3c8c544aac0a2a653",
+  "bytes": 19418,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU81-3Rf-Rs49B_fMQ4tlObW5ZlILME19cPCsqkBT55QwLmZ4Jfrm3suvP3C9wogBpock",
+    "expires": "Mon, 19 Oct 2026 07:19:52 GMT",
+    "date": "Mon, 19 Oct 2026 06:19:52 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:11 GMT",
+    "etag": "\"4b62ef7a5f137c79c98393231c6e5c2c\"",
+    "x-goog-generation": "1791506351389207",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "19418",
+    "x-goog-hash": "crc32c=WIzZRQ==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "19418",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "339",
+    "connection": "close"
+  },
+  "retrieved": "2026-10-19T06:19:52.639463+00:00"
+}

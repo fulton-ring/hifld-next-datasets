@@ -1,0 +1,400 @@
+{
+  "currentVersion" : 12, 
+  "services" : [
+    {
+      "name" : "Geographies_wRECSData", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_BTUELCOL_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_BTUELCOL_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_BTUELRFG_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_BTUELRFG_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_CUFEETNG_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_CUFEETNG_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_DOLELCOL_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_DOLELCOL_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_DOLELRFG_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_DOLELRFG_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_DOLLAREL_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_DOLLAREL_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_DOLLARFO_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_DOLLARFO_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_DOLLARLP_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_DOLLARLP_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_DOLLARNG_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_DOLLARNG_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_GALLONFO_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_GALLONFO_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_GALLONLP_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_GALLONLP_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_KWH_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_KWH_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_Selectors", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_Selectors/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALBTU_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALBTU_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALBTUOTH_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALBTUOTH_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALBTUSPH_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALBTUSPH_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALBTUWTH_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALBTUWTH_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALDOL_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALDOL_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALDOLOTH_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALDOLOTH_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALDOLSPH_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALDOLSPH_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Geographies_wRECSData_TOTALDOLWTH_HH", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Geographies_wRECSData_TOTALDOLWTH_HH/FeatureServer"
+    }, 
+    {
+      "name" : "Natural_Gas_Storage_Regions", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Natural_Gas_Storage_Regions/FeatureServer"
+    }, 
+    {
+      "name" : "PADD_EIA", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/PADD_EIA/FeatureServer"
+    }, 
+    {
+      "name" : "Petroleum_Administration_for_Defense_Districts__PADD____Subdistricts", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/Petroleum_Administration_for_Defense_Districts__PADD____Subdistricts/FeatureServer"
+    }, 
+    {
+      "name" : "SedimentaryBasins_US_EIA", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/SedimentaryBasins_US_EIA/FeatureServer"
+    }, 
+    {
+      "name" : "ShaleFormation_Marcellus_Extent_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShaleFormation_Marcellus_Extent_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_AboYeso_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_AboYeso_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Bakken_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Bakken_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Bakken_Elevation_EIA_08Jan2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Bakken_Elevation_EIA_08Jan2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Bakken_Isopach_EIA_08Jan2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Bakken_Isopach_EIA_08Jan2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_BoneSpring_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_BoneSpring_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Delaware_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Delaware_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_EagleFord_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_EagleFord_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_EagleFord_Elevation_EIA_Aug2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_EagleFord_Elevation_EIA_Aug2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_EagleFord_Isopach_EIA_Aug2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_EagleFord_Isopach_EIA_Aug2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_GlorietaYeso_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_GlorietaYeso_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Marcellus_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Marcellus_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Marcellus_Elevation_EIA_08Jan2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Marcellus_Elevation_EIA_08Jan2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Marcellus_Isopach_EIA_08Jan2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Marcellus_Isopach_EIA_08Jan2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Spraberry_Lower_Elevation_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Spraberry_Lower_Elevation_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Spraberry_Lower_Isopach_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Spraberry_Lower_Isopach_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Spraberry_Middle_Elevation_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Spraberry_Middle_Elevation_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Spraberry_Middle_Isopach_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Spraberry_Middle_Isopach_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Spraberry_Upper_Elevation_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Spraberry_Upper_Elevation_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Spraberry_Upper_Isopach_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Spraberry_Upper_Isopach_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_SpraberryLower_Boundary_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_SpraberryLower_Boundary_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_SpraberryMiddle_Boundary_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_SpraberryMiddle_Boundary_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_SpraberryUpper_Boundary_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_SpraberryUpper_Boundary_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_A_Elevation_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_A_Elevation_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_A_Isopach_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_A_Isopach_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_B_Elevation_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_B_Elevation_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_B_Isopach_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_B_Isopach_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_C_Elevation_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_C_Elevation_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_C_Isopach_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_C_Isopach_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_D_Elevation_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_D_Elevation_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_Wolfcamp_D_Isopach_EIA_202111", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_Wolfcamp_D_Isopach_EIA_202111/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_WolfcampA_Boundary_EIA_Nov2021", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_WolfcampA_Boundary_EIA_Nov2021/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_WolfcampB_Boundary_EIA_Nov2021", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_WolfcampB_Boundary_EIA_Nov2021/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_WolfcampC_Boundary_EIA_Nov2021", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_WolfcampC_Boundary_EIA_Nov2021/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Midland_WolfcampD_Boundary_EIA_Nov2021", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Midland_WolfcampD_Boundary_EIA_Nov2021/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Niobrara_Boundary_EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Niobrara_Boundary_EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Niobrara_Elevation_EIA_08Jan2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Niobrara_Elevation_EIA_08Jan2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Niobrara_Isopach_EIA_08Jan2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Niobrara_Isopach_EIA_08Jan2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_PointPleasant_Elevation_EIA_May2016", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_PointPleasant_Elevation_EIA_May2016/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_PointPleasant_Isopach_EIA_May2016", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_PointPleasant_Isopach_EIA_May2016/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_ThreeForks_Boundary__EIA_Aug2015_v2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_ThreeForks_Boundary__EIA_Aug2015_v2/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_ThreeForks_Elevation_EIA_08Jan2015", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_ThreeForks_Elevation_EIA_08Jan2015/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Utica_Boundary_EIA_May2016", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Utica_Boundary_EIA_May2016/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Utica_Elevation_EIA_May2016", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Utica_Elevation_EIA_May2016/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Utica_Isopach_EIA_May2016_shp", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Utica_Isopach_EIA_May2016_shp/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Wolfcamp_Boundary_EIA_201809", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Wolfcamp_Boundary_EIA_201809/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Wolfcamp_Elevation_EIA_201712", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Wolfcamp_Elevation_EIA_201712/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Wolfcamp_Isopach_200FtInterval_EIA_201712", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Wolfcamp_Isopach_200FtInterval_EIA_201712/FeatureServer"
+    }, 
+    {
+      "name" : "ShalePlay_Wolfcamp_Isopach_400FtInterval_EIA_201712", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/ShalePlay_Wolfcamp_Isopach_400FtInterval_EIA_201712/FeatureServer"
+    }, 
+    {
+      "name" : "survey123_2a5a62160bbf466d976aa1bd4a06eb9e_fieldworker", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/survey123_2a5a62160bbf466d976aa1bd4a06eb9e_fieldworker/FeatureServer"
+    }, 
+    {
+      "name" : "TightOil_ShaleGas_Plays_Lower48_EIA", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/TightOil_ShaleGas_Plays_Lower48_EIA/FeatureServer"
+    }, 
+    {
+      "name" : "US_Census_Regions_Divisions", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/US_Census_Regions_Divisions/FeatureServer"
+    }, 
+    {
+      "name" : "US_RECSData2", 
+      "type" : "FeatureServer", 
+      "url" : "https://services7.arcgis.com/FGr1D95XCGALKXqM/ArcGIS/rest/services/US_RECSData2/FeatureServer"
+    }
+  ]
+}

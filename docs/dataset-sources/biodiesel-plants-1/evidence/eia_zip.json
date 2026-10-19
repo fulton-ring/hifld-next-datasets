@@ -1,0 +1,22 @@
+{
+  "requested_url": "https://www.eia.gov/maps/map_data/Biodiesel_Plants_US_EIA.zip",
+  "observed_url": "https://www.eia.gov/maps/map_data/Biodiesel_Plants_US_EIA.zip",
+  "status": 200,
+  "headers": {
+    "content-type": "application/x-zip-compressed",
+    "last-modified": "Thu, 03 Feb 2022 19:31:26 GMT",
+    "accept-ranges": "bytes",
+    "etag": "\"07b56a23419d81:0\"",
+    "server": "envoy",
+    "x-powered-by": "ASP.NET",
+    "strict-transport-security": "max-age=31536000",
+    "content-length": "12169",
+    "date": "Mon, 19 Oct 2026 06:19:02 GMT",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "x-envoy-upstream-service-time": "289",
+    "connection": "close"
+  },
+  "retrieved": "2026-10-19T06:19:02.593222+00:00",
+  "sha256": "754e171fabbeaacd1cbebe9af65c8497fd85cff7ca08de3bd87bd0d7d07b5aa5",
+  "bytes": 12169
+}

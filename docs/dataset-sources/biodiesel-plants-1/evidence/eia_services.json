@@ -1,0 +1,33 @@
+{
+  "requested_url": "https://services7.arcgis.com/FGr1D95XCGALKXqM/arcgis/rest/services?f=pjson",
+  "observed_url": "https://services7.arcgis.com/FGr1D95XCGALKXqM/arcgis/rest/services?f=pjson",
+  "status": 200,
+  "sha256": "0fda7458347bd7272ac9892777edbc4d9fef8b8374ce8a3401fa95c20904ff23",
+  "bytes": 19906,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 06:19:52 GMT",
+    "content-type": "application/json; charset=utf-8",
+    "content-length": "19906",
+    "cache-control": "private, max-age=0, s-maxage=0",
+    "etag": "-1565897780",
+    "vary": "X-Esri-Authorization",
+    "x-arcgis-upstream": "us1h07c00-services",
+    "strict-transport-security": "max-age=63072000",
+    "x-arcgis-trace-id": "20261019T061952Z-156d45459477n8dchC1CO12x2000000001zg000000000ugk",
+    "x-arcgis-correlation-id": "1ca3e582425f9db2",
+    "x-arcgis-instance": "lf3xzxihb000001",
+    "request-context": "appId=cid-v1:df0fefdc-3099-4f25-a42c-d213d1e16940",
+    "access-control-expose-headers": "Request-Context",
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "Content-Type, Authorization, X-Esri-Authorization",
+    "access-control-allow-credentials": "true",
+    "x-azure-ref": "20261019T061952Z-156d45459477n8dchC1CO12x2000000001zg000000000ugk",
+    "x-fd-int-roxy-purgeid": "0",
+    "x-cache": "PRIVATE_NOSTORE",
+    "accept-ranges": "bytes",
+    "x-envoy-upstream-service-time": "553",
+    "server": "envoy",
+    "connection": "close"
+  },
+  "retrieved": "2026-10-19T06:19:52.924127+00:00"
+}
