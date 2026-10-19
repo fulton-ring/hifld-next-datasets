@@ -1,0 +1,196 @@
+{
+  "agency": "U.S. Geological Survey",
+  "code_commit": "7a2f603c553bab56da2f463f1d521c4ee00d5a89",
+  "columns": [
+    {
+      "name": "geometry",
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "4502",
+        "2531",
+        "721",
+        "219",
+        "583"
+      ],
+      "max": 4637,
+      "min": 1,
+      "name": "OBJECTID_1",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "Unconsolidated sand and gravel aquifers",
+        "Unconsolidated sand and gravel aquifers",
+        "Carbonate-rock aquifers",
+        "Carbonate-rock aquifers",
+        "Semiconsolidated sand aquifers"
+      ],
+      "length": 39,
+      "name": "ROCK_NAME",
+      "nullable": true,
+      "numNullValues": 1627,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "Carbonate-rock aquifers",
+        "Igneous and metamorphic-rock aquifers",
+        "Sandstone and carbonate-rock aquifers",
+        "Sandstone aquifers",
+        "Semiconsolidated sand aquifers",
+        "Unconsolidated sand and gravel aquifers"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "600",
+        "400",
+        "100",
+        "999",
+        "400"
+      ],
+      "max": 999,
+      "min": 100,
+      "name": "ROCK_TYPE",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "Hawaiian Sedimentary deposit aquifers",
+        "Basin and Range carbonate-rock aquifers",
+        "Pacific Northwest basin-fill aquifers",
+        "Other rocks",
+        "Silurian-Devonian aquifers"
+      ],
+      "length": 59,
+      "name": "AQ_NAME",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "609",
+        "401",
+        "104",
+        "999",
+        "410"
+      ],
+      "max": 999,
+      "min": 101,
+      "name": "AQ_CODE",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "0.123010327374",
+        "0.175557012774",
+        "4.20326451375",
+        "0.139019062634",
+        "6.86729255361"
+      ],
+      "max": 606.732644356,
+      "min": 0.0022738288277,
+      "name": "Shape_Leng",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "0.000121874565228",
+        "0.00200935688624",
+        "0.128042668114",
+        "0.000602506966624",
+        "0.613003406041"
+      ],
+      "max": 56.3195377993,
+      "min": 2.03070000338e-07,
+      "name": "Shape_Area",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "float"
+    }
+  ],
+  "date_issued": "2003-10-01",
+  "inputs": [
+    {
+      "attribution": "U.S. Geological Survey, 2003, Principal Aquifers of the 48 Conterminous United States, Hawaii, Puerto Rico, and the U.S. Virgin Islands, https://doi.org/10.5066/P9Y2HOUJ",
+      "authority_evidence": "https://www.usgs.gov/mission-areas/water-resources/science/principal-aquifers-united-states",
+      "bytes": 7789912,
+      "canonical_url": "https://water.usgs.gov/GIS/dsdl/aquifers_us.zip",
+      "host": "water.usgs.gov",
+      "input_id": "usgs-principal-aquifers-2003:3c597778c51325012aa5ff593751a6e4e662f43906e690fc3eb125c7073b1ebc",
+      "license": "http://www.usa.gov/publicdomain/label/1.0/",
+      "lineage": "Original USGS producer release linked by the official principal-aquifers landing; HTTP Last-Modified2015 is packaging, not source currency.",
+      "observed_final_url": "https://water.usgs.gov/GIS/dsdl/aquifers_us.zip",
+      "producer": "U.S. Geological Survey",
+      "release_date": "2003-10-01",
+      "retrieval_url": "https://water.usgs.gov/GIS/dsdl/aquifers_us.zip",
+      "retrieved_at": "2026-10-19T06:22:43.619504+00:00",
+      "role": "producer_publication",
+      "sha256": "3c597778c51325012aa5ff593751a6e4e662f43906e690fc3eb125c7073b1ebc"
+    }
+  ],
+  "license": "http://www.usa.gov/publicdomain/label/1.0/",
+  "manifest_keys": [
+    "aquifers/aquifers/v0.0.0-draft-usgs2003-3c597778c5132501-b990adf10200ce40/metadata/source_manifest.json"
+  ],
+  "metadata_resolved_from": {
+    "agency": "version",
+    "approved": "version",
+    "code_commit": "version",
+    "date_issued": "version",
+    "inputs": "version",
+    "license": "version",
+    "processing_fingerprint": "version",
+    "processor": "version",
+    "publisher": "version",
+    "schema_version": "version",
+    "source_url": "version",
+    "title": "version",
+    "transformations": "version",
+    "unsupported_output_formats": "version"
+  },
+  "metadata_sources": [
+    "version"
+  ],
+  "name": "aquifers",
+  "processor": "HIFLD Next",
+  "publisher": "U.S. Geological Survey",
+  "schema_version": 1,
+  "source_url": "https://www.usgs.gov/mission-areas/water-resources/science/principal-aquifers-united-states",
+  "title": "USGS 2003 Principal Aquifers \u2014 unapproved working draft",
+  "transformations": [
+    {
+      "operation": "decode_original_shapefile",
+      "preserved": "all source columns, physical DBF types/widths, all native Polygon coordinates, CRS, original archive and7sidecars",
+      "repair_or_projection": false,
+      "sort_key": "OBJECTID_1"
+    },
+    {
+      "gpkg_internal_fid": "storage index only; never source or published ID",
+      "mapping_approval": "not established",
+      "operation": "typed_native_geopackage_and_arrow_parquet"
+    }
+  ],
+  "unsupported_output_formats": {
+    "pmtiles": "Visualization requires reprojection and integer tile-coordinate quantization of native NAD83 double coordinates; full native coordinates/geometry fidelity cannot be preserved. No visualization mapping is approved.",
+    "shapefile_zip": "Original producer ZIP, DBF declarations, spatial indexes and metadata preserved under raw/. Regenerated ZIP omits producer .sbn/.sbx/.shp.xml sidecars and is not byte/physical-archive equivalent; output mapping is unapproved."
+  }
+}

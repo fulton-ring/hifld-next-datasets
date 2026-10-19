@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "working_draft": true,
+  "approved": false,
+  "source_code_head": "7a2f603c553bab56da2f463f1d521c4ee00d5a89",
+  "actual_normal_dagster": {
+    "report": "local-dagster-execution.json",
+    "logs": "local-dagster.log.gz",
+    "status": "complete_source_and_idempotency_pass_expected_quality_and_approval_denials_preserve_data",
+    "registered_source_job": true
+  },
+  "focused_tests": {
+    "command": "PYTHONPATH=src .venv/bin/python -m unittest tests.test_aquifers_source -v",
+    "tests": 6,
+    "passed": 6,
+    "status": "pass",
+    "log": "focused-tests.log",
+    "includes": "complete real4637source+allnativefidelity; partialall3attempts; URL/status/hash/metadata errors; missing/duplicateIDs; physicaltype/columns/geometryguards; PublishedStorage rejection; STOPPEDschedule; changedruntimeimmutable namespace; retainedfullcomparatordifference artifacts"
+  },
+  "full_suite": {
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src .venv/bin/python -m unittest discover tests",
+    "source_code_tree_before_sidecar_followup": "caf2f6d00b8af771eb1c55cae3d4baf623b124c7",
+    "tests": 479,
+    "passed": 477,
+    "errors": 1,
+    "skipped": 1,
+    "status": "not_pass",
+    "error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf; not suppressed or stubbed",
+    "log": "full-suite-before-sidecar-followup.log.gz",
+    "scope_limit": "Final7a source-only addition retainscompletecomparison/differenceartifacts and was verified with sixfocusedtests and cold actualDagstergraph; fullsuite not rerun afterthatsidecar-onlyfollowup."
+  },
+  "ci": "not_inferred",
+  "native_independent_review": "pending exact final PRhead",
+  "release": "blocked independentapproval/schema-ID-geometrydecision; no productionwrite/merge/closure",
+  "preserved_runtime": {
+    "raw_zip": "/workspace/work/hifld-coordinator/19/zip.body",
+    "raw_receipt": "/workspace/work/hifld-coordinator/19/zip.json",
+    "baseline": "/workspace/work/hifld-coordinator/19/baseline.body",
+    "baseline_receipt": "/workspace/work/hifld-coordinator/19/baseline.json",
+    "complete_source_and_actual_outputs": "/workspace/work/hifld-coordinator/19/final-graph"
+  }
+}

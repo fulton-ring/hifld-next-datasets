@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 19,
   "inventory_id": "aquifers",
-  "status": "working_draft_implementation_in_progress_not_accepted",
+  "status": "working_draft_pipeline_locally_verified_independent_review_pending",
   "worker": "/root/aquifers_19",
   "coordinator": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
   "authorized_scope": "Reviewable draft implementation and isolated local tests permitted by user correction; all source/baseline/contract/ID/geometry/promotion acceptance remains independent.",
@@ -36,7 +36,10 @@
       "role": "producer_operational_distribution",
       "observed_rows": 9274,
       "selected": false,
-      "reason": "Twiceoriginalpopulation pluschangedattributes; notsilentlydeduplicated/substituted"
+      "reason": "Twiceoriginalpopulation pluschangedattributes; notsilentlydeduplicated/substituted",
+      "unique_OBJECTID": 4637,
+      "attribute_distinct_rows": 4637,
+      "rows_per_OBJECTID": 2
     },
     {
       "url": "https://pubs.usgs.gov/publication/ofr20231078/full",
@@ -61,7 +64,7 @@
   "blockers": [
     "20nativeinvalidgeometries requireexplicitreviewedqualitydecision/derivedmapping, neverautomaticrepair",
     "SourceOBJECTID_1 andpublishedOBJECTIDrenumbering; preservebothhistoricalreleases, no generatedcrosswalk",
-    "PublishedschemaomitsShape_Area,fills1627ROCK_NAMEnulls,changesint32toint64andCRS4269to3857; requiresversionedcompatibilitydecision",
+    "Published schema omits Shape_Area, fills1627ROCK_NAME nulls, widens int32 toint64, wraps everyPolygon asMultiPolygon and changesCRS4269to3857; requiresversionedcompatibilitydecision",
     "No independentbaseline/contract/releaseapprovalregistry exists"
   ],
   "implementation_paths": [
@@ -70,5 +73,43 @@
     "tests/test_aquifers_source.py",
     "scripts/verification/aquifers_normal_graph.py"
   ],
-  "promotion": "Shared#417 quality/independentapproval gates retained. AllschedulesSTOPPED and sourceonly localdraft. No merge/closure/productionpublish."
+  "promotion": "Shared#417 quality/independentapproval gates retained. AllschedulesSTOPPED and sourceonly localdraft. No merge/closure/productionpublish.",
+  "local_materialization": {
+    "code_head": "7a2f603c553bab56da2f463f1d521c4ee00d5a89",
+    "report": "evidence/local-dagster-execution.json",
+    "complete_real_source_rows": 4637,
+    "quality_gate": "blocked20retainednativeinvalidgeometries",
+    "approval_gate": "blocked_missing_independent_release_approval_registry",
+    "raw_candidate_and_prior_local_accepted_fixture_preserved": true,
+    "runs": [
+      {
+        "run_id": "6b1e3169-f6f2-4e37-a93c-d556c161210b",
+        "step": "registered_real_source",
+        "success": true
+      },
+      {
+        "run_id": "567a8065-a812-4bf1-a80b-7946ce8e8c80",
+        "step": "real_source_idempotent_rerun",
+        "success": true
+      },
+      {
+        "failed_checks": [
+          {
+            "name": "quality_manifest",
+            "passed": false
+          }
+        ],
+        "run_id": "62a6d120-426e-4605-9780-0169475a1ff0",
+        "step": "normal_full_graph_real_native_quality_denied",
+        "success": false
+      },
+      {
+        "run_id": "b78f3368-2533-46dd-b36f-8a5110622a69",
+        "step": "existing_verify_asset_missing_approval_denied",
+        "success": false
+      }
+    ]
+  },
+  "validation": "evidence/validation.json",
+  "independent_review": "pending native exact finalhead review"
 }

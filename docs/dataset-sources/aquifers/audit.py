@@ -60,6 +60,7 @@ def main():
             'geo_metadata':json.loads(table.schema.metadata[b'geo']),
             'ids':{'OBJECTID':{'unique':len(index),'nulls':sum(r['OBJECTID'] is None for r in published)}},
             'invalid_geometry_count':sum(not g.is_valid for g in geometry),
+            'geometry_types':dict(collections.Counter(g.geom_type for g in geometry)),
             'bounds':shapely.total_bounds(geometry).tolist(),
             'nulls':{name:sum(r[name] is None for r in published) for name in shared}},
         'source_vs_published':{'missing_source_columns_in_published':['OBJECTID_1','Shape_Area'],
