@@ -33,10 +33,11 @@ from shapely import Point, to_wkb
 
 from dagster_hifld.partitions import SEMVER_VERSION_RE
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.release_approval import verifier_implementation_sha256
+from dagster_hifld.release_approval import verifier_implementation_sha256, validate_release_provenance
 
 SLUG = 'alternative-fueling-stations'
 SERVICE = 'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0'
+ITEM_URL = 'https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579?f=json'
 PROPOSED_SCHEMA_SHA256 = 'd7141e155260c80d2d87f80a3f62e7273b792154e1d77c85ff2ef5c99f25fdc3'  # Review draft pin, not an approved contract.
 UNSUPPORTED_OUTPUT_FORMATS = {
     'shapefile_zip': 'Unapproved lossy format: 80 source fields include >10-character names/identifier columns and embedded JSON text beyond DBF width; no reviewed lossless name/type/null/value mapping.',
@@ -69,6 +70,79 @@ def _strict_json(raw):
 
 def _json(path: Path):
     return _strict_json(path.read_bytes())
+
+
+def _arcgis_json(path):
+    value = _json(path)
+    if not isinstance(value, dict) or 'error' in value:
+        raise ValueError('ArcGIS body is not an object or contains an application error')
+    return value
+
+
+def _distribution_evidence(root):
+    path = root / 'bts_item.body'
+    item = _arcgis_json(path)
+    receipt = _json(root / 'bts_item.receipt.json')
+    for field in ('url', 'final_url'):
+        value = receipt.get(field)
+        if not isinstance(value, str):
+            raise ValueError('Missing observed official distributor item URL')
+        parsed = urllib.parse.urlsplit(value)
+        expected = urllib.parse.urlsplit(ITEM_URL)
+        if (parsed.scheme != 'https' or parsed.hostname != expected.hostname
+                or parsed.path != expected.path or parsed.port not in (None, 443)
+                or parsed.username or parsed.password or parsed.fragment
+                or urllib.parse.parse_qsl(parsed.query, strict_parsing=True) != [('f', 'json')]):
+            raise ValueError('Unverified official distributor item origin/scope')
+    if (receipt.get('status') != 200 or receipt.get('bytes') != path.stat().st_size
+            or receipt.get('sha256') != _digest(path) or receipt.get('complete_body', True) is not True):
+        raise ValueError('Distributor item receipt/checksum mismatch')
+    if (item.get('id') != '9010c04bcdf84c36abb74e98778af579' or item.get('owner') != 'USDOT_BTS'
+            or item.get('orgId') != 'xOi1kZaI0eWDREZv' or item.get('access') != 'public'
+            or item.get('type') != 'Feature Service' or item.get('url') != SERVICE.rsplit('/', 1)[0]):
+        raise ValueError('Official BTS identity/delegation changed; retain for review')
+    if not all(isinstance(item.get(key), str) and item[key].strip()
+            for key in ('description', 'licenseInfo', 'accessInformation')):
+        raise ValueError('Missing captured distributor delegation/license/attribution evidence')
+    if ('National Laboratory of the Rockies' not in item['description']
+            or 'Department of Energy' not in item['description']):
+        raise ValueError('Captured producer/delegation attribution changed; retain for review')
+    return {'url': ITEM_URL, 'raw_body': 'bts_item.body', 'sha256': _digest(path),
+        'owner': item['owner'], 'org_id': item['orgId'], 'producer_description_quote': item['description'],
+        'license_quote': item['licenseInfo'], 'attribution_quote': item['accessInformation'],
+        'status': 'Observed official BTS metadata; source/contract/baseline/release acceptance remains independent.'}
+
+
+def _observed_retrieval_time(receipt):
+    observed = receipt.get('observed_at')
+    try:
+        timestamp = datetime.datetime.fromisoformat(observed)
+        if timestamp.utcoffset() is None: raise ValueError('Naive retrieval timestamp')
+    except (TypeError, ValueError) as error:
+        raise ValueError('Original observed retrieval timestamp is required; replay cannot invent it') from error
+    return observed
+
+
+def _release_inputs(capture, audit):
+    evidence = audit['distribution_evidence']
+    inputs = []
+    for record in audit['raw_files']:
+        if not record['name'].endswith('.body') or '/' in record['name']: continue
+        receipt = _json(capture / record['name'].replace('.body', '.receipt.json'))
+        observed = _observed_retrieval_time(receipt)
+        inputs.append({'input_id': f'BTS:{SLUG}:{record["name"]}',
+            'producer': 'U.S. Department of Energy / National Laboratory of the Rockies AFDC',
+            'distributor': 'Bureau of Transportation Statistics (USDOT_BTS)',
+            'host': urllib.parse.urlsplit(receipt['final_url']).hostname,
+            'role': 'official_distributor',
+            'canonical_url': ITEM_URL if record['name'] == 'bts_item.body' else SERVICE,
+            'request_url': receipt['url'], 'retrieval_url': receipt['final_url'],
+            'retrieved_at': observed, 'sha256': record['sha256'], 'bytes': record['bytes'],
+            'raw_path': 'raw_arcgis/' + record['name'],
+            'license': evidence['license_quote'], 'attribution': evidence['attribution_quote'],
+            'delegation_evidence': evidence,
+            'release_date_unknown_reason': 'Mutable daily BTS feed; no separately established immutable producer release ID/date. Original retrieval and layer edit metadata are retained separately.'})
+    return inputs
 
 
 def _require_review_staging(staging):
@@ -257,6 +331,7 @@ def capture_live(destination: Path) -> None:
         return _capture_json(destination, name, url)
 
     try:
+        _capture_json(destination, 'bts_item', ITEM_URL)
         get('bts_layer')
         count = get('bts_count', {'f': 'json', 'where': '1=1', 'returnCountOnly': 'true'})['count']
         ids = sorted(_census(count, get('bts_ids', {'f': 'json', 'where': '1=1', 'returnIdsOnly': 'true'})['objectIds']))
@@ -278,16 +353,16 @@ def capture_live(destination: Path) -> None:
 
 def inspect_capture(root: Path) -> dict:
     """Fail closed on changed census/schema/edit date, truncation, IDs or geometry."""
-    layer = _json(root / 'bts_layer.body')
-    after = _json(root / 'bts_layer_after.body')
+    layer = _arcgis_json(root / 'bts_layer.body')
+    after = _arcgis_json(root / 'bts_layer_after.body')
     if layer['fields'] != after['fields'] or layer['editingInfo'] != after['editingInfo']:
         raise ValueError('Source changed during extraction')
     if layer['geometryType'] != 'esriGeometryPoint' or layer.get('hasZ') or layer.get('hasM'):
         raise ValueError('Unsupported geometry dimensionality')
-    expected = _json(root / 'bts_ids.body')['objectIds']
-    ending = _json(root / 'bts_ids_after.body')['objectIds']
-    count = _json(root / 'bts_count.body')['count']
-    final_count = _json(root / 'bts_count_after.body')['count']
+    expected = _arcgis_json(root / 'bts_ids.body')['objectIds']
+    ending = _arcgis_json(root / 'bts_ids_after.body')['objectIds']
+    count = _arcgis_json(root / 'bts_count.body')['count']
+    final_count = _arcgis_json(root / 'bts_count_after.body')['count']
     _census(count, expected)
     _census(final_count, ending)
     if count != final_count or set(expected) != set(ending):
@@ -305,7 +380,7 @@ def inspect_capture(root: Path) -> dict:
     seen, station_ids, files = set(), set(), []
     bounds = [math.inf, math.inf, -math.inf, -math.inf]
     for path in paths:
-        page = _json(path)
+        page = _arcgis_json(path)
         if 'error' in page or page.get('exceededTransferLimit'):
             raise ValueError('Error or truncated response')
         if page.get('fields') != layer['fields']:
@@ -350,11 +425,16 @@ def inspect_capture(root: Path) -> dict:
     for name in ['bts_layer','bts_layer_after','bts_ids','bts_ids_after','bts_count','bts_count_after']:
         path = root / f'{name}.body'
         files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+    distribution = _distribution_evidence(root)
+    path = root / 'bts_item.body'
+    files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
     receipts = []
     for record in files:
         receipt_path = root / record['name'].replace('.body', '.receipt.json')
         receipt = _json(receipt_path)
-        _verify_data_receipt_scope(record['name'].removesuffix('.body'), receipt, expected)
+        _observed_retrieval_time(receipt)
+        if record['name'] != 'bts_item.body':
+            _verify_data_receipt_scope(record['name'].removesuffix('.body'), receipt, expected)
         if (receipt.get('status') != 200 or receipt.get('sha256') != record['sha256']
                 or receipt.get('bytes') != record['bytes']
                 or receipt.get('complete_body', True) is not True):
@@ -370,7 +450,7 @@ def inspect_capture(root: Path) -> dict:
             for path in sorted(attempts_dir.rglob('*')) if path.is_file())
     return {'rows': len(seen), 'station_ids': len(station_ids), 'pages': len(paths), 'bounds': bounds,
             'source': SERVICE, 'editing_info': layer['editingInfo'], 'fields': layer['fields'],
-            'crs': layer['extent']['spatialReference'], 'raw_files': files,
+            'crs': layer['extent']['spatialReference'], 'raw_files': files, 'distribution_evidence': distribution,
             'acceptance': 'unapproved_draft', 'promotion_allowed': False}
 
 
@@ -407,7 +487,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     with pq.ParquetWriter(temporary, schema, compression='zstd') as writer:
         for path in sorted(capture.glob('page-*.body')):
             rows = []
-            for feature in _json(path)['features']:
+            for feature in _arcgis_json(path)['features']:
                 rows.append({**feature['attributes'], 'geometry': to_wkb(_exact_point(feature['geometry']), byte_order=1)})
             writer.write_table(pa.Table.from_pylist(rows, schema=schema))
     temporary.replace(target)
@@ -555,7 +635,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
         output.write('{"type":"FeatureCollection","crs":{"type":"name","properties":{"name":"EPSG:3857"}},"features":[')
         first = True
         for page in sorted(capture.glob('page-*.body')):
-            for feature in _json(page)['features']:
+            for feature in _arcgis_json(page)['features']:
                 if not first: output.write(',')
                 first = False
                 output.write(json.dumps({'type':'Feature', 'properties': feature['attributes'], 'geometry':{'type':'Point','coordinates':[feature['geometry']['x'],feature['geometry']['y']]}}, separators=(',', ':'), sort_keys=True, allow_nan=False))
@@ -567,16 +647,15 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     metadata = root / 'metadata'; metadata.mkdir(exist_ok=True)
     manifest = {'title':'Alternative Fueling Stations', 'agency':'U.S. Department of Energy / National Laboratory of the Rockies',
         'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
-        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':'draft-unapproved-v1',
-        'processor':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
+        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':1,
+        'processor':'HIFLD Next', 'processing_identity':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
         'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-        'inputs':[{'input_id':SERVICE, 'producer':candidate['producer'], 'distributor':candidate['distributor'],
-            'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-            'raw_files':audit['raw_files'], 'crs':audit['crs'], 'fields':audit['fields']}],
+        'inputs':_release_inputs(capture, audit),
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
-        'lineage':{'producer':'DOE/NLR AFDC', 'distributor_item':'9010c04bcdf84c36abb74e98778af579','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
+        'lineage':{'raw_capture_files':audit['raw_files'], 'retrieval_attempt_role':'Noncanonical attempts are raw diagnostic evidence, not successful source inputs; all canonical HTTP bodies are individually represented in inputs.', 'processing_identity':candidate['processing'], 'raw_fields':audit['fields'], 'raw_crs':audit['crs'], 'producer':'DOE/NLR AFDC', 'distributor_item':'9010c04bcdf84c36abb74e98778af579','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
         'unsupported_output_formats':dict(UNSUPPORTED_OUTPUT_FORMATS)}
+    validate_release_provenance(manifest)
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:

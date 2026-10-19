@@ -1,5 +1,6 @@
 """Independent-review regressions: no published bypass or lost failure evidence."""
 import hashlib
+import copy
 import http.client
 import io
 import json
@@ -17,7 +18,7 @@ from dagster_hifld.assets.fuel_stations import (
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.publish import _write_and_publish_pmtiles
 from dagster_hifld.promotion import promote_immutable_objects
-from dagster_hifld.release_approval import ReleaseApprovalError
+from dagster_hifld.release_approval import ReleaseApprovalError, validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from tests.test_fuel_stations import fixture, write
 
@@ -138,6 +139,56 @@ class FuelReviewBoundaryTests(unittest.TestCase):
         self.assertFalse(published.object_exists(diagnostic))
         self.assertEqual(self.staging.read_key(diagnostic),b'diagnostic-only')
 
+    def test_standard_manifest_is_complete_and_shared_validator_rejects_incomplete_variants(self):
+        signature=[{k:f[k] for k in ('name','type','nullable')} for f in self.layer['fields']]
+        digest=hashlib.sha256(json.dumps(signature,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        with patch('dagster_hifld.assets.fuel_stations.PROPOSED_SCHEMA_SHA256',digest):
+            stage_fuel_capture(self.capture,self.staging,'v0.0.0-provenance')
+        path=self.root/'staging'/SLUG/SLUG/'v0.0.0-provenance/metadata/source_manifest.json'
+        manifest=json.loads(path.read_bytes());validate_release_provenance(manifest)
+        bodies={p.name for p in self.capture.glob('*.body')}
+        self.assertEqual({x['raw_path'].split('/')[-1] for x in manifest['inputs']},bodies)
+        for field in ('schema_version','processor','code_commit','transformations'):
+            changed=copy.deepcopy(manifest);changed[field]=None
+            with self.subTest(field=field),self.assertRaises(ReleaseApprovalError):validate_release_provenance(changed)
+        for field in ('sha256','license','attribution','retrieved_at','delegation_evidence'):
+            changed=copy.deepcopy(manifest);del changed['inputs'][0][field]
+            with self.subTest(field=field),self.assertRaises(ReleaseApprovalError):validate_release_provenance(changed)
+        for field,value in [('role','unverified'),('bytes',1.5),('sha256','wrong')]:
+            changed=copy.deepcopy(manifest);changed['inputs'][0][field]=value
+            with self.subTest(field=field),self.assertRaises(ReleaseApprovalError):validate_release_provenance(changed)
+
+    def test_distributor_origin_and_missing_original_timestamp_stop_before_candidate(self):
+        for change in ('request_mirror','final_mirror','missing_time'):
+            fixture(self.capture)
+            path=self.capture/('page-000.receipt.json' if change=='missing_time' else 'bts_item.receipt.json')
+            receipt=json.loads(path.read_text())
+            if change=='missing_time':del receipt['observed_at']
+            else:
+                key='url' if change=='request_mirror' else 'final_url'
+                receipt[key]=receipt[key].replace('www.arcgis.com','mirror.example.com')
+            path.write_text(json.dumps(receipt))
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                stage_fuel_capture(self.capture,self.staging,'v0.0.0-authority')
+            self.assertFalse((self.root/'staging'/SLUG).exists())
+            self.assertTrue(any(p.read_bytes()==path.read_bytes() for p in (self.root/'staging/quarantine').rglob(path.name)))
+
+    def test_application_error_marker_in_every_authentic_arcgis_body_is_quarantined(self):
+        names=['bts_item','bts_layer','bts_layer_after','bts_count','bts_count_after','bts_ids','bts_ids_after','page-000']
+        previous=self.root/'previous';build_candidate(self.capture,previous)
+        saved=(previous/'candidate.parquet').read_bytes()
+        for name in names:
+            fixture(self.capture)
+            value=json.loads((self.capture/(name+'.body')).read_bytes())
+            value['error']={'code':503,'message':'failure while original fields remain'}
+            write(self.capture,name,value)
+            with self.subTest(name=name),self.assertRaisesRegex(ValueError,'application error'):
+                stage_fuel_capture(self.capture,self.staging,'v0.0.0-application-error')
+            self.assertTrue(any(b'failure while original fields remain' in p.read_bytes()
+                for p in (self.root/'staging/quarantine').rglob(name+'.body')))
+            self.assertFalse((self.root/'staging'/SLUG).exists())
+        self.assertEqual((previous/'candidate.parquet').read_bytes(),saved)
+
     def test_bounded_retry_keeps_transport_and_http_error_bytes_before_success(self):
         target=self.root/'download';target.mkdir()
         error=urllib.error.HTTPError(SERVICE,503,'busy',{},io.BytesIO(b'{"error":{"code":503}}'))
@@ -170,13 +221,14 @@ class FuelReviewBoundaryTests(unittest.TestCase):
     def test_live_registered_failure_keeps_prior_responses_and_failed_later_page(self):
         original=build_candidate(self.capture,self.root/'previous');before=(self.root/'previous/candidate.parquet').read_bytes()
         def network(url, **kwargs):
+            if '/sharing/rest/content/items/' in url:return Response((self.capture/'bts_item.body').read_bytes())
             if 'returnCountOnly' in url:return Response(b'{"count":1}')
             if 'returnIdsOnly' in url:return Response(b'{"objectIds":[9999999999]}')
             if '/query?' not in url:return Response(json.dumps(self.layer).encode())
             return Response(b'{"error":{"code":503,"message":"busy"}}')
         with patch('dagster_hifld.assets.fuel_stations.urllib.request.urlopen',side_effect=network) as fetch:
             result=self.registered_run(self.staging,{'capture_dir':'','version':'v0.0.0-live-failure'})
-        self.assertFalse(result.success);self.assertEqual(fetch.call_count,6)
+        self.assertFalse(result.success);self.assertEqual(fetch.call_count,7)
         quarantine=self.root/'staging/quarantine'
         self.assertEqual(len(list(quarantine.rglob('bts_layer.body'))),1)
         self.assertEqual(len(list(quarantine.rglob('page-000/*.body'))),3)

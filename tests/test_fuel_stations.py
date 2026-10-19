@@ -28,6 +28,8 @@ def write(root, name, value):
         query = {'f':'json', 'where':'OBJECTID >= 9999999999 AND OBJECTID <= 9999999999',
                  'outFields':'*', 'returnGeometry':'true', 'orderByFields':'OBJECTID ASC', 'resultRecordCount':'2000'}
         url = service + '/query?' + urllib.parse.urlencode(query)
+    elif name == 'bts_item':
+        url = 'https://www.arcgis.com/sharing/rest/content/items/9010c04bcdf84c36abb74e98778af579?f=json'
     elif name.startswith('bts_count'):
         url = service + '/query?' + urllib.parse.urlencode({'f':'json','where':'1=1','returnCountOnly':'true'})
     elif name.startswith('bts_ids'):
@@ -35,7 +37,7 @@ def write(root, name, value):
     else:
         url = service + '?f=pjson'
     (root / (name + '.receipt.json')).write_text(json.dumps({'url':url,'final_url':url,
-        'status': 200, 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}))
+        'observed_at':'2026-10-19T00:00:00+00:00', 'status': 200, 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}))
 
 
 def fixture(root):
@@ -50,6 +52,12 @@ def fixture(root):
         write(root, 'bts_layer' + suffix, layer)
         write(root, 'bts_count' + suffix, {'count': 1})
         write(root, 'bts_ids' + suffix, {'objectIds': [9999999999]})
+    write(root, 'bts_item', {'id':'9010c04bcdf84c36abb74e98778af579','owner':'USDOT_BTS',
+        'orgId':'xOi1kZaI0eWDREZv','access':'public','type':'Feature Service',
+        'url':'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer',
+        'description':'Synthetic official-metadata fixture identifying U.S. Department of Energy / National Laboratory of the Rockies AFDC producer and BTS distributor.',
+        'licenseInfo':'Synthetic fixture only; no real grant or source approval.',
+        'accessInformation':'Synthetic attribution to DOE/NLR and BTS distributor.'})
     write(root, 'page-000', page)
     return layer, page
 
@@ -123,6 +131,11 @@ class FuelDraftTest(unittest.TestCase):
         self.assertEqual((root/'raw_arcgis/page-000.body').read_bytes(),(self.root/'page-000.body').read_bytes())
         source=json.loads((root/'metadata/source_manifest.json').read_bytes())
         self.assertTrue(source['inputs'][0]['input_id'])
+        from dagster_hifld.release_approval import validate_release_provenance
+        validate_release_provenance(source)
+        self.assertEqual(source['schema_version'], 1)
+        self.assertEqual(source['processor'], 'HIFLD Next')
+        self.assertEqual(len(source['inputs']), 8)
         self.assertFalse(source['promotion_allowed'])
         self.assertEqual(set(source['unsupported_output_formats']), {'shapefile_zip', 'pmtiles'})
         self.assertEqual(pq.read_table(root/'draft_candidate/candidate.parquet').num_rows,1)
