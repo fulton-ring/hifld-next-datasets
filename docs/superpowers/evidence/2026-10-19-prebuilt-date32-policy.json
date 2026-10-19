@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "classification": "synthetic native prebuilt GeoParquet capability; no real source/baseline/format acceptance",
+  "parent_commit": "abde85be4879feee01e7583b23869617d71a69f6",
+  "implementation_sha256": "cd36498a103cfb3a4d6df6f3d7222ed8c4b50b94c03eef726047242c3215f5c5",
+  "implementation": {
+    "src/dagster_hifld/output_policy.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/output_policy.py",
+      "sha256": "5bbccc8a85c7c7cd27dca0a43a2c111bf3d1255369d401861ecb27b1a91cc49d",
+      "bytes": 2943
+    },
+    "src/dagster_hifld/source_manifest.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/source_manifest.py",
+      "sha256": "417348832fdbdfac001d1c0beeadae675b44af697ab024e1e516741c35e563d3",
+      "bytes": 14720
+    },
+    "src/dagster_hifld/provenance.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/provenance.py",
+      "sha256": "a8e498b86f17490605ae758b903caa43e0a1c310aee61ae897986fb5b5ee2210",
+      "bytes": 9838
+    },
+    "src/dagster_hifld/catalog.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/catalog.py",
+      "sha256": "593f064c13abcbb88fed9032a2fc5357921542be5e9cf08d35470d44cfbfc7ba",
+      "bytes": 20888
+    },
+    "src/dagster_hifld/assets/publish.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/assets/publish.py",
+      "sha256": "d70f79ece81105e66476acf38de7fd1e5bf093fd917c1bebcca8ee2e550b14e2",
+      "bytes": 53908
+    },
+    "src/dagster_hifld/release_approval.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/release_approval.py",
+      "sha256": "070ded16937ff8390fccb926144567a548b7507274cf55ff07d115fbe67f3090",
+      "bytes": 25335
+    },
+    "scripts/verification/native_synthetic_local.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/scripts/verification/native_synthetic_local.py",
+      "sha256": "56cbbfc5d6f0c6276641a89920280b857f01d799fdfb950fb139a8938940b118",
+      "bytes": 24590
+    },
+    "scripts/verification/prebuilt_date32_local.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/scripts/verification/prebuilt_date32_local.py",
+      "sha256": "13bc62bebbab80ab5ac883a50aef9adfb130ec4fbda62aa0bb2fb5416e2d538d",
+      "bytes": 1070
+    },
+    "tests/test_prebuilt_outputs.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/tests/test_prebuilt_outputs.py",
+      "sha256": "351f5d741b13e2e19b19edede5b7182549ff1ab05dbfd3f7ce9e4ecf7037180e",
+      "bytes": 4402
+    }
+  },
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "source_observations": [
+    {
+      "issue": 30,
+      "head": "700a28a56cbe65b82aba1211e53d97835368bdde",
+      "source": {
+        "path": "/workspace/hifld-worker-worktrees/30/src/dagster_hifld/sources/cbrs_prohibitions.py",
+        "sha256": "3597bd66a555006e9e05dfd18ffe836de46513c5d20850e20915a51efcb5fdfd",
+        "bytes": 38285
+      },
+      "observation": "Whole GeoParquet ban was being used to prevent generic date32-to-text regeneration while a native file existed."
+    },
+    {
+      "issue": 31,
+      "head": "424cf4674fc333184bc929b5bbcf4c3dbf86a676",
+      "source": {
+        "path": "/workspace/hifld-worker-worktrees/31/src/dagster_hifld/sources/cbrs_units.py",
+        "sha256": "d41225d252f7e5b782268b90a19d7f6ec13519bd7e03f0c64789ba089890c4b6",
+        "bytes": 37966
+      },
+      "observation": "Whole GeoParquet ban was being used to prevent unapproved generic bbox/schema additions while a native file existed."
+    }
+  ],
+  "actual_registered_graph": {
+    "classification": "actual synthetic Date32 prebuilt graph; no real acceptance",
+    "unapproved_run_id": "efeb555b-7880-4282-bca1-1215b9c3c639",
+    "success_run_id": "e47d1098-2a28-4ab1-bf4a-557c703cbe4e",
+    "quality_failure_run_id": "66a1ab24-7077-454e-8cfe-e66024e8323e",
+    "staged_mutation_run_id": "19edc21e-02da-47b9-a249-7d4fd6349398",
+    "date32_and_null_preserved": true,
+    "failed_quality_blocked": true,
+    "staged_mutation_blocked": true,
+    "whole_format_ban_blocked": true,
+    "published_objects_preserved": 21,
+    "dagster_home": "/workspace/hifld-worker-runtime/417/prebuilt-date32-verified/dagster",
+    "generic_converter_calls": 0
+  },
+  "actual_negative_reason_audit": {
+    "path": "/workspace/hifld-worker-runtime/417/prebuilt-date32-verified/negative_reason_audit.json",
+    "sha256": "a81af32be446b11a12fb39d2524e277f3f35e54155224c1c0f92dacd0b411a02",
+    "bytes": 9711
+  },
+  "actual_log": {
+    "path": "/workspace/work/hifld-coordinator/417-prebuilt-actual.log",
+    "sha256": "952e817ae6483f5715ae57dd0e2c7d4a0bc61b1affcfd40513b755022a4067dd",
+    "bytes": 22838
+  },
+  "command": "PYTHONPATH=src:. UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m scripts.verification.prebuilt_date32_local --work-dir /workspace/hifld-worker-runtime/417/prebuilt-date32-verified",
+  "published_typed_artifact": {
+    "file": {
+      "path": "/workspace/hifld-worker-runtime/417/prebuilt-date32-verified/published/synthetic-native/typed/v0.0.0-fixture/geoparquet/typed.parquet",
+      "sha256": "f484b60d2b17be4f4499782fa4466a655ba76cbd47c21c3ff505468e39b16e45",
+      "bytes": 6017
+    },
+    "schema": "id: int64 not null\nnullable_id: int64\nstate: string not null\nname: string not null\ncapture_date: date32[day]\n__source_fid: string not null\ngeometry: binary not null\n-- schema metadata --\ngeo: '{\"version\": \"1.1.0\", \"primary_column\": \"geometry\", \"columns\": {\"geo' + 1600",
+    "selected_values": [
+      {
+        "id": 9007199254740993,
+        "nullable_id": null,
+        "capture_date": "2026-10-19",
+        "__source_fid": "1"
+      },
+      {
+        "id": 9223372036854775807,
+        "nullable_id": -9223372036854775808,
+        "capture_date": null,
+        "__source_fid": "2"
+      }
+    ]
+  },
+  "full_suite": {
+    "run": 508,
+    "passed": 507,
+    "skipped": 1,
+    "errors": 0,
+    "failures": 0,
+    "skip": "production-write opt-in",
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-prebuilt-full-suite.log",
+      "sha256": "7d991a8c4d36fd4193c693a15d3eaf2c283009ef7ffc3c7d372313916dcaec3a",
+      "bytes": 18560
+    },
+    "real_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "ci_success_inferred": false
+  },
+  "trust_scope": {
+    "policy_schema_version": 1,
+    "supported_prebuilt_formats": [
+      "geoparquet"
+    ],
+    "full_unsupported_ban_retained": true,
+    "acceptance_granted": false,
+    "generic_fallback_allowed": false,
+    "independent_native_original_replay_required": true,
+    "independent_new_checkpoint_review": "pending",
+    "source_branches_modified": false,
+    "environment_changed": false,
+    "runtime_policy_revision": "9/unrestricted/enforced",
+    "canonical_metadata_compatibility": "Capabilities now included in provenance projection; older omitted declarations require reviewed canonical regeneration. No published data rewritten."
+  }
+}
