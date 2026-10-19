@@ -1,0 +1,19 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/cbrs-map-panels-1/cbrs-map-panels-1/v1.0.0/geoparquet/cbrs-map-panels-1.parquet?generation=1791506354782168",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/cbrs-map-panels-1/cbrs-map-panels-1/v1.0.0/geoparquet/cbrs-map-panels-1.parquet?generation=1791506354782168",
+  "status": 200,
+  "observed_at": "2026-10-19T07:50:45.424443+00:00",
+  "generation": "1791506354782168",
+  "byte_length": 110418,
+  "sha256": "36662423bf6f187a2efb9b399d44ca78e25532c7d3b8200e609028ea88df659d",
+  "all_bytes_equal_original_complete_capture": true,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "date": "Mon, 19 Oct 2026 07:50:45 GMT",
+    "last-modified": "Fri, 09 Oct 2026 00:39:14 GMT",
+    "etag": "\"fee4244e64e35a3c13143ae6c8160533\"",
+    "x-goog-generation": "1791506354782168",
+    "x-goog-metageneration": "1",
+    "x-goog-hash": "crc32c=oYPsPQ==, md5=/uQkTmTjWjwTFDrmyBYFMw=="
+  }
+}

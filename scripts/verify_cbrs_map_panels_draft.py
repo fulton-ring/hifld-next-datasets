@@ -59,6 +59,11 @@ with DagsterInstance.get() as instance:
  assert snapshot(published)==prior
  post=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
  record('real_complete_post_formats_refresh',post);assert post.success and post.output_for_node(fws_cbrs_map_panels.op.name)==output
+ repeated=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False)
+ errors=record('second_normal_catalog_missing_approval',repeated)
+ assert not repeated.success and errors and all('missing_independent_release_approval_registry' in error for error in errors),errors
+ aftersecond=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+ record('source_refresh_after_second_catalog',aftersecond);assert aftersecond.success and aftersecond.output_for_node(fws_cbrs_map_panels.op.name)==output
  assert snapshot(published)==prior
  rows=pq.read_table(root/'candidate/typed-source.parquet').to_pylist();assert len(rows)==574
  with fiona.open(root/'geopackage'/f'{source.SLUG}.gpkg') as f:gp={r['properties']['OBJECTID']:r for r in f}

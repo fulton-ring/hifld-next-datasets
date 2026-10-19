@@ -2,6 +2,8 @@
 import copy
 import json
 import sqlite3
+import struct
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,16 +78,36 @@ class PanelsTests(unittest.TestCase):
             root=Path(tmp,s.SLUG,s.SLUG,result['version']);readyfile=root/'metadata/cbrs_map_panels_candidate_ready.json';ready=readyfile.read_bytes()
             self.assertEqual(result,s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE))
             gp=root/'geopackage'/f'{s.SLUG}.gpkg';original=gp.read_bytes();key=f'geopackage/{s.SLUG}.gpkg'
+            pristine=Path(tmp,'pristine');shutil.copytree(root,pristine)
             queries=["UPDATE gpkg_contents SET srs_id=4326", "UPDATE gpkg_geometry_columns SET srs_id=4326", "UPDATE gpkg_contents SET min_x=0", "UPDATE gpkg_spatial_ref_sys SET definition='WRONG' WHERE srs_id=4269", "UPDATE gpkg_spatial_ref_sys SET organization_coordsys_id=3857 WHERE srs_id=4269", 'UPDATE "'+s.SLUG+'" SET Map_Date=1 WHERE OBJECTID=21']
             for query in queries:
+                if not root.exists():shutil.copytree(pristine,root)
                 gp.write_bytes(original)
                 with sqlite3.connect(gp) as db:db.execute(query)
                 inventory=json.loads(ready);inventory['objects'][key]=s.sha(gp.read_bytes());readyfile.write_bytes(s.encode(inventory))
                 with self.subTest(query=query),self.assertRaises(ValueError):s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE)
+                self.assertFalse(root.exists())
+                retained=list(Path(tmp,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate/geopackage/*.gpkg'))
+                self.assertTrue(retained)
+            shutil.copytree(pristine,root)
+            gp.write_bytes(original)
+            with sqlite3.connect(gp) as db:
+                column=db.execute('SELECT column_name FROM gpkg_geometry_columns').fetchone()[0]
+                blob=bytearray(db.execute('SELECT '+column+' FROM "'+s.SLUG+'" WHERE OBJECTID=21').fetchone()[0])
+                struct.pack_into('<i' if blob[3]&1 else '>i',blob,4,3857)
+                db.execute('UPDATE "'+s.SLUG+'" SET '+column+'=? WHERE OBJECTID=21',(bytes(blob),))
+            inventory=json.loads(ready);inventory['objects'][key]=s.sha(gp.read_bytes());readyfile.write_bytes(s.encode(inventory))
+            with self.assertRaises(ValueError):s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE)
+            self.assertFalse(root.exists());shutil.copytree(pristine,root)
+            sidecar=root/'metadata/source-fidelity/baseline_differences.jsonl';sidecar.write_bytes(b'forged accepted report')
+            inventory=json.loads(ready);inventory['objects']['metadata/source-fidelity/baseline_differences.jsonl']=s.sha(sidecar.read_bytes());readyfile.write_bytes(s.encode(inventory))
+            with self.assertRaises(ValueError):s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE)
+            self.assertFalse(root.exists());shutil.copytree(pristine,root)
             gp.write_bytes(original);readyfile.write_bytes(ready)
             pqfile=root/'candidate/typed-source.parquet';originalpq=pqfile.read_bytes();table=pq.read_table(pqfile);meta=dict(table.schema.metadata);geo=json.loads(meta[b'geo']);geo['columns']['geometry']['crs']={'type':'GeographicCRS','name':'WRONG'};meta[b'geo']=s.encode(geo);pq.write_table(table.replace_schema_metadata(meta),pqfile)
             inventory=json.loads(ready);inventory['objects']['candidate/typed-source.parquet']=s.sha(pqfile.read_bytes());readyfile.write_bytes(s.encode(inventory))
             with self.assertRaises(ValueError):s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE)
+            self.assertFalse(root.exists());shutil.copytree(pristine,root)
             pqfile.write_bytes(originalpq);readyfile.write_bytes(ready)
             self.assertEqual(result,s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE))
 
