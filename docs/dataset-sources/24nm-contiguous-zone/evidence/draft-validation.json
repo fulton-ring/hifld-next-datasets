@@ -1,0 +1,16 @@
+{
+  "code_tested": "ad0ceb1dba4cb996aa52499a9c1f8c33a39f5647",
+  "command": "PYTHONPATH=$PWD/src PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH UV_CACHE_DIR=/workspace/.cache/uv uv run --frozen --no-sync python -m unittest discover tests",
+  "tests_run": 478,
+  "passed": 476,
+  "errors": 1,
+  "skipped": 1,
+  "elapsed_seconds": 54.525,
+  "error_test": "test_hifld_user_code_has_pod_disruption_budget",
+  "error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf",
+  "skip": "Production opt-in integration not enabled",
+  "full_suite_success": false,
+  "ci_pass_claimed": false,
+  "log_path": "/workspace/work/noaa-4/full-suite.log",
+  "log_sha256": "08cad716a51ce1099eba62a5eb03fd760b5f5f2b71a8106dc114ad816d2f2e7e"
+}

@@ -11,6 +11,9 @@ import pathlib
 
 P = pathlib.Path(__file__).parent / 'evidence'
 N = P / 'network-20261019'
+draft_manifest = json.loads((P / 'draft-checksums.json').read_text())
+for name, sha in draft_manifest.items():
+    assert hashlib.sha256((P / name).read_bytes()).hexdigest() == sha, name
 for directory in [P, N]:
     manifest = json.loads((directory / 'checksums.json').read_text())
     for name, sha in manifest.items():

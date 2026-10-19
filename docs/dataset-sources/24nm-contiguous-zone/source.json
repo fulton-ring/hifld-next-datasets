@@ -238,10 +238,12 @@
     "dagster": "isolated local Dagster1.12.19 server_info plus RepositoryConnection73 assets on3404, captured2026-10-19",
     "materialization_performed": true,
     "ingestion_approved": false,
-    "actual_source_run_id": "ae67eb3b-1e8e-4c22-b4de-dd311357feed",
-    "actual_formats_run_id": "b4f98073-aef0-4657-b989-cb1641150066",
-    "blocked_release_run_id": "d79fcdd7-a815-4850-899c-edda8b3c76fb",
-    "release_approved": false
+    "actual_source_run_id": "ea56931f-ba10-4b56-bf79-1cbe9d3fbe4d",
+    "actual_formats_run_id": "4101e767-d426-41bc-a3a7-b5d13ff0c2ee",
+    "blocked_release_run_id": "25275e28-6f79-4a98-967b-ab738ab62c77",
+    "release_approved": false,
+    "lossy_shapefile_excluded": true,
+    "prior_local_release_preserved": true
   },
   "published_baseline_candidate": {
     "slug": "24nm-contiguous-zone",
@@ -292,6 +294,29 @@
     "proposed_source_guard": "evidence/draft-source-guard.json",
     "production_enabled": false,
     "contract_approved": false,
-    "format_drift_audit": "evidence/draft-format-audit.json"
+    "format_drift_audit": "evidence/draft-format-audit.json",
+    "final_report": "evidence/draft-integration.json",
+    "live_capture_receipt": "evidence/draft-live-capture-receipt.json",
+    "code_tested": "ad0ceb1dba4cb996aa52499a9c1f8c33a39f5647",
+    "supported_draft_outputs": [
+      "native candidate GeoParquet",
+      "typed GeoPackage",
+      "normal terminal GeoParquet",
+      "PMTiles display derivative"
+    ],
+    "unsupported_outputs": {
+      "shapefile_zip": "43 NOTE single-space values to NULL and nullable epoch-ms integer to DBF float; no lossy mapping accepted"
+    },
+    "processing_namespace": "content + installed implementation + guard policy + retrieval URL identity; immutable manifests"
+  },
+  "validation": {
+    "report": "evidence/draft-validation.json",
+    "local_tests_run": 478,
+    "passed": 476,
+    "errors": 1,
+    "skipped": 1,
+    "full_suite_passed": false,
+    "ci_passed": false,
+    "error": "Missing sibling IaC dagster.tf"
   }
 }

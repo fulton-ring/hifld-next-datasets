@@ -1,0 +1,44 @@
+{
+  "classification": "working local draft; complete fresh live source capture; no dataset acceptance",
+  "source_code_commit": "ad0ceb1dba4cb996aa52499a9c1f8c33a39f5647",
+  "module": "/workspace/hifld-worker-worktrees/4/src/dagster_hifld/assets/noaa_contiguous.py",
+  "source_run_id": "ea56931f-ba10-4b56-bf79-1cbe9d3fbe4d",
+  "idempotent_run_id": "5e86234a-edbe-41c0-a21d-58cef58c0e34",
+  "formats_run_id": "4101e767-d426-41bc-a3a7-b5d13ff0c2ee",
+  "failed_release_run_id": "25275e28-6f79-4a98-967b-ab738ab62c77",
+  "source_rows": 63,
+  "terminal_rows": 63,
+  "terminal_UNILATERAL_type": "double",
+  "partition": "24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.aba18259fe8fbf3146b8",
+  "candidate_sha256": "d92d06b5e2eb2814c24e5927edcddff271420581d08182f69f3e5706b6fa7ddf",
+  "full_attributes_ids_geometries_checked": true,
+  "coverage": {
+    "REGION": {
+      "Alaska": 20,
+      "American Samoa": 4,
+      "Atlantic Coast and Gulf of Mexico": 14,
+      "Commonwealth of the Northern Mariana Islands and Territory of Guam": 3,
+      "Hawaiian Islands": 11,
+      "Howland Island, Baker Island and Jarvis Island": 2,
+      "Johnston Atoll": 1,
+      "Pacific Coast": 3,
+      "Palmyra Atoll and Kingman Reef": 1,
+      "Puerto Rico and U.S. Virgin Islands": 3,
+      "Wake Island": 1
+    },
+    "FEAT_TYPE": {
+      "Maritime Limit": 63
+    }
+  },
+  "quality_check_passed": true,
+  "raw_bodies_preserved": 7,
+  "provenance_inputs": 7,
+  "published_objects_unchanged": true,
+  "release_failure": "missing_independent_release_approval_registry",
+  "promotion_approved": false,
+  "terminal_paths": [
+    "/workspace/work/noaa-4/integration-reviewed/staging/24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.aba18259fe8fbf3146b8/geoparquet/24nm-contiguous-zone.parquet"
+  ],
+  "terminal_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nOBJECTID: int64\nBOUND_ID: string\nREGION: string\nFEAT_TYPE: string\nPUB_DATE: int64\nAPPRV_DATE: int64\nLEGAL_AUTH: string\nAOR: string\nNOTE: string\nSUPP_INFO: string\nUNILATERAL: double\nRULEID: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1578\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 782",
+  "state_storage": "/workspace/work/noaa-4/integration-reviewed"
+}
