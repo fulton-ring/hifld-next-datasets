@@ -335,3 +335,14 @@ including the independently reproduced `retrieved_at="not-a-date"` case. Existin
 the combined source graph and #11/#17/#20 were validated read-only without any
 structural regression; this is not source acceptance. Full attribution/STAC and
 metadata roundtrip integration remains the next implementation slice.
+
+Independent provenance review identified offset-minute normalization by Python
+and emitted request/final URL aliases. Offset hours/minutes are now explicitly
+bounded before timestamp parsing, and canonical `request_url`/`final_url` aliases
+are validated and retained alongside `requested_url`/`observed_final_url` without
+renaming. Five pure tests pass, including malformed offset and alias credentials.
+A failed HTTP attempt cannot be presented as a successful source input when its
+captured `http_status` is non-2xx. Separately retained diagnostic attempts remain
+untrusted evidence and do not require fabricated successful-source metadata.
+The `provenance_projection` helper preserves complete selected input/code/lineage
+claims for the upcoming dictionary/STAC integration; it performs no acceptance.

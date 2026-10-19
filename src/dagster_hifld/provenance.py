@@ -7,6 +7,7 @@ from datetime import date, datetime
 from urllib.parse import parse_qsl, urlsplit
 
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
+INPUT_URL_FIELDS = ("canonical_url", "retrieval_url", "requested_url", "request_url", "observed_final_url", "final_url")
 _ROLES = {"producer_publication", "official_distributor", "mirror", "archive"}
 
 
@@ -39,6 +40,8 @@ def validate_provenance_url(value: object) -> str:
 def _retrieved_at(value: object) -> None:
     if not isinstance(value, str) or not _TIMESTAMP.fullmatch(value):
         raise ValueError("retrieved_at_requires_timezone_aware_iso_timestamp")
+    if not value.endswith("Z") and (int(value[-5:-3]) > 23 or int(value[-2:]) > 59):
+        raise ValueError("invalid_retrieved_at_timestamp_offset")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -96,12 +99,16 @@ def validate_provenance(manifest: object) -> None:
             raise ValueError("retrieval_host_does_not_match_input_host")
         if urlsplit(item["retrieval_url"]).fragment:
             raise ValueError("retrieval_url_cannot_contain_fragment")
-        for field in ("requested_url", "observed_final_url"):
+        for field in INPUT_URL_FIELDS[2:]:
             if item.get(field) is not None:
                 validate_provenance_url(item[field])
         _retrieved_at(item["retrieved_at"])
+        if "http_status" in item and (type(item["http_status"]) is not int or not 200 <= item["http_status"] < 300):
+            raise ValueError("failed_http_attempt_cannot_be_a_successful_source_input")
         if not isinstance(item.get("role"), str) or item["role"] not in _ROLES:
             raise ValueError("unresolved_source_authority")
+        if "distributor" in item:
+            _text(item["distributor"], "invalid_distributor_identity")
         delegation = item.get("delegation_evidence")
         if item["role"] == "official_distributor":
             if not isinstance(delegation, (dict, str)) or not delegation or (isinstance(delegation, str) and not delegation.strip()):
@@ -126,3 +133,15 @@ def validate_provenance(manifest: object) -> None:
             raise ValueError("unexplained_unknown_release_date")
         if "release_date_unknown_reason" in item and item["release_date_unknown_reason"] is not None:
             _text(item["release_date_unknown_reason"], "invalid_unknown_release_date_explanation")
+
+
+PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "lineage")
+
+
+def provenance_projection(metadata: dict) -> dict | None:
+    """Copy complete authored provenance without importing legacy fallback claims."""
+    if "inputs" not in metadata and "processor" not in metadata:
+        return None
+    value = {key: metadata[key] for key in PROVENANCE_FIELDS if key in metadata}
+    validate_provenance(value)
+    return json.loads(json.dumps(value, ensure_ascii=False, allow_nan=False))

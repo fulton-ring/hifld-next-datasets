@@ -32,6 +32,7 @@ class ProvenanceTests(unittest.TestCase):
         changes = [
             ("retrieved_at", "not-a-date"), ("retrieved_at", "2026-10-19"), ("retrieved_at", "2026-10-19T01:02:03"),
             ("retrieved_at", "2026-02-30T01:02:03Z"), ("retrieved_at", "2026-10-19T01:02:03+24:00"),
+            ("retrieved_at", "2026-10-19T01:02:03+00:99"), ("retrieved_at", "2026-10-19T01:02:03-01:60"),
             ("retrieved_at", True), ("bytes", True), ("bytes", -1), ("bytes", "123"), ("sha256", 123),
             ("license", {}), ("license", " "), ("attribution", []), ("producer", "HIFLD Next"),
             ("producer", {}), ("input_id", " producer "), ("role", []), ("role", "official"),
@@ -39,7 +40,9 @@ class ProvenanceTests(unittest.TestCase):
             ("retrieval_url", "https://user:pass@example.invalid/data"), ("canonical_url", "ftp://example.invalid/data"),
             ("retrieval_url", "https://example.invalid/data#not-retrieved"), ("retrieval_url", "https://example.invalid:bad/data"),
             ("canonical_url", "https://example.invalid/data?api_key=redacted"), ("observed_final_url", "https://example.invalid/data?token=redacted"),
-            ("requested_url", "https://example.invalid/has space"), ("canonical_url", "https://example.invalid\\other/data"),
+            ("requested_url", "https://example.invalid/has space"),
+            ("request_url", "https://user:pass@example.invalid/data"), ("request_url", "https://example.invalid/data?api_key=redacted"),
+            ("final_url", "https://example.invalid/data?token=redacted"), ("http_status", 403), ("http_status", "200"), ("canonical_url", "https://example.invalid\\other/data"),
             ("release_date", "unknown"), ("release_date", "2026-02-30"), ("release_date_unknown_reason", []),
         ]
         for field, replacement in changes:
@@ -60,6 +63,15 @@ class ProvenanceTests(unittest.TestCase):
             value = provenance_fixture(); value[field] = replacement; values.append(value)
         for value in values:
             with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_provenance(value)
+
+    def test_failed_diagnostics_remain_separate_from_successful_source_inputs(self):
+        value = provenance_fixture()
+        value["diagnostic_attempts"] = [{"http_status": 403, "retrieved_at": None, "classification": "failed bytes; not source inputs"}]
+        validate_provenance(value)
+        for timestamp in ["2025-01-01T00:00:00+00:99", "2025-01-01T00:00:00-12:61"]:
+            value["inputs"][0]["release_date"] = timestamp
+            with self.assertRaisesRegex(ValueError, "invalid_producer_release_date"):
                 validate_provenance(value)
 
     def test_distributor_delegation_is_captured_without_authority_acceptance(self):
