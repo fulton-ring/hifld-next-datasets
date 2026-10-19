@@ -1,0 +1,30 @@
+{
+  "features": 63,
+  "invalid_geometry": 0,
+  "empty_geometry": 0,
+  "null_geometry": 0,
+  "extent": [
+    -180.0,
+    -14.961690114000021,
+    180.0,
+    71.788124278
+  ],
+  "null_counts": {
+    "OBJECTID": 0,
+    "BOUND_ID": 0,
+    "REGION": 0,
+    "FEAT_TYPE": 0,
+    "PUB_DATE": 9,
+    "APPRV_DATE": 0,
+    "LEGAL_AUTH": 0,
+    "AOR": 0,
+    "NOTE": 16,
+    "SUPP_INFO": 1,
+    "UNILATERAL": 0,
+    "RULEID": 0
+  },
+  "BOUND_ID_unique": 63,
+  "feature_types": {
+    "Maritime Limit": 63
+  }
+}

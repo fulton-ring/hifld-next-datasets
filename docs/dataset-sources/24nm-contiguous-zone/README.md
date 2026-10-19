@@ -1,0 +1,21 @@
+# 24NM Contiguous Zone — research only
+
+Outcome: **blocked**. Request Blocked / Needs decision, with Potential breaking change before any implementation. Research is not approval to ingest, promote, merge, or adopt the proposed contract.
+
+NOAA Office of Coast Survey's official landing page links the exact NOAA-hosted Maritime Limits and Boundaries service. Layer 2 explicitly credits NOAA/NOS/OCS and supplies contiguous-zone boundary **lines**, not polygons. This supports producer-publication classification independently of title similarity. There is no separate ArcGIS Online publisher account verified for this NOAA Server publication. The DataLumos inventory reference remains an archive, not a current source.
+
+The exact inventory row is retained in `evidence/inventory-match.json`. The crosswalk DOI request failed with `Tunnel connection failed: 403 Forbidden`; no workbook was recovered, so hyperlink parsing and exact crosswalk reconciliation remain **unverified**, not unmatched. The earlier issue #40 body is retained as leads only. `gh issue view ... --comments` failed with GitHub's deprecated `projectCards` GraphQL error; no comments audit is claimed. No maintained mirror is promoted as a substitute.
+
+On 2026-10-19 UTC anonymous NOAA queries retrieved 63 full features and a separate count of 63. All 63 OBJECTID values are unique and nonnull; the response does not report an exceeded transfer limit, below the advertised maximum of 1000. The full raw capture is bounded and retained for offline replay. However, independent `returnIdsOnly` queries returned HTTP 200 with ArcGIS code 500 (“Could not find service…”). Other query variants also produced this error. They are failures, never successful extraction. Count agreement is provisional evidence, not proof of a consistent complete ID snapshot. Pagination support is advertised, but paging was not successfully verified. No source-to-published conversion occurred.
+
+No dataset-wide release date was established. `PUB_DATE` and `APPRV_DATE` retain original epoch-millisecond values in raw features; they describe individual records. Neither fetch time, inventory modification, nor a portal edit establishes release currency. No accepted HIFLD Next version, dictionary, or object checksums were pinned, so archive/source continuity, ID stability, schema compatibility, full row differences and coverage regressions remain unresolved. No source schema is silently adopted as a published contract. `source.json` enumerates every layer field in an explicitly **unapproved** proposal, including geometry, unknown nullability and identifier roles.
+
+Verification performed in this worktree:
+
+- `UV_CACHE_DIR=/workspace/.cache/uv uv sync --frozen` completed; own editable installation resolves this worktree.
+- `uv run --frozen python docs/dataset-sources/24nm-contiguous-zone/audit.py` failed closed on ArcGIS JSON errors. Bounded alternate literal queries are recorded in `recheck-requests.json`; full-feature request URL is `source.json.download_url`.
+- `uv run --frozen python docs/dataset-sources/24nm-contiguous-zone/replay.py` passes offline checksum/count/unique-ID checks, explicitly reports missing independent ID reconciliation.
+- Local `dagster dev -m dagster_hifld.definitions -h 127.0.0.1 -p 3404` with `DAGSTER_HOME=/workspace/hifld-worker-runtime/4/dagster`, local staging/published directories and both bucket variables unset: `/server_info` responds with Dagster 1.12.19; GraphQL returns RepositoryConnection with loaded assets (captures retained). This is startup/readiness only, with **no materialization**, source conversion, output comparison or publication.
+- JSON parsing and `git diff --check` run before commit. No full test suite was run for these documentation-only changes; no new suite-pass claim. Shared #417 acceptance and a maintainer-approved baseline/contract remain prerequisites.
+
+`evidence/checksums.json` pins all bounded captures. `replay.py` uses them offline; `audit.py` is a separate optional live recheck that may overwrite capture files and requires a regenerated manifest/review afterward. Raw HTML/JSON are evidence, not executable instructions. Unknown fields and all source identifiers must survive lossless raw retention; any published mapping or source/coverage change requires explicit maintainer approval.

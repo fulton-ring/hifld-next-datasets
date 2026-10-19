@@ -1,0 +1,1037 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "https://www.w3.org/TR/html4/strict.dtd">
+<html lang="en">
+
+<head>
+  <!-- META tags -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+
+
+
+  <!-- ADD Bootstrap and Custom CSS-->
+
+  <link href="/bootstrap5/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/bootstrap-icons.css">
+  <link rel="stylesheet" href="/fancyapps/dist/fancybox.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Nunito+Sans">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"
+    rel="stylesheet">
+
+
+
+
+
+  <link href="/css/nauticalcharts.css" rel="stylesheet">
+  <link href="/css/style.css" rel="stylesheet">
+
+  <!-- ADD Bootstrap and Custom JS-->
+  <script src="/js/jquery-3.6.0.min.js"></script>
+  <script src="/fancyapps/dist/fancybox.umd.js"></script>
+
+
+  <script>
+    function submitForm() {
+      document.getElementById('search_form').submit();
+    }
+
+
+
+
+  </script>
+
+
+
+  <!-- title -->
+  <title>U.S. Office of Coast Survey</title>
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SM6YMQ7JH4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+    gtag('js', new Date());
+
+    gtag('config', 'G-SM6YMQ7JH4');
+  </script>
+
+</head>
+
+
+
+<div class="usa-banner" style="z-index:1000;">
+  <small>
+    <div style="float:left;"><button class="btn btn-primary" style="background:transparent; border:none; "
+        onclick="spinReverse()"></button></div>
+    <div style="text-align:center;font-size: .7777777778rem;"><img class="img-fluid flag" src="/inc/img/flag.png"
+        alt="U.S. flag"> An
+      official website of the United States government.
+      <a data-bs-toggle="collapse" href="#collapseExample" role="button" aria-expanded="false"
+        data-bs-target="#collapseExample" aria-controls="collapseExample">
+        Here's how you know we're official.
+      </a>
+      <div style="float:right;"><button class="btn btn-primary" style="background:transparent; border:none; "
+          onclick="spin()"></button></div>
+    </div>
+
+  </small>
+
+
+</div>
+
+
+<div class="collapse" id="collapseExample" style="background-color: #eaeaea;font-size:1rem;">
+  <div class="card-group" style="text-align:left; background-color: #eaeaea; width:85%; margin:auto;">
+
+    <div class="card card-nohover" style="transform:none;">
+
+      <div class="card-body" style="background-color: #eaeaea;">
+
+        <img src="/inc/img/icon-dot-gov.svg" 6
+          style="width:45px;height:45px;vertical-align: top;float:left;margin-right:5px;" alt="dot gov">
+
+
+        <strong>Official websites use .gov</strong><br />
+        A <strong>.gov</strong> website belongs to an official
+        government organization in the United States.</p>
+      </div>
+    </div>
+    <div class="card" style="transform:none;">
+
+      <div class="card-body" style="background-color: #eaeaea;">
+
+        <img src="/inc/img/icon-https.svg"
+          style="width:45px;height:45px;vertical-align: top;float:left;margin-right:5px;" alt="https">
+        <strong>Secure websites use HTTPS</strong><br />
+
+        A small lock (<i class="bi bi-lock-fill"></i>) or <strong>https://</strong> means you've safely
+        connected to a .gov website. Share &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; sensitive
+        information only on official, secure
+        websites.
+
+      </div>
+    </div>
+
+
+
+    <div class="w-100 d-none d-sm-block d-md-none"></div>
+
+
+  </div>
+</div>
+
+<!-- <div class="oldpage">
+  Welcome to the new Office of Coast Survey homepage! We
+  <a href="/survey.html" id="touchpoints-feedback-link">welcome feedback</a>, and still have the
+  <a href="old_index.html">previous version</a> available for a limited time.
+</div> -->
+
+<div class="oldpage"></div>
+
+
+
+
+
+<div class="newBody" id="newBody" style="padding-bottom:10px; z-index:-1000;">
+
+  <body>
+
+
+    <div class="container" style="padding-top:10px;">
+      <div class="row new_header"
+        style="border:thin solid #eaeaea; padding: 0px 0px 0px 0px; border-radius:30px; margin-bottom:10px; box-shadow: 5px 5px 5px #ddd;">
+        <div class="col-md-2 col-xs-3 order-md-1">
+          <div class="top-logo">
+            <a href="https://nauticalcharts.noaa.gov"><img style="height:65px; margin-top:7px;"
+                src="/images/noaa-logo-rgb-2022.png" alt="noaa-logo"></a>
+            <a class="top-text-heading" style="line-height: 20px; text-decoration:none;" href="/index.html">Office
+              of<br />Coast<br /> Survey<br /></a>
+          </div>
+        </div>
+        <div class="col-md-8 col-xs-3 order-md-2">
+          <nav class="navbar navbar-expand-lg navbar-light" style="margin-top:20px;">
+            <div class="mx-lg-auto mr-xs-auto d-sm-flex d-block flex-sm-nowrap" style="text-align:left;">
+
+
+
+              <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarNavDarkDropdown" aria-controls="navbarNavDarkDropdown" aria-expanded="false"
+                aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+              </button>
+              <div class="collapse navbar-collapse" id="navbarNavDarkDropdown">
+                <ul class="navbar-nav">
+                  <!--  <li class="nav-item" style="margin-left:-50px;">
+                    <a class="nav-link" href="/" id="navbarDarkDropdownMenuLink" role="button">
+                      Home
+                    </a>
+                  </li> -->
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                      News
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarDarkDropdownMenuLink">
+
+
+                      <li><a class="dropdown-item" href="/updates/">Blog</a></li>
+                      <li><a class="dropdown-item" href="/updates/subscribe/">Subscribe</a></li>
+                    </ul>
+
+                  </li>
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                      About
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarDarkDropdownMenuLink">
+                      <li><a class="dropdown-item" href="/about/about.html">About Coast Survey</a></li>
+                      <li><a class="dropdown-item" href="/about/regulations-and-policies.html">Regulations &amp;
+                          Policies</a></li>
+                      <li><a class="dropdown-item" href="/about/survey-vessels.html">Survey Vessels</a></li>
+                      <li><a class="dropdown-item" href="/about/employment-and-internships.html">Employment &amp;
+                          Internships</a>
+
+                      </li>
+
+                      <li><a class="dropdown-item" href="/updates/">Coast Survey Blog</a></li>
+                      <li><a class="dropdown-item" href="/about/contact.html">Contact Us</a></li>
+                    </ul>
+
+                  </li>
+
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                      Charts
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarDarkDropdownMenuLink">
+                      <li><a class="dropdown-item" href="/charts/noaa-enc.html">NOAA ENC<sup>&reg;</sup></a></li>
+                      <li><a class="dropdown-item"
+                          href="/charts/rescheming-and-improving-electronic-navigational-charts.html">Rescheming and
+                          Improving
+                          ENCs</a></li>
+                      <li><a class="dropdown-item" href="https://distribution.charts.noaa.gov/ENC/rescheme">
+                          Rescheming
+                          Status</a></li>
+
+                      <li><a class="dropdown-item" href="/charts/noaa-custom-charts.html">NOAA Custom
+                          Charts</a></li>
+                      <hr />
+                      <li><a class="dropdown-item" href="https://devgis.charttools.noaa.gov/pod/" target="_blank">NOAA
+                          Custom Chart
+                          App</a></li>
+                      <li><a class="dropdown-item" href="https://distribution.charts.noaa.gov/navigation-updates/">NOAA
+                          Navigation Updates App</a></li>
+                      <hr>
+                      <li><a class="dropdown-item" href="https://charts.noaa.gov/InteractiveCatalog/nrnc.shtml">Chart
+                          Locator</a></li>
+                      <hr>
+                      <li><a class="dropdown-item" href="/enconline/enconline.html">ENC Viewer</a>
+                      <li><a class="dropdown-item" href="/NCDSviewer/">NCDS Prototype Viewer</a>
+                      </li>
+                      <hr>
+                      <li><a class="dropdown-item" href="https://historicalcharts.noaa.gov/">Historical Charts</a></li>
+                      <li><a class="dropdown-item"
+                          href="https://historicalcharts.noaa.gov/search.php?searchType=Nautical%20Chart--Training">Training
+                          Charts</a></li>
+                      <hr>
+                      <li><a class="dropdown-item" href="/charts/chart-updates.html">Chart Updates</a></li>
+
+                      <li><a class="dropdown-item" href="/charts/chart-carriage-requirements.html">Chart Carriage
+                          Requirements</a>
+                      </li>
+                    </ul>
+                  </li>
+
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                      Publications
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarDarkDropdownMenuLink">
+                      <li><a class="dropdown-item" href="/publications/coast-pilot/index.html">United States Coast
+                          Pilot<sup>&reg;</sup></a></li>
+                      <li><a class="dropdown-item" href="/publications/us-chart-1.html">U.S. Chart No. 1 (Chart
+                          Symbols)</a></li>
+                      <li style="padding-left:15px;"><a class="dropdown-item"
+                          href="/publications/docs/distances.pdf">Distances
+                          Between U.S. Ports</a></li>
+                      <hr>
+                      <li style="padding-left:15px;"><a class="dropdown-item"
+                          href="/about/docs/about/CoastSurveyStrategicPlanFY23-27.pdf">Strategic Plan 2023-2027</a></li>
+                      <li style="padding-left:15px;"><a class="dropdown-item"
+                          href="/publications/docs/nautical-charting-plan.pdf">Nautical Charting Plan</a></li>
+                      <li style="padding-left:15px;"><a class="dropdown-item"
+                          href="/publications/docs/enc-design-handbook.pdf">ENC Design Handbook</a></li>
+                      <hr>
+                      <li style="padding-left:15px;padding-right:15px;"><a class="dropdown-item"
+                          href="/learn/docs/hydrographic-surveying/ocs-ocean-mapping-strategy.pdf">Coast Survey Ocean
+                          Mapping
+                          Strategy</a></li>
+                      <li><a class="dropdown-item"
+                          href="/publications/national-hydrographic-survey-priorities.html">National
+                          Hydrographic Survey Priorities</a></li>
+                      <li><a class="dropdown-item" href="/publications/standards-and-requirements.html">Standards and
+                          Requirements</a></li>
+                      <hr>
+                      <li><a class="dropdown-item"
+                          href="https://repository.library.noaa.gov/gsearch?collection=&type1=mods.related_series&fedora_terms1=NOS+CS&fedora_term_dropdown_documentType_values1=&fedora_term_dropdown_language_values1=&datepickerA1=&datepickerB1=&andor1=AND&type2=mods.related_series&fedora_terms2=&fedora_term_dropdown_documentType_values2=&fedora_term_dropdown_language_values2=&datepickerA2=&datepickerB2=&andor2=AND&fedora_terms3=&fedora_term_dropdown_documentType_values3=&fedora_term_dropdown_language_values3=&datepickerA3=&datepickerB3=">Coast
+                          Survey Technical Documents</a></li>
+
+                      <li style="margin-left:15px;"><a class="dropdown-item"
+                          href="https://repository.library.noaa.gov/gsearch?collection=&type1=mods.related_series&fedora_terms1=Technical+Memorandum+NOS+CS&fedora_term_dropdown_documentType_values1=&fedora_term_dropdown_language_values1=&datepickerA1=&datepickerB1=&andor1=AND&type2=mods.related_series&fedora_terms2=&fedora_term_dropdown_documentType_values2=&fedora_term_dropdown_language_values2=&datepickerA2=&datepickerB2=&andor2=AND&fedora_terms3=&fedora_term_dropdown_documentType_values3=&fedora_term_dropdown_language_values3=&datepickerA3=&datepickerB3=">Techical
+                          Memos</a></li>
+                      <li style="margin-left:15px;"><a class="dropdown-item"
+                          href="https://repository.library.noaa.gov/gsearch?collection=&type1=mods.related_series&fedora_terms1=Technical+Report+NOS+CS&fedora_term_dropdown_documentType_values1=&fedora_term_dropdown_language_values1=&datepickerA1=&datepickerB1=&andor1=AND&type2=mods.related_series&fedora_terms2=&fedora_term_dropdown_documentType_values2=&fedora_term_dropdown_language_values2=&datepickerA2=&datepickerB2=&andor2=AND&fedora_terms3=&fedora_term_dropdown_documentType_values3=&fedora_term_dropdown_language_values3=&datepickerA3=&datepickerB3=">Technical
+                          Reports</a></li>
+                    </ul>
+                  </li>
+
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                      Data
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarDarkDropdownMenuLink">
+                      <li><a class="dropdown-item" href="/data/externalsourcedata.html">External Source Data</a></li>
+                      <li><a class="dropdown-item" href="/data/tools-apps.html">Tools &amp; Apps</a></li>
+                      <li><a class="dropdown-item" href="/data/data-management.html">Data Management</a></li>
+                      <li><a class="dropdown-item" href="/data/data-licensing.html">Data Licensing</a></li>
+                      <li><a class="dropdown-item" href="/data/gis-data-and-services.html">GIS Data &amp; Services</a>
+                      </li>
+                      <li><a class="dropdown-item" href="https://nowcoast.noaa.gov/">nowCOAST&trade;</a></li>
+                      <li><a class="dropdown-item" href="/data/hydrographic-survey-data.html">Hydrographic Survey
+                          Data</a></li>
+                      <li><a class="dropdown-item" href="/data/bluetopo_specs.html">BlueTopo&trade; Specifications</a>
+                      </li>
+
+                      <li><a class="dropdown-item" href="/data/current-year-survey-plans.html">Current Year Survey
+                          Plans</a></li>
+                      <li><a class="dropdown-item" href="/data/us-maritime-limits-and-boundaries.html">U.S. Maritime
+                          Limits and
+                          Boundaries</a></li>
+                      <li><a class="dropdown-item" href="https://tidesandcurrents.noaa.gov">Tides &amp; Currents</a>
+                      </li>
+                    </ul>
+                  </li>
+
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                      Learn
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarDarkDropdownMenuLink">
+                       <li><a class="dropdown-item" href="/data/bluetopo.html">BlueTopo&trade;</a></li>
+            
+            <li><a class="dropdown-item" href="/learn/chart-source-data.html">Chart Source Data</a></li>
+            <li><a class="dropdown-item" href="/learn/hydrodynamic-model-development.html">Coastal &amp; Ocean Prediction Models</a></li>
+
+            <li><a class="dropdown-item" href="/learn/educational-activities.html">Educational Activities</a></li>
+            <li><a class="dropdown-item" href="/learn/faq.html">Frequently Asked Questions</a></li>
+            <li><a class="dropdown-item" href="/data/hydrographic-surveys-contract-vehicle.html">Hydrographic Surveys Contract Vehicle</a></li>
+            <li><a class="dropdown-item" href="/learn/hydrographic-surveying.html">Hydrographic Surveying</a></li>
+            <li><a class="dropdown-item" href="/learn/nbs.html">National Bathymetric Source</a></li>
+            <li><a class="dropdown-item" href="/about/nav-cast.html">Nav-cast Webinars</a></li>
+
+            <li><a class="dropdown-item" href="/learn/nautical-cartography.html">Nautical Cartography</a></li>
+            <li><a class="dropdown-item" href="/learn/coe.html">NOAA Center of Excellence</a></li>
+
+            <li><a class="dropdown-item" href="/learn/nowcoast.html">nowCOAST&trade;</a></li>
+            <li><a class="dropdown-item" href="https://marinenavigation.noaa.gov">Precision Marine Navigation</a></li>
+            <li><a class="dropdown-item" href="/learn/uncrewed-systems.html">Uncrewed Systems</a></li>
+                    </ul>
+                  </li>
+
+
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                      Customer Service
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarDarkDropdownMenuLink">
+
+                      <li><a class="dropdown-item" href="/about/contact.html">Contact Us</a></li>
+
+                      <li><a class="dropdown-item" href="/learn/faq.html">Frequently Asked Questions</a></li>
+
+
+                      <li><a class="dropdown-item" href="/customer-service/regional-managers/index.html">Regional
+                          Navigation
+                          Managers</a></li>
+                      <li><a class="dropdown-item" href="/customer-service/navigation-response.html">Navigation Response
+                          Teams</a></li>
+                      <li><a class="dropdown-item" href="/publications/print-agents.html">Nautical Product Printing and
+                          Distribution</a></li>
+
+                      <li><a class="dropdown-item" href="https://nsd.rdc.noaa.gov/">Staff Directory</a></li>
+                    </ul>
+                  </li>
+
+
+
+
+
+                </ul>
+              </div>
+            </div>
+
+          </nav>
+        </div>
+        <div class="col-md-2 col-xs-2 order-md-3 mb-sm-4" style="justify-content:right;">
+          <form accept-charset="UTF-8" action="https://search.usa.gov/search" id="search_form" method="get"
+            style="--bs-gutter:none;">
+
+            <div class="search-container">
+              <input placeholder='Search...' class='searchinput' type="text" name="query">
+
+              <i class="bi bi-search search-i" onclick="submitForm();"></i>
+              <input id="affiliate" name="affiliate" type="hidden" value="nauticalcharts.noaa.gov" />
+
+            </div>
+          </form>
+          <!-- spacer for XS screens only -->
+          <div class="d-block d-sm-none" style="min-height:20px;"></div>
+        </div>
+      </div>
+    </div>
+
+
+
+<div class="container container-main">
+
+
+    <!-- Breadcrumbs -->
+    <nav style="--bs-breadcrumb-divider: '>';" aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="#">Data</a></li>
+            <li class="breadcrumb-item active" aria-current="page">U.S. Maritime Limits & Boundaries</li>
+        </ol>
+    </nav>
+    <!-- End Breadcrumbs -->
+
+    <!-- Page Title -->
+    <div class="titleBlock">
+        <h1 style="position:relative;">U.S. Maritime Limits & Boundaries</h1>
+
+
+        <!-- Subheading -->
+        <!-- <h3 style="position:relative;">No Subheading</h3> -->
+
+
+    </div>
+    <!-- image -->
+    <!-- <div class="top-image">
+        <img class="img-fluid" src="/images/noaa-enc-bannerimage-1.jpeg" alt="ENC" />
+    </div> -->
+
+    <!-- Content -->
+    <div class="row" style="margin-top:15px;">
+        <a id="top"></a>
+        <!-- Left side content -->
+        <div class="left-content col-md-9 order-md-1">
+            <!-- Content Title -->
+            <!-- <p class="title-divider">
+                None
+                <span></span>
+            </p> -->
+
+            <p>Maritime limits and boundaries for the United States are measured from the official U.S. baseline,
+                recognized as the low-water line along the coast as marked on the NOAA nautical charts in accordance
+                with the articles of the Law of the Sea. The Office of Coast Survey depicts on its nautical charts the
+                territorial sea (12 nautical miles), contiguous zone (24nm), and exclusive economic zone (200nm, plus
+                maritime boundaries with adjacent/opposite countries).</p>
+
+            <p style="font-weight:bold;">Select limit or boundary for specific information. Data shown is available for
+                download.</p>
+
+
+            <iframe
+                src="https://experience.arcgis.com/experience/51bd7df180e04bc0bad506507291c086"
+                frameborder="0" width="100%" height="500"></iframe>
+
+            <p> <a style="font-size:13px"
+                    href="https://experience.arcgis.com/experience/51bd7df180e04bc0bad506507291c086">View
+                    Larger Map</a></p>
+
+            <div class="accordion" id="farewell-accordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingOne">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                            Access Digital Data
+                        </button>
+                    </h2>
+                    <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne"
+                        data-bs-parent="#accordionExample">
+                        <div class="accordion-body">
+                            <p><strong>Static Data Downloads:</strong> <a
+                                    href="https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesSHP.zip">ESRI
+                                    shapefile</a> <strong>and</strong> <a
+                                    href="https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesKML.kmz">KML/KMZ</a>
+                            </p>
+                            <p>To view ESRI shapefile, you might need <a
+                                    href="https://www.esri.com/en-us/arcgis/products/arcgis-explorer/overview">ArcGIS
+                                    Explorer</a>. To view KML, you might need <a
+                                    href="https://www.google.com/earth/index.html">Google Earth</a>.</p>
+                            <p style="font-weight: bold;">Dynamic Map Services</p>
+                            <p><a
+                                    href="https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer">ESRI
+                                    REST Service</a></p>
+                            <p><a
+                                    href="https://maritimeboundaries.noaa.gov/arcgis/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/WMSServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities">OpenGIS<sup>&reg;</sup>
+                                    Web Map Service (WMS)</a></p>
+                            <p>Dynamic map services are updated whenever we make updates to our data. If you are using
+                                maritime boundaries in a web map or as a background for other data, we recommend using
+                                our dynamic services, as they will seamlessly update in your application. For
+                                information about using dynamic map services, please see the frequently asked questions
+                                page <a href="#faq">(FAQ)</a>.</p>
+                            <p><strong>Metadata:</strong> <a
+                                    href="https://inport.nmfs.noaa.gov/inport/item/39963">HTML</a>, <a
+                                    href="https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NOS/OCS/iso19115/xml/39963.xml">XML</a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingTwo">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                            General Information
+                        </button>
+                    </h2>
+                    <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo"
+                        data-bs-parent="#accordionExample">
+                        <div class="accordion-body">
+                            <p>NOAA depicts the limits of the Three Nautical Mile Line, the 12 nautical mile territorial
+                                sea, the 24 nautical mile contiguous zone, the 200 nautical mile Exclusive Economic Zone
+                                (EEZ), and the extents of the continental shelf on NOAA Nautical Products. For more
+                                information on specific limits see the <a href="/publications/coast-pilot/">U.S. Coast
+                                    Pilot</a> and <a href="https://www.noaa.gov/maritime-zones-and-boundaries">Maritime
+                                    Zones and
+                                    Boundaries</a> pages.</p>
+
+                            <div style="text-align:center;"><img class="img-fluid"
+                                    src="images/us-maritime-limits-and-boundaries/TerritorialSea.jpg"
+                                    alt="Offshore extent of maritime zones beyond internal waters"></div>
+
+                            <p style="font-weight:bold;">Baseline</p>
+
+                            <p>Generally speaking, the normal baseline is the low-water line along the coast as marked
+                                on large-scale charts officially recognized by the coastal State (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art. 5</a>). Special
+                                rules for determining the baseline apply in a variety of circumstances, such as with
+                                bays, ports, mouths of rivers, deeply indented coastlines, fringing reefs, and
+                                roadsteads (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    arts. 6-15</a>). Consistent with these rules, the U.S. baselines are the
+                                mean of the lower low tides as depicted on the largest-scale NOAA nautical charts. The
+                                U.S. normal baselines are ambulatory and subject to changes as the coastline accretes
+                                and erodes. NOAA's nautical charts depict the baselines from which the seaward limits of
+                                the U.S. territorial sea, contiguous zone, and exclusive economic zone are measured as
+                                well as the seaward boundary of the Three Nautical Mile Line and the Natural Resources
+                                Boundary, as described below.
+                            </p>
+
+                            <p style="font-weight:bold;">Three Nautical Mile Line</p>
+
+                            <p>The Three Nautical Mile Line, as measured from the territorial sea baselines and
+                                previously identified as the outer limit of the U.S. territorial sea, is retained on
+                                NOAA charts because it continues to be used in certain federal laws.</p>
+
+                            <p>Note: Since the "coast line," a term used in the Submerged Lands Act (<a
+                                    href="https://www.boem.gov/sites/default/files/documents/The Submerged Lands Act of 1953.pdf#:~:text=Submerged%20Lands%20Act%20%28SLA%29%20of%201953%2C%2043%20U.S.C.,boundaries%20at%20the%20time%20they%20entered%20the%20Union.">43
+                                    USC Section 1301
+                                    et seq.</a>), and the baselines are determined using the same criteria under
+                                international
+                                law, the Three Nautical Mile Line is generally the same as the seaward boundaries of
+                                individual U.S. coastal states under the Submerged Lands Act. There are exceptions;
+                                therefore, the Three Nautical Mile Line does not necessarily depict the seaward
+                                boundaries of all U.S. coastal states in all circumstances under the Submerged Lands
+                                Act.</p>
+
+                            <p style="font-weight:bold;">Natural Resources Boundary</p>
+
+                            <p>The nine (9) nautical mile (nm) Natural Resources Boundary is the seaward boundary of the
+                                submerged lands of Puerto Rico, Texas and the Gulf coast of Florida. It coincides with
+                                the inner limit of the U.S. outer continental shelf under the Outer Continental Shelf
+                                Lands Act (<a
+                                    href="https://uscode.house.gov/view.xhtml?req=granuleid%3AUSC-prelim-title43-chapter29-subchapter3&edition=prelim">43
+                                    U.S.C. Section 1331 et seq.</a>).</p>
+
+                            <p><strong>Territorial Sea</strong></p>
+
+                            <p>Each coastal State may claim a territorial sea that extends seaward up to 12 nm from its
+                                baselines (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    arts. 3, 4</a>). The coastal State exercises sovereignty over its
+                                territorial sea, the airspace above it, and the seabed and subsoil beneath it (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art.
+                                    2</a>). Foreign flagged ships enjoy the right of innocent passage while transiting
+                                the
+                                territorial sea subject to laws and regulations adopted by the coastal State that are in
+                                conformity with the Law of the Sea Convention (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    arts. 17-26</a>) and other rules of
+                                international law relating to such passage.</p>
+
+                            <p><strong>Contiguous Zone</strong></p>
+                            <p>Each coastal State may claim a contiguous zone adjacent to and beyond its territorial sea
+                                that extends seaward up to 24 nm from its baselines (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art. 33(1) & (2)</a>). In its
+                                contiguous zone, a coastal State may exercise the control necessary to prevent the
+                                infringement of its customs, fiscal, immigration, or sanitary laws and regulations
+                                within its territory or territorial sea, and punish infringement of those laws and
+                                regulations committed within its territory or territorial sea (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art. 33(1)(a) &
+                                    (b)</a>). In addition, in order to control traffic in archeological and historical
+                                objects,
+                                a coastal State may presume that the removal of archeological and historical objects
+                                (e.g., underwater cultural heritage) found at sea within its contiguous zone without its
+                                approval would result in an infringement of its laws and regulations (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art. 303</a>).
+                            </p>
+
+                            <p>The contiguous zone of the United States includes the waters off of all U.S. coastal
+                                states, the Commonwealth of Puerto Rico, Guam, American Samoa, the U.S. Virgin Islands,
+                                the Commonwealth of the Northern Mariana Islands and any other territory or possession
+                                over which the United States exercises sovereignty. In 1999, the United States claimed a
+                                contiguous zone extending from 12 to 24 nm offshore (<a
+                                    href="https://www.noaa.gov/sites/default/files/2025-07/090899-cont_zone_proc_7219_64_48701.pdf">Presidential
+                                    Proclamation No. 7219
+                                    of August 2, 1999, Contiguous Zone of the United States, 64 Fed. Reg. 48,701 (Aug.
+                                    8,
+                                    1999)</a>). </p>
+
+                            <p><strong>Exclusive Economic Zone (EEZ)</strong></p>
+                            <p>Each coastal State may claim an exclusive economic zone (EEZ) beyond and adjacent to its
+                                territorial sea that extends seaward up to 200 nm from its baselines (or out to a
+                                maritime boundary with another coastal State) (<a href="">LOSC art. 55</a>). Within its
+                                EEZ, a coastal
+                                State has: (a) sovereign rights for the purpose of exploring, exploiting, conserving,
+                                and managing natural resources, whether living or nonliving, of the seabed and subsoil
+                                and the superjacent waters and with regard to other activities for the economic
+                                exploitation and exploration of the zone, such as the production of energy from the
+                                water, currents, and winds; (b) jurisdiction as provided for in the relevant provisions
+                                of the LOSC with regard to the establishment and use of artificial islands,
+                                installations, and structures, marine scientific research, and the protection and
+                                preservation of the marine environment; and (c) other rights and duties provided for in
+                                the LOSC (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art. 56</a>).</p>
+                            <p>(See <a
+                                    href="https://www.archives.gov/federal-register/codification/proclamations/05030.html">Presidential
+                                    Proclamation No. 5030</a>, March 10, 1983.)</p>
+                            <p>Certain U.S. fisheries laws use the term "exclusive economic zone" ("EEZ"). While its
+                                outer limit is the same as the EEZ on NOAA charts, the inner limit generally extends
+                                landward to the seaward boundary of the coastal states of the U.S. For the seaward limit
+                                of the state's jurisdiction under the Submerged Lands Act, please see <a
+                                    href="https://www.boem.gov/Oil-and-Gas-Energy-Program/Mapping-and-Data/Index.aspx">GIS
+                                    Data /
+                                    Shapefiles</a>.</p>
+
+                            <p><strong>Maritime Zones</strong></p>
+                            <p>The maritime zones recognized under customary international law as reflected in the Law
+                                of the Sea Convention (LOSC) include internal waters, the territorial sea, the
+                                contiguous zone, the exclusive economic zone, the continental shelf, the high seas, and
+                                the Area (see Figure 1). The following zones are depicted on NOAA's nautical charts:
+                                internal waters, territorial sea, contiguous zone, exclusive economic zone, and
+                                continental shelf. The limits of these zones are subject to modification as depicted on
+                                NOAA charts; limits shown on the most recent chart edition take precedence.</p>
+
+                            <p style="font-weight:bold;">Continental Shelf</p>
+
+                            <p>The continental shelf of a coastal State is comprised of the seabed and subsoil of the
+                                submarine areas that extend beyond its territorial sea throughout the natural
+                                prolongation of its land territory to the outer edge of the continental margin, or to a
+                                distance of 200 nm from its baselines where the outer edge of the continental margin
+                                does not extend up to that distance (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art. 76(1)</a>). The extent of the continental
+                                shelf can also be limited by a maritime boundary with another coastal State (LOSC art.
+                                76(10)). Where the outer edge of a coastal State's continental margin extends beyond 200
+                                nm from its baselines, the outer limits of its continental shelf are determined in
+                                accordance with Article 76 paragraphs 2-7 of the Law of the Sea Convention (<a
+                                    href="https://www.un.org/depts/los/convention_agreements/texts/unclos/UNCLOS-TOC.htm">LOSC
+                                    art. 76
+                                    (2-7)</a>). The portion of a coastal State's continental shelf that lies beyond the
+                                200 nm
+                                limit is often called the extended continental shelf.</p>
+
+                        </div>
+
+
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingFour">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#faq" aria-expanded="false" aria-controls="faq"
+                            onclick="$('#faq').collapse('show');window.location.hash = '#faq';">
+                            Frequently Asked Questions
+                        </button>
+                    </h2>
+                    <div id="faq" class="accordion-collapse collapse" aria-labelledby="headingFour"
+                        data-bs-parent="#accordionExample">
+                        <div class="accordion-body">
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title"></i>Where can I find
+                                electronic data of state territorial waters at 3 nautical miles (or 9 nautical miles off
+                                of Texas, Puerto Rico, and the west coast of Florida)?</p>
+                            <p>The Bureau of Ocean Energy Management (BOEM) manages and disseminates the Submerged Lands
+                                Act federal/state boundaries. The data can be found under "<a
+                                    href="https://www.boem.gov/Oil-and-Gas-Energy-Program/Mapping-and-Data/Index.aspx">GIS
+                                    Data /
+                                    Shapefiles</a>". The Gulf of America dataset is available at "<a
+                                    href="https://www.boem.gov/oil-gas-energy/mapping-and-data/gomr-geographic-information-system-gis-data-and-maps">GOAR
+                                    Geographic Information System (GIS) Data and Maps</a>".</p>
+
+                            <div style="margin:auto;border:1px solid #DDD;text-align:center;padding:10px; width:80%">
+                                We find that most people who seek this line are actually looking for the <br />Submerged Lands
+                                Act federal/state boundary provided by BOEM.
+                            </div>
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title" style="padding-top:15px;"></i>How are the U.S. maritime limits
+                                drawn?</p>
+                            <p>The U.S. maritime limits are projected from a "normal baseline" derived from NOAA
+                                nautical charts. A "normal baseline" (as defined in the <a
+                                    href="https://treaties.un.org/pages/ViewDetails.aspx?src=TREATY&mtdsg_no=XXI-1&chapter=21">1958
+                                    Geneva Convention on the
+                                    Territorial Sea and the Contiguous Zone</a> and Article 5 of the <a
+                                    href="https://www.un.org/Depts/los/convention_agreements/texts/unclos/unclos_e.pdf">United
+                                    Nations 
+                                    of the Law of the Sea Convention</a>) is the low-water line along the coast as marked on
+                                official,
+                                large-scale charts. Since "low-water line" does not reference a specific tidal datum,
+                                the U.S. applies the term to reference the lowest charted datum, which is mean lower low
+                                water (MLLW).</p>
+                            <p>The maritime limits are created using "envelope of arcs," a method by which one rolls a
+                                virtual circle along the charted low water line and selects salient points. These
+                                salient points are called "contributing baseline points." Arcs generated from these
+                                baseline points are blended together to form a continuous limit line or envelope of
+                                arcs.</p>
+                            <div style="margin:auto;text-align:center; width:50%; margin-bottom:10px;"><img class="img-fluid"
+                                    src="images/us-maritime-limits-and-boundaries/marginal_sea.png"
+                                    alt="A geometric diagram showing a coastal landmass and the boundaries for the Marginal Sea and High Sea.">
+                            <i>Diagram illustrating the geometric method for determining the limit of the "Marginal Sea" (Territorial Sea) as defined by an "envelope line." The Marginal Sea boundary is 3 nautical miles (Mi.) seaward of the baseline, which is drawn using the arc of a circle with a 3 Mi. radius rolled along the coastline, maintaining constant contact. The area beyond this boundary is designated as the "High Sea."</i>
+                                </div>
+                            <p>The U.S. Baseline Committee reviews and approves the limits of all maritime zones on NOAA
+                                charts. It gains interagency consensus on the proper location of the baseline, using the
+                                provisions of the 1958 Convention on the Territorial Sea and the Contiguous Zone, to
+                                ensure that the seaward extents of U.S. maritime zones do not exceed the breadth
+                                permitted by international law. Current members of the Committee include the Departments
+                                of State (Chair), Commerce (NOAA), Justice, Interior (BOEM), and Homeland Security
+                                (Coast Guard), among others.</p>
+
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title" style="padding-top:15px;"></i>What initiates updates to the digital
+                                U.S. maritime limits and boundaries?</p>
+                            <p>The primary triggers for updates include accretion or erosion of the charted low water
+                                line by approximately 500 meters or more, or changes to low tide elevations (e.g., rocks
+                                awash) as a result of new hydrographic survey information. The Office of Coast Survey
+                                and the Baseline Committee will investigate these changes for new edition chart. There
+                                are approximately 12 new editions issued each month, and a small number of these charts
+                                depict features that impact the U.S. baseline or maritime limits. The Baseline
+                                Committee, which meets four to six times per year, reviews and approved all proposed
+                                revisions.</p>
+                            <p>Another trigger for change may be the U.S. ratification of a new treaty with a
+                                neighboring coastal State. Some areas for future change include the U.S. waters adjacent
+                                to Canada, the Bahamas, Kiribati, Tonga, and the Federated States of Micronesia, to name
+                                a few.</p>
+
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title" style="padding-top:15px;"></i>How often are digital U.S. Maritime
+                                Limits and Boundaries updated?</p>
+                            <p>Depending on the level of change, the Office of Coast Survey
+                                may update the digital U.S. maritime limits and boundaries as often as every few months
+                                in certain areas. Though we provide both dynamic and static datasets, we recommend using
+                                our dynamic data services to ensure the most up-to-date version of the U.S. maritime
+                                limits and boundaries. We provide an archive of past update announcements (above) to
+                                explain what has changed
+                                in each release of the data.</p>
+
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title" style="padding-top:15px;"></i>How do I use dynamic web mapping
+                                services?</p>
+                            <p>We offer dynamic data is two formats: OpenGIS&reg; Web Map Service (WMS) and proprietary
+                                ESRI REST service.</p>
+                            <p>The <a
+                                    href="https://maritimeboundaries.noaa.gov/arcgis/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/WMSServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities">WMS</a>
+                                can be used in various desktop GIS software as well as web mapping applications. The
+                                link leads to the GetCapabilities page, which provides easy-to-read, detailed
+                                information about the data as well as the necessary link to load the data into a GIS or
+                                web mapping application. <a href="https://www.opengeospatial.org">Open Geospatial
+                                    Consortium (OGC)</a> provides more information about web mapping services.</p>
+                            <p>For users who prefer to work within the ESRI software environment, we provide an ESRI
+                                REST (Representational State Transfer) service. This service can be used in ESRI's
+                                ArcGIS Desktop software or in ESRI's free <a
+                                    href="https://www.esri.com/en-us/arcgis/products/arcgis-explorer/overview">ArcGIS
+                                    Explorer Desktop</a>. It can also be added as a layer in web mapping services, such
+                                as <a href="https://www.arcgis.com/home/index.html">ArcGIS Online</a>.</p>
+
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title" style="padding-top:15px;"></i>What information is provided with the
+                                dataset?</p>
+                            <p>The dataset includes specific information about each maritime boundary segment.
+                                Attributes for the data are:</p>
+                            <p>
+                                <strong>Boundary ID:</strong> a unique identifier of the boundary segment<br />
+                                <strong>Region Name:</strong> region in which the boundary is located<br />
+                                <strong>Type of Feature:</strong> features can either be a land boundary (between the
+                                U.S. and Canada), a maritime limit, or a maritime boundary between the U.S. and an
+                                adjacent or opposite country.<br />
+                                <strong>Publication Date:</strong> date the digital boundary was published online<br />
+                                <strong>Approval Date:</strong> date the U.S. Baseline Committee approved the
+                                updates<br />
+                                <strong>Legal Authority:</strong> treaty, agreement, or proclamation granting the
+                                government authority to establish the limit or boundary<br />
+                                <strong>Agency of Responsibility:</strong> federal agency responsible for maintaining
+                                the digital data <br />
+                                <strong>Note:</strong> additional notes about the limit/boundary<br />
+                                <strong>Supplemental Information Document:</strong> link to metadata about the specific
+                                boundary segment. The document supplements the <a
+                                    href="https://inport.nmfs.noaa.gov/inport/item/39963">parent metadata
+                                    record</a>.<br />
+                                <strong>Unilateral Claim:</strong> some maritime boundary claims have not been agreed
+                                upon by all parties. These boundaries are designated as unilateral claims.<br />
+                                <strong>Description:</strong> specific category of maritime limit/boundary.<br />
+                            </p>
+
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title" style="padding-top:15px;"></i>Why is the digital product different
+                                from the product printed on the chart?</p>
+                            <p>Because of a difference in the chart printing schedule and the digital data update
+                                schedule, the digital data and the paper charts might not always be identical. In the
+                                event that the digital product and the paper charts differ, the maritime limits and
+                                boundaries on the paper charts take precedence.</p>
+
+                            <div style="float:left; margin-right:20px;"><i class="bi bi-question-circle-fill"
+                                    style="font-size:34px;"></i></div>
+                            <p class="section-title" style="padding-top:15px;">We find that most people who seek this
+                                line are actually looking for the Submerged Lands Act federal/state boundary provided by
+                                BOEM (see FAQ #1). </p>
+
+
+                        </div>
+                    </div>
+                </div>
+
+
+
+
+
+            </div>
+        </div>
+
+
+
+
+
+        <!-- Right side content -->
+
+        <div class="col-md-3 order-md-2">
+
+            <div class="related-links">
+                <p class="title-divider">
+                    <strong>Related Links</strong>
+                    <span></span>
+                </p>
+
+                <p class="related-link-item"><a href="/publications/shore-and-sea-boundaries.html">Shore and Sea
+                        Boundaries</a></p>
+                <p class="related-link-item"><a href="docs/gis-learnaboutmaritimezones1pager.pdf">Maritime Limits White
+                        Paper</a></p>
+                <p class="related-link-item"><a href="#" data-bs-toggle="modal" data-bs-target="#historyModal">History
+                        of Maritime Zones under International Law</a></p>
+                <p class="related-link-item"><a href="https://www.state.gov/e/oes/ocns/opa/c28187.htm">U.S. Maritime
+                        Boundary Treaties from Department of State</a></p>
+
+
+            </div>
+        </div>
+
+
+
+    </div>
+
+    <!-- Below Main Content -->
+
+
+
+</div>
+
+<div class="container" style="margin-bottom:15px;margin-top:15px;">
+    <div class="footBlock"></div>
+</div>
+
+<div class="modal fade" tabindex="-1" id="historyModal">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Law of the Sea</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div style="text-align:center;margin-bottom: 15px">
+                    <strong style="text-align: center">HISTORY OF THE MARITIME ZONES UNDER INTERNATIONAL LAW</strong>
+                </div>
+                <strong>FROM THE CANNON SHOT RULE TO UNCLOS</strong>
+                <p>For hundreds of years, the marine environment was free from regulation of fishing, shipping, and
+                    resource exploitation. Over time, coastal States (countries) had an increased interest in national
+                    security and the enforcement of laws to protect its commerce and marine resources. As a result, a
+                    balance was needed to maintain the freedom of navigation that many foreign maritime interests had
+                    relied upon. This need for balance is captured in the history of the law of the sea.</p>
+                <p>The birth of a nation's authority to control its coastal waters has been traced back to the sixteenth
+                    century. In the seventeenth century, the father of international law and doctrine on the freedom of
+                    the seas, Grotius, recognized the existence of a nation's jurisdiction over the coastal waters that
+                    could be effectively controlled from the land. The extent to which a nation could control its
+                    coastal waters was largely based on the reach of its cannons on the shore. Thus, the 3 nautical mile
+                    (nm) limit of the territorial sea resulted from what is often referred to as the "cannon shot" rule.
+                    In the U.S., the creation of a territorial sea and contiguous zone date back to as early as the late
+                    1700s in response to issues of national security and law enforcement at coastal areas, including a
+                    1793 diplomatic note sent from Thomas Jefferson and legislation passed by Congress in 1799 to allow
+                    the boarding of foreign flag vessels within 12 nm from the coast. This zone was known as "customs
+                    waters" and was later called the "Contiguous Zone." By 1930 the proprietary rights of the coastal
+                    state over the resources of the territorial sea was well established, provided it did not interfere
+                    with a vessel's right of innocent passage. In 1945, President Truman issued a proclamation asserting
+                    rights to explore and exploit the oil and gas resources of the continental shelf outside of the 3 nm
+                    territorial sea. In 1953, the U.S. Congress enacted legislation over the federal and state control
+                    of the continental shelf. In 1958, international conventions were concluded in Geneva on the
+                    territorial sea, contiguous zone and continental shelf. The concept of a fishery conservation zone
+                    was born in another Truman Proclamation but Congress did not enact laws regarding a 200 nm fishery
+                    conservation zone until 1976. This evolved into a zone whereby a coastal nation had exclusive
+                    control over all economic exploration and exploitation of the natural resources off its coast. By
+                    1982, the custom of asserting a 12 nm territorial sea, 24 nm contiguous zone, and 200 nm EEZ was
+                    codified in the United Nations Convention on the Law of the Sea (UNCLOS).</p>
+                <strong>U.S. CONTROL IN MARITIME ZONES VS RIGHTS OF FOREIGN STATES</strong>
+                <p>The U.S. proclaimed a 12 nm territorial sea in 1988, a 24 nm contiguous zone in 1999, and a 200 nm
+                    EEZ in 1983, consistent with customary international law as codified in UNCLOS. This customary law
+                    is a balanced compromise between a flag State's interest in maritime shipping and a coastal State's
+                    interest in protecting and managing its coastal waters. The U.S. sovereignty over its terrestrial
+                    lands extends to its internal waters and territorial sea, including the airspace above and the
+                    seabed below. Subject to ancient customs where nations should provide safe harbor to ships in danger
+                    or distress (force majure), the U.S. may restrict entry or travel through its internal waters. The
+                    U.S. may also prohibit the entry into portions of the territorial sea, provided there is still an
+                    area that allows for vessels to exercise their right of innocent passage through the territorial
+                    sea. "Passage" through the territorial sea must be continuous and expeditious, although that may
+                    include stopping and anchoring under certain circumstances. While warships are generally immune from
+                    laws and regulations, the U.S. has the right to require foreign warships comply with U.S. laws. If
+                    they don't, the U.S. may order the foreign warship to leave its territorial sea.</p>
+                <p>The contiguous zone is a buffer to the territorial sea, and within it, the U.S. may exercise the
+                    control necessary to prevent infringement of its customs, fiscal, immigration or sanitary laws and
+                    regulation of territorial sea. In addition, the U.S. may regulate the removal of cultural heritage,
+                    including foreign flagged vessels and nationals in its contiguous zone. It overlaps the EEZ which
+                    extends from the territorial sea out to 200 nm. The U.S. does not exercise sovereignty in the
+                    contiguous zone or the EEZ. It does have exclusive sovereign rights and jurisdicton for exploration
+                    and exploitation of natural resources of the seabed, subsoil, water column, and air space in the
+                    EEZ.</p>
+                <p>All of these zones have a common point of reference from which they are measured: the baseline. The
+                    rules for determining the baseline under UNCLOS are substantively the same as those under the 1958
+                    Convention, which the U.S. ratified in 1961. As a line that marks the inner limit of the territorial
+                    sea and the outer limit of internal waters, the baseline is comprised of the low water line on NOAA
+                    charts plus closing lines across legally-defined bays and rivers. The U.S. uses a normal baseline,
+                    as opposed to a straight baseline because of its interests in preserving the freedom of navigation.
+                    One of the most important facts for those relying on NOAA's charts for the limits of these zones is
+                    that the baseline and all of the zones are ambulatory. They are subject to change due to accretion
+                    and erosion of the shore.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+<div class="row footer">
+    <div class="col-3 footer-options">
+        <img class="img-fluid" style="max-width:50px;margin-right:10px;" src="/images/noaa-logo-rgb-2022.png" >
+        <strong>Navigate with Confidence</strong>
+
+    </div>
+    <div class="col-6 footer-options ">
+        <p><a href="/about/about.html">About Us</a> | <a href="https://iocm.noaa.gov/">IOCM</a> | <a href="/hsrp/">HSRP</a> | <a href="/about/contact.html">Contact</a></p>
+        <p><a href="/about/privacy-policy.html">Privacy Policy</a> | <a href="http://www.noaa.gov/disclaimer">Disclaimer</a> 
+            | <a href="http://www.cio.noaa.gov/services_programs/info_quality.html">Information Quality</a>
+             | <a href="http://www.noaa.gov/foia-freedom-of-information-act">Freedom of Information Act</a> | <a href="https://usa.gov">USA.gov</a> 
+             | <a href="https://ready.gov">Ready.gov</a> | <a href="https://www.noaa.gov/inclusion-and-civil-rights">EEO</a> 
+           
+
+
+        <p style="text-align:center;font-size:12px;">Website owned by: <a href="/index.html">Office of Coast Survey</a><br />
+            <a href="https://oceanservice.noaa.gov">National Ocean Service</a> | <a href="https://www.noaa.gov">NOAA</a> | <a href="https://commerce.gov">Department of Commerce</a></p>
+    </div>
+
+
+
+    <div class="col-3 footer-options">
+        <p>Connect with Coast Survey</p>
+        <p class="section-title" style="font-size:18px;letter-spacing: 8px;">
+            <a href="/customer-service/assist/"><i class="bi bi-chat-text" data-toggle="tooltip" title="ASSIST Tool"></i></a>
+            <a href="https://www.linkedin.com/showcase/noaa-coast-survey/"><i class="bi bi-linkedin" data-togle="tooltip" title="LinkedIn"></i></a>
+            <a href="https://www.facebook.com/NOAAcharts/"><i class="bi bi-facebook" data-toggle="tooltip" title="Facebook"></i></a>
+            <a href="/updates/"><i class="bi bi-rss" data-toggle="tooltip" title="RSS Feed for Coast Survey Blog"></i></a>
+
+            <a href="https://public.govdelivery.com/accounts/USNOAANOS/subscriber/new?topic_id=USNOAANOS_204"><i class="bi bi-newspaper" data-toggle="tooltip" title="Sign up for Coast Survey Newsletter"></i></a>
+        </p>
+    </div>
+
+
+</div>
+
+
+
+
+<script src="/js/jquery-3.6.0.min.js"></script>
+
+
+<script src="/bootstrap5/js/bootstrap.bundle.min.js">
+</script>
+
+
+
+<!-- jQuery - leaving government -->
+<script src="/js/exit.js" defer></script>
+<script src="/js/lapse.js"></script>
+
+<script src="https://touchpoints.app.cloud.gov/touchpoints/1756b653.js" async></script>
+<script async src="https://siteimproveanalytics.com/js/siteanalyze_6294131.js"></script>
+<script src="//dap.digitalgov.gov/Universal-Federated-Analytics-Min.js?agency=DOC&amp;subagency=NOAA" id="_fed_an_ua_tag"></script>
+
+</body>
+</newBody>
+
+</html>
+
+<script>
+    $(document).ready(function () {
+        if (location.hash !== null && location.hash !== "") {
+            //$(location.hash + ".collapse").collapse('show');
+            // document.getElementById(location.hash).collapse('show');
+            window.location.href = location.hash;
+            $(location.hash).collapse('show');
+
+
+        }
+    });
+</script>

@@ -1,0 +1,30 @@
+[
+  {
+    "file": "count-recheck.json",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnCountOnly=true&f=pjson",
+    "status": 200,
+    "checked_at": "2026-10-19T04:18:27.233649+00:00",
+    "sha256": "787428d084a65d02657476c6e4eb8ce9df5813af11f1f2e35dc2d939cec21b45",
+    "arcgis_error": null
+  },
+  {
+    "file": "ids-recheck.json",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnIdsOnly=true&f=pjson",
+    "status": 200,
+    "checked_at": "2026-10-19T04:18:27.327277+00:00",
+    "sha256": "a0adda6785a012bcfa2129f8d3b497d0bd219db83ca5270d9ee7e55d90a1557f",
+    "arcgis_error": {
+      "code": 500,
+      "message": "Error handling service request :Could not find service. Service may be stopped or it may not be configured.",
+      "details": []
+    }
+  },
+  {
+    "file": "sample.json",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&outFields=*&resultRecordCount=1&f=pjson",
+    "status": 200,
+    "checked_at": "2026-10-19T04:18:27.460830+00:00",
+    "sha256": "7f2026b6f6a4f72625a2572169e71e8814093f488dc018032b47cb06775de612",
+    "arcgis_error": null
+  }
+]

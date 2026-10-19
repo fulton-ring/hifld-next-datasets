@@ -1,0 +1,241 @@
+{
+  "dataset_id": "24nm-contiguous-zone",
+  "outcome": "blocked",
+  "requested_status": [
+    "Blocked",
+    "Needs decision",
+    "Potential breaking change"
+  ],
+  "checked_at": "2026-10-19T04:19:06.917231+00:00",
+  "source_role": "producer_publication",
+  "producer": "NOAA National Ocean Service, Office of Coast Survey; U.S. Baseline Committee review",
+  "publisher": {
+    "organization": "NOAA Office of Coast Survey",
+    "host": "maritimeboundaries.noaa.gov",
+    "arcgis_account": null,
+    "account_note": "NOAA-hosted ArcGIS Server, not an identified ArcGIS Online account"
+  },
+  "landing_url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+  "download_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&outFields=*&f=pjson",
+  "lineage_evidence": [
+    {
+      "capture": "evidence/landing.txt",
+      "finding": "Producer landing links exact service and states dynamic services updated when data updated."
+    },
+    {
+      "capture": "evidence/layer.txt",
+      "finding": "Layer 2 names 24NM Contiguous Zone and explicitly credits NOAA/NOS/OCS."
+    }
+  ],
+  "release_date": null,
+  "release_date_note": "No verified dataset-wide release date. PUB_DATE is per-feature publication; fetch time and page update are not release dates.",
+  "feature_publication_values": [
+    "1061942400000",
+    "1077494400000",
+    "1078099200000",
+    "1189382400000",
+    "1202774400000",
+    "1205280000000",
+    "1207180800000",
+    "1239062400000",
+    "1248912000000",
+    "1249257600000",
+    "1249344000000",
+    "1250467200000",
+    "1251158400000",
+    "1254700800000",
+    "1312502400000",
+    "1323820800000",
+    "1334016000000",
+    "1342742400000",
+    "1379030400000",
+    "None"
+  ],
+  "relationship_to_archive": "unresolved: exact continuation cannot be asserted without crosswalk, archive and accepted baseline comparison",
+  "crosswalk": {
+    "status": "unverified",
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "blocker": "urllib anonymous request: Tunnel connection failed: 403 Forbidden; original workbook unavailable; hyperlinks not parsed; no exact match claimed"
+  },
+  "archive": {
+    "url": "https://www.datalumos.org/datalumos/project/238492/version/V1/view",
+    "source_role": "archive",
+    "modification_date": "2025-04-08",
+    "date_is_release": false
+  },
+  "extraction": {
+    "anonymous": true,
+    "count": 63,
+    "retrieved_features": 63,
+    "unique_nonnull_OBJECTID": 63,
+    "maximum_record_count": 1000,
+    "supports_pagination": true,
+    "transfer_limit_exceeded": false,
+    "complete_extraction_status": "provisional_count_reconciliation_only",
+    "independent_all_ids": "blocked: HTTP200 ArcGIS JSON code500 service error",
+    "note": "Full bounded raw response retained; count agrees. No independent ID-set reconciliation or stable-snapshot proof; completeness acceptance remains blocked."
+  },
+  "published_contract": {
+    "status": "PROPOSED_UNAPPROVED",
+    "approved": false,
+    "baseline": null,
+    "scope": "All observed source columns proposed for lossless review only; no accepted published mapping inferred. SHAPE stays geometry, never duplicate synthetic attribute.",
+    "columns": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "OBJECTID",
+        "id_role": "service object ID; cross-release stability unverified",
+        "observed_null_count": 0
+      },
+      {
+        "name": "BOUND_ID",
+        "type": "esriFieldTypeString",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Boundary ID",
+        "id_role": "source boundary identifier; uniqueness/stability unapproved",
+        "observed_null_count": 0
+      },
+      {
+        "name": "REGION",
+        "type": "esriFieldTypeString",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Region Name",
+        "id_role": "none known",
+        "observed_null_count": 0
+      },
+      {
+        "name": "FEAT_TYPE",
+        "type": "esriFieldTypeString",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Type of Feature",
+        "id_role": "none known",
+        "observed_null_count": 0
+      },
+      {
+        "name": "PUB_DATE",
+        "type": "esriFieldTypeDate",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Publication Date",
+        "id_role": "none known",
+        "observed_null_count": 9
+      },
+      {
+        "name": "APPRV_DATE",
+        "type": "esriFieldTypeDate",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Date of Baseline Committee Approval",
+        "id_role": "none known",
+        "observed_null_count": 0
+      },
+      {
+        "name": "LEGAL_AUTH",
+        "type": "esriFieldTypeString",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Legal Authority",
+        "id_role": "none known",
+        "observed_null_count": 0
+      },
+      {
+        "name": "AOR",
+        "type": "esriFieldTypeString",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Agency of Responsibility",
+        "id_role": "none known",
+        "observed_null_count": 0
+      },
+      {
+        "name": "NOTE",
+        "type": "esriFieldTypeString",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Note",
+        "id_role": "none known",
+        "observed_null_count": 16
+      },
+      {
+        "name": "SUPP_INFO",
+        "type": "esriFieldTypeString",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Supplemental Information Document",
+        "id_role": "none known",
+        "observed_null_count": 1
+      },
+      {
+        "name": "UNILATERAL",
+        "type": "esriFieldTypeDouble",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Unilateral Claim",
+        "id_role": "none known",
+        "observed_null_count": 0
+      },
+      {
+        "name": "RULEID",
+        "type": "esriFieldTypeInteger",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Description",
+        "id_role": "none known",
+        "observed_null_count": 0
+      },
+      {
+        "name": "SHAPE",
+        "type": "esriFieldTypeGeometry",
+        "nullable": "unknown: service metadata does not declare",
+        "meaning": "Shape",
+        "id_role": "none known",
+        "observed_null_count": null
+      }
+    ],
+    "geometry": {
+      "source_field": "SHAPE",
+      "type": "esriGeometryPolyline",
+      "crs": "EPSG:4326",
+      "nullable": "unknown"
+    },
+    "coverage": {
+      "description": "US 24 nautical mile contiguous-zone boundary lines; not zone polygons",
+      "extent": {
+        "xmin": -180,
+        "ymin": -17.555000002,
+        "xmax": 180,
+        "ymax": 74.70884000400001,
+        "spatialReference": {
+          "wkid": 4326,
+          "latestWkid": 4326
+        }
+      },
+      "observed_regions": {
+        "Hawaiian Islands": 11,
+        "Howland Island, Baker Island and Jarvis Island": 2,
+        "American Samoa": 4,
+        "Puerto Rico and U.S. Virgin Islands": 3,
+        "Alaska": 20,
+        "Atlantic Coast and Gulf of Mexico": 14,
+        "Pacific Coast": 3,
+        "Palmyra Atoll and Kingman Reef": 1,
+        "Commonwealth of the Northern Mariana Islands and Territory of Guam": 3,
+        "Johnston Atoll": 1,
+        "Wake Island": 1
+      }
+    },
+    "unknown_fields_policy": "Preserve losslessly in raw; quarantine pending explicit mapping approval. Never invent IDs."
+  },
+  "refresh_policy": {
+    "proposal": "Check official service monthly and on NOAA announced release; cadence requires maintainer approval",
+    "idempotency": "Pin raw checksum and verified release; unchanged capture must not create accepted release",
+    "failure": "Retain raw/error evidence, bounded retry, quarantine incomplete/schema/ID/coverage drift; retain last accepted release"
+  },
+  "acceptance_blockers": [
+    "Exact XLSX crosswalk match unverified",
+    "Dataset-wide release date unverified",
+    "Independent all-ID reconciliation failed",
+    "Accepted HIFLD Next file/version/object checksums unknown",
+    "Maintainer-approved source/published schema and ID mapping absent",
+    "Shared #417 comparator/promotion prerequisite not accepted"
+  ],
+  "readiness": {
+    "dagster": "server_info and GraphQL repositories/assets loaded locally on port3404",
+    "materialization_performed": false,
+    "ingestion_approved": false
+  }
+}
