@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import unsupported_output_reason
 
 
 class ReleaseApprovalError(ValueError):
@@ -174,6 +175,10 @@ def require_release_approval(
                 raise ReleaseApprovalError("missing_reviewed_candidate_normalization_derivation")
             from_manifest = json.loads(source.read_key(f"{prefix}/metadata/source_manifest.json"))
             validate_release_provenance(from_manifest)
+            for format_name, directory in (("shapefile_zip", "shapefile"), ("geopackage", "geopackage"),
+                                           ("geoparquet", "geoparquet"), ("pmtiles", "pmtiles")):
+                if unsupported_output_reason(from_manifest, format_name) and any(name.startswith(f"{prefix}/{directory}/") for name in expected):
+                    raise ReleaseApprovalError(f"unsupported_output_present:{format_name}")
             quality = json.loads(source.read_key(f"{prefix}/metadata/quality_manifest.json"))
             if quality.get("quality_check_passed") is not True:
                 raise ReleaseApprovalError("catalog_quality_failed")

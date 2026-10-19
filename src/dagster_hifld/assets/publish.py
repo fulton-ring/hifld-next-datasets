@@ -48,6 +48,7 @@ from dagster_hifld.resources import (
 from dagster_hifld.source_manifest import (
     load_resolved_source_manifest,
     snapshot_source_metadata,
+    unsupported_output_reason,
 )
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
@@ -1112,6 +1113,10 @@ def _write_and_publish_shapefile_zip(
     version: str,
     policy: ShapefileZipPolicy | None = None,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "shapefile_zip")
+    if unsupported:
+        return [_skip_output(file_slug, "shapefile", f"unsupported_output_format:{unsupported}")]
     staged_shapefile_keys = _published_format_keys(
         staging_storage,
         dataset_slug,
