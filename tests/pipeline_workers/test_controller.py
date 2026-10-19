@@ -73,6 +73,9 @@ class ControllerTests(unittest.TestCase):
 
     def test_issue_marker_and_paths(self):
         self.assertEqual(c.dataset_id('<!-- hifld-dataset:abc-2 -->'), 'abc-2')
+        self.assertEqual(c.dataset_id('<!-- hifld-dataset:nfhl/flood-zones -->'), 'nfhl/flood-zones')
+        with self.assertRaises(ValueError):
+            c.dataset_id('<!-- hifld-dataset:abc/../../x -->')
         with self.assertRaises(ValueError):
             c.dataset_id('title only')
         for path in ['.github/workflows/x.yml','tools/pipeline_workers/controller.py',
