@@ -19,6 +19,11 @@ from dagster_hifld.assets.epa_power_generation import (
     epa_frs_eia_860_power_generation_complete,
     epa_power_generation_draft_schedule,
 )
+from dagster_hifld.assets.epa_frs_naics_powerplants import (
+    epa_frs_naics_complete,
+    epa_frs_naics_draft_schedule,
+    epa_frs_naics_published_membership_compatible,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -412,8 +417,9 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete],
-    schedules=[epa_power_generation_draft_schedule],
+    asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete,
+                  epa_frs_naics_complete, epa_frs_naics_published_membership_compatible],
+    schedules=[epa_power_generation_draft_schedule, epa_frs_naics_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
