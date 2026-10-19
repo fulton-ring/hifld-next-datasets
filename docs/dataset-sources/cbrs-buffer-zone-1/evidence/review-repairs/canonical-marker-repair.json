@@ -1,0 +1,27 @@
+{
+  "source_checkpoint": "fd2b794bc827c2ccf9385c69561fdb1a5a1434da",
+  "prior_source_checkpoint": "ec327f58f2e6bc173d7b0044f39de7dc160b8ea6",
+  "reviewer_counterexample": "/workspace/work/review-cbrs28-ec-marker-probe/result.json",
+  "repair": "Compare raw marker bytes with canonical encode(expected_marker), retaining exact physical schema_version and rejecting noncanonical bytes",
+  "scope": "Direct source-specific construction-history API with all four authentic captures and actual Git processing-file validation; synthetic mechanics version/fingerprint only, no claimed registered-run/release bypass or dataset acceptance",
+  "focused_tests": [
+    {
+      "passed": 1,
+      "seconds": 10.706,
+      "cases": "Two calls each for missing/invalid/malformed marker, schema_version true, schema_version 1.0, and valid JSON with noncanonical trailing newline; exact bad bytes retained then explicitly restored; original bundle/CAS and later-receipt original context preserved",
+      "log": "canonical-marker-focused.log"
+    },
+    {
+      "passed": 2,
+      "seconds": 1.526,
+      "cases": "Actual first-marker write storage fault retains orphaned CAS and blocks new context; failed complete private payload/ready writes establish no first binding",
+      "log": "canonical-marker-fault-controls.log"
+    }
+  ],
+  "only_source_AST_function_changed": [
+    "original_provenance_bundle"
+  ],
+  "prior_data_terminal_and_full_suite_scope": "No decoder/writer/table/comparator/report changes; all 12 registered finalec constructor-state outcomes and native byte pins remain evidence for ec. Full542/source20 not rerun or reattributed to fd2; narrow three controls run at fd2.",
+  "independent_review": "Exact new head pending",
+  "release_approved": false
+}

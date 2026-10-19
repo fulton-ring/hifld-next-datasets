@@ -209,5 +209,14 @@
       "CI_pass_inferred": false
     },
     "independent_review": "Exact PR-head review recorded externally on PR437; no review or local fixture grants dataset acceptance."
+  },
+  "canonical_construction_marker": {
+    "source_checkpoint": "fd2b794bc827c2ccf9385c69561fdb1a5a1434da",
+    "exact_raw_marker_equals_canonical_expected_bytes": true,
+    "bool_float_noncanonical_bytes_rejected_on_two_retries": true,
+    "focused_tests": 3,
+    "prior_full_suite_and_actual_runs_not_reattributed": true,
+    "evidence": "evidence/review-repairs/canonical-marker-repair.json",
+    "independent_review": "Exact new head pending"
   }
 }
