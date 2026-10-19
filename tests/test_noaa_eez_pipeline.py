@@ -9,9 +9,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
-from dagster import DagsterInstance, Definitions, define_asset_job, materialize
+from dagster import DefaultScheduleStatus, DagsterInstance, Definitions, define_asset_job, materialize
 
 from dagster_hifld.assets.noaa import noaa_200nm_eez_and_maritime_boundaries as ingest
+from dagster_hifld.assets.noaa import noaa_eez_draft_refresh_job, noaa_eez_draft_weekly_schedule
 from dagster_hifld.assets.publish import publish_version, verify_release
 from dagster_hifld.noaa_extract import noaa_reference_fingerprints
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
@@ -78,6 +79,16 @@ class NoaaEezPipelineTests(unittest.TestCase):
                 self.assertEqual(old.read_bytes(), b'previous release preserved')
                 self.assertEqual(candidate.read_bytes(), before)
                 self.assertEqual(published.list_prefix(), ['synthetic-previous-release.bin'])
+
+    def test_exported_refresh_is_stopped_weekly_source_only(self):
+        schedule = noaa_eez_draft_weekly_schedule
+        self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
+        self.assertEqual(schedule.cron_schedule, "0 6 * * 1")
+        self.assertEqual(schedule.execution_timezone, "America/New_York")
+        definitions = Definitions(assets=[ingest], resources={"staging_storage": StagingStorageResource(local_dir="/tmp/noaa-schedule-not-executed", use_local=True)}, jobs=[noaa_eez_draft_refresh_job], schedules=[schedule])
+        job = definitions.resolve_job_def("noaa_eez_draft_refresh")
+        self.assertEqual([node.name for node in job.graph.node_defs], [ingest.op.name])
+        self.assertTrue(noaa_eez_draft_refresh_job.config["ops"][ingest.op.name]["config"]["allow_unapproved_local_draft"])
 
     def test_draft_requires_explicit_opt_in_before_staging(self):
         with tempfile.TemporaryDirectory() as directory:
