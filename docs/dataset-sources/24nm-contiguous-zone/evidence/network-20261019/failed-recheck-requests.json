@@ -1,0 +1,76 @@
+[
+  {
+    "name": "ids-before",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "checked_at": "2026-10-19T04:50:53.496140+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "bytes": 155,
+    "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+    "error": "HTTP200: {'code': 500, 'message': 'Error handling service request :Could not find service. Service may be stopped or it may not be configured.', 'details': []}"
+  },
+  {
+    "name": "count",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnCountOnly=true&f=json",
+    "checked_at": "2026-10-19T04:50:54.002944+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnCountOnly=true&f=json",
+    "bytes": 12,
+    "sha256": "3d97add019759bafd0161d19042cfff243989290aee7288857f4f348887d911a"
+  },
+  {
+    "name": "features",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&outFields=%2A&f=geojson",
+    "checked_at": "2026-10-19T04:50:54.216706+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&outFields=%2A&f=geojson",
+    "bytes": 1956696,
+    "sha256": "533d45196630622596add8fa6c6048f790d199f8a7572c387ad08cfe749f8d04"
+  },
+  {
+    "name": "ids-after",
+    "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnIdsOnly=true&f=json&returnGeometry=false",
+    "checked_at": "2026-10-19T04:50:56.761820+00:00",
+    "status": 200,
+    "final_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query?where=1%3D1&returnIdsOnly=true&f=json&returnGeometry=false",
+    "bytes": 155,
+    "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+    "error": "HTTP200: {'code': 500, 'message': 'Error handling service request :Could not find service. Service may be stopped or it may not be configured.', 'details': []}"
+  },
+  {
+    "name": "inport",
+    "url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "checked_at": "2026-10-19T04:50:56.911080+00:00",
+    "status": 200,
+    "final_url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "bytes": 112260,
+    "sha256": "59f560eea8bb1c31e15b4875e9aadab87205acdeab47c29746cb15e748de58ed"
+  },
+  {
+    "name": "inport-xml",
+    "url": "https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NOS/OCS/iso19115/xml/39963.xml",
+    "checked_at": "2026-10-19T04:50:57.852208+00:00",
+    "status": 503,
+    "final_url": "https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NOS/OCS/iso19115/xml/39963.xml",
+    "bytes": 373,
+    "sha256": "beb104683fbfbabe747878b640791115ebb7d81b9927d3591fdd3a2bf58850b1"
+  },
+  {
+    "name": "crosswalk",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "checked_at": "2026-10-19T04:50:58.476720+00:00",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "bytes": 6157,
+    "sha256": "e686d9c638bc04be37b83f0979f5d6d84544748549693f4b48b3674995fccc82"
+  },
+  {
+    "name": "archive",
+    "url": "https://www.datalumos.org/datalumos/project/238492/version/V1/view",
+    "checked_at": "2026-10-19T04:50:58.786375+00:00",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/238492/version/V1/view",
+    "bytes": 6136,
+    "sha256": "fdc24d85669e2b765e0ff93913aa91ee466b46012606ca4746a904ee88408f2e"
+  }
+]

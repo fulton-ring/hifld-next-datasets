@@ -1,31 +1,71 @@
-"""Bounded anonymous NOAA research capture; no ingestion or publication."""
-import collections, datetime, hashlib, json, pathlib, urllib.parse, urllib.request
-P=pathlib.Path(__file__).parent/'evidence'
-BASE='https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer'
-log=[]
-def fetch(name,url):
-    with urllib.request.urlopen(url,timeout=60) as r:
-        data=r.read(); status=r.status; final=r.url
-    (P/name).write_bytes(data)
-    log.append(dict(file=name,url=url,final_url=final,status=status,checked_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))
-    obj=json.loads(data)
-    if 'error' in obj: raise RuntimeError(obj['error'])
-    return obj
+"""Bounded anonymous NOAA recheck. Requires a fresh output directory; never ingests.
 
-def query(name,**args):return fetch(name,BASE+'/2/query?'+urllib.parse.urlencode(dict(f='pjson',**args)))
-service=fetch('service.json',BASE+'?f=pjson')
-count=query('count.json',where='1=1',returnCountOnly='true')['count']
-ids=query('ids-before.json',where='1=1',returnIdsOnly='true')['objectIds']
-features=[]
-for n in range(0,len(ids),100):
-    page=query(f'page-{n//100}.json',objectIds=','.join(map(str,ids[n:n+100])),outFields='*',returnGeometry='true',outSR=4326)
-    assert not page.get('exceededTransferLimit'), 'truncated page'
-    features+=page['features']
-after=query('ids-after.json',where='1=1',returnIdsOnly='true')['objectIds']
-actual=[f['attributes']['OBJECTID'] for f in features]
-assert count==len(ids)==len(actual)==len(set(actual)) and None not in actual
-assert set(ids)==set(actual)==set(after)
-summary=dict(count=count,object_ids=actual,ids_reconciled=True,transfer_limit=1000,request_batch_size=100,regions=dict(collections.Counter(f['attributes']['REGION'] for f in features)),feature_types=dict(collections.Counter(f['attributes']['FEAT_TYPE'] for f in features)),fields={k:dict(null_count=sum(f['attributes'][k] is None for f in features),types=sorted({type(f['attributes'][k]).__name__ for f in features})) for k in features[0]['attributes']},null_geometry=sum(not f.get('geometry') for f in features),pub_dates=sorted({str(f['attributes']['PUB_DATE']) for f in features}),approval_dates=sorted({str(f['attributes']['APPRV_DATE']) for f in features}))
-(P/'extraction-summary.json').write_text(json.dumps(summary,indent=2)+'\n')
-(P/'requests.json').write_text(json.dumps(log,indent=2)+'\n')
-print(json.dumps(summary,indent=2))
+HTTP 200 ArcGIS errors remain failures. Use replay.py for committed offline evidence.
+"""
+import argparse
+import datetime
+import gzip
+import hashlib
+import json
+import pathlib
+import urllib.error
+import urllib.request
+
+BASE = 'https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2/query'
+QUERIES = {
+    'ids-before': BASE + '?where=1%3D1&returnIdsOnly=true&f=json',
+    'count': BASE + '?where=1%3D1&returnCountOnly=true&f=json',
+    'features': BASE + '?where=1%3D1&outFields=%2A&f=geojson',
+    'ids-after': BASE + '?where=1%3D1&returnIdsOnly=true&f=json&returnGeometry=false',
+    'inport': 'https://www.fisheries.noaa.gov/inport/item/39963',
+    'inport-xml': 'https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NOS/OCS/iso19115/xml/39963.xml',
+    'crosswalk': 'https://doi.org/10.3886/E241367V1',
+    'archive': 'https://www.datalumos.org/datalumos/project/238492/version/V1/view',
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=pathlib.Path, required=True)
+    output = parser.parse_args().output
+    output.mkdir(parents=True, exist_ok=False)
+    log, captures = [], {}
+    try:
+        for name, url in QUERIES.items():
+            entry = {'name': name, 'url': url, 'checked_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+            try:
+                try:
+                    with urllib.request.urlopen(url, timeout=45) as response:
+                        body, status, final = response.read(), response.status, response.url
+                except urllib.error.HTTPError as error:
+                    body, status, final = error.read(), error.code, error.url
+                entry.update(status=status, final_url=final, bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+                if name == 'features':
+                    (output / 'features.json.gz').write_bytes(gzip.compress(body, mtime=0))
+                else:
+                    (output / (name + '.body')).write_bytes(body)
+                if name in {'ids-before', 'ids-after', 'count', 'features'}:
+                    obj = json.loads(body)
+                    if status != 200 or 'error' in obj:
+                        raise RuntimeError(f'HTTP{status}: {obj.get("error")}')
+                    captures[name] = obj
+            except Exception as error:
+                entry['error'] = str(error)
+            log.append(entry)
+        missing = sorted({'ids-before', 'ids-after', 'count', 'features'} - captures.keys())
+        if missing:
+            raise RuntimeError(f'Incomplete extraction: failed required captures {missing}; see requests.json')
+        before = captures['ids-before']['objectIds']
+        after = captures['ids-after']['objectIds']
+        features = captures['features']['features']
+        actual = [f['properties']['OBJECTID'] for f in features]
+        assert not captures['features'].get('exceededTransferLimit', False)
+        assert len(features) == captures['count']['count'] == len(before) == len(set(before)) == len(after) == len(set(after)) == len(set(actual))
+        assert None not in actual and set(before) == set(after) == set(actual)
+        print(json.dumps({'features': len(features), 'independent_ids_reconciled': True, 'acceptance': 'UNAPPROVED'}))
+    finally:
+        (output / 'requests.json').write_text(json.dumps(log, indent=2) + '\n')
+
+
+if __name__ == '__main__':
+    main()

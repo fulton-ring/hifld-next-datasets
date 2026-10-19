@@ -6,7 +6,7 @@
     "Needs decision",
     "Potential breaking change"
   ],
-  "checked_at": "2026-10-19T04:19:06.917231+00:00",
+  "checked_at": "2026-10-19T04:49:37+00:00",
   "source_role": "producer_publication",
   "producer": "NOAA National Ocean Service, Office of Coast Survey; U.S. Baseline Committee review",
   "publisher": {
@@ -28,7 +28,7 @@
     }
   ],
   "release_date": null,
-  "release_date_note": "No verified dataset-wide release date. PUB_DATE is per-feature publication; fetch time and page update are not release dates.",
+  "release_date_note": "InPort item39963 identifies publication/revision2013, temporal2002\u20132015, metadata updated2026-08-20, 2026 process Updated InPort record. Those do not bind a dataset-wide current service release. Legacy XML503.",
   "feature_publication_values": [
     "1061942400000",
     "1077494400000",
@@ -51,11 +51,11 @@
     "1379030400000",
     "None"
   ],
-  "relationship_to_archive": "unresolved: exact continuation cannot be asserted without crosswalk, archive and accepted baseline comparison",
+  "relationship_to_archive": "Exact crosswalk/archive continuity unresolved; complete published candidate and current producer data match observed IDs/attributes/geometries under documented line representation comparison, not accepted continuity.",
   "crosswalk": {
     "status": "unverified",
     "doi": "https://doi.org/10.3886/E241367V1",
-    "blocker": "urllib anonymous request: Tunnel connection failed: 403 Forbidden; original workbook unavailable; hyperlinks not parsed; no exact match claimed"
+    "blocker": "2026-10-19 retry resolves DOI to DataLumos241367 HTTP403 Cloudflare challenge, not CONNECT denial. Archive238492 also provider403. Workbook and hyperlink reconciliation unavailable."
   },
   "archive": {
     "url": "https://www.datalumos.org/datalumos/project/238492/version/V1/view",
@@ -71,9 +71,10 @@
     "maximum_record_count": 1000,
     "supports_pagination": true,
     "transfer_limit_exceeded": false,
-    "complete_extraction_status": "provisional_count_reconciliation_only",
-    "independent_all_ids": "blocked: HTTP200 ArcGIS JSON code500 service error",
-    "note": "Full bounded raw response retained; count agrees. No independent ID-set reconciliation or stable-snapshot proof; completeness acceptance remains blocked."
+    "complete_extraction_status": "all_63_features_reconciled_with_independent_before_after_IDS_and_count",
+    "independent_all_ids": "63 unique nonnull IDs in both successful f=json queries; same set as 63 full GeoJSON features",
+    "note": "No exceededTransferLimit; below advertised1000. Some f=pjson/explicit geometry variants still ArcGISJSON500. Transactional isolation and offset pagination not claimed. Same initially successful ID URLs failed with JSON500 again at04:50UTC; intermittent upstream behavior. Successful pinned snapshot remains reconciled; unattended reliability not established.",
+    "fresh_capture": "evidence/network-20261019/features-geojson.json.gz"
   },
   "published_contract": {
     "status": "PROPOSED_UNAPPROVED",
@@ -226,16 +227,57 @@
     "failure": "Retain raw/error evidence, bounded retry, quarantine incomplete/schema/ID/coverage drift; retain last accepted release"
   },
   "acceptance_blockers": [
-    "Exact XLSX crosswalk match unverified",
-    "Dataset-wide release date unverified",
-    "Independent all-ID reconciliation failed",
-    "Accepted HIFLD Next file/version/object checksums unknown",
-    "Maintainer-approved source/published schema and ID mapping absent",
-    "Shared #417 comparator/promotion prerequisite not accepted"
+    "Exact XLSX crosswalk/archive reconciliation unverified (DataLumos provider403)",
+    "Current service dataset-wide release binding unverified; InPort publication2013 does not establish it",
+    "Pinned published v1.0.0 object remains candidate until maintainer acceptance",
+    "Maintainer-approved schema/ID/geometry mapping absent; concrete type/extra-column decisions recorded",
+    "Shared #417 comparator/promotion implementation and acceptance required",
+    "Intermittent upstream ArcGIS errors on same ID URLs; bounded retry/fail-closed completeness required before unattended refresh"
   ],
   "readiness": {
-    "dagster": "server_info and GraphQL repositories/assets loaded locally on port3404",
+    "dagster": "isolated local Dagster1.12.19 server_info plus RepositoryConnection73 assets on3404, captured2026-10-19",
     "materialization_performed": false,
     "ingestion_approved": false
+  },
+  "published_baseline_candidate": {
+    "slug": "24nm-contiguous-zone",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/24nm-contiguous-zone/24nm-contiguous-zone/v1.0.0/geoparquet/24nm-contiguous-zone.parquet",
+    "expected_bytes": 730072,
+    "catalog_asset": {
+      "file:checksum": "d5011098f398237384084cc013e5acce47b00a",
+      "file:size": 730072,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/24nm-contiguous-zone/24nm-contiguous-zone/v1.0.0/geoparquet/24nm-contiguous-zone.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "24nm-contiguous-zone.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "catalog_sha256": "70b4b957b0911acd6e9746eef7757b8fea9b0a8ad973005389c870c1c4300887",
+    "version_id": "hifld/24nm-contiguous-zone/24nm-contiguous-zone/v1.0.0",
+    "status": 200,
+    "bytes": 730072,
+    "sha256": "979899b2fb6c5ff623c262f67b91a9215ede0ee353be63791eaceb9fb02c8b6c",
+    "generation": "1791506345360262",
+    "etag": "\"98f398237384084cc013e5acce47b00a\"",
+    "capture": "data/24nm-contiguous-zone.parquet",
+    "size_matches": true,
+    "acceptance": "CANDIDATE_UNAPPROVED",
+    "local_preserved_path": "/workspace/work/hifld-network-retry/data/24nm-contiguous-zone.parquet"
+  },
+  "comparison": {
+    "report": "evidence/network-20261019/candidate-comparison.json",
+    "complete_id_sets_equal": true,
+    "all_12_attributes_equal": true,
+    "all_63_raw_reviewed_geometries_wkb_equal": true,
+    "all_63_fresh_geometries_topologically_equal": true,
+    "fresh_LineStrings_requiring_explicit_comparison_wrapper": 57,
+    "unapproved_mapping_decisions": [
+      "UNILATERAL esriFieldTypeDouble vs published int64",
+      "id duplicates OBJECTID; extra bbox and geometry columns",
+      "LineString vs MultiLineString representation",
+      "OID/Integer ->int64 and Date epoch-ms ->int64"
+    ],
+    "approval": false
   }
 }
