@@ -202,9 +202,6 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                             audit["source_schema_sha256"], objects, payload["capture_receipts"])
     if not isinstance(objects, dict) or set(objects) != expected_keys:
         raise ValueError("cached_candidate_roster_changed")
-    actual_keys = set(storage.list_prefix(prefix))
-    if actual_keys != {f"{prefix}/{name}" for name in expected_keys}:
-        raise ValueError("cached_candidate_storage_roster_changed")
     for name, descriptor in objects.items():
         key = f"{prefix}/{name}"
         snapshot = storage.object_snapshot(key)
