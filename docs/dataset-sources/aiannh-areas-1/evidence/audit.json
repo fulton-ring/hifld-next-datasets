@@ -1,0 +1,571 @@
+{
+  "2023": {
+    "zip_crc_failure": null,
+    "members": [
+      {
+        "name": "tl_2023_us_aiannh.cpg",
+        "bytes": 5,
+        "crc": 243350608
+      },
+      {
+        "name": "tl_2023_us_aiannh.dbf",
+        "bytes": 254836,
+        "crc": 1693762994
+      },
+      {
+        "name": "tl_2023_us_aiannh.prj",
+        "bytes": 165,
+        "crc": 2853469792
+      },
+      {
+        "name": "tl_2023_us_aiannh.shp",
+        "bytes": 14172268,
+        "crc": 1422400913
+      },
+      {
+        "name": "tl_2023_us_aiannh.shp.ea.iso.xml",
+        "bytes": 65238,
+        "crc": 1639897847
+      },
+      {
+        "name": "tl_2023_us_aiannh.shp.iso.xml",
+        "bytes": 53911,
+        "crc": 1202654677
+      },
+      {
+        "name": "tl_2023_us_aiannh.shx",
+        "bytes": 6996,
+        "crc": 2964457808
+      }
+    ],
+    "count": 862,
+    "schema": {
+      "properties": {
+        "AIANNHCE": "str:4",
+        "AIANNHNS": "str:8",
+        "GEOID": "str:5",
+        "GEOIDFQ": "str:14",
+        "NAME": "str:100",
+        "NAMELSAD": "str:100",
+        "LSAD": "str:2",
+        "CLASSFP": "str:2",
+        "COMPTYP": "str:1",
+        "AIANNHR": "str:1",
+        "MTFCC": "str:5",
+        "FUNCSTAT": "str:1",
+        "ALAND": "int:14",
+        "AWATER": "int:14",
+        "INTPTLAT": "str:11",
+        "INTPTLON": "str:12"
+      },
+      "geometry": "Polygon"
+    },
+    "crs": "EPSG:4269",
+    "bounds": [
+      -174.235988,
+      18.91069,
+      -67.035518,
+      71.340186
+    ],
+    "null_counts": {
+      "AIANNHCE": 0,
+      "AIANNHNS": 0,
+      "GEOID": 0,
+      "GEOIDFQ": 0,
+      "NAME": 0,
+      "NAMELSAD": 0,
+      "LSAD": 0,
+      "CLASSFP": 0,
+      "COMPTYP": 0,
+      "AIANNHR": 0,
+      "MTFCC": 0,
+      "FUNCSTAT": 0,
+      "ALAND": 0,
+      "AWATER": 0,
+      "INTPTLAT": 0,
+      "INTPTLON": 0
+    },
+    "identifier_checks": {
+      "AIANNHCE": {
+        "nulls": 0,
+        "unique": 703,
+        "duplicate_rows": 159
+      },
+      "AIANNHNS": {
+        "nulls": 0,
+        "unique": 703,
+        "duplicate_rows": 159
+      },
+      "GEOID": {
+        "nulls": 0,
+        "unique": 862,
+        "duplicate_rows": 0
+      },
+      "GEOIDFQ": {
+        "nulls": 0,
+        "unique": 862,
+        "duplicate_rows": 0
+      }
+    },
+    "geometry_types": {
+      "MultiPolygon": 301,
+      "Polygon": 561
+    },
+    "invalid": 0,
+    "empty": 0,
+    "categories": {
+      "CLASSFP": {
+        "D2": 153,
+        "D4": 10,
+        "D8": 159,
+        "D5": 159,
+        "D3": 12,
+        "F1": 74,
+        "E1": 221,
+        "D6": 32,
+        "D9": 35,
+        "D0": 7
+      },
+      "COMPTYP": {
+        "R": 617,
+        "T": 245
+      },
+      "LSAD": {
+        "86": 206,
+        "85": 46,
+        "9C": 1,
+        "96": 19,
+        "82": 8,
+        "95": 3,
+        "84": 16,
+        "00": 1,
+        "99": 1,
+        "93": 1,
+        "97": 5,
+        "81": 6,
+        "98": 5,
+        "87": 1,
+        "9D": 1,
+        "91": 1,
+        "94": 2,
+        "OT": 159,
+        "89": 11,
+        "78": 74,
+        "79": 221,
+        "88": 25,
+        "92": 35,
+        "80": 7,
+        "90": 4,
+        "83": 3
+      },
+      "MTFCC": {
+        "G2101": 322,
+        "G2102": 171,
+        "G2120": 74,
+        "G2130": 221,
+        "G2140": 25,
+        "G2150": 35,
+        "G2160": 7,
+        "G2170": 7
+      },
+      "AIANNHR": {
+        "F": 817,
+        "S": 45
+      }
+    },
+    "release_date": "2023-11-22",
+    "release_date_note": "Explicit release statement in captured official vintage landing page; distinct from ISO creation and directory modification."
+  },
+  "2025": {
+    "zip_crc_failure": null,
+    "members": [
+      {
+        "name": "tl_2025_us_aiannh.cpg",
+        "bytes": 5,
+        "crc": 243350608
+      },
+      {
+        "name": "tl_2025_us_aiannh.dbf",
+        "bytes": 256311,
+        "crc": 2040336671
+      },
+      {
+        "name": "tl_2025_us_aiannh.prj",
+        "bytes": 165,
+        "crc": 2853469792
+      },
+      {
+        "name": "tl_2025_us_aiannh.shp",
+        "bytes": 14324408,
+        "crc": 1167430206
+      },
+      {
+        "name": "tl_2025_us_aiannh.shp.ea.iso.xml",
+        "bytes": 65207,
+        "crc": 1713922351
+      },
+      {
+        "name": "tl_2025_us_aiannh.shp.iso.xml",
+        "bytes": 53062,
+        "crc": 3755971126
+      },
+      {
+        "name": "tl_2025_us_aiannh.shx",
+        "bytes": 7036,
+        "crc": 1019124155
+      }
+    ],
+    "count": 867,
+    "schema": {
+      "properties": {
+        "AIANNHCE": "str:4",
+        "AIANNHNS": "str:8",
+        "GEOID": "str:5",
+        "GEOIDFQ": "str:14",
+        "NAME": "str:100",
+        "NAMELSAD": "str:100",
+        "LSAD": "str:2",
+        "CLASSFP": "str:2",
+        "COMPTYP": "str:1",
+        "AIANNHR": "str:1",
+        "MTFCC": "str:5",
+        "FUNCSTAT": "str:1",
+        "ALAND": "int:14",
+        "AWATER": "int:14",
+        "INTPTLAT": "str:11",
+        "INTPTLON": "str:12"
+      },
+      "geometry": "Polygon"
+    },
+    "crs": "EPSG:4269",
+    "bounds": [
+      -174.235988,
+      18.91069,
+      -67.035518,
+      71.340186
+    ],
+    "null_counts": {
+      "AIANNHCE": 0,
+      "AIANNHNS": 0,
+      "GEOID": 0,
+      "GEOIDFQ": 0,
+      "NAME": 0,
+      "NAMELSAD": 0,
+      "LSAD": 0,
+      "CLASSFP": 0,
+      "COMPTYP": 0,
+      "AIANNHR": 0,
+      "MTFCC": 0,
+      "FUNCSTAT": 0,
+      "ALAND": 0,
+      "AWATER": 0,
+      "INTPTLAT": 0,
+      "INTPTLON": 0
+    },
+    "identifier_checks": {
+      "AIANNHCE": {
+        "nulls": 0,
+        "unique": 704,
+        "duplicate_rows": 163
+      },
+      "AIANNHNS": {
+        "nulls": 0,
+        "unique": 704,
+        "duplicate_rows": 163
+      },
+      "GEOID": {
+        "nulls": 0,
+        "unique": 867,
+        "duplicate_rows": 0
+      },
+      "GEOIDFQ": {
+        "nulls": 0,
+        "unique": 867,
+        "duplicate_rows": 0
+      }
+    },
+    "geometry_types": {
+      "Polygon": 552,
+      "MultiPolygon": 315
+    },
+    "invalid": 0,
+    "empty": 0,
+    "categories": {
+      "CLASSFP": {
+        "D4": 10,
+        "D2": 149,
+        "D8": 163,
+        "D3": 13,
+        "D5": 163,
+        "F1": 74,
+        "E1": 221,
+        "D6": 32,
+        "D9": 35,
+        "D0": 7
+      },
+      "COMPTYP": {
+        "R": 617,
+        "T": 250
+      },
+      "LSAD": {
+        "86": 205,
+        "96": 19,
+        "85": 46,
+        "00": 2,
+        "81": 6,
+        "84": 16,
+        "97": 5,
+        "9C": 1,
+        "98": 5,
+        "82": 8,
+        "95": 3,
+        "87": 1,
+        "91": 1,
+        "94": 2,
+        "99": 1,
+        "93": 1,
+        "9D": 1,
+        "89": 12,
+        "OT": 163,
+        "78": 74,
+        "79": 221,
+        "88": 25,
+        "92": 35,
+        "80": 7,
+        "90": 4,
+        "83": 3
+      },
+      "MTFCC": {
+        "G2101": 322,
+        "G2102": 176,
+        "G2120": 74,
+        "G2130": 221,
+        "G2140": 25,
+        "G2150": 35,
+        "G2160": 7,
+        "G2170": 7
+      },
+      "AIANNHR": {
+        "S": 45,
+        "F": 822
+      }
+    },
+    "release_date": "2025-09-23",
+    "release_date_note": "Explicit release statement in captured official vintage landing page; distinct from ISO creation and directory modification."
+  },
+  "2026": {
+    "zip_crc_failure": null,
+    "members": [
+      {
+        "name": "tl_2026_us_aiannh.cpg",
+        "bytes": 5,
+        "crc": 243350608
+      },
+      {
+        "name": "tl_2026_us_aiannh.dbf",
+        "bytes": 256311,
+        "crc": 3403959477
+      },
+      {
+        "name": "tl_2026_us_aiannh.prj",
+        "bytes": 165,
+        "crc": 2853469792
+      },
+      {
+        "name": "tl_2026_us_aiannh.shp",
+        "bytes": 14310236,
+        "crc": 3759425713
+      },
+      {
+        "name": "tl_2026_us_aiannh.shp.ea.iso.xml",
+        "bytes": 65207,
+        "crc": 1523499653
+      },
+      {
+        "name": "tl_2026_us_aiannh.shp.iso.xml",
+        "bytes": 52825,
+        "crc": 1929686305
+      },
+      {
+        "name": "tl_2026_us_aiannh.shx",
+        "bytes": 7036,
+        "crc": 1436967986
+      }
+    ],
+    "count": 867,
+    "schema": {
+      "properties": {
+        "AIANNHCE": "str:4",
+        "AIANNHNS": "str:8",
+        "GEOID": "str:5",
+        "GEOIDFQ": "str:14",
+        "NAME": "str:100",
+        "NAMELSAD": "str:100",
+        "LSAD": "str:2",
+        "CLASSFP": "str:2",
+        "COMPTYP": "str:1",
+        "AIANNHR": "str:1",
+        "MTFCC": "str:5",
+        "FUNCSTAT": "str:1",
+        "ALAND": "int:14",
+        "AWATER": "int:14",
+        "INTPTLAT": "str:11",
+        "INTPTLON": "str:12"
+      },
+      "geometry": "Polygon"
+    },
+    "crs": "EPSG:4269",
+    "bounds": [
+      -174.235988,
+      18.91069,
+      -67.035518,
+      71.340186
+    ],
+    "null_counts": {
+      "AIANNHCE": 0,
+      "AIANNHNS": 0,
+      "GEOID": 0,
+      "GEOIDFQ": 0,
+      "NAME": 0,
+      "NAMELSAD": 0,
+      "LSAD": 0,
+      "CLASSFP": 0,
+      "COMPTYP": 0,
+      "AIANNHR": 0,
+      "MTFCC": 0,
+      "FUNCSTAT": 0,
+      "ALAND": 0,
+      "AWATER": 0,
+      "INTPTLAT": 0,
+      "INTPTLON": 0
+    },
+    "identifier_checks": {
+      "AIANNHCE": {
+        "nulls": 0,
+        "unique": 704,
+        "duplicate_rows": 163
+      },
+      "AIANNHNS": {
+        "nulls": 0,
+        "unique": 704,
+        "duplicate_rows": 163
+      },
+      "GEOID": {
+        "nulls": 0,
+        "unique": 867,
+        "duplicate_rows": 0
+      },
+      "GEOIDFQ": {
+        "nulls": 0,
+        "unique": 867,
+        "duplicate_rows": 0
+      }
+    },
+    "geometry_types": {
+      "Polygon": 548,
+      "MultiPolygon": 319
+    },
+    "invalid": 0,
+    "empty": 0,
+    "categories": {
+      "CLASSFP": {
+        "D4": 10,
+        "D2": 147,
+        "D8": 165,
+        "D3": 14,
+        "D5": 163,
+        "F1": 74,
+        "E1": 221,
+        "D6": 31,
+        "D9": 35,
+        "D0": 7
+      },
+      "COMPTYP": {
+        "R": 616,
+        "T": 251
+      },
+      "LSAD": {
+        "86": 205,
+        "96": 19,
+        "85": 46,
+        "00": 2,
+        "81": 6,
+        "84": 16,
+        "97": 5,
+        "9C": 1,
+        "98": 5,
+        "82": 8,
+        "95": 3,
+        "87": 1,
+        "91": 1,
+        "94": 2,
+        "99": 1,
+        "93": 1,
+        "9D": 1,
+        "89": 13,
+        "OT": 163,
+        "78": 74,
+        "79": 221,
+        "88": 25,
+        "92": 35,
+        "80": 6,
+        "90": 4,
+        "83": 3
+      },
+      "MTFCC": {
+        "G2101": 322,
+        "G2102": 177,
+        "G2120": 74,
+        "G2130": 221,
+        "G2140": 25,
+        "G2150": 35,
+        "G2160": 6,
+        "G2170": 7
+      },
+      "AIANNHR": {
+        "S": 45,
+        "F": 822
+      }
+    },
+    "release_date": "2026-10-14",
+    "release_date_note": "Explicit release statement in captured official vintage landing page; distinct from ISO creation and directory modification."
+  },
+  "comparison_2023_to_2026": {
+    "key": "GEOID; observed uniqueness only, cross-release stability unapproved",
+    "added": [
+      "0820T",
+      "1850T",
+      "2980T",
+      "3015R",
+      "3015T",
+      "3075T",
+      "3320T",
+      "3695T"
+    ],
+    "removed": [
+      "0990R",
+      "1830T",
+      "8700R"
+    ],
+    "retained": 859,
+    "changed_geometry": 378,
+    "changed_fields": {
+      "AIANNHCE": 0,
+      "AIANNHNS": 0,
+      "GEOID": 0,
+      "GEOIDFQ": 244,
+      "NAME": 0,
+      "NAMELSAD": 0,
+      "LSAD": 0,
+      "CLASSFP": 5,
+      "COMPTYP": 0,
+      "AIANNHR": 0,
+      "MTFCC": 0,
+      "FUNCSTAT": 0,
+      "ALAND": 594,
+      "AWATER": 309,
+      "INTPTLAT": 337,
+      "INTPTLON": 341
+    }
+  }
+}

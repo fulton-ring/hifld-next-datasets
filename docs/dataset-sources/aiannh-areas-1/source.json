@@ -1,0 +1,269 @@
+{
+  "dataset_id": "aiannh-areas-1",
+  "issue": 8,
+  "outcome": "blocked",
+  "requested_status": [
+    "Blocked",
+    "Potential breaking change",
+    "Needs decision"
+  ],
+  "source_role": "producer_publication",
+  "producer": "U.S. Census Bureau, Geography Division",
+  "publisher": "U.S. Census Bureau; www2.census.gov TIGER distribution",
+  "landing_url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.2023.html",
+  "download_url": "https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip",
+  "lineage_evidence": [
+    "evidence/inventory-row.json: exact inventory description embeds the identical 2023 Census download URL; this is an inventory match, not an accepted DHS crosswalk join",
+    "evidence/tl_2023_us_aiannh.shp.iso.xml: Census Geography Division producer/publisher and annual Boundary and Annexation Survey lineage",
+    "evidence/landing2023.body: official vintage landing page and release statement",
+    "evidence/requests.json: dated anonymous complete file downloads"
+  ],
+  "release_date": "2023-11-22",
+  "release_date_basis": "Official 2023 landing page explicit release statement; embedded metadata publication has year precision only",
+  "checked_at": "2026-10-19T04:23:03.096161+00:00",
+  "relationship_to_archive": "unresolved: exact inventory-linked producer vintage located; archive bytes and original DHS crosswalk cannot be compared",
+  "crosswalk": {
+    "status": "UNVERIFIED",
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "original_xlsx_available": false,
+    "hyperlink_targets_parsed": false,
+    "reason": "DOI redirects to DataLumos project 241367; CONNECT tunnel 403; no claim of unmatched row"
+  },
+  "historical_archive": {
+    "source_role": "archive",
+    "producer": "Census Bureau per inventory; archive content unverified",
+    "publisher": "DataLumos / ICPSR; depositor account unverified",
+    "landing_url": "https://www.datalumos.org/datalumos/project/238558/version/V1/view",
+    "release_date": null,
+    "inventory_modified": "2025-04-08",
+    "relationship": "historical preservation; not maintained producer feed"
+  },
+  "candidates": [
+    {
+      "vintage": 2025,
+      "source_role": "producer_publication",
+      "producer": "U.S. Census Bureau",
+      "publisher": "U.S. Census Bureau",
+      "landing_url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.2025.html",
+      "download_url": "https://www2.census.gov/geo/tiger/TIGER2025/AIANNH/tl_2025_us_aiannh.zip",
+      "release_date": "2025-09-23",
+      "relationship_to_archive": "changed successor candidate; no exact continuation or approved replacement claim",
+      "count": 867
+    },
+    {
+      "vintage": 2026,
+      "source_role": "producer_publication",
+      "producer": "U.S. Census Bureau",
+      "publisher": "U.S. Census Bureau",
+      "landing_url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html",
+      "download_url": "https://www2.census.gov/geo/tiger/TIGER2026/AIANNH/tl_2026_us_aiannh.zip",
+      "release_date": "2026-10-14",
+      "relationship_to_archive": "changed successor candidate; no exact continuation or approved replacement claim",
+      "count": 867
+    }
+  ],
+  "published_contract": {
+    "status": "proposed_unapproved",
+    "approved": false,
+    "version": "research-proposal-1",
+    "baseline": "Unknown accepted published HIFLD Next version/dictionary/checksums; proposal derives from complete inventory-linked 2023 source only",
+    "columns": [
+      {
+        "name": "AIANNHCE",
+        "type": "string",
+        "source_type": "str:4",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current American Indian/Alaska Native/Native Hawaiian Area census code",
+        "id_role": "area census identifier, repeated across components"
+      },
+      {
+        "name": "AIANNHNS",
+        "type": "string",
+        "source_type": "str:8",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current American Indian/Alaska Native/Native Hawaiian Area GNIS code",
+        "id_role": "GNIS identifier, repeated across components"
+      },
+      {
+        "name": "GEOID",
+        "type": "string",
+        "source_type": "str:5",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current American Indian/Alaska Native/ Native Hawaiian area identifier; a concatenation of Current American Indian/Alaska Native/Native Hawaiian area census code and reservation/statistical area or off-reservation trust land Hawaiianhome land indicator",
+        "id_role": "candidate primary key; census code plus component indicator"
+      },
+      {
+        "name": "GEOIDFQ",
+        "type": "string",
+        "source_type": "str:14",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Fully qualified tribal census tract identifier; a concatenation of census survey summary level information with the tribal census tract identifier. The GEOIDFQ attribute is calculated to facilitate joining census spatial data to census survey summary files.",
+        "id_role": "fully qualified identifier; changed values require review"
+      },
+      {
+        "name": "NAME",
+        "type": "string",
+        "source_type": "str:100",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current American Indian/Alaska Native/Native Hawaiian area name",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "NAMELSAD",
+        "type": "string",
+        "source_type": "str:100",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current name and the translated legal/statistical area description code for American Indian/Alaska Native/Native Hawaiian area",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "LSAD",
+        "type": "string",
+        "source_type": "str:2",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current legal/statistical area description code for American Indian/Alaska Native/Native Hawaiian area",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "CLASSFP",
+        "type": "string",
+        "source_type": "str:2",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current Federal Information Processing Series (FIPS) class code",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "COMPTYP",
+        "type": "string",
+        "source_type": "str:1",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current American Indian/Alaska Native/Native Hawaiian area reservation/statistical area or off-reservation trust land Hawaiian homeland indicator",
+        "id_role": "component discriminator"
+      },
+      {
+        "name": "AIANNHR",
+        "type": "string",
+        "source_type": "str:1",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current American Indian/Alaska Native/Native Hawaiian area federal/state recognition flag",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "MTFCC",
+        "type": "string",
+        "source_type": "str:5",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "MAF/TIGER feature class code",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "FUNCSTAT",
+        "type": "string",
+        "source_type": "str:1",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current functional status",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "ALAND",
+        "type": "int64",
+        "source_type": "int:14",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current land area (square meters)",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "AWATER",
+        "type": "int64",
+        "source_type": "int:14",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current water area (square meters)",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "INTPTLAT",
+        "type": "string",
+        "source_type": "str:11",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current latitude of the internal point",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "INTPTLON",
+        "type": "string",
+        "source_type": "str:12",
+        "nullable": false,
+        "nullability_basis": "Proposed requirement; zero nulls observed in complete 2023, 2025 and 2026 files, not producer guarantee",
+        "meaning": "Current longitude of the internal point",
+        "id_role": "not an identifier"
+      },
+      {
+        "name": "geometry",
+        "type": "Polygon | MultiPolygon",
+        "nullable": false,
+        "meaning": "AIANNH area component boundary",
+        "id_role": "not an identifier"
+      }
+    ],
+    "geometry": {
+      "source_declaration": "Polygon shapefile",
+      "observed_types": [
+        "Polygon",
+        "MultiPolygon"
+      ],
+      "crs": "EPSG:4269",
+      "axis_order": "x=longitude,y=latitude",
+      "mapping": "retain coordinates; no simplification/reprojection approved"
+    },
+    "coverage": {
+      "description": "National AIANNH legal/statistical area components including Alaska Native and Hawaiian home lands; not all tribal land tenure or parcel ownership",
+      "bounds": [
+        -174.235988,
+        18.91069,
+        -67.035518,
+        71.340186
+      ],
+      "categories": "Full CLASSFP/COMPTYP/LSAD counts in evidence/audit.json"
+    },
+    "mapping": "Proposed identity mapping of every one of 16 source attributes plus geometry; no added generated IDs; no approved published projection",
+    "preservation": "Keep leading zeros, signed coordinate strings, exact IDs and integer area precision. Retain raw bytes; unknown/unmapped fields fail review rather than being dropped."
+  },
+  "completeness": {
+    "method": "Single national ZIP per vintage, ZIP CRC validated, SHP full scan reconciled to DBF counts; no pagination or transfer limit applies to static files",
+    "report": "evidence/audit.json",
+    "all_ids_and_attributes": "evidence/rows2023.json, rows2025.json, rows2026.json; complete per-record geometry digests, bounded sample geometries",
+    "limitations": "No accepted baseline or generated candidate comparison. Geometry digests measure WKB changes, not topological equivalence."
+  },
+  "refresh_policy": {
+    "proposal": "Discover annual TIGER releases; stage each explicitly named vintage separately; do not overwrite historical semantics",
+    "idempotency": "Proposed URL/vintage/content SHA256 identity; changed bytes at same URL quarantine",
+    "failure": "Reject HTTP errors, ArcGIS JSON error payloads if later considered, corrupt ZIP, missing members, schema/ID/coverage drift; retain last accepted release"
+  },
+  "blockers": [
+    "Original DHS XLSX and archive exact match unavailable",
+    "Accepted published baseline and maintainer-approved all-column contract missing",
+    "2023 to 2026 includes ID additions/removals, GEOIDFQ changes and geometry/category changes: explicit migration/vintage decision required",
+    "Shared #417 row comparator and publication gate prerequisite; no implementation acceptance asserted"
+  ],
+  "runtime": {
+    "port": 3408,
+    "server_info": "evidence/server-info.json",
+    "graphql": "evidence/graphql.json",
+    "materialized": false
+  }
+}
