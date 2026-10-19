@@ -1,0 +1,16 @@
+{
+  "requested_url": "https://www.ornl.gov/projects/geospatial-data-sets/",
+  "observed_final_url": "https://www.ornl.gov/projects/geospatial-data-sets/",
+  "started_at": "2026-10-19T11:24:34.806753+00:00",
+  "observed_at": "2026-10-19T11:24:35.103004+00:00",
+  "status": 200,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 11:24:35 GMT",
+    "content-type": "text/html; charset=UTF-8",
+    "last-modified": "Tue, 22 Sep 2026 17:32:32 GMT"
+  },
+  "wire_bytes": 697982,
+  "bytes": 697982,
+  "sha256": "33337c9b00557eeb531dcd9b2a8de852b29b0a60bd3cd4701002d4a65a215bc9",
+  "redirects": []
+}

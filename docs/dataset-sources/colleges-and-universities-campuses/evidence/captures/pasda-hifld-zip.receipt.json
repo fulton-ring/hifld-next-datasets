@@ -1,0 +1,18 @@
+{
+  "requested_url": "https://www.pasda.psu.edu/download/hifld_fema/colleges-and-universities-campuses-hifld.zip",
+  "observed_final_url": "https://www.pasda.psu.edu/download/hifld_fema/colleges-and-universities-campuses-hifld.zip",
+  "started_at": "2026-10-19T11:19:11.543580+00:00",
+  "observed_at": "2026-10-19T11:19:12.878070+00:00",
+  "status": 200,
+  "headers": {
+    "content-type": "application/x-zip-compressed",
+    "last-modified": "Wed, 13 Aug 2025 14:09:12 GMT",
+    "etag": "\"2ef18d85bcdc1:0\"",
+    "date": "Mon, 19 Oct 2026 11:19:11 GMT",
+    "content-length": "2042588"
+  },
+  "wire_bytes": 2042588,
+  "bytes": 2042588,
+  "sha256": "44d1dce584a6eff3408320a21302f18771640c13ec556f50b000e77f7c469571",
+  "redirects": []
+}

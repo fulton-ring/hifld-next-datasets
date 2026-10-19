@@ -1,0 +1,18 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/geoparquet/colleges-and-universities-campuses.parquet",
+  "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/geoparquet/colleges-and-universities-campuses.parquet",
+  "started_at": "2026-10-19T11:18:32.394218+00:00",
+  "observed_at": "2026-10-19T11:18:33.292618+00:00",
+  "status": 200,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "date": "Mon, 19 Oct 2026 11:18:32 GMT",
+    "last-modified": "Fri, 09 Oct 2026 00:39:17 GMT",
+    "etag": "\"5c28bb0f34118dbdf8637ba070be9960\"",
+    "content-length": "2030810"
+  },
+  "wire_bytes": 2030810,
+  "bytes": 2030810,
+  "sha256": "9194b8bd8ddf715d2b43ec6aee6e6baa1dfb02913bc6fea5644d463557c19c8d",
+  "redirects": []
+}

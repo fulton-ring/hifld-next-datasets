@@ -1,0 +1,16 @@
+{
+  "requested_url": "https://catalog.data.gov/harvest_record/09bc65a5-e798-4df5-9261-b3222d20e681/raw",
+  "observed_final_url": "https://catalog.data.gov/harvest_record/09bc65a5-e798-4df5-9261-b3222d20e681/raw",
+  "started_at": "2026-10-19T11:19:11.547101+00:00",
+  "observed_at": "2026-10-19T11:19:12.088176+00:00",
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "content-length": "697",
+    "date": "Mon, 19 Oct 2026 11:19:12 GMT"
+  },
+  "wire_bytes": 697,
+  "bytes": 697,
+  "sha256": "ecc27de918f4f430b1b042b64810d1a7ee5c0a711f30a0b1b4206e37eae3d550",
+  "redirects": []
+}

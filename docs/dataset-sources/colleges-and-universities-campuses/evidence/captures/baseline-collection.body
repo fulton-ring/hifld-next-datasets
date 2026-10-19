@@ -1,0 +1,649 @@
+{
+  "assets": {
+    "geojson-2f9b2dad6edd": {
+      "file:checksum": "d50110ef23b91f46c4cd27d1721819f7bbe8b1",
+      "file:size": 8022220,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/geojson/colleges-and-universities-campuses-geojson.geojson",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-campuses-geojson.geojson",
+      "type": "application/geo+json"
+    },
+    "geopackage-68e4ab5b1bb3": {
+      "file:checksum": "d50110e8cbab1bacd711a02aa0668875b29375",
+      "file:size": 4706304,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/geopackage/colleges-and-universities-campuses.gpkg",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-campuses.gpkg",
+      "type": "application/geopackage+sqlite3"
+    },
+    "geoparquet-15b3fcce9070": {
+      "file:checksum": "d501105c28bb0f34118dbdf8637ba070be9960",
+      "file:size": 2030810,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/geoparquet/colleges-and-universities-campuses.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-campuses.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "pmtiles-2a23ed939981": {
+      "file:checksum": "d50110f14ccdc873c550299393b9fc5fd08a06",
+      "file:size": 4737533,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/pmtiles/colleges-and-universities-campuses.pmtiles",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-campuses.pmtiles",
+      "type": "application/vnd.pmtiles"
+    },
+    "shapefile-6a202b8fd33b": {
+      "file:checksum": "d50110412bef2f805e2350d926f60cfd1967ab",
+      "file:size": 1951147,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/shapefile/colleges-and-universities-campuses.zip",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-campuses.zip",
+      "type": "application/zip"
+    }
+  },
+  "description": "The College and University Campuses feature class/shapefile is composed of all Post Secondary Education facilities as defined by the Homeland Infrastructure Foundation-Level Data (HIFLD) Colleges and Universities and Supplemental Colleges point feature classes/shapefiles with a POPULATION value greater than or equal to 500. Also included is a subset of campuses with a POPULATION value under 500 or equal to -999. Included are Doctoral/Research Universities, Masters Colleges and Universities, Baccalaureate Colleges, Associates Colleges, Theological seminaries, Medical Schools and other health care professions, Schools of engineering and technology, business and management, art, music, design, Law schools, Teachers colleges, Tribal colleges, and other specialized institutions. Excluded are online institutions and administrative records as well as colleges and universities that do not have a verifiable campus map. Overall, this data layer covers all 50 states, as well as Puerto Rico and other assorted U.S. territories. This feature class/shapefile contains all MEDS/MEDS+ as approved by the National Geospatial-Intelligence Agency (NGA) Homeland Security Infrastructure Program (HSIP) Team. Complete field and attribute information is available in the \u201dEntities and Attributes\u201d metadata section. Geographical coverage is depicted in the thumbnail above and detailed in the \"Place Keyword\" section of the metadata. This feature class does not have a relationship class but is related to Supplemental Colleges and Colleges and Universities. Note that attribution is derived from the Colleges and Universities and Supplemental Colleges feature classes/shapefiles. Refer to the metadata of those feature classes/shapefiles for further information regarding attribution. This release includes 21 new records and the removal of 88 records that are no longer applicable based on the sourced datasets.",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -170.74437785899997,
+          -14.323952233999934,
+          171.378807842,
+          66.90102666300004
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "hifld:agency": "Department of Energy",
+  "hifld:feature_count": 5898,
+  "hifld:feature_id_column": null,
+  "hifld:geometry_column": "geometry",
+  "hifld:geometry_type": "MultiPolygon",
+  "hifld:inventory_match_type": null,
+  "hifld:manifest_keys": [
+    "colleges-and-universities-campuses/metadata/source_manifest.json",
+    "colleges-and-universities-campuses/colleges-and-universities-campuses/metadata/source_manifest.json"
+  ],
+  "hifld:manifest_role": "resolved_version",
+  "hifld:metadata_resolved_from": {},
+  "hifld:metadata_sources": [],
+  "hifld:native_bbox": [
+    -19007177.199078172,
+    -1611409.1604195323,
+    19077801.62172972,
+    10127918.376278497
+  ],
+  "hifld:native_crs": "{\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\", \"base_crs\": {\"coordinate_system\": {\"axis\": [{\"abbreviation\": \"lat\", \"direction\": \"north\", \"name\": \"Latitude\", \"unit\": \"degree\"}, {\"abbreviation\": \"lon\", \"direction\": \"east\", \"name\": \"Longitude\", \"unit\": \"degree\"}], \"subtype\": \"ellipsoidal\"}, \"datum\": {\"ellipsoid\": {\"inverse_flattening\": 298.257223563, \"name\": \"WGS 84\", \"semi_major_axis\": 6378137}, \"name\": \"World Geodetic System 1984\", \"type\": \"GeodeticReferenceFrame\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 4326}, \"name\": \"WGS 84\"}, \"conversion\": {\"method\": {\"id\": {\"authority\": \"EPSG\", \"code\": 1024}, \"name\": \"Popular Visualisation Pseudo Mercator\"}, \"name\": \"unnamed\", \"parameters\": [{\"id\": {\"authority\": \"EPSG\", \"code\": 8801}, \"name\": \"Latitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8802}, \"name\": \"Longitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8806}, \"name\": \"False easting\", \"unit\": \"metre\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8807}, \"name\": \"False northing\", \"unit\": \"metre\", \"value\": 0}]}, \"coordinate_system\": {\"axis\": [{\"abbreviation\": \"\", \"direction\": \"east\", \"name\": \"Easting\", \"unit\": \"metre\"}, {\"abbreviation\": \"\", \"direction\": \"north\", \"name\": \"Northing\", \"unit\": \"metre\"}], \"subtype\": \"Cartesian\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 3857}, \"name\": \"WGS 84 / Pseudo-Mercator\", \"type\": \"ProjectedCRS\"}",
+  "hifld:office": "Oak Ridge National Laboratory",
+  "hifld:quality": {
+    "columns_hash": "368c97c5b08cca925d7b84a8d5bab7323778df5b09f40b47588b26b0fe3dada8",
+    "invalid_geometry_count": 15,
+    "manifest_href": "metadata/quality_manifest.json",
+    "null_geometry_count": 0,
+    "passed": false,
+    "provenance": "production_metadata_and_parquet_footer_spike",
+    "sampled_feature_count": null,
+    "sampled_invalid_geometry_count": null,
+    "sampled_null_geometry_count": null
+  },
+  "hifld:source_dates": {
+    "issued": "2019-06-28",
+    "modified": "2022-12-10",
+    "provenance": {
+      "issued": "inventory",
+      "modified": "inventory"
+    }
+  },
+  "hifld:spatial_status": "spatial",
+  "id": "hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0",
+  "keywords": [
+    "Education",
+    "Geonames",
+    "Government"
+  ],
+  "license": "other",
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/collection.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://www.datalumos.org/datalumos/project/238998/version/V1/view",
+      "rel": "derived_from"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities-campuses/colleges-and-universities-campuses/v1.0.0/pmtiles/colleges-and-universities-campuses.pmtiles",
+      "rel": "pmtiles",
+      "title": "colleges-and-universities-campuses.pmtiles",
+      "type": "application/vnd.pmtiles"
+    }
+  ],
+  "providers": [
+    {
+      "name": "Department of Energy",
+      "roles": [
+        "producer"
+      ]
+    },
+    {
+      "name": "HIFLD Next",
+      "roles": [
+        "host"
+      ],
+      "url": "https://hifld.publicenvirodata.org"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/table/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/web-map-links/v1.3.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "table:columns": [
+    {
+      "is_geometry": true,
+      "name": "geometry",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "460835",
+        "458229",
+        "15993902",
+        "10114302",
+        "110918"
+      ],
+      "is_geometry": false,
+      "length": 8,
+      "name": "UNIQUEID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "PLATT COLLEGE-MILLER-MOTTE TECHNICAL-CONWAY",
+        "WEST COAST UNIVERSITY-ONTARIO",
+        "UNIVERSITY OF NEW ORLEANS - JEFFERSON CAMPUS",
+        "ENTERPRISE STATE COMMUNITY COLLEGE - FORT RUCKER SITE",
+        "CALIFORNIA CHRISTIAN COLLEGE"
+      ],
+      "is_geometry": false,
+      "length": 119,
+      "name": "NAME",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2451 EAST HIGHWAY 501",
+        "2855 E. GUASTI RD",
+        "3330 NORTH CAUSEWAY",
+        "BLDG 4502 KINGSMAN STREET",
+        "5364 E. BELMONT AVENUE"
+      ],
+      "is_geometry": false,
+      "length": 73,
+      "name": "ADDRESS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "CONWAY",
+        "ONTARIO",
+        "METAIRIE",
+        "FORT RUCKER",
+        "FRESNO"
+      ],
+      "is_geometry": false,
+      "length": 24,
+      "name": "CITY",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "SC",
+        "CA",
+        "LA",
+        "AL",
+        "CA"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "STATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "29526",
+        "91761",
+        "70002",
+        "36360",
+        "93727"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "ZIP",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "9508",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "ZIP4",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "(843) 591-1100",
+        "(909) 467-6100",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "(559) 251-4215"
+      ],
+      "is_geometry": false,
+      "length": 24,
+      "name": "TELEPHONE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "3",
+        "3",
+        "1",
+        "1",
+        "2"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "TYPE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-3",
+        "1",
+        "2",
+        "3"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "A",
+        "A",
+        "A",
+        "A",
+        "A"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "STATUS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "A",
+        "C",
+        "D",
+        "G",
+        "M",
+        "R"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "362",
+        "2765",
+        "-999",
+        "-999",
+        "34"
+      ],
+      "is_geometry": false,
+      "max": "154991.0",
+      "min": "-999.0",
+      "name": "POPULATION",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "HORRY",
+        "SAN BERNARDINO",
+        "JEFFERSON",
+        "DALE",
+        "FRESNO"
+      ],
+      "is_geometry": false,
+      "length": 23,
+      "name": "COUNTY",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "45051",
+        "06071",
+        "22051",
+        "01045",
+        "06019"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "COUNTYFIPS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "USA",
+        "USA",
+        "USA",
+        "USA",
+        "USA"
+      ],
+      "is_geometry": false,
+      "length": 3,
+      "name": "COUNTRY",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "ASM",
+        "FSM",
+        "GUM",
+        "MHL",
+        "MNP",
+        "PLW",
+        "PRI",
+        "USA",
+        "VIR"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "611210",
+        "611310",
+        "611310",
+        "611210",
+        "611310"
+      ],
+      "is_geometry": false,
+      "length": 6,
+      "name": "NAICS_CODE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "611210",
+        "611310",
+        "611410",
+        "611420",
+        "611511",
+        "611512",
+        "611519",
+        "611610",
+        "611710"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "JUNIOR COLLEGES",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "JUNIOR COLLEGES",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS"
+      ],
+      "is_geometry": false,
+      "length": 48,
+      "name": "NAICS_DESC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "BUSINESS AND SECRETARIAL SCHOOLS",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "COMPUTER TRAINING",
+        "COSMETOLOGY AND BARBER SCHOOLS",
+        "EDUCATIONAL SUPPORT SERVICES",
+        "FINE ARTS SCHOOLS",
+        "FLIGHT TRAINING",
+        "JUNIOR COLLEGES",
+        "OTHER TECHNICAL AND TRADE SCHOOLS"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "www.miller-motte.edu",
+        "https://westcoastuniversity.edu/campuses/ontario.html",
+        "http://www.uno.edu/About/CampusMaps/UNOJeffersonCenter.aspx",
+        "http://www.escc.edu/fortrucker/map.htm",
+        "https://www.calchristiancollege.edu/about/location-map/"
+      ],
+      "is_geometry": false,
+      "length": 150,
+      "name": "SOURCE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2018-03-20",
+        "2018-08-24",
+        "2018-03-12",
+        "2018-03-05",
+        "2019-03-13"
+      ],
+      "is_geometry": false,
+      "length": 10,
+      "name": "SOURCEDATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "IMAGERY/OTHER",
+        "IMAGERY/OTHER",
+        "IMAGERY/OTHER",
+        "IMAGERY/OTHER",
+        "IMAGERY/OTHER"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "VAL_METHOD",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "IMAGERY/OTHER"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2018-03-20",
+        "2018-08-24",
+        "2018-03-12",
+        "2018-03-05",
+        "2019-03-13"
+      ],
+      "is_geometry": false,
+      "length": 10,
+      "name": "VAL_DATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "https://www.miller-motte.edu/",
+        "westcoastuniversity.edu/",
+        "http://www.uno.edu/About/CampusMaps/UNOJeffersonCenter.aspx",
+        "http://www.escc.edu/fortrucker/map.htm",
+        "www.calchristiancollege.edu/"
+      ],
+      "is_geometry": false,
+      "length": 150,
+      "name": "WEBSITE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "323",
+        "2408",
+        "-999",
+        "-999",
+        "13"
+      ],
+      "is_geometry": false,
+      "max": "147866.0",
+      "min": "-999.0",
+      "name": "TOT_ENROLL",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "39",
+        "357",
+        "-999",
+        "-999",
+        "21"
+      ],
+      "is_geometry": false,
+      "max": "35030.0",
+      "min": "-999.0",
+      "name": "TOT_EMP",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "SHELTERID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "389",
+        "3824",
+        "4827",
+        "4563",
+        "627"
+      ],
+      "is_geometry": false,
+      "max": "4990.0",
+      "min": "1.0",
+      "name": "id",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    }
+  ],
+  "title": "Colleges and Universities Campuses",
+  "type": "Collection"
+}
