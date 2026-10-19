@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.epa_large_scale import (
+    epa_large_scale_source_integrity_job,
+    epa_large_scale_source_integrity_schedule,
+)
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
 from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_complete,
@@ -880,6 +884,7 @@ defs = Definitions(
         epa_facilities_labels_full_quality,
     ],
     jobs=[
+        epa_large_scale_source_integrity_job,
         elsd_source_integrity_job,
         epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
@@ -955,6 +960,7 @@ defs = Definitions(
         epa_facilities_labels_draft_job,
     ],
     schedules=[
+        epa_large_scale_source_integrity_schedule,
         elsd_source_integrity_schedule,
         epa_disaster_debris_draft_schedule,
         colleges_source_integrity_schedule,
