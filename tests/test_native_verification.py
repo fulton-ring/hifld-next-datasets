@@ -141,6 +141,40 @@ class NativeVerificationTests(unittest.TestCase):
             receipt = normalize_native_input(spec_for(inputs, "arrow_ipc_file"), policy(False), root / "out")
             self.assertEqual(receipt["status"], "blocked", receipt)
 
+    def test_evidence_symlink_and_hardlink_targets_never_overwrite_original_capture(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            inputs = root / "inputs"
+            inputs.mkdir()
+            original = inputs / "data.parquet"
+            pq.write_table(arrow_table(spatial=False), original)
+            spec = spec_for(inputs, "parquet")
+            before = original.read_bytes()
+            for name in ["normalization_receipt.json.pending", "normalized_records.jsonl.partial",
+                         "normalization_lineage.jsonl.partial", "normalization_receipt.json",
+                         "baseline_comparison.json", "baseline_comparison.md", "baseline_differences.jsonl",
+                         "baseline_field_changes.jsonl"]:
+                for hardlink in [False, True]:
+                    output = root / (name.replace(".", "-") + str(hardlink))
+                    output.mkdir()
+                    alias = output / name
+                    if hardlink:
+                        os.link(original, alias)
+                    else:
+                        alias.symlink_to(original)
+                    with self.assertRaisesRegex(ValueError, "link"):
+                        normalize_native_input(spec, policy(False), output)
+                    with self.assertRaisesRegex(ValueError, "link"):
+                        compare_native_inputs(spec, spec, policy(False), output, baseline_reference=reference(spec))
+                    self.assertEqual(original.read_bytes(), before)
+                    self.assertEqual(list(output.iterdir()), [alias])
+                    alias.unlink()
+            link = root / "linked-directory"
+            link.symlink_to(inputs, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "link"):
+                normalize_native_input(spec, policy(False), link / "evidence")
+            self.assertEqual(list(inputs.iterdir()), [original])
+
     def test_output_inside_preserved_capture_is_refused_before_any_write(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / "capture"

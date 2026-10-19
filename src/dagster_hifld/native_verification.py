@@ -34,6 +34,7 @@ from shapely import from_wkb, get_srid, has_m
 from shapely.errors import ShapelyError
 from shapely.geometry import mapping
 
+from dagster_hifld.evidence_io import new_evidence_stream, validate_evidence_directory, write_json_atomic, write_text_atomic
 from dagster_hifld.validation import (
     ComparisonLimits,
     _no_duplicate_members,
@@ -76,13 +77,11 @@ def _identity(path: Path) -> tuple:
 
 
 def _write_json(path: Path, value: Any) -> None:
-    temporary = path.with_name(path.name + ".pending")
-    temporary.write_text(json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
-    temporary.replace(path)
+    write_json_atomic(path, value)
 
 
 def _code_digest() -> str:
-    return _digest({path.name: sha256_file(path) for path in (Path(__file__), Path(__file__).with_name("validation.py"))})
+    return _digest({path.name: sha256_file(path) for path in (Path(__file__), Path(__file__).with_name("validation.py"), Path(__file__).with_name("evidence_io.py"))})
 
 
 def reader_versions() -> dict:
@@ -422,6 +421,7 @@ def _objects(spec: dict, limits: NativeReadLimits) -> list[tuple[dict, Path]]:
 def _safe_output(output_dir: Path, *specs: dict) -> None:
     # Reject before mkdir/receipt writes: captures are read-only even when a
     # caller accidentally places the evidence folder inside them.
+    validate_evidence_directory(output_dir)
     for spec in specs:
         if isinstance(spec, dict) and isinstance(spec.get("root"), str) and output_dir.resolve().is_relative_to(Path(spec["root"]).resolve()):
             raise ValueError("Evidence output must be outside pinned native input root")
@@ -462,7 +462,7 @@ def normalize_native_input(spec: dict, policy: dict, output_dir: Path, *, limits
         written = 0
         total_rows = 0
         reference_schema = None
-        with partial.open("wb") as output, lineage_partial.open("wb") as lineage:
+        with new_evidence_stream(partial, binary=True) as output, new_evidence_stream(lineage_partial, binary=True) as lineage:
             for obj, path in objects:
                 context: dict = {}
                 rows = 0
@@ -558,7 +558,7 @@ def compare_native_inputs(baseline_spec: dict, candidate_spec: dict, policy: dic
     except (ValueError, OSError, KeyError, TypeError) as exc:
         result = {**blocked, "reason_codes": [f"native_comparison_incomplete:{type(exc).__name__}:{exc}"], "native_inputs": descriptors}
     _write_json(output_dir / "baseline_comparison.json", result)
-    (output_dir / "baseline_comparison.md").write_text(f"Native full comparison: **{result['status']}**. Acceptance remains separate.\n\nComplete normalization receipts and physical schemas are pinned in the JSON report.\n")
+    write_text_atomic(output_dir / "baseline_comparison.md", f"Native full comparison: **{result['status']}**. Acceptance remains separate.\n\nComplete normalization receipts and physical schemas are pinned in the JSON report.\n")
     return result
 
 

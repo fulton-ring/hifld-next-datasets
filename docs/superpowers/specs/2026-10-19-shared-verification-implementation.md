@@ -254,3 +254,15 @@ recursive decoding; nested struct/list/map declarations remain enforced. Fifteen
 native tests now pass, including this malformed IPC regression and the actual
 isolated full-graph preservation check. Earlier native evidence above remains a
 record of its original implementation bytes, not an approval of this fix.
+
+Independent review also reproduced an original-byte preservation defect through
+pre-existing evidence symlinks. `evidence_io` now refuses symlinked ancestors and
+symlink/hardlink output trees before any mutation. Reports use exclusive random
+temporary inodes plus atomic replacement; normalized partials and diff/field
+streams use exclusive no-follow creation after removing only their old name.
+The JSONL comparator also refuses evidence targets that are its own input files.
+Unsafe locations raise without altering the input or linked evidence; the caller
+must choose a safe evidence directory. This is not a hostile concurrent directory
+replacement guarantee. Focused native and original verifier tests cover linked
+reports/partials/sidecars, map nullability, original-byte preservation and actual
+local success/failed-promotion behavior.

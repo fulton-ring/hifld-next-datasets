@@ -20,6 +20,7 @@ from pyproj import CRS
 from pyproj.exceptions import CRSError
 from shapely.errors import ShapelyError
 from shapely.geometry import shape
+from dagster_hifld.evidence_io import new_evidence_stream, validate_evidence_directory, write_json_atomic, write_text_atomic
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,7 @@ def compare_full_rows(
     Differences need a decision; malformed data or comparison errors fail closed.
     Scratch SQLite holds full keys, values, geometries and coverage groups.
     """
+    validate_evidence_directory(output_dir, protected_files=(baseline, candidate))
     output_dir.mkdir(parents=True, exist_ok=True)
     report = {
         "schema_version": 1,
@@ -183,11 +185,11 @@ def compare_full_rows(
         "comparator_sha256": sha256_file(Path(__file__)),
     }
     # Never leave a previous passing report visible while a rerun is unfinished.
-    (output_dir / "baseline_comparison.json").write_text(json.dumps({
+    write_json_atomic(output_dir / "baseline_comparison.json", {
         **report, "reason_codes": ["comparison_started_not_completed"],
-    }, indent=2) + "\n")
+    })
     sidecar = output_dir / "baseline_differences.jsonl"
-    with sidecar.open("w", encoding="utf-8") as diffs:
+    with new_evidence_stream(sidecar) as diffs:
         def emit(kind: str, **details: Any) -> None:
             diffs.write(json.dumps({"kind": kind, **details}, ensure_ascii=False) + "\n")
 
@@ -299,7 +301,7 @@ def compare_full_rows(
                         quota()
                     field_path = output_dir / "baseline_field_changes.jsonl"
                     field_rows = 0
-                    with field_path.open("w", encoding="utf-8") as fields:
+                    with new_evidence_stream(field_path) as fields:
                         for name, compared, changed in db.execute("SELECT field,compared,changed FROM field_changes ORDER BY field"):
                             fields.write(json.dumps({"field": name, "retained_rows_compared": compared, "changed": changed}, ensure_ascii=False) + "\n")
                             fields.flush()
@@ -329,8 +331,8 @@ def compare_full_rows(
             report["status"] = "blocked"
             report["reason_codes"].append(f"comparison_incomplete:{type(exc).__name__}:{exc}")
     report["sidecar"] = {"path": sidecar.name, "sha256": sha256_file(sidecar), "bytes": sidecar.stat().st_size}
-    (output_dir / "baseline_comparison.json").write_text(json.dumps(report, indent=2) + "\n")
-    (output_dir / "baseline_comparison.md").write_text(
+    write_json_atomic(output_dir / "baseline_comparison.json", report)
+    write_text_atomic(output_dir / "baseline_comparison.md",
         f"Comparison: **{report['status']}**. Acceptance is separate.\n\n"
         f"Population totals: `{json.dumps(report['populations'])}`\n\n"
         f"Full differences: `{json.dumps(report['differences'])}`\n\n"

@@ -107,6 +107,36 @@ def accepted_fixture(root):
 
 
 class FullPopulationTests(unittest.TestCase):
+    def test_linked_report_and_sidecar_outputs_preserve_original_input_bytes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            baseline, candidate = root / "baseline.jsonl", root / "candidate.jsonl"
+            stream(baseline, [feature()]); stream(candidate, [feature()])
+            original = baseline.read_bytes()
+            for name in ["baseline_comparison.json", "baseline_comparison.md", "baseline_differences.jsonl", "baseline_field_changes.jsonl"]:
+                for hardlink in [False, True]:
+                    output = root / (name + str(hardlink))
+                    output.mkdir()
+                    link = output / name
+                    if hardlink:
+                        os.link(baseline, link)
+                    else:
+                        link.symlink_to(baseline)
+                    with self.assertRaisesRegex(ValueError, "link"):
+                        compare_full_rows(baseline, candidate, CONTRACT, output,
+                                          baseline_sha256=sha256_file(baseline), candidate_sha256=sha256_file(candidate),
+                                          baseline_reference=baseline_reference(baseline))
+                    self.assertEqual(baseline.read_bytes(), original)
+                    self.assertEqual(list(output.iterdir()), [link])
+                    link.unlink()
+            protected = root / "baseline_comparison.json"
+            stream(protected, [feature()])
+            with self.assertRaisesRegex(ValueError, "protected comparison input"):
+                compare_full_rows(protected, candidate, CONTRACT, root,
+                                  baseline_sha256=sha256_file(protected), candidate_sha256=sha256_file(candidate),
+                                  baseline_reference=baseline_reference(protected))
+            self.assertEqual(protected.read_bytes(), original)
+
     def test_unmatched_baseline_input_pin_and_unknown_crs_block(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
