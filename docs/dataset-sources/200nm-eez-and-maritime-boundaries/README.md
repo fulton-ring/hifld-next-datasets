@@ -10,7 +10,7 @@ The explicit `noaa_200nm_eez_and_maritime_boundaries` asset requires `allow_unap
 
 Draft version namespaces bind complete raw hashes, full installed pipeline-code fingerprint, proposed schema/ID/geometry/coverage/count policy and retrieval URLs. Identical source/code is idempotent; changed processing gets a separate immutable namespace. Reentry validates complete provenance semantics, preserving original retrieval/code attribution only for identical installed code and appending refresh receipts separately. Seven raw inputs, checksums, source roles, exact retrieval URLs, retrieval times, release uncertainty and transformations flow into the source manifest and data dictionary.
 
-The shared #417 implementation is an explicit dependency, through `62977c91ebaf2740f654f3be7cc98490b607b224`. Generated formats run before final `publish/verify`; no independent approval registry means the actual graph fails there and skips promotion. No real registry, source approval, baseline acceptance or contract decision was authored.
+The shared #417 implementation is an explicit dependency, through `0603d057aeefb12f0737714bc137fa2f3f3fc78e`. Generated formats run before final `publish/verify`; no independent approval registry means the actual graph fails there and skips promotion. No real registry, source approval, baseline acceptance or contract decision was authored.
 
 ## Full real-input materialization evidence
 
