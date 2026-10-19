@@ -51,7 +51,7 @@ class CSASourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'geopackage').mkdir();(root/'candidate').mkdir()
             gpkg=root/'geopackage'/f'{c.SLUG}.gpkg';parquet=root/'candidate/typed-source.parquet'
-            c.pyogrio.write_arrow(original,gpkg,layer=c.LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_storage_fid','GEOMETRY_NAME':'SHAPE'})
+            c.write_native_gpkg(original,gpkg)
             c.pq.write_table(original,parquet)
             c.reconcile_cached_native_outputs(root,original)
             for name,values in [('ALAND',[2.0]),('OBJECTID',[99]),('GEOID',['999']),('SHAPE',[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(2,0),(0,1),(0,0)])]))])]:
@@ -62,7 +62,7 @@ class CSASourceTests(unittest.TestCase):
             c.pq.write_table(original,parquet)
             gpkg.unlink()
             changed=original.set_column(3,'NAMELSAD',pa.array(['tampered']))
-            c.pyogrio.write_arrow(changed,gpkg,layer=c.LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_storage_fid','GEOMETRY_NAME':'SHAPE'})
+            c.write_native_gpkg(changed,gpkg)
             with self.assertRaisesRegex(ValueError,'fresh_original'):
                 c.reconcile_cached_native_outputs(root,original)
 
@@ -75,7 +75,7 @@ class CSASourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'geopackage').mkdir();(root/'candidate').mkdir()
             gpkg=root/'geopackage'/f'{c.SLUG}.gpkg';parquet=root/'candidate/typed-source.parquet'
-            c.pyogrio.write_arrow(original,gpkg,layer=c.LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_storage_fid','GEOMETRY_NAME':'SHAPE'})
+            c.write_native_gpkg(original,gpkg)
             for name,value in mutations:
                 meta=dict(expected.schema.metadata);geo=json.loads(meta[b'geo']);geo['columns']['SHAPE'][name]=value;meta[b'geo']=c.encode(geo)
                 c.pq.write_table(expected.replace_schema_metadata(meta),parquet)
@@ -88,6 +88,33 @@ class CSASourceTests(unittest.TestCase):
             with c.sqlite3.connect(gpkg) as db:db.execute('UPDATE gpkg_contents SET min_x=999')
             with self.assertRaisesRegex(ValueError,'geopackage_geometry_declarations'):
                 c.reconcile_cached_native_outputs(root,original)
+
+    def test_full_canonical_container_rejects_srs_headers_and_spatial_index_changes(self):
+        geometry=c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))
+        props={'OBJECTID':[1],'GEOID':['001'],'GEOIDFQ':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[geometry]}
+        original=pa.Table.from_pydict(props,schema=pa.schema([pa.field(n,t) for n,t in zip(c.FIELDS,c.TYPES)]))
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'geopackage').mkdir();(root/'candidate').mkdir()
+            gpkg=root/'geopackage'/f'{c.SLUG}.gpkg';parquet=root/'candidate/typed-source.parquet'
+            c.write_native_gpkg(original,gpkg);c.pq.write_table(c.expected_parquet_table(original),parquet)
+            saved=gpkg.read_bytes();c.reconcile_cached_native_outputs(root,original)
+            cases=['definition','organization_coordsys_id','header_srs','header_flags','header_envelope','rtree']
+            for case in cases:
+                gpkg.write_bytes(saved)
+                with c.sqlite3.connect(gpkg) as db:
+                    if case=='definition':db.execute('UPDATE gpkg_spatial_ref_sys SET definition=? WHERE srs_id=4269',(c.pyproj.CRS(4326).to_wkt(version='WKT1_GDAL'),))
+                    elif case=='organization_coordsys_id':db.execute('UPDATE gpkg_spatial_ref_sys SET organization_coordsys_id=4326 WHERE srs_id=4269')
+                    elif case=='rtree':db.execute(f'UPDATE "rtree_{c.LAYER}_SHAPE" SET minx=-999')
+                    else:
+                        # Incremental BLOB writes exercise physical header bytes
+                        # without firing geometry/index-maintenance SQL triggers.
+                        with db.blobopen(c.LAYER,'SHAPE',1) as blob:
+                            if case=='header_srs':blob.seek(4);blob.write((4326).to_bytes(4,'little',signed=True))
+                            elif case=='header_flags':blob.seek(3);flag=blob.read(1)[0];blob.seek(3);blob.write(bytes([flag^32]))
+                            else:blob.seek(8);blob.write(bytes.fromhex('0000000000388f40'))
+                with self.subTest(case=case),self.assertRaises(ValueError):
+                    c.reconcile_cached_native_outputs(root,original)
+            gpkg.write_bytes(saved);c.reconcile_cached_native_outputs(root,original)
 
     def test_producer_oid_and_double_declarations_are_distinct_from_arrow(self):
         evidence=Path(__file__).parents[1]/'docs/dataset-sources/combined-statistical-areas-3/evidence/native-layer-definition.json'

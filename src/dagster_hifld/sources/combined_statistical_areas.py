@@ -267,6 +267,11 @@ def reconcile_cached_native_outputs(root,table):
         write_native_gpkg(table,fresh)
         if gpkg_geometry_declarations(root/'geopackage'/f'{SLUG}.gpkg')!=gpkg_geometry_declarations(fresh):
             raise CSAQuarantineError('cached_geopackage_geometry_declarations_disagree_with_fresh_original')
+        # This is an immutable canonical cache, not an arbitrary equivalent GPKG.
+        # Exact deterministic reconstruction also binds complete SRS authority/WKT,
+        # geometry headers/flags/envelopes, RTree/indexes and unknown SQL metadata.
+        if sha256_file(root/'geopackage'/f'{SLUG}.gpkg')!=sha256_file(fresh):
+            raise CSAQuarantineError('cached_geopackage_container_bytes_disagree_with_fresh_original')
     if not pt.schema.equals(expected.schema,check_metadata=True):
         raise CSAQuarantineError('cached_parquet_geometry_or_physical_schema_metadata_disagrees_with_fresh_original')
     if (gm['geometry_name']!='SHAPE' or gm['geometry_type']!='MultiPolygon' or gm['crs']!='EPSG:4269' or tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES
