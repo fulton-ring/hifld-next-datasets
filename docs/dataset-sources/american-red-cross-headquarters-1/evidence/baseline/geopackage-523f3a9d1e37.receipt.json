@@ -1,0 +1,32 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-headquarters-1/american-red-cross-headquarters-1/v1.0.0/geopackage/american-red-cross-headquarters-1.gpkg",
+  "fetched_at": "2026-10-19T11:20:24.815711+00:00",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-headquarters-1/american-red-cross-headquarters-1/v1.0.0/geopackage/american-red-cross-headquarters-1.gpkg",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU82gUyIKYk25LbOLizJR-uSeFx7ECdSoXPqvIVN8rnVjtXfcDnmUthlbnWjeNtiKtJGR",
+    "expires": "Mon, 19 Oct 2026 12:20:25 GMT",
+    "date": "Mon, 19 Oct 2026 11:20:25 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:08 GMT",
+    "etag": "\"c3c7f9ad6848842ea9747921cae5b558\"",
+    "x-goog-generation": "1791506348709756",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "163840",
+    "x-goog-hash": "crc32c=bHSRyw==, md5=w8f5rWhIhC6pdHkhyuW1WA==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "163840",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "333"
+  },
+  "wire_bytes": 163840,
+  "bytes": 163840,
+  "sha256": "bc719f88c54f962166362fa80509576f8579844cef6a6d79d0853e388c3b09cd",
+  "complete_body": true
+}

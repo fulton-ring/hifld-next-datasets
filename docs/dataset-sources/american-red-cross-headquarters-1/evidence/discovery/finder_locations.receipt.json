@@ -1,0 +1,29 @@
+{
+  "url": "https://www.redcross.org/etc/clientlibs/redcross/shared/locationdetection.min.js",
+  "fetched_at": "2026-10-19T11:20:01.632152+00:00",
+  "status": 200,
+  "final_url": "https://www.redcross.org/etc/clientlibs/redcross/shared/locationdetection.min.js",
+  "headers": {
+    "content-type": "application/javascript;charset=utf-8",
+    "server": "envoy",
+    "x-dispatcher": "dispatcher2useast1-b86",
+    "x-vhost": "redcross",
+    "x-content-type-options": "nosniff",
+    "last-modified": "Wed, 30 Jul 2025 17:03:32 GMT",
+    "vary": "Accept-Encoding",
+    "cache-control": "max-age=24513",
+    "expires": "Mon, 19 Oct 2026 18:08:35 GMT",
+    "date": "Mon, 19 Oct 2026 11:20:02 GMT",
+    "content-length": "866",
+    "server-timing": "cdn-cache; desc=HIT, edge; dur=1, ak_p; desc=\"1792408801973_399340260_3202878371_37_9854_40_48_15\";dur=1",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-frame-options": "ALLOW-FROM https://adobe.com/, ALLOW-FROM https://redcross.org/",
+    "content-security-policy": "frame-ancestors 'self' https://*.adobe.com;",
+    "x-envoy-upstream-service-time": "166"
+  },
+  "wire_bytes": 866,
+  "complete_body": true,
+  "bytes": 866,
+  "sha256": "037c0a641763a66365c96426f4c966858ec6ea2b9a10084dd15ed21050b547e3"
+}

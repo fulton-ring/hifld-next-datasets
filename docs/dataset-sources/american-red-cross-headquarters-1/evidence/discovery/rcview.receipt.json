@@ -1,0 +1,25 @@
+{
+  "url": "https://rcview.redcross.org/",
+  "fetched_at": "2026-10-19T11:17:53.454669+00:00",
+  "status": 301,
+  "final_url": "https://rcview.redcross.org/",
+  "headers": {
+    "content-type": "text/html; charset=UTF-8",
+    "date": "Mon, 19 Oct 2026 11:17:53 GMT",
+    "server": "envoy",
+    "location": "https://volunteerconnection.redcross.org/?nd=vms_page&page_id=8233",
+    "set-cookie": "[public response cookie omitted; immutable original receipt retained in runtime]",
+    "content-length": "0",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-powered-by": "PHP/5.6.40, ASP.NET",
+    "x-envoy-upstream-service-time": "463"
+  },
+  "wire_bytes": 0,
+  "complete_body": true,
+  "bytes": 0,
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "receipt_redaction": {
+    "header": "set-cookie",
+    "original_receipt_sha256": "99f7eb3954c3f76a4cea68b72342434b5982d9d4b56515f6149b54aab72c1e99"
+  }
+}

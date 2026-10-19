@@ -1,0 +1,15 @@
+{
+  "spec_revision": "11",
+  "observed_spec_revision": "11",
+  "observations_current": true,
+  "network_policy": {
+    "mode": "unrestricted",
+    "state": "enforced"
+  },
+  "connectivity": "connected",
+  "observed_phase": "running",
+  "secret_metadata_keys": [
+    "0"
+  ],
+  "coordinator_environment_mutations": false
+}

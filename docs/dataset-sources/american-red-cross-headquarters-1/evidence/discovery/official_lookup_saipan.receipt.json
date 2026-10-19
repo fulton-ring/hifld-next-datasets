@@ -1,0 +1,24 @@
+{
+  "url": "https://www.redcross.org/api/lookup/v1/region-mappings/96950?type=RCO",
+  "fetched_at": "2026-10-19T11:24:09.773603+00:00",
+  "status": 200,
+  "final_url": "https://www.redcross.org/api/lookup/v1/region-mappings/96950?type=RCO",
+  "headers": {
+    "content-type": "application/json",
+    "x-api-version": "0.0.1-SNAPSHOT",
+    "x-api-name": "rco-lookup-api",
+    "date": "Mon, 19 Oct 2026 11:24:10 GMT",
+    "content-length": "155",
+    "server-timing": "edge; dur=1, origin; dur=75, cdn-cache; desc=MISS, ak_p; desc=\"1792409050378_399340260_3204486062_7544_11916_36_50_15\";dur=1",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-frame-options": "ALLOW-FROM https://adobe.com/, ALLOW-FROM https://redcross.org/",
+    "content-security-policy": "frame-ancestors 'self' https://*.adobe.com;",
+    "x-envoy-upstream-service-time": "270",
+    "server": "envoy"
+  },
+  "wire_bytes": 155,
+  "complete_body": true,
+  "bytes": 155,
+  "sha256": "745675f62f5e7de3b8b4eae6c4edf37225081fd7fc88ed1fe63d034309a90b89"
+}

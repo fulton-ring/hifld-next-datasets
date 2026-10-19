@@ -1,0 +1,34 @@
+{
+  "url": "https://www.redcross.org/find-your-local-chapter.html",
+  "fetched_at": "2026-10-19T11:17:52.650499+00:00",
+  "status": 200,
+  "final_url": "https://www.redcross.org/find-your-local-chapter.html",
+  "headers": {
+    "content-type": "text/html;charset=utf-8",
+    "server": "envoy",
+    "x-dispatcher": "dispatcher1uswest1-b86",
+    "x-vhost": "redcross",
+    "x-content-type-options": "nosniff",
+    "last-modified": "Mon, 19 Oct 2026 00:21:36 GMT",
+    "cache-control": "no-cache",
+    "x-akamai-transformed": "9 17920 0 pmb=mRUM,2",
+    "vary": "Accept-Encoding",
+    "date": "Mon, 19 Oct 2026 11:17:53 GMT",
+    "set-cookie": "[public response cookie omitted; immutable original receipt retained in runtime]",
+    "server-timing": "cdn-cache; desc=MISS, edge; dur=83, origin; dur=281, ak_p; desc=\"1792408673362_399340260_3202133828_36360_10313_90_51_15\";dur=1",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-frame-options": "ALLOW-FROM https://adobe.com/, ALLOW-FROM https://redcross.org/",
+    "content-security-policy": "frame-ancestors 'self' https://*.adobe.com;",
+    "x-envoy-upstream-service-time": "661",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 153787,
+  "complete_body": true,
+  "bytes": 153787,
+  "sha256": "96317ad816f3e16b943dbad67a2576419635e5ea0126662e10a1daf40ae3061b",
+  "receipt_redaction": {
+    "header": "set-cookie",
+    "original_receipt_sha256": "65bc6979846dcc03d49d24e33bc070ec83d487d395ee47aa87b462c82ff18e86"
+  }
+}

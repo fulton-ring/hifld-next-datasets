@@ -1,0 +1,22 @@
+{
+  "url": "https://www.redcross.org/local.html",
+  "fetched_at": "2026-10-19T11:17:52.648619+00:00",
+  "status": 301,
+  "final_url": "https://www.redcross.org/local.html",
+  "headers": {
+    "server": "envoy",
+    "content-length": "0",
+    "location": "/find-your-local-chapter.html",
+    "date": "Mon, 19 Oct 2026 11:17:53 GMT",
+    "server-timing": "cdn-cache; desc=HIT, edge; dur=1, ak_p; desc=\"1792408673414_399340260_3202133829_16_8857_122_0_15\";dur=1",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-frame-options": "ALLOW-FROM https://adobe.com/, ALLOW-FROM https://redcross.org/",
+    "content-security-policy": "frame-ancestors 'self' https://*.adobe.com;",
+    "x-envoy-upstream-service-time": "93"
+  },
+  "wire_bytes": 0,
+  "complete_body": true,
+  "bytes": 0,
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

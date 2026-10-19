@@ -1,0 +1,27 @@
+{
+  "url": "https://doi.org/10.3886/E241367V1",
+  "fetched_at": "2026-10-19T11:26:17.419770+00:00",
+  "status": 302,
+  "final_url": "https://doi.org/10.3886/E241367V1",
+  "headers": {
+    "date": "Mon, 19 Oct 2026 11:26:17 GMT",
+    "content-type": "text/html;charset=utf-8",
+    "location": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "server": "envoy",
+    "vary": "Origin,Accept",
+    "expires": "Mon, 19 Oct 2026 12:06:53 GMT",
+    "permissions-policy": "interest-cohort=(),browsing-topics=()",
+    "cf-cache-status": "DYNAMIC",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=7d%2Fy0Hjl0DD0DITfs%2BCZkjreGc5k5oJ59s05biYrhH5EpQYhSw77UtrU%2FOooEKmKn4t1IZBCD8lOibK9NkqqYboLphlb4XJcqPEKb9%2FIyGy9FE7hX9oMP9Q%3D\"}]}",
+    "cf-ray": "a4cf6d509cca752c-SEA",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "x-envoy-upstream-service-time": "77",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 217,
+  "complete_body": true,
+  "bytes": 217,
+  "sha256": "6d92346a9908aa55ad6b71d0adc18119803a14820e0c71d211982307ae6a0f0e"
+}

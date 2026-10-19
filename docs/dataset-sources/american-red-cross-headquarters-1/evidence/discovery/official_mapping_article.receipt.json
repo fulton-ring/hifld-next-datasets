@@ -1,0 +1,33 @@
+{
+  "url": "https://www.redcross.org/about-us/news-and-events/news/2024/red-cross-maps-data-help-people-prepare-for-disasters.html",
+  "fetched_at": "2026-10-19T11:27:06.177822+00:00",
+  "status": 404,
+  "final_url": "https://www.redcross.org/about-us/news-and-events/news/2024/red-cross-maps-data-help-people-prepare-for-disasters.html",
+  "headers": {
+    "content-type": "text/html;charset=utf-8",
+    "server": "envoy",
+    "x-dispatcher": "dispatcher1uswest1-b86",
+    "x-vhost": "redcross",
+    "x-content-type-options": "nosniff",
+    "last-modified": "Mon, 19 Oct 2026 00:18:31 GMT",
+    "cache-control": "no-cache",
+    "vary": "Accept-Encoding",
+    "date": "Mon, 19 Oct 2026 11:27:06 GMT",
+    "set-cookie": "[public response cookie omitted; immutable original receipt retained in runtime]",
+    "server-timing": "cdn-cache; desc=MISS, edge; dur=21, origin; dur=18, ak_p; desc=\"1792409226326_399340260_3205559686_3941_14878_24_0_15\";dur=1",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-frame-options": "ALLOW-FROM https://adobe.com/, ALLOW-FROM https://redcross.org/",
+    "content-security-policy": "frame-ancestors 'self' https://*.adobe.com;",
+    "x-envoy-upstream-service-time": "102",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 101544,
+  "complete_body": true,
+  "bytes": 101544,
+  "sha256": "84bc4f191a46d0f0480884ec2dbfc0c1ddd8e62023ff64fcb89598bb7a0c4fc0",
+  "receipt_redaction": {
+    "header": "set-cookie",
+    "original_receipt_sha256": "fa1ab9b9c2917d2de2768008adb06238b64a8b7d0ca163edaf0d437a7fe2eeb9"
+  }
+}

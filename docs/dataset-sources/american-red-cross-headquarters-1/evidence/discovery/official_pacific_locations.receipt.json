@@ -1,0 +1,34 @@
+{
+  "url": "https://www.redcross.org/local/pacific-islands/about-us/locations.html",
+  "fetched_at": "2026-10-19T11:26:17.418580+00:00",
+  "status": 200,
+  "final_url": "https://www.redcross.org/local/pacific-islands/about-us/locations.html",
+  "headers": {
+    "content-type": "text/html;charset=utf-8",
+    "server": "envoy",
+    "x-dispatcher": "dispatcher1uswest1-b86",
+    "x-vhost": "redcross",
+    "x-content-type-options": "nosniff",
+    "last-modified": "Mon, 19 Oct 2026 00:35:00 GMT",
+    "cache-control": "no-cache",
+    "x-akamai-transformed": "9 9005 0 pmb=mRUM,2",
+    "vary": "Accept-Encoding",
+    "date": "Mon, 19 Oct 2026 11:26:18 GMT",
+    "set-cookie": "[public response cookie omitted; immutable original receipt retained in runtime]",
+    "server-timing": "edge; dur=2, origin; dur=21, cdn-cache; desc=MISS, ak_p; desc=\"1792409178182_399340260_3205284159_2348_8967_35_57_15\";dur=1",
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-frame-options": "ALLOW-FROM https://adobe.com/, ALLOW-FROM https://redcross.org/",
+    "content-security-policy": "frame-ancestors 'self' https://*.adobe.com;",
+    "x-envoy-upstream-service-time": "220",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 68028,
+  "complete_body": true,
+  "bytes": 68028,
+  "sha256": "43c4a71065e76f8b293a99b68420229d7c2c237e2cc94eaf8a27ff249eff5183",
+  "receipt_redaction": {
+    "header": "set-cookie",
+    "original_receipt_sha256": "1e5746d40c6df84b3e6dffdc1f447d6555c243fd67fbfcd27a28e69d2d2255d0"
+  }
+}
