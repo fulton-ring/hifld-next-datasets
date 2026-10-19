@@ -1,8 +1,8 @@
 {
-  "code_commit": "9e78800754dd2c43fa6e61876dbacdd9ba210c58",
-  "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_fuel_review_boundaries tests.test_refresh_registration_11 tests.test_conversion_integer_fidelity tests.test_source_manifest",
-  "tests_passed": 39,
-  "log_sha256": "c511bce95ea2b21727714d9af60db52fae100e2174796b9a975c8152bab28d9b",
+  "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+  "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_fuel_review_boundaries tests.test_fuel_crs_witnesses tests.test_refresh_registration_11 tests.test_conversion_integer_fidelity tests.test_source_manifest",
+  "tests_passed": 44,
+  "log_sha256": "67c58c55f72c4f877dcddcf95772d554252ec851e449fa5d224e64df036369db",
   "repairs_verified": [
     "PublishedStorageResource rejected before network/write at helper and normal registered source job",
     "strict pre/post count/ID integer types, exact cardinality and uniqueness",
@@ -16,7 +16,8 @@
     "shared schema1/HIFLD Next; one standards-shaped input per59originalcanonicalHTTPbodies, direct authored/resolved validator PASS",
     "top-level error marker in item/layer/count/IDs/page object rejected even when all old fields and new valid receipt checksums remain",
     "entire installeddistribution inventory and native GDAL/GEOS/PROJ/Shapely/pyproj version changes reject immutable reuse",
-    "PMTiles source-version exclusion skips before conversion and existing reuse; real diagnostic bytes and prior publication fixture preserved"
+    "PMTiles source-version exclusion skips before conversion and existing reuse; real diagnostic bytes and prior publication fixture preserved",
+    "Native CRS/service/ending-geometry/extent drift followup: evidence/crs-followup-assertions.json"
   ],
   "scope": "Synthetic negative fixtures and actual registered job boundary tests; no real approval authored. Additional descriptive BTS metadata receipts remain unapproved and are distinct from guarded data queries."
 }

@@ -1,6 +1,6 @@
 {
   "agency": "U.S. Department of Energy / National Laboratory of the Rockies",
-  "code_commit": "9e78800754dd2c43fa6e61876dbacdd9ba210c58",
+  "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
   "complete_rows": 103502,
   "inputs": [
     {
@@ -1660,9 +1660,9 @@
     "crosswalk": "unverified; DataLumos403 prevents inspecting the mapping",
     "distributor_item": "9010c04bcdf84c36abb74e98778af579",
     "processing_identity": {
-      "builder_fingerprint": "bb5cbbfd69291a915f8d1cf8a4e188d74143a9c2e0a59e1f95b8195b6729b6d3",
-      "code_commit": "9e78800754dd2c43fa6e61876dbacdd9ba210c58",
-      "installed_pipeline_sha256": "62941201a5ed97c688706ad770ea93da469eee6bf0b9b5c1ae10cef01c21498d",
+      "builder_fingerprint": "6d3b1756e58904b9bddf94c92961080d15f2266c35bda8d1f016e6657363df4d",
+      "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+      "installed_pipeline_sha256": "10a172767280ba29758f250bd3845e0a18be6fe01d85112f541946e1469de7ab",
       "meaning": "Original processing identity; replay does not invent a new upstream retrieval.",
       "versions": {
         "distributions": [
@@ -4456,9 +4456,9 @@
     }
   ],
   "processing_identity": {
-    "builder_fingerprint": "bb5cbbfd69291a915f8d1cf8a4e188d74143a9c2e0a59e1f95b8195b6729b6d3",
-    "code_commit": "9e78800754dd2c43fa6e61876dbacdd9ba210c58",
-    "installed_pipeline_sha256": "62941201a5ed97c688706ad770ea93da469eee6bf0b9b5c1ae10cef01c21498d",
+    "builder_fingerprint": "6d3b1756e58904b9bddf94c92961080d15f2266c35bda8d1f016e6657363df4d",
+    "code_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+    "installed_pipeline_sha256": "10a172767280ba29758f250bd3845e0a18be6fe01d85112f541946e1469de7ab",
     "meaning": "Original processing identity; replay does not invent a new upstream retrieval.",
     "versions": {
       "distributions": [

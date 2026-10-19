@@ -1,0 +1,68 @@
+{
+  "implementation_commit": "e7f1b1aa2f75be5892d313c76ae0d96793fac16b",
+  "superseded_head": "519e8ed5389eec4f1a924fc6b571b96f2d6b513d",
+  "coordinator_reproduction": {
+    "head": "519e8ed5389eec4f1a924fc6b571b96f2d6b513d",
+    "results": [
+      {
+        "case": "contradictory_aliases",
+        "accepted": true,
+        "rows": 1,
+        "crs": {
+          "latestWkid": 3857,
+          "wkid": 4326
+        }
+      },
+      {
+        "case": "unexpected_4326",
+        "accepted": true,
+        "rows": 1,
+        "crs": {
+          "latestWkid": 4326,
+          "wkid": 4326
+        }
+      },
+      {
+        "case": "after_crs_drift",
+        "accepted": true,
+        "rows": 1,
+        "crs": {
+          "latestWkid": 3857,
+          "wkid": 102100
+        }
+      },
+      {
+        "case": "after_geometry_drift",
+        "accepted": true,
+        "rows": 1,
+        "crs": {
+          "latestWkid": 3857,
+          "wkid": 102100
+        }
+      }
+    ]
+  },
+  "tests_passed": 44,
+  "test_command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_fuel_review_boundaries tests.test_fuel_crs_witnesses tests.test_refresh_registration_11 tests.test_conversion_integer_fidelity tests.test_source_manifest",
+  "test_log_sha256": "67c58c55f72c4f877dcddcf95772d554252ec851e449fa5d224e64df036369db",
+  "repairs": [
+    "Every layer top/extent/optional source CRS and every page CRS requires integer wkid3857 or102100, optional integer latestWkid3857; contradictory/unknown/WKT/vertical extensions rejected",
+    "Both layer geometry/service/ID/XY-only witnesses checked; before/after exact stable CRS/geometry/identity/dimensions/extent/field/edit metadata compared",
+    "All four reproduced cases reject before canonical staging and retain exact invalid bodies/receipts with blocked reason; valid prior candidate preserved",
+    "Four explicit known native/legacy alias representations build EPSG3857 metadata with source XY coordinates unchanged"
+  ],
+  "actual_complete_rows": 103502,
+  "actual_source_run": "a111bdf8-2c53-4fa9-8a02-05eb2338f523",
+  "actual_catalog_run": "d7251dae-18eb-4241-9f6d-83347d94eaa8",
+  "direct_provenance_inputs": 59,
+  "direct_authored_and_resolved_shared_validation": "PASS",
+  "source_candidate_sha256": "312e63540633797b63792751249e7cbe2cc0a41e8560b692e03d585eefd5d58b",
+  "typed_GPKG_sha256": "5d1a3dc40bdfb7b380f4b90a1795d6a0d10fd664c77c76af5e490c8de1e8f0ee",
+  "byte_identical_to_complete_prior_fidelity_audits": true,
+  "direct_promotion_rejection": "missing_independent_release_approval_registry",
+  "previous_release_preserved": true,
+  "raw_and_candidate_preserved": true,
+  "terminal_reconverted": false,
+  "dataset_acceptance": null,
+  "independent_followup": "Required separately at the exact final PR head; see issue/PR review comment. This author receipt is not independent review or dataset acceptance."
+}
