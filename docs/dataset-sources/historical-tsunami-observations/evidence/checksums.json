@@ -75,6 +75,10 @@
     "bytes": 6093,
     "sha256": "edff42e4060b1effd696bf6f6ca4f2ef45d6482ef011dd9ec46cd83110c809d7"
   },
+  "final-history-audit.json": {
+    "bytes": 10973,
+    "sha256": "3e091c5080243f1f6d6430dbddf0e9e2b7b0cb22dd12c435e948ed64f240eb17"
+  },
   "final-native-identity.json": {
     "bytes": 2934,
     "sha256": "6ed131e96c8175124eb190e8ac793a48606cd6cb28cac0901cdc3af5409c0e02"
@@ -220,7 +224,7 @@
     "sha256": "59aaaa67ba0265c8c52e755990b28bd99c8d7c562c973c6ea324ccbd96729bf1"
   },
   "verification.json": {
-    "bytes": 2224,
-    "sha256": "c04a254bc990e4279c84739207e2eed4f56e4695b767f32fcb8395683dc28fad"
+    "bytes": 2307,
+    "sha256": "b1ee5254380be81d1e92762744a94e7ac825c760de17e40dae48697ebf3a2d45"
   }
 }

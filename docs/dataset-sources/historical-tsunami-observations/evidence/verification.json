@@ -53,5 +53,6 @@
   "all_original_inputs": 82,
   "actual_approval_failure": "missing_independent_release_approval_registry",
   "prior_local_publication_fixture_preserved": true,
-  "all_original_inputs_retained": true
+  "all_original_inputs_retained": true,
+  "independent_complete_history_event_and_byte_audit": "final-history-audit.json"
 }
