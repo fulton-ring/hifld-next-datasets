@@ -577,7 +577,7 @@
   "rights_status": {
     "accepted": false,
     "actual_item_licenseInfo": "",
-    "actual_item_accessInformation": "NOAA NCEI",
+    "actual_item_accessInformation": "NOAA National Centers for Environmental Information (NCEI)",
     "license_URL_meaning": "Preserved source-item locator only, not proof of a license grant; rights acceptance remains an explicit release decision."
   }
 }
