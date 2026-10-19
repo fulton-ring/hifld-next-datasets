@@ -1,0 +1,37 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+2026-10-19 10:33:33 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - RUN_START - Started execution of run for "ferry_routes_source_integrity".
+2026-10-19 10:33:33 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - ENGINE_EVENT - Executing steps in process (pid: 326972)
+2026-10-19 10:33:33 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:33 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:33 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - LOGS_CAPTURED - Started capturing logs in process (pid: 326972).
+2026-10-19 10:33:33 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - ingest__ferry_routes_1__ferry_routes_1 - STEP_START - Started execution of step "ingest__ferry_routes_1__ferry_routes_1".
+2026-10-19 10:33:41 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - ENGINE_EVENT - Finished steps in process (pid: 326972) in 7.52s
+2026-10-19 10:33:41 +0000 - dagster - ERROR - ferry_routes_source_integrity - 6c2a619b-0c73-4d3e-beff-edd28fe6762e - 326972 - RUN_FAILURE - Execution of run for "ferry_routes_source_integrity" failed. Steps failed: ['ingest__ferry_routes_1__ferry_routes_1'].
+2026-10-19 10:33:41 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - RUN_START - Started execution of run for "ferry_routes_source_integrity".
+2026-10-19 10:33:41 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - ENGINE_EVENT - Executing steps in process (pid: 326972)
+2026-10-19 10:33:41 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:41 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:41 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - LOGS_CAPTURED - Started capturing logs in process (pid: 326972).
+2026-10-19 10:33:41 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - STEP_START - Started execution of step "ingest__ferry_routes_1__ferry_routes_1".
+2026-10-19 10:33:48 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - ENGINE_EVENT - Finished steps in process (pid: 326972) in 7.33s
+2026-10-19 10:33:49 +0000 - dagster - ERROR - ferry_routes_source_integrity - 6f4c91af-a795-48ee-9f59-1e046499ce81 - 326972 - RUN_FAILURE - Execution of run for "ferry_routes_source_integrity" failed. Steps failed: ['ingest__ferry_routes_1__ferry_routes_1'].
+2026-10-19 10:33:49 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - RUN_START - Started execution of run for "ferry_routes_source_integrity".
+2026-10-19 10:33:49 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - ENGINE_EVENT - Executing steps in process (pid: 326972)
+2026-10-19 10:33:49 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:49 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:49 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - LOGS_CAPTURED - Started capturing logs in process (pid: 326972).
+2026-10-19 10:33:49 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - STEP_START - Started execution of step "ingest__ferry_routes_1__ferry_routes_1".
+2026-10-19 10:33:57 +0000 - dagster - DEBUG - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - ENGINE_EVENT - Finished steps in process (pid: 326972) in 8.06s
+2026-10-19 10:33:57 +0000 - dagster - ERROR - ferry_routes_source_integrity - 0684822c-2daf-4bb7-b97e-6910ade81d98 - 326972 - RUN_FAILURE - Execution of run for "ferry_routes_source_integrity" failed. Steps failed: ['ingest__ferry_routes_1__ferry_routes_1'].
+2026-10-19 10:33:57 +0000 - dagster - DEBUG - ferry_routes_source_integrity - e58a7123-58af-4058-be48-290598f42501 - 326972 - RUN_START - Started execution of run for "ferry_routes_source_integrity".
+2026-10-19 10:33:58 +0000 - dagster - DEBUG - ferry_routes_source_integrity - e58a7123-58af-4058-be48-290598f42501 - 326972 - ENGINE_EVENT - Executing steps in process (pid: 326972)
+2026-10-19 10:33:58 +0000 - dagster - DEBUG - ferry_routes_source_integrity - e58a7123-58af-4058-be48-290598f42501 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:58 +0000 - dagster - DEBUG - ferry_routes_source_integrity - e58a7123-58af-4058-be48-290598f42501 - 326972 - ingest__ferry_routes_1__ferry_routes_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 10:33:58 +0000 - dagster - DEBUG - ferry_routes_source_integrity - e58a7123-58af-4058-be48-290598f42501 - 326972 - ENGINE_EVENT - Finished steps in process (pid: 326972) in 142ms
+2026-10-19 10:33:58 +0000 - dagster - ERROR - ferry_routes_source_integrity - e58a7123-58af-4058-be48-290598f42501 - 326972 - RUN_FAILURE - Execution of run for "ferry_routes_source_integrity" failed. Steps failed: ['ingest__ferry_routes_1__ferry_routes_1'].
+Traceback (most recent call last):
+  File "/workspace/work/hifld-coordinator/88/verify_first_construction_actual.py", line 26, in <module>
+    result=defs.resolve_job_def('ferry_routes_source_integrity').execute_in_process(instance=instance,raise_on_error=False);assert result.success
+                                                                                                                                   ^^^^^^^^^^^^^^
+AssertionError

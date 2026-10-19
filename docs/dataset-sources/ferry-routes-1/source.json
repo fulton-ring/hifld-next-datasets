@@ -1666,16 +1666,16 @@
     "all_literal_ID_occurrences": "evidence/literal-id-diagnostics.jsonl"
   },
   "implementation": {
-    "tested_code_commit": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+    "tested_code_commit": "c74bd3e29b4899aba44947464a4e15c01762cd95",
     "root_registration_commit": "ea8c331dba2411d0e3ba85ad7e50f021b34a3ace",
     "source": "src/dagster_hifld/sources/ferry_routes.py",
     "asset": "src/dagster_hifld/assets/bts_ferry_routes.py",
     "tests": "tests/test_ferry_routes.py",
     "job": "ferry_routes_source_integrity",
     "refresh": "Monthly firstday11:00America/New_York, STOPPED; cadence is a draft polling choice, not asserted producer release schedule.",
-    "raw_preservation": "Immutable original bodies+receipts; failed/partial fetches retained; separate original construction bundle only after verified private build.",
+    "raw_preservation": "Immutable original bodies+receipts; attempted localbody and exact bounded rawreceipt retained before decoding; each failed/partial live attempt retained; original construction bundle/state/CAS only after verified private candidate.",
     "cache": "Commonlock covers lookup/wholefreshoriginal reconciliation/quarantine/install; exact file roster/source-ownedreports/blockedplaceholder/raw/manifest binding; complete deterministic GPKGcontainer and exact prebuilt Parquet; invalid canonical moved intact outside discovery. Reports and typed data are rederived from selected original construction captures after bundle selection, never mixed with later metadata observations. Later complete observations remain retained separately.",
-    "construction_provenance": "Shared reviewedGitcontent helper validates reachable real constructioncommit and EVERY recomputed processing source/lock/dependency blob; existingcandidate cannot bootstrap missinganchor. Genuine prior docs-only construction remains reusable.",
+    "construction_provenance": "Shared reviewed Git-content helper validates reachable real original constructioncommit and EVERY actual processing source/lock/dependency blob. Independent permanent first-state and full original bundle CAS are created after verified private candidate success and before primary/install. State+CAS survive whole primary/candidate quarantine; missing/malformed primary/state/evidence fails all retries; no automatic bootstrap. Exact trusted original restoration required. CAS also prevents rebase after partial first-primary write failure.",
     "promotion": "Real independent approvalregistry required; actual quality/approval failures preserve raw/source objects and prior synthetic acceptedfixture. No real source/baseline/contract accepted.",
     "native_parquet_pin": {
       "sha256": "75c492a658c2ffdc9f7b47d0cb3104b59b1443d473e294110ca870305ee1ef8c",
@@ -1684,70 +1684,66 @@
   },
   "verification": {
     "focused_tests": {
-      "total": 19,
-      "passed": 19,
-      "scope": "All19 actual-source tests executed within current full541-test suite; no separate19-test timing is claimed.",
-      "targeted_metadata_only_regression": {
-        "total": 1,
-        "passed": 1,
-        "seconds": 34.25
-      }
+      "total": 27,
+      "passed": 27,
+      "seconds": 513.027,
+      "scope": "Current complete real inputs plus malformed local/live transport, exact integer completeness witnesses and first-construction history regressions."
     },
-    "registered_normal_graph_code_head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+    "registered_normal_graph_code_head": "c74bd3e29b4899aba44947464a4e15c01762cd95",
     "actual_registered_runs": [
       {
         "label": "source",
-        "run_id": "b4f7d06a-7720-49c8-90d2-6c8f6d69845a",
+        "run_id": "a2811805-f4fc-4d23-9e77-6b8a39bdab5c",
         "success": true
       },
       {
         "label": "refresh",
-        "run_id": "dea07a07-dc4c-4f0e-8a4f-7e78a393e30b",
+        "run_id": "8d5dfecd-c32d-4532-a5ec-587f31f9f3a2",
         "success": true
       },
       {
         "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
-        "run_id": "314f177a-ddbe-4009-b06a-4030919ecc62",
+        "run_id": "eede7124-6ae9-477e-84da-c229f5949c5f",
         "success": false
       },
       {
         "label": "post_catalog_cycle_1_source_refresh",
-        "run_id": "9b4e4fdb-a792-441d-8282-b5290fc83381",
+        "run_id": "f55e24bc-b5d3-4f04-99f0-e477f969656f",
         "success": true
       },
       {
         "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
-        "run_id": "27c7261c-44be-4d00-9092-785de85ac506",
+        "run_id": "3bd30800-f053-47d0-aeec-12fc792205cb",
         "success": false
       },
       {
         "label": "post_catalog_cycle_2_source_refresh",
-        "run_id": "b6a79f66-86b0-481b-aee8-578cd5173327",
+        "run_id": "3982aad7-2591-492a-a4bc-efd3eb49d590",
         "success": true
       },
       {
         "label": "synthetic_failed_quality_blocks_promote",
-        "run_id": "5634d4ab-8e97-47f4-abd1-246aa734a1e5",
+        "run_id": "1946358b-cb3a-4d7f-8f76-be93b378360a",
         "success": false
       },
       {
         "label": "post_gate_source_refresh",
-        "run_id": "03ff046b-8226-4570-9679-1ec9c623fd54",
+        "run_id": "38ea81b7-7f7e-4434-a6ad-72782c1ef784",
         "success": true
       },
       {
         "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
-        "run_id": "4a99ce95-d766-4456-a5e7-91c65ab4a51a",
+        "run_id": "2209d039-55bd-40c5-8abc-8a577147a5fb",
         "success": false
       },
       {
         "label": "original_source_rebuild_after_quarantine",
-        "run_id": "1d68c3b7-752f-4f30-8df0-be70192e915e",
+        "run_id": "61847f47-fe53-47d8-bea5-dbd0a7a60180",
         "success": true
       },
       {
         "label": "rebuilt_cache_refresh",
-        "run_id": "54d6616b-e6a3-434a-83f6-aa9ee1c3d0f2",
+        "run_id": "347e3f3f-b204-4bf2-92e1-267d1b34a895",
         "success": true
       }
     ],
@@ -1758,20 +1754,82 @@
     "prior_synthetic_accepted_fixture_preserved": true,
     "synthetic_fixtures_grant_no_real_acceptance": true,
     "full_suite": {
-      "total": 541,
-      "passed": 540,
+      "total": 549,
+      "passed_in_initial_invocation": 547,
+      "failures_in_initial_invocation": 1,
       "skipped": 1,
-      "seconds": 422.493,
-      "head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+      "seconds": 623.938,
+      "initial_status": "FAILED; actual disk fell below300MB guard during malformed-local-receipt test",
+      "exact_failed_case_rerun": "PASS unchanged code after disk recovery; evidence/local-receipt-targeted-rerun.log",
+      "single_invocation_full_suite_pass_claimed": false,
+      "head": "c74bd3e29b4899aba44947464a4e15c01762cd95",
       "skip": "Opt-in real production GCS writes intentionally disabled",
       "real_input_tests_executed": true
     },
     "real_sibling_IaC": "56aa10757129c457c530d707d9a40bae13e0907f available unchanged; no fake fixture or deployment.",
     "CI_pass_claimed": false,
-    "independent_review": "pending exact final head",
+    "independent_review": "pending exact repaired final head",
     "independent_manual_raw_to_binary_audit": "evidence/manual-native-audit.json",
     "original_new_native_payloads_byte_identical": true,
-    "metadata_regression": "Test-only metadata observation falsely rejected before repair (65.266s failing reproduction); corrected original-capture audit binding passes34.250s, retains later observation without rewriting original candidate/provenance. No claim of real producer metadata change."
+    "metadata_regression": "Test-only metadata observation falsely rejected before repair (65.266s failing reproduction); corrected original-capture audit binding passes34.250s, retains later observation without rewriting original candidate/provenance. No claim of real producer metadata change.",
+    "first_construction_actual_runs": [
+      {
+        "run_id": "6c2a619b-0c73-4d3e-beff-edd28fe6762e",
+        "status": "FAILURE",
+        "errors": [
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__ferry_routes_1__ferry_routes_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-final-repair/staging/_quarantine/ferry-routes-1/invalid-candidate-e96e3101327a47699a949051f363e587:missing_original_provenance_bundle_after_first_construction; retained:_quarantine/ferry-routes-1/e10b5cbbe13d493ea1c635f7a4191249\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/bts_ferry_routes.py\", line 13, in bts_ferry_routes\n    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 478, in stage_ferry_routes\n    raise FerryRouteQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-final-repair/staging/_quarantine/ferry-routes-1/invalid-candidate-e96e3101327a47699a949051f363e587:missing_original_provenance_bundle_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 446, in stage_ferry_routes\n    raise FerryRouteQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: missing_original_provenance_bundle_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 429, in stage_ferry_routes\n    captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 373, in original_provenance_bundle\n    raise FerryRouteQuarantineError('missing_original_provenance_bundle_after_first_construction')\n"
+        ]
+      },
+      {
+        "run_id": "6f4c91af-a795-48ee-9f59-1e046499ce81",
+        "status": "FAILURE",
+        "errors": [
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__ferry_routes_1__ferry_routes_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: original_construction_trust_requires_exact_restore:missing_original_provenance_bundle_after_first_construction; retained:_quarantine/ferry-routes-1/2afb66736e7a439bba53a3397ddfb149\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/bts_ferry_routes.py\", line 13, in bts_ferry_routes\n    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 478, in stage_ferry_routes\n    raise FerryRouteQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: original_construction_trust_requires_exact_restore:missing_original_provenance_bundle_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 459, in stage_ferry_routes\n    raise FerryRouteQuarantineError('original_construction_trust_requires_exact_restore:'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: missing_original_provenance_bundle_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 453, in stage_ferry_routes\n    captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 373, in original_provenance_bundle\n    raise FerryRouteQuarantineError('missing_original_provenance_bundle_after_first_construction')\n"
+        ]
+      },
+      {
+        "run_id": "0684822c-2daf-4bb7-b97e-6910ade81d98",
+        "status": "FAILURE",
+        "errors": [
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__ferry_routes_1__ferry_routes_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: original_construction_trust_requires_exact_restore:missing_original_provenance_bundle_after_first_construction; retained:_quarantine/ferry-routes-1/10a921d726f64b87b550ea742c5c0785\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/bts_ferry_routes.py\", line 13, in bts_ferry_routes\n    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 478, in stage_ferry_routes\n    raise FerryRouteQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: original_construction_trust_requires_exact_restore:missing_original_provenance_bundle_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 459, in stage_ferry_routes\n    raise FerryRouteQuarantineError('original_construction_trust_requires_exact_restore:'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: missing_original_provenance_bundle_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 453, in stage_ferry_routes\n    captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 373, in original_provenance_bundle\n    raise FerryRouteQuarantineError('missing_original_provenance_bundle_after_first_construction')\n"
+        ]
+      },
+      {
+        "run_id": "e58a7123-58af-4058-be48-290598f42501",
+        "status": "FAILURE",
+        "errors": [
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__ferry_routes_1__ferry_routes_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: local_space_guard\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/bts_ferry_routes.py\", line 13, in bts_ferry_routes\n    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 410, in stage_ferry_routes\n    local_only(storage);captures=acquire(storage,capture_dir)\n    ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 85, in local_only\n    if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise FerryRouteQuarantineError('local_space_guard')\n                                                                                                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+        ]
+      },
+      {
+        "label": "exact_trusted_original_restored_rebuild_after_disk_restored",
+        "run_id": "dd2674bf-a462-4f47-bc18-ab1398707065",
+        "success": true,
+        "output": {
+          "dataset_slug": "ferry-routes-1",
+          "file_slug": "ferry-routes-1",
+          "version": "v0.0.0-draft-bts-ncfo2020-3a37bf715df10e9b",
+          "feature_count": 964,
+          "reused": false
+        }
+      },
+      {
+        "label": "original_binding_reuse",
+        "run_id": "d6732fb8-d1ed-437a-8bd5-852ffe7023bb",
+        "success": true,
+        "output": {
+          "dataset_slug": "ferry-routes-1",
+          "file_slug": "ferry-routes-1",
+          "version": "v0.0.0-draft-bts-ncfo2020-3a37bf715df10e9b",
+          "feature_count": 964,
+          "reused": true
+        }
+      }
+    ],
+    "first_construction_protocol": "evidence/first-construction-actual.json: three consecutive registered missing-primary failures, whole candidate retained, permanent state/full CAS unchanged; first explicit-original recovery was blocked by actual disk guard; after space recovered, actual964-row rebuild/reuse succeeded. All six runs retained, raw/prior fixture preserved.",
+    "malformed_input_behavior": "evidence/input-repair-behavior.json: four synthetic bool/float before/after witness mutations rejected; current attempted body/exact malformed localreceipt retained; no assertion that producer supplied malformed inputs.",
+    "review_status": "Initial source132 independent review found3P2s, repaired; exact repaired-head independent review pending.",
+    "repair_scope": "15 functions including native writers/output reconciliation AST-identical; only acquisition, stricter source validation and original history lifecycle changed. evidence/repair-writer-scope.json"
   },
   "release_prerequisites": [
     "Producer item2022 versus actual layer2020 vintage conflict",
@@ -1859,5 +1917,100 @@
       }
     ],
     "evidence": "evidence/historical-c508/"
+  },
+  "historical_validation_132": {
+    "code_commit": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+    "verification": {
+      "focused_tests": {
+        "total": 19,
+        "passed": 19,
+        "scope": "All19 actual-source tests executed within current full541-test suite; no separate19-test timing is claimed.",
+        "targeted_metadata_only_regression": {
+          "total": 1,
+          "passed": 1,
+          "seconds": 34.25
+        }
+      },
+      "registered_normal_graph_code_head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+      "actual_registered_runs": [
+        {
+          "label": "source",
+          "run_id": "b4f7d06a-7720-49c8-90d2-6c8f6d69845a",
+          "success": true
+        },
+        {
+          "label": "refresh",
+          "run_id": "dea07a07-dc4c-4f0e-8a4f-7e78a393e30b",
+          "success": true
+        },
+        {
+          "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
+          "run_id": "314f177a-ddbe-4009-b06a-4030919ecc62",
+          "success": false
+        },
+        {
+          "label": "post_catalog_cycle_1_source_refresh",
+          "run_id": "9b4e4fdb-a792-441d-8282-b5290fc83381",
+          "success": true
+        },
+        {
+          "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
+          "run_id": "27c7261c-44be-4d00-9092-785de85ac506",
+          "success": false
+        },
+        {
+          "label": "post_catalog_cycle_2_source_refresh",
+          "run_id": "b6a79f66-86b0-481b-aee8-578cd5173327",
+          "success": true
+        },
+        {
+          "label": "synthetic_failed_quality_blocks_promote",
+          "run_id": "5634d4ab-8e97-47f4-abd1-246aa734a1e5",
+          "success": false
+        },
+        {
+          "label": "post_gate_source_refresh",
+          "run_id": "03ff046b-8226-4570-9679-1ec9c623fd54",
+          "success": true
+        },
+        {
+          "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
+          "run_id": "4a99ce95-d766-4456-a5e7-91c65ab4a51a",
+          "success": false
+        },
+        {
+          "label": "original_source_rebuild_after_quarantine",
+          "run_id": "1d68c3b7-752f-4f30-8df0-be70192e915e",
+          "success": true
+        },
+        {
+          "label": "rebuilt_cache_refresh",
+          "run_id": "54d6616b-e6a3-434a-83f6-aa9ee1c3d0f2",
+          "success": true
+        }
+      ],
+      "all964_original_rows_fields_IDs_types_native_geometry_and_coverage_verified": true,
+      "generic_GeoParquet_converter_calls": 0,
+      "all19_provenance_records_retained": true,
+      "raw_and_source_objects_preserved": true,
+      "prior_synthetic_accepted_fixture_preserved": true,
+      "synthetic_fixtures_grant_no_real_acceptance": true,
+      "full_suite": {
+        "total": 541,
+        "passed": 540,
+        "skipped": 1,
+        "seconds": 422.493,
+        "head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+        "skip": "Opt-in real production GCS writes intentionally disabled",
+        "real_input_tests_executed": true
+      },
+      "real_sibling_IaC": "56aa10757129c457c530d707d9a40bae13e0907f available unchanged; no fake fixture or deployment.",
+      "CI_pass_claimed": false,
+      "independent_review": "pending exact final head",
+      "independent_manual_raw_to_binary_audit": "evidence/manual-native-audit.json",
+      "original_new_native_payloads_byte_identical": true,
+      "metadata_regression": "Test-only metadata observation falsely rejected before repair (65.266s failing reproduction); corrected original-capture audit binding passes34.250s, retains later observation without rewriting original candidate/provenance. No claim of real producer metadata change."
+    },
+    "evidence": "evidence/historical-132/"
   }
 }

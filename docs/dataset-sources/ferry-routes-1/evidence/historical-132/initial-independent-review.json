@@ -1,0 +1,124 @@
+{
+  "issue": 88,
+  "pr": 447,
+  "worker": "/root/review_colleges_38",
+  "reviewer": "/root/review_research",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "current_PR_head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+  "source_head": "132fe0ea04f67c5782bf3e5320f27098b1388106",
+  "later_docs_probe_head": "b9ff14c7f8c3305aaad915d67e30713073bc912b",
+  "verdict": "CHANGES_REQUESTED_INITIAL_REVIEW",
+  "lane": "In progress",
+  "retain_lanes": [
+    "Blocked",
+    "Potential breaking change"
+  ],
+  "handoff_ready": false,
+  "reason": "Three implementation P2 findings; full independent native/authority audit ongoing",
+  "findings": [
+    {
+      "severity": "P2",
+      "name": "Second missing-anchor retry recreates original history",
+      "kind": "Actual authentic964 registered source runs, real132-to-b9 documentation history, no provenance/data/approval mocks",
+      "first_failure_run": "8919cc91-5307-4189-b448-278e7c07a884",
+      "second_unrestored_success_run": "90243f44-e475-4bc1-83dc-273f4c61c943",
+      "changed_canonical_members": [
+        "metadata/ferry_routes_candidate_ready.json",
+        "metadata/source_manifest.json"
+      ]
+    },
+    {
+      "severity": "P2",
+      "name": "Boolean/float all-ID witnesses accepted",
+      "kind": "Explicit synthetic malformed-input tests, four cases before/after, no claimed producer malfunction",
+      "cases": [
+        {
+          "name": "source_ids_before",
+          "injected_first_ID_type": "bool",
+          "accepted": true,
+          "actual_feature_rows": 964
+        },
+        {
+          "name": "source_ids_before",
+          "injected_first_ID_type": "float",
+          "accepted": true,
+          "actual_feature_rows": 964
+        },
+        {
+          "name": "source_ids_after",
+          "injected_first_ID_type": "bool",
+          "accepted": true,
+          "actual_feature_rows": 964
+        },
+        {
+          "name": "source_ids_after",
+          "injected_first_ID_type": "float",
+          "accepted": true,
+          "actual_feature_rows": 964
+        }
+      ]
+    },
+    {
+      "severity": "P2",
+      "name": "Malformed local receipt/current body absent from runtime quarantine",
+      "kind": "Explicit malformed local input, original external bytes preserved",
+      "proof": {
+        "name": "bts_ntad",
+        "input_body_SHA256": "1a1329a7cc0a89fa9b8d7afb2e3ad19f56a375b85ec74f9a156a80040201204a",
+        "input_receipt_SHA256": "d128b952477d3c9398aad4f5a82c3de15fcd0c7f13dc357ff461cd0e4b00fe98",
+        "runtime_retained_body_byteexact": false,
+        "runtime_retained_original_malformed_receipt_byteexact": false,
+        "runtime_files": [
+          "_quarantine/ferry-routes-1/43ba9e55d72a4dcda0626bafcf4bad15/reason.json",
+          "_quarantine/ferry-routes-1/25806d22f776447ca5c4ac3472d9f38f/reason.json"
+        ],
+        "original_external_input_unchanged": true
+      }
+    }
+  ],
+  "actual_registered_runs": [
+    {
+      "label": "complete_authentic964_original_construction132",
+      "run_id": "8b13364b-dc0c-4b1a-9932-a653678915f8",
+      "success": true
+    },
+    {
+      "label": "genuine_docs_HEAD_original_cache_reuse",
+      "run_id": "bab77965-d0bd-43ff-980b-01190090aaf5",
+      "success": true
+    },
+    {
+      "label": "first_missing_anchor_refresh_rejects_and_detaches",
+      "run_id": "8919cc91-5307-4189-b448-278e7c07a884",
+      "success": false
+    },
+    {
+      "label": "second_refresh_without_trusted_restore_recreates_original_binding",
+      "run_id": "90243f44-e475-4bc1-83dc-273f4c61c943",
+      "success": true
+    }
+  ],
+  "raw_prior_preserved": true,
+  "proofs": [
+    "/workspace/work/review-ferry88-repeat-anchor/execution.json",
+    "/workspace/work/review-ferry88-repeat-anchor.py",
+    "/workspace/work/review-ferry88-small-probes.py",
+    "/workspace/work/review-ferry88-small-probes/result.json"
+  ],
+  "public_comments": [
+    {
+      "id": 6264971146,
+      "url": "https://github.com/fulton-ring/hifld-next-datasets/issues/88#issuecomment-6264971146",
+      "exact_body_reread": true
+    },
+    {
+      "id": 6264972938,
+      "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/447#issuecomment-6264972938",
+      "exact_body_reread": true
+    }
+  ],
+  "complete_independent_native_attribute_geometry_audit": "In progress",
+  "full_suite_independently_rerun": false,
+  "no_source_baseline_contract_release_approval": true,
+  "no_merge_close_or_production": true
+}
