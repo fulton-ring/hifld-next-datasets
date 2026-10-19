@@ -6,7 +6,7 @@ receipts are explicit simulated later observations of the complete real bodies;
 no additional live fetch or acceptance is claimed.
 """
 import argparse,json,os,pathlib,shutil,subprocess
-parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=pathlib.Path,required=True);args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=pathlib.Path,required=True);parser.add_argument('--archive-closed',action='store_true');args=parser.parse_args()
 runtime=args.runtime.resolve();repo=pathlib.Path(__file__).resolve().parents[1]
 original=json.loads((runtime/'execution.json').read_bytes())
 head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
@@ -73,6 +73,13 @@ with DagsterInstance.get() as instance:
   assert not root.exists() and (s.SLUG,s.SLUG,output['version']) not in list(_iter_staged_version_paths(stage))
   assert inventory(runtime/'published')==prior
   report['rejected'].append({'mode':mode,'reason':reason,'retained':str(retained),'complete_corrupt_tree_pins_preserved':True,'not_discoverable':True,'raw_preserved':True})
+  if args.archive_closed:
+   # Each case is complete and all forensic hashes asserted before relocation.
+   helper='/workspace/work/hifld-coordinator/scripts/archive_closed_fuel.py'
+   archive=subprocess.run([os.sys.executable,helper,'--parent',str(retained.parent.parent),'--bundle','cbrs28-late-binding-'+retained.parent.name,retained.parent.name],check=True,capture_output=True,text=True)
+   report['rejected'][-1]['verified_closed_archive']=json.loads(archive.stdout)
+   report['rejected'][-1]['archive_pointer']=str(retained.parent)+'.archived.json'
+   (runtime/'git-identity-in-progress.json').write_text(json.dumps(report,indent=2)+'\n')
   if mode=='missing_external_binding':pin.parent.mkdir(parents=True,exist_ok=True);saved.rename(pin)
   else:pin.write_bytes(pinbytes)
  # Rebuild from fresh complete source observations, using the outside original pin.
