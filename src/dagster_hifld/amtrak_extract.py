@@ -445,6 +445,9 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     """Build a typed native-CRS candidate in a raw/code-bound immutable namespace."""
     audit = inspect_capture(capture)
     processing = processing_identity()
+    original_receipts = _validated_retrieval_receipts(capture, audit)
+    inputs, unobserved_attempts = _provenance_inputs(capture, audit)
+    _source_manifest(audit, processing, original_receipts, inputs, unobserved_attempts)
     fields = audit['fields']
     schema = pa.schema([pa.field(f['name'], _TYPES[f['type']], nullable=f['nullable']) for f in fields] + [pa.field('geometry', pa.binary(), nullable=False)])
     crs = CRS.from_epsg(audit['crs']['latestWkid']).to_json_dict()
@@ -479,7 +482,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
         with obj.open('rb') as source, target.open('xb') as output:
             shutil.copyfileobj(source, output)
     audit.update(processing=processing, candidate_namespace='objects/' + identity,
-                 original_retrieval_receipts=_validated_retrieval_receipts(capture, audit),
+                 original_retrieval_receipts=original_receipts,
                  producer='Amtrak', distributor='USDOT_BTS official NTAD distribution',
                  candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
                  proposed_mapping='identity for every raw field; string Code and date text remain unchanged; native EPSG:4326 geometry',

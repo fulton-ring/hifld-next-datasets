@@ -161,6 +161,27 @@ def main():
         assert (extra_staged/'raw_arcgis'/diagnostic.name).read_bytes()==diagnostic.read_bytes()
         record['untrusted_diagnostic_receipt']={'run_id':result.run_id,'success':True,'byte_hash_pinned':True,
             'preserved':True,'retrieval_claims_exclude_diagnostic':True,'source_inputs_unchanged':18}
+        standalone_capture=root/'standalone-capture';shutil.copytree(args.capture,standalone_capture)
+        standalone=root/'standalone-prior'
+        candidate=adapter.build_candidate(standalone_capture,standalone)
+        prior_candidate=files(standalone)
+        receipt_path=standalone_capture/'page-000.receipt.json';original_receipt=receipt_path.read_bytes()
+        record['standalone_builder_provenance_preflight']={'positive_rows':candidate['rows'],'candidate_sha256':candidate['candidate_sha256'],'cases':[]}
+        for index,date in enumerate(([],{},'not-an-http-date')):
+            receipt=json.loads(original_receipt);receipt['date']=date;receipt_path.write_text(json.dumps(receipt))
+            destination=root/('standalone-invalid-'+str(index))
+            errors=[]
+            for target in (destination,standalone):
+                try:adapter.build_candidate(standalone_capture,target)
+                except ValueError as error:
+                    assert 'HTTP Date' in str(error);errors.append(str(error))
+                else:raise AssertionError('Invalid standalone provenance was accepted')
+            assert not destination.exists() and files(standalone)==prior_candidate and files(published)==accepted_before
+            record['standalone_builder_provenance_preflight']['cases'].append({'date':date,'errors':errors,
+                'new_destination_absent':True,'prior_candidate_and_fixture_preserved':True})
+        receipt_path.write_bytes(original_receipt)
+        assert adapter.build_candidate(standalone_capture,standalone)==candidate
+        record['standalone_builder_provenance_preflight']['valid_reuse_identical']=True
     record['published_after']=files(published);assert record['published_after']==accepted_before
     assert all((staged/'raw_arcgis'/r['name']).read_bytes()==(args.capture/r['name']).read_bytes() for r in adapter.inspect_capture(args.capture)['raw_files'])
     record['accepted_fixture_and_real_raw_preserved']=True;save()

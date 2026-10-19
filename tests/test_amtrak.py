@@ -504,3 +504,30 @@ class AmtrakActualReplayReviewRegression(unittest.TestCase):
             self.assertFalse((pathlib.Path(storage.local_dir)/SLUG).exists())
             preserved=next((pathlib.Path(storage.local_dir)/'quarantine').rglob('status.json')).parent/'raw/page-000.receipt.json'
             self.assertEqual(preserved.read_bytes(),path.read_bytes())
+
+    def test_standalone_builder_preflights_complete_provenance_before_any_write(self):
+        prior=self.root/'standalone-prior'
+        expected=build_candidate(self.capture,prior)
+        before={str(p.relative_to(prior)):hashlib.sha256(p.read_bytes()).hexdigest() for p in prior.rglob('*') if p.is_file()}
+        accepted=self.root/'accepted.bin';accepted.write_bytes(b'Accepted local fixture; no dataset decision')
+        preserved=accepted.read_bytes()
+        receipt=self.capture/'page-000.receipt.json';original=receipt.read_bytes()
+        for index,value in enumerate(([],{},'not-an-http-date')):
+            doc=json.loads(original);doc['date']=value;receipt.write_text(json.dumps(doc))
+            fresh=self.root/('standalone-invalid-'+str(index))
+            for destination in (fresh,prior):
+                with self.subTest(value=value,destination=destination.name),self.assertRaisesRegex(ValueError,'HTTP Date'):
+                    build_candidate(self.capture,destination)
+            self.assertFalse(fresh.exists())
+            self.assertEqual({str(p.relative_to(prior)):hashlib.sha256(p.read_bytes()).hexdigest() for p in prior.rglob('*') if p.is_file()},before)
+            self.assertEqual(accepted.read_bytes(),preserved)
+        receipt.write_bytes(original)
+        self.assertEqual(build_candidate(self.capture,prior),expected)
+        # Standalone callers also receive the same complete retained-input guard.
+        attempt=self.capture/'attempts/page-000/000.receipt.json';saved=attempt.read_bytes()
+        doc=json.loads(saved);doc['observed_at']='2026-10-19T00:00:00+00:99';attempt.write_text(json.dumps(doc))
+        destination=self.root/'standalone-invalid-attempt'
+        with self.assertRaisesRegex(ValueError,'valid timezone components'):
+            build_candidate(self.capture,destination)
+        self.assertFalse(destination.exists())
+        attempt.write_bytes(saved)
