@@ -7,6 +7,8 @@ import struct
 import tarfile
 import tempfile
 import unittest
+import io
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 import pyarrow as pa
@@ -32,6 +34,9 @@ class MineralsTests(unittest.TestCase):
 
     def test_full766_native_values_types_ids_geometry_and_conflicting_metadata(self):
         captures=self.captures();table,ids,audit=s.inspect_captures(captures)
+        with zipfile.ZipFile(io.BytesIO(s.preservation_transport_zip(captures))) as archive:
+            self.assertEqual(len(archive.namelist()),5)
+            for name in archive.namelist():self.assertEqual(archive.read(name),captures[name][0])
         self.assertEqual(table.num_rows,766);self.assertEqual(ids.num_rows,766);self.assertEqual(audit['states'],46)
         self.assertEqual(table['MINOP2X020'].type,pa.decimal128(3,0));self.assertEqual(table['LATITUDE'].type,pa.decimal128(9,3));self.assertEqual(table['LONGITUDE'].type,pa.decimal128(11,3))
         self.assertEqual(table['source_fid'].to_pylist(),list(range(766)));self.assertEqual(table['source_shp_record_number'].to_pylist(),list(range(1,767)))

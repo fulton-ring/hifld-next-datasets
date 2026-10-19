@@ -7,6 +7,7 @@ from __future__ import annotations
 import collections
 import fcntl
 import hashlib
+import io
 import importlib.metadata
 import json
 import math
@@ -18,6 +19,7 @@ import struct
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+import zipfile
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -273,8 +275,18 @@ def manifest_for(captures,identity,parquet_pin):
         body,receipt=captures[name];validate_capture(name,body,receipt,PINS[name]['url'])
         role='producer_publication' if name=='legacy_metadata' else 'archive'
         inputs.append({'input_id':name+':'+digest(body),'producer':'U.S. Geological Survey (historical dataset metadata only)' if name=='legacy_metadata' else 'Stanford Libraries preservation' if name.startswith('minop2x020.') or name=='stanford_publicxml' else 'HIFLD Next existing published candidate, acceptance unresolved','host':urlsplit(receipt['url']).hostname,'role':role,'canonical_url':receipt['url'],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,'attribution':'Stanford ds401wt4784 preservation-as-provided; USGS National Atlas exact dataset family metadata; baseline retained independently. No delegation or package-original authentication established.','release_date_unknown_reason':'Official source publication month200512(active2003), no exact release day; Stanford package preservation and baseline fetch times are not source release dates.'})
-    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),'title':'Construction Minerals Operations — explicit unapproved Stanford historical preservation reconstruction','publisher':'Stanford Libraries preservation (not established agency distribution)','agency':'US Geological Survey historical dataset family; input authority unresolved','source_url':'https://purl.stanford.edu/ds401wt4784','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_preservation_package_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local package required, no default fetch or polling; acceptance pending','geometry':'original SHP coordinates and own PRJ as provided; contradictory NAD83 metadata retained and unresolved','attributes':'ASCII right-padding decode only; mixed case, width and decimal values preserved, original DBF sidecars retained','IDs':'all native IDs distinct; complete published IDs separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; preserved original five master sidecars remain lossless raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
+    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),'title':'Construction Minerals Operations — explicit unapproved Stanford historical preservation reconstruction','publisher':'Stanford Libraries preservation (not established agency distribution)','agency':'US Geological Survey historical dataset family; input authority unresolved','source_url':'https://purl.stanford.edu/ds401wt4784','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_preservation_package_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local package required, no default fetch or polling; acceptance pending','geometry':'original SHP coordinates and own PRJ as provided; contradictory NAD83 metadata retained and unresolved','container':'A new deterministic ZIP of unchanged preservation master sidecars is required by the shared canonical multipart-source transport convention; not the missing original USGS archive', 'attributes':'ASCII right-padding decode only; mixed case, width and decimal values preserved, original DBF sidecars retained','IDs':'all native IDs distinct; complete published IDs separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; preserved original five master sidecars remain lossless raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
+
+
+def preservation_transport_zip(captures):
+    # New deterministic container, NEVER described as the missing original USGS
+    # archive. Each member is an unchanged Stanford preservation master.
+    stream=io.BytesIO()
+    with zipfile.ZipFile(stream,'w',compression=zipfile.ZIP_STORED) as archive:
+        for name in sorted(n for n in captures if n.startswith('minop2x020.')):
+            info=zipfile.ZipInfo(name,date_time=(1980,1,1,0,0,0));info.create_system=3;info.external_attr=0o100600<<16;archive.writestr(info,captures[name][0])
+    return stream.getvalue()
 
 
 def source_payloads(captures,identity,audit,manifest,table,published_ids):
@@ -286,6 +298,7 @@ def source_payloads(captures,identity,audit,manifest,table,published_ids):
         # provide the normal catalog's canonical quality input. They are raw
         # evidence, not newly generated or approved Shapefile output.
         if name.startswith('minop2x020.'):values['shapefile/'+name]=body
+    values['shapefile/preservation-package.zip']=preservation_transport_zip(captures)
     return values
 
 
