@@ -1,5 +1,23 @@
 # AIANNH Areas: working draft pipeline implemented; release unapproved
 
+## Final combined graph and independent source review
+
+The source-specific implementation at `e8b1554048f8761c77a0d1bc27cd1a7429256310` independently passed reviewer `/root/review_research`: all11tests, its own full862-feature Dagster execution, every raw member, physical ID/type/value, mixed geometry, native CRS and failure preservation. The independently reviewed shared dependency `c7343b802966c566e8f6088bf31f19081b2a0cde` is now merged, including the integer-fidelity fix and exclusion preflight for every output format. Source-specific pipeline code and Census registration did not change after that source review.
+
+Final local evidence at `evidence/implementation/normal-graph.json` executes the registered `aiannh_source_integrity_refresh` job and the normal complete `__ASSET_JOB` publication graph, retaining all standard assets/checks without monkeypatching them. Local environment paths are configured before loading normal Definitions, then their own bound resources are used. The source job and identical rerun succeed. Catalog, the blocking quality check, native GeoPackage and GeoParquet succeed. PMTiles and regenerated Shapefile return explicit unsupported-format output metadata with zero files. `publish/verify` stops on `missing_independent_release_approval_registry`; promotion/catalog publication do not run and every published fixture byte remains unchanged. A failed Dagster run at this gate is the expected release denial.
+
+All862 features in both generated supported formats again pass complete shared-verifier comparison with zero ID, attribute, geometry or coverage differences; original native561Polygon/301MultiPolygon and EPSG:4269 remain intact. Final targeted reruns pass11source tests and3integer-fidelity tests. Source raw SHA256 remains `4155f58dfefcc40cfe61d741f760f882ebe6c6008537c0c7bc58075871af2f40`. The monthly schedule stays STOPPED. Use the final reproduction command:
+
+```bash
+PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH \
+PYTHONPATH=/workspace/hifld-worker-worktrees/8/src \
+uv run --frozen python scripts/verification/aiannh_normal_graph.py \
+  --archive /workspace/work/hifld-coordinator/aiannh-8/zip2023.body \
+  --workdir /workspace/work/hifld-coordinator/aiannh-8/final-local-replay
+```
+
+The earlier476-test full-suite attempt below remains historical evidence; the tool PATH is now available, and no broad rerun or full-suite pass is claimed. Missing sibling IaC remains unresolved. Final combined dependency/harness delta review is recorded separately from the passed source review. Release decisions remain unchanged.
+
 ## Current implementation scope — 2026-10-19
 
 The user authorized faithful draft implementation while baseline/grain/contract acceptance remains pending. This supersedes the earlier research-only scope below. Existing PR #426 is a **draft**, stacked on shared verifier PR #421 (`62977c91ebaf2740f654f3be7cc98490b607b224`). Worker `/root/aiannh_8` continues the existing issue #8 branch.

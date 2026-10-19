@@ -261,11 +261,20 @@
     "Release gate only: independent baseline/grain/full-column-ID-contract and exact staged release inventory acceptance required. Draft code/local tests proceed without acceptance. No self-approval."
   ],
   "runtime": {
-    "port": 3408,
-    "server_info": "evidence/server-info.json",
-    "graphql": "evidence/graphql.json",
-    "materialized": false,
-    "latest_readiness": "evidence/retry/readiness.json"
+    "research_history": {
+      "port": 3408,
+      "server_info": "evidence/server-info.json",
+      "graphql": "evidence/graphql.json",
+      "materialized": false,
+      "latest_readiness": "evidence/retry/readiness.json"
+    },
+    "materialized": true,
+    "mode": "isolated_local_working_draft",
+    "production_materialized": false,
+    "source_job": "aiannh_source_integrity_refresh",
+    "normal_graph": "__ASSET_JOB with all standard assets and checks; expected missing-approval denial",
+    "current_evidence": "evidence/implementation/normal-graph.json",
+    "published_fixture_bytes_preserved": true
   },
   "published_baseline_candidate": {
     "approved": false,
@@ -281,7 +290,7 @@
     "scope": "local-only faithful inventory-linked TIGER2023 source candidate; release unapproved",
     "module": "src/dagster_hifld/sources/aiannh.py",
     "dagster_asset": "ingest/aiannh-areas-1/aiannh-areas-1",
-    "shared_verifier_dependency": "62977c91ebaf2740f654f3be7cc98490b607b224 / PR421",
+    "shared_verifier_dependency": "c7343b802966c566e8f6088bf31f19081b2a0cde / PR421",
     "source_selection": {
       "vintage": 2023,
       "url": "https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip",
@@ -308,6 +317,7 @@
     },
     "checks": "Pinned bytes/size,7member names and ZIP CRC, DBF/SHP count, full862 row/physicalschema/ID/value/geometry/coverage hashes; source fidelity via shared verifier; invalid inputs and failed derivatives quarantined",
     "reproduce": "scripts/verification/aiannh_draft_integration.py",
-    "approved": false
+    "approved": false,
+    "normal_registered_graph": "evidence/implementation/normal-graph.json"
   }
 }

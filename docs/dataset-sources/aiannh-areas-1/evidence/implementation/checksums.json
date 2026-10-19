@@ -1,8 +1,12 @@
 {
   "evidence/implementation/execution.json": "56ab7017dddde1f09136ac40cc1f82eb656971918b72d2d5fef14a043d3acd15",
+  "evidence/implementation/source-tests-c734.log": "16849295cff37f13a9650424d0a52b6a04cfcd9524a4897fac5543287f6951ac",
   "evidence/implementation/dagster-local.log": "f84b4683ef793a10c06bc293ba6eb035945b5b820d86d5d489106f004923db91",
+  "evidence/implementation/integer-tests-c734.log": "a3cfdd1436a06dbf824e7192a7446130a39b6c47080ad7a0a9bc3e9041f71b3d",
+  "evidence/implementation/normal-graph.json": "149fad392e08a8c0191ae0633159412a594b96da49a951bd77b739ee1ffc6b0f",
+  "evidence/implementation/normal-graph.log": "66f37978a010c5b99eb38c11efcffcae7ccc544477b8141b8211a5f850447d56",
   "evidence/implementation/regenerated-shapefile.json": "f5ca33cb73024f383f0cdc3bc8021d1e8c1af537132863ee6fdb49d21cca41db",
-  "evidence/implementation/validation-summary.json": "ac664d41355aef071140486606b3f2b6dcaabb2b27ec481f1b657db09d81d36d",
+  "evidence/implementation/validation-summary.json": "3664471e15d816445ebc69906a480e096d7cd59092dc1b9448fb4207e3993010",
   "evidence/implementation/source-tests.log": "88ea2e2934c49354cc6b3eda004264542a03e336aa0acd9a942dd07759d8cc53",
   "evidence/implementation/full-suite.log": "e939499eac7026dde1521eb7fc4a00ad52d58378b5e32e411b78d54de7edb34a"
 }
