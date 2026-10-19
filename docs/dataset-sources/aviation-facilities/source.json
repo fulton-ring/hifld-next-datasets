@@ -164,6 +164,14 @@
       "normal_registration_tests": 2,
       "actual_19427_row_ingest": "evidence/combined-parent-ingest.json",
       "source20_changed_by_parent_merge": false
+    },
+    "dependency_identity_validation": {
+      "source_head": "4600803207e8ac32fb413464589bf50e78db7906",
+      "focused_tests": 16,
+      "evidence": "evidence/dependency-identity.json",
+      "native_and_python_dependencies_bound": true,
+      "original_receipts_preserved": true,
+      "terminal_conversions_rerun": false
     }
   }
 }

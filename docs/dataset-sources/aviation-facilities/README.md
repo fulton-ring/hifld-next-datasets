@@ -99,3 +99,17 @@ clean commit provenance, shared17-input manifest structure and normal version
 discovery without data/manifest copies. See `evidence/combined-parent-ingest.json`.
 Source20 extraction/schema/output code is unchanged from the full graph recorded
 in `evidence/local-materialization.json`; the changed parent adapter owns source10.
+
+Processing identity additionally binds effective Python/ABI/architecture, every
+installed distribution name/version, PyArrow/Pyogrio/Fiona/Shapely/pyproj and native
+GDAL/GEOS/PROJ versions, plus available dependency manifest/lock hashes. A changed
+GEOS or PROJ identity changes the builder fingerprint; changed GEOS prevents
+reusing an old candidate and appends a new immutable version without changing
+old bytes or original retrieval timestamps.16 focused source/registration tests
+pass after this identity repair. The actual19,427-row source+catalog run checks
+all data/types/native points,17-input provenance, normal discovery and idempotent
+replay. Candidate bytes and original retrieval receipts equal the prior full
+real graph; namespace changes reflect processing identity, not a new retrieval.
+Unchanged terminal conversions were not rerun solely for this identity delta.
+See `evidence/dependency-identity.json`; earlier full gate-preservation evidence
+remains separately scoped to its recorded code head.
