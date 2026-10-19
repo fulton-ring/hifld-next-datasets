@@ -38,14 +38,18 @@ class EpaTscaDraftTests(unittest.TestCase):
         urls = _feature_urls(ids)
         pages = [(name, url) for name, url in urls if name.startswith("page_")]
         self.assertEqual(len(pages), (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)
-        requested = []
+        offsets = []
         for _, url in pages:
             query = parse_qs(urlsplit(url).query)
-            requested.extend(int(value) for value in query["objectIds"][0].split(","))
+            offsets.append(int(query["resultOffset"][0]))
+            self.assertEqual(query["where"], ["1=1"])
+            self.assertEqual(query["resultRecordCount"], [str(PAGE_SIZE)])
+            self.assertEqual(query["orderByFields"], ["OBJECTID ASC"])
             self.assertEqual(query["outFields"], ["*"])
             self.assertEqual(query["returnGeometry"], ["true"])
             self.assertEqual(query["outSR"], ["4269"])
-        self.assertEqual(requested, ids)
+            self.assertLess(len(url), 1800)
+        self.assertEqual(offsets, list(range(0, EXPECTED_COUNT, PAGE_SIZE)))
         self.assertEqual(pages[-1][0], "page_026")
         self.assertIn(LAYER_URL, pages[0][1])
 
