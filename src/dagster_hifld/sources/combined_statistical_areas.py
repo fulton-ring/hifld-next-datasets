@@ -255,7 +255,7 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
                     raise CSAQuarantineError('immutable_candidate_bytes_changed:'+name)
             cached_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
             validate_release_provenance(cached_manifest)
-            if cached_manifest.get('approved') is not False or cached_manifest.get('processing_fingerprint')!=fingerprint or cached_manifest['inputs'][0]['sha256']!=SHA256 or cached_manifest['inputs'][0]['bytes']!=BYTES or len(cached_manifest['inputs'])!=1 or cached_manifest['inputs'][0]['retrieval_url']!=URL or cached_manifest['inputs'][0].get('observed_final_url')!=URL or strict_json((root/'metadata/processing_identity.json').read_bytes())!=identity:
+            if cached_manifest.get('approved') is not False or cached_manifest.get('processing_fingerprint')!=fingerprint or cached_manifest['inputs'][0]['sha256']!=SHA256 or cached_manifest['inputs'][0]['bytes']!=BYTES or len(cached_manifest['inputs'])!=1 or cached_manifest['inputs'][0]['retrieval_url']!=URL or cached_manifest['inputs'][0].get('observed_final_url')!=URL or encode(strict_json((root/'metadata/processing_identity.json').read_bytes()))!=encode(identity):
                 raise CSAQuarantineError('cached_provenance_or_processing_identity_changed')
             reconcile_cached_native_outputs(root,table)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':184,'reused':True}
