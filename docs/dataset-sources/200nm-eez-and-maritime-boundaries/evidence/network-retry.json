@@ -1,0 +1,62 @@
+[
+  {
+    "capture": "inport-item.body.gz",
+    "url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "final_url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "http_status": 200,
+    "started_at": "2026-10-19T04:46:47.150548+00:00",
+    "bytes": 112260,
+    "body_sha256": "59f560eea8bb1c31e15b4875e9aadab87205acdeab47c29746cb15e748de58ed",
+    "capture_sha256": "7a629861c436829d21afe126663fb7482deb8f42201f1206e9509577b82f5d28",
+    "headers": {
+      "content-type": "text/html;charset=UTF-8"
+    }
+  },
+  {
+    "capture": "inport-item.body.gz",
+    "url": "https://inport.nmfs.noaa.gov/inport/item/39963",
+    "final_url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "http_status": 200,
+    "started_at": "2026-10-19T04:46:47.151399+00:00",
+    "bytes": 112260,
+    "body_sha256": "59f560eea8bb1c31e15b4875e9aadab87205acdeab47c29746cb15e748de58ed",
+    "capture_sha256": "7a629861c436829d21afe126663fb7482deb8f42201f1206e9509577b82f5d28",
+    "headers": {
+      "content-type": "text/html;charset=UTF-8"
+    },
+    "capture_reused": "Retry response bytes exactly equal retained capture; no duplicate stored"
+  },
+  {
+    "capture": "inport-xml.body.gz",
+    "url": "https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NOS/OCS/iso19115/xml/39963.xml",
+    "final_url": "https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NOS/OCS/iso19115/xml/39963.xml",
+    "http_status": 503,
+    "started_at": "2026-10-19T04:46:47.152202+00:00",
+    "bytes": 373,
+    "body_sha256": "22304ddcece8bf147fa62bc904eab51321ed5570803ead746c594d24231cf743",
+    "capture_sha256": "c264ff4b8720259cfbcb38860a061d8dfd725fd739a342c57de5047212faca40",
+    "headers": {}
+  },
+  {
+    "capture": "archive-retry.body.gz",
+    "url": "https://www.datalumos.org/datalumos/project/238491/version/V1/view",
+    "final_url": "https://www.datalumos.org/datalumos/project/238491/version/V1/view",
+    "http_status": 403,
+    "started_at": "2026-10-19T04:46:47.152820+00:00",
+    "bytes": 6178,
+    "body_sha256": "733e636c55ec2a95b7d2292fff85ea981456e81bfa61e1fa86dcd5f01879cacf",
+    "capture_sha256": "de256fb9aaa2680ff7b826981f7448a46efd4d50a798a2e1eb902c7be90bf9f2",
+    "headers": {}
+  },
+  {
+    "capture": "crosswalk-retry.body.gz",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "http_status": 403,
+    "started_at": "2026-10-19T04:46:47.153428+00:00",
+    "bytes": 6178,
+    "body_sha256": "17c89f342eea4fd2fb88c6d0db4273662e2430e241361724273b8c8e97f084b4",
+    "capture_sha256": "abbe34d30dcd3732f11e95e3a9771e251ce6962c04676178a1b547e37098c91b",
+    "headers": {}
+  }
+]

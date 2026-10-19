@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-10-19T05:22:34.699130+00:00",
+  "tested_code_head": "c103d12c013b43c933e502b9561ea8e0617f9096",
+  "processing_fingerprint": "c257905dc05e7a994e97404fe9a85ad31b739f5e146148fdae487467dbf1ba7a",
+  "module_path": "/workspace/hifld-worker-worktrees/3/src/dagster_hifld/__init__.py",
+  "focused_noaa_tests": {
+    "count": 9,
+    "result": "pass",
+    "command": "PYTHONPATH=$PWD/src UV_CACHE_DIR=/workspace/.cache/uv uv run --frozen python -m unittest discover -s tests -p 'test_noaa*.py'"
+  },
+  "full_suite": {
+    "count": 478,
+    "passes": 476,
+    "errors": 1,
+    "skipped": 1,
+    "success": false,
+    "error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf in test_iac_dagster",
+    "skip": "production GCS opt-in test",
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=$PWD/src UV_CACHE_DIR=/workspace/.cache/uv uv run --frozen python -m unittest discover tests"
+  },
+  "integration": {
+    "ingest_run_id": "7c54c822-18c1-487a-aac9-a2a7082c5bb7",
+    "graph_run_id": "e693db43-82ac-4e77-a86a-02d4b498c199",
+    "real_source_rows": 96,
+    "catalog_quality_pass": true,
+    "final_gate": "missing_independent_release_approval_registry",
+    "promotion_executed": false,
+    "previous_public_candidate_preserved": true,
+    "shapefile_excluded": true
+  },
+  "logs": {
+    "noaa-tests-final.log": {
+      "path": "/workspace/work/hifld-worker-3/noaa-tests-final.log",
+      "bytes": 21698,
+      "sha256": "68f3acfa2b8da85c136b448e8961e8f3c2ef578983d2e55fdc4fa0ae9b31791c"
+    },
+    "full-suite-policy-final.log": {
+      "path": "/workspace/work/hifld-worker-3/full-suite-policy-final.log",
+      "bytes": 41095,
+      "sha256": "c8f3e279b382b4ea79856830493e19ed8f132c4eb5da00d20324a2d3448e7fb1"
+    },
+    "final-reviewed-dependency.log": {
+      "path": "/workspace/work/hifld-worker-3/final-reviewed-dependency.log",
+      "bytes": 14337,
+      "sha256": "1349b014eee44006f1fe67d7fc62f16d680e298cca5d9a2ae5ad6826cdffc98c"
+    }
+  },
+  "ci": "No CI success claimed",
+  "no_real_acceptance": true
+}

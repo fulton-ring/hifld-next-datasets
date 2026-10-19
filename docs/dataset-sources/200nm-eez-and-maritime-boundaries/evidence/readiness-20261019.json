@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-19T04:50:38.320044+00:00",
+  "repository": "__repository__",
+  "asset_count": 73,
+  "loadable": true,
+  "instance_ephemeral": false,
+  "isolated_roots": {
+    "DAGSTER_HOME": "/workspace/work/hifld-worker-3/readiness/dagster",
+    "HIFLD_STAGING_DIR": "/workspace/work/hifld-worker-3/readiness/staging",
+    "HIFLD_DATASETS_DIR": "/workspace/work/hifld-worker-3/readiness/published"
+  },
+  "production_bucket_variables_removed": true,
+  "materialization_executed": false,
+  "limitation": "Research-only branch; no issue3 ingestion implemented or authorized; no full-suite or CI claim. Missing sibling IaC remains unvalidated."
+}

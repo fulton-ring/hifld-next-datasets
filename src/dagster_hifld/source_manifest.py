@@ -28,13 +28,37 @@ CATALOG_METADATA_FIELDS = (
     "date_modified",
     "temporal_start",
     "temporal_end",
+    "schema_version",
+    "processor",
+    "inputs",
+    "transformations",
+    "code_commit",
+    "lineage",
+    "unsupported_output_formats",
 )
+
+SUPPORTED_OUTPUT_EXCLUSIONS = frozenset({"shapefile_zip", "geopackage", "geoparquet", "pmtiles"})
 
 
 @dataclass(frozen=True)
 class ResolvedSourceManifest:
     metadata: dict[str, Any]
     manifest_keys: list[str]
+
+
+def unsupported_output_reason(metadata: dict[str, Any], format_name: str) -> str | None:
+    """Return an evidenced format exclusion; exclusion does not approve others."""
+    exclusions = metadata.get("unsupported_output_formats", {})
+    if not isinstance(exclusions, dict):
+        raise ValueError("unsupported_output_formats must map format names to evidence reasons")
+    for excluded_format, reason in exclusions.items():
+        if excluded_format not in SUPPORTED_OUTPUT_EXCLUSIONS:
+            raise ValueError("Unsupported output exclusion format")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Unsupported output format requires a concrete evidence reason")
+    if format_name not in SUPPORTED_OUTPUT_EXCLUSIONS:
+        raise ValueError("Unsupported output exclusion format")
+    return exclusions.get(format_name)
 
 
 def load_resolved_source_manifest(
@@ -150,6 +174,9 @@ def _read_optional_key(staging: StagingStorageResource, key: str) -> bytes | Non
 
 
 def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    # Validate before compacting: an explicit null/list policy must not disappear
+    # into the same state as an absent optional field.
+    unsupported_output_reason(manifest, "shapefile_zip")
     return {
         key: value for key, value in manifest.items() if value not in (None, "", [], {})
     }
@@ -169,6 +196,22 @@ def _merge_manifest_layers(
         for field, value in metadata.items():
             if field in {"metadata_sources", "metadata_resolved_from", "manifest_keys"}:
                 continue
+            if field == "inputs":
+                # Source identity is additive across defaults and version layers.
+                # Conflicts cannot be resolved by silently replacing attribution.
+                inputs = {item["input_id"]: item for item in merged.get("inputs", [])}
+                if not isinstance(value, list):
+                    raise ValueError("Source manifest inputs must be a list")
+                layer_ids = set()
+                for item in value:
+                    if not isinstance(item, dict) or not item.get("input_id"):
+                        raise ValueError("Source manifest input requires input_id")
+                    identity = item["input_id"]
+                    if identity in layer_ids or (identity in inputs and inputs[identity] != item):
+                        raise ValueError(f"Conflicting source manifest input: {identity}")
+                    layer_ids.add(identity)
+                    inputs[identity] = item
+                value = list(inputs.values())
             merged[field] = value
             resolved_from[field] = source_name
 

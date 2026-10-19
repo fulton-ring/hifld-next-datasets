@@ -40,6 +40,7 @@ from dagster_hifld.conversion import (
 )
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
+from dagster_hifld.release_approval import require_release_approval
 from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
@@ -47,6 +48,7 @@ from dagster_hifld.resources import (
 from dagster_hifld.source_manifest import (
     load_resolved_source_manifest,
     snapshot_source_metadata,
+    unsupported_output_reason,
 )
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
@@ -763,6 +765,10 @@ def _copy_or_generate_geopackage(
     file_slug: str,
     version: str,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "geopackage")
+    if unsupported:
+        return [_skip_output(file_slug, "geopackage", f"unsupported_output_format:{unsupported}")]
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
     staged_geopackage_keys = [
         key
@@ -841,6 +847,10 @@ def _write_and_publish_geoparquet(
     version: str,
     policy: GeoParquetWritePolicy | None = None,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "geoparquet")
+    if unsupported:
+        return [_skip_output(file_slug, "geoparquet", f"unsupported_output_format:{unsupported}")]
     existing = _prepare_format_publish(
         staging_storage,
         dataset_slug,
@@ -1057,6 +1067,10 @@ def _write_and_publish_pmtiles(
     file_slug: str,
     version: str,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "pmtiles")
+    if unsupported:
+        return [_skip_output(file_slug, "pmtiles", f"unsupported_output_format:{unsupported}")]
     existing = _prepare_format_publish(staging_storage, dataset_slug, file_slug, version, "pmtiles")
     if existing:
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)
@@ -1111,6 +1125,10 @@ def _write_and_publish_shapefile_zip(
     version: str,
     policy: ShapefileZipPolicy | None = None,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "shapefile_zip")
+    if unsupported:
+        return [_skip_output(file_slug, "shapefile", f"unsupported_output_format:{unsupported}")]
     staged_shapefile_keys = _published_format_keys(
         staging_storage,
         dataset_slug,
@@ -1336,10 +1354,39 @@ def _output_for_partition(
 
 
 @asset(
+    key=AssetKey(["publish", "verify"]),
+    partitions_def=PUBLISH_PARTITIONS,
+    group_name="publish",
+    deps=[
+        AssetKey(["publish", "catalog"]),
+        AssetKey(["publish", "formats", "geopackage"]),
+        AssetKey(["publish", "formats", "geoparquet"]),
+        AssetKey(["publish", "formats", "pmtiles"]),
+        AssetKey(["publish", "formats", "shapefile_zip"]),
+    ],
+    description="Verify complete generated inventory against independent exact release acceptance.",
+)
+def verify_release(
+    context,
+    staging_storage: StagingStorageResource,
+    published_storage: PublishedStorageResource,
+) -> Output[dict]:
+    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    prefix = f"{dataset_slug}/{file_slug}/{version}"
+    pairs = [(key, _logical_version_key(dataset_slug, file_slug, version, relative))
+             for key, relative in _archive_only_pairs(staging_storage, dataset_slug, file_slug, version,
+                                                     staging_storage.list_keys(dataset_slug, file_slug, version))
+             if Path(relative).parts[0] != "unknown"]
+    require_release_approval(staging_storage, published_storage, pairs)
+    return Output({"version": version, "verified_inventory": prefix}, metadata={"acceptance": "exact_manual_release_decision"})
+
+
+@asset(
     key=AssetKey(["publish", "promote"]),
     partitions_def=PUBLISH_PARTITIONS,
     group_name="publish",
     deps=[
+        AssetKey(["publish", "verify"]),
         AssetKey(["publish", "catalog"]),
         AssetKey(["publish", "formats", "geopackage"]),
         AssetKey(["publish", "formats", "geoparquet"]),
@@ -1457,6 +1504,7 @@ def publish_shapefile_zip(
 
 
 publish_assets = [
+    verify_release,
     publish_version,
     publish_geopackage,
     publish_geoparquet,

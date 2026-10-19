@@ -1,0 +1,170 @@
+{
+  "count": 96,
+  "unique_objectids": 96,
+  "independent_ordered_id_projection_matches": true,
+  "returnIdsOnly": "HTTP 200 ArcGIS error 500; not successful",
+  "snapshot_consistency": "sequential requests, not an atomic snapshot",
+  "limit": 1000,
+  "pagination_supported": true,
+  "pagination": "one ordered ID page at offset 0 count 1000 covers count 96; full response below limit",
+  "regions": {
+    "Puerto Rico and U.S. Virgin Islands": 14,
+    "Pacific Coast": 10,
+    "Johnston Atoll": 1,
+    "Alaska": 30,
+    "Atlantic Coast and Gulf of Mexico": 20,
+    "Palmyra Atoll and Kingman Reef": 2,
+    "Wake Island": 2,
+    "American Samoa": 6,
+    "US-Canada": 1,
+    "Hawaiian Islands": 1,
+    "Howland Island, Baker Island and Jarvis Island": 4,
+    "Commonwealth of the Northern Mariana Islands and Territory of Guam": 5
+  },
+  "categories": {
+    "Maritime Boundary": 74,
+    "Maritime Limit": 22
+  },
+  "fields": {
+    "OBJECTID": {
+      "source_type": "esriFieldTypeOID",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "int"
+      ]
+    },
+    "BOUND_ID": {
+      "source_type": "esriFieldTypeString",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "str"
+      ]
+    },
+    "REGION": {
+      "source_type": "esriFieldTypeString",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "str"
+      ]
+    },
+    "FEAT_TYPE": {
+      "source_type": "esriFieldTypeString",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "str"
+      ]
+    },
+    "PUB_DATE": {
+      "source_type": "esriFieldTypeDate",
+      "declared_nullable": null,
+      "observed_nulls": 4,
+      "observed_types": [
+        "NoneType",
+        "int"
+      ]
+    },
+    "APPRV_DATE": {
+      "source_type": "esriFieldTypeDate",
+      "declared_nullable": null,
+      "observed_nulls": 1,
+      "observed_types": [
+        "NoneType",
+        "int"
+      ]
+    },
+    "LEGAL_AUTH": {
+      "source_type": "esriFieldTypeString",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "str"
+      ]
+    },
+    "AOR": {
+      "source_type": "esriFieldTypeString",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "str"
+      ]
+    },
+    "NOTE": {
+      "source_type": "esriFieldTypeString",
+      "declared_nullable": null,
+      "observed_nulls": 6,
+      "observed_types": [
+        "NoneType",
+        "str"
+      ]
+    },
+    "SUPP_INFO": {
+      "source_type": "esriFieldTypeString",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "str"
+      ]
+    },
+    "UNILATERAL": {
+      "source_type": "esriFieldTypeDouble",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "float"
+      ]
+    },
+    "RULEID": {
+      "source_type": "esriFieldTypeInteger",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "int"
+      ]
+    },
+    "SHAPE": {
+      "source_type": "esriFieldTypeGeometry",
+      "declared_nullable": null,
+      "observed_nulls": null,
+      "observed_types": [
+        "NoneType"
+      ]
+    },
+    "SHAPE.LEN": {
+      "source_type": "esriFieldTypeDouble",
+      "declared_nullable": null,
+      "observed_nulls": 0,
+      "observed_types": [
+        "float"
+      ]
+    }
+  },
+  "publication_dates_ms": {
+    "1136073600000": 14,
+    "1195171200000": 9,
+    "1168560000000": 3,
+    "1167609600000": 46,
+    "1251763200000": 2,
+    "1312502400000": 6,
+    "1334016000000": 2,
+    "None": 4,
+    "1199145600000": 1,
+    "1202169600000": 4,
+    "1254700800000": 4,
+    "1342742400000": 1
+  },
+  "null_geometry": 0,
+  "extent": {
+    "xmin": -180,
+    "ymin": -17.555000002,
+    "xmax": 180,
+    "ymax": 74.70884000400001,
+    "spatialReference": {
+      "wkid": 4326,
+      "latestWkid": 4326
+    }
+  }
+}

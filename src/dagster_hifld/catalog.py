@@ -200,8 +200,9 @@ def generate_data_dictionary(
                 if use_sampling
                 else non_null
             )
-            entry["min"] = float(sample_col.min())
-            entry["max"] = float(sample_col.max())
+            number = int if column_type == "integer" else float
+            entry["min"] = number(sample_col.min())
+            entry["max"] = number(sample_col.max())
 
         if column_type == "string":
             try:
@@ -246,6 +247,13 @@ def generate_data_dictionary(
             "metadata_resolved_from",
             "inventory_match_type",
             "manifest_keys",
+            "schema_version",
+            "processor",
+            "inputs",
+            "transformations",
+            "code_commit",
+            "lineage",
+            "unsupported_output_formats",
         ):
             if key in source_metadata and source_metadata[key] not in (None, "", [], {}):
                 dictionary[key] = source_metadata[key]
@@ -431,6 +439,17 @@ def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gp
             geometry="geometry",
             crs=crs,
         )
+    # from_features infers nullable integer columns as binary floats, potentially
+    # losing IDs beyond 2**53 before the dictionary ever inspects the sample.
+    # Rebuild numeric columns from original Fiona values and its declared schema.
+    # Do not convert the already-inferred float column back to integer.
+    numeric_dtypes = {"int": "Int64", "int16": "Int16", "int32": "Int32", "int64": "Int64",
+                      "uint16": "UInt16", "uint32": "UInt32", "uint64": "UInt64",
+                      "float": "Float64", "float32": "Float64", "float64": "Float64", "double": "Float64"}
+    for name, source_type in (schema.get("properties") or {}).items():
+        dtype = numeric_dtypes.get(str(source_type).split(":", 1)[0].lower())
+        if dtype:
+            sample[name] = pd.array([feature["properties"].get(name) for feature in sample_features], dtype=dtype)
     if bounds is None and len(sample) and sample.geometry.notnull().any():
         bounds = [round(float(value), 6) for value in sample.geometry.total_bounds]
     if not geometry_type and geom_types:
