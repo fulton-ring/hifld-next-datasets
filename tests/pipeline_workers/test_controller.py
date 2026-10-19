@@ -260,3 +260,15 @@ class ReconcileTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
         self.assertNotIn('RESUMING_REVIEW',os.environ)
+
+class ProfileTests(unittest.TestCase):
+    def test_public_source_access_uses_distinct_filesystem_permissions(self):
+        import tomllib
+        config=tomllib.loads((ROOT/'tools/pipeline_workers/codex/config.toml').read_text())
+        self.assertTrue(config['features']['network_proxy'])
+        self.assertEqual(config['permissions']['worker-public']['extends'], ':workspace')
+        self.assertEqual(config['permissions']['reviewer-public']['extends'], ':read-only')
+        for profile in config['permissions'].values():
+            self.assertTrue(profile['network']['enabled'])
+            self.assertEqual(profile['network']['domains'],{'*':'allow'})
+            self.assertNotIn('allow_local_binding',profile['network'])

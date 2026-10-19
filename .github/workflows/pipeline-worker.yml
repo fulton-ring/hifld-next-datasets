@@ -46,6 +46,10 @@ jobs:
         with:
           name: task-${{ fromJSON(inputs.task).issue }}
           path: payload
+      - uses: astral-sh/setup-uv@v5
+      - name: Install candidate dependencies before worker execution
+        working-directory: candidate
+        run: uv sync --frozen
       - name: Prepare task prompt
         run: |
           cp controller/tools/pipeline_workers/worker.md prompt.md
@@ -55,7 +59,8 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: ${{ github.workspace }}/prompt.md
           working-directory: ${{ github.workspace }}/candidate
-          permission-profile: ':workspace'
+          codex-home: ${{ github.workspace }}/controller/tools/pipeline_workers/codex
+          permission-profile: worker-public
           safety-strategy: drop-sudo
           output-schema-file: ${{ github.workspace }}/controller/tools/pipeline_workers/worker-output.schema.json
           output-file: ${{ github.workspace }}/payload/result.json
@@ -147,7 +152,8 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: ${{ github.workspace }}/prompt.md
           working-directory: ${{ github.workspace }}/candidate
-          permission-profile: ':read-only'
+          codex-home: ${{ github.workspace }}/controller/tools/pipeline_workers/codex
+          permission-profile: reviewer-public
           safety-strategy: drop-sudo
           output-schema-file: ${{ github.workspace }}/controller/tools/pipeline_workers/review-output.schema.json
           output-file: ${{ github.workspace }}/review.json
