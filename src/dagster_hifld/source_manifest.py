@@ -37,6 +37,8 @@ CATALOG_METADATA_FIELDS = (
     "unsupported_output_formats",
 )
 
+SUPPORTED_OUTPUT_EXCLUSIONS = frozenset({"shapefile_zip", "geopackage", "geoparquet", "pmtiles"})
+
 
 @dataclass(frozen=True)
 class ResolvedSourceManifest:
@@ -49,10 +51,14 @@ def unsupported_output_reason(metadata: dict[str, Any], format_name: str) -> str
     exclusions = metadata.get("unsupported_output_formats", {})
     if not isinstance(exclusions, dict):
         raise ValueError("unsupported_output_formats must map format names to evidence reasons")
-    reason = exclusions.get(format_name)
-    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
-        raise ValueError("Unsupported output format requires a concrete evidence reason")
-    return reason
+    for excluded_format, reason in exclusions.items():
+        if excluded_format not in SUPPORTED_OUTPUT_EXCLUSIONS:
+            raise ValueError("Unsupported output exclusion format")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Unsupported output format requires a concrete evidence reason")
+    if format_name not in SUPPORTED_OUTPUT_EXCLUSIONS:
+        raise ValueError("Unsupported output exclusion format")
+    return exclusions.get(format_name)
 
 
 def load_resolved_source_manifest(
@@ -168,6 +174,9 @@ def _read_optional_key(staging: StagingStorageResource, key: str) -> bytes | Non
 
 
 def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    # Validate before compacting: an explicit null/list policy must not disappear
+    # into the same state as an absent optional field.
+    unsupported_output_reason(manifest, "shapefile_zip")
     return {
         key: value for key, value in manifest.items() if value not in (None, "", [], {})
     }
