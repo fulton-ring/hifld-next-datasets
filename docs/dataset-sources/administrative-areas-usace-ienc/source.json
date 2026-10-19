@@ -1,0 +1,241 @@
+{
+  "dataset_id": "administrative-areas-usace-ienc",
+  "issue": 6,
+  "research_only": true,
+  "status": "blocked",
+  "requested_statuses": [
+    "Blocked",
+    "Potential breaking change",
+    "Needs decision"
+  ],
+  "checked_at": "2026-10-19T04:20:04.736474+00:00",
+  "source_role": "unresolved",
+  "producer": {
+    "name": "US Army Corps of Engineers / Army Geospatial Center",
+    "verification": "Inventory attribution and candidate item attribution agree; independent producer link to this actual service not established"
+  },
+  "publisher": {
+    "account": "usace_agc_dkd",
+    "account_full_name": "Dale Dodson",
+    "organization_id": "n1YM8pTrFmm7L4hs",
+    "authority_verified": false,
+    "organization_verification": "HTTP 200 ArcGIS JSON error 403, not successful verification"
+  },
+  "landing_url": "https://www.arcgis.com/home/item.html?id=6ee858a220a143a48c8d40a6cf0d3680",
+  "download_url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/56/query",
+  "lineage_evidence": [
+    {
+      "evidence": "evidence/inventory-row.json",
+      "claim": "S-57 database extracted to 99-class File Geodatabase; historical inventory attribution, not current service verification"
+    },
+    {
+      "evidence": "evidence/master-item.capture",
+      "claim": "USACE IENC Data for HSIP Gold Initiative, credit USACE/AGC/USCG/IIC Technologies; attribution alone not authority"
+    },
+    {
+      "evidence": "evidence/hifld-item.capture",
+      "claim": "historical exact-title item links ADMINISTRATIVE_AREA old endpoint; no accepted crosswalk join"
+    },
+    {
+      "evidence": "evidence/requests.json",
+      "claim": "DOI redirected to DataLumos host blocked by inherited proxy; old ienccloud and AGC landing also blocked"
+    }
+  ],
+  "crosswalk": {
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "status": "unverified_network_blocked",
+    "exact_match_verified": false,
+    "hyperlink_targets_parsed": false,
+    "reason": "Original XLSX unavailable; CONNECT403 at www.datalumos.org. Not a verified unmatched result."
+  },
+  "release_date": null,
+  "release_evidence": {
+    "candidate_asserted_date": "2026-09-16",
+    "basis": "master item snippet (16-Sep-26), does not establish layer release independently",
+    "portal_modified_ms": 1792184365000,
+    "layer_data_last_edit_ms": 1792184210819,
+    "inventory_issued_date": "2024-02-05",
+    "inventory_modified_date": "2025-04-08",
+    "caution": "None of portal edit, retrieval, inventory issue/modification timestamps accepted as current source release date"
+  },
+  "relationship_to_archive": {
+    "classification": "unresolved",
+    "exact_continuation_verified": false,
+    "reason": "No accepted published HIFLD Next version or archive schema/rows/geometry available for comparison"
+  },
+  "fallback_candidates": [
+    {
+      "source_role": "archive",
+      "publisher": "PASDA",
+      "url": "https://www.pasda.psu.edu/download/hifld_fema/conus_clipped/Administrative_Areas__USACE_IENC_.zip",
+      "basis": "Current ingest code; not independently fetched in this audit; not maintained producer feed"
+    },
+    {
+      "source_role": "archive",
+      "publisher": "DataLumos",
+      "url": "https://www.datalumos.org/datalumos/project/238556/version/V1/view",
+      "health": "network_blocked"
+    }
+  ],
+  "extraction": {
+    "attributes": "complete 2966 rows; count/all-ID/page reconciliation in evidence/extraction-summary.json",
+    "geometry": "one exact raw geometry sample; full unsimplified geometry extraction not completed within bounded capture",
+    "pagination": "maxRecordCount2000 supportsPagination true; 100-row ordered attribute pages",
+    "unknown_fields": "all source fields retained in raw captures; no published projection activated"
+  },
+  "published_contract": {
+    "status": "proposed_unapproved",
+    "approved": false,
+    "version": "proposal-1",
+    "baseline": null,
+    "columns": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "nullable": false,
+        "meaning": "ArcGIS service-assigned row object identifier; stability across releases unverified",
+        "id_role": "service row key; not accepted stable published key",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": null
+      },
+      {
+        "name": "Jurisdiction",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Jurisdiction text; code semantics unverified",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Nationality",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Nationality text; code semantics unverified",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Object_Name",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Administrative area object name",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Information",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Source information text",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Scale_Minimum",
+        "type": "esriFieldTypeInteger",
+        "nullable": true,
+        "meaning": "Minimum display scale denominator; semantics require producer confirmation",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": null
+      },
+      {
+        "name": "Source_Date",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Original source date text, preserved without parsing",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Source_Indication",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Source indication text, semantics unverified",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Original chart/dataset designation; possible lineage identifier",
+        "id_role": "source lineage designation; preserve exact string",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Feature_ID",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Original feature identifier string; cross-release uniqueness and semantics unverified",
+        "id_role": "source feature identifier; preserve exact string",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": 254
+      },
+      {
+        "name": "Shape__Area",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "meaning": "Source-computed polygon area; native coordinate units, no recalculation",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": null
+      },
+      {
+        "name": "Shape__Length",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "meaning": "Source-computed boundary length; native coordinate units, no recalculation",
+        "id_role": "not established as identifier",
+        "mapping": "identity; explicitly proposed, unapproved",
+        "length": null
+      }
+    ],
+    "geometry": {
+      "proposed_name": "geometry",
+      "type": "esriGeometryPolygon",
+      "nullable": false,
+      "nullable_basis": "layer enableNullGeometry false; full geometry scan not performed",
+      "crs": "EPSG:4326",
+      "mapping": "lossless source rings; conversion/topology not approved"
+    },
+    "coverage": {
+      "meaning": "Defined administrative areas along inland navigation charts; not all US administrative units",
+      "candidate_extent": {
+        "xmin": -94.44323889999998,
+        "ymin": 29.669777000000067,
+        "xmax": -79.46555599999994,
+        "ymax": 42.78222200000005,
+        "spatialReference": {
+          "wkid": 4326,
+          "latestWkid": 4326
+        }
+      },
+      "accepted_baseline_coverage": null
+    },
+    "id_policy": "Preserve all exact ID names/types/values/precision/whitespace. No substitute IDs; OBJECTID stability not established. Unknown fields remain raw and trigger review.",
+    "acceptance": "No implementation/publication before maintainer-approved baseline/contract and #417 prerequisite"
+  },
+  "refresh": {
+    "cadence": null,
+    "reason": "Producer release practice unverified; no automated refresh proposed",
+    "retry": "Bounded transient retries only after authority/contract approval; fail/quarantine JSON errors, incomplete rows, ID/schema/geometry/coverage drift; retain last accepted release"
+  },
+  "blockers": [
+    "Exact inventory-crosswalk/hyperlink match unavailable",
+    "Independent producer authority/delegation unverified",
+    "Real layer release date unverified",
+    "No accepted published baseline/schema/ID migration decision",
+    "Full geometry extraction and geographic equivalence unverified",
+    "#417 shared comparison/promotion prerequisite not accepted",
+    "Feature_ID is nonunique: 2781 distinct in2966 rows, 185 rows beyond first; key continuity/mapping requires maintainer decision"
+  ],
+  "implementation_approved": false
+}
