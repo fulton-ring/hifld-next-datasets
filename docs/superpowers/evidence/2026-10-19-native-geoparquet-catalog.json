@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "issue": 417,
+  "PR": 421,
+  "worker": "/root/verifier_417",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "public_processing_source": "84c933e3b71382d9449839289e14f590aa2b38c9",
+  "public_processing_tree": "80cda2c5c86011482a3976883e98e3bd50b20021",
+  "native_equivalent_commit": "2cc08a9383d9a587db3ffa79ce26702fe97dc286",
+  "focused": {
+    "tests": 12,
+    "passed": 12,
+    "seconds": 1.509
+  },
+  "full_local_suite": {
+    "tests": 548,
+    "passed": 547,
+    "skipped": 1,
+    "seconds": 100.608,
+    "CI_claim": false,
+    "real_IaC_commit": "56aa10757129c457c530d707d9a40bae13e0907f"
+  },
+  "actual_synthetic_Dagster": {
+    "classification": "Actual synthetic native-only Decimal128/Date32 registered graph; no real acceptance",
+    "unapproved_run_id": "1b95dbe9-6856-45bc-b50b-e59283ba8831",
+    "success_run_id": "f8519b48-bb7c-43ac-85f6-5da10deb41a5",
+    "quality_failure_run_id": "480f05ab-606a-473f-ae07-af7204dcf258",
+    "staged_mutation_run_id": "0555cfa5-033e-475c-9a76-e0b2d652a810",
+    "date32_and_null_preserved": true,
+    "failed_quality_blocked": true,
+    "staged_mutation_blocked": true,
+    "whole_format_ban_blocked": true,
+    "published_objects_preserved": 20,
+    "dagster_home": "/workspace/work/hifld-coordinator/417/native-catalog-public-84c933/dagster",
+    "native_decimal_exact": true,
+    "canonical_raw_absent": true,
+    "generic_converter_calls": 0
+  },
+  "artifacts": [
+    {
+      "artifact": "/workspace/work/hifld-coordinator/417/native-catalog-C0-portability.json",
+      "bytes": 617,
+      "sha256": "2339e55a56925ece869a8d1d6c1302551e2371493b5ad12f624a12a650ed305e"
+    },
+    {
+      "artifact": "/workspace/work/hifld-coordinator/417/native-catalog-C1-portability.json",
+      "bytes": 543,
+      "sha256": "bf605eb5d67125042ea6fa85c0d1f10a5514435d42263a296fd4c377a5949fb1"
+    },
+    {
+      "artifact": "/workspace/work/hifld-coordinator/417/native-parquet-range-parity.log",
+      "bytes": 2580,
+      "sha256": "ac5cb7f5ddcdcbafad6c3bd63babfa47acfe9ba1033c29061dbf8f2d94df763f"
+    },
+    {
+      "artifact": "/workspace/work/hifld-coordinator/417/full-suite-native-public-a796.log",
+      "bytes": 18688,
+      "sha256": "1eccc2f268ba933f88f95da187547d4fb8289c1f73bbb24e5a033a84f17a10a0"
+    },
+    {
+      "artifact": "/workspace/work/hifld-coordinator/417/full-suite-native-public-84c933.log",
+      "bytes": 18690,
+      "sha256": "0a6e76f93cbffb5a4836cb06a1185d16dd358704c149a739cc771f8266c22afd"
+    },
+    {
+      "artifact": "/workspace/work/hifld-coordinator/417/native-catalog-public-84c933.log",
+      "bytes": 28645,
+      "sha256": "a5453fcac22229207568c1c0645648eeecf1f3178912610f6a3f79ce66677e59"
+    },
+    {
+      "artifact": "/workspace/work/hifld-coordinator/417/native-catalog-public-84c933/native_catalog_result.json",
+      "bytes": 740,
+      "sha256": "c7f4ed6d1a514b27551ad80c98efdc95ebac06544edf19351aa553402b9930a4"
+    }
+  ],
+  "independent_review": "Recorded separately in exact-head issue/PR comments and coordinator review artifacts; this evidence manifest grants no acceptance.",
+  "real_source_acceptance": false,
+  "real_baseline_acceptance": false,
+  "real_contract_acceptance": false,
+  "production_write": false
+}
