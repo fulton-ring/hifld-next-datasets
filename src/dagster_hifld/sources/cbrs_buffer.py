@@ -277,6 +277,49 @@ def compare_derivative(source: Path, candidate: Path, output: Path) -> dict:
                 'sha256': pin, 'bytes': source.stat().st_size}})
 
 
+_FIDELITY_PAYLOAD_CACHE: dict[tuple[str, str], dict[str, bytes]] = {}
+
+
+def fidelity_payloads(records: bytes, fingerprint: str, *, completed: dict | None = None,
+                      comparison_directory: Path | None = None) -> dict[str, bytes]:
+    """Re-derive the complete report, both sidecars, wrappers and blocked placeholder.
+
+    Cache only pure computed bytes in this process, keyed by freshly decoded source
+    records and the effective installed processing identity. Ready receipts never
+    supply this cache or authorize a source-owned report claim.
+    """
+    key=(sha(records),fingerprint)
+    if key in _FIDELITY_PAYLOAD_CACHE:
+        return dict(_FIDELITY_PAYLOAD_CACHE[key])
+    if completed is None:
+        with tempfile.TemporaryDirectory(prefix='cbrs-original-fidelity-') as tmp:
+            directory=Path(tmp);left=directory/'original.jsonl';right=directory/'same-original.jsonl'
+            left.write_bytes(records);right.write_bytes(records)
+            report=compare_derivative(left,right,directory/'comparison')
+            return fidelity_payloads(records,fingerprint,completed=report,comparison_directory=directory/'comparison')
+    if comparison_directory is None or completed.get('status')!='pass':
+        raise CBRSQuarantineError('fresh_original_fidelity_derivation_did_not_pass')
+    parquet={'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
+        'rows':completed['populations']['candidate']['rows'],'source_records_sha256':sha(records),'shared_schema_geometry_validation_reference':completed}
+    payloads={
+        'metadata/source_fidelity/baseline_comparison.json':encode(completed),
+        'metadata/source_fidelity/baseline_comparison.md':(comparison_directory/'baseline_comparison.md').read_bytes(),
+        'metadata/source_fidelity/baseline_differences.jsonl':(comparison_directory/'baseline_differences.jsonl').read_bytes(),
+        'metadata/source_fidelity/baseline_field_changes.jsonl':(comparison_directory/'baseline_field_changes.jsonl').read_bytes(),
+        'metadata/geopackage_source_fidelity.json':encode({'shared_report_path':'source_fidelity/baseline_comparison.json','canonical_full_records_byte_identical':True,'shared_verifier':completed,'known_invalid_native_geometry_release_blocked':False}),
+        'metadata/parquet_source_fidelity.json':encode({'shared_report_path':'source_fidelity/baseline_comparison.json','canonical_full_records_byte_identical':True,'shared_verifier':parquet,'known_invalid_native_geometry_release_blocked':False}),
+        'metadata/baseline_comparison.json':encode({'schema_version':1,'status':'blocked','approved':False,
+            'reason_codes':['published_candidate_prohibitions_grain_differs_from_official_buffer_and_unapproved_fid_mapping'],'acceptance':'not_established'})}
+    _FIDELITY_PAYLOAD_CACHE[key]=dict(payloads)
+    return payloads
+
+
+def validate_fidelity_payloads(root: Path, records: bytes, fingerprint: str) -> None:
+    for name,expected in fidelity_payloads(records,fingerprint).items():
+        if (root/name).read_bytes()!=expected:
+            raise CBRSQuarantineError('cached_source_fidelity_evidence_disagrees_with_fresh_original:'+name)
+
+
 def typed_table(rows: list[dict], audit: dict) -> pa.Table:
     schema=pa.schema([pa.field(k,pa.int32() if v.startswith('int32') else pa.float64() if v.startswith('float') else pa.string(),nullable=False) for k,v in SCHEMA.items()]+[pa.field('geometry',pa.binary(),nullable=False)])
     table=pa.Table.from_pylist([{**r['properties'],'geometry':shape(r['geometry']).wkb} for r in rows],schema=schema)
@@ -396,6 +439,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('cached_geopackage_source_fidelity_failure')
     if not pq.read_table(root/'candidate/typed-source.parquet').equals(typed_table(rows,audit),check_metadata=True):
         raise CBRSQuarantineError('cached_typed_parquet_source_fidelity_failure')
+    validate_fidelity_payloads(root,b''.join(encode(r) for r in rows),sha(encode(identity)))
 
 
 def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
@@ -437,9 +481,12 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
             prefix = f'{SLUG}/{SLUG}/{version}'
             existing_prefix=prefix
             ready_key = f'{prefix}/metadata/cbrs_buffer_candidate_ready.json'
+            target=local_candidate_path(storage,prefix)
+            if target.exists() and not storage.object_exists(ready_key):
+                raise CBRSQuarantineError('incomplete_existing_candidate_missing_ready_receipt')
             if storage.object_exists(ready_key):
                 ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_buffer_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
+                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_buffer_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {'metadata/source_fidelity/baseline_comparison.json','metadata/source_fidelity/baseline_comparison.md','metadata/source_fidelity/baseline_differences.jsonl','metadata/source_fidelity/baseline_field_changes.jsonl'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
                 if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
                     raise CBRSQuarantineError('existing_candidate_inventory_conflict')
                 if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
@@ -475,11 +522,7 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                 'geometry': mapping(shapely.from_wkb(r['geometry']))}) for r in pq.read_table(parquet).to_pylist()))
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
-            # Both independently decoded derivatives equal the exact complete source stream.
-            # Repeating the same shared schema/geometry walk adds no independent evidence.
-            parquet_fidelity = {'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
-                'rows':len(rows),'source_records_sha256':sha(records),
-                'shared_schema_geometry_validation_reference':fidelity}
+            evidence_payloads=fidelity_payloads(records,fingerprint,completed=fidelity,comparison_directory=directory/'comparison')
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
             manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
@@ -488,9 +531,8 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                 'metadata/candidate.records.jsonl': records, 'metadata/source_manifest.json': encode(manifest),
                 'metadata/processing_identity.json': encode(identity), 'metadata/cbrs_buffer_source_audit.json': encode(audit),
                 'metadata/proposed_source_contract.json': encode(PROPOSAL),
-                'metadata/geopackage_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': fidelity, 'known_invalid_native_geometry_release_blocked': False}), 'metadata/parquet_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': parquet_fidelity, 'known_invalid_native_geometry_release_blocked': False}),
-                'metadata/baseline_comparison.json': encode({'schema_version':1, 'status':'blocked', 'approved':False,
-                    'reason_codes':['published_candidate_prohibitions_grain_differs_from_official_buffer_and_unapproved_fid_mapping'], 'acceptance':'not_established'})}
+            }
+            payloads.update(evidence_payloads)
             payloads.update({f'raw/members/{name}': value for name,value in members.items()})
             payloads.update({f'raw/captures/{name}.body':value[0] for name,value in captures.items()})
             payloads.update({f'raw/captures/{name}.receipt.json':encode(value[1]) for name,value in captures.items()})

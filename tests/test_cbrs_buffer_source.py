@@ -157,4 +157,24 @@ class CBRSTests(unittest.TestCase):
             self.assertEqual((destination/'geopackage/corrupted.gpkg').read_bytes(),b'corrupt')
             self.assertEqual((destination/'raw/original.zip').read_bytes(),b'preserved original')
 
+    def test_complete_fidelity_report_sidecars_wrappers_and_blocker_are_bound(self):
+        rows=[{'type':'Feature','properties':{'BUFF_DIST':20.0,'Shape_Leng':1.0,'Shape_Area':0.5,'__source_fid':'0'},
+               'geometry':{'type':'Polygon','coordinates':[[[-70.0,40.0],[-70.0,41.0],[-69.0,40.0],[-70.0,40.0]]]}}]
+        records=b''.join(s.encode(r) for r in rows);fingerprint='synthetic-contract-fixture-not-real-source-approval'
+        expected=s.fidelity_payloads(records,fingerprint)
+        self.assertEqual(len(expected),7)
+        report=json.loads(expected['metadata/source_fidelity/baseline_comparison.json'])
+        self.assertFalse(report['baseline']['approved']);self.assertEqual(report['populations']['candidate']['rows'],1)
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            for name,body in expected.items():(root/name).parent.mkdir(parents=True,exist_ok=True);(root/name).write_bytes(body)
+            s.validate_fidelity_payloads(root,records,fingerprint)
+            for name,body in expected.items():
+                with self.subTest(name=name):
+                    (root/name).write_bytes(body+b'forged claim')
+                    with self.assertRaisesRegex(ValueError,'cached_source_fidelity_evidence'):s.validate_fidelity_payloads(root,records,fingerprint)
+                    (root/name).write_bytes(body)
+            # Independent fresh replay must derive the entire same report and all sidecars.
+            s._FIDELITY_PAYLOAD_CACHE.clear();self.assertEqual(s.fidelity_payloads(records,fingerprint),expected)
+
 if __name__=='__main__':unittest.main()
