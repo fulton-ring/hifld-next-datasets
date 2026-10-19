@@ -21,7 +21,7 @@ from http.client import HTTPException
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import fiona
 import pyarrow as pa
@@ -70,16 +70,16 @@ def _body(captures: dict[str, bytes], name: str) -> dict:
     return result
 
 
-def fetch_noaa_layer(layer_url: str, *, timeout: float = 45, attempts: int = 3) -> tuple[dict[str, bytes], list[dict]]:
-    """Fetch one full bounded layer plus independent before/after ID/count checks.
-
-    Default proxy/TLS and runtime identity are retained. No pagination guess: a
-    future oversized response fails closed and requires a reviewed adapter change.
-    """
-    if attempts < 1 or attempts > 3:
-        raise ValueError("NOAA retry attempts must be between 1 and 3")
+def noaa_capture_urls(layer_url: str) -> dict[str, str]:
+    """Exact public NOAA extraction requests; not proof that a replay is authentic."""
+    parsed = urlsplit(layer_url)
+    prefix = "/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/"
+    if (parsed.scheme != "https" or parsed.netloc != "maritimeboundaries.noaa.gov"
+            or parsed.query or parsed.fragment or not parsed.path.startswith(prefix)
+            or parsed.path[len(prefix):] not in {"1", "2", "3"}):
+        raise ValueError("NOAA expected layer must be an exact official HTTPS layer1/2/3 URL")
     query = layer_url.rstrip("/") + "/query?where=1%3D1&"
-    urls = {
+    return {
         "layer": layer_url + "?f=pjson",
         "count_before": query + "returnCountOnly=true&f=json",
         "ids_before": query + "outFields=OBJECTID&returnGeometry=false&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=1000&f=pjson",
@@ -88,6 +88,34 @@ def fetch_noaa_layer(layer_url: str, *, timeout: float = 45, attempts: int = 3) 
         "ids_after": query + "outFields=OBJECTID&returnGeometry=false&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=1000&f=pjson",
         "count_after": query + "returnCountOnly=true&f=json",
     }
+
+
+def _verify_receipt_origin(receipt: dict, expected_layer_url: str) -> None:
+    expected = urlsplit(noaa_capture_urls(expected_layer_url)[receipt["capture"]])
+    for field in ("url", "final_url"):
+        observed_url = receipt.get(field)
+        if not isinstance(observed_url, str) or not observed_url:
+            raise ValueError(f"NOAA retrieval requires observed {field}")
+        observed = urlsplit(observed_url)
+        # A URL string is attribution evidence only. Matching it never grants
+        # source/contract/baseline approval or authenticates caller-supplied bytes.
+        if (observed.scheme != "https" or observed.netloc != expected.netloc
+                or observed.path != expected.path or observed.fragment):
+            raise ValueError(f"NOAA retrieval {field} is not the exact official layer request")
+        query = parse_qsl(observed.query, keep_blank_values=True, strict_parsing=True)
+        if len({key for key, value in query}) != len(query) or sorted(query) != sorted(parse_qsl(expected.query)):
+            raise ValueError(f"NOAA retrieval {field} has changed or ambiguous request parameters")
+
+
+def fetch_noaa_layer(layer_url: str, *, timeout: float = 45, attempts: int = 3) -> tuple[dict[str, bytes], list[dict]]:
+    """Fetch one full bounded layer plus independent before/after ID/count checks.
+
+    Default proxy/TLS and runtime identity are retained. No pagination guess: a
+    future oversized response fails closed and requires a reviewed adapter change.
+    """
+    if attempts < 1 or attempts > 3:
+        raise ValueError("NOAA retry attempts must be between 1 and 3")
+    urls = noaa_capture_urls(layer_url)
     captures = {}
     receipts = []
     for name, url in urls.items():
@@ -280,7 +308,7 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
     return table, quality
 
 
-def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, file_slug: str, captures: dict[str, bytes], receipts: list[dict], expected_fields: dict[str, str], expected_fingerprints: dict[str, str], expected_count: int | None = None, code_commit: str | None = None) -> dict:
+def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, file_slug: str, captures: dict[str, bytes], receipts: list[dict], expected_fields: dict[str, str], expected_fingerprints: dict[str, str], expected_count: int | None = None, expected_layer_url: str | None = None, code_commit: str | None = None) -> dict:
     """Persist immutable raw evidence, quarantine drift, and stage a local-only draft.
 
     A typed GeoPackage processing source is staged for the existing catalog graph.
@@ -292,8 +320,8 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     raw_identity = _digest({name: hashlib.sha256(raw).hexdigest() for name, raw in sorted(captures.items())})
     processing_fingerprint = verifier_implementation_sha256()
     identity = _digest({"raw_identity": raw_identity, "processing_fingerprint": processing_fingerprint,
-                        "expected_fields": expected_fields, "expected_fingerprints": expected_fingerprints, "expected_count": expected_count,
-                        "retrieval_urls": [{"capture": r.get("capture"), "url": r.get("url")} for r in receipts]})
+                        "expected_fields": expected_fields, "expected_fingerprints": expected_fingerprints, "expected_count": expected_count, "expected_layer_url": expected_layer_url,
+                        "retrieval_urls": [{"capture": r.get("capture"), "url": r.get("url"), "final_url": r.get("final_url")} for r in receipts]})
     version = "v0.0.0-draft.noaa." + identity[:20]
     prefix = f"{dataset_slug}/{file_slug}/{version}"
     if not set(captures).issubset(_CAPTURE_NAMES):
@@ -303,6 +331,9 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     receipt_key = f"{prefix}/raw/receipts/{_digest(receipts)}.json"
     _write_draft_staging(staging, receipt_key, _json_bytes(receipts))
     try:
+        if expected_layer_url is None:
+            raise ValueError("NOAA expected_layer_url is required for producer attribution")
+        noaa_capture_urls(expected_layer_url)
         if len(receipts) != len(_CAPTURE_NAMES) or {r.get("capture") for r in receipts} != set(_CAPTURE_NAMES):
             raise ValueError("NOAA retrieval receipts missing, duplicated or unexpected")
         for receipt in receipts:
@@ -314,6 +345,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
             if (raw is None or type(receipt.get("bytes")) is not int or receipt["bytes"] != len(raw)
                     or receipt.get("sha256") != hashlib.sha256(raw).hexdigest()):
                 raise ValueError(f"NOAA retrieval receipt does not match raw body: {name}")
+            _verify_receipt_origin(receipt, expected_layer_url)
         table, quality = validate_noaa_capture(captures, expected_fields=expected_fields, expected_fingerprints=expected_fingerprints, expected_count=expected_count)
     except (ValueError, KeyError, TypeError, OverflowError, pa.ArrowException) as exc:
         _write_draft_staging(staging, f"{prefix}/metadata/quarantine.json", _json_bytes({"status": "quarantined", "promotion_approved": False, "reason": str(exc), "raw_identity": raw_identity, "processing_fingerprint": processing_fingerprint}))
@@ -351,6 +383,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
                     "host": urlsplit(receipt_by_name.get(name, {}).get("url", "")).hostname,
                     "canonical_url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
                     "retrieval_url": receipt_by_name.get(name, {}).get("url"),
+                    "final_url": receipt_by_name[name]["final_url"],
                     "retrieved_at": receipt_by_name.get(name, {}).get("fetched_at"),
                     "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw), "raw_key": f"{prefix}/raw/{name}.json",
                     "role": "producer_publication", "license": "Producer use/distribution terms apply; NOT FOR LEGAL USE; final license acceptance pending",
