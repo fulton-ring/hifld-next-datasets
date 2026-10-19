@@ -72,8 +72,23 @@ The large complete source/candidate bodies are preserved under
 pages, SHA256 manifests and replay code. Full offline reproduction needs those
 exact bodies. A live FAA refetch cannot reconstruct an earlier mutable snapshot.
 
+The registered source refresh itself writes a content-addressed SEMVER draft
+(`v0.0.0-draft.<sha256>`) with canonical GeoPackage, exact raw bodies/receipts and
+source/provenance manifests. Its namespace includes every installed pipeline Python
+module, the installed dependency inventory, Python/native-library versions and
+project/lockfile hashes. The asset registers its dynamic partition; normal version
+discovery also finds helper-only outputs. Old quarantine evidence remains immutable.
+The actual source manifest passes the shared structural provenance validator before
+canonical writes; this grants no source or release acceptance.
+
+Requested and observed final URLs must independently match the exact producer
+item, layer and bounded query scopes. Missing observations, mirrors, redirects to
+other layers and filtered queries stop in durable raw quarantine. Original captured
+receipts are retained byte for byte; no missing redirect evidence is inferred.
+
 The replay creates a dedicated persistent Dagster instance and local stores,
-registers a dynamic draft version, runs catalog/formats/verification/promotion
+executes the registered refresh, then runs catalog/formats/verification/promotion
+without manually copying source data or constructing replacement manifests
 with actual blocking checks, and independently probes direct promotion without
 an approval registry. Staged evidence and a preexisting local historical sentinel
 must survive rejection. No real acceptance fixture is created. Earlier export

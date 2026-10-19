@@ -1,4 +1,4 @@
-"""FAA full-extraction draft; exact inputs and typed candidates stay quarantined.
+"""FAA full-extraction draft; exact inputs feed unapproved discoverable staging.
 
 The native Esri response is the geometry source. The server's separate GeoJSON
 export is retained as diagnostic evidence, never used to repair native geometry.
@@ -11,13 +11,16 @@ import datetime
 import hashlib
 import http.client
 import io
+import importlib.metadata
 import json
 import math
 import pathlib
 import sqlite3
+import sys
 import tempfile
 import urllib.error
 import urllib.request
+from urllib.parse import parse_qsl, urlsplit
 
 import fiona
 import pyarrow as pa
@@ -29,6 +32,7 @@ from fiona.io import MemoryFile
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 
 SLUG = "airspace-boundaries-1"
 ITEM_URL = "https://www.arcgis.com/sharing/rest/content/items/67885972e4e940b2aa6d74024901c561?f=pjson"
@@ -51,6 +55,73 @@ UNSUPPORTED_OUTPUT_FORMATS = {
         "types have no approved destructive Shapefile mapping."
     )
 }
+
+
+
+def capture_urls(count: int) -> dict[str, str]:
+    """The only reviewed request scopes; replay receipts must identify these."""
+    base = LAYER_URL + "/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000"
+    return {
+        "item": ITEM_URL, "layer": LAYER_URL + "?f=pjson",
+        "count": LAYER_URL + "/query?where=1%3D1&returnCountOnly=true&f=pjson",
+        "ids": LAYER_URL + "/query?where=1%3D1&returnIdsOnly=true&f=pjson",
+        "source-native": base + "&f=pjson",
+        "source-geojson": base + "&f=geojson&outSR=4326",
+        "page-end": LAYER_URL + f"/query?where=1%3D1&outFields=OBJECTID&orderByFields=OBJECTID&resultOffset={count}&resultRecordCount=2000&f=pjson",
+    }
+
+
+def _url_scope(url: str) -> tuple:
+    if not isinstance(url, str):
+        raise ValueError("FAA observed final URL is missing")
+    parsed = urlsplit(url)
+    if (parsed.scheme != "https" or parsed.username or parsed.password
+            or parsed.fragment or parsed.port not in (None, 443)):
+        raise ValueError("FAA unsafe source origin")
+    pairs = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
+    query = dict(pairs)
+    if len(query) != len(pairs):
+        raise ValueError("FAA duplicate URL query member")
+    if query.get("orderByFields") == "OBJECTID ASC":
+        query["orderByFields"] = "OBJECTID"
+    return parsed.hostname, parsed.path, tuple(sorted(query.items()))
+
+
+def _validate_origins(metadata: dict, bodies: dict, count: int) -> None:
+    for name, expected in capture_urls(count).items():
+        receipt = metadata[name]
+        if (_url_scope(receipt.get("url")) != _url_scope(expected)
+                or _url_scope(receipt.get("final_url")) != _url_scope(expected)):
+            raise ValueError(f"FAA source origin/query scope mismatch: {name}")
+        # A capture time is observed evidence, never a fabricated release date.
+        observed = datetime.datetime.fromisoformat(receipt["checked_at"])
+        if observed.tzinfo is None:
+            raise ValueError("FAA retrieval timestamp lacks timezone")
+    item, layer = (_load_json(bodies[n]) for n in ("item", "layer"))
+    if (item.get("id") != "67885972e4e940b2aa6d74024901c561"
+            or item.get("owner") != "AeronauticalInformationServices_FAA"
+            or item.get("orgId") != "ssFJjBXIUyZDrSYZ"
+            or item.get("url") != LAYER_URL.rsplit("/", 1)[0]
+            or layer.get("id") != 0
+            or layer.get("serviceItemId") != item["id"]):
+        raise ValueError("FAA producer item/layer identity mismatch")
+
+
+def processing_identity() -> dict:
+    """Hash the entire installed pipeline, dependency inventory and lock inputs."""
+    root = pathlib.Path(__file__).resolve().parents[2]
+    packages = sorted((d.metadata["Name"].lower(), d.version)
+                      for d in importlib.metadata.distributions() if d.metadata["Name"])
+    return {
+        "installed_pipeline_sha256": verifier_implementation_sha256(),
+        "dependency_inventory": packages,
+        "python": sys.version,
+        "project_files": {name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+                          for name in ("uv.lock", "pyproject.toml")},
+        "fiona": fiona.__version__, "gdal": fiona.__gdal_version__,
+        "pyarrow": pa.__version__, "pyogrio": pyogrio.__version__,
+        "pyogrio_gdal": pyogrio.__gdal_version__,
+    }
 
 
 def _json_members(pairs):
@@ -164,7 +235,8 @@ def _fetch(directory: pathlib.Path, name: str, url: str) -> dict:
         truncated = len(body) > MAX_BYTES
         body = body[:MAX_BYTES]
         metadata = {
-            "url": url, "status": response.status, "bytes": len(body),
+            "url": url, "final_url": response.geturl() if isinstance(response.geturl(), str) else None,
+            "status": response.status, "bytes": len(body),
             "sha256": hashlib.sha256(body).hexdigest(), "checked_at": checked_at,
             "truncated": truncated, "read_error": read_error,
         }
@@ -295,6 +367,7 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
     ids = _load_json(bodies["ids"])["objectIds"]
     if type(count) is not int or not 0 < count <= 2000:
         raise ValueError("FAA count outside verified bounded extraction scope")
+    _validate_origins(metadata, bodies, count)
     rows = [feature["attributes"] for feature in native["features"]]
     features = geo["features"]
     if not rows or len(rows) != count or len(features) != count or len(ids) != count:
@@ -371,14 +444,12 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
                              "properties": {name: arrays[name][i].as_py() for name in arrays if name != "geometry"},
                              "geometry": mapping(geometries_by_id[r["OBJECTID"]])} for i, r in enumerate(rows)]}
     candidate_geojson = json.dumps(derived, separators=(",", ":"), allow_nan=False).encode()
-    recipe = {"adapter_source_sha256": hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),
-              "fiona": fiona.__version__, "gdal": fiona.__gdal_version__, "pyarrow": pa.__version__, "pyogrio": pyogrio.__version__, "pyogrio_gdal": pyogrio.__gdal_version__}
+    recipe = processing_identity()
     digest = hashlib.sha256(b"".join(bodies[n] for n in NAMES)
                             + json.dumps(metadata, sort_keys=True).encode()
                             + json.dumps(recipe, sort_keys=True).encode()).hexdigest()
-    # Adapter version separates revised derivations while historical candidates survive.
-    version = "candidate-native-v2-" + digest[:24]
-    prefix = f"{SLUG}/{SLUG}/{version}/quarantine"
+    version = "v0.0.0-draft." + digest
+    prefix = f"{SLUG}/{SLUG}/{version}"
     transformations = [
         "GDAL ESRIJSON shell/hole assembly only; every native ring/coordinate sequence reconciled unchanged",
         "Original native EPSG:4269 retained; no reprojection or geometry repair",
@@ -434,11 +505,42 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
         "quarantine_reason": "Unapproved baseline, all-column ID contract and changed scope; shared #417 exact acceptance required",
         "derivation_recipe": recipe,
     }
+    item = _load_json(bodies["item"])
+    inputs = [{
+        "input_id": name, "producer": "FAA Aeronautical Information Services",
+        "host": urlsplit(receipt["final_url"]).hostname,
+        "canonical_url": capture_urls(count)[name],
+        "retrieval_url": receipt["final_url"], "requested_url": receipt["url"],
+        "retrieved_at": receipt["checked_at"], "sha256": receipt["sha256"],
+        "bytes": receipt["bytes"], "role": "producer_publication",
+        "license": item.get("licenseInfo") or "Unresolved: no license statement in captured FAA item; maintainer decision required",
+        "attribution": item.get("accessInformation") or "FAA Aeronautical Information Services; observed producer account AeronauticalInformationServices_FAA",
+        "release_date_unknown_reason": "Capture timestamp and item description are retained; no machine release-date mapping accepted",
+        "raw_key": f"{prefix}/raw/{name}.json",
+        "receipt_key": f"{prefix}/raw/receipts/{name}.json",
+        "source_accepted": False,
+    } for name, receipt in metadata.items()]
+    source_manifest = {
+        "schema_version": 1, "processor": "HIFLD Next", "inputs": inputs,
+        "code_commit": "installed-sha256:" + recipe["installed_pipeline_sha256"],
+        "code_commit_kind": "installed_processing_fingerprint_not_vcs_commit",
+        "processing_identity": recipe, "transformations": transformations,
+        "source_accepted": False, "approved_contract": None, "baseline": None,
+        "promotion_allowed": False, "status": "unapproved_draft",
+        "unsupported_output_formats": UNSUPPORTED_OUTPUT_FORMATS,
+        "lineage": {"native_crs": "EPSG:4269", "durable_capture_prefix": capture_prefix},
+    }
+    # Validate real emitted structure independently of the absent approval registry.
+    validate_release_provenance(source_manifest)
     outputs = {**{f"raw/{name}.json": body for name, body in bodies.items()},
+               **{f"raw/receipts/{name}.json": (directory / f"{name}.json").read_bytes() for name in NAMES},
                "candidate/airspace.parquet": candidate,
                "candidate/airspace-native.geojson": candidate_geojson,
-               "candidate/airspace-native.gpkg": gpkg,
-               "metadata/provenance.json": json.dumps(manifest, sort_keys=True, indent=2).encode()}
+               "metadata/provenance.json": json.dumps(manifest, sort_keys=True, indent=2).encode(),
+               "metadata/source_manifest.json": json.dumps(source_manifest, sort_keys=True, indent=2).encode(),
+               # This discovery-visible canonical source is written last.
+               "geopackage/airspace.gpkg": gpkg}
     _write_immutable(storage, {f"{prefix}/{name}": body for name, body in outputs.items()})
-    return {"version": version, "feature_count": count, "quarantine_prefix": prefix,
+    return {"dataset_slug": SLUG, "file_slug": SLUG, "version": version,
+            "feature_count": count, "staging_prefix": prefix,
             "candidate_sha256": manifest["candidate_sha256"], "promotion_allowed": False}

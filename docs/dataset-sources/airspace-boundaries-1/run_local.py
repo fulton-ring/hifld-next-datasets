@@ -15,7 +15,8 @@ from dagster_hifld.assets.faa import faa_airspace_boundaries
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects
-from dagster_hifld.release_approval import ReleaseApprovalError
+from dagster_hifld.release_approval import ReleaseApprovalError, validate_release_provenance
+from dagster_hifld.definitions import defs as registered_defs, _iter_staged_version_paths
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 ROOT=pathlib.Path(__file__).parent
@@ -26,32 +27,24 @@ resources={'staging_storage':stage,'published_storage':published}
 state=runtime/'dagster';state.mkdir(exist_ok=True);(state/'dagster.yaml').write_text('telemetry:\n  enabled: false\n');os.environ['DAGSTER_HOME']=str(state)
 result={'adapter_module_path':str(pathlib.Path(adapter.__file__).resolve()),'capture_dir':str(capture.resolve()),'local_storage':str(runtime.resolve()),'approval_registry_present':False,'shared_verifier_dependency':'c7343b802966c566e8f6088bf31f19081b2a0cde'}
 with DagsterInstance.from_config(str(state)) as instance:
-    ingest_job=define_asset_job('faa_ingest_replay',selection=AssetSelection.assets(faa_airspace_boundaries))
-    defs=Definitions(assets=hifld_dataset_assets,asset_checks=hifld_asset_checks,resources=resources,jobs=[ingest_job])
-    r=defs.resolve_job_def('faa_ingest_replay').execute_in_process(instance=instance,run_config={'ops':{'ingest__airspace_boundaries_1__airspace_boundaries_1':{'config':{'capture_dir':str(capture)}}}})
+    r=registered_defs.resolve_job_def('faa_airspace_draft_refresh').execute_in_process(instance=instance,resources=resources,run_config={'ops':{'ingest__airspace_boundaries_1__airspace_boundaries_1':{'config':{'capture_dir':str(capture)}}}})
     assert r.success
     event=next(e for e in r.get_asset_materialization_events() if e.asset_key==AssetKey(['ingest',adapter.SLUG,adapter.SLUG]));out=r.output_for_node(event.step_key)
     result['ingest']={'run_id':r.run_id,'success':r.success,'output':out}
-    candidate=stage.read_key(out['quarantine_prefix']+'/candidate/airspace.parquet')
+    candidate=stage.read_key(out['staging_prefix']+'/candidate/airspace.parquet')
     import io
     import pyarrow.parquet as pq
     t=pq.read_table(io.BytesIO(candidate));assert t.num_rows==477
     assert t['GLOBAL_ID'].null_count==0 and len(set(t['GLOBAL_ID'].to_pylist()))==477
     assert len(t.column_names)==40
-    manifest=json.loads(stage.read_key(out['quarantine_prefix']+'/metadata/provenance.json'));assert manifest['invalid_geometry_count']==0 and manifest['diagnostic_server_geojson_invalid_geometry_count']==22 and manifest['promotion_allowed'] is False
-    result['assertions']={'rows':t.num_rows,'columns':t.column_names,'unique_GLOBAL_ID':477,'invalid_geometry_count':0,'diagnostic_server_geojson_invalid_geometry_count':22,'raw_source_native_sha256':hashlib.sha256(stage.read_key(out['quarantine_prefix']+'/raw/source-native.json')).hexdigest(),'candidate_sha256':hashlib.sha256(candidate).hexdigest()}
-    # Deliberately isolated conversion sandbox; this copy is not acceptance.
-    version='v0.0.10-draft';prefix=f'{adapter.SLUG}/{adapter.SLUG}/{version}'
-    stage.write_key(prefix+'/geopackage/airspace.gpkg',stage.read_key(out['quarantine_prefix']+'/candidate/airspace-native.gpkg'))
-    inputs=[]
-    for name,receipt in manifest['captures'].items():
-        raw_key=prefix+'/raw/'+name+'.json'
-        stage.write_key(raw_key,stage.read_key(out['quarantine_prefix']+'/raw/'+name+'.json'))
-        stage.write_key(prefix+'/raw/receipts/'+name+'.json',json.dumps(receipt,sort_keys=True).encode())
-        inputs.append({'input_id':name,'url':receipt['url'],'sha256':receipt['sha256'],'bytes':receipt['bytes'],'raw_key':raw_key,'fetched_at':receipt['checked_at'],'role':'producer_capture'})
-    stage.write_key(prefix+'/metadata/provenance.json',json.dumps(manifest,sort_keys=True,indent=2).encode())
-    stage.write_key(prefix+'/metadata/source_manifest.json',json.dumps({'publisher':manifest['publisher'],'source_url':adapter.LAYER_URL,'inputs':inputs,'transformations':manifest['transformations'],'lineage':{'quarantine_only':True,'approval':None,'native_crs':'EPSG:4269','durable_capture_prefix':manifest['durable_capture_prefix']},'unsupported_output_formats':adapter.UNSUPPORTED_OUTPUT_FORMATS}).encode())
-    key=build_publish_partition_key(adapter.SLUG,adapter.SLUG,version);instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[key])
+    manifest=json.loads(stage.read_key(out['staging_prefix']+'/metadata/provenance.json'));assert manifest['invalid_geometry_count']==0 and manifest['diagnostic_server_geojson_invalid_geometry_count']==22 and manifest['promotion_allowed'] is False
+    result['assertions']={'rows':t.num_rows,'columns':t.column_names,'unique_GLOBAL_ID':477,'invalid_geometry_count':0,'diagnostic_server_geojson_invalid_geometry_count':22,'raw_source_native_sha256':hashlib.sha256(stage.read_key(out['staging_prefix']+'/raw/source-native.json')).hexdigest(),'candidate_sha256':hashlib.sha256(candidate).hexdigest()}
+    version=out['version'];prefix=out['staging_prefix'];key=out['partition_key']
+    assert (adapter.SLUG,adapter.SLUG,version) in list(_iter_staged_version_paths(stage))
+    assert key in instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME)
+    source_manifest=json.loads(stage.read_key(prefix+'/metadata/source_manifest.json'))
+    validate_release_provenance(source_manifest)
+    result['source_staging']={'canonical_discoverable':True,'partition_registered':True,'source_manifest_structurally_valid':True,'manual_bridge_copies':0,'processing_identity':source_manifest['processing_identity']}
     sentinel='accepted/sentinel.json';published.write_key(sentinel,b'{"historical":"preserve"}')
     before={k:hashlib.sha256(published.read_key(k)).hexdigest() for k in published.list_prefix()}
     selection=AssetSelection.keys(['publish','catalog'],['publish','formats','geopackage'],['publish','formats','geoparquet'],['publish','formats','pmtiles'],['publish','formats','shapefile_zip'],['publish','verify'],['publish','promote'])
@@ -69,7 +62,7 @@ with DagsterInstance.from_config(str(state)) as instance:
     assert any(e.asset_key==AssetKey(['publish','formats','geoparquet']) for e in r.get_asset_materialization_events())
     assert any(e.asset_key==AssetKey(['publish','formats','pmtiles']) for e in r.get_asset_materialization_events())
     assert not any(k.endswith('.zip') for k in stage.list_prefix(prefix+'/shapefile'))
-    result['terminal_roundtrip']=audit_formats(pathlib.Path(stage.local_dir),out['quarantine_prefix'],prefix)
+    result['terminal_roundtrip']=audit_formats(pathlib.Path(stage.local_dir),out['staging_prefix'],prefix)
     assert not any(e.asset_key==AssetKey(['publish','promote']) for e in r.get_asset_materialization_events())
     r=defs.resolve_job_def('faa_verify_probe').execute_in_process(instance=instance,partition_key=key,raise_on_error=False)
     assert not r.success;result['verify_probe']={'run_id':r.run_id,'success':False,'reason':'missing_independent_release_approval_registry'}
@@ -79,5 +72,5 @@ with DagsterInstance.from_config(str(state)) as instance:
     assert result['direct_promotion_error']=='missing_independent_release_approval_registry'
     after={k:hashlib.sha256(published.read_key(k)).hexdigest() for k in published.list_prefix()}
     assert before==after;result['accepted_inventory_unchanged']=before==after
-    result['staged_candidate_preserved']=stage.object_exists(out['quarantine_prefix']+'/candidate/airspace.parquet')
+    result['staged_candidate_preserved']=stage.object_exists(out['staging_prefix']+'/candidate/airspace.parquet')
 (ROOT/'evidence/local-materialization.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))
