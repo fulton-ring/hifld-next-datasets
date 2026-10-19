@@ -1,0 +1,244 @@
+{
+  "dataset_id": "agricultural-minerals-operations",
+  "research_only": true,
+  "status": "blocked",
+  "requested_status": "Potential breaking change / Needs decision",
+  "source_role": "unresolved",
+  "producer": {
+    "name": "US Geological Survey, Minerals Information Team",
+    "verification": "Inventory and mirror snippet attribute the historical compilation; fresh producer lineage not established"
+  },
+  "publisher": null,
+  "landing_url": null,
+  "download_url": null,
+  "lineage_evidence": [
+    {
+      "path": "evidence/inventory-row.json",
+      "finding": "Historical USGS compilation active in 2003; explicitly legacy, not expected updated"
+    },
+    {
+      "path": "evidence/item.body",
+      "finding": "clibby007 copy repeats USGS MIT attribution; no producer link/delegation or rights in item"
+    },
+    {
+      "path": "evidence/usgs-landing.body",
+      "finding": "Official USGS center page responds; not proof of this dataset publication"
+    }
+  ],
+  "release_date": null,
+  "checked_at": "2026-10-19T04:19:38.331013+00:00",
+  "relationship_to_archive": "unresolved; no full archived HIFLD data or accepted published baseline retrieved",
+  "crosswalk": {
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "match": "unverified_network_blocked",
+    "original_workbook": null,
+    "hyperlinks_parsed": false,
+    "evidence": "evidence/crosswalk-blocker.json"
+  },
+  "fallback_candidates": [
+    {
+      "source_role": "mirror",
+      "producer": "Attributed to USGS MIT; independently unverified",
+      "publisher": {
+        "account": "clibby007",
+        "organization_id": "HDRa0B57OVrv2E1q"
+      },
+      "landing_url": "https://www.arcgis.com/home/item.html?id=1c9f0c8899bb4f47be90fd6723b926e1",
+      "download_url": "https://services5.arcgis.com/HDRa0B57OVrv2E1q/arcgis/rest/services/Agricultural_Minerals_Operations/FeatureServer/0/query",
+      "lineage_evidence": "evidence/item.body",
+      "release_date": null,
+      "portal_modified": "2022-02-16T16:12:32+00:00",
+      "checked_at": "2026-10-19T04:19:38.331013+00:00",
+      "relationship_to_archive": "Unresolved copy of same historical description; title/snippet insufficient for exact continuation",
+      "completeness_evidence": "evidence/extraction.json",
+      "count": 236,
+      "rights": "Item licenseInfo and accessInformation empty; not inferred from public access"
+    }
+  ],
+  "published_contract": {
+    "approval_status": "explicitly_unapproved_proposal",
+    "approved": false,
+    "version": "proposal-0",
+    "basis": "Observed third-party mirror schema only; NOT accepted HIFLD Next contract",
+    "published_columns": [
+      {
+        "name": "OBJECTID_1",
+        "type": "esriFieldTypeOID",
+        "nullable": false,
+        "meaning": "Mirror system-managed row ID; cross-release stability unverified",
+        "id_role": "candidate_identifier_not_approved"
+      },
+      {
+        "name": "FID_1",
+        "type": "esriFieldTypeSmallInteger",
+        "nullable": true,
+        "meaning": "Inherited feature identifier; source identity/stability unverified",
+        "id_role": "candidate_identifier_not_approved"
+      },
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeSmallInteger",
+        "nullable": true,
+        "meaning": "Inherited object identifier; source identity/stability unverified",
+        "id_role": "candidate_identifier_not_approved"
+      },
+      {
+        "name": "MINOP1X020",
+        "type": "esriFieldTypeSmallInteger",
+        "nullable": true,
+        "meaning": "Legacy mineral operations identifier; semantics/stability require producer dictionary",
+        "id_role": "candidate_identifier_not_approved"
+      },
+      {
+        "name": "COMMODITY",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Commodity label",
+        "id_role": null,
+        "length": 19
+      },
+      {
+        "name": "SITE_NAME",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Operation site name",
+        "id_role": null,
+        "length": 50
+      },
+      {
+        "name": "COMPANY_NA",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Company name",
+        "id_role": null,
+        "length": 40
+      },
+      {
+        "name": "STATE_LOCA",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "State location label",
+        "id_role": null,
+        "length": 14
+      },
+      {
+        "name": "COUNTY",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "County label",
+        "id_role": null,
+        "length": 22
+      },
+      {
+        "name": "LATITUDE",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "meaning": "Latitude attribute; units assumed degrees pending dictionary",
+        "id_role": null
+      },
+      {
+        "name": "LONGITUDE",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "meaning": "Longitude attribute; units assumed degrees pending dictionary",
+        "id_role": null
+      },
+      {
+        "name": "PLANT_MIN",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Plant/mine category; observed M, P, M/P; interpretation provisional",
+        "id_role": null,
+        "length": 3
+      }
+    ],
+    "geometry": {
+      "name": "geometry",
+      "type": "Point",
+      "nullable": false,
+      "crs": "EPSG:4326",
+      "meaning": "Operation location; proposed from observed mirror only"
+    },
+    "coverage": {
+      "intended": "United States plants/mines surveyed by MIT considered active in 2003",
+      "observed_mirror_states": {
+        "ARIZONA": 3,
+        "CALIFORNIA": 15,
+        "DELAWARE": 2,
+        "FLORIDA": 28,
+        "MICHIGAN": 15,
+        "NEVADA": 1,
+        "TEXAS": 33,
+        "UTAH": 8,
+        "ILLINOIS": 9,
+        "INDIANA": 4,
+        "IOWA": 1,
+        "MAINE": 2,
+        "MINNESOTA": 13,
+        "MONTANA": 4,
+        "NEW JERSEY": 6,
+        "NEW YORK": 1,
+        "OHIO": 6,
+        "PENNSYLVANIA": 9,
+        "WASHINGTON": 5,
+        "WISCONSIN": 4,
+        "WEST VIRGINIA": 1,
+        "IDAHO": 6,
+        "LOUISIANA": 12,
+        "MISSISSIPPI": 4,
+        "NORTH CAROLINA": 2,
+        "WYOMING": 10,
+        "NEW MEXICO": 8,
+        "ALABAMA": 7,
+        "ARKANSAS": 2,
+        "COLORADO": 1,
+        "KANSAS": 2,
+        "KENTUCKY": 1,
+        "NORTH DAKOTA": 2,
+        "TENNESSEE": 1,
+        "VIRGINIA": 2,
+        "MASSACHUSETTS": 1,
+        "SOUTH CAROLINA": 5
+      },
+      "observed_commodities": {
+        "MAGNESIUM COMPOUNDS": 11,
+        "PEAT": 52,
+        "PHOSPHATE": 31,
+        "POTASH": 7,
+        "SULFUR": 113,
+        "VERMICULITE": 22
+      },
+      "not_proven": "Complete historical United States coverage; equivalence to archive"
+    },
+    "mapping": "Proposed identity projection of all 12 attributes plus geometry, subject to approved baseline and dictionary. Preserve original names/types/values/precision/whitespace; retain unknown raw fields and quarantine drift. No substitute IDs.",
+    "identifier_continuity": "All four identifier-like fields unique/non-null within this copy; no evidence of stability across releases"
+  },
+  "accepted_baseline": {
+    "status": "not_identified_or_retrieved",
+    "dataset_slug": null,
+    "file_slug": null,
+    "version": null,
+    "checksums": null
+  },
+  "refresh_policy": {
+    "proposal": "No scheduled refresh until maintained producer publication or explicit historical-preservation decision; legacy 2003 semantics must remain visible",
+    "retry": "Bounded retry on transient errors; fail closed on JSON errors, incomplete ID sets, schema/geometry drift; retain last accepted release",
+    "resource_needs": "Observed 236-row mirror; 100-ID batches sufficient; no approved pipeline"
+  },
+  "blockers": [
+    "Original DHS crosswalk XLSX and hyperlink targets inaccessible; exact match unverified",
+    "No verified maintained producer endpoint or delegated official distributor",
+    "True source publication/release date unknown; 2003 is observation vintage, 2017 inventory and 2022 portal dates are not release dates",
+    "No pinned accepted published baseline/data dictionary or maintainer-approved contract",
+    "Archive identity, full ID continuity, coverage and attribute/geometry differences unresolved",
+    "#417 shared comparison and blocking promotion prerequisite; research extraction is not ingestion acceptance"
+  ],
+  "local_readiness": {
+    "evidence": [
+      "evidence/server-info.json",
+      "evidence/repositories.json"
+    ],
+    "materialized": false,
+    "ingestion_acceptance": false
+  }
+}

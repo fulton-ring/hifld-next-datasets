@@ -1,0 +1,10 @@
+{
+  "checked_at": "2026-10-19T04:19:08.481929+00:00",
+  "url": "https://doi.org/10.3886/E241367V1",
+  "redirect_target": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+  "result": "ProxyError Tunnel connection failed: 403 Forbidden",
+  "match_status": "unverified_network_blocked",
+  "xlsx_retrieved": false,
+  "hyperlink_targets_parsed": false,
+  "not_an_unmatched_finding": true
+}
