@@ -303,6 +303,9 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
     validate_release_provenance(actual_manifest)
     for key,value in manifest.items():
         if key!='code_commit' and actual_manifest.get(key)!=value: raise ConsolidatedCityQuarantineError('cached_provenance_disagrees_with_original')
+    pin_key=f'_source-provenance/{SLUG}/{digest(encode(identity))}/bundle.json'
+    pinned=strict_json(storage.read_key(pin_key))
+    if actual_manifest!=pinned['manifest']:raise ConsolidatedCityQuarantineError('cached_provenance_disagrees_with_immutable_original_bundle')
     manifest=actual_manifest
     expected=source_payloads(cached,identity,table,audit,manifest)
     expected_names={*expected,f'geopackage/{SLUG}.gpkg','candidate/typed-source.parquet'}
@@ -326,6 +329,34 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
     reconcile_outputs(root,table)
 
 
+
+def original_provenance_bundle(storage,fingerprint,captures,identity,manifest):
+    """Pin first construction provenance outside the candidate's self-pinned cache.
+
+    A docs-only later commit may reuse identical processing code. Its new fetch
+    receipts are still retained, while the existing candidate keeps its actual
+    original receipts and construction commit. Cache labels cannot rewrite them.
+    """
+    key=f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'
+    if not storage.object_exists(key):
+        bundle={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt} for name,(body,receipt) in captures.items()}}
+        immutable(storage,key,encode(bundle))
+    bundle=strict_json(storage.read_key(key))
+    if set(bundle)!= {'manifest','captures'} or set(bundle['captures'])!={'census2026_concity',*PINS}:
+        raise ConsolidatedCityQuarantineError('original_provenance_bundle_roster_drift')
+    original={}
+    for name,item in bundle['captures'].items():
+        receipt=item['receipt'];expected=f"_raw-captures/{SLUG}/{receipt['sha256']}/{name}.body"
+        if item['body_key']!=expected:raise ConsolidatedCityQuarantineError('original_provenance_bundle_body_key_drift')
+        original[name]=(storage.read_key(expected),receipt)
+    expected_manifest=manifest_for(original,identity)
+    for name,value in expected_manifest.items():
+        if name!='code_commit' and bundle['manifest'].get(name)!=value:
+            raise ConsolidatedCityQuarantineError('original_provenance_bundle_manifest_drift')
+    validate_release_provenance(bundle['manifest'])
+    return original,bundle['manifest']
+
+
 def stage_consolidated_cities(storage,*,capture_dir=None):
     local_only(storage);captures=acquire(storage,capture_dir)
     root=None
@@ -341,6 +372,7 @@ def stage_consolidated_cities(storage,*,capture_dir=None):
         locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
         with lockpath.open('a+b') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)
+            captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
             if root.exists():
                 try: reconcile_cache(storage,prefix,table,audit,captures,identity)
                 except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error) as exc:

@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "inventory_id": "consolidated-cities",
+  "issue": 41,
+  "status": "working_draft_implementation_not_accepted",
+  "worker": "/root/consolidated_cities_41",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "scope_authorization": "User correction permits reviewable draft code and isolated tests before approval. It does not approve source, edition, baseline, schemas, IDs, formats, merge or production.",
+  "producer": "U.S. Census Bureau",
+  "publisher": "U.S. Census Bureau Geography Division; www2.census.gov official direct distribution",
+  "source_classification": "Complete2026 producer publication; changed successor to inventory2024 substate GDB, not approved exact continuation",
+  "landing_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/",
+  "inventory_download": "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_substategeo.gdb.zip",
+  "inventory_layer": "Consolidated_City",
+  "inventory_source_capture_status": "Official listing captured; 702MiB full predecessor not fetched. National geographic GDB from issue40 does NOT contain this layer.",
+  "producer_release_evidence": {
+    "publication": "2026 (year precision from original per-file ISO metadata)",
+    "creation": "2026-09",
+    "lastUpdate": "2026-10",
+    "exact_publication_day": "unknown; no day invented",
+    "directory_package_last_modified": "2026-10-06 19:31; HTTP/archive packaging, not publication date",
+    "current_landing_census_www": "403 on observed fetch; official www2 directory and all seven complete archives200"
+  },
+  "crosswalk": {
+    "url": "https://doi.org/10.3886/E241367V1",
+    "status": "inaccessible_unverified_http403",
+    "not_unmatched": true,
+    "evidence": "evidence/crosswalk.receipt.json"
+  },
+  "prior_findings": {
+    "issue": "https://github.com/fulton-ring/agent-content-demos/issues/40",
+    "note": "Read full issue and three comments as historical leads, not fresh endpoint authority."
+  },
+  "complete_source": {
+    "archives": 7,
+    "features": 8,
+    "states": [
+      "09",
+      "13",
+      "18",
+      "20",
+      "21",
+      "30",
+      "47"
+    ],
+    "GEOIDs": [
+      "0947500",
+      "1303436",
+      "1304200",
+      "1836000",
+      "2028410",
+      "2148003",
+      "3011390",
+      "4752004"
+    ],
+    "crs": "EPSG:4269",
+    "geometry_counts": {
+      "Polygon": 7,
+      "MultiPolygon": 1
+    },
+    "repair": false,
+    "reprojection": false,
+    "deduplication": false,
+    "pins": {
+      "tl_2026_47_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_47_concity.zip",
+        "observed_at": "2026-10-19T08:03:32.787485+00:00",
+        "status": 200,
+        "bytes": 57134,
+        "sha256": "c4239eb3cb9853606a539c043c6c8db2459bf5badb670a65bc7c20e9c1b98c05",
+        "complete_body": true
+      },
+      "tl_2026_09_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_09_concity.zip",
+        "observed_at": "2026-10-19T08:03:29.932502+00:00",
+        "status": 200,
+        "bytes": 21198,
+        "sha256": "8753ff394c81e89db39c7e92b05f652c7f063209db9c3b1c6cec3bcd1e469359",
+        "complete_body": true
+      },
+      "census2026_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/",
+        "observed_at": "2026-10-19T08:01:48.926791+00:00",
+        "status": 200,
+        "bytes": 16045,
+        "sha256": "0782e5ee9c1d139a4a4253fda46d01c28628b4caf023376912a394e743761b0a",
+        "complete_body": true
+      },
+      "tl_2026_13_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_13_concity.zip",
+        "observed_at": "2026-10-19T08:03:30.301095+00:00",
+        "status": 200,
+        "bytes": 70989,
+        "sha256": "7b1aef4ed64ac5fff90e73f24b9a2d6b3310889d2328e316705637b24a2901ac",
+        "complete_body": true
+      },
+      "tl_2026_30_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_30_concity.zip",
+        "observed_at": "2026-10-19T08:03:32.184361+00:00",
+        "status": 200,
+        "bytes": 77912,
+        "sha256": "b32b8fbd032f66750cfcf753b6ee363ccf5b97d4fd854b9587049c22acdb52eb",
+        "complete_body": true
+      },
+      "tl_2026_18_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_18_concity.zip",
+        "observed_at": "2026-10-19T08:03:30.784532+00:00",
+        "status": 200,
+        "bytes": 40552,
+        "sha256": "317ac029de739b6bba242b763a97a2bc54b2384f2905177c5a69034ef9923622",
+        "complete_body": true
+      },
+      "tl_2026_21_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_21_concity.zip",
+        "observed_at": "2026-10-19T08:03:31.858490+00:00",
+        "status": 200,
+        "bytes": 33841,
+        "sha256": "30abb05506f8c9d4557f0272f5688d57462443e830db013c2e0091cfc59df255",
+        "complete_body": true
+      },
+      "tl_2026_20_concity": {
+        "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_20_concity.zip",
+        "observed_at": "2026-10-19T08:03:31.378174+00:00",
+        "status": 200,
+        "bytes": 20322,
+        "sha256": "e7d5aab415b5fd5aa95cc42f2c0a1e95f117bdd3a78d7368e83479ac4cf0b964",
+        "complete_body": true
+      }
+    }
+  },
+  "proposed_raw_contract": {
+    "approved": false,
+    "source_DBf_field_declarations": "Every exact field name/type/width/decimals retained in source audit; independent physical DBF decoder verifies all values. ALAND/AWATER numeric N14,0 remain int64, never float.",
+    "source_id_fields": [
+      "STATEFP",
+      "CONCTYFP",
+      "CONCTYNS",
+      "GEOID",
+      "GEOIDFQ"
+    ],
+    "driver_local_id": "OGC_FID int64 is original driver index, no DBF OID exists; repeated file-local values preserved with literal source_archive, not substitute published IDs.",
+    "geometry_column": "wkb_geometry",
+    "schema": "evidence/comparison.json source_schema",
+    "output_formats": "Typed source Parquet and primary GPKG preserve native WKB/fields; unknown GPKG geometry declaration permits original mixed Polygon/MultiPolygon. Additional normal GeoParquet geometry/bbox columns remain unapproved."
+  },
+  "proposed_published_mapping": {
+    "approved": false,
+    "mapping": null,
+    "reason": "Source2026 vs inventory2024 edition, extensive field names/types/values, driver FIDs vs OBJECTID/id, original mixed geometry vs historical geometry all require explicit reviewed mapping; no destructive rename or substitution implemented."
+  },
+  "baseline_candidate": {
+    "accepted": false,
+    "rows": 8,
+    "bytes": 260757,
+    "sha256": "aaab9a418a1ba9696287172ec8f2339917851d3223255428952af9f4f4f4a385",
+    "all_identifiers_preserved": "Complete unchanged baseline.body, including OBJECTID/id/OID and all other columns. No baseline row replaced/rewritten."
+  },
+  "complete_comparison": {
+    "same_GEOID_coverage": true,
+    "source_only": [],
+    "published_only": [],
+    "native_WKB_exact": 0,
+    "coordinate_sequence_exact": 0,
+    "topological_equal_same_declared_crs": 0,
+    "evidence": "evidence/comparison.json",
+    "diagnostic_GEOID_join_is_not_approval": true
+  },
+  "refresh": {
+    "schedule": "STOPPED monthly day1 08:00 America/New_York",
+    "behavior": "Require unchanged seven-publication source roster and complete pinned originals. New/changed/missing archives, schema/IDs/geometry/nullability drift quarantine; no automatic migration. Stable originals and effective runtime identity reuse immutable candidate after fresh original reconciliation.",
+    "source_retention": "Complete originals and original receipts losslessly retained; failed partial bytes/receipts quarantined.",
+    "installation": "Advisory lock; build hidden and install complete candidate atomically. Failed or missing-ready cache is moved whole intact outside version discovery."
+  },
+  "release_blockers": [
+    "Crosswalk inaccessible; exact predecessor relationship not accepted",
+    "Explicit2026 successor edition/source acceptance",
+    "Versioned raw/published schema and physical representation contract",
+    "Source original ID/published ID mapping and all renamed fields",
+    "Geometry/coverage/value compatibility and format acceptance",
+    "Independent release registry approval bound to exact candidate/report; absent approval remains hard gate"
+  ],
+  "implementation": {
+    "source": "src/dagster_hifld/sources/consolidated_cities.py",
+    "asset": "src/dagster_hifld/assets/census_consolidated_cities.py",
+    "test": "tests/test_consolidated_cities_source.py",
+    "replay": "scripts/verify_consolidated_cities_draft.py",
+    "state": "local materialization evidence pending final registered Definitions run"
+  },
+  "approval": false
+}

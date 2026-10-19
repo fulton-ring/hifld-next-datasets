@@ -87,7 +87,7 @@ class ConsolidatedCityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d,patch.object(c,'processing_identity',return_value={'test':True}):
             storage=StagingStorageResource(local_dir=d);result=c.stage_consolidated_cities(storage,capture_dir=INPUTS)
             root=Path(d)/c.SLUG/c.SLUG/result['version'];saved=Path(d)/'_saved';shutil.copytree(root,saved)
-            cases=['placeholder','audit','id','geometry','parquet_crs','gpkg_srs','gpkg_rtree','unknown','resolved']
+            cases=['placeholder','audit','id','geometry','parquet_crs','gpkg_srs','gpkg_rtree','unknown','resolved','code_commit']
             for case in cases:
                 if root.exists():shutil.rmtree(root)
                 shutil.copytree(saved,root)
@@ -106,6 +106,8 @@ class ConsolidatedCityTests(unittest.TestCase):
                         if case=='gpkg_srs':db.execute('UPDATE gpkg_contents SET srs_id=4326')
                         else:db.execute(f'UPDATE "rtree_{c.LAYER}_wkb_geometry" SET minx=-999')
                 elif case=='unknown':(root/'metadata/unknown.json').write_text('{}')
+                elif case=='code_commit':
+                    report=c.strict_json((root/'metadata/source_manifest.json').read_bytes());report['code_commit']='0'*40;(root/'metadata/source_manifest.json').write_bytes(c.encode(report))
                 else:(root/'metadata/resolved_provenance.json').write_text('{}')
                 ready=c.strict_json((root/c.READY).read_bytes())
                 ready['objects']={name:c.sha256_file(root/name) for name in ready['objects']};(root/c.READY).write_bytes(c.encode(ready))
