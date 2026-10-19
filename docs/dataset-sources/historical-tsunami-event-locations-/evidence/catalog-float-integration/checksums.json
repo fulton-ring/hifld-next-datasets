@@ -1,0 +1,26 @@
+{
+  "execution.json": {
+    "bytes": 28858,
+    "sha256": "b979ae74e8f0d26ff3e95af75a46e0e0f28577244b0826b58396718fa749cd3f"
+  },
+  "independent-native-sample.json": {
+    "bytes": 1734,
+    "sha256": "456627ed93a0632b7a3e3235c28378c0c0879faf0448c559dd2c68f72054af36"
+  },
+  "validation.json": {
+    "bytes": 14347,
+    "sha256": "04ccf73c712401716f525c9204765c4d77840adacccce241d2b940a5994b07eb"
+  },
+  "verify_catalog_integration.py": {
+    "bytes": 9112,
+    "sha256": "dba1a72ad83473a953c96143c1bbdc8f29d08762900268684a8f93a35bc19844"
+  },
+  "materialization.log": {
+    "bytes": 42077,
+    "sha256": "7b76052d9bd3c54e2d61061d97486726281f92e2da706e77f7c33fdd44824ba6"
+  },
+  "full-suite.log": {
+    "bytes": 78267,
+    "sha256": "1cb6351be4aaeb01c5e8bd953dc2d2a78bb3e90e13c2a147557b03778655941e"
+  }
+}

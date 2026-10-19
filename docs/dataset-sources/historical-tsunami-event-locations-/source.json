@@ -1463,5 +1463,36 @@
     "repaired_head_independent_review": "pending",
     "approved": false,
     "docs_only_historical_code_and_synthetic_receipt_context_verified": true
+  },
+  "catalog_float_integration": {
+    "processing_checkpoint": "368a4135873c5ddfa291ad3c30667dfe38bfdd13",
+    "shared_reviewed_checkpoint": "08e575415891cef6609366a303a5d28dba4a3cc6",
+    "evidence": "evidence/catalog-float-integration/validation.json",
+    "full_suite": {
+      "total": 550,
+      "passed": 548,
+      "skipped": 2,
+      "seconds": 78.705,
+      "scope": "exact368a merge",
+      "skips": [
+        "optional explicit-real-capture unit fixture environment not enabled by runner",
+        "productionGCS opt-in"
+      ],
+      "independent_focused_real_capture": {
+        "tests": 14,
+        "seconds": 7.369,
+        "result": "PASS",
+        "environment": "TSUNAMI_EVENTS_TEST_CAPTURE_DIR enabled by reviewer"
+      },
+      "independent_catalog": {
+        "tests": 21,
+        "seconds": 0.521,
+        "result": "PASS"
+      },
+      "ci_pass_claimed": false
+    },
+    "registered_runs": 9,
+    "all76source_attributes_retained": true,
+    "approval": false
   }
 }
