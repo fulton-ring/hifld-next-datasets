@@ -446,8 +446,8 @@ def observed_trust_loss(storage, version, fp, *, candidate=None, restored_manife
     an additional observed claim against which that restoration is checked.
     Unobserved simultaneous loss of every outside record cannot be detected.
     """
+    key = '_construction-incidents/'+SLUG+'/'+version+'/incident.json'
     folder = checked_path(storage,'_construction-incidents/'+SLUG+'/'+version)
-    key = str(folder.relative_to(Path(storage.local_dir)))+'/incident.json'
     path = checked_path(storage,key)
     if not folder.exists() and candidate is None: return False
     if not folder.exists():

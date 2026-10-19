@@ -1,0 +1,50 @@
+{
+  "evidence/captures/baseline.body": {
+    "sha256": "9194b8bd8ddf715d2b43ec6aee6e6baa1dfb02913bc6fea5644d463557c19c8d",
+    "bytes": 2030810
+  },
+  "evidence/captures/data-gov-raw.receipt.json": {
+    "sha256": "c0115c43bb1d07f8a4018167e2ad7fef06d32496edd60096562a922ecd20214c",
+    "bytes": 605
+  },
+  "evidence/captures/ornl-geospatial-data-sets.body": {
+    "sha256": "33337c9b00557eeb531dcd9b2a8de852b29b0a60bd3cd4701002d4a65a215bc9",
+    "bytes": 697982
+  },
+  "evidence/captures/pasda-hifld-zip.receipt.json": {
+    "sha256": "26262ddaf3e16371edfa188ffbb2658305164db874e5730dce6c30f5f814763b",
+    "bytes": 738
+  },
+  "evidence/captures/baseline-collection.body": {
+    "sha256": "84fdda899537c7ca8ba722b954adf49e121f6b0e107a23be30018d6c14e8bd12",
+    "bytes": 20104
+  },
+  "evidence/captures/data-gov-raw.body": {
+    "sha256": "ecc27de918f4f430b1b042b64810d1a7ee5c0a711f30a0b1b4206e37eae3d550",
+    "bytes": 697
+  },
+  "evidence/captures/baseline.receipt.json": {
+    "sha256": "04713370a1b206f0fd7f103bca7cdc74f5e9bda406373a3c98fb59ecd4f89044",
+    "bytes": 955
+  },
+  "evidence/captures/pasda-original-zip.body": {
+    "sha256": "6df2e4dfc4733cec8e3821ac0d60a5351561d6858a92391a8cb68231d81f08e1",
+    "bytes": 1948059
+  },
+  "evidence/captures/ornl-geospatial-data-sets.receipt.json": {
+    "sha256": "2d2e4956426fcec7819556a3fab38c9de52d2c26e060736d1fc6ebf479cbc0f2",
+    "bytes": 586
+  },
+  "evidence/captures/pasda-original-zip.receipt.json": {
+    "sha256": "2870789ce039860adf1c026889cc360f9010151b8a1722bd9f61fef9e9503126",
+    "bytes": 727
+  },
+  "evidence/captures/baseline-collection.receipt.json": {
+    "sha256": "995a5982f3db047925e6df07298023abfc4d24172a0c9db6341f13a572082909",
+    "bytes": 965
+  },
+  "evidence/captures/pasda-hifld-zip.body": {
+    "sha256": "44d1dce584a6eff3408320a21302f18771640c13ec556f50b000e77f7c469571",
+    "bytes": 2042588
+  }
+}

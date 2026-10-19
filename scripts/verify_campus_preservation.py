@@ -33,13 +33,14 @@ jobs=[normal.resolve_job_def('ornl_campus_historical_reconstruction'),
     define_asset_job('campus_normal_catalog_formats',selection=AssetSelection.assets(*[k for k in normal.resolve_asset_graph().get_all_asset_keys() if k.path[0]=='publish'])),
     define_asset_job('campus_approval_only',selection=AssetSelection.assets(AssetKey(['publish','verify']),AssetKey(['publish','promote'])).without_checks())]
 defs=Definitions(assets=normal.assets,asset_checks=normal.asset_checks,resources={'staging_storage':stage,'published_storage':publish},jobs=jobs)
+# Job names identify exact explicit selections above; source-only excludes checks.
 source_config={'ops':{source.op.name:{'config':{'capture_directory':str(capture)}}}}
 report={'classification':'2022 HIFLD/ORNL campus historical preservation candidate; NOT accepted source/release/contract','code_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True,cwd=Path(__file__).parents[1]).strip(),'runs':[]}
 def save():(runtime/'execution.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
 def run(label,job,instance,**kwargs):
     result=defs.resolve_job_def(job).execute_in_process(instance=instance,raise_on_error=False,**kwargs)
     errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
-    report['runs'].append({'label':label,'job':job,'run_id':result.run_id,'success':result.success,'errors':errors,'checks':[{'name':v.check_name,'passed':v.passed,'metadata':str(v.metadata)} for v in result.get_asset_check_evaluations()]})
+    report['runs'].append({'label':label,'job':job,'run_id':result.run_id,'success':result.success,'errors':errors,'materialized_assets':[e.asset_key.to_user_string() for e in result.get_asset_materialization_events()], 'checks':[{'name':v.check_name,'passed':v.passed,'metadata':str(v.metadata)} for v in result.get_asset_check_evaluations()]})
     if result.success and job=='ornl_campus_historical_reconstruction':report['runs'][-1]['output']=result.output_for_node(source.op.name)
     save();return result,errors
 with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',side_effect=AssertionError('Do not regenerate native prebuilt Parquet')) as converter,DagsterInstance.get() as instance:

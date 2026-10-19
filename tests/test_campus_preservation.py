@@ -212,6 +212,15 @@ class CampusPreservationTests(unittest.TestCase):
                     s.stage_campus_preservation(storage,s.CAPTURES)
                 self.assertTrue(path.exists());self.assertFalse((base/'_construction-state'/s.SLUG).exists())
 
+    def test_relative_local_root_constructs_and_reuses_complete_real_source(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary:
+            absolute=Path(temporary)/'staging'
+            storage=StagingStorageResource(local_dir=os.path.relpath(absolute,Path.cwd()))
+            built=s.stage_campus_preservation(storage,s.CAPTURES)
+            reused=s.stage_campus_preservation(storage,s.CAPTURES)
+            self.assertEqual(built['feature_count'],5898);self.assertFalse(built['reused'])
+            self.assertEqual(reused['version'],built['version']);self.assertTrue(reused['reused'])
+
     def test_stopped_schedule_config_matches_actual_asset_op_name(self):
         defs=Definitions(assets=[ornl_campus_historical_preservation],asset_checks=[campus_historical_full_quality],
             resources={'staging_storage':StagingStorageResource(local_dir=str(self.base))},jobs=[ornl_campus_historical_reconstruction_job])
