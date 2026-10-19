@@ -1,17 +1,17 @@
 {
   "classification": "Actual complete local draft, NOT real source/baseline/contract acceptance",
-  "code_commit": "a30d216eccc7930f3a83654451fc613498bb2ae2",
+  "code_commit": "2b26b63bed9de0387a5d5c458143b62b01835f32",
   "module": "/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py",
   "runs": [
     {
       "label": "source",
-      "run_id": "73afe92f-8900-426d-9bca-f78c4141bc25",
+      "run_id": "683fc16f-7bba-413c-80b9-bda53857534a",
       "success": true,
       "errors": [],
       "output": {
         "dataset_slug": "tsunami-capable-tide-stations",
         "file_slug": "tsunami-capable-tide-stations",
-        "version": "v0.0.0-draft-noaa-f6f95a6b53fbdcee",
+        "version": "v0.0.0-draft-noaa-82ef6984b0d1060a",
         "feature_count": 374,
         "approved": false,
         "reused": false
@@ -19,13 +19,13 @@
     },
     {
       "label": "refresh",
-      "run_id": "a4671647-6e7e-4def-a3b8-96fa5501af23",
+      "run_id": "55d2fd7f-b52e-4881-a74a-50b2060dadd5",
       "success": true,
       "errors": [],
       "output": {
         "dataset_slug": "tsunami-capable-tide-stations",
         "file_slug": "tsunami-capable-tide-stations",
-        "version": "v0.0.0-draft-noaa-f6f95a6b53fbdcee",
+        "version": "v0.0.0-draft-noaa-82ef6984b0d1060a",
         "feature_count": 374,
         "approved": false,
         "reused": true
@@ -33,7 +33,7 @@
     },
     {
       "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
-      "run_id": "6347dd71-a30a-440f-a933-7045e2c43efb",
+      "run_id": "1db78355-708d-4287-86de-75078a7e7de0",
       "success": false,
       "errors": [
         "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
@@ -41,13 +41,13 @@
     },
     {
       "label": "post_catalog_cycle_1_source_refresh",
-      "run_id": "42cf8e2e-8070-4020-92a7-be23e758cd04",
+      "run_id": "a692ecce-62c9-48d0-b6fa-2bc3a77032c0",
       "success": true,
       "errors": []
     },
     {
       "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
-      "run_id": "21cf1e1f-8b07-4ac4-b64c-d40e5fe0e2fa",
+      "run_id": "72c5476b-492d-4236-a7ce-044723663a76",
       "success": false,
       "errors": [
         "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
@@ -55,13 +55,13 @@
     },
     {
       "label": "post_catalog_cycle_2_source_refresh",
-      "run_id": "cf0306f1-54da-4e07-beab-6583aa81d4b6",
+      "run_id": "a3bb3f3c-73a0-4a3f-aabb-dc93d3ac4acc",
       "success": true,
       "errors": []
     },
     {
       "label": "synthetic_failed_quality_blocks_promote",
-      "run_id": "9b4b8560-627b-41ef-af32-ab335e5f8861",
+      "run_id": "0c061a48-c1cd-477a-af9a-186f95f3498c",
       "success": false,
       "errors": [
         "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
@@ -69,32 +69,32 @@
     },
     {
       "label": "post_gate_source_refresh",
-      "run_id": "da222da6-75c2-4e91-a256-9b9416f6f0b6",
+      "run_id": "01ad1ce0-bca4-49dd-aa00-3a918256401a",
       "success": true,
       "errors": []
     },
     {
       "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
-      "run_id": "ec469412-eb6b-408c-a61f-c4a89ff5d122",
+      "run_id": "9d3f9663-22e8-4a2d-902c-f57eaf4dfcff",
       "success": false,
       "errors": [
-        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__tsunami_capable_tide_stations__tsunami_capable_tide_stations\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/334/actual-verified-dagster/staging/_quarantine/tsunami-capable-tide-stations/invalid-candidate-e66426485229498f908170ab6d1617e0:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/334/actual-verified-dagster/staging/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v0.0.0-draft-noaa-f6f95a6b53fbdcee/metadata/tide_stations_candidate_ready.json'; retained:_quarantine/tsunami-capable-tide-stations/0fbf3d16d51e4c9cb9b9a350dad14586\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/assets/noaa_tsunami_tide_stations.py\", line 9, in noaa_tsunami_tide_stations\n    result=stage_tide_stations(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_TIDE_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 363, in stage_tide_stations\n    where=quarantine(storage,captures,str(exc));raise TideStationQuarantineError(f'{exc}; retained:{where}')from exc\n                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/334/actual-verified-dagster/staging/_quarantine/tsunami-capable-tide-stations/invalid-candidate-e66426485229498f908170ab6d1617e0:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/334/actual-verified-dagster/staging/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v0.0.0-draft-noaa-f6f95a6b53fbdcee/metadata/tide_stations_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 342, in stage_tide_stations\n    raise TideStationQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc))from exc\n\nThe above exception was caused by the following exception:\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/334/actual-verified-dagster/staging/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v0.0.0-draft-noaa-f6f95a6b53fbdcee/metadata/tide_stations_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 339, in stage_tide_stations\n    reconcile_cache(storage,prefix,table,audit,captures,identity,manifest)\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 306, in reconcile_cache\n    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes());expected=source_payloads(captures,identity,table,audit,manifest)\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1019, in read_bytes\n    with self.open(mode='rb') as f:\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__tsunami_capable_tide_stations__tsunami_capable_tide_stations\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/334/actual-preseal-repaired/staging/_quarantine/tsunami-capable-tide-stations/invalid-candidate-90dd3fe1f1594264a0e00c82bf71b07b:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/334/actual-preseal-repaired/staging/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v0.0.0-draft-noaa-82ef6984b0d1060a/metadata/tide_stations_candidate_ready.json'; retained:_quarantine/tsunami-capable-tide-stations/9fac4d7507314b2f8b0138d1b4c65bc8\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/assets/noaa_tsunami_tide_stations.py\", line 9, in noaa_tsunami_tide_stations\n    result=stage_tide_stations(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_TIDE_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 366, in stage_tide_stations\n    where=quarantine(storage,captures,str(exc));raise TideStationQuarantineError(f'{exc}; retained:{where}')from exc\n                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/334/actual-preseal-repaired/staging/_quarantine/tsunami-capable-tide-stations/invalid-candidate-90dd3fe1f1594264a0e00c82bf71b07b:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/334/actual-preseal-repaired/staging/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v0.0.0-draft-noaa-82ef6984b0d1060a/metadata/tide_stations_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 345, in stage_tide_stations\n    raise TideStationQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc))from exc\n\nThe above exception was caused by the following exception:\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/334/actual-preseal-repaired/staging/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v0.0.0-draft-noaa-82ef6984b0d1060a/metadata/tide_stations_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 342, in stage_tide_stations\n    reconcile_cache(storage,prefix,table,audit,captures,identity,manifest)\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 309, in reconcile_cache\n    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes());expected=source_payloads(captures,identity,table,audit,manifest)\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1019, in read_bytes\n    with self.open(mode='rb') as f:\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
       ]
     },
     {
       "label": "original_source_rebuild_after_quarantine",
-      "run_id": "d3a38618-deaa-4aec-abcf-eb1532aa64dc",
+      "run_id": "04767eb4-b73b-49a5-9f22-c2a1a580b8f3",
       "success": true,
       "errors": []
     },
     {
       "label": "rebuilt_cache_refresh",
-      "run_id": "26b3875f-6516-4adf-a619-f901a4027d98",
+      "run_id": "dd5d3858-acd9-46d4-aff0-7da4b5e9d47b",
       "success": true,
       "errors": []
     }
   ],
-  "version": "v0.0.0-draft-noaa-f6f95a6b53fbdcee",
+  "version": "v0.0.0-draft-noaa-82ef6984b0d1060a",
   "discoverable_without_runner_copies": true,
   "original_capture_objects_unchanged": true,
   "source_owned_objects_unchanged": true,
@@ -108,8 +108,8 @@
     "geopackage/tsunami-capable-tide-stations.gpkg": "994a65bc2b0a03275500c4cadcdddfc0f57976cd94c13f27cb2de04eff17c4dc",
     "geoparquet/tsunami-capable-tide-stations.parquet": "a6d214fb2e60abc4e1eaaae97f4881aa3a65a842226ff0c2194faeca0601da84",
     "metadata/baseline_comparison.json": "25346984365c0bca585c4eeea42b544cb4a33944049dde92aceb2261fd86652d",
-    "metadata/processing_identity.json": "f6f95a6b53fbdcee125cb5173fc283c1815aac52e27e2988a30bb3f60886b546",
-    "metadata/source_manifest.json": "1969d2ab48d64cc4950a5b6275f09aff8540245bc224f7868b4fbd07d400562f",
+    "metadata/processing_identity.json": "82ef6984b0d1060a29b5d01ed2564d3b28b7a446d920ac546032b5426acbebe9",
+    "metadata/source_manifest.json": "502db32300da6096b3250a4a867dec26d164cd3fc3ee22c0845bba550515a24c",
     "metadata/tide_stations_source_audit.json": "11e9501d9db88bc8e39c6ed81b8336ead769937b189b97d9ed5ee5686aa86c33",
     "raw/captures/map_js.body": "88b4c25281fd5744b1b8236bc4c53eb1cc3fd327854bfe5b80a6008ab8e8d5d9",
     "raw/captures/map_js.receipt.json": "d33a788b06d37d28706909c7e1634a89376801e1763d7b2e001c3684fca29cb2",
@@ -170,7 +170,7 @@
   "source_manifest": {
     "agency": "National Oceanic and Atmospheric Administration",
     "approved": false,
-    "code_commit": "a30d216eccc7930f3a83654451fc613498bb2ae2",
+    "code_commit": "2b26b63bed9de0387a5d5c458143b62b01835f32",
     "inputs": [
       {
         "attribution": "NOAA NCEI, CO-OPS, Pacific Tsunami Warning Center and National Tsunami Warning Center",
@@ -603,7 +603,7 @@
       },
       "schema_version": 1
     },
-    "processing_fingerprint": "f6f95a6b53fbdcee125cb5173fc283c1815aac52e27e2988a30bb3f60886b546",
+    "processing_fingerprint": "82ef6984b0d1060a29b5d01ed2564d3b28b7a446d920ac546032b5426acbebe9",
     "processor": "HIFLD Next",
     "publisher": "NOAA National Centers for Environmental Information",
     "schema_version": 1,

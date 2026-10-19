@@ -1,0 +1,9 @@
+{
+  "scope": "Synthetic invalid construction claim through real complete source/private native build; not malformed producer evidence or real acceptance",
+  "source_commit": "2b26b63bed9de0387a5d5c458143b62b01835f32",
+  "rejected": true,
+  "reason": "construction_invalid_commit; retained:_quarantine/tsunami-capable-tide-stations/2b3e90531d474011aec8c888ae500029",
+  "outside_records_created_before_rejection": [],
+  "candidate_installed": false,
+  "original_raw_bodies_retained": true
+}

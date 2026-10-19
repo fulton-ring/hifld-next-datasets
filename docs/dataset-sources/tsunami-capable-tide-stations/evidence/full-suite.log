@@ -21,36 +21,36 @@ Maxzoom: 50% Choosing a maxzoom of -z0 for features typically 39778063 feet (12
 .Error in GeoParquet preflight: None of the configured force_admin_columns alternatives are present in source properties: 'STATEFP', 'COUNTYFP'.
 ......Unable to resolve CRS EPSG code; attempting conversion to EPSG:4326.
 .Unable to retain a bounded GeoParquet compression sample; using a conservative uncompressed estimate.
-..........................................................2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - RUN_START - Started execution of run for "synthetic_verification".
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - ENGINE_EVENT - Executing steps in process (pid: 374910)
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, published_storage, staging_storage].
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, published_storage, staging_storage].
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - LOGS_CAPTURED - Started capturing logs in process (pid: 374910).
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify - STEP_START - Started execution of step "publish__verify".
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify - STEP_OUTPUT - Yielded output "result" of type "dict". (Type check passed).
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - publish__verify - Writing file at: /tmp/tmplsjmo8b8/dagster/storage/publish/verify/synthetic/points/vtest using PickledObjectFilesystemIOManager...
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify - ASSET_MATERIALIZATION - Materialized value publish verify.
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify - STEP_SUCCESS - Finished execution of step "publish__verify" in 236ms.
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify_baseline_comparison - STEP_START - Started execution of step "publish__verify_baseline_comparison".
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify_baseline_comparison - STEP_OUTPUT - Yielded output "result" of type "Any". (Type check passed).
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify_baseline_comparison - ASSET_CHECK_EVALUATION - Asset check 'baseline_comparison' on 'publish/verify' passed.
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__verify_baseline_comparison - STEP_SUCCESS - Finished execution of step "publish__verify_baseline_comparison" in 92ms.
-2026-10-19 10:53:24 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__promote - STEP_START - Started execution of step "publish__promote".
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__promote - STEP_OUTPUT - Yielded output "result" of type "dict". (Type check passed).
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - publish__promote - Writing file at: /tmp/tmplsjmo8b8/dagster/storage/publish/promote/synthetic/points/vtest using PickledObjectFilesystemIOManager...
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__promote - ASSET_MATERIALIZATION - Materialized value publish promote.
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__promote - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - publish__promote - STEP_SUCCESS - Finished execution of step "publish__promote" in 266ms.
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - ENGINE_EVENT - Finished steps in process (pid: 374910) in 766ms
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - d73349e8-d84e-486f-908c-ea7417da4d9e - 374910 - RUN_SUCCESS - Finished execution of run for "synthetic_verification".
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - RUN_START - Started execution of run for "synthetic_verification".
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - ENGINE_EVENT - Executing steps in process (pid: 374910)
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, published_storage, staging_storage].
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, published_storage, staging_storage].
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - LOGS_CAPTURED - Started capturing logs in process (pid: 374910).
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - publish__verify - STEP_START - Started execution of step "publish__verify".
-2026-10-19 10:53:25 +0000 - dagster - ERROR - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - publish__verify - STEP_FAILURE - Execution of step "publish__verify" failed.
+..........................................................2026-10-19 11:06:37 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - RUN_START - Started execution of run for "synthetic_verification".
+2026-10-19 11:06:37 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - ENGINE_EVENT - Executing steps in process (pid: 433016)
+2026-10-19 11:06:37 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 11:06:37 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 11:06:37 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - LOGS_CAPTURED - Started capturing logs in process (pid: 433016).
+2026-10-19 11:06:37 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify - STEP_START - Started execution of step "publish__verify".
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify - STEP_OUTPUT - Yielded output "result" of type "dict". (Type check passed).
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - publish__verify - Writing file at: /tmp/tmp8tl4q0ye/dagster/storage/publish/verify/synthetic/points/vtest using PickledObjectFilesystemIOManager...
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify - ASSET_MATERIALIZATION - Materialized value publish verify.
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify - STEP_SUCCESS - Finished execution of step "publish__verify" in 155ms.
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify_baseline_comparison - STEP_START - Started execution of step "publish__verify_baseline_comparison".
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify_baseline_comparison - STEP_OUTPUT - Yielded output "result" of type "Any". (Type check passed).
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify_baseline_comparison - ASSET_CHECK_EVALUATION - Asset check 'baseline_comparison' on 'publish/verify' passed.
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__verify_baseline_comparison - STEP_SUCCESS - Finished execution of step "publish__verify_baseline_comparison" in 66ms.
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__promote - STEP_START - Started execution of step "publish__promote".
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__promote - STEP_OUTPUT - Yielded output "result" of type "dict". (Type check passed).
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - publish__promote - Writing file at: /tmp/tmp8tl4q0ye/dagster/storage/publish/promote/synthetic/points/vtest using PickledObjectFilesystemIOManager...
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__promote - ASSET_MATERIALIZATION - Materialized value publish promote.
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__promote - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - publish__promote - STEP_SUCCESS - Finished execution of step "publish__promote" in 158ms.
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - ENGINE_EVENT - Finished steps in process (pid: 433016) in 454ms
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - 8c3bebf3-5eff-4f80-a81b-a8582ff3def8 - 433016 - RUN_SUCCESS - Finished execution of run for "synthetic_verification".
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - RUN_START - Started execution of run for "synthetic_verification".
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - ENGINE_EVENT - Executing steps in process (pid: 433016)
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, published_storage, staging_storage].
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - LOGS_CAPTURED - Started capturing logs in process (pid: 433016).
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - publish__verify - STEP_START - Started execution of step "publish__verify".
+2026-10-19 11:06:38 +0000 - dagster - ERROR - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - publish__verify - STEP_FAILURE - Execution of step "publish__verify" failed.
 
 dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op "publish__verify"::
 
@@ -73,34 +73,34 @@ Stack Trace:
   File "/workspace/hifld-worker-worktrees/334/src/dagster_hifld/release_approval.py", line 144, in require_release_approval
     raise ReleaseApprovalError(f"staged_object_bytes_changed:{name}")
 
-2026-10-19 10:53:25 +0000 - dagster - ERROR - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - publish__verify_baseline_comparison - Dependencies for step publish__verify_baseline_comparison failed: ['publish__verify']. Not executing.
-2026-10-19 10:53:25 +0000 - dagster - ERROR - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - publish__promote - Dependencies for step publish__promote failed: ['publish__verify'] were not executed: ['publish__verify_baseline_comparison']. Not executing.
-2026-10-19 10:53:25 +0000 - dagster - DEBUG - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - ENGINE_EVENT - Finished steps in process (pid: 374910) in 241ms
-2026-10-19 10:53:25 +0000 - dagster - ERROR - synthetic_verification - 8a42e3e8-ca2c-4ea6-bba4-632b05fffbb6 - 374910 - RUN_FAILURE - Execution of run for "synthetic_verification" failed. Steps failed: ['publish__verify'].
+2026-10-19 11:06:38 +0000 - dagster - ERROR - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - publish__verify_baseline_comparison - Dependencies for step publish__verify_baseline_comparison failed: ['publish__verify']. Not executing.
+2026-10-19 11:06:38 +0000 - dagster - ERROR - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - publish__promote - Dependencies for step publish__promote failed: ['publish__verify'] were not executed: ['publish__verify_baseline_comparison']. Not executing.
+2026-10-19 11:06:38 +0000 - dagster - DEBUG - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - ENGINE_EVENT - Finished steps in process (pid: 433016) in 112ms
+2026-10-19 11:06:38 +0000 - dagster - ERROR - synthetic_verification - ddd8ecc4-7e1b-40f0-82e0-fc03504c30fc - 433016 - RUN_FAILURE - Execution of run for "synthetic_verification" failed. Steps failed: ['publish__verify'].
 ....................................................................................................For layer 0, using name "fileachunk0fgb"
 detected indexed FlatGeobuf: assigning feature IDs by sequence
 Read 0.00 million features                              Merging string pool           Merging vertices              Merging nodes                 Merging index                 Reordering geometry: 11% Reordering geometry: 23% Reordering geometry: 59% Reordering geometry: 96% 2 features, 56 bytes of geometry and attributes, 44 bytes of string pool, 0 bytes of vertices, 0 bytes of nodes
 Maxzoom: 50% Choosing a maxzoom of -z0 for features typically 53133073 feet (16194961 meters) apart, and at least 53133073 feet (16194961 meters) apart
   46.4%  0/0/0    92.8%  0/0/0    94.6%  0/0/0  
   100.0%  0/0/0  ..........tippecanoe could not infer maxzoom for layer; retrying with maximum zoom 14
-.....................2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - RUN_START - Started execution of run for "inventory_catalog_job".
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - ENGINE_EVENT - Executing steps in process (pid: 374910)
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - build_inventory_catalog - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager].
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - build_inventory_catalog - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager].
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - LOGS_CAPTURED - Started capturing logs in process (pid: 374910).
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - build_inventory_catalog - STEP_START - Started execution of step "build_inventory_catalog".
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - build_inventory_catalog - STEP_OUTPUT - Yielded output "result" of type "Dict[String,Int]". (Type check passed).
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - build_inventory_catalog - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - build_inventory_catalog - STEP_SUCCESS - Finished execution of step "build_inventory_catalog" in 7.56ms.
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - ENGINE_EVENT - Finished steps in process (pid: 374910) in 20ms
-2026-10-19 10:53:58 +0000 - dagster - DEBUG - inventory_catalog_job - 633e4011-b9c4-476b-8ae2-d7dc2b9032d1 - 374910 - RUN_SUCCESS - Finished execution of run for "inventory_catalog_job".
-.......................................No dagster instance configuration file (dagster.yaml) found at /tmp/tmpfbl9xet3/dagster. Defaulting to loading and storing all metadata with /tmp/tmpfbl9xet3/dagster. If this is the desired behavior, create an empty dagster.yaml file in /tmp/tmpfbl9xet3/dagster.
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - RUN_START - Started execution of run for "portolan_publish_job".
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - ENGINE_EVENT - Executing steps in process (pid: 374910)
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - publish_portolan - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager].
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - publish_portolan - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager].
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - LOGS_CAPTURED - Started capturing logs in process (pid: 374910).
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - publish_portolan - STEP_START - Started execution of step "publish_portolan".
+.....................2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - RUN_START - Started execution of run for "inventory_catalog_job".
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - ENGINE_EVENT - Executing steps in process (pid: 433016)
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - build_inventory_catalog - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager].
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - build_inventory_catalog - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager].
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - LOGS_CAPTURED - Started capturing logs in process (pid: 433016).
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - build_inventory_catalog - STEP_START - Started execution of step "build_inventory_catalog".
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - build_inventory_catalog - STEP_OUTPUT - Yielded output "result" of type "Dict[String,Int]". (Type check passed).
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - build_inventory_catalog - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - build_inventory_catalog - STEP_SUCCESS - Finished execution of step "build_inventory_catalog" in 8.97ms.
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - ENGINE_EVENT - Finished steps in process (pid: 433016) in 25ms
+2026-10-19 11:07:09 +0000 - dagster - DEBUG - inventory_catalog_job - a48abab1-d1d4-45e7-9608-2b31d940eee2 - 433016 - RUN_SUCCESS - Finished execution of run for "inventory_catalog_job".
+.......................................No dagster instance configuration file (dagster.yaml) found at /tmp/tmpi_a_6jy4/dagster. Defaulting to loading and storing all metadata with /tmp/tmpi_a_6jy4/dagster. If this is the desired behavior, create an empty dagster.yaml file in /tmp/tmpi_a_6jy4/dagster.
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - RUN_START - Started execution of run for "portolan_publish_job".
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - ENGINE_EVENT - Executing steps in process (pid: 433016)
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - publish_portolan - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager].
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - publish_portolan - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager].
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - LOGS_CAPTURED - Started capturing logs in process (pid: 433016).
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - publish_portolan - STEP_START - Started execution of step "publish_portolan".
 
   Telemetry:
 
@@ -120,19 +120,19 @@ Maxzoom: 50% Choosing a maxzoom of -z0 for features typically 53133073 feet (16
   If you have any questions or would like to engage with the Dagster team, please join us on Slack
   (https://bit.ly/39dvSsF).
 
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - publish_portolan - STEP_OUTPUT - Yielded output "result" of type "[String]". (Type check passed).
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - publish_portolan - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - publish_portolan - STEP_SUCCESS - Finished execution of step "publish_portolan" in 25ms.
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - ENGINE_EVENT - Finished steps in process (pid: 374910) in 107ms
-2026-10-19 10:54:00 +0000 - dagster - DEBUG - portolan_publish_job - 49c0b510-2c22-4788-9ec8-5c057f2637ec - 374910 - RUN_SUCCESS - Finished execution of run for "portolan_publish_job".
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - publish_portolan - STEP_OUTPUT - Yielded output "result" of type "[String]". (Type check passed).
+2026-10-19 11:07:11 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - publish_portolan - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2026-10-19 11:07:12 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - publish_portolan - STEP_SUCCESS - Finished execution of step "publish_portolan" in 108ms.
+2026-10-19 11:07:12 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - ENGINE_EVENT - Finished steps in process (pid: 433016) in 331ms
+2026-10-19 11:07:12 +0000 - dagster - DEBUG - portolan_publish_job - 8129030b-f702-4f1f-9e5b-608c518a3b09 - 433016 - RUN_SUCCESS - Finished execution of run for "portolan_publish_job".
 ..................................................Skipping invalid legacy source dataset-a/file-a/v1.0.0/unknown: Legacy unknown/ does not contain one complete Shapefile: legacy.shp requires .shp, .shx, and .dbf sidecars.
 ...............................................For layer 0, using name "filechunk0fgb"
 detected indexed FlatGeobuf: assigning feature IDs by sequence
 Read 0.00 million features                              Merging string pool           Merging vertices              Merging nodes                 Merging index                 Reordering geometry: 12% Reordering geometry: 25% Reordering geometry: 62% Reordering geometry: 100% 2 features, 52 bytes of geometry and attributes, 18 bytes of string pool, 0 bytes of vertices, 0 bytes of nodes
 Maxzoom: 50% Choosing a maxzoom of -z0 for features typically 53133073 feet (16194961 meters) apart, and at least 53133073 feet (16194961 meters) apart
   46.1%  0/0/0    92.3%  0/0/0    94.2%  0/0/0  
-  100.0%  0/0/0  .s.........................................................................
+  100.0%  0/0/0  .s..........................................................................
 ----------------------------------------------------------------------
-Ran 557 tests in 178.298s
+Ran 558 tests in 108.578s
 
 OK (skipped=1)
