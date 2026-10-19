@@ -141,7 +141,10 @@ def manifest_for(body,receipt,identity):
 
 def processing_identity():
     root = Path(__file__).parents[3]
-    return {'python':platform.python_version(),'implementation':platform.python_implementation(),'platform':platform.platform(),
+    # The shared cache verifier binds the first-construction identity to its
+    # creating commit, so retain it alongside the source manifest provenance.
+    return {'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
+        'python':platform.python_version(),'implementation':platform.python_implementation(),'platform':platform.platform(),
         # The shared first-construction witness accepts canonical JSON types;
         # use lists instead of tuples so the identity can be sealed losslessly.
         'distributions':sorted([d.metadata['Name'],d.version] for d in importlib.metadata.distributions()),
