@@ -1,0 +1,12 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+2026-10-19 09:45:52 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - RUN_START - Started execution of run for "cdp_source_integrity".
+2026-10-19 09:45:52 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - ENGINE_EVENT - Executing steps in process (pid: 185938)
+2026-10-19 09:45:52 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - ingest__census_designated_places__census_designated_places - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 09:45:52 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - ingest__census_designated_places__census_designated_places - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 09:45:52 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - LOGS_CAPTURED - Started capturing logs in process (pid: 185938).
+2026-10-19 09:45:52 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - ingest__census_designated_places__census_designated_places - STEP_START - Started execution of step "ingest__census_designated_places__census_designated_places".
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/pyogrio/raw.py:345: RuntimeWarning: organizePolygons() received a polygon with more than 100 parts. The processing may be really slow.  You can skip the processing by setting METHOD=SKIP, or only make it analyze counter-clock wise parts by setting METHOD=ONLY_CCW if you can assume that the outline of holes is counter-clock wise defined
+  table = reader.read_all()
+2026-10-19 09:46:10 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - ENGINE_EVENT - Finished steps in process (pid: 185938) in 18.3s
+2026-10-19 09:46:10 +0000 - dagster - DEBUG - cdp_source_integrity - 6a20dcf6-fac0-42b5-8651-d384b647b68f - 185938 - RUN_SUCCESS - Finished execution of run for "cdp_source_integrity".

@@ -1,0 +1,274 @@
+{
+  "code_head": "99fca801a801f0473e683d0275708095602cea72",
+  "module": "/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py",
+  "runtime": "/workspace/work/hifld-coordinator/34/runtime",
+  "approved": false,
+  "runs": [
+    {
+      "kind": "complete_real_source",
+      "run_id": "8ba57337-27d8-4b79-b89c-1f83428f727a",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/census-designated-places/census-designated-places"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "complete_source_reuse",
+      "run_id": "6e8fe474-4c09-4992-8d3c-40115bf63a62",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/census-designated-places/census-designated-places"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_1_missing_approval",
+      "run_id": "ba3dc137-fa0e-4728-b9f7-f96acb553e61",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "source_after_catalog_1",
+      "run_id": "871e766b-8cc5-43f5-a3ce-8dde7c858b91",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/census-designated-places/census-designated-places"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_2_missing_approval",
+      "run_id": "a4945838-a1a3-405b-b5a5-62f1bd1f9549",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "source_after_catalog_2",
+      "run_id": "e8792d40-70f7-4b6f-b0f3-27304a257189",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/census-designated-places/census-designated-places"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "synthetic_failed_geometry_quality_gate",
+      "run_id": "a1731372-3491-4236-89b4-bc3d80a3a6e8",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ],
+      "materializations": [
+        "publish/catalog"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ]
+    },
+    {
+      "kind": "self_repinned_approval_placeholder_blocked",
+      "run_id": "2dff51fb-7a21-47fe-a1f8-ef6f6d76f4a0",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__census_designated_places__census_designated_places\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.census_designated_places.CDPQuarantineError: invalid_candidate_detached_intact:source_owned_report_wrapper_placeholder_or_provenance_drift:metadata/baseline_comparison.json\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/assets/census_designated_places.py\", line 9, in census_designated_places\n    result=stage_cdp_candidate(staging_storage,archive_path=os.environ.get('HIFLD_CDP_ARCHIVE'),receipt_path=os.environ.get('HIFLD_CDP_RECEIPT'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 305, in stage_cdp_candidate\n    raise CDPQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.census_designated_places.CDPQuarantineError: source_owned_report_wrapper_placeholder_or_provenance_drift:metadata/baseline_comparison.json\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 301, in stage_cdp_candidate\n    reconcile_cache(storage,prefix,version,path,table,audit,receipt,identity,native_pin)\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 276, in reconcile_cache\n    if (root/name).read_bytes()!=body:raise CDPQuarantineError('source_owned_report_wrapper_placeholder_or_provenance_drift:'+name)\n                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "cold_rebuild_after_approval_placeholder",
+      "run_id": "15cb88ff-024c-4a6c-8c9a-1521b63a308c",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/census-designated-places/census-designated-places"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "self_repinned_auxiliary_srs_blocked",
+      "run_id": "7b55f477-b361-4171-b05c-56916c4cb53d",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__census_designated_places__census_designated_places\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.census_designated_places.CDPQuarantineError: invalid_candidate_detached_intact:full_gpkg_container_srs_envelope_sql_or_rtree_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/assets/census_designated_places.py\", line 9, in census_designated_places\n    result=stage_cdp_candidate(staging_storage,archive_path=os.environ.get('HIFLD_CDP_ARCHIVE'),receipt_path=os.environ.get('HIFLD_CDP_RECEIPT'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 305, in stage_cdp_candidate\n    raise CDPQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.census_designated_places.CDPQuarantineError: full_gpkg_container_srs_envelope_sql_or_rtree_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 301, in stage_cdp_candidate\n    reconcile_cache(storage,prefix,version,path,table,audit,receipt,identity,native_pin)\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 284, in reconcile_cache\n    verify_outputs(root,table)\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 214, in verify_outputs\n    if sha256_file(fresh)!=sha256_file(root/'geopackage'/f'{SLUG}.gpkg'):raise CDPQuarantineError('full_gpkg_container_srs_envelope_sql_or_rtree_drift')\n                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "cold_rebuild_after_auxiliary_srs",
+      "run_id": "8d0204e7-dd4c-4249-9f24-08f5fc727ab4",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/census-designated-places/census-designated-places"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "self_repinned_forged_reachable_code_commit_blocked",
+      "run_id": "fbb7dd12-73bc-4724-9c2f-36e153dfeeee",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__census_designated_places__census_designated_places\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.census_designated_places.CDPQuarantineError: invalid_candidate_detached_intact:construction_processing_blob_missing\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/assets/census_designated_places.py\", line 9, in census_designated_places\n    result=stage_cdp_candidate(staging_storage,archive_path=os.environ.get('HIFLD_CDP_ARCHIVE'),receipt_path=os.environ.get('HIFLD_CDP_RECEIPT'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 305, in stage_cdp_candidate\n    raise CDPQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_processing_blob_missing\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 301, in stage_cdp_candidate\n    reconcile_cache(storage,prefix,version,path,table,audit,receipt,identity,native_pin)\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 266, in reconcile_cache\n    original,manifest=construction_bundle(storage,version,path,receipt,identity,expected_manifest)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/sources/census_designated_places.py\", line 249, in construction_bundle\n    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'])\n  File \"/workspace/hifld-worker-worktrees/34/src/dagster_hifld/construction_provenance.py\", line 137, in validate_construction_code_identity\n    raise ConstructionCodeIdentityError(\"construction_processing_blob_missing\")\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "cold_rebuild_after_forged_reachable_code_commit",
+      "run_id": "2cc1d809-fdd6-4535-b39a-22a775ddbdda",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/census-designated-places/census-designated-places"
+      ],
+      "checks": []
+    }
+  ],
+  "driver_repair": {
+    "prior_log": "materialization.log",
+    "failure": "Synthetic geometry mutation left additional GPKG triggers invoking ST_IsEmpty, unavailable in stdlib sqlite. No source run failed. Continuation drops ALL triggers only in the explicitly synthetic clone before mutation. Six prior actual runs preserved."
+  },
+  "synthetic_quality_archive": {
+    "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-failed-quality-native-clone-long.tar.zst",
+    "manifest": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-failed-quality-native-clone-long.manifest.json"
+  },
+  "cache_probes": [
+    {
+      "kind": "approval_placeholder",
+      "failure_run_id": "2dff51fb-7a21-47fe-a1f8-ef6f6d76f4a0",
+      "restored_run_id": "15cb88ff-024c-4a6c-8c9a-1521b63a308c",
+      "all_rejected_bytes_preserved": true,
+      "archive": {
+        "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-cache-approval_placeholder-long.tar.zst",
+        "manifest": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-cache-approval_placeholder-long.manifest.json"
+      }
+    },
+    {
+      "kind": "auxiliary_srs",
+      "failure_run_id": "7b55f477-b361-4171-b05c-56916c4cb53d",
+      "restored_run_id": "8d0204e7-dd4c-4249-9f24-08f5fc727ab4",
+      "all_rejected_bytes_preserved": true,
+      "archive": {
+        "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-cache-auxiliary_srs-long.tar.zst",
+        "manifest": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-cache-auxiliary_srs-long.manifest.json"
+      }
+    },
+    {
+      "kind": "forged_reachable_code_commit",
+      "failure_run_id": "fbb7dd12-73bc-4724-9c2f-36e153dfeeee",
+      "restored_run_id": "2cc1d809-fdd6-4535-b39a-22a775ddbdda",
+      "all_rejected_bytes_preserved": true,
+      "archive": {
+        "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-cache-forged_reachable_code_commit-long.tar.zst",
+        "manifest": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-cache-forged_reachable_code_commit-long.manifest.json"
+      }
+    }
+  ],
+  "output": {
+    "dataset_slug": "census-designated-places",
+    "file_slug": "census-designated-places",
+    "version": "v0.0.0-draft-census2024-e2409cd4ddb1a930-66976d22d7b95013",
+    "feature_count": 12884
+  },
+  "complete_rows_geometry_schema_and_IDs_verified": true,
+  "source_discoverable": true,
+  "refresh_byte_idempotent": true,
+  "native_prebuilt_retained_across_two_catalog_cycles": true,
+  "failed_quality_and_missing_approval_preserve_prior_fixture": true,
+  "original_full_zip_preserved": true,
+  "native_parquet": {
+    "rows": 12884,
+    "columns": [
+      "OBJECTID",
+      "PLACENS",
+      "GEOID",
+      "GEOIDFQ",
+      "NAMELSAD",
+      "CLASSFP",
+      "FUNCSTAT",
+      "ALAND",
+      "AWATER",
+      "INTPTLAT",
+      "INTPTLON",
+      "SHAPE"
+    ],
+    "schema": "OBJECTID: int64 not null\nPLACENS: string\n  -- field metadata --\n  GDAL:OGR:width: '8'\nGEOID: string\n  -- field metadata --\n  GDAL:OGR:width: '7'\nGEOIDFQ: string\n  -- field metadata --\n  GDAL:OGR:width: '16'\nNAMELSAD: string\n  -- field metadata --\n  GDAL:OGR:width: '100'\nCLASSFP: string\n  -- field metadata --\n  GDAL:OGR:width: '2'\nFUNCSTAT: string\n  -- field metadata --\n  GDAL:OGR:width: '1'\nALAND: double\nAWATER: double\nINTPTLAT: string\n  -- field metadata --\n  GDAL:OGR:width: '11'\nINTPTLON: string\n  -- field metadata --\n  GDAL:OGR:width: '12'\nSHAPE: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\":{\n  \"$schema\": \"https://proj.org/sche' + 701\n-- schema metadata --\ngeo: '{\"columns\":{\"SHAPE\":{\"bbox\":[-169.11549799999997,13.250302000000033' + 1642",
+    "sha256": "fc8e62531726fb46f28daececd2798d31f818292d77112b8b41fed12eee3c3f3",
+    "bbox_column_added": false,
+    "all_source_values_ids_native_wkb_exact": true
+  },
+  "actual_concurrent_construction": {
+    "scope": "Actual independent Dagster processes raced construction under same stable source lock and shared isolated instance/storage",
+    "runs": [
+      {
+        "run_id": "d84e3c81-e816-474c-8051-05dc544ffe6a",
+        "success": true,
+        "output": {
+          "dataset_slug": "census-designated-places",
+          "file_slug": "census-designated-places",
+          "version": "v0.0.0-draft-census2024-e2409cd4ddb1a930-66976d22d7b95013",
+          "feature_count": 12884,
+          "reused": false
+        },
+        "errors": []
+      },
+      {
+        "run_id": "6a20dcf6-fac0-42b5-8651-d384b647b68f",
+        "success": true,
+        "output": {
+          "dataset_slug": "census-designated-places",
+          "file_slug": "census-designated-places",
+          "version": "v0.0.0-draft-census2024-e2409cd4ddb1a930-66976d22d7b95013",
+          "feature_count": 12884,
+          "reused": true
+        },
+        "errors": []
+      }
+    ],
+    "one_complete_first_writer_survives_and_waiter_reuses": true,
+    "prior_healthy_draft_preserved": {
+      "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-prior-draft-before-concurrency-long.tar.zst",
+      "manifest": "/workspace/work/hifld-coordinator/closed-generated-archives/cdp34-closed-prior-draft-before-concurrency-long.manifest.json"
+    }
+  }
+}

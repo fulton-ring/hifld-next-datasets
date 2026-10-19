@@ -1,0 +1,12 @@
+{
+  "run_id": "d84e3c81-e816-474c-8051-05dc544ffe6a",
+  "success": true,
+  "output": {
+    "dataset_slug": "census-designated-places",
+    "file_slug": "census-designated-places",
+    "version": "v0.0.0-draft-census2024-e2409cd4ddb1a930-66976d22d7b95013",
+    "feature_count": 12884,
+    "reused": false
+  },
+  "errors": []
+}

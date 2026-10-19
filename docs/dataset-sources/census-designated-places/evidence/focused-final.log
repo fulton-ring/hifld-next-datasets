@@ -1,0 +1,20 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+test_complete_fixture_and_leading_identifiers (test_census_designated_places.CensusCDPTests.test_complete_fixture_and_leading_identifiers) ... ok
+test_crs_null_geometry_and_coverage_drift (test_census_designated_places.CensusCDPTests.test_crs_null_geometry_and_coverage_drift) ... ok
+test_first_construction_rejects_mismatched_git_blob_before_writes (test_census_designated_places.CensusCDPTests.test_first_construction_rejects_mismatched_git_blob_before_writes) ... ok
+test_gzip_transport_compares_encoded_wire_length (test_census_designated_places.CensusCDPTests.test_gzip_transport_compares_encoded_wire_length) ... ok
+test_incomplete_or_unexpected_schema_and_physical_type (test_census_designated_places.CensusCDPTests.test_incomplete_or_unexpected_schema_and_physical_type) ... ok
+test_local_only_and_duplicate_json (test_census_designated_places.CensusCDPTests.test_local_only_and_duplicate_json) ... ok
+test_lock_covers_lookup_validation_and_install (test_census_designated_places.CensusCDPTests.test_lock_covers_lookup_validation_and_install) ... ok
+test_missing_duplicate_or_changed_source_id (test_census_designated_places.CensusCDPTests.test_missing_duplicate_or_changed_source_id) ... ok
+test_missing_first_binding_is_not_recreated (test_census_designated_places.CensusCDPTests.test_missing_first_binding_is_not_recreated) ... ok
+test_real_full_original_when_explicitly_requested (test_census_designated_places.CensusCDPTests.test_real_full_original_when_explicitly_requested) ... /workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/pyogrio/raw.py:345: RuntimeWarning: organizePolygons() received a polygon with more than 100 parts. The processing may be really slow.  You can skip the processing by setting METHOD=SKIP, or only make it analyze counter-clock wise parts by setting METHOD=ONLY_CCW if you can assume that the outline of holes is counter-clock wise defined
+  table = reader.read_all()
+ok
+test_short_or_failed_transport_preserves_partial (test_census_designated_places.CensusCDPTests.test_short_or_failed_transport_preserves_partial) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 5.242s
+
+OK

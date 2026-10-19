@@ -196,5 +196,68 @@
     "quality, provenance, signed/exact release registry approval through shared gates",
     "format policies and normal deployment compatibility review"
   ],
-  "validation": "Focused fixtures plus complete original decode passed; actual registered graph and independent review pending."
+  "validation": {
+    "source_code_head": "99fca801a801f0473e683d0275708095602cea72",
+    "focused": {
+      "tests": 11,
+      "passed": 11,
+      "log": "evidence/focused-final.log"
+    },
+    "full_suite": {
+      "total": 533,
+      "passed": 532,
+      "skipped": 1,
+      "seconds": 84.804,
+      "failures": 0,
+      "errors": 0,
+      "log": "evidence/full-suite-corrected-path.log",
+      "actual_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "CI": "not claimed"
+    },
+    "dagster": {
+      "actual_lifecycle_runs": 13,
+      "actual_concurrent_runs": 2,
+      "execution": "evidence/dagster-execution.json",
+      "all_assertions": "pass",
+      "complete_rows": 12884,
+      "independent_review": "pending"
+    },
+    "failed_attempts": {
+      "first_full_suite": "Two errors because Tippecanoe PATH omitted; preserved evidence/full-suite.log. Corrected complete run passes.",
+      "first_synthetic_geometry_mutation": "Driver-only stdlibSQLite lacked ST_IsEmpty invoked by remaining synthetic-clone GPKG triggers. First six successful runs retained; continuation drops ALL synthetic-clone triggers. No source code changed."
+    },
+    "reproduction": {
+      "standalone": "scripts/verify_census_designated_places_draft.py --runtime EMPTY --archive COMPLETE_ZIP --receipt COMPLETE_RECEIPT",
+      "standalone_validation": "compiled; exact recorded source/materialization/negative/concurrency drivers in evidence were actually executed",
+      "space": "Standalone conservatively requires at least ZIP bytes+1.7GB free and preserves all complete negative fixtures. Recorded managed replay used checksum-verified lossless closed-fixture archives to limit space."
+    }
+  },
+  "published_geometry_comparison": {
+    "approved": false,
+    "scope": "Complete diagnostic only; no candidate output is transformed and no ID/CRS/geometry mapping is accepted",
+    "diagnostic_join": "literalGEOID, not approved source/publishedIDmapping",
+    "common_pairs": 12863,
+    "source_crs": "EPSG:4269",
+    "published_crs": "EPSG:3857",
+    "diagnostic_transform": "pyproj.Transformer always_xy4269->3857; exact tolerance0, no rounding, simplification or repairs",
+    "pyproj_version": "3.7.2",
+    "source_native_invalid": 0,
+    "baseline_all_rows": 12896,
+    "baseline_invalid": 38,
+    "baseline_geometry_counts": {
+      "6": 12886,
+      "3": 10
+    },
+    "zero_tolerance_projected_coordinate_equal": 0,
+    "projected_and_baseline_valid_comparable_pairs": 12825,
+    "topologically_equal_on_valid_pairs": 0,
+    "baseline_nativeWKB_and_source_nativeWKB_preserved_separately": true
+  },
+  "raw_preservation": {
+    "path": "/workspace/work/hifld-coordinator/34/runtime/staging/_raw-captures/census-designated-places/e2409cd4ddb1a9302b130096fbcf9925ca3a701f720b8991045602bcb99d6b35/original.gdb.zip",
+    "sha256": "e2409cd4ddb1a9302b130096fbcf9925ca3a701f720b8991045602bcb99d6b35",
+    "bytes": 736048475,
+    "initial_capture_relocation": "Atomically moved once from /34/official2024_substategeo.zip into source-owned immutable raw depot before first actual registered run. No original byte deleted/changed.",
+    "duplicate_fixtures": "All closed negative/prior-local-draft copies archived only after full-member SHA replay; manifests preserve restoreargv. Source ZIP and baseline never archived/removed."
+  }
 }
