@@ -273,7 +273,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                 for n, (_body, r) in sorted(captures.items())],
             "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate", "parameters": {
                 "layer_id": LAYER_ID, "attributes": "all returned source attributes in source order and declared Arrow types",
-                "geometry": "ISO WKB MultiPolygon Z is derived for GeoParquet compatibility; exact ordered XY/Z/M tuples with nullable M retained in source_geometry_vertices and raw Esri JSON",
+                "geometry": "ISO WKB MultiPolygon Z is derived for GeoParquet compatibility; exact ordered XY/Z/M tuples with nullable M retained in source_geometry and raw Esri JSON",
                 "null_geometry": "retained as nullable geometry; no feature dropped", "approval_gates_open": True}}],
             "prebuilt_output_policy": {"schema_version":1,"formats":{"geoparquet":{"reason":"Native fields, IDs, and polygon Z/M coordinates are retained in an unapproved candidate.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}},
             "unapproved_candidate": True,
@@ -294,10 +294,13 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             outputs[f"raw/{name}.body"] = body
             outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
             outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
-        descriptors = {n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
-        outputs["metadata/candidate_ready.json"] = _canonical({"approved":False,"version":version,"objects":descriptors,
+        ready_descriptors = {n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
+        outputs["metadata/candidate_ready.json"] = _canonical({"approved":False,"version":version,"objects":ready_descriptors,
             "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
             "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})+b"\n"
+        # The readiness manifest lists the source objects but cannot list itself
+        # without a recursive hash. The sealed object roster does include it.
+        descriptors = {n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
         state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
         fingerprint = _sha(_canonical(identity))
         if storage.object_snapshot(state_key) is not None:

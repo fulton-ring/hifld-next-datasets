@@ -1,5 +1,10 @@
 """Focused native fidelity tests for USACE FUDS MRS."""
 import unittest
+import hashlib
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -11,9 +16,72 @@ from dagster_hifld.sources.fuds_mrs import (
     _encode_polygon_z,
     _native_parquet,
 )
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import (
+    candidate_prefix, content_derived_version, processing_identity,
+    seal_ready_candidate, verify_cached_candidate, write_immutable,
+)
 
 
 class FudsMrsNativeFidelityTests(unittest.TestCase):
+    def test_candidate_ready_is_sealed_and_cache_reuses_after_catalog(self):
+        repo = Path(__file__).resolve().parents[1]
+        identity = processing_identity(repo)
+        dataset = "formerly-used-defense-sites-public-mrs"
+        record_sha = hashlib.sha256(b"tiny FUDS source attributes").hexdigest()
+        geometry_sha = hashlib.sha256(b"tiny FUDS XYZM rings").hexdigest()
+        schema_sha = EXPECTED_SCHEMA_SHA256
+        version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
+        prefix = candidate_prefix(dataset, dataset, version)
+        state_key = f"_construction-state/{dataset}/{version}.json"
+        fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            body, wire = b'{"features":[{"attributes":{"OBJECTID":1}}]}', b"wire bytes"
+            receipt = {"complete_body": True, "status": 200, "bytes": len(body),
+                "sha256": hashlib.sha256(body).hexdigest(), "wire_bytes": len(wire),
+                "wire_sha256": hashlib.sha256(wire).hexdigest()}
+            outputs = {
+                "geoparquet/native.parquet": b"tiny candidate parquet",
+                "metadata/source_manifest.json": b'{"approved":false}',
+                "raw/page.body": body,
+                "raw/page.wire": wire,
+                "raw/page.receipt.json": json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode() + b"\n",
+            }
+            ready_descriptors = {name: {"bytes":len(value), "sha256":hashlib.sha256(value).hexdigest()}
+                for name, value in outputs.items()}
+            outputs["metadata/candidate_ready.json"] = json.dumps({"approved":False,"version":version,
+                "objects":ready_descriptors,"source_release_accepted":False,"freshness_accepted":False,
+                "schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,
+                "mapping_approved":False,"release_accepted":False}, sort_keys=True, separators=(",", ":")).encode()+b"\n"
+            descriptors = {name: {"bytes":len(value), "sha256":hashlib.sha256(value).hexdigest()}
+                for name, value in outputs.items()}
+            for name, value in outputs.items(): write_immutable(storage, f"{prefix}/{name}", value)
+            seal_ready_candidate(storage, state_key, version, fingerprint, {
+                "processing_identity":identity,"source_record_sha256":record_sha,
+                "source_schema_sha256":schema_sha,"capture_receipts":{"page":receipt},
+                "objects":descriptors,
+            })
+            manifest = outputs["metadata/source_manifest.json"]
+            derived = {
+                "metadata/quality_manifest.json":b'{"feature_count":1,"invalid_geometry_count":1,"quality_check_passed":false}',
+                "metadata/data_dictionary.json":b'{"fixture":true}',
+                "metadata/resolved_provenance.json":b'{"fixture":true}',
+                "metadata/source/source_manifest.json":manifest,
+                f"metadata/source/version_{hashlib.sha256(manifest).hexdigest()}_source_manifest.json":manifest,
+            }
+            for name, value in derived.items(): write_immutable(storage, f"{prefix}/{name}", value)
+            # This synthetic checkout is intentionally uncommitted while the
+            # test runs; production cache reuse still pins the committed blobs.
+            with patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                result = verify_cached_candidate(storage, repo, state_key, prefix, version, fingerprint,
+                    identity, record_sha, schema_sha, descriptors, {"page":receipt})
+            self.assertEqual(result, {"version":version,"reused":True})
+            candidate_ready = json.loads(storage.read_key(f"{prefix}/metadata/candidate_ready.json"))
+            self.assertEqual(candidate_ready["objects"], ready_descriptors)
+            self.assertEqual(set(descriptors), {name for name in outputs})
+
     def test_xyz_m_null_and_zero_are_preserved_in_native_source_column(self):
         ring = [
             [0.0, 0.0, 5.0, None], [0.0, 2.0, 6.0, 0.0],
