@@ -74,6 +74,7 @@ def noaa_12nm_territorial_sea(context, staging_storage: StagingStorageResource) 
         captures, receipts = fetch_noaa_layer(_NOAA_MAPSERVER_BASE + "/1")
     result = stage_noaa_candidate(
         staging=staging_storage,
+        expected_layer_url=_NOAA_MAPSERVER_BASE + "/1",
         dataset_slug=_TERRITORIAL_SEA_DATASET_SLUG,
         file_slug=_TERRITORIAL_SEA_FILE_SLUG,
         captures=captures,
