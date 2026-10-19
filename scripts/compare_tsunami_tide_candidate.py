@@ -1,0 +1,15 @@
+import json,sqlite3,collections,struct,hashlib,argparse
+from pathlib import Path
+import pyarrow.parquet as pq
+import pyogrio,shapely,numpy as np
+p=argparse.ArgumentParser();p.add_argument('--capture-dir',type=Path,required=True);p.add_argument('--baseline-dir',type=Path,required=True);p.add_argument('--output',type=Path,required=True);args=p.parse_args();B=args.baseline_dir;C=args.capture_dir;source=[f for p in sorted(C.glob('source_page_*.body'))for f in json.loads(p.read_bytes())['features']];by={f['attributes']['STAT']:f for f in source};gp=next(B.glob('geopackage-*.body'));meta,gpt=pyogrio.read_arrow(gp,return_fids=True);pqtable=pq.read_table(next(B.glob('geoparquet-*.body')));gj=json.loads(next(B.glob('geojson-*.body')).read_text());report={'approved':False,'relationship':'Complete source/published candidate diagnostics only, no ID join or migration approved','source_rows':len(source),'source_ids':{n:[f['attributes'][n]for f in source]for n in ['STAT','STAT_OBJID','OID']},'formats':{}}
+print('GPfields',gpt.column_names,'metaFID',meta.get('fid_column'))
+with sqlite3.connect(gp)as db:report['native_gpkg_all_table_info']={row[0]:list(db.execute('PRAGMA table_info("'+row[0]+'")'))for row in db.execute("select table_name from gpkg_contents")}
+for label,rows,geometry in [('native_GPKG',gpt.to_pylist(),meta['geometry_name']),('published_Parquet',pqtable.to_pylist(),'geometry'),('published_GeoJSON',[dict(f['properties'],__geometry=f['geometry'])for f in gj['features']],'__geometry')]:
+ ids=[r['STAT']for r in rows];assert len(ids)==len(set(ids));shared=set(rows[0])&set(source[0]['attributes']);matched=[r for r in rows if r['STAT']in by];attrs={n:sum(r[n]!=by[r['STAT']]['attributes'][n]for r in matched)for n in sorted(shared)};different=[];maxdelta=0.;exact=0
+ for r in matched:
+  sourcegeom=shapely.Point(by[r['STAT']]['geometry']['x'],by[r['STAT']]['geometry']['y']);original=shapely.geometry.shape(r[geometry])if label=='published_GeoJSON'else shapely.from_wkb(r[geometry]);expected=sourcegeom
+  sb=shapely.to_wkb(sourcegeom,byte_order=1);ob=shapely.to_wkb(original,byte_order=1);same=sb==ob;exact+=same
+  if not same:different.append(r['STAT']);maxdelta=max(maxdelta,abs(sourcegeom.x-original.x),abs(sourcegeom.y-original.y))
+ report['formats'][label]={'rows':len(rows),'attributes':list(rows[0]),'literal_STAT_unique':len(set(ids)),'source_missing_STAT':sorted(set(by)-set(ids)),'published_extra_STAT':sorted(set(ids)-set(by)),'same_literal_STAT_diagnostics':len(matched),'shared_attribute_difference_counts':attrs,'all_identifier_occurrences':{n:[r[n]for r in rows]for n in rows[0]if n in('STAT','STAT_OBJID','OID','fid','OBJECTID','id')},'native_WKB_exact':exact,'geometry_mismatch_STAT':different,'maximum_native_coordinate_component_delta':maxdelta}
+args.output.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({k:{n:v for n,v in x.items()if n not in('all_identifier_occurrences','geometry_mismatch_STAT')}for k,x in report['formats'].items()},indent=2))
