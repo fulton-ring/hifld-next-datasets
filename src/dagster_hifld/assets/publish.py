@@ -40,6 +40,7 @@ from dagster_hifld.conversion import (
 )
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
+from dagster_hifld.release_approval import require_release_approval
 from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
@@ -1336,10 +1337,39 @@ def _output_for_partition(
 
 
 @asset(
+    key=AssetKey(["publish", "verify"]),
+    partitions_def=PUBLISH_PARTITIONS,
+    group_name="publish",
+    deps=[
+        AssetKey(["publish", "catalog"]),
+        AssetKey(["publish", "formats", "geopackage"]),
+        AssetKey(["publish", "formats", "geoparquet"]),
+        AssetKey(["publish", "formats", "pmtiles"]),
+        AssetKey(["publish", "formats", "shapefile_zip"]),
+    ],
+    description="Verify complete generated inventory against independent exact release acceptance.",
+)
+def verify_release(
+    context,
+    staging_storage: StagingStorageResource,
+    published_storage: PublishedStorageResource,
+) -> Output[dict]:
+    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    prefix = f"{dataset_slug}/{file_slug}/{version}"
+    pairs = [(key, _logical_version_key(dataset_slug, file_slug, version, relative))
+             for key, relative in _archive_only_pairs(staging_storage, dataset_slug, file_slug, version,
+                                                     staging_storage.list_keys(dataset_slug, file_slug, version))
+             if Path(relative).parts[0] != "unknown"]
+    require_release_approval(staging_storage, published_storage, pairs)
+    return Output({"version": version, "verified_inventory": prefix}, metadata={"acceptance": "exact_manual_release_decision"})
+
+
+@asset(
     key=AssetKey(["publish", "promote"]),
     partitions_def=PUBLISH_PARTITIONS,
     group_name="publish",
     deps=[
+        AssetKey(["publish", "verify"]),
         AssetKey(["publish", "catalog"]),
         AssetKey(["publish", "formats", "geopackage"]),
         AssetKey(["publish", "formats", "geoparquet"]),
@@ -1457,6 +1487,7 @@ def publish_shapefile_zip(
 
 
 publish_assets = [
+    verify_release,
     publish_version,
     publish_geopackage,
     publish_geoparquet,
