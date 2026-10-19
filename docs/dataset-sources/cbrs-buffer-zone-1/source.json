@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 28,
-  "status": "shared_git_identity_integrated_normal_graph_verified_focused_actual_coforgery_rereview_pending",
+  "status": "durable_constructor_history_implemented_actual_repeated_call_recovery_and_review_pending",
   "approval": {
     "source": false,
     "baseline": false,
@@ -83,7 +83,7 @@
     "CBRS_specific_mentions_found": false,
     "classification": "Background only, not a fresh endpoint audit."
   },
-  "implementation_head": "5ad3cfa229b4fd7236902b13b4c7c63e373b3400",
+  "implementation_head": "ec327f58f2e6bc173d7b0044f39de7dc160b8ea6",
   "verification": {
     "execution": "evidence/execution.json",
     "full_suite": {
@@ -157,7 +157,7 @@
       "observed": "co-forged external bundle and canonical known-nonexistent code_commit accepted; candidate/raw/bundle/fixture restored",
       "evidence": "evidence/review-repairs/coforged-external-binding-counterexample.json",
       "scope": "staged construction code identity; independent approval gate not bypassed",
-      "resolution_pending": "reviewed shared #417 Git/source identity validator integration"
+      "resolved_by_shared_git_validator": "0223a2ccab8cd7f10d291c90ead94956b09493c4 adopted at5ad3cfa229b4fd7236902b13b4c7c63e373b3400"
     }
   },
   "shared_construction_git_identity": {
@@ -171,5 +171,16 @@
     "normal_graph_execution": "evidence/review-repairs/git-identity-normal-graph-execution.json",
     "writer_AST_and_native_byte_parity": "evidence/review-repairs/git-identity-native-writer-and-data-parity.json",
     "focused_full_pipeline_coforgery_rejections_and_exact_independent_review": "pending; no handoff-ready or source/release acceptance"
+  },
+  "durable_construction_history": {
+    "source_checkpoint": "ec327f58f2e6bc173d7b0044f39de7dc160b8ea6",
+    "late_complete_private_binding": true,
+    "original_full_bundle_evidence_marker_and_primary": "three immutable records under common version lock; all referenced evidence bytes checked",
+    "missing_or_partial_history": "fail closed on all retries; explicit original restoration only",
+    "real_first_marker_storage_fault_and_repeated_calls_unit": "PASS; final20 source tests107.566seconds",
+    "actual_firstwriter_no_history_run": "ac4f4fd1-78b5-453a-81de-944f345a2c46",
+    "actual_final_repeated_calls_recovery": "pending; no handoff-ready claim",
+    "prior_source76_eight_run_scope": "evidence/review-repairs/late-binding-partial-eight-run-and-deliberate-interruption.json",
+    "native_writer_parity": "evidence/review-repairs/construction-history-native-writer-parity.json"
   }
 }

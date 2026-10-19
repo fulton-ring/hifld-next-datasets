@@ -1,0 +1,125 @@
+{
+  "code_head": "a74f8be28eb6dc503caf1d82258411435575941d",
+  "original_construction_head": "43ff6ebdf63a87bb16177f913597bfabdd370eba",
+  "real_docs_only_head_changed": true,
+  "effective_processing_identity_unchanged": true,
+  "source_rows": 1145,
+  "later_receipts": "explicit simulated later observations of unchanged complete real captured bodies; no new live claim",
+  "runs": [
+    {
+      "kind": "actual_docs_only_HEAD_and_later_receipt_refresh",
+      "run_id": "19ac3e40-6590-4b63-b95c-f79fb4312ce3",
+      "success": true,
+      "errors": []
+    },
+    {
+      "kind": "actual_second_catalog_cycle_1",
+      "run_id": "5aa2f570-eb42-4ba5-b388-639b6e55293e",
+      "success": true,
+      "errors": []
+    },
+    {
+      "kind": "actual_reuse_after_catalog_cycle_1",
+      "run_id": "92346dfd-73e6-4964-bc5d-cfaa217b5d85",
+      "success": true,
+      "errors": []
+    },
+    {
+      "kind": "actual_second_catalog_cycle_2",
+      "run_id": "50f20b44-7c84-485b-aebf-b365569a8a3b",
+      "success": true,
+      "errors": []
+    },
+    {
+      "kind": "actual_reuse_after_catalog_cycle_2",
+      "run_id": "177ce372-392a-4fed-a91e-f09048f2590e",
+      "success": true,
+      "errors": []
+    },
+    {
+      "kind": "coforged_nonexistent_commit",
+      "run_id": "41474873-06ed-439b-befc-0ab9ae0a8e8a",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__cbrs_buffer_zone_1__cbrs_buffer_zone_1\":\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_buffer.CBRSQuarantineError: construction_invalid_commit; retained:_quarantine/cbrs-buffer-zone-1/8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0/35c879a8605a46e79e18b9fc981cab3d\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/assets/fws.py\", line 17, in fws_cbrs_buffer_zone\n    result=stage_cbrs_buffer_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 622, in stage_cbrs_buffer_candidate\n    raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_invalid_commit\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 556, in stage_cbrs_buffer_candidate\n    captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 447, in original_provenance_bundle\n    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/construction_provenance.py\", line 64, in validate_construction_code_identity\n    raise ConstructionCodeIdentityError(\"construction_invalid_commit\")\n"
+      ]
+    },
+    {
+      "kind": "coforged_wrong_real_commit",
+      "run_id": "3bf75df1-712e-4bfd-a214-d6f4de46b2a3",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__cbrs_buffer_zone_1__cbrs_buffer_zone_1\":\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_buffer.CBRSQuarantineError: construction_processing_blob_missing; retained:_quarantine/cbrs-buffer-zone-1/8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0/0be0e9084eea4ca39426bbb4061ac066\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/assets/fws.py\", line 17, in fws_cbrs_buffer_zone\n    result=stage_cbrs_buffer_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 622, in stage_cbrs_buffer_candidate\n    raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_processing_blob_missing\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 556, in stage_cbrs_buffer_candidate\n    captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 447, in original_provenance_bundle\n    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/construction_provenance.py\", line 137, in validate_construction_code_identity\n    raise ConstructionCodeIdentityError(\"construction_processing_blob_missing\")\n"
+      ]
+    },
+    {
+      "kind": "missing_external_binding",
+      "run_id": "f9527ec4-2886-4ef1-a30b-8fbed3a57b1d",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__cbrs_buffer_zone_1__cbrs_buffer_zone_1\":\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_buffer.CBRSQuarantineError: missing_original_construction_provenance_bundle; retained:_quarantine/cbrs-buffer-zone-1/8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0/6abe8d0999ee4a8f97a3837e290db01e\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/assets/fws.py\", line 17, in fws_cbrs_buffer_zone\n    result=stage_cbrs_buffer_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 622, in stage_cbrs_buffer_candidate\n    raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.cbrs_buffer.CBRSQuarantineError: missing_original_construction_provenance_bundle\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 556, in stage_cbrs_buffer_candidate\n    captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 420, in original_provenance_bundle\n    raise CBRSQuarantineError('missing_original_construction_provenance_bundle')\n"
+      ]
+    },
+    {
+      "kind": "actual_rebuild_retains_first_commit_and_receipts",
+      "run_id": "152b0665-7d2e-4e87-9d48-efc472837986",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionInterruptedError\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/assets/fws.py\", line 17, in fws_cbrs_buffer_zone\n    result=stage_cbrs_buffer_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 541, in stage_cbrs_buffer_candidate\n    rows, audit, members = inspect_archive(body, directory)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py\", line 257, in inspect_archive\n    g = shape(row['geometry'])\n        ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/shapely/geometry/geo.py\", line 107, in shape\n    return Polygon(ob[\"coordinates\"][0], ob[\"coordinates\"][1:])\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/shapely/geometry/polygon.py\", line 237, in __new__\n    shell = LinearRing(shell)\n            ^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/shapely/geometry/polygon.py\", line 93, in __new__\n    coordinates = np.array([_coords(o) for o in coordinates])\n                            ^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/shapely/geometry/polygon.py\", line 91, in _coords\n    return [float(c) for c in o]\n            ^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/interrupts.py\", line 81, in _new_signal_handler\n    raise error_cls()\n"
+      ]
+    }
+  ],
+  "rejected": [
+    {
+      "mode": "coforged_nonexistent_commit",
+      "reason": "construction_invalid_commit",
+      "retained": "/workspace/work/hifld-coordinator/28/late-binding-verification/staging/_quarantine/cbrs-buffer-zone-1/rejected-cache/485c3ed581af48bdbd937d30b9e5cbd1/v0.0.0-draft-cbrs20241219-4079524bf98da1fb-44270f6d8920840b",
+      "complete_corrupt_tree_pins_preserved": true,
+      "not_discoverable": true,
+      "raw_preserved": true,
+      "verified_closed_archive": {
+        "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs28-late-binding-485c3ed581af48bdbd937d30b9e5cbd1.tar.zst",
+        "archive_bytes": 135675794,
+        "archive_sha256": "912d48566d121a0780489ed15eee04259002abdd42d078a8bc4ba28c696fb616",
+        "verified_member_count": 60
+      },
+      "archive_pointer": "/workspace/work/hifld-coordinator/28/late-binding-verification/staging/_quarantine/cbrs-buffer-zone-1/rejected-cache/485c3ed581af48bdbd937d30b9e5cbd1.archived.json"
+    },
+    {
+      "mode": "coforged_wrong_real_commit",
+      "reason": "construction_processing_blob_missing",
+      "retained": "/workspace/work/hifld-coordinator/28/late-binding-verification/staging/_quarantine/cbrs-buffer-zone-1/rejected-cache/ff692e39ff614d2c922f1f89868ce6c2/v0.0.0-draft-cbrs20241219-4079524bf98da1fb-44270f6d8920840b",
+      "complete_corrupt_tree_pins_preserved": true,
+      "not_discoverable": true,
+      "raw_preserved": true,
+      "verified_closed_archive": {
+        "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs28-late-binding-ff692e39ff614d2c922f1f89868ce6c2.tar.zst",
+        "archive_bytes": 135675915,
+        "archive_sha256": "1d6d2c69f1b97661558b11ddd808c3f90faf915ab13cf58d6738692c7792ae37",
+        "verified_member_count": 60
+      },
+      "archive_pointer": "/workspace/work/hifld-coordinator/28/late-binding-verification/staging/_quarantine/cbrs-buffer-zone-1/rejected-cache/ff692e39ff614d2c922f1f89868ce6c2.archived.json"
+    },
+    {
+      "mode": "missing_external_binding",
+      "reason": "missing_original_construction_provenance_bundle",
+      "retained": "/workspace/work/hifld-coordinator/28/late-binding-verification/staging/_quarantine/cbrs-buffer-zone-1/rejected-cache/d72a3d5f55654576bc423d9b462ce9c7/v0.0.0-draft-cbrs20241219-4079524bf98da1fb-44270f6d8920840b",
+      "complete_corrupt_tree_pins_preserved": true,
+      "not_discoverable": true,
+      "raw_preserved": true,
+      "verified_closed_archive": {
+        "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs28-late-binding-d72a3d5f55654576bc423d9b462ce9c7.tar.zst",
+        "archive_bytes": 135675828,
+        "archive_sha256": "e8a3fda1cd98279325c42b0009e208ca1c45e3936f9589a14ee661ab96fc703e",
+        "verified_member_count": 60
+      },
+      "archive_pointer": "/workspace/work/hifld-coordinator/28/late-binding-verification/staging/_quarantine/cbrs-buffer-zone-1/rejected-cache/d72a3d5f55654576bc423d9b462ce9c7.archived.json"
+    }
+  ],
+  "scope": "Eight completed expected positive/negative results on source76. Coordinator deliberately interrupted prospective cold rebuild after all three corrupt complete trees were verified-archived and trusted original alias restored, to repair independently identified repeat-missing-anchor retry boundary. Any recorded interrupted rebuild is not a successful recovery claim.",
+  "complete_expected_results": 8,
+  "full_focus_completed": false,
+  "coordinator_interruption_at": "2026-10-19T10:13:16.719985+00:00",
+  "trusted_original_bundle_restored": true,
+  "no_source76_complete_cold_rebuild_claim": true
+}
