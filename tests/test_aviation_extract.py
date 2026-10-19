@@ -183,7 +183,7 @@ class AviationTests(unittest.TestCase):
 
     def test_every_original_retrieval_time_requires_valid_aware_iso_and_is_preserved(self):
         original=(self.capture/'item.receipt.json').read_bytes()
-        bad=['not-a-date','','2026-10-19','2026-10-19T00:00:00','2026-99-19T00:00:00+00:00',True,None,123]
+        bad=['not-a-date','','2026-10-19','2026-10-19T00:00:00','2026-99-19T00:00:00+00:00','2026-10-19T00:00:00+00:99','2026-10-19T00:00:00-05:60','2026-10-19T00:00:00+24:00',True,None,123]
         for value in bad:
             with self.subTest(value=value):
                 receipt=json.loads(original);receipt['observed_at']=value
@@ -203,6 +203,50 @@ class AviationTests(unittest.TestCase):
             self.assertEqual(next(i for i in manifest['inputs'] if i['input_id'].endswith(':item'))['retrieved_at'],value)
         attempts=self.capture/'attempts';attempts.mkdir();(attempts/'failed.receipt.json').write_text(json.dumps({'observed_at':'2026-10-19','error':'retained upstream failure'}))
         with self.assertRaisesRegex(ValueError,'observed_at'):a.inspect_capture(self.capture)
+
+    def test_all_consumed_metadata_preflight_before_any_canonical_candidate(self):
+        good=_stage_aviation(self.capture,self.storage)
+        prior=self.root/'stage'/a.SLUG/a.SLUG/good['version']
+        inventory={str(p.relative_to(prior)):hashlib.sha256(p.read_bytes()).hexdigest() for p in prior.rglob('*') if p.is_file()}
+        original=copy.deepcopy(self.data)
+        cases=['headers-null','headers-list','date-list','extra-receipt','license','attribution','invalid-manifest']
+        for number,case in enumerate(cases):
+            with self.subTest(case=case):
+                self.data=copy.deepcopy(original);self.write()
+                extra=self.capture/'page-retained-diagnostic.receipt.json'
+                if extra.exists():extra.unlink()
+                if case in ('headers-null','headers-list','date-list'):
+                    p=self.capture/'item.receipt.json';receipt=json.loads(p.read_bytes())
+                    receipt['date' if case=='date-list' else 'headers']=[] if case!='headers-null' else None
+                    p.write_text(json.dumps(receipt))
+                elif case=='extra-receipt':
+                    extra.write_text(json.dumps({'observed_at':'2026-10-19T00:00:00+00:00','headers':None}))
+                elif case in ('license','attribution'):
+                    self.data['item']['licenseInfo' if case=='license' else 'accessInformation']=''
+                    self.write()
+                storage=StagingStorageResource(local_dir=str(self.root/f'bad-{number}'))
+                identity=a.processing_identity()
+                if case=='invalid-manifest':identity['code_commit']=None
+                with mock.patch.object(a,'processing_identity',return_value=identity):
+                    with self.assertRaises((ValueError,RuntimeError)):_stage_aviation(self.capture,storage)
+                    direct=self.root/f'direct-{number}'
+                    with self.assertRaises((ValueError,RuntimeError)):a.build_candidate(self.capture,direct)
+                self.assertFalse(list((self.root/f'bad-{number}').glob('aviation-facilities/aviation-facilities/*')))
+                self.assertFalse(direct.exists())
+                self.assertTrue(list((self.root/f'bad-{number}'/'quarantine').rglob('*.receipt.json')))
+                self.assertEqual(inventory,{str(p.relative_to(prior)):hashlib.sha256(p.read_bytes()).hexdigest() for p in prior.rglob('*') if p.is_file()})
+
+    def test_failed_attempts_are_inventory_only_not_successful_input_claims(self):
+        attempts=self.capture/'attempts';attempts.mkdir()
+        (attempts/'failed.body').write_bytes(b'original partial bytes')
+        (attempts/'failed.receipt.json').write_text(json.dumps({'observed_at':'2026-10-19T00:00:00+00:00','headers':None,'error':'retained failure','status':503}))
+        result=_stage_aviation(self.capture,self.storage)
+        root=self.root/'stage'/a.SLUG/a.SLUG/result['version']
+        provenance=json.loads((root/'draft_candidate/provenance.json').read_bytes())
+        self.assertTrue(any(r['name']=='attempts/failed.body' for r in provenance['raw_files']))
+        self.assertFalse(any('failed' in r['name'] for r in provenance['original_retrieval_receipts']))
+        manifest=json.loads((root/'metadata/source_manifest.json').read_bytes())
+        self.assertEqual(len(manifest['inputs']),8)
 
     def test_fractional_boolean_overflow_and_duplicate_oid(self):
         for value in (True,1.5,2**63,None):

@@ -271,6 +271,8 @@ def _observed_at(receipt: dict) -> str:
     if (not isinstance(value, str) or not re.fullmatch(
             r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})', value)):
         raise ValueError('Original observed_at must be a timezone-aware ISO timestamp')
+    if value[-1] != 'Z' and (int(value[-5:-3]) > 23 or int(value[-2:]) > 59):
+        raise ValueError('Original observed_at has an invalid UTC offset component')
     try:
         parsed = datetime.datetime.fromisoformat(value)
         if parsed.utcoffset() is None:
@@ -382,8 +384,11 @@ def inspect_capture(root: Path) -> dict:
     for name in ['item','bts_layer','bts_layer_after','bts_ids','bts_ids_after','bts_count','bts_count_after']:
         path = root / f'{name}.body'
         files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
-    receipts = []
+    receipts, retrievals = [], []
     expected_urls = expected_requests(sorted(expected))
+    roster = {name + '.receipt.json' for name in expected_urls}
+    if {p.name for p in root.glob('*.receipt.json')} != roster:
+        raise ValueError('Unexpected or missing canonical receipt roster; retained diagnostics require review')
     for record in files:
         receipt_path = root / record['name'].replace('.body', '.receipt.json')
         receipt = _json(receipt_path)
@@ -394,6 +399,14 @@ def inspect_capture(root: Path) -> dict:
                 or receipt.get('bytes') != record['bytes']
                 or receipt.get('complete_body') is not True):
             raise ValueError('HTTP receipt/checksum mismatch')
+        headers = receipt.get('headers', {})
+        if not isinstance(headers, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in headers.items()):
+            raise ValueError('Canonical receipt headers must be a string mapping')
+        http_date = receipt.get('date', headers.get('date'))
+        if http_date is not None and not isinstance(http_date, str):
+            raise ValueError('Canonical receipt HTTP date must be original text or null')
+        retrievals.append({'name': receipt_path.name, 'url': receipt['url'],
+            'observed_at': _observed_at(receipt), 'http_date': http_date})
         receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': _digest(receipt_path)})
     files.extend(receipts)
     for receipt_path in root.rglob('*.receipt.json'):
@@ -411,6 +424,7 @@ def inspect_capture(root: Path) -> dict:
     return {'rows': len(seen), 'unique_SITE_NO': len(site_ids), 'duplicate_SITE_NO_rows': len(seen)-len(site_ids), 'pages': len(paths), 'bounds': bounds,
             'source': SERVICE, 'editing_info': layer['editingInfo'], 'fields': layer['fields'],
             'crs': layer['extent']['spatialReference'], 'raw_files': files,
+            'original_retrieval_receipts': sorted(retrievals, key=lambda r: r['name']),
             'crs_witnesses': {
                 'query_page_spatialReference': layer['extent']['spatialReference'],
                 'layer.extent.spatialReference': layer['extent']['spatialReference'],
@@ -424,6 +438,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     """Lossless native-schema GeoParquet draft, never a published projection."""
     audit = inspect_capture(capture)
     processing = processing_identity()
+    _source_manifest(capture, audit, 'v0.0.0-preflight', processing)
     fields = audit['fields']
     schema = pa.schema([pa.field(f['name'], _TYPES[f['type']], nullable=f['nullable']) for f in fields] + [pa.field('geometry', pa.binary(), nullable=False)])
     crs = CRS.from_epsg(audit['crs']['latestWkid']).to_json_dict()
@@ -438,6 +453,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
                 and previous.get('source') == SERVICE and previous.get('fields') == audit['fields']
                 and previous.get('rows') == audit['rows'] and previous.get('bounds') == audit['bounds']
                 and previous.get('promotion_allowed') is False and previous.get('acceptance') == 'unapproved_draft'):
+            _source_manifest(capture, audit, 'v0.0.0-preflight', previous['processing'])
             return previous
         raise FileExistsError('Immutable candidate version collision')
     temporary = destination / 'candidate.parquet.partial'
@@ -448,9 +464,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
                 rows.append({**feature['attributes'], 'geometry': to_wkb(_exact_point(feature['geometry']), byte_order=1)})
             writer.write_table(pa.Table.from_pylist(rows, schema=schema))
     temporary.replace(target)
-    audit.update(processing=processing, original_retrieval_receipts=[{'name': p.name, 'url': _json(p).get('url'),
-                    'observed_at': _json(p).get('observed_at'), 'http_date': _json(p).get('date', _json(p).get('headers', {}).get('date'))}
-                    for p in sorted(capture.glob('*.receipt.json')) if p.name.startswith(('item', 'bts_', 'page-'))],
+    audit.update(processing=processing, original_retrieval_receipts=audit['original_retrieval_receipts'],
                  producer='Federal Aviation Administration (FAA) NASR', distributor='USDOT_BTS official NTAD distribution',
                  candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
                  proposed_mapping='identity for every raw field; epoch-ms dates remain int64; native EPSG:3857 geometry',
@@ -556,6 +570,24 @@ def release_inputs(capture: Path, audit: dict, version: str) -> list[dict]:
     return result
 
 
+def _source_manifest(capture: Path, audit: dict, version: str, processing: dict) -> dict:
+    """Pure complete structural provenance preflight, before canonical writes."""
+    manifest = {'title':'Aviation Facilities', 'agency':'Federal Aviation Administration (FAA)',
+        'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
+        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':1,
+        'draft_contract_version':'unapproved-v1',
+        'processor':'HIFLD Next', 'processing_identity':processing, 'code_commit':processing['code_commit'],
+        'original_retrieval_receipts':audit['original_retrieval_receipts'],
+        'inputs':release_inputs(capture, audit, version),
+        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
+        'lineage':{'producer':'FAA NASR', 'distributor_item':'1551114f78e34d8395fd77bf41cd8a80','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
+        'promotion_allowed':False, 'complete_rows':audit['rows'],
+        'crs_witnesses':audit['crs_witnesses'],
+        'unsupported_output_formats':{'pmtiles':'Actual tippecanoe reconstruction assigns sequential internal feature IDs and drops dense features to meet tile size; rendered quantized geometry/full coverage/identifier mapping is unapproved. Primary typed Parquet and native GeoPackage preserve every source row, ID, type and point.', 'shapefile_zip':'Source field names exceed the DBF ten-character limit; no destructive field-name or type/null migration is approved.'}}
+    validate_release_provenance(manifest)
+    return manifest
+
+
 def _stage_capture_payload(capture: Path, staging: StagingStorageResource, version: str) -> dict:
     """Stage native raw proof + lossless typed draft and canonical GeoJSON input.
 
@@ -570,6 +602,8 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     schema_digest = hashlib.sha256(json.dumps(signature, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     if schema_digest != PROPOSED_SCHEMA_SHA256:
         raise ValueError('Source schema drift quarantined; revise the review draft explicitly')
+    preflight_manifest = _source_manifest(capture, audit, version, processing_identity())
+    json.dumps(preflight_manifest, sort_keys=True, allow_nan=False)
     root = Path(staging.local_dir).resolve() / staging.prefix / SLUG / SLUG / version
     root.mkdir(parents=True, exist_ok=True)
     for record in audit['raw_files']:
@@ -598,19 +632,8 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     if path.exists(): partial.unlink()
     else: partial.replace(path)
     metadata = root / 'metadata'; metadata.mkdir(exist_ok=True)
-    manifest = {'title':'Aviation Facilities', 'agency':'Federal Aviation Administration (FAA)',
-        'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
-        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':1,
-        'draft_contract_version':'unapproved-v1',
-        'processor':'HIFLD Next', 'processing_identity':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
-        'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-        'inputs':release_inputs(capture, audit, version),
-        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
-        'lineage':{'producer':'FAA NASR', 'distributor_item':'1551114f78e34d8395fd77bf41cd8a80','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
-        'promotion_allowed':False, 'complete_rows':audit['rows'],
-        'crs_witnesses':audit['crs_witnesses'],
-        'unsupported_output_formats':{'pmtiles':'Actual tippecanoe reconstruction assigns sequential internal feature IDs and drops dense features to meet tile size; rendered quantized geometry/full coverage/identifier mapping is unapproved. Primary typed Parquet and native GeoPackage preserve every source row, ID, type and point.', 'shapefile_zip':'Source field names exceed the DBF ten-character limit; no destructive field-name or type/null migration is approved.'}}
-    validate_release_provenance(manifest)
+    manifest = {**preflight_manifest, 'processing_identity': candidate['processing'],
+                'code_commit': candidate['processing']['code_commit']}
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
