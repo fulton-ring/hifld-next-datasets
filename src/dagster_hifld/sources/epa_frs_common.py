@@ -168,8 +168,33 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
             or payload["objects"] != dict(expected_objects)):
         raise ValueError("cached_first_candidate_identity_or_source_changed")
     expected_keys = {f"{prefix}/{name}" for name in expected_objects}
-    if set(storage.list_prefix(prefix)) != expected_keys:
+    actual_keys = set(storage.list_prefix(prefix))
+    # Catalog owns these derived documents; they are not acquisition objects
+    # and do not grant source, quality or release approval on cache reuse.
+    derived_names = {
+        "metadata/quality_manifest.json", "metadata/data_dictionary.json",
+        "metadata/resolved_provenance.json", "metadata/source/quality_manifest.json",
+        "metadata/source/data_dictionary.json",
+    }
+    snapshot_names = set()
+    manifest_descriptor = expected_objects.get("metadata/source_manifest.json")
+    if manifest_descriptor is not None:
+        snapshot_names = {
+            "metadata/source/source_manifest.json",
+            f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json",
+        }
+    allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names}
+    if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
+    for name in snapshot_names:
+        key = f"{prefix}/{name}"
+        if key not in actual_keys:
+            continue
+        snapshot = storage.object_snapshot(key)
+        if (snapshot is None or manifest_descriptor != {
+                "bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+                or storage.object_snapshot(key) != snapshot):
+            raise ValueError("cached_catalog_source_snapshot_changed:" + name)
     for name, descriptor in expected_objects.items():
         key = f"{prefix}/{name}"
         snapshot = storage.object_snapshot(key)

@@ -1,5 +1,9 @@
 from urllib.parse import parse_qs, urlsplit
 import unittest
+import hashlib
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import pyarrow as pa
 
@@ -20,7 +24,11 @@ from dagster_hifld.sources.epa_tsca import (
     _item_provenance,
     _arrow_type,
     _feature_urls,
+    _finalize_epa_tsca,
 )
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import write_immutable
+from dagster_hifld.sources.epa_tsca import candidate_prefix
 
 
 class EpaTscaDraftTests(unittest.TestCase):
@@ -72,6 +80,42 @@ class EpaTscaDraftTests(unittest.TestCase):
                          {"arrow": "timestamp(ms, UTC)", "status": "proposed_unapproved"})
         with self.assertRaisesRegex(ValueError, "item_license_declaration_missing_or_changed"):
             _item_provenance({**portal_metadata, "licenseInfo": "No license text"})
+
+    def test_synthetic_capture_finalizes_and_reuses_sealed_candidate(self):
+        raw, wire = b'{"synthetic":true}', b'{"synthetic":true}'
+        receipt = {
+            "method": "GET", "url": "https://example.invalid/synthetic",
+            "final_url": "https://example.invalid/synthetic", "observed_at": "2026-10-19T00:00:00+00:00",
+            "status": 200, "complete_body": True, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+            "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
+        }
+        fields = [{"name":"OBJECTID", "type":"esriFieldTypeOID", "nullable":False}]
+        extracted = {"features":[{"attributes":{"OBJECTID":7}, "geometry":{"x":-77.0,"y":38.0}}],
+                     "audit":{"source_record_sha256":"a"*64, "source_geometry_sha256":"b"*64,
+                              "source_schema_sha256":"c"*64, "source_feature_count":1,
+                              "source_id_sha256":"d"*64, "source_crs_epsg":4269,
+                              "geometry_type":"Point", "null_geometry_count":0,
+                              "unique_source_id_count":1, "portal_item_id":ITEM_ID,
+                              "portal_owner":"EPA_GEO", "portal_modified_epoch_ms":None,
+                              "portal_modified_is_source_release_date":False}}
+        provenance = {"license":LICENSE_URL, "attribution":"EPA FRS Support team TSCA"}
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            capture_root = Path(tmp) / "capture"
+            capture_root.mkdir()
+            (capture_root / "portal_item.wire").write_bytes(wire)
+            with patch("dagster_hifld.sources.epa_tsca._code_identity", return_value={"code_commit":"synthetic","files":[]}), \
+                 patch("dagster_hifld.sources.epa_tsca.validate_construction_code_identity"), \
+                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                first = _finalize_epa_tsca(storage, "synthetic-run", capture_root,
+                    {"portal_item":(raw, receipt)}, fields, extracted, provenance)
+                self.assertFalse(first["release_accepted"])
+                derived_key = candidate_prefix(DATASET_SLUG, DATASET_SLUG, first["version"]) + "/metadata/quality_manifest.json"
+                write_immutable(storage, derived_key, b'{"synthetic_catalog":true}\n')
+                second = _finalize_epa_tsca(storage, "synthetic-run-2", capture_root,
+                    {"portal_item":(raw, receipt)}, fields, extracted, provenance)
+            self.assertEqual(first["version"], second["version"])
+            self.assertTrue(second.get("reused"))
 
 
 if __name__ == "__main__":

@@ -265,9 +265,6 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                             audit["source_schema_sha256"], objects, payload["capture_receipts"])
     if not isinstance(objects, dict) or set(objects) != expected_keys:
         raise ValueError("cached_candidate_roster_changed")
-    actual_keys = set(storage.list_prefix(prefix))
-    if actual_keys != {f"{prefix}/{name}" for name in expected_keys}:
-        raise ValueError("cached_candidate_storage_roster_changed")
     for name, descriptor in objects.items():
         key = f"{prefix}/{name}"
         snapshot = storage.object_snapshot(key)
@@ -302,7 +299,8 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
-def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None) -> dict[str, object]:
+def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None,
+                     replay_capture_directory: str | None = None) -> dict[str, object]:
     """Capture and stage one complete unapproved source candidate."""
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
@@ -320,17 +318,49 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    replay_root: Path | None = None
     try:
-        with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-power-generation-draft"}) as client:
-            seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
-                raise ValueError("source_seed_id_count_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _feature_urls(seed):
-                body, receipt = _fetch(client, url, capture_root, name)
+        if replay_capture_directory:
+            replay_root = Path(replay_capture_directory).absolute()
+            if ".." in replay_root.parts or any(parent.is_symlink() for parent in (replay_root, *replay_root.parents)):
+                raise ValueError("unsafe_replay_capture_directory")
+            for receipt_path in sorted(replay_root.glob("*.receipt.json")):
+                name = receipt_path.name.removesuffix(".receipt.json")
+                receipt_body = receipt_path.read_bytes()
+                receipt = json.loads(receipt_body)
+                body = (replay_root / f"{name}.body").read_bytes()
+                wire = (replay_root / f"{name}.wire").read_bytes()
+                if (receipt_body != _canonical(receipt) + b"\n" or receipt.get("method") != "GET"
+                        or receipt.get("complete_body") is not True or receipt.get("status") != 200
+                        or receipt.get("url") != receipt.get("final_url")
+                        or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                        or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+                    raise ValueError("replay_capture_receipt_or_body_invalid:" + name)
                 captures[name] = (body, receipt)
+                (capture_root / f"{name}.body").write_bytes(body)
+                (capture_root / f"{name}.wire").write_bytes(wire)
+                (capture_root / f"{name}.receipt.json").write_bytes(receipt_body)
+            seed = json.loads(captures.get("ids_seed", (b"{}", {}))[0]).get("objectIds")
+            if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
+                raise ValueError("replay_capture_seed_invalid")
+            expected_urls = {"ids_seed":LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), **dict(_feature_urls(seed))}
+            if set(captures) != set(expected_urls):
+                raise ValueError("replay_capture_roster_incomplete_or_unexpected")
+            for name, url in expected_urls.items():
+                if captures[name][1].get("url") != url:
+                    raise ValueError("replay_capture_request_url_mismatch:" + name)
+        else:
+            with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-power-generation-draft"}) as client:
+                seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
+                    raise ValueError("source_seed_id_count_drift")
+                captures["ids_seed"] = (seed_body, seed_receipt)
+                for name, url in _feature_urls(seed):
+                    body, receipt = _fetch(client, url, capture_root, name)
+                    captures[name] = (body, receipt)
         layer, fields, extracted = _validate_captures(captures)
+        item_provenance = _item_provenance(json.loads(captures["portal_item"][0]))
     except Exception as exc:
         receipts = {}
         for path in sorted(capture_root.glob("*.receipt.json")):
@@ -342,6 +372,15 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
                                           captures, type(exc).__name__)
         raise
 
+    return _finalize_epa_tsca(storage, version, capture_root, captures, fields, extracted,
+                              item_provenance, replayed_from=str(replay_root) if replay_root else None)
+
+
+def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_root: Path,
+                      captures: dict[str, tuple[bytes, dict[str, object]]],
+                      fields: list[dict[str, object]], extracted: dict[str, object],
+                      item_provenance: dict[str, str], *, replayed_from: str | None = None) -> dict[str, object]:
+    """Build and seal a candidate from the same validated live or replay packet."""
     identity = _code_identity()
     parquet_body = _parquet_bytes(fields, extracted["features"])
     source_objects = {"geoparquet/epa-frs-toxic-substances-control-act-tsca.parquet":{"bytes":len(parquet_body),"sha256":_sha(parquet_body)}}
@@ -362,7 +401,8 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
                                       audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    provenance_name = "replay_provenance.json" if replayed_from else "capture_manifest.json"
+    (capture_root / provenance_name).write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"replayed_from":replayed_from,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
         "geoparquet/epa-frs-toxic-substances-control-act-tsca.parquet":parquet_body,
@@ -388,4 +428,4 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
     payload = {"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_replayed":bool(replayed_from)}
