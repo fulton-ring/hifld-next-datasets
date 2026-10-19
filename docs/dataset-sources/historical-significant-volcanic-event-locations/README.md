@@ -1,0 +1,11 @@
+# Significant Volcanic Events draft
+
+[NOAA NCEI](https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/volcanoes) links the Hazards viewer, whose shipped JavaScript delegates item `e991eccebfa5425e9180d884af76f16a` owned by `ncei_noaa`, then `Significant_Volcanic_Events/FeatureServer/0`. The complete captured source has903 events,59 original attributes and native EPSG:3857 Points. Four ID-targeted pages reconcile complete before/after counts, original OBJECTID rosters, physical schema and edit observations.
+
+All original IDs remain distinct, including repeated/null SIG_ID and literal NUM codes. SmallInteger/int/OID/double/string widths, nullability, strings and native WKB remain preserved in canonical GeoParquet. YEAR/MO/DAY retain original components (25 BCE years, minimum−4360); TIME_ERUPT retains its source code. No fabricated date or release day: service/item edits and fetch times are observations. Cite NOAA/WDS DOI[10.7289/V5JW8BSH](https://dx.doi.org/10.7289/V5JW8BSH).
+
+Run `python -m unittest discover -s tests -p test_significant_volcanic_events.py`; set `SIGNIFICANT_VOLCANIC_TEST_CAPTURE_DIR` for the complete-real test. Set `HIFLD_SIGNIFICANT_VOLCANIC_CAPTURE_DIR` and isolated local staging/output/`DAGSTER_HOME` for job `significant_volcanic_source_integrity`. Monthly refresh stays STOPPED; changed IDs/schema/coverage/physical types quarantine. Shared construction/Git provenance and quality/independent approval gates block release.
+
+Complete source/baseline inputs: `/workspace/work/hifld-coordinator/112/significant-volcanic-inputs.tar.gz`, SHA256 `807c50af3e4ded418090bc10295a6e655ca61ccf09ef46514d2e69c3dd665e53`. Its51-member manifest pins bytes/modes; extract `discovery/` for replay. Reports/logs remain external.
+
+Historical candidates contain893 events and changed physical types/geometry. All original IDs/occurrences remain raw; literal HAZ_EVENT_ID comparison is diagnostic, not an accepted join/tolerance. Source, rights, crosswalk, baseline, contract, schema/ID/type/nullability/coverage/geometry/format acceptance remain external. Coercive formats stay disabled. No source approval or production publication.
