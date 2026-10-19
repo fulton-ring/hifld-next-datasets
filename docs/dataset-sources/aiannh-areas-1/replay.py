@@ -19,6 +19,15 @@ for year in (2023,2025,2026):
     for field,counts in audit['categories'].items():
         assert dict(collections.Counter(r['properties'][field] for r in rows))==counts
     assert len(json.loads((E/f'sample{year}.geojson').read_text())['features'])==2
+a={r['properties']['GEOID']:r for r in json.loads((E/'rows2023.json').read_text())}
+b={r['properties']['GEOID']:r for r in json.loads((E/'rows2026.json').read_text())}
+retained=set(a)&set(b)
+comparison=report['comparison_2023_to_2026']
+assert comparison['added']==sorted(set(b)-set(a))
+assert comparison['removed']==sorted(set(a)-set(b))
+assert comparison['retained']==len(retained)
+assert comparison['changed_geometry']==sum(a[k]['geometry_sha256']!=b[k]['geometry_sha256'] for k in retained)
+assert comparison['changed_fields']=={f:sum(a[k]['properties'][f]!=b[k]['properties'][f] for k in retained) for f in report['2023']['schema']['properties']}
 assert {c['name'] for c in contract['columns']}==set(report['2023']['schema']['properties'])|{'geometry'}
 graph=json.loads((E/'graphql.json').read_text())
 assert not graph.get('errors')

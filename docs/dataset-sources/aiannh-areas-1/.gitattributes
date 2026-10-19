@@ -1,0 +1,3 @@
+# Preserve captured upstream response/XML bytes, including original whitespace.
+evidence/*.body -diff
+evidence/*.xml -diff
