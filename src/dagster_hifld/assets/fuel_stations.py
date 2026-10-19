@@ -358,14 +358,78 @@ def capture_live(destination: Path) -> None:
         'raw_preserved': True, 'approval': None}, sort_keys=True))
 
 
+def _native_crs(spatial_reference):
+    # Explicit native-coordinate aliases only. No CRS inference or reprojection.
+    if (not isinstance(spatial_reference, dict)
+            or set(spatial_reference) not in ({'wkid'}, {'wkid', 'latestWkid'})
+            or type(spatial_reference.get('wkid')) is not int
+            or spatial_reference['wkid'] not in (3857, 102100)
+            or ('latestWkid' in spatial_reference and
+                (type(spatial_reference['latestWkid']) is not int or spatial_reference['latestWkid'] != 3857))):
+        raise ValueError('Unsupported/contradictory native CRS; only3857/102100 XY aliases are proposed, without WKT/vertical extensions')
+    return 3857
+
+
+def _identifier_witness(value):
+    if (not isinstance(value, dict) or set(value) != {'name', 'isSystemMaintained'}
+            or value.get('name') != 'OBJECTID' or value.get('isSystemMaintained') is not True):
+        raise ValueError('Unexpected source unique ID witness')
+
+
+def _layer_witness(layer):
+    identity = {'name': 'Alternative Fueling Stations', 'type': 'Feature Layer',
+        'serviceItemId': '9010c04bcdf84c36abb74e98778af579', 'objectIdField': 'OBJECTID',
+        'globalIdField': '', 'geometryType': 'esriGeometryPoint'}
+    if (type(layer.get('id')) is not int or layer['id'] != 0
+            or any(layer.get(key) != value for key, value in identity.items())):
+        raise ValueError('Unexpected source layer/service/geometry/ID identity witness')
+    _identifier_witness(layer.get('uniqueIdField'))
+    if layer.get('hasZ') is not False or layer.get('hasM') is not False:
+        raise ValueError('Unsupported source geometry dimensions')
+    _native_crs(layer.get('spatialReference'))
+    if 'sourceSpatialReference' in layer:
+        _native_crs(layer['sourceSpatialReference'])
+    extent = layer.get('extent')
+    if not isinstance(extent, dict) or set(extent) != {'xmin', 'ymin', 'xmax', 'ymax', 'spatialReference'}:
+        raise ValueError('Missing/unsupported source extent witness')
+    _native_crs(extent['spatialReference'])
+    if extent['spatialReference'] != layer['spatialReference']:
+        raise ValueError('Contradictory layer and extent CRS witnesses')
+    if (not all(type(extent[key]) in (int, float) and math.isfinite(extent[key])
+                for key in ('xmin', 'ymin', 'xmax', 'ymax'))
+            or extent['xmin'] > extent['xmax'] or extent['ymin'] > extent['ymax']):
+        raise ValueError('Invalid source extent witness')
+
+
+def _page_witness(page, layer):
+    _native_crs(page.get('spatialReference'))
+    if page['spatialReference'] != layer['spatialReference']:
+        raise ValueError('Page CRS differs')
+    if (page.get('geometryType') != 'esriGeometryPoint'
+            or page.get('objectIdFieldName') != 'OBJECTID' or page.get('globalIdFieldName') != ''
+            or page.get('hasZ', False) is not False or page.get('hasM', False) is not False):
+        raise ValueError('Unexpected page geometry/ID/dimension witness')
+    _identifier_witness(page.get('uniqueIdField'))
+    for key in ('id', 'name', 'type', 'serviceItemId', 'objectIdField'):
+        if key in page and (type(page[key]) is not type(layer[key]) or page[key] != layer[key]):
+            raise ValueError('Page service identity differs')
+    if 'sourceSpatialReference' in page:
+        _native_crs(page['sourceSpatialReference'])
+        if page['sourceSpatialReference'] != layer['spatialReference']:
+            raise ValueError('Page source CRS differs')
+
+
 def inspect_capture(root: Path) -> dict:
     """Fail closed on changed census/schema/edit date, truncation, IDs or geometry."""
     layer = _arcgis_json(root / 'bts_layer.body')
     after = _arcgis_json(root / 'bts_layer_after.body')
-    if layer['fields'] != after['fields'] or layer['editingInfo'] != after['editingInfo']:
-        raise ValueError('Source changed during extraction')
-    if layer['geometryType'] != 'esriGeometryPoint' or layer.get('hasZ') or layer.get('hasM'):
-        raise ValueError('Unsupported geometry dimensionality')
+    _layer_witness(layer)
+    _layer_witness(after)
+    stable = ('fields', 'editingInfo', 'id', 'name', 'type', 'serviceItemId', 'objectIdField',
+        'uniqueIdField', 'globalIdField', 'geometryType', 'hasZ', 'hasM', 'extent',
+        'spatialReference', 'sourceSpatialReference')
+    if any((key in layer) != (key in after) or layer.get(key) != after.get(key) for key in stable):
+        raise ValueError('Source metadata changed during extraction')
     expected = _arcgis_json(root / 'bts_ids.body')['objectIds']
     ending = _arcgis_json(root / 'bts_ids_after.body')['objectIds']
     count = _arcgis_json(root / 'bts_count.body')['count']
@@ -395,8 +459,7 @@ def inspect_capture(root: Path) -> dict:
             signatures = lambda fs: [(f['name'], f['type']) for f in fs]
             if signatures(page.get('fields', [])) != signatures(layer['fields']):
                 raise ValueError('Page schema differs')
-        if page.get('spatialReference') != layer['extent']['spatialReference']:
-            raise ValueError('Page CRS differs')
+        _page_witness(page, layer)
         if len(page['features']) > 2000:
             raise ValueError('Page exceeds requested limit')
         for feature in page['features']:
@@ -467,7 +530,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     processing = processing_identity()
     fields = audit['fields']
     schema = pa.schema([pa.field(f['name'], _TYPES[f['type']], nullable=f['nullable']) for f in fields] + [pa.field('geometry', pa.binary(), nullable=False)])
-    crs = CRS.from_epsg(audit['crs']['latestWkid']).to_json_dict()
+    crs = CRS.from_epsg(_native_crs(audit['crs'])).to_json_dict()
     schema = schema.with_metadata({b'geo': json.dumps({'version': '1.1.0', 'primary_column': 'geometry', 'columns': {'geometry': {'encoding': 'WKB', 'geometry_types': ['Point'], 'crs': crs, 'bbox': audit['bounds']}}}, sort_keys=True).encode()})
     destination.mkdir(parents=True, exist_ok=True)
     target = destination / 'candidate.parquet'

@@ -46,8 +46,11 @@ def fixture(root):
         ('zip', 'esriFieldTypeString', True), ('updated_at', 'esriFieldTypeDate', True),
         ('latitude', 'esriFieldTypeDouble', True)]]
     sr = {'wkid': 102100, 'latestWkid': 3857}
-    layer = {'fields': fields, 'editingInfo': {'lastEditDate': 1, 'dataLastEditDate': 1}, 'geometryType': 'esriGeometryPoint', 'objectIdField': 'OBJECTID', 'hasZ': False, 'hasM': False, 'extent': {'spatialReference': sr}}
-    page = {'fields': fields, 'spatialReference': sr, 'features': [{'attributes': {'OBJECTID': 9999999999, 'id': 7, 'zip': '00123', 'updated_at': 1792320841494, 'latitude': 38.5}, 'geometry': {'x': -100.123456789, 'y': 200.25}}]}
+    layer = {'fields': fields, 'editingInfo': {'lastEditDate': 1, 'dataLastEditDate': 1}, 'geometryType': 'esriGeometryPoint', 'objectIdField': 'OBJECTID', 'hasZ': False, 'hasM': False, 'extent': {'xmin':-100.123456789,'ymin':200.25,'xmax':-100.123456789,'ymax':200.25,'spatialReference': sr},
+        'spatialReference':sr,'id':0,'name':'Alternative Fueling Stations','type':'Feature Layer',
+        'serviceItemId':'9010c04bcdf84c36abb74e98778af579','uniqueIdField':{'name':'OBJECTID','isSystemMaintained':True},'globalIdField':''}
+    page = {'objectIdFieldName':'OBJECTID','uniqueIdField':{'name':'OBJECTID','isSystemMaintained':True},
+        'globalIdFieldName':'','geometryType':'esriGeometryPoint','fields': fields, 'spatialReference': sr, 'features': [{'attributes': {'OBJECTID': 9999999999, 'id': 7, 'zip': '00123', 'updated_at': 1792320841494, 'latitude': 38.5}, 'geometry': {'x': -100.123456789, 'y': 200.25}}]}
     for suffix in ('', '_after'):
         write(root, 'bts_layer' + suffix, layer)
         write(root, 'bts_count' + suffix, {'count': 1})
