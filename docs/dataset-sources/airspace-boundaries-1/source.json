@@ -905,9 +905,9 @@
     "full_suite": "See evidence/validation.json; missing sibling hifld-next-iac/environments/prod/dagster.tf remains unresolved",
     "native_materialization_runs": {
       "live_ingest": "969bf9e5-f80a-4d7a-a082-ab4ca3e6b58d",
-      "replay_ingest": "17f1af67-d290-46c1-ae5d-21c523718bd2",
-      "normal_graph": "14573e09-285a-4e0c-a296-73c075099058",
-      "verify_probe": "46729d63-0ab5-45dd-98b4-76b14fb3edfc"
+      "replay_ingest": "faa29ee4-6877-4478-aca7-68a62b40c599",
+      "normal_graph": "ed65d092-7328-4987-9137-6e7531b18a9c",
+      "verify_probe": "fa1294d2-0371-4854-9ad2-887d6f58804e"
     }
   },
   "unsupported_output_formats": {

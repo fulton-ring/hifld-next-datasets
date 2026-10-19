@@ -1,16 +1,16 @@
 {
   "adapter_module_path": "/workspace/hifld-worker-worktrees/10/src/dagster_hifld/faa_airspace.py",
   "capture_dir": "/workspace/work/hifld-coordinator/10",
-  "local_storage": "/workspace/work/hifld-coordinator/10/e2e-native-final-2",
+  "local_storage": "/workspace/work/hifld-coordinator/10/e2e-boundary-final",
   "approval_registry_present": false,
   "shared_verifier_dependency": "c7343b802966c566e8f6088bf31f19081b2a0cde",
   "ingest": {
-    "run_id": "17f1af67-d290-46c1-ae5d-21c523718bd2",
+    "run_id": "faa29ee4-6877-4478-aca7-68a62b40c599",
     "success": true,
     "output": {
-      "version": "candidate-native-v2-f4561935213b4f3a91b568c1",
+      "version": "candidate-native-v2-1a8fa779180982874f292f91",
       "feature_count": 477,
-      "quarantine_prefix": "airspace-boundaries-1/airspace-boundaries-1/candidate-native-v2-f4561935213b4f3a91b568c1/quarantine",
+      "quarantine_prefix": "airspace-boundaries-1/airspace-boundaries-1/candidate-native-v2-1a8fa779180982874f292f91/quarantine",
       "candidate_sha256": "b9f0205803a886d3478a82ed4c6cc98d9dc1b8bbc876ceeb01eaabafd0ef4344",
       "promotion_allowed": false
     }
@@ -66,7 +66,7 @@
     "candidate_sha256": "b9f0205803a886d3478a82ed4c6cc98d9dc1b8bbc876ceeb01eaabafd0ef4344"
   },
   "normal_graph": {
-    "run_id": "14573e09-285a-4e0c-a296-73c075099058",
+    "run_id": "ed65d092-7328-4987-9137-6e7531b18a9c",
     "success": false,
     "checks": [
       {
@@ -74,25 +74,6 @@
         "passed": true
       }
     ],
-    "quality_manifest": {
-      "bounds": [
-        -200.992181,
-        -30.0,
-        191.026667,
-        90.0
-      ],
-      "catalog_mode": "streaming_geospatial",
-      "columns_hash": "24c946a7c182420e9bd6b53b096b573908041d5c3ae40f24ff4926b7aedfd28e",
-      "feature_count": 477,
-      "geometry_type": "Mixed",
-      "invalid_geometry_count": 0,
-      "quality_check_passed": true,
-      "sampled_feature_count": 477,
-      "sampled_invalid_geometry_count": 0,
-      "sampled_null_geometry_count": 0,
-      "spatial_status": "spatial",
-      "version": "v1"
-    },
     "failures": [
       {
         "step": "publish__verify",
@@ -114,6 +95,25 @@
         "file_count": 0,
         "skip_reason": "unsupported_output_format:Native Shape__Area (11 characters), Shape__Length (13), and retained __source_geojson_feature_id exceed Shapefile's 10-character DBF field limit. The historical candidate already truncates these shape fields to Shape__Are/Shape__Len. Exact names and explicit numeric physical types have no approved destructive Shapefile mapping."
       }
+    },
+    "quality_manifest": {
+      "bounds": [
+        -200.992181,
+        -30.0,
+        191.026667,
+        90.0
+      ],
+      "catalog_mode": "streaming_geospatial",
+      "columns_hash": "24c946a7c182420e9bd6b53b096b573908041d5c3ae40f24ff4926b7aedfd28e",
+      "feature_count": 477,
+      "geometry_type": "Mixed",
+      "invalid_geometry_count": 0,
+      "quality_check_passed": true,
+      "sampled_feature_count": 477,
+      "sampled_invalid_geometry_count": 0,
+      "sampled_null_geometry_count": 0,
+      "spatial_status": "spatial",
+      "version": "v1"
     }
   },
   "terminal_roundtrip": {
@@ -121,7 +121,7 @@
     "join_key": "GLOBAL_ID",
     "formats": {
       "geopackage": {
-        "path": "/workspace/work/hifld-coordinator/10/e2e-native-final-2/staging/airspace-boundaries-1/airspace-boundaries-1/v0.0.10-draft/geopackage/airspace.gpkg",
+        "path": "/workspace/work/hifld-coordinator/10/e2e-boundary-final/staging/airspace-boundaries-1/airspace-boundaries-1/v0.0.10-draft/geopackage/airspace.gpkg",
         "sha256": "ef7619c6f02bee9d392f67fe7da527cce0a666486a6c3e286a65d13383231a73",
         "rows": 477,
         "crs": "EPSG:4269",
@@ -378,7 +378,7 @@
         ]
       },
       "geoparquet": {
-        "path": "/workspace/work/hifld-coordinator/10/e2e-native-final-2/staging/airspace-boundaries-1/airspace-boundaries-1/v0.0.10-draft/geoparquet/airspace-boundaries-1.parquet",
+        "path": "/workspace/work/hifld-coordinator/10/e2e-boundary-final/staging/airspace-boundaries-1/airspace-boundaries-1/v0.0.10-draft/geoparquet/airspace-boundaries-1.parquet",
         "sha256": "c6e5810e61732eba6750cd23e849c4598800872723947aa99d7e8ad31a048399",
         "rows": 477,
         "crs": "EPSG:4269",
@@ -662,7 +662,7 @@
     "publication_approved": false
   },
   "verify_probe": {
-    "run_id": "46729d63-0ab5-45dd-98b4-76b14fb3edfc",
+    "run_id": "fa1294d2-0371-4854-9ad2-887d6f58804e",
     "success": false,
     "reason": "missing_independent_release_approval_registry"
   },
