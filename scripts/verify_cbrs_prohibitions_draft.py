@@ -5,6 +5,8 @@ import json
 import os
 import shutil
 import subprocess
+import sqlite3
+import pyarrow as pa
 from pathlib import Path
 
 parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=Path,required=True);args=parser.parse_args()
@@ -76,6 +78,29 @@ with DagsterInstance.get() as instance:
   assert {key:row[key] for key in source.SCHEMA}=={key:expected[key] for key in source.SCHEMA}
   assert row['geometry']==expected['geometry']
  report['terminal_parquet']={'rows':1693,'all_source_values_types_wkb_exact':True,'extra_columns':[],'native_date32_columns':['FI_Date','SU_Date'],'normal_geoparquet_regeneration':'explicitly excluded pending native-date-to-string mapping approval','nullable_inference_requires_review':True}
+ # Authentic complete-candidate self-repin attacks exercise the actual registered Dagster asset.
+ readyfile=root/'metadata/cbrs_prohibitions_candidate_ready.json';ready_original=readyfile.read_bytes()
+ gpfile=root/'geopackage'/f'{source.SLUG}.gpkg';gp_original=gpfile.read_bytes()
+ parquet=root/'candidate/typed-source.parquet';parquet_original=parquet.read_bytes()
+ report['self_repin_probes']=[]
+ for attack in ['gpkg_contents_srs','gpkg_spatial_ref_definition','parquet_geo_crs']:
+  try:
+   if attack.startswith('gpkg'):
+    with sqlite3.connect(gpfile) as db:
+     db.execute("UPDATE gpkg_contents SET srs_id=4326" if attack=='gpkg_contents_srs' else "UPDATE gpkg_spatial_ref_sys SET definition='undefined' WHERE srs_id=4269")
+    target=gpfile
+   else:
+    table=pq.read_table(parquet);metadata=dict(table.schema.metadata);geo=json.loads(metadata[b'geo']);geo['columns']['geometry']['crs']={'type':'name','properties':{'name':'EPSG:3857'}}
+    metadata[b'geo']=source.encode(geo);pq.write_table(table.replace_schema_metadata(metadata),parquet,compression='zstd');target=parquet
+   ready=json.loads(ready_original);ready['objects'][str(target.relative_to(root))]=source.sha(target.read_bytes());readyfile.write_bytes(source.encode(ready))
+   negative=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+   errors=record('complete_source_cache_self_repin_'+attack,negative)
+   assert not negative.success and errors
+   assert snapshot(published)==prior
+   report['self_repin_probes'].append({'attack':attack,'run_id':negative.run_id,'rejected':True,'prior_published_preserved':True})
+  finally:
+   gpfile.write_bytes(gp_original);parquet.write_bytes(parquet_original);readyfile.write_bytes(ready_original)
+ assert all((root/key).read_bytes() and source.sha((root/key).read_bytes())==digest for key,digest in json.loads(ready_original)['objects'].items())
  # Corrupt a separate explicitly synthetic test partition, leaving the real candidate unchanged.
  badprefix=prefix+'-synthetic-invalid-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot)
  gpfile=badroot/'geopackage'/f'{source.SLUG}.gpkg'

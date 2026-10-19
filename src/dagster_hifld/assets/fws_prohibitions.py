@@ -9,7 +9,7 @@ from dagster_hifld.sources.cbrs_prohibitions import require_local, stage_cbrs_pr
 
 
 @asset(key=AssetKey(['ingest','cbrs-prohibitions-1','cbrs-prohibitions-1']),group_name='fws',compute_kind='http',
-       description='Official FWS2024-12-19 Buffer Zone:1693native NAD83 mixed Polygon/MultiPolygon prohibition areas with native date fields. Faithful draft, not a legal determination or accepted HIFLD replacement.',
+       description='Official FWS2024-12-19 Prohibitions: 1693 native NAD83 mixed Polygon/MultiPolygon prohibition areas with native date fields. Faithful draft, not a legal determination or accepted HIFLD replacement.',
        config_schema={'capture_dir':Field(str,default_value='')})
 def fws_cbrs_prohibitions(context,staging_storage:StagingStorageResource)->dict:
     require_local(staging_storage)
