@@ -88,9 +88,11 @@ pinned GeoPackage, Parquet/GeoParquet and Arrow IPC normalization, homogeneous
 multi-file rosters and full retained-row field summaries. Upstream pagination
 proof, all transformation/lineage reconciliation rules, additional native source
 formats, full domain/quality accounting, all-source STAC attribution/links and
-published metadata roundtrip remain unfinished. The registry currently requires
-manual review of exact normalization derivations and every terminal object's
-bytes. It is not a substitute for those automated verifiers.
+published metadata roundtrip remain unfinished. The registry still requires manual acceptance of exact changes and terminal
+object bytes. The JSONL mode explicitly retains a reviewed-normalization trust
+scope; native mode now also performs original-object re-derivation and comparison
+replay at the release boundary, as described below. Neither mode supplies source
+acceptance or the remaining extraction/transformation rules.
 
 SQLite cache/record/scratch limits and measured scaling bound this comparator's
 engineering scope; they do not establish an OS-enforced RSS or disk quota. Quota
@@ -266,3 +268,48 @@ must choose a safe evidence directory. This is not a hostile concurrent director
 replacement guarantee. Focused native and original verifier tests cover linked
 reports/partials/sidecars, map nullability, original-byte preservation and actual
 local success/failed-promotion behavior.
+
+
+## Deterministic native release replay
+
+The initial native receipt gate checked exact labels, inventories and independent
+registry pins. Independent review demonstrated that deliberately repinning the
+registry and receipt labels could retain a false physical→normalized derivation.
+This was not a staging-approval bypass, but it did not meet automatic native
+verification. Native release now rereads both original populations and replays
+the entire comparison before the first copy.
+
+An independent release registry entry must provide `native_baseline_input`, a
+complete native manifest with local immutable original `root`, exact object pins
+and the same normalization options used in the reviewed baseline receipt.
+Original baseline storage must be independent of candidate staging. The original
+bytes must match the accepted baseline object's SHA/length pins. No baseline
+originals are fetched automatically; missing configuration, missing files,
+changed bytes and extra unpinned shards all block with explicit native-original
+errors. Baseline receipts without the original captures cannot establish this
+native proof. Preserved public baseline candidates can supply read-only inputs
+without establishing acceptance.
+
+Candidate originals are resolved only from the actual staged version and its
+explicit storage prefix, with complete roster/hash/count checks. Both inputs
+are re-normalized into hardened isolated temporary evidence; normalized records,
+per-row lineage, physical schemas, reader/policy/code pins and deterministic
+receipts must match. The SQLite comparison is recomputed from the pinned baseline
+stream and current native candidate, including ID, value, geometry, coverage and
+per-field reports. The whole deterministic result must equal the reviewed report.
+Native replay accepts positive reader budgets no larger than trusted defaults;
+smaller bounded batch/budget settings are preserved from the pinned receipt.
+This is bounded engineering behavior, not an OS-enforced quota.
+
+Reports explicitly identify `native_originals_recomputed` or
+`reviewed_jsonl_normalization`. The latter retains the existing manual
+normalization-derivation trust scope; it is not upgraded to native proof. A native
+claim without native receipts, or any unmatched scope, blocks release. Independent
+acceptance remains required after either technical verification scope succeeds.
+
+Synthetic regressions deliberately repin the independent registry while leaving
+stale normalized rows or a false passing comparison; both now block. The actual
+local full graph additionally preserves all 19 previously published fixture
+objects after this false-derivation attempt and after an extra-shard failed run.
+No real dataset acceptance is supplied. Exact commands, bytes and run IDs are in
+[`2026-10-19-native-replay.json`](../evidence/2026-10-19-native-replay.json).

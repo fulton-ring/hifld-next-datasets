@@ -12,18 +12,19 @@ import shutil
 from pathlib import Path
 
 import fiona
+import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import DagsterInstance, Definitions, Output, asset, define_asset_job
 
 from dagster_hifld.assets.catalog import publish_catalog
 from dagster_hifld.assets.publish import (
-    publish_geopackage, publish_geoparquet, publish_pmtiles, publish_shapefile_zip,
+    _copy_version_files, publish_geopackage, publish_geoparquet, publish_pmtiles, publish_shapefile_zip,
     publish_version, verify_release,
 )
 from dagster_hifld.checks import hifld_asset_checks
-from dagster_hifld.native_verification import compare_native_inputs
+from dagster_hifld.native_verification import _digest, compare_native_inputs
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, PUBLISH_PARTITION_NAME
-from dagster_hifld.release_approval import _storage_identity, verifier_implementation_sha256
+from dagster_hifld.release_approval import ReleaseApprovalError, _storage_identity, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import snapshot_source_metadata
 from dagster_hifld.validation import sha256_file
@@ -33,6 +34,34 @@ def input_spec(root):
     return {"schema_version": 1, "format": "geoparquet", "root": str(root), "geometry_column": "geometry",
             "objects": [{"key": path.relative_to(root).as_posix(), "sha256": sha256_file(path), "bytes": path.stat().st_size}
                         for path in sorted(root.rglob("*.parquet"))]}
+
+
+def forge_synthetic_candidate_labels(source, registry: Path, prefix: str) -> None:
+    """Adversarial test only: repin labels without recomputing normalized rows."""
+    value = json.loads(registry.read_text())
+    entry = value["releases"][0]
+    native_key = next(iter(entry["candidate_comparison_input"]["derivation"]["source_objects"]))
+    physical = Path(source.local_dir) / source._ensure_prefixed(native_key)
+    table = pq.ParquetFile(physical).read()
+    table = table.set_column(table.schema.get_field_index("state"), table.schema.field("state"), pa.array(["NJ"] * table.num_rows))
+    pq.write_table(table, physical)
+    receipt_key = f"{prefix}/metadata/candidate/normalization_receipt.json"
+    receipt = json.loads(source.read_key(receipt_key))
+    receipt["objects"][0].update(sha256=sha256_file(physical), bytes=physical.stat().st_size)
+    receipt["receipt_id"] = _digest({key: val for key, val in receipt.items() if key != "receipt_id"})
+    source.write_key(receipt_key, json.dumps(receipt, sort_keys=True, indent=2).encode())
+    report_key = f"{prefix}/metadata/baseline_comparison.json"
+    report = json.loads(source.read_key(report_key))
+    report["native_inputs"]["candidate"].update(sha256=source.sha256_key(receipt_key), receipt=receipt)
+    source.write_key(report_key, json.dumps(report, sort_keys=True, indent=2).encode())
+    derivation = entry["candidate_comparison_input"]["derivation"]
+    derivation["source_objects"][native_key] = source.sha256_key(native_key)
+    derivation["parameters"]["receipt_sha256"] = source.sha256_key(receipt_key)
+    for key in [native_key, receipt_key, report_key]:
+        entry["staged_objects"][key] = source.sha256_key(key)
+        entry["published_objects"][key] = source.sha256_key(key)
+    entry["report_sha256"] = source.sha256_key(report_key)
+    registry.write_text(json.dumps(value))
 
 
 def run(work):
@@ -133,7 +162,7 @@ def run(work):
         entry = {"destination": _storage_identity(published), "staged_version_prefix": prefix,
                  "implementation_sha256": verifier_implementation_sha256(),
                  "decision": {"id": "SYNTHETIC-ONLY", "approved_by": "synthetic-test-only", "approved_at": "2026-10-19"},
-                 "baseline": result["baseline"], "contract_sha256": result["contract_sha256"],
+                 "baseline": result["baseline"], "native_baseline_input": state["baseline"], "contract_sha256": result["contract_sha256"],
                  "report_sha256": objects[f"{prefix}/metadata/baseline_comparison.json"],
                  "provenance_sha256": objects[f"{prefix}/metadata/source_manifest.json"],
                  "staged_objects": objects, "published_objects": objects, "native_policy_sha256": native["policy_sha256"],
@@ -147,6 +176,24 @@ def run(work):
         success = job.execute_in_process(instance=instance, partition_key=prefix, raise_on_error=False)
         assert success.success
         before = {key: published.object_snapshot(key) for key in published.list_prefix()}
+        # Independent exact approval labels are deliberately repinned here to
+        # reproduce the review defect: only native re-derivation can disprove it.
+        staged_before = {key: staging.read_key(key) for key in staging.list_prefix(prefix)}
+        registry_before = registry.read_bytes()
+        forge_synthetic_candidate_labels(staging, registry, prefix)
+        try:
+            _copy_version_files(staging, published, "synthetic-native", "typed", "v0.0.0-fixture")
+        except ReleaseApprovalError as exc:
+            assert "replay_mismatch" in str(exc), str(exc)
+            forged_derivation_blocker = str(exc)
+        else:
+            raise AssertionError("Repinned false native derivation unexpectedly promoted")
+        assert before == {key: published.object_snapshot(key) for key in published.list_prefix()}
+        (work / "forged-derivation-result.json").write_text(json.dumps({"synthetic_only": True, "independent_registry_deliberately_repinned": True,
+            "blocked": True, "reason": forged_derivation_blocker, "previous_published_objects_preserved": len(before)}, indent=2) + "\n")
+        for key, data in staged_before.items():
+            staging.write_key(key, data)
+        registry.write_bytes(registry_before)
         state["inject_drift"] = True
         failure = job.execute_in_process(instance=instance, partition_key=prefix, raise_on_error=False)
         assert not failure.success
@@ -154,7 +201,7 @@ def run(work):
         assert state["report"]["status"] in {"fail", "blocked"}
         outcome = {"classification": "actual local synthetic full graph; no real baseline acceptance", "unapproved_run_id": unapproved.run_id,
                    "success_run_id": success.run_id, "failed_drift_run_id": failure.run_id, "published_objects": len(before),
-                   "accepted_objects_unchanged": True, "candidate_evidence_preserved": True, "dagster_home": str(home),
+                   "accepted_objects_unchanged": True, "candidate_evidence_preserved": True, "repinned_false_derivation_blocked": True, "dagster_home": str(home),
                    "archival_formats": ["geopackage", "geoparquet"], "evidenced_skips": ["pmtiles", "shapefile_zip"]}
         (work / "integration_result.json").write_text(json.dumps(outcome, indent=2) + "\n")
         return outcome

@@ -440,6 +440,8 @@ def normalize_native_input(spec: dict, policy: dict, output_dir: Path, *, limits
     partial = output_dir / "normalized_records.jsonl.partial"
     lineage_partial = output_dir / "normalization_lineage.jsonl.partial"
     try:
+        if any(type(value) is not int or value < 1 for value in asdict(limits).values()):
+            raise ValueError("Native reader limits require positive integer budgets")
         if not isinstance(policy, dict) or policy.get("schema_version") != 1 or policy.get("status") not in {"proposed", "reviewed"} or type(policy.get("geometry")) is not bool:
             raise ValueError("Explicit proposed/reviewed schema/geometry policy required")
         if set(policy) - {"schema_version", "status", "geometry", "crs", "geometry_nullable", "id_fields", "coverage_fields", "allow_empty"}:
@@ -555,6 +557,7 @@ def compare_native_inputs(baseline_spec: dict, candidate_spec: dict, policy: dic
             result["status"] = "needs_decision"
             result["reason_codes"].append("physical_schema_or_source_id_representation_changed")
         result["native_inputs"] = descriptors
+        result["verification_scope"] = "native_originals_recomputed"
     except (ValueError, OSError, KeyError, TypeError) as exc:
         result = {**blocked, "reason_codes": [f"native_comparison_incomplete:{type(exc).__name__}:{exc}"], "native_inputs": descriptors}
     _write_json(output_dir / "baseline_comparison.json", result)

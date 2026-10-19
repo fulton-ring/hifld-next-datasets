@@ -11,12 +11,13 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import unsupported_output_reason
-from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, _code_digest, _digest, reader_versions
+from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, NativeReadLimits, _code_digest, _digest, compare_native_inputs, reader_versions
 
 
 class ReleaseApprovalError(ValueError):
@@ -156,6 +157,9 @@ def require_release_approval(
                 raise ReleaseApprovalError("missing_full_comparison_populations")
             if report.get("adapter") != "typed-geojson-feature-jsonl-v1":
                 raise ReleaseApprovalError("unsupported_comparison_adapter")
+            scope = "native_originals_recomputed" if "native_inputs" in report else "reviewed_jsonl_normalization"
+            if report.get("verification_scope") != scope:
+                raise ReleaseApprovalError("comparison_verification_scope_missing_or_unmatched")
             baseline_input = entry["baseline"]["comparison_input"]
             if report.get("baseline_sha256") != baseline_input["sha256"] or report.get("baseline_input_bytes") != baseline_input["bytes"]:
                 raise ReleaseApprovalError("report_baseline_input_does_not_match_accepted_reference")
@@ -286,6 +290,52 @@ def _require_native_evidence(report: dict, entry: dict, source: StagingStorageRe
     if (physical.get("baseline") != baseline_schema or physical.get("candidate") != candidate_schema
             or physical.get("equal") is not equal or (not equal and report.get("status") == "pass")):
         raise ReleaseApprovalError("native_report_physical_schema_unmatched")
+    _replay_native_originals(report, entry, source, prefix)
+
+
+def _replay_native_originals(report: dict, entry: dict, source: StagingStorageResource, prefix: str) -> None:
+    """Re-derive both native populations and compare actual bytes, not labels.
+
+    Baseline originals are independent read-only local runtime configuration.
+    Candidate originals come only from the already pinned staged version. No
+    automatic acceptance, remote refetch or production write occurs here.
+    """
+    baseline = entry.get("native_baseline_input")
+    if not isinstance(baseline, dict) or not isinstance(baseline.get("root"), str):
+        raise ReleaseApprovalError("native_baseline_original_inputs_unavailable")
+    baseline_root = Path(baseline["root"]).resolve()
+    if not baseline_root.is_dir():
+        raise ReleaseApprovalError("native_baseline_original_inputs_unavailable")
+    if source.use_local or not source.bucket:
+        if baseline_root.is_relative_to(Path(source.local_dir).resolve()):
+            raise ReleaseApprovalError("native_baseline_originals_must_be_independent_of_candidate_storage")
+    accepted = sorted((obj["sha256"], obj["bytes"]) for obj in entry["baseline"]["data_objects"])
+    if sorted((obj.get("sha256"), obj.get("bytes")) for obj in baseline.get("objects", [])) != accepted:
+        raise ReleaseApprovalError("native_baseline_original_manifest_unmatched")
+    candidate_receipt = report["native_inputs"]["candidate"]["receipt"]
+    try:
+        limits = NativeReadLimits(**candidate_receipt["limits"])
+    except (TypeError, KeyError) as exc:
+        raise ReleaseApprovalError("invalid_native_replay_limits") from exc
+    defaults = NativeReadLimits()
+    if any(type(value) is not int or value < 1 or value > getattr(defaults, name) for name, value in vars(limits).items()):
+        raise ReleaseApprovalError("native_replay_limits_exceed_trusted_default_budgets")
+    params = candidate_receipt["parameters"]
+    storage_prefix = params.get("storage_prefix", "")
+    dataset_slug, file_slug, version = prefix.split("/")
+    with source.get_local_version_dir(dataset_slug, file_slug, version,
+                                     include_directories=(Path(storage_prefix).parts[0],) if storage_prefix else None) as version_dir:
+        candidate = {**params, "root": str(Path(version_dir) / storage_prefix), "objects": candidate_receipt["objects"]}
+        # Observed counts/schema digest are receipt output, not reader options.
+        candidate["objects"] = [{key: value for key, value in obj.items() if key not in {"rows_observed", "physical_schema_sha256"}}
+                                for obj in candidate["objects"]]
+        with tempfile.TemporaryDirectory(prefix="hifld-native-release-replay-") as temporary:
+            replay = compare_native_inputs(baseline, candidate, candidate_receipt["policy"], Path(temporary) / "evidence",
+                                           baseline_reference=entry["baseline"], limits=limits)
+            if replay.get("status") not in {"pass", "needs_decision"}:
+                raise ReleaseApprovalError("native_original_derivation_replay_incomplete_or_invalid:" + ";".join(replay.get("reason_codes", [])))
+            if replay != report:
+                raise ReleaseApprovalError("native_original_derivation_or_full_comparison_replay_mismatch")
 
 
 def validate_release_provenance(manifest: dict) -> None:

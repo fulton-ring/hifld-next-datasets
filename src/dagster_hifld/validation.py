@@ -173,6 +173,7 @@ def compare_full_rows(
     report = {
         "schema_version": 1,
         "adapter": "typed-geojson-feature-jsonl-v1",
+        "verification_scope": "reviewed_jsonl_normalization",
         "status": "blocked",
         "baseline": baseline_reference,
         "baseline_sha256": baseline_sha256,

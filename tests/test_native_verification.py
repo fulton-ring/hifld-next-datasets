@@ -25,6 +25,7 @@ from dagster_hifld.validation import sha256_file
 from dagster_hifld.assets.publish import _copy_version_files
 from dagster_hifld.release_approval import ReleaseApprovalError
 from test_full_verification import accepted_fixture
+from scripts.verification.native_synthetic_local import forge_synthetic_candidate_labels
 
 
 def policy(spatial=True):
@@ -96,7 +97,7 @@ def native_gate_fixture(root):
         raise AssertionError(result)
     objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
     candidate = result["native_inputs"]["candidate"]["receipt"]
-    entry.update(baseline=result["baseline"], contract_sha256=result["contract_sha256"],
+    entry.update(baseline=result["baseline"], native_baseline_input=left, contract_sha256=result["contract_sha256"],
                  staged_objects=objects, published_objects=objects,
                  report_sha256=objects[f"{prefix}/metadata/baseline_comparison.json"],
                  native_policy_sha256=candidate["policy_sha256"],
@@ -199,6 +200,78 @@ class NativeVerificationTests(unittest.TestCase):
                 with self.assertRaises(ReleaseApprovalError):
                     _copy_version_files(source, target, "synthetic", "points", "vtest")
                 self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
+
+    def test_deliberately_repinned_false_native_derivation_cannot_publish(self):
+        with tempfile.TemporaryDirectory() as d:
+            source, target, registry = native_gate_fixture(Path(d))
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                _copy_version_files(source, target, "synthetic", "points", "vtest")
+                before = {key: target.object_snapshot(key) for key in target.list_prefix()}
+                forge_synthetic_candidate_labels(source, registry, "synthetic/points/vtest")
+                report = json.loads(source.read_key("synthetic/points/vtest/metadata/baseline_comparison.json"))
+                self.assertEqual(report["status"], "pass")
+                self.assertEqual(pq.ParquetFile(Path(source.local_dir) / "synthetic/points/vtest/geoparquet/data.parquet").read()["state"].to_pylist(), ["NJ"] * 3)
+                with self.assertRaisesRegex(ReleaseApprovalError, "replay_mismatch"):
+                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
+
+    def test_repinned_false_comparison_result_is_independently_recomputed(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source, target, registry = native_gate_fixture(root)
+            value = json.loads(registry.read_text())
+            entry = value["releases"][0]
+            prefix = "synthetic/points/vtest"
+            candidate_root = Path(source.local_dir) / prefix / "geoparquet"
+            native = candidate_root / "data.parquet"
+            table = pq.ParquetFile(native).read()
+            table = table.set_column(table.schema.get_field_index("state"), table.schema.field("state"), pa.array(["NJ"] * 3))
+            pq.write_table(table, native)
+            candidate = spec_for(candidate_root, "parquet")
+            candidate["storage_prefix"] = "geoparquet"
+            metadata = Path(source.local_dir) / prefix / "metadata"
+            result = compare_native_inputs(entry["native_baseline_input"], candidate, {**policy(False), "status": "reviewed"}, metadata,
+                                           baseline_reference=entry["baseline"])
+            self.assertEqual(result["status"], "needs_decision", result)
+            pin = entry["candidate_comparison_input"]
+            pin.update(sha256=result["candidate_sha256"], bytes=result["candidate_input_bytes"])
+            pin["derivation"]["source_objects"] = {f"{prefix}/geoparquet/data.parquet": sha256_file(native)}
+            pin["derivation"]["parameters"]["receipt_sha256"] = result["native_inputs"]["candidate"]["sha256"]
+            result.update(status="pass", reason_codes=[], differences={key: 0 for key in result["differences"]})
+            source.write_key(f"{prefix}/metadata/baseline_comparison.json", json.dumps(result).encode())
+            objects = {key: source.sha256_key(key) for key in source.list_prefix(prefix)}
+            entry.update(staged_objects=objects, published_objects=objects, report_sha256=objects[f"{prefix}/metadata/baseline_comparison.json"])
+            registry.write_text(json.dumps(value))
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                with self.assertRaisesRegex(ReleaseApprovalError, "full_comparison_replay_mismatch"):
+                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+            self.assertFalse(target.list_prefix())
+
+    def test_native_baseline_originals_missing_changed_extra_or_self_reference_block(self):
+        for mode in ["configuration_missing", "file_missing", "bytes_changed", "extra_shard", "candidate_as_baseline"]:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                source, target, registry = native_gate_fixture(root)
+                with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    before = {key: target.object_snapshot(key) for key in target.list_prefix()}
+                    value = json.loads(registry.read_text())
+                    entry = value["releases"][0]
+                    path = root / "accepted-synthetic-baseline/data.parquet"
+                    if mode == "configuration_missing":
+                        entry.pop("native_baseline_input")
+                    elif mode == "file_missing":
+                        path.unlink()
+                    elif mode == "bytes_changed":
+                        path.write_bytes(b"changed baseline original")
+                    elif mode == "extra_shard":
+                        shutil.copyfile(path, path.with_name("extra.parquet"))
+                    else:
+                        entry["native_baseline_input"]["root"] = str(Path(source.local_dir) / "synthetic/points/vtest/geoparquet")
+                    registry.write_text(json.dumps(value))
+                    with self.assertRaisesRegex(ReleaseApprovalError, "native_baseline_original|native_original_derivation"):
+                        _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
 
     def test_proposed_or_missing_native_policy_approval_cannot_publish_even_repinned(self):
         with tempfile.TemporaryDirectory() as d:
