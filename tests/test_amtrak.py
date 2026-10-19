@@ -11,6 +11,7 @@ import http.client
 import io
 import os
 import urllib.parse
+import zipfile
 from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus, Definitions, DagsterInstance, build_schedule_context, materialize
@@ -21,6 +22,7 @@ from shapely import from_wkb
 
 from dagster_hifld.amtrak_extract import build_candidate, inspect_capture, stage_amtrak_capture, bts_amtrak_stations, verify_typed_geopackage, SLUG
 from dagster_hifld.amtrak_extract import amtrak_draft_refresh_job, amtrak_draft_refresh_schedule
+from dagster_hifld.release_approval import validate_release_provenance
 
 
 def write(root, name, value):
@@ -46,7 +48,9 @@ def fixture(root):
     sr = {'wkid': 4326, 'latestWkid': 4326}
     layer = {'fields': fields, 'editingInfo': {'lastEditDate': 1, 'dataLastEditDate': 1}, 'serviceItemId': '1ed62a9f46304679aaa396bed4c8565a', 'geometryType': 'esriGeometryPoint', 'objectIdField': 'OBJECTID', 'hasZ': False, 'hasM': False, 'extent': {'spatialReference': sr}}
     page = {'fields': fields, 'spatialReference': sr, 'features': [{'attributes': {'OBJECTID': 9999999999, 'Code': '007', 'zip': '00123', 'updated_at': 1792320841494, 'latitude': 38.5}, 'geometry': {'x': -100.123456789, 'y': 40.25}}]}
-    item={'id':'1ed62a9f46304679aaa396bed4c8565a','owner':'USDOT_BTS','orgId':'xOi1kZaI0eWDREZv','url':'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer','access':'public','description':'synthetic fixture, not acceptance'}
+    item={'id':'1ed62a9f46304679aaa396bed4c8565a','owner':'USDOT_BTS','orgId':'xOi1kZaI0eWDREZv','url':'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer','access':'public','description':'synthetic fixture, not acceptance',
+          'licenseInfo':'Explicit synthetic test license; no real dataset acceptance',
+          'accessInformation':'Synthetic Amtrak producer/BTS distributor attribution for behavior test only'}
     for suffix in ('', '_after'):
         write(root, 'bts_item' + suffix, item)
         write(root, 'bts_layer' + suffix, layer)
@@ -124,6 +128,10 @@ class AmtrakDraftTest(unittest.TestCase):
         root=self.root/'staging'/SLUG/SLUG/'v0.0.0-synthetic'
         self.assertEqual((root/'raw_arcgis/page-000.body').read_bytes(),(self.root/'page-000.body').read_bytes())
         source=json.loads((root/'metadata/source_manifest.json').read_bytes())
+        validate_release_provenance(source)
+        self.assertEqual(source['schema_version'], 1)
+        self.assertEqual(source['processor'], 'HIFLD Next')
+        self.assertEqual(len(source['inputs']),9)
         self.assertTrue(source['inputs'][0]['input_id'])
         self.assertFalse(source['promotion_allowed'])
         self.assertEqual(pq.read_table(root/'draft_candidate/candidate.parquet').num_rows,1)
@@ -281,3 +289,84 @@ class AmtrakDraftTest(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class AmtrakActualReplayReviewRegression(unittest.TestCase):
+    """Use the complete committed1,036-row capture, never a substitute fixture."""
+    def setUp(self):
+        self.temporary=tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root=pathlib.Path(self.temporary.name)
+        self.capture=self.root/'capture'
+        self.capture.mkdir()
+        archive=pathlib.Path(__file__).resolve().parents[1]/'docs/dataset-sources/amtrak-stations/evidence/complete-source-20261019.zip'
+        with zipfile.ZipFile(archive) as raw:
+            raw.extractall(self.capture)
+
+    def test_actual_manifest_passes_shared_validation_and_catalog_keeps_every_input(self):
+        from dagster_hifld.catalog import summarize_staged_catalog
+        from dagster_hifld.source_manifest import load_resolved_source_manifest
+        storage=StagingStorageResource(local_dir=str(self.root/'staging'),use_local=True)
+        version='v0.0.0-actual-review-provenance'
+        stage_amtrak_capture(self.capture,storage,version)
+        staged=pathlib.Path(storage.local_dir)/SLUG/SLUG/version
+        manifest=json.loads((staged/'metadata/source_manifest.json').read_bytes())
+        validate_release_provenance(manifest)
+        self.assertEqual(manifest['schema_version'],1)
+        self.assertEqual(manifest['processor'],'HIFLD Next')
+        self.assertEqual(manifest['complete_rows'],1036)
+        bodies=[p for p in (staged/'raw_arcgis').rglob('*.body')]
+        self.assertEqual(len(manifest['inputs']),len(bodies))
+        self.assertEqual(len(bodies),18)
+        self.assertEqual({i['input_id'] for i in manifest['inputs']},{str(p.relative_to(staged)) for p in bodies})
+        for item in manifest['inputs']:
+            raw=staged/item['raw_path']
+            receipt=json.loads((staged/item['receipt_path']).read_bytes())
+            self.assertEqual(item['sha256'],hashlib.sha256(raw.read_bytes()).hexdigest())
+            self.assertEqual(item['bytes'],raw.stat().st_size)
+            self.assertEqual(item['retrieval_url'],receipt['final_url'])
+            self.assertEqual(item['canonical_url'],receipt['url'])
+            self.assertEqual(item['retrieved_at'],receipt['observed_at'])
+            self.assertEqual(item['role'],'official_distributor')
+            self.assertTrue(item['delegation_evidence'])
+            self.assertIn('release_date_unknown_reason',item)
+        resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
+        summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
+        self.assertEqual(summary.data_dictionary['inputs'],manifest['inputs'])
+        self.assertEqual(summary.quality_manifest['feature_count'],1036)
+        self.assertFalse(manifest['promotion_allowed'])
+        self.assertNotIn('acceptance_decision',manifest)
+
+    def test_all_eight_authentic_witnesses_error_or_nonobject_are_quarantined(self):
+        names=['bts_item','bts_item_after','bts_layer','bts_layer_after',
+               'bts_count','bts_count_after','bts_ids','bts_ids_after']
+        for name in names:
+            body=self.capture/(name+'.body')
+            receipt_path=self.capture/(name+'.receipt.json')
+            original,original_receipt=body.read_bytes(),receipt_path.read_bytes()
+            for kind in ('error','array','null'):
+                value=json.loads(original)
+                if kind=='error':value['error']={'code':500,'message':'Injected replay regression; original authentic fields retained'}
+                elif kind=='array':value=[value]
+                else:value=None
+                changed=json.dumps(value).encode()
+                body.write_bytes(changed)
+                receipt=json.loads(original_receipt)
+                receipt.update(bytes=len(changed),sha256=hashlib.sha256(changed).hexdigest())
+                receipt_path.write_text(json.dumps(receipt))
+                storage=StagingStorageResource(local_dir=str(self.root/'failures'/name/kind),use_local=True)
+                version='v0.0.0-review-'+name.replace('_','-')+'-'+kind
+                with self.subTest(name=name,kind=kind), self.assertRaisesRegex(ValueError,'ArcGIS application error or nonobject'):
+                    stage_amtrak_capture(self.capture,storage,version)
+                stage=pathlib.Path(storage.local_dir)
+                self.assertFalse((stage/SLUG).exists())
+                copies=list((stage/'quarantine').rglob(name+'.body'))
+                self.assertEqual(len(copies),1)
+                self.assertEqual(copies[0].read_bytes(),changed)
+                retained_receipts=list((stage/'quarantine').rglob(name+'.receipt.json'))
+                self.assertEqual(retained_receipts[0].read_bytes(),receipt_path.read_bytes())
+                status=json.loads(next((stage/'quarantine').rglob('status.json')).read_bytes())
+                self.assertEqual(status['state'],'blocked')
+                self.assertTrue(status['raw_preserved'])
+                body.write_bytes(original)
+                receipt_path.write_bytes(original_receipt)

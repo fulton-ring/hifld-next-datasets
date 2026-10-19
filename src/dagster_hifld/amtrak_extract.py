@@ -33,7 +33,7 @@ from shapely import Point, to_wkb
 
 from dagster_hifld.partitions import SEMVER_VERSION_RE
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.release_approval import verifier_implementation_sha256
+from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 
 SLUG = 'amtrak-stations'
 ITEM_ID = '1ed62a9f46304679aaa396bed4c8565a'
@@ -60,6 +60,14 @@ def _strict_json(raw):
 
 def _json(path: Path):
     return _strict_json(path.read_bytes())
+
+
+def _arcgis_json(path: Path):
+    """Replay uses the same application-error boundary as live extraction."""
+    data = _json(path)
+    if not isinstance(data, dict) or 'error' in data:
+        raise ValueError(f'ArcGIS application error or nonobject response: {path.name}')
+    return data
 
 
 def _require_review_staging(staging):
@@ -212,8 +220,12 @@ def capture_live(destination: Path, staging: StagingStorageResource) -> None:
 
 def inspect_capture(root: Path) -> dict:
     """Fail closed on changed census/schema/edit date, truncation, IDs or geometry."""
-    item = _json(root / 'bts_item.body')
-    ending_item = _json(root / 'bts_item_after.body')
+    # Check all terminal bodies before any of their fields can be interpreted.
+    # Retained failed/partial attempts are evidence and are never candidate data.
+    for path in sorted(root.glob('*.body')):
+        _arcgis_json(path)
+    item = _arcgis_json(root / 'bts_item.body')
+    ending_item = _arcgis_json(root / 'bts_item_after.body')
     for current in (item, ending_item):
         if (current.get('id') != ITEM_ID or current.get('owner') != 'USDOT_BTS'
                 or current.get('orgId') != 'xOi1kZaI0eWDREZv'
@@ -222,8 +234,8 @@ def inspect_capture(root: Path) -> dict:
             raise ValueError('Producer/distribution identity changed or is not the pinned official item')
     if any(item.get(k) != ending_item.get(k) for k in ('modified', 'description', 'accessInformation', 'url')):
         raise ValueError('Source item changed during extraction')
-    layer = _json(root / 'bts_layer.body')
-    after = _json(root / 'bts_layer_after.body')
+    layer = _arcgis_json(root / 'bts_layer.body')
+    after = _arcgis_json(root / 'bts_layer_after.body')
     stable_keys = ('fields', 'editingInfo', 'extent', 'geometryType', 'hasZ', 'hasM',
                    'serviceItemId', 'objectIdField')
     if any(layer.get(key) != after.get(key) for key in stable_keys):
@@ -234,10 +246,10 @@ def inspect_capture(root: Path) -> dict:
         raise ValueError('Unsupported geometry dimensionality')
     if layer['extent']['spatialReference'] != {'wkid': 4326, 'latestWkid': 4326}:
         raise ValueError('Native source CRS drift')
-    expected = _json(root / 'bts_ids.body')['objectIds']
-    ending = _json(root / 'bts_ids_after.body')['objectIds']
-    count = _json(root / 'bts_count.body')['count']
-    final_count = _json(root / 'bts_count_after.body')['count']
+    expected = _arcgis_json(root / 'bts_ids.body')['objectIds']
+    ending = _arcgis_json(root / 'bts_ids_after.body')['objectIds']
+    count = _arcgis_json(root / 'bts_count.body')['count']
+    final_count = _arcgis_json(root / 'bts_count_after.body')['count']
     _census(count, expected)
     _census(final_count, ending)
     if count != final_count or set(expected) != set(ending):
@@ -246,6 +258,11 @@ def inspect_capture(root: Path) -> dict:
     expected_pages = (count + 1999) // 2000
     if [p.name for p in paths] != [f'page-{n:03d}.body' for n in range(expected_pages)]:
         raise ValueError('Missing or extra page')
+    required_bodies = {p.name for p in paths} | {
+        name + '.body' for name in ('bts_item', 'bts_item_after', 'bts_layer', 'bts_layer_after',
+                                   'bts_ids', 'bts_ids_after', 'bts_count', 'bts_count_after')}
+    if {p.name for p in root.glob('*.body')} != required_bodies:
+        raise ValueError('Missing or extra terminal source response')
     fields = {f['name']: f for f in layer['fields']}
     if len(fields) != len(layer['fields']) or any(f['type'] not in _TYPES for f in fields.values()):
         raise ValueError('Unsupported or duplicate schema field')
@@ -255,7 +272,7 @@ def inspect_capture(root: Path) -> dict:
     seen, station_ids, files = set(), set(), []
     bounds = [math.inf, math.inf, -math.inf, -math.inf]
     for path in paths:
-        page = _json(path)
+        page = _arcgis_json(path)
         if 'error' in page or page.get('exceededTransferLimit'):
             raise ValueError('Error or truncated response')
         if page.get('fields') != layer['fields']:
@@ -465,6 +482,68 @@ def write_typed_geopackage(candidate: Path, destination: Path, source_edit_ms: i
     temporary.replace(destination)
 
 
+def _provenance_inputs(capture: Path, audit: dict) -> tuple[list[dict], list[dict]]:
+    """Describe each observed retained HTTP body without inventing a retrieval.
+
+    Terminal copies and attempt originals have separate raw paths and identical
+    response pins when they are aliases. Failed attempts remain evidence, never
+    data used to construct the candidate. A pre-response transport failure has no
+    observed HTTP body and is recorded separately rather than assigned a URL.
+    """
+    item = audit['official_item']
+    license_text = item.get('licenseInfo')
+    attribution = item.get('accessInformation')
+    if not isinstance(license_text, str) or not license_text.strip() or not isinstance(attribution, str) or not attribution.strip():
+        raise ValueError('Captured official item does not establish license and attribution provenance')
+    inputs, unobserved = [], []
+    for record in sorted(audit['raw_files'], key=lambda value: value['name']):
+        if not record['name'].endswith('.body'):
+            continue
+        path = Path(record['name'])
+        receipt_name = str(path.with_suffix('.receipt.json'))
+        receipt = _json(capture / receipt_name)
+        if not isinstance(receipt, dict) or receipt.get('sha256') != record['sha256'] or receipt.get('bytes') != record['bytes']:
+            raise ValueError('Retained response attempt receipt/checksum mismatch')
+        if receipt.get('status') == 0 and record['bytes'] == 0 and not receipt.get('final_url'):
+            unobserved.append({**record, 'receipt': receipt_name,
+                               'meaning': 'Transport failed before an observed HTTP response; no retrieval URL invented'})
+            continue
+        if type(receipt.get('status')) is not int or not 100 <= receipt['status'] <= 599:
+            raise ValueError('Retained response lacks an observed HTTP status')
+        terminal_name = path.parts[1] if path.parts[0] == 'attempts' else path.stem
+        terminal = _json(capture / (terminal_name + '.receipt.json'))
+        requested = urllib.parse.urlsplit(terminal['url'])
+        observed = urllib.parse.urlsplit(receipt.get('final_url', ''))
+        if (receipt.get('url') != terminal['url'] or
+                (observed.scheme, observed.netloc, observed.path, observed.fragment) !=
+                (requested.scheme, requested.netloc, requested.path, requested.fragment) or
+                sorted(urllib.parse.parse_qsl(observed.query, keep_blank_values=True)) !=
+                sorted(urllib.parse.parse_qsl(requested.query, keep_blank_values=True))):
+            raise ValueError('Retained response lacks exact observed official request provenance')
+        observed_at = datetime.datetime.fromisoformat(receipt.get('observed_at', ''))
+        if observed_at.tzinfo is None:
+            raise ValueError('Retained response retrieval time must include timezone')
+        inputs.append({
+            'input_id': 'raw_arcgis/' + record['name'],
+            'producer': 'National Railroad Passenger Corporation (Amtrak)',
+            'distributor': 'Bureau of Transportation Statistics (USDOT_BTS)',
+            'host': observed.hostname, 'role': 'official_distributor',
+            'canonical_url': receipt['url'], 'retrieval_url': receipt['final_url'],
+            'retrieved_at': receipt['observed_at'], 'sha256': record['sha256'], 'bytes': record['bytes'],
+            'license': license_text, 'attribution': attribution,
+            'delegation_evidence': {'official_item': ITEM_URL, 'captured_item_sha256': _digest(capture / 'bts_item.body'),
+                                    'published_producer_distributor_attribution': attribution,
+                                    'meaning': 'Observed NTAD attribution; no dataset or release acceptance implied'},
+            'release_date_unknown_reason': 'This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.',
+            'raw_path': 'raw_arcgis/' + record['name'], 'receipt_path': 'raw_arcgis/' + receipt_name,
+            'receipt_sha256': _digest(capture / receipt_name), 'http_status': receipt['status'],
+            'complete_body': receipt.get('complete_body') is True,
+            'use': 'terminal_candidate_input' if path.parts[0] != 'attempts' else 'retained_response_attempt_evidence',
+            'acceptance': 'unapproved_draft',
+        })
+    return inputs, unobserved
+
+
 def _stage_capture_payload(capture: Path, staging: StagingStorageResource, version: str) -> dict:
     """Stage native raw proof + lossless typed draft and canonical GeoJSON input.
 
@@ -507,18 +586,21 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     if path.exists(): partial.unlink()
     else: partial.replace(path)
     metadata = root / 'metadata'; metadata.mkdir(exist_ok=True)
+    inputs, unobserved_attempts = _provenance_inputs(capture, audit)
     manifest = {'title':'Amtrak Stations', 'agency':'National Railroad Passenger Corporation (Amtrak)',
         'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
-        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'source_release_statement':audit['official_item']['description'], 'source_attribution':audit['official_item'].get('accessInformation'), 'schema_version':'draft-unapproved-v1',
-        'processor':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
+        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'source_release_statement':audit['official_item']['description'], 'source_attribution':audit['official_item'].get('accessInformation'), 'schema_version':1,
+        'processor':'HIFLD Next', 'processing_identity':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
         'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-        'inputs':[{'input_id':SERVICE, 'producer':candidate['producer'], 'distributor':candidate['distributor'],
-            'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-            'raw_files':audit['raw_files'], 'crs':audit['crs'], 'fields':audit['fields']}],
-        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
-        'lineage':{'producer':'Amtrak', 'distributor_item':'1ed62a9f46304679aaa396bed4c8565a','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
+        'inputs':inputs,
+        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; original DateModif text and native coordinate values retained', 'acceptance':'unapproved'}],
+        'lineage':{'producer':'Amtrak', 'distributor_item':ITEM_ID,'crosswalk':'unverified; DataLumos403 prevents inspecting the mapping',
+                   'raw_files':audit['raw_files'], 'source_crs':audit['crs'], 'source_fields':audit['fields'],
+                   'unobserved_transport_attempts':unobserved_attempts},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
         'unsupported_output_formats':{'shapefile_zip':'Unapproved lossy format: source fields include >10-character names and nullable string/identifier fields; regenerated DBF needs a reviewed mapping; no reviewed lossless name/type/null/value mapping.'}}
+    # Structural correctness is implementation behavior, not an acceptance decision.
+    validate_release_provenance(manifest)
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
