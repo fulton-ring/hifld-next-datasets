@@ -1,0 +1,31 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferry-terminals/ferry-terminals/v1.0.0/geopackage/ferry-terminals-geopackage.gpkg",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferry-terminals/ferry-terminals/v1.0.0/geopackage/ferry-terminals-geopackage.gpkg",
+  "status": 200,
+  "fetched_at": "2026-10-19T09:43:26.829665+00:00",
+  "bytes": 311296,
+  "sha256": "5e784ea23841c42fd9fd4566ddb892d0e2ad0815926ce042986c264e141bcde3",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU83uAW24Q1HIDMAWQVBIfEaeJL7Y2FibbnJMXBpQQ9iRGdL5X7xnrYLmD8RFJC7LIOty",
+    "expires": "Mon, 19 Oct 2026 10:43:26 GMT",
+    "date": "Mon, 19 Oct 2026 09:43:26 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:31 GMT",
+    "etag": "\"b323f2d39a6d23970d2feefa0658c157\"",
+    "x-goog-generation": "1791506371148280",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "311296",
+    "x-goog-hash": "crc32c=rUH9TQ==, md5=syPy05ptI5cNL+76BljBVw==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "311296",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "447"
+  },
+  "wire_bytes": 311296
+}

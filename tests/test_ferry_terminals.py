@@ -1,0 +1,124 @@
+"""Complete real845-row NCFO source plus adversarial draft-pipeline behavior."""
+from pathlib import Path
+from unittest import TestCase,mock
+from datetime import datetime,timedelta
+import copy,fcntl,gzip,json,os,sqlite3,tempfile
+
+import httpx
+import pyarrow.parquet as pq
+from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
+from dagster_hifld.sources import ferry_terminals as s
+
+C=Path(__file__).parents[1]/'docs/dataset-sources/ferry-terminals/evidence/captures'
+class FerryTerminalsTests(TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.storage=StagingStorageResource(local_dir=self.tmp.name,use_local=True)
+    def stage(self,capture=C):return s.stage_ferry_terminals_candidate(self.storage,capture_dir=capture)
+    def root(self,out):return Path(self.tmp.name)/s.SLUG/s.SLUG/out['version']
+    def snap(self,root):return {str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+    def test_complete_real_native_nulls_repeated_string_ids_and_idempotency(self):
+        out=self.stage();root=self.root(out);before=self.snap(root);self.assertEqual(self.stage(),out);self.assertEqual(self.snap(root),before)
+        t=pq.read_table(root/'candidate/typed-source.parquet');self.assertEqual(len(t),845);self.assertEqual(str(t.schema.field('OBJECTID').type),'int32');self.assertEqual(str(t.schema.field('PARKING').type),'int32');self.assertEqual(str(t.schema.field('LATITUDE').type),'double');self.assertFalse(t.schema.field('OBJECTID').nullable)
+        self.assertEqual(t.column('PARKING').null_count,7);self.assertEqual(len(set(t.column('TERMINAL_ID').to_pylist())),569);self.assertEqual(len(set(t.column('OPERATOR_ID').to_pylist())),161);self.assertEqual(len(set(t.column('OBJECTID').to_pylist())),845)
+        self.assertEqual(sum(x=='' for x in t.column('TERMINAL_OPERATED_BY').to_pylist()),301)
+        self.assertEqual((root/f'geoparquet/{s.SLUG}.parquet').read_bytes(),(root/'candidate/typed-source.parquet').read_bytes())
+        manifest=json.loads((root/'metadata/source_manifest.json').read_bytes());self.assertFalse(manifest['approved']);self.assertEqual(len(manifest['inputs']),9)
+    def test_missing_renamed_ids_type_loss_extra_columns_geometry_and_truncation(self):
+        original=json.loads((C/'features.body').read_bytes())
+        def missing(j):del j['features'][0]['attributes']['TERMINAL_ID']
+        def rename(j):j['features'][0]['attributes']['terminal_id']=j['features'][0]['attributes'].pop('TERMINAL_ID')
+        def number(j):j['features'][0]['attributes']['TERMINAL_ID']=228
+        def integer(j):j['features'][0]['attributes']['OBJECTID']=1.0
+        def duplicate(j):j['features'][0]['attributes']['OBJECTID']=j['features'][1]['attributes']['OBJECTID']
+        def extra(j):j['features'][0]['attributes']['NEW']='unexpected'
+        def geom(j):j['features'][0]['geometry']['z']=0
+        def short(j):j['features'].pop()
+        def transfer(j):j['exceededTransferLimit']=True
+        for mutate in (missing,rename,number,integer,duplicate,extra,geom,short,transfer):
+            with self.subTest(mutate=mutate.__name__):
+                j=copy.deepcopy(original);mutate(j);b=s.encode(j)
+                with mock.patch.object(s,'PIN',s.sha(b)),mock.patch.object(s,'ARCHIVE_BYTES',len(b)):
+                    with self.assertRaises(s.FerryQuarantineError):s.inspect_archive(b,Path(self.tmp.name))
+    def test_leading_zero_string_and_all_source_nullable_values_are_not_coerced(self):
+        j=json.loads((C/'features.body').read_bytes());j['features'][0]['attributes']['TERMINAL_ID']='0228';b=s.encode(j)
+        with mock.patch.object(s,'PIN',s.sha(b)),mock.patch.object(s,'ARCHIVE_BYTES',len(b)):
+            rows,audit,_=s.inspect_archive(b,Path(self.tmp.name));table=s.typed_table(rows,audit)
+        self.assertEqual(table.column('TERMINAL_ID')[0].as_py(),'0228');self.assertEqual(table.column('PARKING').null_count,7)
+    def test_complete_population_and_official_delegation_are_required(self):
+        captures={n:((C/(n+'.body')).read_bytes(),json.loads((C/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        s.provenance(captures);s.validate_complete_bundle(captures)
+        for n in ('count_before','count_after','ids_before','ids_after'):
+            changed=copy.deepcopy(captures);j=json.loads(changed[n][0])
+            if n.startswith('ids'):j['objectIds'].pop()
+            else:j['count']-=1
+            changed[n]=(s.encode(j),changed[n][1])
+            with self.assertRaises(s.FerryQuarantineError):s.validate_complete_bundle(changed)
+        changed=copy.deepcopy(captures);j=json.loads(changed['item'][0]);j['owner']='an_unrelated_mirror';b=s.encode(j);receipt=changed['item'][1];receipt.update(bytes=len(b),sha256=s.sha(b));changed['item']=(b,receipt)
+        with self.assertRaisesRegex(s.FerryQuarantineError,'producer_account'):s.provenance(changed)
+    def cache_mutation(self,mutate,reason):
+        out=self.stage();root=self.root(out);mutate(root);p=root/'metadata/ferry_terminals_candidate_ready.json';j=json.loads(p.read_bytes())
+        for n in j['objects']:
+            if (root/n).exists():j['objects'][n]=s.sha((root/n).read_bytes())
+        p.write_bytes(s.encode(j));before=self.snap(root)
+        with self.assertRaisesRegex(s.FerryQuarantineError,reason):self.stage()
+        self.assertFalse(root.exists());self.assertTrue(any(self.snap(p)==before for p in (Path(self.tmp.name)/'_quarantine'/s.SLUG).glob('invalid-cache-*/candidate')));self.assertEqual(self.stage(),out)
+    def test_self_repinned_entire_native_container_crs_is_not_authority(self):
+        def alter(root):
+            with sqlite3.connect(root/'geopackage'/f'{s.SLUG}.gpkg') as db:db.execute('UPDATE gpkg_contents SET srs_id=3857')
+        self.cache_mutation(alter,'canonical_container_differs')
+    def test_self_repinned_false_report_and_extra_identifier_file_quarantined(self):
+        for label in ('report','extra'):
+            with self.subTest(label=label):
+                if label=='report':self.cache_mutation(lambda root:(root/'metadata/source-fidelity/baseline_comparison.md').write_text('invented PASS'),'source_fidelity_evidence_differs')
+                else:self.cache_mutation(lambda root:(root/'candidate/invented-id.json').write_text('{}'),'unrostered')
+    def test_missing_ready_moves_whole_cache_and_restores_original_newer_receipts(self):
+        out=self.stage();root=self.root(out);before=self.snap(root);new=Path(self.tmp.name)/'newer';new.mkdir()
+        for n in s.URLS:
+            body=(C/(n+'.body')).read_bytes();r=json.loads((C/(n+'.receipt.json')).read_bytes());r['fetched_at']=(datetime.fromisoformat(r['fetched_at'])+timedelta(hours=2)).isoformat();(new/(n+'.body')).write_bytes(body);(new/(n+'.receipt.json')).write_bytes(s.encode(r))
+        self.assertEqual(self.stage(new),out);self.assertEqual(self.snap(root),before)
+        (root/'metadata/ferry_terminals_candidate_ready.json').unlink()
+        with self.assertRaisesRegex(s.FerryQuarantineError,'missing_candidate_ready'):self.stage(new)
+        self.assertFalse(root.exists());self.assertEqual(self.stage(new),out);self.assertEqual(self.snap(root),before)
+    def test_missing_anchor_and_coforged_wrong_source_commit_fail_whole_cache(self):
+        out=self.stage();root=self.root(out);anchor=Path(self.tmp.name)/'_candidate-construction'/s.SLUG/(out['version']+'.json');original=anchor.read_bytes();anchor.unlink()
+        with self.assertRaisesRegex(s.FerryQuarantineError,'missing_original_construction'):self.stage()
+        self.assertFalse(root.exists());self.assertFalse(anchor.exists());anchor.write_bytes(original);self.assertEqual(self.stage(),out)
+        bundle=json.loads(original);bundle['manifest']['code_commit']='0'*40;anchor.write_bytes(s.encode(bundle));(root/'metadata/source_manifest.json').write_bytes(s.encode(bundle['manifest']));ready=root/'metadata/ferry_terminals_candidate_ready.json';j=json.loads(ready.read_bytes());j['objects']['metadata/source_manifest.json']=s.sha(s.encode(bundle['manifest']));ready.write_bytes(s.encode(j))
+        with self.assertRaisesRegex(s.FerryQuarantineError,'construction_invalid_commit'):self.stage()
+        self.assertFalse(root.exists())
+    def test_private_install_and_cache_share_common_lock_and_preserve_winner(self):
+        out=self.stage();root=self.root(out);original=s.reconcile_cached_candidate;observed=[]
+        def validate(*args,**kwargs):
+            fd=os.open(root.parent/('.'+root.name+'.lock'),os.O_RDWR)
+            try:
+                with self.assertRaises(BlockingIOError):fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                observed.append(True)
+            finally:os.close(fd)
+            return original(*args,**kwargs)
+        with mock.patch.object(s,'reconcile_cached_candidate',side_effect=validate):self.stage()
+        self.assertEqual(observed,[True])
+    def test_losing_install_never_detaches_a_complete_concurrent_winner(self):
+        original=s.commit_complete_candidate;winning=[]
+        def lose(storage,prefix,payloads,ready):
+            original(storage,prefix,payloads,ready);path=s.local_candidate_path(storage,prefix);winning.append((path,self.snap(path)))
+            raise s.FerryQuarantineError('concurrent_or_incomplete_existing_candidate')
+        with mock.patch.object(s,'commit_complete_candidate',side_effect=lose):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'concurrent_or_incomplete'):self.stage()
+        self.assertEqual(self.snap(winning[0][0]),winning[0][1]);self.stage()
+    def test_published_and_remote_storage_reject_unapproved_draft(self):
+        for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'draft_requires'):s.stage_ferry_terminals_candidate(storage,capture_dir=C)
+    def test_live_compressed_wire_counter_retains_complete_decoded_source(self):
+        original=httpx.Client
+        def handle(request):
+            name=next(n for n,u in s.URLS.items() if u==str(request.url));body=(C/(name+'.body')).read_bytes();wire=gzip.compress(body)
+            return httpx.Response(200,stream=httpx.ByteStream(wire),headers={'Content-Encoding':'gzip','Content-Length':str(len(wire))},request=request)
+        with mock.patch.object(s.httpx,'Client',side_effect=lambda **kwargs:original(transport=httpx.MockTransport(handle),**kwargs)):got=s.acquire(self.storage,None)
+        self.assertEqual(len(got),9);self.assertEqual(got['features'][0],(C/'features.body').read_bytes())
+    def test_partial_download_bounded_retries_preserve_original_partial_bytes(self):
+        original=httpx.Client;calls=[]
+        def handle(request):
+            calls.append(str(request.url));return httpx.Response(200,stream=httpx.ByteStream(b'partial'),headers={'Content-Length':'100'},request=request)
+        with mock.patch.object(s.httpx,'Client',side_effect=lambda **kwargs:original(transport=httpx.MockTransport(handle),**kwargs)):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'bounded_fetch_exhausted'):s.acquire(self.storage,None)
+        self.assertEqual(len(calls),3);bodies=list((Path(self.tmp.name)/'_quarantine'/s.SLUG).rglob('response.body'));self.assertEqual(len(bodies),3);self.assertTrue(all(p.read_bytes()==b'partial' for p in bodies))
