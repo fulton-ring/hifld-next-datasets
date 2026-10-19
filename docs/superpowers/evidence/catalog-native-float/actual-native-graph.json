@@ -1,0 +1,21 @@
+{
+  "classification": "actual local synthetic full graph; no real baseline acceptance",
+  "unapproved_run_id": "04f5dcdc-e5ae-44bb-969b-58da4abd1b62",
+  "success_run_id": "832fd118-636c-45ff-8264-ff3e5bab1bad",
+  "failed_drift_run_id": "13c79c70-5c96-4931-bb44-d651771a2d8b",
+  "published_objects": 22,
+  "accepted_objects_unchanged": true,
+  "candidate_evidence_preserved": true,
+  "repinned_false_derivation_blocked": true,
+  "invalid_provenance_blocked": true,
+  "source_input_count": 2,
+  "dagster_home": "/workspace/work/hifld-coordinator/417-catalog-float-native-graph/dagster",
+  "archival_formats": [
+    "geopackage",
+    "geoparquet"
+  ],
+  "evidenced_skips": [
+    "pmtiles",
+    "shapefile_zip"
+  ]
+}
