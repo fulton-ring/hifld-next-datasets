@@ -30,5 +30,6 @@
   "catalog_capture": "published-candidate-catalog.json",
   "catalog_sha256": "bbd688b3f13ccb31028268f6b162efdc5cd4cd7dabf16e315eb564b5576562fc",
   "acceptance": "candidate_only_unapproved",
-  "generation_pinned_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/12nm-territorial-sea/12nm-territorial-sea/v1.0.0/geoparquet/12nm-territorial-sea.parquet?generation=1791506334866309"
+  "generation_pinned_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/12nm-territorial-sea/12nm-territorial-sea/v1.0.0/geoparquet/12nm-territorial-sea.parquet?generation=1791506334866309",
+  "local_preserved_path": "/workspace/work/hifld-coordinator/noaa2/published.parquet"
 }

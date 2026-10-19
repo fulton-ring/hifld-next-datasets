@@ -349,9 +349,13 @@
     "geojson_catalog_checksum": "d50110983ca92a089845bbb64e303a902ffb37",
     "parquet_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/12nm-territorial-sea/12nm-territorial-sea/v1.0.0/geoparquet/12nm-territorial-sea.parquet",
     "parquet_catalog_checksum": "d50110e38c74495a8e9c3c7edf3cc34f3c1a87",
-    "retrieval_status": "Portal schema and versioned metadata inspected using web tool; direct baseline object requests blocked by proxy CONNECT 403. Catalog checksums recorded verbatim and not recomputed.",
-    "full_row_comparison": "not_performed",
-    "acceptance": "Maintainer has not approved a pinned baseline/contract."
+    "retrieval_status": "HTTP200 complete exact version object captured2026-10-19; remains unapproved",
+    "full_row_comparison": "evidence/published-candidate-comparison.json; all87 IDs and shared values and orderedgeometrycoordinates agree; physical schema differences require review",
+    "acceptance": "Maintainer has not approved a pinned baseline/contract.",
+    "sha256": "81235ea80c9febddf06871facd8afa5ca3670940da7a7fa05acc17c05f0e0152",
+    "bytes": 1411062,
+    "generation": "1791506334866309",
+    "generation_pinned_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/12nm-territorial-sea/12nm-territorial-sea/v1.0.0/geoparquet/12nm-territorial-sea.parquet?generation=1791506334866309"
   },
   "files": [
     {
@@ -419,16 +423,16 @@
     "use_constraints": "NOAA says not for legal use; digital limits are for chart updating, with official depiction in NOAA ENCs. Preserve attribution and limitations. No new license inferred from the archive."
   },
   "refresh_proposal": {
-    "status": "not_implemented",
-    "cadence": "Monthly metadata/release check proposed; NOAA states regional changes may occur every few months, with ongoing maintenance. Not an assertion of a fixed agency schedule.",
-    "failure_policy": "Reject HTTP errors and ArcGIS JSON errors, missing/duplicate IDs, incomplete pages or mismatched coverage; bounded retries only. Retain raw response bytes losslessly in a future approved implementation; quarantine drift, preserve accepted release.",
-    "idempotency": "Future implementation should key unchanged-source detection on raw checksums plus producer release evidence, not portal edit time."
+    "status": "draft_implemented_local_only_stopped",
+    "cadence": "Stopped Monday06:00 America/New_York source-only job; no activation. Review cadence before operational use; producer does not promise weekly releases.",
+    "failure_policy": "Shared bounded retry, HTTP/ArcGIS errors and completeness/schema/ID/geometry/coverage drift retain exact raw input and quarantine; release approval independently required",
+    "idempotency": "Content/raw-policy-addressed immutable staging namespace; identical full source inputs leave candidate bytes unchanged, new receipts append"
   },
   "implementation_blockers": [
-    "Original DHS crosswalk workbook match is unverified (network blocked).",
-    "Archive/accepted baseline raw objects unavailable; no full baseline comparison or approved raw/published schema and ID mapping.",
-    "Latest maintained release not established beyond advertised 2013 version; metadata says update forthcoming.",
-    "Issue #417 shared verification/promotion prerequisites and approved baseline contracts remain mandatory."
+    "Original DHS crosswalk workbook match remains unverified; original archive V1 relationship is not asserted as accepted.",
+    "Maintainer must accept pinned published baseline and versioned raw/published mapping before release; candidate implementation preserves native physical types and raw GeoJSON IDs, quarantining proposed output migrations.",
+    "Real release-date freshness unresolved: current InPort still advertises2013 publication/revision; no modern source release date invented.",
+    "Source-specific baseline/contract/compatibility acceptance and independent exact-head code review remain required; #417 shared approval gates fail closed."
   ],
   "validation": {
     "research_audit": "Passed offline verification of all 87 retrieved features, ID sets, attributes, coordinates, region counts and geometry validity.",
@@ -475,5 +479,41 @@
     "safe_extraction_and_replay": "evidence/HISTORICAL-REPLAY.md",
     "requires_live_refetch": false,
     "scope": "Existing historical captures for this 87-feature pilot only; original bytes verified before archiving."
+  },
+  "scope_correction": {
+    "coordinator": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+    "worker": "noaa_2",
+    "authorization": "User explicitly authorizes reviewable draft source code and local testing before real acceptance; release remains gated",
+    "acceptance_granted": false
+  },
+  "draft_implementation": {
+    "asset": "src/dagster_hifld/assets/noaa.py::noaa_12nm_territorial_sea",
+    "shared_extractor": "src/dagster_hifld/noaa_extract.py (owned by#3, #417 approval gates)",
+    "tests": "tests/test_noaa_territorial_pipeline.py",
+    "local_runner": "scripts/verification/noaa_territorial_local.py",
+    "local_only": true,
+    "source_layer": 1,
+    "observed_rows": 87,
+    "native_geometry_types": {
+      "LineString": 80,
+      "MultiLineString": 7
+    },
+    "preservation": "All declared source attributes/types/vertices retained; seven raw responses retain GeoJSON feature IDs separately. Published id never inferred/inserted into native candidate; historical baseline retained in full.",
+    "unsupported": "Regenerated Shapefile is explicitly unsupported because DBF truncates/trims strings and cannot preserve all source physical types; PMTiles visualization is not a lossless replacement.",
+    "pending_migrations": [
+      "PUB_DATE sourceint64 epoch-ms vs publisheddouble with9nulls",
+      "UNILATERAL sourcefloat64 vs publishedint64",
+      "sourceSHAPE mixed80LineString/7MultiLineString vs publishedgeometry87MultiLineString",
+      "Published id87 equals GeoJSON featureid/OBJECTID; any explicit mapping must be reviewed independently; no substitute IDs generated"
+    ],
+    "validation": "evidence/draft-validation.json, draft-integration-result.json and draft-terminal-audit.json"
+  },
+  "current_provenance_retry": {
+    "receipts": "evidence/current-provenance-requests.json",
+    "producer_landing_status": 200,
+    "inport_status": 200,
+    "inport_datePublished": "2013-01-01",
+    "inport_dateModified": "2013-01-01",
+    "meaning": "Metadata publication/revision dates do not establish a current downloadable release date"
   }
 }

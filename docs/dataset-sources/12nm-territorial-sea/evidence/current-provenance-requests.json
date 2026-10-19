@@ -1,0 +1,18 @@
+[
+  {
+    "name": "current-producer-landing",
+    "url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+    "http_status": 200,
+    "bytes": 67687,
+    "sha256": "b089d259c5fc98f575bca762b1d752f463579bf42ca95c4e22dad991865d338f",
+    "retrieved_at": "2026-10-19T05:38:51.394794+00:00"
+  },
+  {
+    "name": "current-inport",
+    "url": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "http_status": 200,
+    "bytes": 112260,
+    "sha256": "59f560eea8bb1c31e15b4875e9aadab87205acdeab47c29746cb15e748de58ed",
+    "retrieved_at": "2026-10-19T05:38:52.251796+00:00"
+  }
+]
