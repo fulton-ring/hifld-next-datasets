@@ -33,7 +33,7 @@ result={'approved':False,'classification':'unapproved_published_candidate_diagno
  'native_wkb_exact_count':sum(shapely.geometry.Point(original[s]['geometry']['x'],original[s]['geometry']['y']).wkb==old[s]['geometry'] for s in original),
  'native_xy_max_absolute_difference':max(max(abs(original[s]['geometry'][k]-shapely.from_wkb(old[s]['geometry']).coords[0][i]) for i,k in enumerate(['x','y'])) for s in original),
  'ids':[{ 'station':s,'source_OBJECTID':original[s]['attributes']['OBJECTID'],'source_OID':original[s]['attributes']['OID'],'published_geojson_OBJECTID':oldgeo[s]['properties']['OBJECTID'],'published_OID':old[s]['OID'],'published_gp_fid':gp[s]['source_fid']} for s in sorted(original)],
- 'files':{str(p.relative_to(R)):{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(R.rglob('*')) if p.is_file() and p.suffix not in ['.py'] and p.name!='baseline-audit.json'},
+ 'files':{str(p.relative_to(R)):{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for folder in ['captures','published-candidate'] for p in sorted((R/folder).rglob('*')) if p.is_file()},
  'release_gate':'No source, baseline, schema/nullability/int32-vs-int64/ID mapping/format approval. All published identifiers remain in full raw candidates; no join or destructive schema migration applied.'}
 (R/'baseline-audit.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k not in ['ids','files','source_schema','published_parquet_schema','published_geopackage_schema']}))

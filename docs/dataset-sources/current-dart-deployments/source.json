@@ -107,6 +107,6 @@
   "evidence": {
     "audit": "evidence/baseline-audit.json",
     "replay": "evidence/audit.py",
-    "source_capture_count": 11
+    "source_capture_count": 12
   }
 }

@@ -668,6 +668,14 @@
       "bytes": 1671,
       "sha256": "f22407118c7dd463f8c3c3a3066e3b034d73c965eaca4866a1223be886194e44"
     },
+    "captures/map_js.body": {
+      "bytes": 2055146,
+      "sha256": "88b4c25281fd5744b1b8236bc4c53eb1cc3fd327854bfe5b80a6008ab8e8d5d9"
+    },
+    "captures/map_js.receipt.json": {
+      "bytes": 851,
+      "sha256": "f88de1816f290a8ce18450443f626497529d301edc3cd6da884d5d1fe5f04ff9"
+    },
     "captures/map_store.body": {
       "bytes": 69871,
       "sha256": "57e4a3b59f6783bf5bd26c4c29fbad391b759250f5e1203bac6dede1ec2afc34"

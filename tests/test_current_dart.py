@@ -31,7 +31,7 @@ class CurrentDartTests(TestCase):
         self.assertEqual(table.schema.field('OBJECTID').nullable,False)
         self.assertEqual(len(set(table.column('STATION').to_pylist())),62)
         self.assertEqual((root/f'geoparquet/{source.SLUG}.parquet').read_bytes(),(root/'candidate/typed-source.parquet').read_bytes())
-        manifest=json.loads((root/'metadata/source_manifest.json').read_bytes());self.assertFalse(manifest['approved']);self.assertEqual(len(manifest['inputs']),11)
+        manifest=json.loads((root/'metadata/source_manifest.json').read_bytes());self.assertFalse(manifest['approved']);self.assertEqual(len(manifest['inputs']),12)
     def test_real_source_missing_or_changed_types_ids_geometry_and_transfer_limit_rejected(self):
         actual=json.loads((CAPTURES/'features.body').read_bytes())
         def remove_id(j):del j['features'][0]['attributes']['OID']
@@ -65,6 +65,13 @@ class CurrentDartTests(TestCase):
                 change(item.get('layers',[]))
         change(j['operationalLayers']);body=source.encode(j);receipt=copy.deepcopy(altered['webmap'][1]);receipt.update(bytes=len(body),sha256=source.sha(body));altered['webmap']=(body,receipt)
         with self.assertRaisesRegex(source.DartQuarantineError,'delegation_changed'):source.provenance(altered)
+    def test_current_noaa_page_entry_and_config_import_chain_required(self):
+        captures={n:((CAPTURES/(n+'.body')).read_bytes(),json.loads((CAPTURES/(n+'.receipt.json')).read_bytes())) for n in source.URLS}
+        for name,old,new in [('ncei_map',b'index-Cyvq2L9n.js',b'index-NEW.js'),('map_js',b'from"./store-CeovILYQ.js"',b'from"./store-NEW.js"')]:
+            with self.subTest(name=name):
+                changed=copy.deepcopy(captures);body=changed[name][0].replace(old,new)
+                self.assertNotEqual(body,changed[name][0]);receipt=changed[name][1];receipt.update(bytes=len(body),sha256=source.sha(body));changed[name]=(body,receipt)
+                with self.assertRaisesRegex(source.DartQuarantineError,'official_current_map_entry_or_store_import_changed'):source.provenance(changed)
     def mutate_cache(self,mutator,reason):
         result=self.stage();root=self.root(result);mutator(root)
         marker=root/'metadata/current_dart_candidate_ready.json';j=json.loads(marker.read_bytes())

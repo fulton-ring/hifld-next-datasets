@@ -45,6 +45,7 @@ SLUG = 'current-dart-deployments'
 URL = 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0'
 LANDING = 'https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis/dart-ocean-bottom-pressure'
 URLS = {'ncei_dart': 'https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis/dart-ocean-bottom-pressure', 'ncei_map': 'https://www.ncei.noaa.gov/maps/hazards/?layers=4', 'map_store': 'https://www.ncei.noaa.gov/maps/hazards/assets/store-CeovILYQ.js', 'webmap': 'https://www.arcgis.com/sharing/rest/content/items/5cb326668189408e8c4c20ddd92aa2ed/data?f=pjson', 'item': 'https://www.arcgis.com/sharing/rest/content/items/764d3a99a4f8440ea05522815b5f5e19?f=pjson', 'layer': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0?f=pjson', 'count_before': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json', 'ids_before': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json', 'features': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&orderByFields=OBJECTID&f=json', 'ids_after': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json', 'count_after': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json'}
+URLS['map_js'] = 'https://www.ncei.noaa.gov/maps/hazards/assets/index-Cyvq2L9n.js'
 ARCHIVE_NAME = 'current-dart-original-features.json'
 PIN = '00d93ba1dcc546476c11efdf71b1f0b6afd131325ba3ca3e32675285120d72f6'
 ARCHIVE_BYTES = 16613
@@ -172,6 +173,8 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
 
 def provenance(captures: dict) -> dict:
     for name,url in URLS.items(): validate_receipt(*captures[name],url)
+    if b'src="./assets/index-Cyvq2L9n.js"' not in captures['ncei_map'][0] or b'from"./store-CeovILYQ.js"' not in captures['map_js'][0]:
+        raise DartQuarantineError('official_current_map_entry_or_store_import_changed')
     if b'5cb326668189408e8c4c20ddd92aa2ed' not in captures['map_store'][0]:
         raise DartQuarantineError('official_noaa_map_webmap_delegation_changed')
     webmap=strict_json(captures['webmap'][0])
