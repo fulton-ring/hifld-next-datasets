@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.noaa_tsunami_observations import noaa_tsunami_observations_draft_refresh_job, noaa_tsunami_observations_draft_refresh_schedule
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
@@ -390,6 +391,8 @@ def _configured_sensors():
 
 
 defs = Definitions(
+    jobs=[noaa_tsunami_observations_draft_refresh_job],
+    schedules=[noaa_tsunami_observations_draft_refresh_schedule],
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
