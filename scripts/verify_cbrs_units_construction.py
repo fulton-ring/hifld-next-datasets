@@ -77,6 +77,7 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
    if attack!='coforged_zero_commit':assert subprocess.run(['git','merge-base','--is-ancestor',value['code_commit'],'HEAD'],cwd=repo).returncode==0
    forged=source.encode(value);(root/'metadata/source_manifest.json').write_bytes(forged)
    bundle=json.loads(binding_original);bundle['manifest']=value;binding.write_bytes(source.encode(bundle))
+   (root/'metadata/source').mkdir(exist_ok=True)
    for file in (root/'metadata/source').glob('*source_manifest.json'):
     if file.name=='source_manifest.json':file.write_bytes(forged)
     else:file.unlink()
