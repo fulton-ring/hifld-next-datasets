@@ -1,0 +1,15 @@
+{
+  "head": "e12ebc97eef79438947bd95b0b0d24ef46adb462",
+  "source_checkpoint": "1c117ca414e7e11347ee29dc542581852096106f",
+  "mutation": "external first-construction bundle and canonical/nested manifests code_commit 40 zeros, source-ready hash self-repinned",
+  "source_rows": 1145,
+  "data_geometry_and_approval_unmodified": true,
+  "run_id": "0859ee48-b422-441a-8be4-8e63edeb68b2",
+  "success": true,
+  "errors": [],
+  "forged_construction_claim_still_present": true,
+  "original_candidate_bytes_restored": true,
+  "original_external_bundle_restored": true,
+  "all_original_raw_capture_bytes_preserved": true,
+  "prior_published_fixture_preserved": true
+}

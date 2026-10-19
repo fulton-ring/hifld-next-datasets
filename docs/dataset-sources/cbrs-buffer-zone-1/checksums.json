@@ -2,8 +2,8 @@
   "schema_version": 1,
   "files": {
     "README.md": {
-      "bytes": 12504,
-      "sha256": "fcf125150fd7fdffcb9925b9dd741a4c4989034cbaebd5862414a21103353776"
+      "bytes": 13396,
+      "sha256": "c40631e15db5a8191d16002e0c22b1b203c865dfbd813a7962fa0d5f501cbbc9"
     },
     "evidence/baseline_comparison.json": {
       "bytes": 202,
@@ -318,8 +318,8 @@
       "sha256": "0f0afd3e1eaa166270fdc328d2f4191f0710e3f155d85edc2e7f58ac805a3e6b"
     },
     "source.json": {
-      "bytes": 8800,
-      "sha256": "529486b59417b622c2109a7fbb86291b97ab6f05f42800a60bc320601ae79c3c"
+      "bytes": 9308,
+      "sha256": "8ee2d462d746cd65b959c23e2bab86c1c6bb24d15d79a556cb14b902df5ac23c"
     },
     "evidence/review-repairs/construction-unit-16.log": {
       "bytes": 349,
@@ -344,6 +344,18 @@
     "evidence/review-repairs/construction-binding-focused.log": {
       "bytes": 16955,
       "sha256": "50fe7d671b0c588ab1462da8c9d92126a94a9f3c844c7f9f22cdb5cf874714e6"
+    },
+    "evidence/review-repairs/coforged-external-binding-counterexample.log": {
+      "bytes": 2667,
+      "sha256": "b4a025412a568e037f73892a273e8269bab5432de080df8bfb21849b0b94ede1"
+    },
+    "evidence/review-repairs/coforged-external-binding-scope.json": {
+      "bytes": 946,
+      "sha256": "a316448e8094aa02e50d5d25761f644ef32b19a912c30ae0ed26300ce19a7a95"
+    },
+    "evidence/review-repairs/coforged-external-binding-counterexample.json": {
+      "bytes": 658,
+      "sha256": "c77d1619bdb305c0b0a4d6799617162f6b745a1358d542cc5863fe955eee0f74"
     }
   }
 }

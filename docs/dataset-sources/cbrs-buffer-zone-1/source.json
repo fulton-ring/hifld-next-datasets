@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 28,
-  "status": "construction_provenance_candidate_binding_locally_verified_further_authenticity_probe_pending",
+  "status": "remaining_construction_code_identity_gap_reproduced_shared_verifier_integration_required",
   "approval": {
     "source": false,
     "baseline": false,
@@ -151,6 +151,13 @@
       "skipped": 1,
       "seconds": 195.828,
       "log": "evidence/review-repairs/construction-full-suite-514.log"
+    },
+    "additional_counterexample": {
+      "run_id": "0859ee48-b422-441a-8be4-8e63edeb68b2",
+      "observed": "co-forged external bundle and canonical known-nonexistent code_commit accepted; candidate/raw/bundle/fixture restored",
+      "evidence": "evidence/review-repairs/coforged-external-binding-counterexample.json",
+      "scope": "staged construction code identity; independent approval gate not bypassed",
+      "resolution_pending": "reviewed shared #417 Git/source identity validator integration"
     }
   }
 }
