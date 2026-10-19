@@ -1,21 +1,12 @@
-# 200NM EEZ and Maritime Boundaries
+# NOAA 200NM EEZ — unapproved draft
 
-Working draft NOAA extraction preserves all 96 source IDs, 13 attributes, physical types and ordered geometry vertices. It performs before/after count and ID checks, retains original responses and receipts, quarantines drift, and uses the normal catalog, verification and promotion graph. Refresh is weekly and stopped by default. Release requires the decisions in [DECISION.md](DECISION.md); source, baseline, contract and compatibility approval remain pending.
+Source: https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html (official service layer3).
+Extraction, raw retention, schema/ID/coverage guards and proposed encodings are implemented in `src/dagster_hifld/noaa_extract.py`; the explicit asset and stopped weekly refresh are in `assets/noaa.py`.
 
-Shapefile is disabled after complete-data testing demonstrated string truncation, numeric rounding and nullable-date type changes. Native candidate and supported terminal outputs remain separate from unapproved format migrations. No source values are shortened or repaired.
+Run focused checks: `uv run --frozen python -m unittest discover -s tests -p 'test_noaa*.py'`. Set `HIFLD_NOAA_EEZ_EVIDENCE_DIR` to verified external captures for full96-row replay. `scripts/verification/noaa_eez_local.py --help` runs a durable isolated graph.
 
-Full captures and generated audit/materialization reports are retained in the checksummed artifact described by [artifact-manifest.json](evidence/artifact-manifest.json), outside Git. The manifest records the original reviewed commit and every original file's size and SHA256. Preserve that artifact for replay; live refetch is not equivalent historical evidence. The complete published baseline candidate remains separate and unapproved.
+Preserved captures: `issue-3-full-evidence-06a989e0ace3.tar.zst`, SHA256 `e7391f8d8d2a0836ad316a8efc291557435f957b1bbef8346a2b1e61577605ae`.
+Removed research/reports/manifests/audit tools: `issue-3-removed-research-docs-dbc43c17f060.tar.gz`, SHA256 `f04807e97a341d9c2fb63353b4a3497289fa926b050831ed6ce400ef2d07d20d`.
+Full execution evidence and exact reviews are recorded on issue3/PR420; artifact member inventories remain outside Git.
 
-To replay, verify the artifact SHA256, extract it into an external directory, then verify every member against the manifest. Set HIFLD_NOAA_EEZ_EVIDENCE_DIR to its docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence directory.
-
-Run default focused tests with:
-
-    uv run --frozen python -m unittest discover -s tests -p 'test_noaa*.py'
-
-After setting that variable, repeat the command for complete real-input materialization, or run audit.py --quality. compare_candidate.py --baseline PATH also uses this verified external evidence directory.
-
-Default tests retain small synthetic extraction, completeness, physical-type, receipt-origin, error, drift and refresh-registration checks. Complete real-input replay is explicitly opt-in; synthetic fixtures grant no real acceptance. scripts/verification/noaa_eez_local.py runs the actual registered graph with isolated storage and records its run IDs, output checksums and previous-release preservation. Existing historical execution records retain their exact tested commits and limitations, including earlier missing sibling IaC failures. No CI pass is inferred.
-
-Current verification is summarized in [verification.json](evidence/verification.json); its checksummed artifact preserves full logs, captured bodies, native outputs, run databases and audit reports. Historical count/ID fixture slots may reuse captured bodies; fresh live extraction is recorded separately.
-
-This PR targets the shared implementation in PR #421. Shared verification/provenance/catalog changes belong in that PR; dataset-specific behavior and tests belong here.
+Source/release/baseline/ID/type/schema/geometry/coverage/rights acceptance remains required. Declared Integer preserves32bits; unresolved OID width, epoch-ms date encoding and string-width mappings remain unapproved. No promotion without the independent approval registry.

@@ -51,6 +51,7 @@ class NoaaEezPipelineTests(unittest.TestCase):
                 self.assertEqual(table.num_rows, 96)
                 self.assertEqual(str(table.schema.field('UNILATERAL').type), 'double')
                 self.assertEqual(str(table.schema.field('PUB_DATE').type), 'int64')
+                self.assertEqual(str(table.schema.field('RULEID').type), 'int32')
                 self.assertNotIn('id', table.column_names)
                 self.assertNotIn('bbox', table.column_names)
                 original = json.loads((root / 'capture/features.json').read_text())
