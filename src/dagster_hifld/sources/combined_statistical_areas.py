@@ -149,7 +149,7 @@ def acquire(storage,archive_path=None,receipt_path=None):
             location=quarantine(storage,body,receipt,str(exc))
             raise CSAQuarantineError(f'{exc}; retained:{location}') from exc
     for attempt in range(3):
-        body=b'';receipt={'url':URL,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
+        body=bytearray();receipt={'url':URL,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
         try:
             with httpx.Client(follow_redirects=False,timeout=120) as client, client.stream('GET',URL) as response:
                 receipt.update(status=response.status_code,final_url=str(response.url))
@@ -162,10 +162,10 @@ def acquire(storage,archive_path=None,receipt_path=None):
                     raise CSAQuarantineError('incomplete_http_response')
                 if response.status_code != 200:
                     raise CSAQuarantineError('non200_http_response')
-                return body,receipt
+                return bytes(body),receipt
         except (httpx.HTTPError,OSError,ValueError) as exc:
             receipt.update(bytes=len(body),sha256=digest(body),complete_body=False)
-            location=quarantine(storage,body,receipt,str(exc))
+            location=quarantine(storage,bytes(body),receipt,str(exc))
             if attempt==2:
                 raise CSAQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
 
@@ -295,7 +295,7 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
             # All source/provenance/output checks completed in a hidden build tree.
             os.rename(temp,root)
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':184,'reused':False}
-    except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error) as exc:
+    except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException) as exc:
         # The full original is already pinned in raw-captures when valid. Avoid a
         # second272MB copy per policy/schema failure; retain exact pointer+receipt.
         raw_key=f'_raw-captures/{SLUG}/{SHA256}/original.gdb.zip'
