@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-10-19T05:20:41.588608+00:00",
+  "tested_code_head": "cda457bb53c0f7f3d74757e7cd4819dcba14d781",
+  "processing_fingerprint": "4898c6b4eddf588a8d99768db1a80f1f77521f069a1a55c478c1e14b0b1118dc",
+  "module_path": "/workspace/hifld-worker-worktrees/3/src/dagster_hifld/__init__.py",
+  "focused_noaa_tests": {
+    "count": 9,
+    "result": "pass",
+    "command": "PYTHONPATH=$PWD/src UV_CACHE_DIR=/workspace/.cache/uv uv run --frozen python -m unittest discover -s tests -p 'test_noaa*.py'"
+  },
+  "full_suite": {
+    "count": 476,
+    "passes": 474,
+    "errors": 1,
+    "skipped": 1,
+    "success": false,
+    "error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf in test_iac_dagster",
+    "skip": "production GCS opt-in test",
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=$PWD/src UV_CACHE_DIR=/workspace/.cache/uv uv run --frozen python -m unittest discover tests"
+  },
+  "integration": {
+    "ingest_run_id": "8df014cf-7c4f-488a-baa4-487c0336d4d9",
+    "graph_run_id": "3ab6cfd6-8cb9-48d7-b7c2-0bbc12c56d38",
+    "real_source_rows": 96,
+    "catalog_quality_pass": true,
+    "final_gate": "missing_independent_release_approval_registry",
+    "promotion_executed": false,
+    "previous_public_candidate_preserved": true,
+    "shapefile_excluded": true
+  },
+  "logs": {
+    "noaa-tests-final.log": {
+      "path": "/workspace/work/hifld-worker-3/noaa-tests-final.log",
+      "bytes": 21698,
+      "sha256": "68f3acfa2b8da85c136b448e8961e8f3c2ef578983d2e55fdc4fa0ae9b31791c"
+    },
+    "full-suite-final.log": {
+      "path": "/workspace/work/hifld-worker-3/full-suite-final.log",
+      "bytes": 41068,
+      "sha256": "26c773304273a085b1cad0a445bead9f59e006efd8762a336fd162fa0f96c6cf"
+    },
+    "review-integration.log": {
+      "path": "/workspace/work/hifld-worker-3/review-integration.log",
+      "bytes": 30556,
+      "sha256": "7182eb7c56da1b2b7cdce2d21af0720fd0128b9acdc8f6737ae86f58279d6c1b"
+    }
+  },
+  "ci": "No CI success claimed",
+  "no_real_acceptance": true
+}
