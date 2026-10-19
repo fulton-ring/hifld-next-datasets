@@ -1,0 +1,146 @@
+{
+  "classification": "independent complete historical ID/FID inventory; no accepted identity mapping/format migration",
+  "formats": {
+    "geojson": {
+      "rows": 32614,
+      "all_record_ids_match_author_full_inventory": true,
+      "physical_id_types": {
+        "ID:int": 32614,
+        "ObjectId:int": 32614,
+        "TSEVENT_ID:int": 32614
+      },
+      "id_columns": {
+        "ID": {
+          "ordered_sha256": "157c1d978efd3ef55cceff95091f51f4c9eb7aa95a22bd377c855b81483b7267",
+          "distinct": 32614,
+          "nulls": 0
+        },
+        "ObjectId": {
+          "ordered_sha256": "dd487dad63251131f3ae3ccf73fa990f9fa80b64e8d1ce3b9eedc166baeeb443",
+          "distinct": 32614,
+          "nulls": 0
+        },
+        "TSEVENT_ID": {
+          "ordered_sha256": "e5266235317348b5bf78fea7b4691faa93f370ef5880bfb719006dcc92b1a7d7",
+          "distinct": 2308,
+          "nulls": 0
+        }
+      },
+      "top_level_feature_or_intrinsic_fids": {
+        "ordered_sha256": "dd487dad63251131f3ae3ccf73fa990f9fa80b64e8d1ce3b9eedc166baeeb443",
+        "distinct": 32614,
+        "count": 32614
+      },
+      "null_geometries": 0,
+      "notes": "Parquet physical schema/all attributes already compared separately; PMTiles remains a fully pinned rendering derivative, no archival-ID claim."
+    },
+    "geopackage": {
+      "rows": 32614,
+      "all_record_ids_match_author_full_inventory": true,
+      "physical_id_types": {
+        "source_ID:int": 32614,
+        "TSEVENT_ID:int": 32614
+      },
+      "id_columns": {
+        "source_ID": {
+          "ordered_sha256": "157c1d978efd3ef55cceff95091f51f4c9eb7aa95a22bd377c855b81483b7267",
+          "distinct": 32614,
+          "nulls": 0
+        },
+        "TSEVENT_ID": {
+          "ordered_sha256": "e5266235317348b5bf78fea7b4691faa93f370ef5880bfb719006dcc92b1a7d7",
+          "distinct": 2308,
+          "nulls": 0
+        }
+      },
+      "top_level_feature_or_intrinsic_fids": {
+        "ordered_sha256": "ac5f7e50a7438cf7e8e2b64ab20450fd281b22ba8c00b4706580e14ed24df41c",
+        "distinct": 32614,
+        "count": 32614
+      },
+      "null_geometries": 0,
+      "notes": "Parquet physical schema/all attributes already compared separately; PMTiles remains a fully pinned rendering derivative, no archival-ID claim."
+    },
+    "shapefile": {
+      "rows": 32614,
+      "all_record_ids_match_author_full_inventory": true,
+      "physical_id_types": {
+        "ID:int": 32614,
+        "TSEVENT_ID:int": 32614
+      },
+      "id_columns": {
+        "ID": {
+          "ordered_sha256": "157c1d978efd3ef55cceff95091f51f4c9eb7aa95a22bd377c855b81483b7267",
+          "distinct": 32614,
+          "nulls": 0
+        },
+        "TSEVENT_ID": {
+          "ordered_sha256": "e5266235317348b5bf78fea7b4691faa93f370ef5880bfb719006dcc92b1a7d7",
+          "distinct": 2308,
+          "nulls": 0
+        }
+      },
+      "top_level_feature_or_intrinsic_fids": {
+        "ordered_sha256": "39f7ed01aabe9223c2188fee6d73641311f076a6e459252676826c2110d5fb73",
+        "distinct": 32614,
+        "count": 32614
+      },
+      "null_geometries": 0,
+      "notes": "Parquet physical schema/all attributes already compared separately; PMTiles remains a fully pinned rendering derivative, no archival-ID claim."
+    },
+    "file_geodatabase": {
+      "rows": 32614,
+      "all_record_ids_match_author_full_inventory": true,
+      "physical_id_types": {
+        "ID:int": 32614,
+        "TSEVENT_ID:int": 32614
+      },
+      "id_columns": {
+        "ID": {
+          "ordered_sha256": "157c1d978efd3ef55cceff95091f51f4c9eb7aa95a22bd377c855b81483b7267",
+          "distinct": 32614,
+          "nulls": 0
+        },
+        "TSEVENT_ID": {
+          "ordered_sha256": "e5266235317348b5bf78fea7b4691faa93f370ef5880bfb719006dcc92b1a7d7",
+          "distinct": 2308,
+          "nulls": 0
+        }
+      },
+      "top_level_feature_or_intrinsic_fids": {
+        "ordered_sha256": "7e20e891521eab2926a989a529b52c7d69071deb649e148b92ace79058a59ba6",
+        "distinct": 32614,
+        "count": 32614
+      },
+      "null_geometries": 0,
+      "notes": "Parquet physical schema/all attributes already compared separately; PMTiles remains a fully pinned rendering derivative, no archival-ID claim."
+    },
+    "geoparquet": {
+      "rows": 32614,
+      "all_record_ids_match_author_full_inventory": true,
+      "physical_id_types": {
+        "source_ID:int": 32614,
+        "TSEVENT_ID:int": 32614
+      },
+      "id_columns": {
+        "source_ID": {
+          "ordered_sha256": "5abd5b72537d726472b25a892a14fc51635843ac2c6e8714e7f218f7ec18ce7c",
+          "distinct": 32614,
+          "nulls": 0
+        },
+        "TSEVENT_ID": {
+          "ordered_sha256": "175c22b1dfcfd755d4b750b3cfec389635ec3f75cae319c9bc3671f1e2980e53",
+          "distinct": 2308,
+          "nulls": 0
+        }
+      },
+      "top_level_feature_or_intrinsic_fids": {
+        "ordered_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "distinct": 0,
+        "count": 0
+      },
+      "null_geometries": 0,
+      "notes": "Parquet physical schema/all attributes already compared separately; PMTiles remains a fully pinned rendering derivative, no archival-ID claim."
+    }
+  }
+}

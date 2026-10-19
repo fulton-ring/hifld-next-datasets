@@ -1,0 +1,712 @@
+{
+  "actual_registered_runs": 31,
+  "successful": 12,
+  "expected_failed": 19,
+  "records": [
+    {
+      "kind": "private_metadata_failure_before_first_seal",
+      "run_id": "ad7a4c4d-7486-4f7f-8f22-d926a6135708",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/ad7a4c4d-7486-4f7f-8f22-d926a6135708.db",
+      "database_sha256": "2dc44f72de056c7b32ee01432418f5822ebe08635e36b92f08c9a0485cfb92d7",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: independent private metadata write failure before first seal\n",
+        "OSError: independent private metadata write failure before first seal\n"
+      ]
+    },
+    {
+      "kind": "first_marker_failure_after_original_bundle",
+      "run_id": "0f1f9f14-51d4-4511-a9aa-5b5fec8b94f7",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/0f1f9f14-51d4-4511-a9aa-5b5fec8b94f7.db",
+      "database_sha256": "78849f07c2524a9b587402c5304b712bcd89cc00cec628f90aaaec2c9ea13db6",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: independent marker write failure after complete bundle\n",
+        "OSError: independent marker write failure after complete bundle\n"
+      ]
+    },
+    {
+      "kind": "partial_bundle_second_refresh_1",
+      "run_id": "87448e66-5351-44a4-bfc3-f1864ed34a37",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/87448e66-5351-44a4-bfc3-f1864ed34a37.db",
+      "database_sha256": "9c804a84edc7b0f38157514e60080a3858de88085e91dbd1a0e4a26395a4054b",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "partial_bundle_second_refresh_2",
+      "run_id": "54ae1684-1482-4138-9cbe-7bb2e876a951",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/54ae1684-1482-4138-9cbe-7bb2e876a951.db",
+      "database_sha256": "e12d689142637ebd64c02fca9934f4a4711d8292cc36f5bb14fce6722d1e9c48",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "exact_original_state_operator_restore",
+      "run_id": "6a0a1f0e-329e-4067-8d46-5c06d026a62d",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/6a0a1f0e-329e-4067-8d46-5c06d026a62d.db",
+      "database_sha256": "685673aa021a0aa20889c5f3f2de262b3c6b99067dad654485e570a0cdc6c9c2",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "healthy_original_cache_reuse",
+      "run_id": "b53cdf0f-408d-46e0-9f15-9fc646f27d4c",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/b53cdf0f-408d-46e0-9f15-9fc646f27d4c.db",
+      "database_sha256": "3f289e16a6b049110cd13514c9ca7800559f7d25195698df41cae57b003c01ea",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "actual_normal_catalog_missing_independent_approval",
+      "run_id": "8590650d-6d87-4710-8011-ff8ce1838231",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/8590650d-6d87-4710-8011-ff8ce1838231.db",
+      "database_sha256": "a28b2373e10d0d88d47054937d00332af9d60fa8031994cc9f5c5736002567f4",
+      "event_types": {
+        "ASSET_CHECK_EVALUATION": 1,
+        "ASSET_CHECK_EVALUATION_PLANNED": 2,
+        "ASSET_MATERIALIZATION": 5,
+        "ASSET_MATERIALIZATION_PLANNED": 8,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 5,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_OUTPUT": 6,
+        "STEP_START": 7,
+        "STEP_SUCCESS": 6
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n",
+        "dagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n"
+      ]
+    },
+    {
+      "kind": "reuse_after_normal_catalog",
+      "run_id": "1a7ddbe2-0114-45ee-af44-cd89e787a135",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/1a7ddbe2-0114-45ee-af44-cd89e787a135.db",
+      "database_sha256": "092c4e0735f4d2df31b1f43ee35a41d95d894aa376e6d1bf543213c50c1e1964",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "coforged_original_receipts_denied_1",
+      "run_id": "f042b6d0-cbff-456c-b657-f19e63ebd672",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/f042b6d0-cbff-456c-b657-f19e63ebd672.db",
+      "database_sha256": "ac1c193efcf6e760028170e781b237a7c12a88ffd418969af974c741c0d3cfcd",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: original_construction_durable_marker_binding_changed; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-21a8238619194161993793ef975746dc\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: original_construction_durable_marker_binding_changed; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-21a8238619194161993793ef975746dc\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: original_construction_durable_marker_binding_changed\n"
+      ]
+    },
+    {
+      "kind": "coforged_original_receipts_denied_2",
+      "run_id": "e17e49f9-1fbe-47ed-bc35-5fafb75c5b83",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/e17e49f9-1fbe-47ed-bc35-5fafb75c5b83.db",
+      "database_sha256": "44db11e0f8ad7124382627f4f7330a22b56610c6abd21bcb44847a6b3784e2c6",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: original_construction_durable_marker_binding_changed\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: original_construction_durable_marker_binding_changed\n"
+      ]
+    },
+    {
+      "kind": "exact_original_restore_after_receipt_forgery",
+      "run_id": "6cede2ae-3be3-47aa-a8f7-d114fe672ad0",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/6cede2ae-3be3-47aa-a8f7-d114fe672ad0.db",
+      "database_sha256": "4f592f2e5e393a8f2427ea75f5c10ba562d981d6973442bce2b2754c1d539ab2",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "missing_bundle_repeat_1",
+      "run_id": "eb3ac94d-6e0e-4236-88d6-7e8d8779aad3",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/eb3ac94d-6e0e-4236-88d6-7e8d8779aad3.db",
+      "database_sha256": "fcfb237e97ef02e6137b1e9ebb9a29448a4005b8dd24b58e1b4a09d3ec5722f9",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-a9b8c3466d42499684bcf4f3f8b65ba3\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-a9b8c3466d42499684bcf4f3f8b65ba3\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "missing_bundle_repeat_2",
+      "run_id": "8bc207bc-2243-4c66-899c-6d9f1853cd16",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/8bc207bc-2243-4c66-899c-6d9f1853cd16.db",
+      "database_sha256": "bdced87e05d1616f6ec2e0d7ebee3d615d3952ff647075ce1f73b7d204b298e4",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "missing_bundle_repeat_3",
+      "run_id": "7bda9e47-0f6f-4f69-9395-8d2e5c53bcdc",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/7bda9e47-0f6f-4f69-9395-8d2e5c53bcdc.db",
+      "database_sha256": "a3a85c2e9abb845850c606c8a5300fdbd43dd372e936b947f7f14bef08cbe578",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "operator_exact_restore_bundle",
+      "run_id": "e1a77725-7bdd-477b-a0e8-06438f9596a0",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/e1a77725-7bdd-477b-a0e8-06438f9596a0.db",
+      "database_sha256": "fc19fdf5ba3f384a6b9b249e461daf5474122ac5c03e52e2000760e422ba9b21",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "missing_marker_repeat_1",
+      "run_id": "030f1d99-7d9c-4e92-99d3-66b976c3f549",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/030f1d99-7d9c-4e92-99d3-66b976c3f549.db",
+      "database_sha256": "937ae81f71184d9a4bcc1f7f679558cb563809f80b330930437165b7f143b0bb",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-c809ad3e4b8248a6b47d7842aaa3ecfd\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-c809ad3e4b8248a6b47d7842aaa3ecfd\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "missing_marker_repeat_2",
+      "run_id": "0b9e36eb-e4c0-432a-80f8-b888a3c7a1e2",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/0b9e36eb-e4c0-432a-80f8-b888a3c7a1e2.db",
+      "database_sha256": "7ce311dc61c9f71b38844c1e3dfd72c664c441b9eb8955a2fe4e397c94658e7e",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "missing_marker_repeat_3",
+      "run_id": "e9fa79d5-e899-44d3-9ddc-318009831dca",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/e9fa79d5-e899-44d3-9ddc-318009831dca.db",
+      "database_sha256": "1bffd9f0c331e0528cb40e12635835f73906f7227657396b91fb6feb6b30629b",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_or_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "operator_exact_restore_marker",
+      "run_id": "0a359e98-8b04-4807-974d-ca76be5f07ee",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/0a359e98-8b04-4807-974d-ca76be5f07ee.db",
+      "database_sha256": "3039cef9d04858d9507cdde2fe531473b8ac013bea6911c83b8a2123de7a27e2",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "both_original_records_missing_detach",
+      "run_id": "03b68f5d-f26d-4f44-ade4-29224feba97c",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/03b68f5d-f26d-4f44-ade4-29224feba97c.db",
+      "database_sha256": "767e6e42b2433c9b9d839063eef35a02a3d5c44a09c89d2ebc5fe1ce086119e7",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_and_durable_marker; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-e408ec9a8d3444d180e3f269370f1c87\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_and_durable_marker; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/staging/_quarantine/historical-tsunami-observations/invalid-cache-e408ec9a8d3444d180e3f269370f1c87\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: missing_original_construction_bundle_and_durable_marker\n"
+      ]
+    },
+    {
+      "kind": "both_missing_postdetach_repeat_1",
+      "run_id": "08070415-d2f9-4dc7-accf-de05a7cf4634",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/08070415-d2f9-4dc7-accf-de05a7cf4634.db",
+      "database_sha256": "98c785d3a6812af6bdc3233fec02d5bea62f5d1f46869993b3f6c742a8434143",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: previous_candidate_trust_failure_original_operator_records_required\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: previous_candidate_trust_failure_original_operator_records_required\n"
+      ]
+    },
+    {
+      "kind": "both_missing_postdetach_repeat_2",
+      "run_id": "1fe97e09-2edf-40de-8cc1-c292525c4365",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/1fe97e09-2edf-40de-8cc1-c292525c4365.db",
+      "database_sha256": "5f6f0d24eba20234ad2096ebbcae334f63763a3cf0c16c7e7360de79cb59f774",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: previous_candidate_trust_failure_original_operator_records_required\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: previous_candidate_trust_failure_original_operator_records_required\n"
+      ]
+    },
+    {
+      "kind": "both_original_exact_operator_restore",
+      "run_id": "b48b9d63-5082-4ed8-93df-ae9ce02e50f5",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-state-verified/dagster/history/runs/b48b9d63-5082-4ed8-93df-ae9ce02e50f5.db",
+      "database_sha256": "a5e1f20a3e69ef22f83a45a4b3182bfaa23ac2687c750dc1f1a641fabad069c4",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "healthy_final_source_before_attacks",
+      "run_id": "14bf9226-d2c0-46fc-ae5e-22ac81ecae64",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/dagster/history/runs/14bf9226-d2c0-46fc-ae5e-22ac81ecae64.db",
+      "database_sha256": "927e13ec856a1db96c2e1f7fa37f4be21735ca17b85d5fad2e484428c194abdb",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "coforged_full_bundle_marker_candidate_zero_git_commit",
+      "run_id": "6f9215f7-6230-49d2-acae-52e699190fc7",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/dagster/history/runs/6f9215f7-6230-49d2-acae-52e699190fc7.db",
+      "database_sha256": "e082eab585b5c6b025fad19e8eeddd21a25bc5d823891bf4783a79b2b0fce819",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: construction_invalid_commit; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/staging/_quarantine/historical-tsunami-observations/invalid-cache-96c25e31d0694a01b55be09e618a3da3\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: construction_invalid_commit; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/staging/_quarantine/historical-tsunami-observations/invalid-cache-96c25e31d0694a01b55be09e618a3da3\n",
+        "dagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_invalid_commit\n"
+      ]
+    },
+    {
+      "kind": "explicit_exact_original_restore_zero_git_commit",
+      "run_id": "5f98b8d2-5089-4d8d-a54a-68e502054e65",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/dagster/history/runs/5f98b8d2-5089-4d8d-a54a-68e502054e65.db",
+      "database_sha256": "3c97a84abe7668cdd231c37d8ff8699042c714ca6bc237018af69a836ffe8f75",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "coforged_full_bundle_marker_candidate_reachable_wrong_processing_commit",
+      "run_id": "b1290717-23a2-4c70-8ba8-1925992af607",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/dagster/history/runs/b1290717-23a2-4c70-8ba8-1925992af607.db",
+      "database_sha256": "5b040db2baadfaf526866cbc59b69418b6a4e4d965f7f362aa97ad484fb862c1",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      },
+      "failure_messages": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_observations__historical_tsunami_observations\":\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: construction_processing_blob_hash_mismatch; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/staging/_quarantine/historical-tsunami-observations/invalid-cache-c250e3057b774b2cafce18d4e7f95b4f\n",
+        "dagster_hifld.sources.tsunami_observations.ObservationQuarantineError: construction_processing_blob_hash_mismatch; complete_failed_cache_retained:/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/staging/_quarantine/historical-tsunami-observations/invalid-cache-c250e3057b774b2cafce18d4e7f95b4f\n",
+        "dagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_processing_blob_hash_mismatch\n"
+      ]
+    },
+    {
+      "kind": "explicit_exact_original_restore_reachable_wrong_processing_commit",
+      "run_id": "a9297d12-198e-491c-a536-719b379e244f",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-git-identity/dagster/history/runs/a9297d12-198e-491c-a536-719b379e244f.db",
+      "database_sha256": "9c196d8eff99522bc0d147642cc29c64091d745c66f3ad23304a9818b67adbeb",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      },
+      "failure_messages": []
+    },
+    {
+      "kind": "concurrent_a",
+      "run_id": "48163d71-7d77-4fb4-924b-83d41ed75b31",
+      "success": false,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-concurrency/dagster-a/history/runs/48163d71-7d77-4fb4-924b-83d41ed75b31.db",
+      "database_sha256": "66cd8816b5ba3ea4636936619cd216152d802fb101aabcbf498b852708a773b7",
+      "event_types": {
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_FAILURE": 1,
+        "PIPELINE_START": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_FAILURE": 1,
+        "STEP_START": 1
+      }
+    },
+    {
+      "kind": "concurrent_b",
+      "run_id": "58447f33-175f-4505-9ad1-4bc6feec6bf5",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-concurrency/dagster-b/history/runs/58447f33-175f-4505-9ad1-4bc6feec6bf5.db",
+      "database_sha256": "0742d28cdd0cedebd22f0fa9b2ae9911e979f57f121b680ee7e8ae28dfc23f73",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      }
+    },
+    {
+      "kind": "concurrent_recheck",
+      "run_id": "5c25ebec-dce7-497e-b3ae-9467448c1dbe",
+      "success": true,
+      "database": "/workspace/work/hifld-coordinator/reviews/tsunami-114/actual-concurrency/dagster-recheck/history/runs/5c25ebec-dce7-497e-b3ae-9467448c1dbe.db",
+      "database_sha256": "fd9f73f42e2f33c62608ceaea824addd5033a13622b28cd0cfb5678729988c84",
+      "event_types": {
+        "ASSET_MATERIALIZATION": 1,
+        "ASSET_MATERIALIZATION_PLANNED": 1,
+        "ENGINE_EVENT": 2,
+        "HANDLED_OUTPUT": 1,
+        "LOGS_CAPTURED": 1,
+        "PIPELINE_START": 1,
+        "PIPELINE_SUCCESS": 1,
+        "RESOURCE_INIT_STARTED": 1,
+        "RESOURCE_INIT_SUCCESS": 1,
+        "STEP_OUTPUT": 1,
+        "STEP_START": 1,
+        "STEP_SUCCESS": 1
+      }
+    }
+  ]
+}

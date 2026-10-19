@@ -1,7 +1,7 @@
 {
   "issue": 114,
   "pr": 449,
-  "status": "working_draft_pipeline_independent_review_and_history_verification_in_progress",
+  "status": "working_draft_pipeline_locally_verified_release_blocked",
   "approved": false,
   "source": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_observations/FeatureServer/0",
   "authority_chain": [
@@ -38,5 +38,11 @@
   "worker": "/root/review_dart_49",
   "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
   "implementation_commit": "7ea570c77769db46f3fab41cf484d34a8e7ec3b8",
-  "actual_complete_source_run": "fc66248e-574b-4840-9b7c-901b21901cbc"
+  "actual_complete_source_run": "fc66248e-574b-4840-9b7c-901b21901cbc",
+  "evidence": {
+    "normal_graph": "evidence/dagster-execution-7ea570c.json",
+    "full_input_history": "evidence/provenance-recovery.json",
+    "verification": "evidence/verification.json",
+    "baseline_complete_native_inventory": "evidence/baseline-audit.json"
+  }
 }

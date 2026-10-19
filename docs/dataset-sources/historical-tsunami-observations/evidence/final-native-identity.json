@@ -1,0 +1,53 @@
+{
+  "final_processing_head": "7ea570c77769db46f3fab41cf484d34a8e7ec3b8",
+  "final_real_source_run": "fc66248e-574b-4840-9b7c-901b21901cbc",
+  "audited_old_root": "/workspace/work/hifld-coordinator/114/actual-dagster/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-0769a338743f64f4",
+  "final_root": "/workspace/work/hifld-coordinator/114/actual-dagster-7ea570c/staging/historical-tsunami-observations/historical-tsunami-observations/v0.0.0-draft-observations-d7958316ce84a665-ff326b30d93fac57",
+  "files": {
+    "geopackage/historical-tsunami-observations.gpkg": {
+      "old_sha256": "3990899f6bb3d5d3d72d624f0a9901189f9c69cbd836bdcd08fcb5da78ea65ed",
+      "new_sha256": "3990899f6bb3d5d3d72d624f0a9901189f9c69cbd836bdcd08fcb5da78ea65ed",
+      "bytes": 24678400,
+      "identical_to_complete_independent_native_audit": true
+    },
+    "candidate/typed-source.parquet": {
+      "old_sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7",
+      "new_sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7",
+      "bytes": 3125663,
+      "identical_to_complete_independent_native_audit": true
+    },
+    "geoparquet/historical-tsunami-observations.parquet": {
+      "old_sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7",
+      "new_sha256": "ada8eade52e2d34dfcabac97cb066c94934e61f900c86d996d62a3f3fbdd43e7",
+      "bytes": 3125663,
+      "identical_to_complete_independent_native_audit": true
+    },
+    "raw/source_http.zip": {
+      "old_sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8",
+      "new_sha256": "36e1078ec86aee119d3d6626702d129d852e24e3961e3f011bb677a23bf367e8",
+      "bytes": 4572619,
+      "identical_to_complete_independent_native_audit": true
+    },
+    "raw/authority_http.zip": {
+      "old_sha256": "afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736",
+      "new_sha256": "afdf54f158d87c58b5894530c986ad6e9ed7b682528fd969f991164d91c96736",
+      "bytes": 650448,
+      "identical_to_complete_independent_native_audit": true
+    },
+    "metadata/candidate.records.jsonl.gz": {
+      "old_sha256": "5d561aef43e4e2c55aa0335bc6c65cb4462b70b62bf784c9e224f65d64c469c6",
+      "new_sha256": "5d561aef43e4e2c55aa0335bc6c65cb4462b70b62bf784c9e224f65d64c469c6",
+      "bytes": 4312810,
+      "identical_to_complete_independent_native_audit": true
+    },
+    "metadata/physical_numeric_decodes.jsonl.gz": {
+      "old_sha256": "df6208bb9c01fc540aa18da756a28e5ecd9066a8efcbf241b5749adc9f6b610a",
+      "new_sha256": "df6208bb9c01fc540aa18da756a28e5ecd9066a8efcbf241b5749adc9f6b610a",
+      "bytes": 580877,
+      "identical_to_complete_independent_native_audit": true
+    }
+  },
+  "code_commit": "7ea570c77769db46f3fab41cf484d34a8e7ec3b8",
+  "processing_files": 53,
+  "every_recorded_processing_blob_matches_actual_original_git_commit": true
+}

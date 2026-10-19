@@ -1,0 +1,12 @@
+{
+  "classification": "Evidence-driver corrections; source and catalog code unchanged during final history",
+  "initial_history_log": "provenance-recovery-initial-harness-failure.log",
+  "initial_failure": "The first history driver expected source-only cold reconstruction to recreate generic catalog metadata. Canonical source-owned outputs and original provenance were correct; full-tree snapshot assertion failed because catalog metadata is created by normal catalog assets.",
+  "correction": "Retained the first three completed source run records. Resumed by verifying canonical source outputs and original full trust records, then invoking the actual normal catalog assets twice after each cold rebuild. Both normal runs stop at the real independent approval gate; complete candidate-tree byte equality passes after these real asset executions. No catalog metadata is manually copied.",
+  "resumed_log": "provenance-recovery-resumed.log",
+  "resumed_result": "provenance-recovery.json",
+  "status": "PASS",
+  "synthetic_scope": "Newer timestamps are explicitly synthetic on all82 complete original real input bodies, not claimed as new live HTTP retrievals.",
+  "processing_commit": "7ea570c77769db46f3fab41cf484d34a8e7ec3b8",
+  "genuine_docs_only_checkpoint": "9ebb5f7bd400900de91be8b588056025a94a18d1"
+}

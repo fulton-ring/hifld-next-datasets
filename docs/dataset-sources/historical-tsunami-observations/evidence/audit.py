@@ -5,7 +5,7 @@ No column rename, numeric-string conversion, ID join or tolerance is approved.
 from pathlib import Path
 from collections import Counter
 import hashlib,json,tempfile,zipfile
-import fiona,pyarrow.parquet as pq,shapely
+import fiona,pyarrow.parquet as pq,pyogrio,shapely
 from dagster_hifld.sources import tsunami_observations as source
 E=Path(__file__).resolve().parent;P=E/'published-candidate';C=E/'captures'
 http=source.unpack_captures({n:(C/(n+'.zip')).read_bytes() for n in source.ARCHIVE_NAMES});source.validate_complete_bundle(http)
@@ -35,7 +35,20 @@ for key,asset in collection['assets'].items():
      for r in f:
       ids.append(r.id)
       for k in sourceids:sourceids[k].append(r.properties[k])
-     formats[name]={'rows':len(ids),'schema':dict(f.schema),'crs':f.crs.to_string(),'intrinsic_fids':ids,'id_columns':sourceids}
+     fiona_schema=dict(f.schema)
+     formats[name]={'rows':len(ids),'fiona_schema':fiona_schema,'crs':f.crs.to_string(),'intrinsic_fids':ids,'id_columns':sourceids}
+     if name=='file_geodatabase':
+      metadata,native=pyogrio.raw.read_arrow(path)
+      geometry_name=metadata['geometry_name'];attributes=[n for n in native.column_names if n!=geometry_name]
+      assert len(native)==32614 and len(attributes)==49
+      formats[name].update(native_intrinsic_fid_column=metadata.get('fid_column'),native_geometry_column=metadata.get('geometry_name'),schema=str(native.schema),columns=attributes,source_physical_types={n:str(native.schema.field(n).type) for n in attributes},
+       native_reader='pyogrio Arrow; full rows and physical declarations',fiona_omitted_physical_fields=sorted(set(attributes)-set(fiona_schema['properties'])))
+      formats[name]['id_columns']={k:native.column(k).to_pylist() for k in ('ID','source_ID','ObjectId','OBJECTID','TSEVENT_ID') if k in attributes}
+      formats[name]['all_physical_attribute_value_sha256']={n:hashlib.sha256(source.encode(native.column(n).to_pylist())).hexdigest() for n in attributes}
+      formats[name]['native_float32_fields']={n:{'type':str(native.schema.field(n).type),'rows':len(native),'nulls':native.column(n).null_count,
+       'all_native_values_sha256':formats[name]['all_physical_attribute_value_sha256'][n]} for n in ['PERIOD','RUNUP_HT','RUNUP_HORIZ','PRED_TRAV_HOURS']}
+      assert formats[name]['fiona_omitted_physical_fields']==['PERIOD','PRED_TRAV_HOURS','RUNUP_HORIZ','RUNUP_HT']
+     else:formats[name]['schema']=fiona_schema
 assert all(v['rows']==32614 for v in formats.values())
 old_by_source_id={r['source_ID']:r for r in old};assert len(old_by_source_id)==32614
 common=set(current)&set(old_by_source_id);changed={}
@@ -50,6 +63,7 @@ report={'approved':False,'classification':'unapproved_complete_baseline_diagnost
  'diagnostic_unapproved_correspondence':{'current_ID_vs_published_source_ID_only':'Diagnostic value-set comparison; this is NOT an approved ID rename/join.','common':len(common),'only_current':len(set(current)-set(old_by_source_id)),'only_published':len(set(old_by_source_id)-set(current))},
  'common_field_type_and_value_changes':changed,
  'exact_wkb_matches_under_unapproved_diagnostic_correspondence':sum(shapely.geometry.shape(current[k]['geometry']).wkb==old_by_source_id[k]['geometry'] for k in common),
+ 'baseline_reader_diagnostic':{'file_geodatabase':'Fiona omitted four native Float32 columns; complete Arrow49attribute schema and whole-column value hashes are authoritative; all original FIDs retained separately. No cross-format physical-type mapping accepted.'},
  'source_audit':audit,'numeric_physical_decodes':audit['numeric_physical_decode'],
  'release_gate':'No source/baseline/currentID-vs-source_ID mapping/physicaltype/nullability/geometry/coverage/format acceptance. Originalwiredecimals retained; explicit declaredFloat32decode is not approval of historical string-to-numeric migration.'}
 (E/'baseline-audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({'source':34495,'baseline':32614,'diagnostic':report['diagnostic_unapproved_correspondence'],'exact_wkb':report['exact_wkb_matches_under_unapproved_diagnostic_correspondence'],'provider_pins':6,'approved':False}))

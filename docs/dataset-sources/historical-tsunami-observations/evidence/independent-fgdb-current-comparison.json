@@ -1,0 +1,24 @@
+{
+  "classification": "unapproved diagnostic currentID vs historicalFGDB.ID; no accepted correspondence/migration",
+  "current_rows": 34495,
+  "historical_rows": 32614,
+  "shared_ID_values": 32595,
+  "current_only_ID_values": 1900,
+  "historical_only_ID_values": 19,
+  "native_Float32_fields": [
+    "PERIOD",
+    "PRED_TRAV_HOURS",
+    "RUNUP_HORIZ",
+    "RUNUP_HT"
+  ],
+  "all_common_row_type_or_value_differences": {
+    "RUNUP_HT": 103,
+    "RUNUP_HORIZ": 5,
+    "PERIOD": 23
+  },
+  "all_common_row_nullness_differences": {
+    "RUNUP_HT": 19,
+    "RUNUP_HORIZ": 5,
+    "PERIOD": 18
+  }
+}
