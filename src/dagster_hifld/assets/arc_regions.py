@@ -1,6 +1,7 @@
 """ARC Regions candidate snapshot; effective edition and release unaccepted."""
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.sources.arc_regions import SLUG, stage_arc_regions
 
 
@@ -12,6 +13,7 @@ class ArcRegionsConfig(Config):
     description='Unaccepted47-region NHQRedCrossGIS candidate; all native source fields/IDs/3857rings retained, FY26/FY27 edition conflict explicit.')
 def arc_regions(context, config: ArcRegionsConfig, staging_storage: StagingStorageResource):
     result = stage_arc_regions(staging_storage, config.capture_directory or None)
+    context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [result['staging_prefix']])
     context.add_output_metadata(result)
     return result
 

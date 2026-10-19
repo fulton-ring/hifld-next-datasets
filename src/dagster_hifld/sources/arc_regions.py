@@ -321,6 +321,9 @@ def inspect_captures(captures):
         raise ArcRegionsError('native_decoder_attribute_loss')
     geometries = [geom for props, geom in converted]
     if any(g.is_empty or g.geom_type not in {'Polygon', 'MultiPolygon'} for g in geometries): raise ArcRegionsError('missing_or_nonpolygon_geometry')
+    for row, geom in zip(rows, geometries):
+        original = collections.Counter(tuple(tuple(float(v) for v in point) for point in ring) for ring in row['geometry']['rings'])
+        if ring_population([geom]) != original: raise ArcRegionsError('geometry_association_or_ring_loss_for_source_ID')
     if ring_population(geometries) != collections.Counter(raw_rings): raise ArcRegionsError('native_ring_coordinate_or_order_loss')
     signature = digest(encode([[row['attributes']['OBJECTID'], row['geometry']] for row in rows]))
     if not GEOMETRY_SHA256 or signature != GEOMETRY_SHA256: raise ArcRegionsError('geometry_coverage_drift_requires_review:' + signature)
