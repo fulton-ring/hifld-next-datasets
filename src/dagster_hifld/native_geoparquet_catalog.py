@@ -243,6 +243,13 @@ def _dictionary(sample,schema,primary,name,metadata):
             nonnull=values.drop_null();examples=nonnull.slice(0,5).to_pylist();entry['exampleValues']=[_text(v)for v in examples]
             try:entry['numUniqueValues']=int(pc.count_distinct(values).as_py())
             except pa.ArrowException:entry['numUniqueValues']=None
+            if pa.types.is_integer(field.type)or pa.types.is_floating(field.type):
+                bounds=pc.min_max(values).as_py()
+                # Arrow returns Python ints for native integer ranges. Never
+                # route IDs through float, even for dictionary-only statistics.
+                entry.update(min=bounds['min'],max=bounds['max'],nativeBitWidth=field.type.bit_width)
+                for bound in ('min','max'):
+                    if isinstance(entry[bound],float)and not math.isfinite(entry[bound]):entry[bound]=None
             if pa.types.is_decimal(field.type):
                 bounds=pc.min_max(values).as_py()
                 entry.update(precision=field.type.precision,scale=field.type.scale,

@@ -191,3 +191,18 @@ class NativeCatalogTests(unittest.TestCase):
             summary=summarize_staged_catalog(StagingStorageResource(local_dir=tmp),*PREFIX.split('/'),'synthetic',source_metadata=metadata)
             schema=pa.ipc.read_schema(pa.BufferReader(base64.b64decode(summary.data_dictionary['nativeArrowSchemaIPCBase64'])))
             self.assertEqual(schema,table.schema)
+
+    def test_integer_and_float_ranges_keep_existing_convention_without_ID_rounding(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);table,path,metadata=write_fixture(root)
+            index=table.schema.get_field_index('single')
+            values=pa.array([0.1,0.3,1.0,2.0,3.0,4.0],type=pa.float32())
+            table=table.set_column(index,table.schema.field(index),values);pq.write_table(table,path)
+            metadata['prebuilt_output_policy']['formats']['geoparquet']['objects'][0].update(bytes=path.stat().st_size,sha256=sha256_file(path))
+            summary=summarize_staged_catalog(StagingStorageResource(local_dir=tmp),*PREFIX.split('/'),'synthetic',source_metadata=metadata)
+            fields={c['name']:c for c in summary.data_dictionary['columns']}
+            self.assertEqual(fields['large_id']['min'],2**53+1);self.assertIs(type(fields['large_id']['min']),int)
+            self.assertEqual(fields['large_id']['max'],2**53+5)
+            self.assertEqual(fields['single']['min'],values[0].as_py());self.assertEqual(fields['single']['max'],4.0)
+            self.assertEqual(fields['single']['nativeBitWidth'],32)
+            self.assertEqual(fields['large_id']['statisticsScope'],'bounded_arrow_sample')
