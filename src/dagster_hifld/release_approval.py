@@ -16,7 +16,7 @@ from pathlib import Path
 
 from dagster_hifld.provenance import provenance_projection, validate_provenance
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason
+from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason, prebuilt_output_keys
 from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, NativeReadLimits, _code_digest, _digest, compare_native_inputs, reader_versions
 
 
@@ -181,9 +181,11 @@ def require_release_approval(
                 raise ReleaseApprovalError("missing_reviewed_candidate_normalization_derivation")
             from_manifest = json.loads(source.read_key(f"{prefix}/metadata/source_manifest.json"))
             validate_release_provenance(from_manifest)
+            resolved_policy = load_resolved_source_manifest(source, *prefix.split("/")).metadata
+            prebuilt_output_keys(resolved_policy, source, prefix, "geoparquet")
             for format_name, directory in (("shapefile_zip", "shapefile"), ("geopackage", "geopackage"),
                                            ("geoparquet", "geoparquet"), ("pmtiles", "pmtiles")):
-                if unsupported_output_reason(from_manifest, format_name) and any(name.startswith(f"{prefix}/{directory}/") for name in expected):
+                if unsupported_output_reason(resolved_policy, format_name) and any(name.startswith(f"{prefix}/{directory}/") for name in expected):
                     raise ReleaseApprovalError(f"unsupported_output_present:{format_name}")
             _require_provenance_metadata(entry, source, prefix)
             quality = json.loads(source.read_key(f"{prefix}/metadata/quality_manifest.json"))

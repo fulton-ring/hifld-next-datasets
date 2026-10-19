@@ -583,3 +583,114 @@ pins all code/log bytes, nine actual runs, expected failure-reason audits and th
 explicit compatibility proposal. The narrow `d28dbaf` bounds repair has its own
 independent PASS; that review does not cover this new Dagster/API slice. No CI,
 production, source/baseline/contract or compatibility acceptance is claimed.
+
+## Preserved native artifacts versus whole-format prohibitions
+
+Source #30 retained faithful native Date32 GeoParquet, while #31 retained a
+source-produced typed GeoParquet without generic derived columns. Both used
+`unsupported_output_formats.geoparquet` to prevent lossy generic regeneration.
+That field correctly prohibited *all* staged GeoParquet at the release boundary,
+so even a future legitimate source/baseline decision could not promote their
+preserved output. No real dataset is accepted by correcting this distinction.
+
+New draft `prebuilt_output_policy` version 1 declares a complete native artifact
+roster and forbids generic regeneration. Initial support is narrowly GeoParquet:
+
+```json
+{
+  "prebuilt_output_policy": {
+    "schema_version": 1,
+    "formats": {
+      "geoparquet": {
+        "reason": "Captured evidence explains why generic regeneration is forbidden",
+        "objects": [
+          {"path": "geoparquet/native.parquet", "sha256": "<actual SHA256>", "bytes": 123}
+        ]
+      }
+    }
+  }
+}
+```
+
+Every path is relative to the dataset/file/version directory. The entire format
+roster, SHA-256, length and stable storage identity are verified before returning
+prebuilt format outputs and again at release. Missing, extra, changed, malformed
+or conflicting declarations raise; they never fall back to the generic converter
+or delete/rebuild the prebuilt artifact, even when overwrite is enabled. Dagster
+format metadata records `generation_mode=preserved_prebuilt`, disabled generic
+regeneration and the original evidence reason. This capability does not validate
+Parquet contents by itself: full native comparison, input derivation, provenance,
+quality, exact code/object pins and independent source/baseline/contract/report
+decisions are still required for promotion. The native receipt supplies the
+physical proof; a generic-converter layout manifest is not fabricated for an
+artifact the generic converter never generated.
+
+`unsupported_output_formats` retains its complete prohibition. A format cannot
+simultaneously be wholly banned and declared prebuilt; ambiguous overlap is
+rejected. Unsupported prebuilt encodings are rejected rather than inferred.
+Both policies are validated before metadata compaction, retained through source
+resolution, dictionary and resolved provenance, and therefore carried into the
+existing full STAC/metadata projection. Release uses the resolved dataset/file/
+version policy, including inherited declarations. Current older resolved metadata
+that omitted these capability declarations requires a newly reviewed canonical
+metadata generation; it is not silently relabelled or rewritten in published
+storage. This is a proposed draft metadata/API compatibility change requiring
+maintainer review, not source/format/contract or deployment acceptance.
+
+The synthetic Date32 fixture executes the actual registered catalog, format,
+comparison, quality/verification and promotion assets with isolated durable
+state. Exact synthetic-only decisions publish two rows with Date32/null dates,
+large and nullable Int64 values, source FIDs and geometry retained. Instrumenting
+the generic GeoParquet converter to raise proves zero calls. Missing approval,
+failed quality (also checked directly after deliberate exact quality-byte repin),
+staged native mutation and a whole-format ban all block and preserve the prior
+21-object fixture release. Policy bytes also match published dictionary and
+resolved provenance. No real source metadata or #30/#31 branch is changed here;
+source owners must deliberately integrate this shared checkpoint before changing
+their declarations and validating their new outputs.
+
+Frozen local suite: **508 tests, 507 passed, one production-write opt-in skipped,
+zero failures/errors**, with the real pinned IaC dependency. Actual Date32 success
+was `e47d1098-2a28-4ab1-bf4a-557c703cbe4e`; missing approval,
+quality failure and staged mutation were respectively
+`efeb555b-7880-4282-bca1-1215b9c3c639`,
+`66a1ab24-7077-454e-8cfe-e66024e8323e` and
+`19edc21e-02da-47b9-a249-7d4fd6349398`. Their durable failure-event reasons were
+audited. The [prebuilt evidence](../evidence/2026-10-19-prebuilt-date32-policy.json)
+pins current code, original source-card observations, published schema/selected
+typed values, complete runner/log hashes and all results. New checkpoint review
+is pending; prior `abde85b` independent PASS covers its earlier catalog slice,
+not this new capability policy. No CI or real acceptance claim is made.
+
+Independent review of `81433b3` reproduced a cross-layer defect with real native
+Date32 bytes and exact synthetic decisions: replacing the entire ban dictionary
+let a version's PMTiles ban erase a dataset's GeoParquet ban and thereby admit
+its prebuilt GeoParquet. The follow-up now unions whole-format bans across every
+authored dataset/file/version layer. Empty or unrelated narrower maps cannot
+clear an inherited ban; explicit null remains invalid. Distinct inherited
+prebuilt declarations are rejected instead of silently replacing the parent's
+roster/reason, and the fully merged policy is validated even for legacy metadata
+without modern provenance. No allow/unban override has been invented. Original
+authored files and their existing snapshots are not modified by resolution.
+
+Three additional regression tests exercise different-format multi-layer bans,
+empty/null/explicit declarations, preserved raw/snapshot bytes, and the actual
+writer and release helper under exact synthetic object decisions. A second
+standalone replay with preserved real typed Date32 fixture bytes confirms both
+entrypoints reject the inherited ban before output/copy, leaving all 24 staged
+objects and its prior published sentinel unchanged. The same registered Date32
+graph still succeeds for a valid prebuilt policy with zero generic converter
+calls and preserves its 21 published objects after missing approval, quality,
+staged mutation and whole-format-ban failures.
+
+Frozen validation: **511 local tests, 510 passed, one production-write opt-in
+skipped, zero errors/failures**; 36 focused tests passed. Actual Date32 success
+was `dc98d9b0-bcb6-402d-ad8b-5c1ed379a8d1`; missing approval,
+quality and mutation runs were `40e47558-2f3b-47af-b4a7-56457ab00d1d`,
+`233d2a0a-d3c9-4433-8b85-68b3495ad0ae` and
+`6d42ab87-3801-4114-9516-bf1b948b5dfa`. The
+[inherited-policy repair evidence](../evidence/2026-10-19-inherited-output-policy-repair.json)
+pins the original independent reproductions, code and logs, new actual runs and
+native replay. This narrower checkpoint awaits independent review; the parent
+`81433b3` finding remains honestly recorded. Source #30/#31 integration and all
+real acceptance/deployment decisions remain external.
