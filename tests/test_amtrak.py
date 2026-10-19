@@ -287,6 +287,29 @@ class AmtrakDraftTest(unittest.TestCase):
             build_candidate(self.root,self.root/'numeric-rejection')
         self.assertFalse((self.root/'numeric-rejection/candidate.parquet').exists())
 
+    def test_effective_dependencies_native_runtimes_and_lock_identity_prevent_reuse(self):
+        from dagster_hifld.amtrak_extract import processing_identity
+        target=self.root/'identity-candidate'
+        original=build_candidate(self.root,target)
+        expected=(target/'candidate.parquet').read_bytes()
+        patches=[
+            patch('dagster_hifld.amtrak_extract.shapely.__version__','changed-effective-shapely'),
+            patch('dagster_hifld.amtrak_extract.shapely.geos_version_string','changed-native-geos'),
+            patch('dagster_hifld.amtrak_extract.pyproj.__version__','changed-effective-pyproj'),
+            patch('dagster_hifld.amtrak_extract.pyproj.proj_version_str','changed-native-proj'),
+            patch('dagster_hifld.amtrak_extract.platform.python_version',return_value='different-python'),
+            patch('dagster_hifld.amtrak_extract._project_identities',return_value={'uv.lock':{'sha256':'f'*64}}),
+            patch('dagster_hifld.amtrak_extract.importlib.metadata.version',return_value='different-installed-distribution'),
+        ]
+        for replacement in patches:
+            with replacement:
+                self.assertNotEqual(processing_identity()['builder_fingerprint'],original['processing']['builder_fingerprint'])
+                with self.assertRaisesRegex(FileExistsError,'version collision'):
+                    build_candidate(self.root,target)
+            self.assertEqual((target/'candidate.parquet').read_bytes(),expected)
+            self.assertEqual(json.loads((target/'provenance.json').read_bytes()),original)
+        self.assertEqual(build_candidate(self.root,target),original)
+
 
 if __name__ == '__main__': unittest.main()
 

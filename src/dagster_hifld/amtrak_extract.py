@@ -7,9 +7,11 @@ raw ArcGIS fields, including integer OBJECTID and string Code, survive unchanged
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import datetime
 import json
 import math
+import platform
 import shutil
 import subprocess
 import time
@@ -23,6 +25,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
+import pyproj
+import shapely
 from dagster import (
     AssetKey, AssetSelection,
     DefaultScheduleStatus, RunRequest,
@@ -80,13 +84,30 @@ def _require_review_staging(staging):
         raise ValueError('Review staging prefix must remain inside its local root')
 
 
+def _project_identities(root: Path) -> dict:
+    return {name: {'sha256': _digest(root / name)} if (root / name).is_file()
+            else {'unavailable_reason': 'File is not present beside installed source'}
+            for name in ('pyproject.toml', 'uv.lock')}
+
+
 def processing_identity():
     pipeline = verifier_implementation_sha256()
-    versions = {'pyarrow': pa.__version__, 'pyogrio': pyogrio.__version__,
-                'gdal': str(pyogrio.__gdal_version__)}
+    root = Path(__file__).resolve().parents[2]
+    versions = {
+        'python': platform.python_version(), 'python_implementation': platform.python_implementation(),
+        'modules': {'pyarrow': pa.__version__, 'pyogrio': pyogrio.__version__,
+                    'shapely': shapely.__version__, 'pyproj': pyproj.__version__},
+        'native': {'gdal': str(pyogrio.__gdal_version__), 'geos': shapely.geos_version_string,
+                   'proj': pyproj.proj_version_str},
+        'effective_distributions': {name: importlib.metadata.version(name) for name in
+                                    ('pyarrow', 'pyogrio', 'shapely', 'pyproj', 'numpy', 'dagster')},
+        'installed_distribution_inventory': [list(item) for item in sorted({
+            (distribution.metadata['Name'].lower().replace('_', '-'), distribution.version)
+            for distribution in importlib.metadata.distributions() if distribution.metadata.get('Name')})],
+        'project_identities': _project_identities(root),
+    }
     fingerprint = hashlib.sha256(json.dumps({'installed_pipeline_sha256': pipeline,
         'versions': versions}, sort_keys=True).encode()).hexdigest()
-    root = Path(__file__).resolve().parents[2]
     result = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True)
     commit = result.stdout.strip() if result.returncode == 0 else None
     dirty = subprocess.run(['git', '-C', str(root), 'status', '--porcelain', '--', 'src/dagster_hifld'], capture_output=True, text=True)
