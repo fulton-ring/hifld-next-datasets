@@ -464,7 +464,7 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
         'processing_fingerprint':actual['processing_fingerprint'],
         'original_bundle_sha256':sha(bundle_body),
         'original_bundle_evidence_key':key+'.evidence/'+sha(bundle_body)+'.json'}
-    if not storage.object_exists(started) or strict_json(storage.read_key(started))!=expected_marker:
+    if not storage.object_exists(started) or storage.read_key(started)!=encode(expected_marker):
         raise CBRSQuarantineError('missing_or_invalid_first_construction_marker')
     evidence_key=expected_marker['original_bundle_evidence_key']
     if not storage.object_exists(evidence_key) or storage.read_key(evidence_key)!=bundle_body:

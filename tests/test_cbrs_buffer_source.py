@@ -311,7 +311,10 @@ class CBRSTests(unittest.TestCase):
                     s.original_provenance_bundle(storage,version,changed,later,files,create=True)
                 self.assertFalse(key.exists());self.assertEqual(marker.read_bytes(),first)
             key.write_bytes(original) # Explicit restoration of saved authentic original, never inferred repair.
-            for mode,body in [('missing',None),('invalid',b'{}'),('malformed',b'{')]:
+            for mode,body in [('missing',None),('invalid',b'{}'),('malformed',b'{'),
+                              ('boolean_schema_version',s.encode({**claim,'schema_version':True})),
+                              ('floating_schema_version',s.encode({**claim,'schema_version':1.0})),
+                              ('noncanonical_bytes',first+b'\n')]:
                 if body is None:marker.unlink()
                 else:marker.write_bytes(body)
                 for retry in [1,2]:
