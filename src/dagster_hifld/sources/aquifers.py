@@ -32,6 +32,8 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_state import (canonical_construction_bundle, load_first_construction, seal_first_construction)
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
@@ -378,6 +380,50 @@ def validate_cached_payloads(path: Path, records: bytes, audit: dict) -> None:
         raise AquifersQuarantineError('cached_parquet_original_row_or_geometry_mismatch')
 
 
+def construction_record_key(version: str) -> str:
+    return f'_construction-state/{SLUG}/{version}.json'
+
+
+def construction_history_exists(storage: StagingStorageResource, version: str) -> bool:
+    key = construction_record_key(version)
+    path = Path(storage.local_dir) / storage._ensure_prefixed(key)
+    return any(p.exists() or p.is_symlink() for p in
+               [path, path.with_name(path.name + '.first-construction.json'),
+                path.with_name(path.name + '.evidence')])
+
+
+def original_construction(storage: StagingStorageResource, version: str, body: bytes,
+                          identity: dict, *, receipt: dict | None = None,
+                          manifest: dict | None = None, create: bool = False) -> tuple[dict, dict]:
+    """Caller holds the common version lock; sealing follows private validation."""
+    fingerprint = sha(encode(identity)); key = construction_record_key(version)
+    if create:
+        validate_receipt(body, receipt)
+        receipt_key = f'_raw-captures/{SLUG}/{PIN}/receipts/{sha(encode(receipt))}.json'
+        if not storage.object_exists(receipt_key) or storage.read_key(receipt_key) != encode(receipt):
+            raise AquifersQuarantineError('original_construction_receipt_not_preserved')
+        if not isinstance(manifest, dict) or manifest != source_manifest(receipt, fingerprint, manifest.get('code_commit')):
+            raise AquifersQuarantineError('original_construction_manifest_semantic_drift')
+        validate_construction_code_identity(Path(__file__).parents[3], manifest['code_commit'], identity['files'])
+        bundle = canonical_construction_bundle(version, fingerprint,
+                                               {'receipt': receipt, 'manifest': manifest})
+        raw = seal_first_construction(storage, key, version, fingerprint, bundle)
+    else:
+        raw = load_first_construction(storage, key, version, fingerprint)
+    value = strict_json(raw); payload = value['payload']
+    if set(payload) != {'receipt', 'manifest'}:
+        raise AquifersQuarantineError('original_construction_bundle_payload_drift')
+    original_receipt, original_manifest = payload['receipt'], payload['manifest']
+    validate_receipt(body, original_receipt)
+    receipt_key = f'_raw-captures/{SLUG}/{PIN}/receipts/{sha(encode(original_receipt))}.json'
+    if not storage.object_exists(receipt_key) or storage.read_key(receipt_key) != encode(original_receipt):
+        raise AquifersQuarantineError('original_construction_receipt_not_preserved')
+    if original_manifest != source_manifest(original_receipt, fingerprint, original_manifest.get('code_commit')):
+        raise AquifersQuarantineError('original_construction_manifest_semantic_drift')
+    validate_construction_code_identity(Path(__file__).parents[3], original_manifest['code_commit'], identity['files'])
+    return original_receipt, original_manifest
+
+
 def validate_cached_candidate(storage: StagingStorageResource, version: str, records: bytes,
                               body: bytes, members: dict, audit: dict, identity: dict) -> None:
     path = local_candidate_path(storage, version)
@@ -398,12 +444,15 @@ def validate_cached_candidate(storage: StagingStorageResource, version: str, rec
         raise AquifersQuarantineError('cached_receipt_missing_original_capture')
     manifest = strict_json(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
     commit = manifest.get('code_commit', '')
-    code_matches = isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit)
-    if code_matches:
-        code_matches = subprocess.run(['git', 'diff', '--quiet', commit, '--', 'src/dagster_hifld',
-            'uv.lock', 'pyproject.toml'], cwd=Path(__file__).parents[3], check=False).returncode == 0
-    if not code_matches or manifest != source_manifest(receipt, fingerprint, commit):
+    try:
+        validate_construction_code_identity(Path(__file__).parents[3], commit, identity['files'])
+    except ValueError as exc:
+        raise AquifersQuarantineError('cached_source_provenance_semantic_or_code_drift:' + str(exc)) from exc
+    if manifest != source_manifest(receipt, fingerprint, commit):
         raise AquifersQuarantineError('cached_source_provenance_semantic_or_code_drift')
+    original_receipt, original_manifest = original_construction(storage, version, body, identity)
+    if receipt != original_receipt or manifest != original_manifest:
+        raise AquifersQuarantineError('cached_source_provenance_original_construction_drift')
     authored_snapshot='metadata/source/version_'+sha(authored_body)+'_source_manifest.json'
     downstream = {authored_snapshot, 'metadata/resolved_provenance.json', 'metadata/data_dictionary.json', 'metadata/quality_manifest.json',
                   'metadata/source/source_manifest.json',
@@ -507,6 +556,19 @@ def expose_completed_candidate(storage: StagingStorageResource, version: str,
         for name, contents in payloads.items():
             immutable(hidden_storage, name, contents)
         immutable(hidden_storage, 'metadata/aquifers_candidate_ready.json', encode(ready))
+        if target.exists() or target.is_symlink():
+            raise AquifersQuarantineError('candidate_appeared_before_atomic_exposure')
+        # Only complete private native bytes can establish the first outside witness.
+        validate_cached_payloads(build, payloads['metadata/candidate.records.jsonl'],
+                                 strict_json(payloads['metadata/aquifers_source_audit.json']))
+        original_receipt, original_manifest = original_construction(
+            storage, version, payloads[f'raw/{ARCHIVE_NAME}'],
+            strict_json(payloads['metadata/processing_identity.json']),
+            receipt=strict_json(payloads['raw/retrieval.json']),
+            manifest=strict_json(payloads['metadata/source_manifest.json']), create=True)
+        if (encode(original_receipt) != payloads['raw/retrieval.json'] or
+                encode(original_manifest) != payloads['metadata/source_manifest.json']):
+            raise AquifersQuarantineError('new_candidate_differs_from_original_construction')
         # A cooperating refresh holds this same per-version advisory lock from
         # cache inspection through rename. Existing versions are never replaced.
         if target.exists() or target.is_symlink():
@@ -544,6 +606,9 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
                 return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version,
                         'feature_count': len(rows), 'status': 'working_draft_candidate_ready',
                         'processing_fingerprint': fingerprint}
+            original_manifest = None
+            if construction_history_exists(storage, version):
+                receipt, original_manifest = original_construction(storage, version, body, identity)
             geopackage = directory / f'{SLUG}.gpkg'
             with fiona.open(geopackage, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
                             schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
@@ -575,7 +640,7 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise AquifersQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest = source_manifest(receipt, fingerprint, commit)
+            manifest = original_manifest or source_manifest(receipt, fingerprint, commit)
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(),

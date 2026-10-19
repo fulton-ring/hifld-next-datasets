@@ -23,11 +23,72 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usgs import usgs_aquifers, usgs_aquifers_draft_refresh_schedule
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import aquifers as source
+from dagster_hifld import construction_state
 
 CAPTURES = Path('/workspace/work/hifld-coordinator/19')
 
 
 class AquifersTests(unittest.TestCase):
+    def state_fixture(self, directory):
+        storage=StagingStorageResource(local_dir=directory)
+        body=(CAPTURES/'zip.body').read_bytes();receipt=json.loads((CAPTURES/'zip.json').read_bytes())
+        identity=source.processing_identity();fingerprint=source.sha(source.encode(identity))
+        version='v0.0.0-draft-original-state-unit'
+        commit=__import__('subprocess').check_output(['git','rev-parse','HEAD'],cwd=Path(source.__file__).parents[3],text=True).strip()
+        manifest=source.source_manifest(receipt,fingerprint,commit)
+        key=f'_raw-captures/{source.SLUG}/{source.PIN}/receipts/{source.sha(source.encode(receipt))}.json'
+        source.immutable(storage,key,source.encode(receipt))
+        return storage,body,receipt,identity,version,manifest
+
+    @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
+    def test_original_construction_complete_bundle_binding_and_exact_restoration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage,body,receipt,identity,version,manifest=self.state_fixture(tmp)
+            self.assertEqual(source.original_construction(storage,version,body,identity,receipt=receipt,manifest=manifest,create=True),(receipt,manifest))
+            alias=Path(tmp,source.construction_record_key(version));original=alias.read_bytes()
+            marker=alias.with_name(alias.name+'.first-construction.json');marker_body=marker.read_bytes()
+            evidence=next(alias.with_name(alias.name+'.evidence').glob('*.json'))
+            changed=copy.deepcopy(receipt);changed['fetched_at']='2026-10-19T09:22:43.619504+00:00'
+            source.immutable(storage,f'_raw-captures/{source.SLUG}/{source.PIN}/receipts/{source.sha(source.encode(changed))}.json',source.encode(changed))
+            forged=source.canonical_construction_bundle(version,source.sha(source.encode(identity)),{'receipt':changed,'manifest':source.source_manifest(changed,source.sha(source.encode(identity)),manifest['code_commit'])})
+            alias.write_bytes(forged)
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'construction_marker_mismatch'):
+                    source.original_construction(storage,version,body,identity)
+            alias.write_bytes(original)
+            for target in [alias,marker,evidence]:
+                saved=target.read_bytes();target.unlink()
+                self.assertTrue(source.construction_history_exists(storage,version))
+                for _ in range(2):
+                    with self.assertRaisesRegex(ValueError,'construction_'):
+                        source.original_construction(storage,version,body,identity,receipt=changed,manifest=source.source_manifest(changed,source.sha(source.encode(identity)),manifest['code_commit']),create=True)
+                target.write_bytes(saved)
+                self.assertEqual(source.original_construction(storage,version,body,identity),(receipt,manifest))
+            self.assertEqual(alias.read_bytes(),original);self.assertEqual(marker.read_bytes(),marker_body)
+
+    @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
+    def test_partial_first_state_never_rebinds_and_invalid_git_never_seals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage,body,receipt,identity,version,manifest=self.state_fixture(tmp)
+            bad={**manifest,'code_commit':'0'*40}
+            with self.assertRaisesRegex(ValueError,'construction_invalid_commit'):
+                source.original_construction(storage,version,body,identity,receipt=receipt,manifest=bad,create=True)
+            self.assertFalse(source.construction_history_exists(storage,version))
+            install=construction_state._install_once
+            def interrupt(root,key,contents):
+                if key.endswith('.first-construction.json'):raise OSError('injected first marker failure')
+                return install(root,key,contents)
+            with patch.object(construction_state,'_install_once',side_effect=interrupt):
+                with self.assertRaisesRegex(ValueError,'construction_state_io_failed'):
+                    source.original_construction(storage,version,body,identity,receipt=receipt,manifest=manifest,create=True)
+            self.assertTrue(source.construction_history_exists(storage,version))
+            evidence=list(Path(tmp).rglob('*.json.evidence/*.json'));self.assertEqual(len(evidence),1)
+            original=evidence[0].read_bytes()
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
+                    source.original_construction(storage,version,body,identity,receipt=receipt,manifest=manifest,create=True)
+                self.assertEqual(evidence[0].read_bytes(),original)
+
     def test_receipt_strict_json_and_official_identity(self):
         for body in (b'[]', b'{"error":{}}', b'{"a":1,"a":2}', b'{"x":{"a":1,"a":2}}'):
             with self.assertRaises(ValueError):
