@@ -41,12 +41,15 @@ def audit_formats(staging_root: pathlib.Path, candidate_prefix: str, version_pre
                     format_name, name, original.schema.field(name).type, table.schema.field(name).type)
                 changed[name] = sum(expected[key][name] != actual[key][name] for key in expected)
         assert not any(changed.values()), (format_name, changed)
+        geometry_wkb_changes = sum(expected[key]['geometry'] != actual[key][geometry_name] for key in expected)
+        assert geometry_wkb_changes == 0, (format_name, geometry_wkb_changes)
         nullable_changes={name: {'source': original.schema.field(name).nullable, 'output': table.schema.field(name).nullable} for name in original.column_names if name in table.column_names and original.schema.field(name).nullable != table.schema.field(name).nullable}
         result['formats'][format_name] = {
             'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
             'rows': table.num_rows, 'crs': crs.to_string(), 'geometry_column': geometry_name,
             'all_original_columns_retained': True, 'all_original_physical_types_retained': True,
             'all_original_values_and_geometries_retained': True, 'changed_counts': changed,
+            'native_geometry_wkb_byte_changes': geometry_wkb_changes,
             'all_original_nullability_retained': not nullable_changes, 'nullability_changes_requiring_mapping_decision': nullable_changes,
             'additional_columns_requiring_mapping_decision': sorted(set(table.column_names) - set(original.column_names)),
             'schema': [{'name': field.name, 'type': str(field.type), 'nullable': field.nullable} for field in table.schema],

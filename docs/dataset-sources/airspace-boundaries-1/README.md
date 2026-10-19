@@ -88,8 +88,8 @@ receipts are retained byte for byte; no missing redirect evidence is inferred.
 
 The replay creates a dedicated persistent Dagster instance and local stores,
 executes the registered refresh, then runs catalog/formats/verification/promotion
-without manually copying source data or constructing replacement manifests
-with actual blocking checks, and independently probes direct promotion without
+with actual blocking checks, without copying source data or constructing replacement
+manifests. It independently probes direct promotion without
 an approval registry. Staged evidence and a preexisting local historical sentinel
 must survive rejection. No real acceptance fixture is created. Earlier export
 quality failure is retained in `legacy-export-materialization.json`; current
