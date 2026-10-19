@@ -14,7 +14,6 @@ from dagster import AssetKey, Config, Output, asset
 from dagster_hifld.noaa_extract import fetch_noaa_layer, stage_noaa_candidate
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.release_approval import verifier_implementation_sha256
 
 DATASET = FILE = '24nm-contiguous-zone'
 LAYER_URL = ('https://maritimeboundaries.noaa.gov/arcgis/rest/services/'
@@ -41,7 +40,6 @@ PROPOSED_FINGERPRINTS = {
 class ContiguousDraftConfig(Config):
     """A checksummed complete source receipt; empty selects bounded live capture."""
     capture_dir: str = ''
-    code_revision: str = 'unreviewed-draft'
 
 
 def read_contiguous_receipt(directory: Path) -> tuple[dict[str, bytes], dict]:
@@ -94,46 +92,8 @@ def noaa_24nm_contiguous_zone(context, config: ContiguousDraftConfig,
         staging=staging_storage, dataset_slug=DATASET, file_slug=FILE,
         captures=bodies, receipts=receipts, expected_fields=EXPECTED_FIELDS,
         expected_fingerprints=PROPOSED_FINGERPRINTS, expected_count=63,
+        code_commit=context.run_tags.get('hifld/source_code_commit'),
     )
-    provenance = {
-        'schema_version': 1, 'processor': 'HIFLD Next', 'code_commit': config.code_revision,
-        'implementation_sha256': verifier_implementation_sha256(),
-        'title': '24NM Contiguous Zone', 'agency': 'NOAA',
-        'publisher': 'NOAA National Ocean Service, Office of Coast Survey',
-        'source_url': LAYER_URL, 'source_role': 'producer_publication',
-        'acceptance': 'unapproved_draft', 'release_date': None,
-        'unsupported_output_formats': {
-            'shapefile_zip': 'Complete 63-row DBF audit changed 43 NOTE single-space values to NULL and epoch-ms int64 PUB_DATE to DBF float24.15; no lossless approved mapping. See committed draft-format-audit.json.',
-        },
-        'release_date_unknown_reason': 'InPort2013 publication does not bind the current service snapshot.',
-        'transformations': [report['mapping'],
-            'Existing canonical graph maps processing SHAPE to terminal geometry WKB and derives bbox; no substitute source ID is generated.'],
-        'inputs': [{
-            'input_id': item['capture'], 'producer': 'NOAA/NOS/Office of Coast Survey',
-            'host': 'maritimeboundaries.noaa.gov', 'role': 'producer_publication',
-            'canonical_url': LAYER_URL, 'retrieval_url': item['url'],
-            'release_date_unknown_reason': 'No verified snapshot-wide source release date',
-            'retrieved_at': item['fetched_at'], 'sha256': item['sha256'], 'bytes': item['bytes'],
-            'license': 'NOAA public data; InPort use constraints retained with research evidence',
-            'attribution': 'NOAA National Ocean Service, Office of Coast Survey',
-            'raw_key': f"{DATASET}/{FILE}/{report['version']}/raw/{item['capture']}.json",
-        } for item in receipts],
-    }
-    key = f"{DATASET}/{FILE}/{report['version']}/metadata/source_manifest.json"
-    data = (json.dumps(provenance, sort_keys=True, separators=(',', ':')) + '\n').encode()
-    if staging_storage.object_exists(key):
-        # Identical raw data fetched again keeps its original dated provenance.
-        # Every later receipt remains in raw/receipts without rewriting that pin.
-        previous = json.loads(staging_storage.read_key(key))
-        for item in previous.get('inputs', []):
-            item.pop('retrieved_at', None)
-        comparable = json.loads(data)
-        for item in comparable['inputs']:
-            item.pop('retrieved_at', None)
-        if previous != comparable:
-            raise ValueError('draft provenance changed for immutable raw identity; use a new staging root')
-    else:
-        staging_storage.write_key_if_unchanged(key, data, None)
     partition = build_publish_partition_key(DATASET, FILE, report['version'])
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition])
     return Output(report, metadata={

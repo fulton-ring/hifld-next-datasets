@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from contextlib import nullcontext
@@ -33,6 +34,14 @@ EVIDENCE = Path(__file__).resolve().parents[1] / 'docs/dataset-sources/24nm-cont
 
 def real_receipt(directory):
     """Composite observed captures, explicitly not a simultaneous live snapshot."""
+    live = os.environ.get('HIFLD_NOAA_CONTIGUOUS_LIVE_RECEIPT')
+    if live:
+        captures, receipt = source_module.read_contiguous_receipt(Path(live))
+        directory.mkdir(parents=True)
+        for name, body in captures.items():
+            (directory / (name + '.json')).write_bytes(body)
+        (directory / 'receipt.json').write_text(json.dumps(receipt))
+        return captures, receipt
     new = EVIDENCE / 'network-20261019'
     captures = {
         'layer': (EVIDENCE / 'layer.txt').read_bytes(),
@@ -112,13 +121,14 @@ class ContiguousDraftTests(unittest.TestCase):
                 ])
             with patch.dict(os.environ, {'DAGSTER_HOME': str(home), 'HIFLD_RELEASE_APPROVALS': ''}), DagsterInstance.get() as instance:
                 config = {'ops': {source_module.noaa_24nm_contiguous_zone.op.name: {'config': {'capture_dir': str(p / 'receipt')}}}}
-                first = defs.resolve_job_def('source').execute_in_process(instance=instance, run_config=config)
+                tags = {'hifld/source_code_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()}
+                first = defs.resolve_job_def('source').execute_in_process(instance=instance, run_config=config, tags=tags)
                 report = first.output_for_node(source_module.noaa_24nm_contiguous_zone.op.name)
                 later_receipt = json.loads((p / 'receipt/receipt.json').read_text())
                 for item in later_receipt['receipts']:
                     item['fetched_at'] = '2026-10-20T00:00:00+00:00'
                 (p / 'receipt/receipt.json').write_text(json.dumps(later_receipt))
-                second = defs.resolve_job_def('source').execute_in_process(instance=instance, run_config=config)
+                second = defs.resolve_job_def('source').execute_in_process(instance=instance, run_config=config, tags=tags)
                 self.assertEqual(report, second.output_for_node(source_module.noaa_24nm_contiguous_zone.op.name))
                 partition = f"{source_module.DATASET}/{source_module.FILE}/{report['version']}"
                 self.assertIn(partition, instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME))
@@ -148,7 +158,7 @@ class ContiguousDraftTests(unittest.TestCase):
                 self.assertTrue(quality['quality_check_passed'])
                 self.assertFalse(list((version_dir / 'shapefile').glob('*.zip')))
                 self.assertEqual(formats_result.output_for_node(publish_shapefile_zip.op.name)['files'], [])
-                self.assertIn('43 NOTE', provenance['unsupported_output_formats']['shapefile_zip'])
+                self.assertIn('\"NOTE\": 43', provenance['unsupported_output_formats']['shapefile_zip'])
                 dictionary = json.loads((version_dir / 'metadata/data_dictionary.json').read_text())
                 date_column = next(c for c in dictionary['columns'] if c['name'] == 'PUB_DATE')
                 self.assertEqual(date_column['type'], 'integer')
@@ -181,7 +191,8 @@ class ContiguousDraftTests(unittest.TestCase):
                 after = {str(f.relative_to(p / 'published')): hashlib.sha256(f.read_bytes()).hexdigest() for f in (p / 'published').rglob('*') if f.is_file()}
                 self.assertEqual(before, after)
                 self.assertTrue((version_dir / 'metadata/noaa_extraction.json').is_file())
-                result = {'classification': 'working local draft; complete real composite observed captures, no dataset acceptance',
+                result = {'classification': 'working local draft; ' + ('complete fresh live source capture' if os.environ.get('HIFLD_NOAA_CONTIGUOUS_LIVE_RECEIPT') else 'complete real composite observed captures') + '; no dataset acceptance',
+                    'source_code_commit': tags['hifld/source_code_commit'],
                     'module': source_module.__file__, 'source_run_id': first.run_id, 'idempotent_run_id': second.run_id,
                     'formats_run_id': formats_result.run_id, 'failed_release_run_id': failure.run_id,
                     'source_rows': table.num_rows, 'terminal_rows': len(terminal_rows), 'terminal_UNILATERAL_type': str(terminal_type),
