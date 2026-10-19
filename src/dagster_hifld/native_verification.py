@@ -132,6 +132,9 @@ def _arrow_scalar(value: pa.Scalar, budget: list[int], maximum: int) -> Any:
             raise ValueError("Null value violates physical Arrow list-element nullability")
         return ["list", [_arrow_scalar(item, budget, maximum) for item in value.values]]
     if pa.types.is_map(value.type):
+        if ((not value.type.key_field.nullable and value.values.field("key").null_count)
+                or (not value.type.item_field.nullable and value.values.field("value").null_count)):
+            raise ValueError("Null value violates physical Arrow map key/item nullability")
         return ["map", [[_arrow_scalar(item["key"], budget, maximum), _arrow_scalar(item["value"], budget, maximum)] for item in value.values]]
     if pa.types.is_temporal(value.type):
         # Arrow's raw integer ticks avoid datetime microsecond truncation and

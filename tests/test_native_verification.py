@@ -177,6 +177,27 @@ class NativeVerificationTests(unittest.TestCase):
                     _copy_version_files(source, target, "synthetic", "points", "vtest")
             self.assertEqual(target.list_prefix(), [])
 
+    def test_nonnullable_map_items_and_nested_map_children_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            inputs = root / "inputs"
+            inputs.mkdir()
+            types_and_values = [
+                (pa.map_(pa.string(), pa.field("value", pa.int64(), nullable=False)), [("key", None)]),
+                (pa.map_(pa.string(), pa.struct([pa.field("required", pa.int64(), nullable=False)])), [("key", {"required": None})]),
+                (pa.map_(pa.string(), pa.list_(pa.field("item", pa.int64(), nullable=False))), [("key", [None])]),
+            ]
+            for kind, value in types_and_values:
+                schema = pa.schema([("id", pa.int64()), ("state", pa.string()), ("map", kind)])
+                table = pa.Table.from_pylist([{"id": 1, "state": "PA", "map": value}], schema=schema)
+                with pa.OSFile(str(inputs / "invalid.arrow"), "wb") as sink, ipc.new_file(sink, schema) as writer:
+                    writer.write_table(table)
+                spec = spec_for(inputs, "arrow_ipc_file")
+                receipt = normalize_native_input(spec, policy(False), root / "out")
+                self.assertEqual(receipt["status"], "blocked", receipt)
+                comparison = compare_native_inputs(spec, spec, policy(False), root / "comparison", baseline_reference=reference(spec))
+                self.assertEqual(comparison["status"], "blocked", comparison)
+
     def test_nested_bbox_lists_maps_and_temporal_values_preserve_schema_and_nulls(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

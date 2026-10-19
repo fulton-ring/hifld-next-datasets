@@ -247,3 +247,10 @@ additional bbox struct and missing GeoPackage driver IDs were retained, not
 projected away: 96 candidate schema errors, 96 FID differences and 96 bbox differences
 leave the overall comparison failed. The native machinery exposes the concrete
 mapping/acceptance question; it does not authorize dropping those fields.
+
+Independent native review found that a nonnullable Arrow map item could still
+contain null through IPC. The follow-up enforces map key/item nullability before
+recursive decoding; nested struct/list/map declarations remain enforced. Fifteen
+native tests now pass, including this malformed IPC regression and the actual
+isolated full-graph preservation check. Earlier native evidence above remains a
+record of its original implementation bytes, not an approval of this fix.
