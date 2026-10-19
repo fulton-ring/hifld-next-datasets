@@ -1,0 +1,29 @@
+# Colleges and Universities — working NCES successor draft
+
+This implements the complete official NCES EDGE 2025–2026 postsecondary geocode publication as an **unapproved changed successor**. The inventory’s DOE/ORNL product is an enriched 2020–2021 IPEDS derivative. This code preserves the NCES source; it does not recreate unavailable ORNL enrichment or approve replacing it. The user authorizes reviewable draft implementation and local tests before acceptance. Release gates remain enforced.
+
+The official NCES landing directly links the captured complete ZIP and technical documentation. All 6,438 unique original string UNITIDs, 21 DBF attributes, original file-local FIDs and native WGS84 Point WKB survive raw staging, deterministic GPKG and native GeoParquet. The complete outer ZIP retains SAS, Excel, TXT and the nested original shapefile. Independent physical DBF decoding and every companion TXT row agree with the driver. Coverage includes all 50 states, DC and eight territory/freely-associated-state codes: PR, AS, GU, VI, MP, FM, MH and PW. This is the full official IPEDS geocode universe, not every possible postsecondary site or the separate ORNL Supplemental Colleges product.
+
+The complete published candidate contains 6,559 original GDB records and 42 attributes, including a separate intrinsic OBJECTID. It has 6,474 unique IPEDSID values and 85 duplicate occurrences. The complete diagnostic report preserves every original OBJECTID and occurrence; it never collapses these into an accepted one-to-one join. Literal comparison finds 5,633 shared unique IDs, 805 source-only and 841 baseline-only IDs (861 baseline rows). Diagnostic transforms find 2,052 matched row witnesses more than 100 m apart. All original coordinates, fields, physical types and source files remain intact. No ID, schema, type, coverage, CRS or geometry migration is accepted. DataLumos DOI/archive HTTP 403 means inaccessible and unverified crosswalk, not an unmatched row or CONNECT denial.
+
+The source adapter provides bounded extraction, complete nested-archive checks, raw/error retention, atomic construction, a common cache lock, complete re-derivation and intact quarantine. It re-derives every typed row, source-owned report/manifest/blocked placeholder, whole native GPKG container and GeoParquet from complete originals. The original construction manifest is bound outside the candidate cache, so self-repinning cannot rewrite provenance. The native GeoParquet uses the independently reviewed shared verifier policy at `4800e4f5df550bfadd3631585268ce68a0fa25d9`, avoiding generic schema/type regeneration. The explicit asset and supported dataset pair integrate with the normal registered graph. The monthly refresh remains stopped. Unknown source changes are preserved and quarantined pending review.
+
+Frozen implementation `20f43034191711f8a7c18df502cac074ec53079f` ran 11 actual isolated Dagster executions:
+
+- Source `64e48764-ebc7-4be9-b636-a260839a8a34` and refresh succeed with all 6,438 rows. Both normal catalog/format cycles reach `missing_independent_release_approval_registry`; source refresh succeeds after each cycle.
+- Quality failure `96c2a2ce-9eb8-4148-8ca8-3c66ee8e2813` blocks promotion. Missing-ready failure `c0d22d53-eb15-4d07-9c5c-80e6109595e9` moves the entire invalid cache outside discovery; original-source rebuild and reuse succeed.
+- Every terminal field, ID, type, native WKB, coverage count and all three input provenance records are checked. Generic GeoParquet converter calls: zero. All raw/source objects and the prior synthetic accepted fixture remain unchanged. Synthetic fixture behavior does not accept a real dataset.
+
+Sixteen focused tests pass with complete real inputs. Actual full suite: 527 total, 526 passed, 1 skipped, zero failures/errors, 115.912s with complete real NCES input tests, installed Tippecanoe and real unmodified sibling IaC. The one skip is the opt-in production GCS write test. The first suite attempt failed only because the installed Tippecanoe directory was absent from PATH; its original log is preserved. The corrected suite executes those cases. No CI success is inferred. The real unchanged IaC sibling is present at `56aa10757129c457c530d707d9a40bae13e0907f`; missing-IaC failures from earlier batches do not apply to this run.
+
+Reproduce from the complete committed originals with managed dependencies, installed Tippecanoe on PATH, and an empty isolated runtime:
+
+```bash
+COLLEGES_TEST_CAPTURE_DIR=$PWD/docs/dataset-sources/colleges-and-universities/evidence/inputs PYTHONPATH=src uv run python -m unittest discover -s tests -p test_colleges_universities.py
+PYTHONPATH=src uv run python scripts/verify_colleges_draft.py --capture-dir docs/dataset-sources/colleges-and-universities/evidence/inputs --runtime-dir /tmp/colleges-unique-isolated-runtime
+uv run python scripts/compare_colleges_candidate.py --evidence-dir docs/dataset-sources/colleges-and-universities/evidence/inputs
+```
+
+Source files: `src/dagster_hifld/sources/colleges_universities.py`, `src/dagster_hifld/assets/colleges_universities.py`. Evidence includes complete original current/historical NCES inputs, complete pinned published GDB and Parquet candidates, all baseline ID diagnostics, live transport receipts, full execution logs and SHA/length pins. The current release day is unknown; the school year is 2025–2026 and embedded shapefile creation is 2026-03-05, which is not asserted as publication date.
+
+Maintainer decisions remain: choose the NCES successor scope versus preserving the ORNL enriched historical product; verify crosswalk/source relationship; approve raw/published columns and physical types, explicit ID compatibility, coverage/year/CRS/geometry/format migrations and an exact-candidate independent release registry. Independent review of the final PR head remains pending. No real baseline/contract accepted, PR merged, issue closed or production data published.

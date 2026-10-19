@@ -1,0 +1,1021 @@
+{
+  "assets": {
+    "file_geodatabase-0cfe4d131eb7": {
+      "file:checksum": "d501109fd0cee4dfe74e567137f21a43091f6c",
+      "file:size": 1048524,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/file_geodatabase/colleges-and-universities-file_geodatabase.zip",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-file_geodatabase.zip",
+      "type": "application/zip"
+    },
+    "geojson-761f53ce2745": {
+      "file:checksum": "d50110bf41d92c4c229c2ee145519413db532d",
+      "file:size": 7441013,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/geojson/colleges-and-universities-geojson.geojson",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-geojson.geojson",
+      "type": "application/geo+json"
+    },
+    "geopackage-dec6f97e8404": {
+      "file:checksum": "d50110957059054584a1fc32f5a2ec46b56f80",
+      "file:size": 3485696,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/geopackage/colleges-and-universities-geopackage.gpkg",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities-geopackage.gpkg",
+      "type": "application/geopackage+sqlite3"
+    },
+    "geoparquet-c06c13d1cbad": {
+      "file:checksum": "d50110740b1dbb6af81642ec9198e0da8fefa1",
+      "file:size": 923835,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/geoparquet/colleges-and-universities.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "pmtiles-1fb7e2d5f653": {
+      "file:checksum": "d50110e9bcdde253158a23d1936fb62a8358d5",
+      "file:size": 1883278,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/pmtiles/colleges-and-universities.pmtiles",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities.pmtiles",
+      "type": "application/vnd.pmtiles"
+    },
+    "shapefile-3dea69bba3f4": {
+      "file:checksum": "d501103883c6709d0b03277f88949a26c6a7be",
+      "file:size": 1275207,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/shapefile/colleges-and-universities.zip",
+      "roles": [
+        "data"
+      ],
+      "title": "colleges-and-universities.zip",
+      "type": "application/zip"
+    }
+  },
+  "description": "The Colleges and Universities feature class/shapefile is composed of all Post Secondary Education facilities as defined by the Integrated Post Secondary Education System (IPEDS, http://nces.ed.gov/ipeds/), National Center for Education Statistics (NCES, https://nces.ed.gov/), US Department of Education for the 2020-2021 school year. Included are Doctoral/Research Universities, Masters Colleges and Universities, Baccalaureate Colleges, Associates Colleges, Theological seminaries, Medical Schools and other health care professions, Schools of engineering and technology, business and management, art, music, design, Law schools, Teachers colleges, Tribal colleges, and other specialized institutions. Overall, this data layer covers all 50 states, as well as Puerto Rico and other assorted U.S. territories. This feature class contains all MEDS/MEDS+ as approved by the National Geospatial-Intelligence Agency (NGA) Homeland Security Infrastructure Program (HSIP) Team. Complete field and attribute information is available in the \u201dEntities and Attributes\u201d metadata section. Geographical coverage is depicted in the thumbnail above and detailed in the \"Place Keyword\" section of the metadata. This feature class does not have a relationship class but is related to Supplemental Colleges. Colleges and Universities that are not included in the NCES IPEDS data are added to the Supplemental Colleges feature class when found. This release includes the addition of 128 new records, the removal of 247 no longer reported by NCES, and modifications to the spatial location and/or attribution of 6312 records.",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -170.74317458473763,
+          -14.323171424078785,
+          171.3784420001386,
+          71.32470199994994
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "hifld:agency": "Department of Energy",
+  "hifld:feature_count": 6559,
+  "hifld:feature_id_column": null,
+  "hifld:geometry_column": "geometry",
+  "hifld:geometry_type": "Point",
+  "hifld:inventory_match_type": null,
+  "hifld:manifest_keys": [
+    "colleges-and-universities/metadata/source_manifest.json",
+    "colleges-and-universities/colleges-and-universities/metadata/source_manifest.json"
+  ],
+  "hifld:manifest_role": "resolved_version",
+  "hifld:metadata_resolved_from": {},
+  "hifld:metadata_sources": [],
+  "hifld:native_bbox": [
+    -19007043.2512,
+    -1611319.452399999,
+    19077760.896399997,
+    11514219.887400001
+  ],
+  "hifld:native_crs": "{\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\", \"base_crs\": {\"coordinate_system\": {\"axis\": [{\"abbreviation\": \"lat\", \"direction\": \"north\", \"name\": \"Latitude\", \"unit\": \"degree\"}, {\"abbreviation\": \"lon\", \"direction\": \"east\", \"name\": \"Longitude\", \"unit\": \"degree\"}], \"subtype\": \"ellipsoidal\"}, \"datum\": {\"ellipsoid\": {\"inverse_flattening\": 298.257223563, \"name\": \"WGS 84\", \"semi_major_axis\": 6378137}, \"name\": \"World Geodetic System 1984\", \"type\": \"GeodeticReferenceFrame\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 4326}, \"name\": \"WGS 84\"}, \"conversion\": {\"method\": {\"id\": {\"authority\": \"EPSG\", \"code\": 1024}, \"name\": \"Popular Visualisation Pseudo Mercator\"}, \"name\": \"unnamed\", \"parameters\": [{\"id\": {\"authority\": \"EPSG\", \"code\": 8801}, \"name\": \"Latitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8802}, \"name\": \"Longitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8806}, \"name\": \"False easting\", \"unit\": \"metre\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8807}, \"name\": \"False northing\", \"unit\": \"metre\", \"value\": 0}]}, \"coordinate_system\": {\"axis\": [{\"abbreviation\": \"\", \"direction\": \"east\", \"name\": \"Easting\", \"unit\": \"metre\"}, {\"abbreviation\": \"\", \"direction\": \"north\", \"name\": \"Northing\", \"unit\": \"metre\"}], \"subtype\": \"Cartesian\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 3857}, \"name\": \"WGS 84 / Pseudo-Mercator\", \"type\": \"ProjectedCRS\"}",
+  "hifld:office": "Oak Ridge National Laboratory",
+  "hifld:quality": {
+    "columns_hash": "72d6dbab84c5c9e31cda7f2bdc9fb6a973bb1ac0b1ca0a396aa1b67fc8ae82cf",
+    "invalid_geometry_count": 0,
+    "manifest_href": "metadata/quality_manifest.json",
+    "null_geometry_count": 0,
+    "passed": true,
+    "provenance": "production_metadata_and_parquet_footer_spike",
+    "sampled_feature_count": null,
+    "sampled_invalid_geometry_count": null,
+    "sampled_null_geometry_count": null
+  },
+  "hifld:source_dates": {
+    "issued": "2019-06-28",
+    "modified": "2022-12-07",
+    "provenance": {
+      "issued": "inventory",
+      "modified": "inventory"
+    }
+  },
+  "hifld:spatial_status": "spatial",
+  "id": "hifld/colleges-and-universities/colleges-and-universities/v1.0.0",
+  "keywords": [
+    "Education",
+    "Government"
+  ],
+  "license": "other",
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/colleges-and-universities/colleges-and-universities/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/collection.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://www.datalumos.org/datalumos/project/238951/version/V1/view",
+      "rel": "derived_from"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/colleges-and-universities/colleges-and-universities/v1.0.0/pmtiles/colleges-and-universities.pmtiles",
+      "rel": "pmtiles",
+      "title": "colleges-and-universities.pmtiles",
+      "type": "application/vnd.pmtiles"
+    }
+  ],
+  "providers": [
+    {
+      "name": "Oak Ridge National Laboratory",
+      "roles": [
+        "producer"
+      ]
+    },
+    {
+      "name": "HIFLD Next",
+      "roles": [
+        "host"
+      ],
+      "url": "https://hifld.publicenvirodata.org"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/table/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/web-map-links/v1.3.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "table:columns": [
+    {
+      "is_geometry": true,
+      "name": "geometry",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "201371",
+        "106467",
+        "145691",
+        "245883",
+        "137096"
+      ],
+      "is_geometry": false,
+      "length": 6,
+      "name": "IPEDSID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "BLUFFTON UNIVERSITY",
+        "ARKANSAS TECH UNIVERSITY",
+        "ILLINOIS COLLEGE",
+        "ANTIOCH UNIVERSITY-SEATTLE",
+        "SANTA FE COLLEGE"
+      ],
+      "is_geometry": false,
+      "length": 91,
+      "name": "NAME",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1 UNIVERSITY DRIVE",
+        "ADMINISTRATION BLDG 200, 1509 N BOULDER AVE",
+        "1101 WEST COLLEGE AVE",
+        "2326 6TH AVE",
+        "3000 NORTHWEST 83RD STREET"
+      ],
+      "is_geometry": false,
+      "length": 66,
+      "name": "ADDRESS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "BLUFFTON",
+        "RUSSELLVILLE",
+        "JACKSONVILLE",
+        "SEATTLE",
+        "GAINESVILLE"
+      ],
+      "is_geometry": false,
+      "length": 24,
+      "name": "CITY",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "OH",
+        "AR",
+        "IL",
+        "WA",
+        "FL"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "STATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "45817",
+        "72801",
+        "62650",
+        "98121",
+        "32606"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "ZIP",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2104",
+        "2222",
+        "2299",
+        "1814",
+        "6210"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "ZIP4",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "(419) 358-3000",
+        "(844) 804-2628",
+        "(217) 245-3000",
+        "(206) 441-5352",
+        "(352) 395-5000"
+      ],
+      "is_geometry": false,
+      "length": 24,
+      "name": "TELEPHONE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2",
+        "1",
+        "2",
+        "2",
+        "1"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "TYPE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-3",
+        "1",
+        "2",
+        "3"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "A",
+        "A",
+        "A",
+        "A",
+        "A"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "STATUS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "A",
+        "C",
+        "D",
+        "G",
+        "M",
+        "N",
+        "R"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "909",
+        "11954",
+        "1438",
+        "885",
+        "13753"
+      ],
+      "is_geometry": false,
+      "max": "154991.0",
+      "min": "-999.0",
+      "name": "POPULATION",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "ALLEN",
+        "POPE",
+        "MORGAN",
+        "KING",
+        "ALACHUA"
+      ],
+      "is_geometry": false,
+      "length": 23,
+      "name": "COUNTY",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "39003",
+        "05115",
+        "17137",
+        "53033",
+        "12001"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "COUNTYFIPS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "USA",
+        "USA",
+        "USA",
+        "USA",
+        "USA"
+      ],
+      "is_geometry": false,
+      "length": 3,
+      "name": "COUNTRY",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "ASM",
+        "FSM",
+        "GUM",
+        "MHL",
+        "MNP",
+        "PLW",
+        "PRI",
+        "USA",
+        "VIR"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "40.896998120000035",
+        "35.29522700000007",
+        "39.73078276100006",
+        "47.617190711000035",
+        "29.682470481000053"
+      ],
+      "is_geometry": false,
+      "max": "71.32470200000006",
+      "min": "-14.323171423999952",
+      "name": "LATITUDE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "-83.89767822899995",
+        "-93.13232999999997",
+        "-90.24659094299994",
+        "-122.34251152299998",
+        "-82.43261402899998"
+      ],
+      "is_geometry": false,
+      "max": "171.37844200000006",
+      "min": "-170.74317458499996",
+      "name": "LONGITUDE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "611310",
+        "611310",
+        "611310",
+        "611310",
+        "611210"
+      ],
+      "is_geometry": false,
+      "length": 6,
+      "name": "NAICS_CODE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "611210",
+        "611310",
+        "611410",
+        "611420",
+        "611511",
+        "611512",
+        "611519",
+        "611610",
+        "611710"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "JUNIOR COLLEGES"
+      ],
+      "is_geometry": false,
+      "length": 48,
+      "name": "NAICS_DESC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "BUSINESS AND SECRETARIAL SCHOOLS",
+        "COLLEGES, UNIVERSITIES, AND PROFESSIONAL SCHOOLS",
+        "COMPUTER TRAINING",
+        "COSMETOLOGY AND BARBER SCHOOLS",
+        "EDUCATIONAL SUPPORT SERVICES",
+        "FINE ARTS SCHOOLS",
+        "FLIGHT TRAINING",
+        "JUNIOR COLLEGES",
+        "OTHER TECHNICAL AND TRADE SCHOOLS"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "https://nces.ed.gov/collegenavigator/?id=201371",
+        "https://nces.ed.gov/collegenavigator/?id=106467",
+        "https://nces.ed.gov/collegenavigator/?id=145691",
+        "https://nces.ed.gov/collegenavigator/?id=245883",
+        "https://nces.ed.gov/collegenavigator/?id=137096"
+      ],
+      "is_geometry": false,
+      "length": 47,
+      "name": "SOURCE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2009-10-13T00:00:00+00:00",
+        "2009-12-31T00:00:00+00:00",
+        "2009-10-13T00:00:00+00:00",
+        "2009-10-13T00:00:00+00:00",
+        "2009-10-13T00:00:00+00:00"
+      ],
+      "is_geometry": false,
+      "length": 25,
+      "name": "SOURCEDATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "2009-10-13T00:00:00+00:00",
+        "2009-12-10T00:00:00+00:00",
+        "2009-12-31T00:00:00+00:00",
+        "2011-06-01T00:00:00+00:00",
+        "2011-06-02T00:00:00+00:00",
+        "2013-06-25T00:00:00+00:00",
+        "2013-11-04T00:00:00+00:00",
+        "2015-08-10T00:00:00+00:00",
+        "2016-01-21T00:00:00+00:00",
+        "2018-02-13T00:00:00+00:00",
+        "2018-04-10T00:00:00+00:00",
+        "2018-11-06T00:00:00+00:00",
+        "2018-11-16T00:00:00+00:00",
+        "2019-02-27T00:00:00+00:00",
+        "2019-12-04T00:00:00+00:00",
+        "2020-11-03T00:00:00+00:00",
+        "2021-10-13T00:00:00+00:00"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "IMAGERY",
+        "IMAGERY",
+        "IMAGERY/OTHER",
+        "IMAGERY/OTHER",
+        "IMAGERY/OTHER"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "VAL_METHOD",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "GEOCODE",
+        "IMAGERY",
+        "IMAGERY/OTHER",
+        "UNVERIFIED"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2016-08-11T00:00:00+00:00",
+        "2016-07-07T00:00:00+00:00",
+        "2016-06-24T00:00:00+00:00",
+        "2015-08-25T00:00:00+00:00",
+        "2016-07-07T00:00:00+00:00"
+      ],
+      "is_geometry": false,
+      "length": 25,
+      "name": "VAL_DATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "www.bluffton.edu/",
+        "www.atu.edu/",
+        "www.ic.edu/",
+        "www.antiochseattle.edu/",
+        "www.sfcollege.edu/"
+      ],
+      "is_geometry": false,
+      "length": 150,
+      "name": "WEBSITE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "39",
+        "05",
+        "17",
+        "53",
+        "12"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "STFIPS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "003",
+        "115",
+        "137",
+        "033",
+        "001"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "COFIPS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2",
+        "1",
+        "2",
+        "2",
+        "1"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "SECTOR",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "99"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1",
+        "3",
+        "3",
+        "3",
+        "3"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "LEVEL_",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "1",
+        "2",
+        "3"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "20",
+        "12",
+        "20",
+        "13",
+        "30"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "HI_OFFER",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-3",
+        "0",
+        "11",
+        "12",
+        "13",
+        "14",
+        "20",
+        "30",
+        "40"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1",
+        "1",
+        "1",
+        "1",
+        "1"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "DEG_GRANT",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-3",
+        "1",
+        "2"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "32",
+        "33",
+        "32",
+        "11",
+        "22"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "LOCALE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-3",
+        "11",
+        "12",
+        "13",
+        "21",
+        "22",
+        "23",
+        "31",
+        "32",
+        "33",
+        "41",
+        "42",
+        "43"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-2",
+        "-2",
+        "-2",
+        "-2",
+        "-2"
+      ],
+      "is_geometry": false,
+      "length": 10,
+      "name": "CLOSE_DATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-2",
+        "-2",
+        "-2",
+        "-2",
+        "-2"
+      ],
+      "is_geometry": false,
+      "length": 6,
+      "name": "MERGE_ID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "NOT AVAILABLE",
+        "ATU|TECH|ARKANSAS TECH",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE"
+      ],
+      "is_geometry": false,
+      "length": 680,
+      "name": "ALIAS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "22",
+        "18",
+        "21",
+        "19",
+        "14"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "SIZE_SET",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1",
+        "4",
+        "2",
+        "1",
+        "4"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "INST_SIZE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-1",
+        "-2",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "47",
+        "4467",
+        "25",
+        "294",
+        "7264"
+      ],
+      "is_geometry": false,
+      "max": "93333.0",
+      "min": "-999.0",
+      "name": "PT_ENROLL",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "703",
+        "6362",
+        "1129",
+        "441",
+        "5343"
+      ],
+      "is_geometry": false,
+      "max": "147866.0",
+      "min": "-999.0",
+      "name": "FT_ENROLL",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "750",
+        "10829",
+        "1154",
+        "735",
+        "12607"
+      ],
+      "is_geometry": false,
+      "max": "147866.0",
+      "min": "-999.0",
+      "name": "TOT_ENROLL",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "1",
+        "1",
+        "1",
+        "2",
+        "2"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "HOUSING",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-1",
+        "-2",
+        "1",
+        "2"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "692",
+        "2508",
+        "1004",
+        "-999",
+        "-999"
+      ],
+      "is_geometry": false,
+      "max": "19093.0",
+      "min": "-999.0",
+      "name": "DORM_CAP",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "159",
+        "1125",
+        "284",
+        "150",
+        "1146"
+      ],
+      "is_geometry": false,
+      "max": "35030.0",
+      "min": "-999.0",
+      "name": "TOT_EMP",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE",
+        "NOT AVAILABLE"
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "SHELTER_ID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    }
+  ],
+  "title": "Colleges and Universities",
+  "type": "Collection"
+}

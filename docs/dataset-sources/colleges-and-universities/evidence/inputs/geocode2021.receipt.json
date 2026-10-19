@@ -1,0 +1,28 @@
+{
+  "url": "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_POSTSECONDARYSCH_2021.zip",
+  "final_url": "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_POSTSECONDARYSCH_2021.zip",
+  "status": 200,
+  "headers": {
+    "content-type": "application/x-zip-compressed",
+    "last-modified": "Mon, 19 Apr 2021 12:56:29 GMT",
+    "accept-ranges": "bytes",
+    "etag": "\"c917256a1b35d71:0\"",
+    "server": "envoy",
+    "x-powered-by": "ASP.NET",
+    "x-ua-compatible": "IE=edge",
+    "date": "Mon, 19 Oct 2026 08:42:01 GMT",
+    "content-length": "2740747",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "content-security-policy": "upgrade-insecure-requests; frame-ancestors 'self' https://*.ed.gov http://*.ed.gov; script-src 'self' 'unsafe-eval' 'unsafe-inline' https:; object-src 'self' 'unsafe-eval' 'unsafe-inline' https:; script-src-elem 'unsafe-inline' blob: https:;",
+    "x-frame-options": "SAMEORIGIN",
+    "x-xss-protection": "1; mode=block",
+    "referrer-policy": "same-origin",
+    "set-cookie": "f5avraaaaaaaaaaaaaaaa_session_=AHDGKNOPINCJCCEBCAFABKDBKEPPPKOBNPOPEEIAOKOGJMJJGHIHPEKJOLPPILIMEHCDACPBOHEBHBBGJBMADGBAINLMIFBDKDPKPCKPAEHHFBGCDGMLDBLICBFEHBEL; HttpOnly; secure;",
+    "vary": "Accept-Encoding",
+    "x-envoy-upstream-service-time": "577"
+  },
+  "wire_bytes": 2740747,
+  "bytes": 2740747,
+  "sha256": "96c0206cb6e68cbd607af3eea7a2c4a93857da5d0ef0ddab1fbd1deeb41dd080",
+  "fetched_at": "2026-10-19T08:42:03.947475+00:00"
+}

@@ -1,0 +1,26 @@
+{
+  "url": "https://www.arcgis.com/sharing/rest/search?f=json&num=100&q=title:%22Colleges%20and%20Universities%22",
+  "final_url": "https://www.arcgis.com/sharing/rest/search?f=json&num=100&q=title:%22Colleges%20and%20Universities%22",
+  "status": 200,
+  "headers": {
+    "content-type": "application/json;charset=utf-8",
+    "date": "Mon, 19 Oct 2026 08:41:14 GMT",
+    "strict-transport-security": "max-age=31536000",
+    "server": "envoy",
+    "x-content-type-options": "nosniff",
+    "cache-control": "no-cache",
+    "pragma": "no-cache",
+    "expires": "-1",
+    "vary": "Origin",
+    "x-cache": "Miss from cloudfront",
+    "via": "1.1 fc36d22b58a363b02ecdd852a2e51610.cloudfront.net (CloudFront)",
+    "x-amz-cf-pop": "HIO52-P2",
+    "x-amz-cf-id": "PSkNU3pvIenwYr-nv8lhCOmlt9UdmYYtStG2xhXLwFH5V7NOE_CRVQ==",
+    "x-envoy-upstream-service-time": "435",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 362374,
+  "bytes": 362374,
+  "sha256": "2b8f9a75ceb72685c3b660103d3559d36d0b2bef2d9e9421cad7b9d703b47f6b",
+  "fetched_at": "2026-10-19T08:41:14.747729+00:00"
+}

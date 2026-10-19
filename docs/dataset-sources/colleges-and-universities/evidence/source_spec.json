@@ -1,0 +1,226 @@
+{
+  "dbf_fields": [
+    [
+      "UNITID",
+      "C",
+      8,
+      0
+    ],
+    [
+      "NAME",
+      "C",
+      93,
+      0
+    ],
+    [
+      "STREET",
+      "C",
+      66,
+      0
+    ],
+    [
+      "CITY",
+      "C",
+      23,
+      0
+    ],
+    [
+      "STATE",
+      "C",
+      2,
+      0
+    ],
+    [
+      "ZIP",
+      "C",
+      10,
+      0
+    ],
+    [
+      "STFIP",
+      "C",
+      2,
+      0
+    ],
+    [
+      "CNTY",
+      "C",
+      5,
+      0
+    ],
+    [
+      "NMCNTY",
+      "C",
+      200,
+      0
+    ],
+    [
+      "LOCALE",
+      "C",
+      2,
+      0
+    ],
+    [
+      "LAT",
+      "N",
+      11,
+      6
+    ],
+    [
+      "LON",
+      "N",
+      12,
+      6
+    ],
+    [
+      "CBSA",
+      "C",
+      5,
+      0
+    ],
+    [
+      "NMCBSA",
+      "C",
+      100,
+      0
+    ],
+    [
+      "CBSATYPE",
+      "C",
+      1,
+      0
+    ],
+    [
+      "CSA",
+      "C",
+      3,
+      0
+    ],
+    [
+      "NMCSA",
+      "C",
+      100,
+      0
+    ],
+    [
+      "CD",
+      "C",
+      4,
+      0
+    ],
+    [
+      "SLDL",
+      "C",
+      5,
+      0
+    ],
+    [
+      "SLDU",
+      "C",
+      5,
+      0
+    ],
+    [
+      "SCHOOLYEAR",
+      "C",
+      9,
+      0
+    ]
+  ],
+  "states": {
+    "AL": 84,
+    "GA": 166,
+    "AK": 11,
+    "AZ": 131,
+    "DC": 25,
+    "CA": 695,
+    "NM": 47,
+    "AR": 86,
+    "TN": 148,
+    "CO": 87,
+    "WA": 101,
+    "VA": 162,
+    "NE": 41,
+    "MA": 144,
+    "MN": 112,
+    "MD": 78,
+    "CT": 57,
+    "NY": 423,
+    "DE": 19,
+    "FL": 383,
+    "HI": 22,
+    "ID": 37,
+    "IL": 244,
+    "IN": 148,
+    "MI": 176,
+    "KY": 89,
+    "IA": 75,
+    "MO": 148,
+    "KS": 82,
+    "LA": 117,
+    "ME": 38,
+    "MS": 59,
+    "TX": 423,
+    "OK": 104,
+    "MT": 29,
+    "NV": 41,
+    "NH": 31,
+    "NJ": 158,
+    "NC": 173,
+    "ND": 26,
+    "OH": 282,
+    "OR": 70,
+    "PA": 321,
+    "RI": 23,
+    "SC": 91,
+    "SD": 24,
+    "UT": 63,
+    "VT": 16,
+    "WV": 67,
+    "WI": 86,
+    "WY": 11,
+    "AS": 1,
+    "GU": 3,
+    "MP": 1,
+    "PR": 153,
+    "FM": 1,
+    "PW": 1,
+    "VI": 2,
+    "MH": 2
+  },
+  "inner_members": {
+    "EDGE_GEOCODE_POSTSECSCH_2526.shx": {
+      "bytes": 51604,
+      "sha256": "2988305ec949148f913ce38e501143a970606ca6a6eca408233e446eab8c4be9"
+    },
+    "EDGE_GEOCODE_POSTSECSCH_2526.cpg": {
+      "bytes": 5,
+      "sha256": "3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824"
+    },
+    "EDGE_GEOCODE_POSTSECSCH_2526.dbf": {
+      "bytes": 4294852,
+      "sha256": "fbceb32b5a3e84718548de92d05111866beb474b9e7481b451c09fc835e14189"
+    },
+    "EDGE_GEOCODE_POSTSECSCH_2526.prj": {
+      "bytes": 145,
+      "sha256": "a02a27b1d1982c8516d83398e85a3c8b1aef1713c13ef4d84d7bde17430c07c4"
+    },
+    "EDGE_GEOCODE_POSTSECSCH_2526.sbn": {
+      "bytes": 60252,
+      "sha256": "48e667644974d3f11e06616347a5fa6ac2c1fda1b16dd9db324a6c88f289a79e"
+    },
+    "EDGE_GEOCODE_POSTSECSCH_2526.sbx": {
+      "bytes": 892,
+      "sha256": "ade3e6ee79e14336e17c79fc0548a8f17aa47074702a05ccab2353764b90b562"
+    },
+    "EDGE_GEOCODE_POSTSECSCH_2526.shp": {
+      "bytes": 180364,
+      "sha256": "ea4c8f1bacd04e88ff0ebdfd88cdd2f5fd6424bd6e745b5c1c47d6c67da1fc70"
+    },
+    "EDGE_GEOCODE_POSTSECSCH_2526.shp.xml": {
+      "bytes": 25454,
+      "sha256": "f6077c8fba2dc0ea82cdcfafb0fd05eff3b88058b18137bd45539c72d35a274b"
+    }
+  },
+  "unitid_sha256": "c2bffe8bcdb71fcc225cf63038d7b93b0b7962d53ad3d025c9cb41dc320f5e5c"
+}
