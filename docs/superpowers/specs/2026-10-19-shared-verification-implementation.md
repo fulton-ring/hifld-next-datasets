@@ -88,3 +88,30 @@ Tests labeled mechanics isolate the acceptance boundary explicitly; the new
 boundary and actual Dagster integration tests use no approval mocks. Synthetic
 acceptance is a test fixture, not approval of any HIFLD dataset. The full suite
 still cannot pass without sibling `hifld-next-iac/environments/prod/dagster.tf`.
+
+## Executed validation
+
+The [machine-readable record](../evidence/2026-10-19-verification-implementation.json)
+pins installed implementation bytes, commands, logs and runtime evidence:
+
+- Frozen dependencies installed without changing the lockfile. Local repository
+  loading validated 74 assets with local storage and sensors disabled.
+- 18 new verifier/boundary tests passed. The full suite ran 465 tests: 463 passed,
+  one missing sibling IaC error, one opt-in production-write integration skipped.
+  This is not a full-suite or CI success claim.
+- Actual durable local synthetic Dagster run
+  `998b82c1-42b5-44e3-8dfc-7e16f9661a05` ran verification, the blocking check and
+  promotion successfully. A changed-byte retry
+  `1533e4cc-fc97-42c5-9f8d-a3da5e74c6b8` failed before promotion; all eight prior
+  published objects and staged evidence were preserved. State remains isolated at
+  `/workspace/hifld-worker-runtime/417/integration-head-final`.
+- The 100,000-row-per-input streaming probe read 122,355,055 combined input bytes,
+  found the sole changed final-row attribute, and measured 61,348 KiB peak RSS.
+  This supports the comparator's measured scaling; it does not validate the
+  whole pipeline's memory use or an OS-enforced ceiling.
+
+Independent review found and drove regression fixes for unbound normalized
+baseline inputs, ignored Feature identifiers, geometry coercion/foreign members,
+unknown CRS, numeric overflow, incomplete-report durability, input mutation races
+and the maintenance replacement bypass. Exact-head review remains a separate
+handoff requirement.
