@@ -449,3 +449,58 @@ class AmtrakActualReplayReviewRegression(unittest.TestCase):
                 if path.is_file():self.assertEqual((retained/path.relative_to(self.capture)).read_bytes(),path.read_bytes(),case)
             self.assertEqual(sentinel.read_bytes(),original_sentinel)
             self.assertEqual({str(p.relative_to(prior)):hashlib.sha256(p.read_bytes()).hexdigest() for p in prior.rglob('*') if p.is_file()},prior_hashes)
+
+    def test_strict_original_offsets_reject_canonical_and_attempt_before_staging(self):
+        for relative in ('page-000.receipt.json','attempts/page-000/000.receipt.json'):
+            path=self.capture/relative;original=path.read_bytes()
+            for index,offset in enumerate(('+00:99','+24:00','-00:60','+99:00','+00:00:30')):
+                value=json.loads(original);value['observed_at']='2026-10-19T00:00:00'+offset
+                path.write_text(json.dumps(value))
+                storage=StagingStorageResource(local_dir=str(self.root/'offsets'/relative.replace('/','-')/str(index)),use_local=True)
+                version='v0.0.0-offset-'+str(index)
+                with self.subTest(receipt=relative,offset=offset),self.assertRaisesRegex(ValueError,'valid timezone components'):
+                    stage_amtrak_capture(self.capture,storage,version)
+                root=pathlib.Path(storage.local_dir)
+                self.assertFalse((root/SLUG).exists())
+                status=next((root/'quarantine').rglob('status.json'));retained=status.parent/'raw'
+                self.assertEqual((retained/relative).read_bytes(),path.read_bytes())
+                self.assertEqual(json.loads(status.read_bytes())['state'],'blocked')
+            path.write_bytes(original)
+
+    def test_extra_receipts_are_untrusted_byte_bound_and_never_retrieval_claims(self):
+        path=self.capture/'page-retained-diagnostic.receipt.json'
+        values=[{'url':'https://untrusted.invalid/forged','final_url':'https://untrusted.invalid/forged',
+                 'observed_at':'not-a-date','headers':None},[],None,'untrusted diagnostic']
+        storage=StagingStorageResource(local_dir=str(self.root/'diagnostics'),use_local=True)
+        for index,value in enumerate(values):
+            path.write_text(json.dumps(value));version='v0.0.0-diagnostic-'+str(index)
+            stage_amtrak_capture(self.capture,storage,version)
+            root=pathlib.Path(storage.local_dir)/SLUG/SLUG/version
+            manifest=json.loads((root/'metadata/source_manifest.json').read_bytes())
+            validate_release_provenance(manifest)
+            self.assertEqual(len(manifest['original_retrieval_receipts']),9)
+            self.assertNotIn(path.name,{item['name'] for item in manifest['original_retrieval_receipts']})
+            self.assertEqual(len(manifest['inputs']),18)
+            diagnostic=manifest['lineage']['untrusted_diagnostics'][0]
+            self.assertEqual(diagnostic['classification'],'untrusted_diagnostic')
+            self.assertFalse(diagnostic['used_for_source_or_retrieval_claims'])
+            self.assertEqual(diagnostic['sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
+            self.assertEqual((root/'raw_arcgis'/path.name).read_bytes(),path.read_bytes())
+            candidate=json.loads((root/'draft_candidate/provenance.json').read_bytes())
+            self.assertIn(path.name,{entry['name'] for entry in candidate['raw_files']})
+            snapshot={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+            path.write_text(json.dumps({'changed':'must not overwrite byte-bound diagnostics'}))
+            with self.assertRaisesRegex(ValueError,'Immutable source staging collision'):
+                stage_amtrak_capture(self.capture,storage,version)
+            self.assertEqual({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()},snapshot)
+
+    def test_consumed_http_date_shape_is_preflighted_without_claiming_headers(self):
+        path=self.capture/'page-000.receipt.json';original=path.read_bytes()
+        for index,date in enumerate(({'forged':'date'},[],'not-an-http-date')):
+            value=json.loads(original);value['date']=date;path.write_text(json.dumps(value))
+            storage=StagingStorageResource(local_dir=str(self.root/'date-types'/str(index)),use_local=True)
+            with self.subTest(date=date),self.assertRaisesRegex(ValueError,'HTTP Date'):
+                stage_amtrak_capture(self.capture,storage,'v0.0.0-http-date')
+            self.assertFalse((pathlib.Path(storage.local_dir)/SLUG).exists())
+            preserved=next((pathlib.Path(storage.local_dir)/'quarantine').rglob('status.json')).parent/'raw/page-000.receipt.json'
+            self.assertEqual(preserved.read_bytes(),path.read_bytes())

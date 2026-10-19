@@ -89,11 +89,16 @@ def main():
         old_source=subprocess.check_output(['git','show','bcf6cc143a8b95185f53289f3a30d378b577b443:src/dagster_hifld/amtrak_extract.py'],cwd=repo_root,text=True)
         def functions(source):return {n.name:ast.dump(n,include_attributes=False) for n in ast.parse(source).body if isinstance(n,ast.FunctionDef)}
         old,new=functions(old_source),functions(Path(adapter.__file__).read_text())
-        names=('build_candidate','write_typed_geopackage','verify_typed_geopackage')
+        names=('write_typed_geopackage','verify_typed_geopackage')
         assert all(old[n]==new[n] for n in names)
+        def candidate_writer(source):
+            function=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef) and n.name=='build_candidate')
+            node=next(n for n in ast.walk(function) if isinstance(n,ast.With) and any(isinstance(i.context_expr,ast.Call) and isinstance(i.context_expr.func,ast.Attribute) and i.context_expr.func.attr=='ParquetWriter' for i in n.items))
+            return ast.dump(node,include_attributes=False)
+        assert candidate_writer(old_source)==candidate_writer(Path(adapter.__file__).read_text())
         record['prior_full_terminal_proof']={'prior_source_checkpoint':'be49bcb93f1901b408e709b6df33bb58dcc98681',
             'prior_full_graph_run_id':prior['normal_graph']['run_id'],'prior_fidelity':prior['terminal_parquet_audit'],
-            'canonical_bytes_unchanged':unchanged,'named_transformation_ASTs_unchanged':list(names),
+            'canonical_bytes_unchanged':unchanged,'named_transformation_ASTs_unchanged':['build_candidate::ParquetWriter',*names],
             'meaning':'Prior full terminal proof retained; this repair changes error/provenance/identity handling, not source data transformations. No full conversion repeat claimed.'}
         gate_keys=[AssetKey(['publish','verify']),AssetKey(['publish','promote'])]
         gate_job=repo.get_implicit_job_def_for_assets(gate_keys)
@@ -122,9 +127,9 @@ def main():
                 'success':result.success,'exact_raw_quarantined':True,'no_canonical_candidate':True,
                 'meaning':'Deliberately corrupted local copies, not observed producer errors'})
         record['synthetic_attempt_provenance_failures']=[]
-        for kind,timestamp in [('invalid','not-a-date'),('naive','2026-10-19T00:00:00')]:
+        for kind,timestamp,relative in [('invalid','not-a-date','attempts/page-000/000.receipt.json'),('naive','2026-10-19T00:00:00','attempts/page-000/000.receipt.json'),('invalid-offset-attempt','2026-10-19T00:00:00+00:99','attempts/page-000/000.receipt.json'),('invalid-offset-terminal','2026-10-19T00:00:00+00:99','page-000.receipt.json')]:
             bad=root/f'corrupt-attempt-{kind}';shutil.copytree(args.capture,bad)
-            receipt_path=bad/'attempts/page-000/000.receipt.json'
+            receipt_path=bad/relative
             receipt=json.loads(receipt_path.read_bytes());receipt['observed_at']=timestamp
             receipt_path.write_text(json.dumps(receipt))
             bad_version=version+'-attempt-'+kind
@@ -140,7 +145,22 @@ def main():
             assert all((retained/p.relative_to(bad)).read_bytes()==p.read_bytes() for p in bad.rglob('*') if p.is_file())
             record['synthetic_attempt_provenance_failures'].append({'kind':kind,'run_id':result.run_id,'success':result.success,
                 'exact_raw_and_receipts_quarantined':True,'no_canonical_version':True,
-                'meaning':'Deliberately corrupted retained-attempt timestamp in a local copy; not an observed source defect'})
+                'receipt':relative,'meaning':'Deliberately corrupted local receipt timestamp; not an observed source defect'})
+        extra=root/'extra-diagnostic-copy';shutil.copytree(args.capture,extra)
+        diagnostic=extra/'page-retained-diagnostic.receipt.json'
+        diagnostic.write_text(json.dumps({'url':'https://untrusted.invalid/forged','final_url':'https://untrusted.invalid/forged','observed_at':'not-a-date','headers':None}))
+        extra_version=version+'-untrusted-diagnostic'
+        result=source_job.execute_in_process(instance=instance,asset_selection=[source_key],run_config=source_config(extra,extra_version),raise_on_error=False)
+        assert result.success
+        extra_staged=root/'staging'/adapter.SLUG/adapter.SLUG/extra_version
+        extra_manifest=json.loads((extra_staged/'metadata/source_manifest.json').read_bytes());validate_release_provenance(extra_manifest)
+        assert len(extra_manifest['inputs'])==18 and len(extra_manifest['original_retrieval_receipts'])==9
+        assert diagnostic.name not in {item['name'] for item in extra_manifest['original_retrieval_receipts']}
+        untrusted=extra_manifest['lineage']['untrusted_diagnostics'];assert len(untrusted)==1
+        assert untrusted[0]['sha256']==sha(diagnostic) and untrusted[0]['used_for_source_or_retrieval_claims'] is False
+        assert (extra_staged/'raw_arcgis'/diagnostic.name).read_bytes()==diagnostic.read_bytes()
+        record['untrusted_diagnostic_receipt']={'run_id':result.run_id,'success':True,'byte_hash_pinned':True,
+            'preserved':True,'retrieval_claims_exclude_diagnostic':True,'source_inputs_unchanged':18}
     record['published_after']=files(published);assert record['published_after']==accepted_before
     assert all((staged/'raw_arcgis'/r['name']).read_bytes()==(args.capture/r['name']).read_bytes() for r in adapter.inspect_capture(args.capture)['raw_files'])
     record['accepted_fixture_and_real_raw_preserved']=True;save()

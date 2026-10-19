@@ -12,6 +12,7 @@ import datetime
 import json
 import math
 import platform
+import re
 import shutil
 import subprocess
 import time
@@ -21,6 +22,7 @@ import http.client
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from email.utils import parsedate_to_datetime
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -47,6 +49,11 @@ PROPOSED_SCHEMA_SHA256 = '5b45c633339cafafcc85d1d034581534da2b055611633a00b4aa60
 _TYPES = {'esriFieldTypeOID': pa.int64(), 'esriFieldTypeInteger': pa.int32(),
           'esriFieldTypeDouble': pa.float64(), 'esriFieldTypeDate': pa.int64(),
           'esriFieldTypeString': pa.string()}
+_OBSERVED_TIMESTAMP = re.compile(
+    r'[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T'
+    r'(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{1,6})?'
+    r'(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])'
+)
 
 
 def _strict_json(raw):
@@ -72,6 +79,40 @@ def _arcgis_json(path: Path):
     if not isinstance(data, dict) or 'error' in data:
         raise ValueError(f'ArcGIS application error or nonobject response: {path.name}')
     return data
+
+
+def _validate_observed_timestamp(value) -> None:
+    """Validate original components; fromisoformat normalizes bad UTC minutes."""
+    if not isinstance(value, str) or not _OBSERVED_TIMESTAMP.fullmatch(value):
+        raise ValueError('Retrieval time must be an original ISO timestamp with valid timezone components')
+    parsed = datetime.datetime.fromisoformat(value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError('Retrieval time must include timezone')
+
+
+def _validated_retrieval_receipts(capture: Path, audit: dict) -> list[dict]:
+    """Only validated canonical witnesses may make original retrieval claims."""
+    pins = {record['name']: record for record in audit['raw_files']}
+    result = []
+    for name in audit['canonical_receipt_names']:
+        path = capture / name
+        if name not in pins or _digest(path) != pins[name]['sha256']:
+            raise ValueError('Canonical retrieval receipt changed after validation')
+        receipt = _json(path)
+        _validate_observed_timestamp(receipt.get('observed_at'))
+        http_date = receipt.get('date')
+        if http_date is not None:
+            if not isinstance(http_date, str):
+                raise ValueError('Observed HTTP Date must retain its original string type')
+            try:
+                parsed = parsedate_to_datetime(http_date)
+            except (TypeError, ValueError) as error:
+                raise ValueError('Observed HTTP Date is invalid') from error
+            if parsed.tzinfo is None:
+                raise ValueError('Observed HTTP Date requires timezone')
+        result.append({'name': name, 'url': receipt['url'], 'final_url': receipt['final_url'],
+                       'observed_at': receipt['observed_at'], 'http_date': http_date})
+    return result
 
 
 def _require_review_staging(staging):
@@ -377,11 +418,18 @@ def inspect_capture(root: Path) -> dict:
                 or sorted(urllib.parse.parse_qsl(final.query, keep_blank_values=True)) !=
                 sorted(urllib.parse.parse_qsl(requested.query, keep_blank_values=True))):
             raise ValueError('Observed final response URL is missing or left the exact official request')
-        observed = datetime.datetime.fromisoformat(receipt.get('observed_at', ''))
-        if observed.tzinfo is None:
-            raise ValueError('Retrieval observation must carry its timezone')
+        _validate_observed_timestamp(receipt.get('observed_at'))
         receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': _digest(receipt_path)})
     files.extend(receipts)
+    canonical_receipt_names = sorted(record['name'] for record in receipts)
+    untrusted_diagnostics = []
+    for path in sorted(root.glob('*.receipt.json')):
+        if path.name not in canonical_receipt_names:
+            record = {'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)}
+            files.append(record)
+            untrusted_diagnostics.append({**record, 'classification': 'untrusted_diagnostic',
+                'used_for_source_or_retrieval_claims': False,
+                'meaning': 'Unrelated receipt bytes preserved only as diagnostics; contents are not trusted or interpreted'})
     attempts_dir = root / 'attempts'
     if attempts_dir.exists():
         files.extend({'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': _digest(path)}
@@ -389,6 +437,7 @@ def inspect_capture(root: Path) -> dict:
     return {'rows': len(seen), 'station_ids': len(station_ids), 'pages': len(paths), 'bounds': bounds,
             'source': SERVICE, 'official_item': item, 'editing_info': layer['editingInfo'], 'fields': layer['fields'],
             'crs': layer['extent']['spatialReference'], 'raw_files': files,
+            'canonical_receipt_names': canonical_receipt_names, 'untrusted_diagnostics': untrusted_diagnostics,
             'acceptance': 'unapproved_draft', 'promotion_allowed': False}
 
 
@@ -430,9 +479,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
         with obj.open('rb') as source, target.open('xb') as output:
             shutil.copyfileobj(source, output)
     audit.update(processing=processing, candidate_namespace='objects/' + identity,
-                 original_retrieval_receipts=[{'name': p.name, 'url': _json(p).get('url'), 'final_url': _json(p).get('final_url'),
-                    'observed_at': _json(p).get('observed_at'), 'http_date': _json(p).get('date')}
-                    for p in sorted(capture.glob('*.receipt.json')) if p.name.startswith(('bts_', 'page-'))],
+                 original_retrieval_receipts=_validated_retrieval_receipts(capture, audit),
                  producer='Amtrak', distributor='USDOT_BTS official NTAD distribution',
                  candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
                  proposed_mapping='identity for every raw field; string Code and date text remain unchanged; native EPSG:4326 geometry',
@@ -526,11 +573,7 @@ def _provenance_inputs(capture: Path, audit: dict) -> tuple[list[dict], list[dic
         if (not isinstance(receipt, dict) or receipt.get('sha256') != record['sha256']
                 or type(receipt.get('bytes')) is not int or receipt['bytes'] != record['bytes']):
             raise ValueError('Retained response attempt receipt/checksum mismatch')
-        if not isinstance(receipt.get('observed_at'), str):
-            raise ValueError('Retained response retrieval time must be an original ISO timestamp')
-        observed_at = datetime.datetime.fromisoformat(receipt['observed_at'])
-        if observed_at.tzinfo is None:
-            raise ValueError('Retained response retrieval time must include timezone')
+        _validate_observed_timestamp(receipt.get('observed_at'))
         terminal_name = path.parts[1] if path.parts[0] == 'attempts' else path.stem
         terminal = _json(capture / (terminal_name + '.receipt.json'))
         if receipt.get('url') != terminal['url']:
@@ -583,7 +626,8 @@ def _source_manifest(audit: dict, processing: dict, original_receipts: list, inp
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; original DateModif text and native coordinate values retained', 'acceptance':'unapproved'}],
         'lineage':{'producer':'Amtrak', 'distributor_item':ITEM_ID,'crosswalk':'unverified; DataLumos403 prevents inspecting the mapping',
                    'raw_files':audit['raw_files'], 'source_crs':audit['crs'], 'source_fields':audit['fields'],
-                   'unobserved_transport_attempts':unobserved_attempts},
+                   'unobserved_transport_attempts':unobserved_attempts,
+                   'untrusted_diagnostics':audit['untrusted_diagnostics']},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
         'unsupported_output_formats':{'shapefile_zip':'Unapproved lossy format: source fields include >10-character names and nullable string/identifier fields; regenerated DBF needs a reviewed mapping; no reviewed lossless name/type/null/value mapping.'}}
     # Structural correctness is implementation behavior, not an acceptance decision.
@@ -608,9 +652,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     # Raw quarantine is already durable. No canonical version directory exists
     # until every retained attempt and the complete manifest pass validation.
     inputs, unobserved_attempts = _provenance_inputs(capture, audit)
-    original_receipts = [{'name': p.name, 'url': _json(p).get('url'), 'final_url': _json(p).get('final_url'),
-                         'observed_at': _json(p).get('observed_at'), 'http_date': _json(p).get('date')}
-                        for p in sorted(capture.glob('*.receipt.json')) if p.name.startswith(('bts_', 'page-'))]
+    original_receipts = _validated_retrieval_receipts(capture, audit)
     _source_manifest(audit, processing_identity(), original_receipts, inputs, unobserved_attempts)
     root = Path(staging.local_dir).resolve() / staging.prefix / SLUG / SLUG / version
     root.mkdir(parents=True, exist_ok=True)
