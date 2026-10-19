@@ -4,7 +4,8 @@
   "empty_geometry": 0,
   "invalid_geometry": 0,
   "geometry_types": {
-    "MultiLineString": 96
+    "LineString": 90,
+    "MultiLineString": 6
   },
   "bounds": [
     -180.0,

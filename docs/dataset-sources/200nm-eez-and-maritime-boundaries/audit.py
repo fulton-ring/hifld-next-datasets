@@ -1,5 +1,6 @@
 """Replay bounded historical captures without network or source mutation."""
-import collections, gzip, hashlib, json, pathlib
+import collections, gzip, json, pathlib, sys
+from shapely.geometry import shape
 P=pathlib.Path(__file__).parent/'evidence'
 def read(n):
  p=P/n
@@ -15,4 +16,10 @@ summary={'count':len(ids),'unique_objectids':len(set(ids)),'independent_ordered_
 for field in layer['fields']:
  n=field['name']; vals=[f['attributes'].get(n) for f in fs]
  summary['fields'][n]={'source_type':field['type'],'declared_nullable':field.get('nullable'),'observed_nulls':None if field['type']=='esriFieldTypeGeometry' else sum(v is None for v in vals),'observed_types':sorted(set(type(v).__name__ for v in vals))}
-print(json.dumps(summary,indent=2))
+if '--quality' in sys.argv:
+ geometries=[shape(f['geometry']) for f in geo['features']]
+ bound_ids=[f['attributes']['BOUND_ID'] for f in fs]
+ quality={'null_bound_ids':bound_ids.count(None),'duplicate_bound_ids':{k:v for k,v in collections.Counter(bound_ids).items() if v>1},'empty_geometry':sum(g.is_empty for g in geometries),'invalid_geometry':sum(not g.is_valid for g in geometries),'geometry_types':dict(collections.Counter(g.geom_type for g in geometries)),'bounds':[min(g.bounds[0] for g in geometries),min(g.bounds[1] for g in geometries),max(g.bounds[2] for g in geometries),max(g.bounds[3] for g in geometries)],'out_of_range_vertices':sum(not(-180<=v[0]<=180 and -90<=v[1]<=90) for f in fs for path in f['geometry']['paths'] for v in path)}
+ print(json.dumps(quality,indent=2))
+else:
+ print(json.dumps(summary,indent=2))

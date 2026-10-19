@@ -25,12 +25,12 @@
     }
   ],
   "release_date": null,
-  "release_date_note": "No independently verified dataset release date; PUB_DATE values are per-feature publication dates, not service release or retrieval dates.",
+  "release_date_note": "Service metadata explicitly states version 4.1 dated/revised 9/13/2013. Current downloadable release date remains independently unverified. PUB_DATE values are per-feature publication dates, not service release or retrieval dates.",
   "checked_at": "2026-10-19T04:19:08.462985+00:00",
   "relationship_to_archive": "unresolved; plausible producer continuation but exact crosswalk and accepted archived/published baseline unavailable",
   "crosswalk": {
     "doi": "https://doi.org/10.3886/E241367V1",
-    "status": "unmatched_due_to_access_blocker",
+    "status": "unverified_due_to_access_blocker",
     "error": "urllib anonymous DOI request: Tunnel connection failed: 403 Forbidden",
     "hyperlinks_parsed": false,
     "title_match_is_not_accepted": true
@@ -51,7 +51,8 @@
   "extraction": {
     "summary": "evidence/extraction-summary.json",
     "replay": "python docs/dataset-sources/200nm-eez-and-maritime-boundaries/audit.py",
-    "complete_snapshot_observation": "96 full rows and unique OBJECTIDs reconcile count, ordered independent ID projection and GeoJSON count; returnIdsOnly error retained; sequential snapshot only"
+    "complete_snapshot_observation": "96 full rows and unique OBJECTIDs reconcile count, ordered independent ID projection and GeoJSON count; returnIdsOnly error retained; sequential snapshot only",
+    "serialization_note": "UNILATERAL is a float in retained Esri JSON and an integer in retained GeoJSON; numeric values compare equal. No generated output or published type/value preservation is claimed."
   },
   "published_contract": {
     "status": "proposed_unapproved",
@@ -228,5 +229,11 @@
     "proposal": "Event-driven NOAA updates; periodic metadata checks with release/checksum detection, bounded retries; fail closed on drift",
     "approved": false
   },
-  "implementation": "none; existing noaa asset unchanged; no materialization or production writes"
+  "implementation": "none; existing noaa asset unchanged; no materialization or production writes",
+  "service_revision_statement": {
+    "date": "2013-09-13",
+    "version": "4.1",
+    "evidence": "evidence/service.body serviceDescription and description",
+    "meaning": "Producer-stated service dataset revision; does not independently verify current downloadable release date."
+  }
 }
