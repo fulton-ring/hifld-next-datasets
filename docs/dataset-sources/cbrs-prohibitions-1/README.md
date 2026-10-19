@@ -1,5 +1,7 @@
 # CBRS Prohibitions working draft (#30)
 
+Current source-only repair checkpoint `c84febb6bc6c6d047d2b0e6cc85f82c131e64e80`:13 focused tests,9 exact-reason cache negatives, cold/restored complete1,693-row actual Dagster source runs and all4 live official inputs passed. Complete evidence is in `evidence/review-repairs/`. Prior700a review requested four changes; shared native-date prebuilt policy integration is still pending, so this draft is not ready for handoff or release. Existing full-suite results below describe their recorded historical source head.
+
 This implements a local reconstruction from the full **producer-hosted FWS 2024-12-19 ZIP**, not an archive-refresh substitute. Source, baseline, field/ID mapping and release acceptance remain pending. The user expressly authorized reviewable draft code and local tests before contract approval; this does not remove any release gate.
 
 `src/dagster_hifld/sources/cbrs_prohibitions.py` reads the exact `20241219_CBRS_Prohibitions` shapefile, preserves all 25 ZIP members and all 4 original input bodies/receipts, and builds a complete hidden candidate before atomic installation. `assets/fws_prohibitions.py` explicitly registers source ingest; the normal registry supplies catalog, formats, quality checks and publication gates. Its monthly on the 1st at 13:00 America/New_York source-only schedule is **STOPPED**, with explicit local-storage guards.

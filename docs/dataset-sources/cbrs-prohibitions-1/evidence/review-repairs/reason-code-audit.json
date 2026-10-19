@@ -1,0 +1,51 @@
+{
+  "head": "c84febb6bc6c6d047d2b0e6cc85f82c131e64e80",
+  "verified": {
+    "false_fidelity_report": {
+      "run_id": "823ecf27-9e36-4fcd-aa65-f1f66b2d128e",
+      "quarantine_reason": "cached_complete_source_fidelity_evidence_drift:metadata/geopackage_source_fidelity.json",
+      "expected_reason_present": true
+    },
+    "false_accepted_placeholder": {
+      "run_id": "3c014cba-fd7a-4d93-8974-239ce04d8fc1",
+      "quarantine_reason": "cached_complete_source_fidelity_evidence_drift:metadata/baseline_comparison.json",
+      "expected_reason_present": true
+    },
+    "false_shared_report": {
+      "run_id": "0c7e5dc2-6304-4830-aaef-a2ebce23d50e",
+      "quarantine_reason": "cached_complete_source_fidelity_evidence_drift:metadata/source-fidelity/baseline_comparison.json",
+      "expected_reason_present": true
+    },
+    "false_markdown": {
+      "run_id": "5f2f19d8-1a21-4ebb-9457-46cf1d6febea",
+      "quarantine_reason": "cached_complete_source_fidelity_evidence_drift:metadata/source-fidelity/baseline_comparison.md",
+      "expected_reason_present": true
+    },
+    "unknown_SQL_identifiers": {
+      "run_id": "71f533d9-7bfd-41c5-ac74-1005c779bb07",
+      "quarantine_reason": "cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes",
+      "expected_reason_present": true
+    },
+    "geometry_envelope": {
+      "run_id": "50144004-efb6-4369-995f-46aa3db2fab4",
+      "quarantine_reason": "cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes",
+      "expected_reason_present": true
+    },
+    "contents_SRS": {
+      "run_id": "813a2ce8-e47d-4521-8925-5430de1edd50",
+      "quarantine_reason": "cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes",
+      "expected_reason_present": true
+    },
+    "missing_ready_marker": {
+      "run_id": "829f9c8b-5058-43d0-b735-7becb65d61e2",
+      "quarantine_reason": "existing_candidate_missing_ready_marker",
+      "expected_reason_present": true
+    },
+    "unexpected_identifier_file": {
+      "run_id": "73264bad-c896-420b-8475-bc31bcc3f292",
+      "quarantine_reason": "existing_candidate_unrostered_or_missing_object",
+      "expected_reason_present": true
+    }
+  },
+  "requires_environmental_retry": {}
+}

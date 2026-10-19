@@ -1,0 +1,66 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+2026-10-19 08:26:29 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - RUN_START - Started execution of run for "source30_cache_repair".
+2026-10-19 08:26:29 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - ENGINE_EVENT - Executing steps in process (pid: 82714)
+2026-10-19 08:26:29 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 08:26:29 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 08:26:29 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - LOGS_CAPTURED - Started capturing logs in process (pid: 82714).
+2026-10-19 08:26:29 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - STEP_START - Started execution of step "ingest__cbrs_prohibitions_1__cbrs_prohibitions_1".
+2026-10-19 08:26:59 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - ENGINE_EVENT - Finished steps in process (pid: 82714) in 29.55s
+2026-10-19 08:26:59 +0000 - dagster - DEBUG - source30_cache_repair - b911f177-ec47-41d7-86d4-38350618bd6b - 82714 - RUN_SUCCESS - Finished execution of run for "source30_cache_repair".
+2026-10-19 08:27:00 +0000 - dagster - DEBUG - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - RUN_START - Started execution of run for "source30_cache_repair".
+2026-10-19 08:27:00 +0000 - dagster - DEBUG - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - ENGINE_EVENT - Executing steps in process (pid: 82714)
+2026-10-19 08:27:00 +0000 - dagster - DEBUG - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 08:27:00 +0000 - dagster - DEBUG - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 08:27:00 +0000 - dagster - DEBUG - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - LOGS_CAPTURED - Started capturing logs in process (pid: 82714).
+2026-10-19 08:27:00 +0000 - dagster - DEBUG - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - STEP_START - Started execution of step "ingest__cbrs_prohibitions_1__cbrs_prohibitions_1".
+2026-10-19 08:27:34 +0000 - dagster - DEBUG - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - ENGINE_EVENT - Finished steps in process (pid: 82714) in 34.28s
+2026-10-19 08:27:34 +0000 - dagster - ERROR - source30_cache_repair - 823ecf27-9e36-4fcd-aa65-f1f66b2d128e - 82714 - RUN_FAILURE - Execution of run for "source30_cache_repair" failed. Steps failed: ['ingest__cbrs_prohibitions_1__cbrs_prohibitions_1'].
+{"archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs30-c84-false-fidelity-report-823ecf27.tar.zst", "archive_bytes": 131762808, "archive_sha256": "32ae9ddbafff0fb1e521fdf7285d03ed06d7be8a79790df9855251371eefad57", "verified_member_count": 51}
+2026-10-19 08:27:39 +0000 - dagster - DEBUG - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - RUN_START - Started execution of run for "source30_cache_repair".
+2026-10-19 08:27:39 +0000 - dagster - DEBUG - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - ENGINE_EVENT - Executing steps in process (pid: 82714)
+2026-10-19 08:27:39 +0000 - dagster - DEBUG - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 08:27:39 +0000 - dagster - DEBUG - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 08:27:39 +0000 - dagster - DEBUG - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - LOGS_CAPTURED - Started capturing logs in process (pid: 82714).
+2026-10-19 08:27:39 +0000 - dagster - DEBUG - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - STEP_START - Started execution of step "ingest__cbrs_prohibitions_1__cbrs_prohibitions_1".
+2026-10-19 08:28:06 +0000 - dagster - DEBUG - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - ENGINE_EVENT - Finished steps in process (pid: 82714) in 27.1s
+2026-10-19 08:28:06 +0000 - dagster - ERROR - source30_cache_repair - 3c014cba-fd7a-4d93-8974-239ce04d8fc1 - 82714 - RUN_FAILURE - Execution of run for "source30_cache_repair" failed. Steps failed: ['ingest__cbrs_prohibitions_1__cbrs_prohibitions_1'].
+{"archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs30-c84-false-accepted-placeholder-3c014cba.tar.zst", "archive_bytes": 131763000, "archive_sha256": "cbdc2faa7de56d95cd2c2f7a1f1ada5bdfe18a89a96c88762d296b44efaffc3d", "verified_member_count": 51}
+2026-10-19 08:28:15 +0000 - dagster - DEBUG - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - RUN_START - Started execution of run for "source30_cache_repair".
+2026-10-19 08:28:15 +0000 - dagster - DEBUG - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - ENGINE_EVENT - Executing steps in process (pid: 82714)
+2026-10-19 08:28:15 +0000 - dagster - DEBUG - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 08:28:15 +0000 - dagster - DEBUG - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 08:28:15 +0000 - dagster - DEBUG - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - LOGS_CAPTURED - Started capturing logs in process (pid: 82714).
+2026-10-19 08:28:15 +0000 - dagster - DEBUG - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - STEP_START - Started execution of step "ingest__cbrs_prohibitions_1__cbrs_prohibitions_1".
+2026-10-19 08:33:00 +0000 - dagster - DEBUG - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - ENGINE_EVENT - Finished steps in process (pid: 82714) in 4m44s
+2026-10-19 08:33:00 +0000 - dagster - ERROR - source30_cache_repair - 0c7e5dc2-6304-4830-aaef-a2ebce23d50e - 82714 - RUN_FAILURE - Execution of run for "source30_cache_repair" failed. Steps failed: ['ingest__cbrs_prohibitions_1__cbrs_prohibitions_1'].
+{"archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs30-c84-false-shared-report-0c7e5dc2.tar.zst", "archive_bytes": 78620486, "archive_sha256": "1af8c55784f8df358d39143f674f1649a7a76678207b6c874862c9100c7cba12", "verified_member_count": 51}
+2026-10-19 08:33:04 +0000 - dagster - DEBUG - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - RUN_START - Started execution of run for "source30_cache_repair".
+2026-10-19 08:33:05 +0000 - dagster - DEBUG - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - ENGINE_EVENT - Executing steps in process (pid: 82714)
+2026-10-19 08:33:05 +0000 - dagster - DEBUG - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 08:33:05 +0000 - dagster - DEBUG - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 08:33:05 +0000 - dagster - DEBUG - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - LOGS_CAPTURED - Started capturing logs in process (pid: 82714).
+2026-10-19 08:33:05 +0000 - dagster - DEBUG - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - STEP_START - Started execution of step "ingest__cbrs_prohibitions_1__cbrs_prohibitions_1".
+2026-10-19 08:33:38 +0000 - dagster - DEBUG - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - ENGINE_EVENT - Finished steps in process (pid: 82714) in 33.38s
+2026-10-19 08:33:38 +0000 - dagster - ERROR - source30_cache_repair - 5f2f19d8-1a21-4ebb-9457-46cf1d6febea - 82714 - RUN_FAILURE - Execution of run for "source30_cache_repair" failed. Steps failed: ['ingest__cbrs_prohibitions_1__cbrs_prohibitions_1'].
+{"archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs30-c84-false-markdown-5f2f19d8.tar.zst", "archive_bytes": 78620231, "archive_sha256": "fa0b0f15e4c391d61776e6c591beeca62dd455e7b654ed69cb5efb161d545c32", "verified_member_count": 51}
+2026-10-19 08:33:42 +0000 - dagster - DEBUG - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - RUN_START - Started execution of run for "source30_cache_repair".
+2026-10-19 08:33:42 +0000 - dagster - DEBUG - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - ENGINE_EVENT - Executing steps in process (pid: 82714)
+2026-10-19 08:33:42 +0000 - dagster - DEBUG - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 08:33:42 +0000 - dagster - DEBUG - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 08:33:42 +0000 - dagster - DEBUG - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - LOGS_CAPTURED - Started capturing logs in process (pid: 82714).
+2026-10-19 08:33:42 +0000 - dagster - DEBUG - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - ingest__cbrs_prohibitions_1__cbrs_prohibitions_1 - STEP_START - Started execution of step "ingest__cbrs_prohibitions_1__cbrs_prohibitions_1".
+2026-10-19 08:33:49 +0000 - dagster - DEBUG - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - ENGINE_EVENT - Finished steps in process (pid: 82714) in 7.54s
+2026-10-19 08:33:49 +0000 - dagster - ERROR - source30_cache_repair - 71f533d9-7bfd-41c5-ac74-1005c779bb07 - 82714 - RUN_FAILURE - Execution of run for "source30_cache_repair" failed. Steps failed: ['ingest__cbrs_prohibitions_1__cbrs_prohibitions_1'].
+Traceback (most recent call last):
+  File "/workspace/work/hifld-coordinator/scripts/archive_closed_fuel.py", line 43, in <module>
+    require_closed()
+  File "/workspace/work/hifld-coordinator/scripts/archive_closed_fuel.py", line 41, in require_closed
+    raise RuntimeError(f'Generated tree is in use: {item}')
+RuntimeError: Generated tree is in use: /proc/82714/fd/4
+Traceback (most recent call last):
+  File "/workspace/work/hifld-coordinator/30/repairs/run_cache_probes.py", line 63, in <module>
+    subprocess.run(['python','/workspace/work/hifld-coordinator/scripts/archive_closed_fuel.py','--bundle',bundle,'--parent',str(quarantine),'candidate'],check=True)
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['python', '/workspace/work/hifld-coordinator/scripts/archive_closed_fuel.py', '--bundle', 'cbrs30-c84-unknown-SQL-identifiers-71f533d9', '--parent', '/workspace/work/hifld-coordinator/30/repairs/cache-graph/staging/_quarantine/cbrs-prohibitions-1/invalid-cache-8acef950a21046f798f6bcab5d2a61e2', 'candidate']' returned non-zero exit status 1.

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 30,
   "dataset_slug": "cbrs-prohibitions-1",
-  "status": "independent_review_repairs_in_progress",
+  "status": "cache_repairs_locally_verified_shared_native_policy_pending",
   "approvals": {
     "source": false,
     "baseline": false,
@@ -103,5 +103,23 @@
     },
     "CI": "No CI success inferred",
     "review": "Native independent exact final-head review pending"
+  },
+  "review_repair_checkpoint": {
+    "head": "c84febb6bc6c6d047d2b0e6cc85f82c131e64e80",
+    "focused_tests": 13,
+    "cold_source_run": "b911f177-ec47-41d7-86d4-38350618bd6b",
+    "restored_complete_source_run": "0503d75a-48eb-4e0a-b65c-54fecc453031",
+    "exact_reason_cache_negatives": 9,
+    "all_bad_cache_bytes_and_prior_publication_preserved": true,
+    "whole_native_container_byte_parity": "evidence/review-repairs/determinism.json",
+    "live_anonymous_official_inputs": 4,
+    "live_statuses": [
+      200,
+      200,
+      200,
+      200
+    ],
+    "shared_prebuilt_native_date_policy": "Pending coordinator integration of independently reviewed shared machinery; no handoff-ready or release approval claim.",
+    "evidence": "evidence/review-repairs/cache-repair.json"
   }
 }
