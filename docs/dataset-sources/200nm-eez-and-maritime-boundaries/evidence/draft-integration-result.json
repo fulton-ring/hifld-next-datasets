@@ -1,12 +1,24 @@
 {
   "classification": "Real96-row draft graph; previous published candidate is a local preservation fixture, not an accepted baseline",
-  "code_head": "c103d12c013b43c933e502b9561ea8e0617f9096",
+  "code_head": "b2db26d3a33521c6d8ae131ec65092a97c89037d",
   "module_path": "/workspace/hifld-worker-worktrees/3/src/dagster_hifld/__init__.py",
-  "runtime_root": "/workspace/work/hifld-worker-3/final-reviewed-dependency",
+  "runtime_root": "/workspace/work/hifld-worker-3/final-registered-normal",
   "tippecanoe_version": "tippecanoe v2.53.0",
   "baseline_accepted": false,
   "contract_approved": false,
-  "ingest_run_id": "7c54c822-18c1-487a-aac9-a2a7082c5bb7",
+  "refresh_schedule": {
+    "name": "noaa_eez_draft_weekly",
+    "default_status": "STOPPED",
+    "cron": "0 6 * * 1",
+    "timezone": "America/New_York",
+    "selected_assets": [
+      "ingest/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries"
+    ],
+    "activated": false
+  },
+  "normal_definitions_registered_eez": true,
+  "normal_definitions_asset_count": 74,
+  "ingest_run_id": "b5a478c4-0a9d-440e-82de-51363e77250f",
   "ingest_success": true,
   "output": {
     "feature_count": 96,
@@ -224,15 +236,15 @@
     "completeness_passed": true,
     "promotion_approved": false,
     "mapping": "Esri SHAPE paths -> same-named WKB; one path LineString, multiple paths MultiLineString; declared source Double float64, dates epoch-ms int64; all source fields retained; no generated id/bbox or coordinate changes",
-    "catalog_source_key": "200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.4d9f189598944b6333d4/geopackage/200nm-eez-and-maritime-boundaries.gpkg",
+    "catalog_source_key": "200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.99185fb8f9ff9612e9a2/geopackage/200nm-eez-and-maritime-boundaries.gpkg",
     "dataset_slug": "200nm-eez-and-maritime-boundaries",
     "file_slug": "200nm-eez-and-maritime-boundaries",
-    "version": "v0.0.0-draft.noaa.4d9f189598944b6333d4",
-    "candidate_key": "200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.4d9f189598944b6333d4/candidate/geoparquet/200nm-eez-and-maritime-boundaries.parquet",
+    "version": "v0.0.0-draft.noaa.99185fb8f9ff9612e9a2",
+    "candidate_key": "200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.99185fb8f9ff9612e9a2/candidate/geoparquet/200nm-eez-and-maritime-boundaries.parquet",
     "candidate_sha256": "48574a77d7a69fc0ef581c06418568a7ee75f58ca8bab18e4e1a1d533127a6e4",
     "raw_identity": "a4ef8e0fbd7a5fabfad7441fa9d9fdba10ee866c079da0feeec1ab35fab3fa02",
-    "processing_fingerprint": "c257905dc05e7a994e97404fe9a85ad31b739f5e146148fdae487467dbf1ba7a",
-    "namespace_identity": "4d9f189598944b6333d4e6d047309289e22a24fa818f7e2c1340b06f05d2e600",
+    "processing_fingerprint": "2c145b716653efad7c0c3d7816d426d8e3b7ab108a7a80f71b9e89da7a197339",
+    "namespace_identity": "99185fb8f9ff9612e9a204d3e4e9797c779307809c957e807c39fb26296c960e",
     "status": "draft_candidate_unapproved",
     "receipt_directory": "raw/receipts",
     "refresh_policy": "Bounded retry on transport failure; content-addressed no-op for identical extraction; any proposed schema/IDs/geometry/coverage drift quarantines; not a release-date assertion"
@@ -255,8 +267,8 @@
     },
     "geometry": "Unknown"
   },
-  "partition": "200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.4d9f189598944b6333d4",
-  "graph_run_id": "e693db43-82ac-4e77-a86a-02d4b498c199",
+  "partition": "200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.99185fb8f9ff9612e9a2",
+  "graph_run_id": "19fbded2-bc6a-4fd6-aa6b-f34226d6f3e1",
   "graph_success": false,
   "materialized_asset_keys": [
     "publish/catalog",
@@ -268,7 +280,7 @@
   "step_failures": [
     {
       "step": "publish__verify",
-      "message": "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/src/dagster_hifld/assets/publish.py\", line 1368, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/3/src/dagster_hifld/release_approval.py\", line 120, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/src/dagster_hifld/release_approval.py\", line 48, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      "message": "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/src/dagster_hifld/assets/publish.py\", line 1380, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/3/src/dagster_hifld/release_approval.py\", line 120, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/3/src/dagster_hifld/release_approval.py\", line 48, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
     }
   ],
   "previous_public_candidate_preserved": true,

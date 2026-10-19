@@ -233,15 +233,23 @@
     "identifier_policy": "Preserve OBJECTID and BOUND_ID verbatim including strings/whitespace/precision; neither proven persistent across releases. No substitute IDs. Unknown/unmapped columns quarantine."
   },
   "refresh_policy": {
-    "proposal": "Event-driven NOAA updates; periodic metadata checks with release/checksum detection, bounded retries; fail closed on drift",
-    "approved": false
+    "approved": false,
+    "implemented_draft_job": "noaa_eez_draft_refresh",
+    "implemented_draft_schedule": "noaa_eez_draft_weekly",
+    "cron": "0 6 * * 1",
+    "timezone": "America/New_York",
+    "default_status": "STOPPED",
+    "activated": false,
+    "source_only": true,
+    "local_staging_only": true,
+    "proposal": "Weekly draft source observation plus producer event-driven updates; accepted production cadence remains a separate decision"
   },
   "implementation": {
     "status": "working_local_draft",
     "asset": "ingest/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries",
     "adapter": "src/dagster_hifld/noaa_extract.py",
     "asset_module": "src/dagster_hifld/assets/noaa.py",
-    "dependency_417": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
+    "dependency_417": "c7343b802966c566e8f6088bf31f19081b2a0cde",
     "source_accepted": false,
     "baseline_accepted": false,
     "contract_approved": false,
@@ -250,7 +258,8 @@
     "terminal_audit": "evidence/draft-terminal-audit.json",
     "tests": [
       "tests/test_noaa_extraction.py",
-      "tests/test_noaa_eez_pipeline.py"
+      "tests/test_noaa_eez_pipeline.py",
+      "tests/test_noaa_refresh_registration.py"
     ],
     "reproduce": "scripts/verification/noaa_eez_local.py"
   },
