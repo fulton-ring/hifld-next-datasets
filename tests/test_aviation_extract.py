@@ -9,9 +9,9 @@ import unittest
 from unittest import mock
 
 import pyarrow.parquet as pq
-from dagster import build_schedule_context, DefaultScheduleStatus
+from dagster import build_schedule_context, DefaultScheduleStatus, materialize
 from dagster_hifld import aviation_extract as a
-from dagster_hifld.assets.faa import _stage_aviation, faa_aviation_draft_refresh_schedule
+from dagster_hifld.assets.faa import _stage_aviation, faa_aviation_draft_refresh_schedule, faa_aviation_facilities
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
@@ -84,6 +84,15 @@ class AviationTests(unittest.TestCase):
             self.data['bts_ids']['objectIds']=[value,2];self.write()
             with self.assertRaises(ValueError):a.inspect_capture(self.capture)
 
+    def test_integer_to_double_precision_loss_and_duplicate_native_oid_rejected(self):
+        self.data['page-000']['features'][0]['attributes']['LAT_SEC']=2**53+1
+        self.write()
+        with self.assertRaisesRegex(ValueError,'Invalid double'):a.inspect_capture(self.capture)
+        self.data['page-000']['features'][0]['attributes']['LAT_SEC']=1.25
+        self.data['page-000']['features'][1]['attributes']['OBJECTID']=2**53+1
+        self.write()
+        with self.assertRaisesRegex(ValueError,'Duplicate'):a.inspect_capture(self.capture)
+
     def test_receipts_bind_original_final_url_status_size_and_hash(self):
         p=self.capture/'page-000.receipt.json';original=p.read_bytes()
         for key,value in [('url','https://mirror.example/query'),('final_url','https://mirror.example/query'),('status',403),('bytes',1),('sha256','0'*64),('complete_body',None)]:
@@ -103,6 +112,14 @@ class AviationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):_stage_aviation(self.root/'missing',storage)
                 with self.assertRaises(ValueError):a.stage_aviation_capture(self.root/'missing',storage,'v0.0.20-draft')
                 fetch.assert_not_called()
+
+    def test_actual_asset_rejects_published_storage_before_live_capture(self):
+        with mock.patch.object(a,'capture_live') as capture:
+            result=materialize([faa_aviation_facilities],
+                resources={'staging_storage':PublishedStorageResource(local_dir=str(self.root/'published'))},
+                raise_on_error=False)
+        self.assertFalse(result.success);capture.assert_not_called()
+        self.assertFalse((self.root/'published').exists())
 
     def test_refresh_schedule_stopped_local_and_source_only(self):
         self.assertEqual(faa_aviation_draft_refresh_schedule.default_status,DefaultScheduleStatus.STOPPED)

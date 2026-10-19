@@ -302,7 +302,7 @@ def inspect_capture(root: Path) -> dict:
                     raise ValueError('64-bit integer overflow')
                 if kind == 'esriFieldTypeInteger' and not -(2**31) <= value < 2**31:
                     raise ValueError('32-bit integer overflow')
-                if kind == 'esriFieldTypeDouble' and (type(value) not in (int, float) or not math.isfinite(value)):
+                if kind == 'esriFieldTypeDouble' and (type(value) not in (int, float) or not math.isfinite(value) or float(value) != value):
                     raise ValueError('Invalid double')
             oid, site_id = attrs['OBJECTID'], attrs['SITE_NO']
             if type(oid) is not int or type(site_id) is not str or not site_id:
@@ -493,7 +493,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
         'lineage':{'producer':'FAA NASR', 'distributor_item':'1551114f78e34d8395fd77bf41cd8a80','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
-        'unsupported_output_formats':{'shapefile_zip':'Source field names exceed the DBF ten-character limit; no destructive field-name or type/null migration is approved.'}}
+        'unsupported_output_formats':{'pmtiles':'Actual tippecanoe reconstruction assigns sequential internal feature IDs and drops dense features to meet tile size; rendered quantized geometry/full coverage/identifier mapping is unapproved. Primary typed Parquet and native GeoPackage preserve every source row, ID, type and point.', 'shapefile_zip':'Source field names exceed the DBF ten-character limit; no destructive field-name or type/null migration is approved.'}}
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
