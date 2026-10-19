@@ -282,5 +282,11 @@
     "crosswalk_archive": "provider403 challenge, not CONNECT403",
     "inport": "HTML200, XML503"
   },
-  "readiness": "Actual isolated ingest96rows, catalog and formats, full native/GPKG/GeoParquet row/type/vertex audit, Shapefile explicitloss skip and missing-registry verification failure preserve raw/candidate/previousfixture. See draft-integration-result.json."
+  "readiness": "Actual isolated ingest96rows, catalog and formats, full native/GPKG/GeoParquet row/type/vertex audit, Shapefile explicitloss skip and missing-registry verification failure preserve raw/candidate/previousfixture. See draft-integration-result.json.",
+  "origin_validation_followup": {
+    "evidence": "evidence/draft-origin-validation.json",
+    "tested_code_head": "970d44aa10de26f252bbfa25e1559549ec0b6e71",
+    "status": "implemented locally verified; exact-head independent review pending",
+    "release_approved": false
+  }
 }
