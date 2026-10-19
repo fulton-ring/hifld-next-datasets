@@ -515,5 +515,11 @@
     "inport_datePublished": "2013-01-01",
     "inport_dateModified": "2013-01-01",
     "meaning": "Metadata publication/revision dates do not establish a current downloadable release date"
+  },
+  "origin_validation_followup": {
+    "evidence": "evidence/draft-origin-validation.json",
+    "tested_code_head": "227c79bc204e25063485b4ac618182e32e30ba18",
+    "status": "implemented locally verified; exact-head independent review pending",
+    "release_approved": false
   }
 }

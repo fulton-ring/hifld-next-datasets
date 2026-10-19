@@ -109,3 +109,7 @@ A maintainer must accept the pinned baseline, versioned raw/published contract,
 explicit ID/type/geometry mapping, source lineage/freshness limits and supported
 output formats. External exact-head code review does not grant those decisions.
 Until then this remains a locally tested draft with hard release gates.
+
+### Replay-attribution guard follow-up
+
+The shared helper now binds every request and observed final redirect to this exact official NOAA layer and query. Wrong origins/layers, changed or ambiguous queries, and missing redirect evidence quarantine the original raw bodies and receipts before any candidate or producer-attributed manifest is created. Complete retained live receipts replace historical composite test attribution; no unobserved final URL was invented. See [the follow-up execution record](evidence/draft-origin-validation.json) for tested code, full normal-graph run IDs, checksums and preservation assertions. Real release acceptance remains pending.
