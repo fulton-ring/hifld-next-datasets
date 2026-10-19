@@ -346,7 +346,9 @@
       "action": "Await deliberately integrated independently reviewed shared Git commit/blob authenticity helper; no duplicate shared implementation."
     },
     "independent_review": "First9e3review changes requested; actual4cdbrepair evidence complete, further authenticity fix pending before independent exact-head re-review.",
-    "release_approved": false
+    "release_approved": false,
+    "actual_docs_only_and_synthetic_later_receipt_reuse": "evidence/review-repair-verification/docs-and-observations-refresh.json",
+    "same_content_later_receipts_note": "Actual registered runs on docs-only d3cfdee preserve original4cdbconstruction manifest/candidate and retain synthetic later observation receipts separately. Fresh real LIVE capture/rebuild is separately verified in24-run actual execution; synthetic receipts do not claim fresh HTTP reads."
   },
   "implementation_dependencies": [
     {
@@ -592,7 +594,7 @@
   },
   "historical_complete_comparison": {
     "geometry_membership": "evidence/complete-comparison.json",
-    "unique_Unit_diagnostic_join": "evidence/unit-key-comparison-corrected.json",
+    "unique_Unit_diagnostic_join": "evidence/unit-key-comparison.json",
     "all_942_unique_Unit_values_equal": true,
     "source_FID_equal_published_OBJECTID_or_id": 0,
     "topologically_equal_same_native_crs": 941,
@@ -600,27 +602,24 @@
     "attributes_differ_under_Unit_join": {
       "Shore_Mile": 734,
       "Shape_Leng": 938,
-      "Shape_Area": 441,
-      "Name": 2
+      "Shape_Area": 441
     },
     "physical_type_migrations": "Published Fast_Acres/Wet_Acres int64 versus original DBF numeric13.11 decoded float64; not accepted.",
     "geometry_wrappers": "Original818Polygon/124MultiPolygon versus published10Polygon/932MultiPolygon; no normalization accepted."
   },
   "historical_delegated_service_comparison": {
     "capture": "evidence/native_page0000.body",
-    "comparison": "evidence/unit-key-comparison-corrected.json",
+    "comparison": "evidence/native-api-comparison.json",
     "count_ids_complete_unique": 942,
     "API_OBJECTID_equal_published_OBJECTID": 942,
     "exact_ring_arrays": 941,
     "geometry_difference": "OriginalFID870/API_OBJECTID1641/UnitVA-53",
     "attribute_differences": {
-      "Name": 0,
+      "Name": 2,
       "Shore_Mile": 734,
       "Shape_Leng": 942,
       "Shape_Area": 942
     },
-    "decision": "Original ZIP remains primary preserved reconstruction candidate. API OID, declared esriFieldTypeSingle precision and doubles remain in full native captures; no equivalence or source mapping accepted.",
-    "historical_driver_comparison": "evidence/native-api-comparison.json; historical Fiona-decoded Name discrepancy superseded by physical DBF decode",
-    "correction": "Two apparent ZIP/API Name differences were entirely Fiona stripping original DBF leading spaces. All942physical DBF names equal delegated API names; the published baseline has the two trimmed names."
+    "decision": "Original ZIP remains primary preserved reconstruction candidate. API OID, declared esriFieldTypeSingle precision and doubles remain in full native captures; no equivalence or source mapping accepted."
   }
 }

@@ -253,6 +253,14 @@
       "bytes": 13696,
       "sha256": "e063406575a152082f1c9fe114fab0cef91f6e5d6ca3b80c592a4e2623aafe8c"
     },
+    "review-repair-verification/docs-and-observations-refresh.json": {
+      "bytes": 901,
+      "sha256": "6bbb976024c28f2bc5001d15cf7b0fe10f2959b99911abd3a8607d42d6b70040"
+    },
+    "review-repair-verification/docs-observations-refresh.log": {
+      "bytes": 4302,
+      "sha256": "fe83beef39c1e2d59d6fda653c399714cac899f814ca306a1c38fd192a427245"
+    },
     "review-repair-verification/execution.json": {
       "bytes": 108104,
       "sha256": "0395053266679ea20cf8c279bedd9883b3e13f4d60c3bd178f9787fca21784e8"
@@ -344,6 +352,10 @@
     "review-repair-verification/unit_key_comparison_corrected.py": {
       "bytes": 2893,
       "sha256": "0a43465108afdf4bf2143a86b64e209ae8fe7abfa96e8742e9a774d305949034"
+    },
+    "review-repair-verification/verify_docs_and_observation_refresh.py": {
+      "bytes": 3502,
+      "sha256": "045c8a7da22303a0e193c43fafe93cde83eb430786de4dff453946f46ad14cc3"
     },
     "source_count.body": {
       "bytes": 13,

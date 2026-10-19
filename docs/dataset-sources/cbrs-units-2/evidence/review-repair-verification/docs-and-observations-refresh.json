@@ -1,0 +1,25 @@
+{
+  "approved": false,
+  "runs": [
+    {
+      "kind": "actual_docs_only_head_reuse",
+      "run_id": "21f8ac1b-40a6-4980-999e-1bd0ce84d6a0",
+      "success": true,
+      "actual_head": "d3cfdee731c6ae284aeb33c144061f651a2a9461",
+      "original_construction_head": "4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19",
+      "candidate_and_binding_unchanged": true,
+      "prior_published_preserved": true
+    },
+    {
+      "kind": "same_content_synthetic_later_observations",
+      "run_id": "b85524a0-2ca0-4c8f-8e8e-1397c9b04fb8",
+      "success": true,
+      "actual_head": "d3cfdee731c6ae284aeb33c144061f651a2a9461",
+      "original_construction_head": "4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19",
+      "candidate_and_binding_unchanged": true,
+      "prior_published_preserved": true
+    }
+  ],
+  "new_observations_losslessly_retained_separately": true,
+  "original_construction_history_retained": true
+}
