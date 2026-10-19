@@ -161,6 +161,32 @@ def _field_signature(metadata: dict) -> tuple:
     return tuple((f.get("name"), f.get("type"), f.get("alias"), f.get("nullable"), f.get("length")) for f in fields)
 
 
+def _validate_query_page_fields(page_fields: object, layer_fields: object) -> None:
+    """Reject page-level physical schema drift before constructing a native table."""
+    if (not isinstance(page_fields, list) or not isinstance(layer_fields, list)
+            or len(page_fields) != len(layer_fields)):
+        raise EOCSourceError("query_physical_schema_changed")
+    required_properties = {"name", "type"}
+    length_property = "length"
+    comparable_properties = ("name", "type", "alias", "length", "nullable", "editable",
+                             "domain", "defaultValue", "modelName")
+    for page_field, layer_field in zip(page_fields, layer_fields):
+        if not isinstance(page_field, dict) or not isinstance(layer_field, dict):
+            raise EOCSourceError("query_physical_schema_changed")
+        for key in required_properties:
+            if key not in page_field or page_field[key] != layer_field.get(key):
+                raise EOCSourceError("query_physical_schema_changed")
+        for key in comparable_properties:
+            if key not in page_field:
+                # ArcGIS query pages omit nullability and some metadata properties;
+                # when supplied, they must match the layer declaration.
+                if key == length_property and key in layer_field:
+                    raise EOCSourceError("query_physical_schema_changed")
+                continue
+            if key not in layer_field or page_field[key] != layer_field[key]:
+                raise EOCSourceError("query_physical_schema_changed")
+
+
 def _object_ids(body: bytes) -> tuple[str, list[int]]:
     value = _strict_json(body)
     field = value.get("objectIdFieldName")
@@ -431,8 +457,7 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
                 raise EOCSourceError("source_page_exceeded_transfer_limit")
             if not _is_wgs84(page.get("spatialReference")):
                 raise EOCSourceError("source_page_coordinate_reference_changed")
-            if tuple(f.get("name") for f in page.get("fields", [])) != tuple(f.get("name") for f in layer_before.get("fields", [])):
-                raise EOCSourceError("query_field_roster_changed")
+            _validate_query_page_fields(page.get("fields"), layer_before.get("fields"))
             features.extend(page.get("features", []))
         layer_after = _strict_json(get(client, "layer_after", BASE + "?f=pjson"))
         count_after = _strict_json(get(client, "count_after", _query_url(where="1=1", returnCountOnly="true"))).get("count")

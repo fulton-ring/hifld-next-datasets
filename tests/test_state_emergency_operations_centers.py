@@ -14,6 +14,7 @@ from dagster_hifld.sources.state_emergency_operations_centers import (
     EOCSourceError,
     _table,
     _validate_rows,
+    _validate_query_page_fields,
     _validate_source_layer_metadata,
     _local_staging,
 )
@@ -35,6 +36,31 @@ class StateEocSourceTests(unittest.TestCase):
     changed_schema = {**metadata, "fields": [*fields[:-1], {**fields[-1], "length": 50}]}
     with self.assertRaisesRegex(EOCSourceError, "source_physical_schema_contract_changed"):
       _validate_source_layer_metadata(changed_schema)
+
+  def test_query_page_type_drift_rejected_before_native_construction(self):
+    layer_fields = [{"name": name, "type": field_type, "nullable": nullable, "length": length}
+                    for name, field_type, nullable, length in EXPECTED_FIELDS]
+    # Query pages omit nullable in the producer response; the pinned layer
+    # declaration remains authoritative unless the page supplies that property.
+    page_fields = [{key: value for key, value in field.items() if key != "nullable"}
+                   for field in layer_fields]
+    _validate_query_page_fields(page_fields, layer_fields)
+
+    changed_page_fields = [dict(field) for field in page_fields]
+    eoc_field = next(field for field in changed_page_fields if field["name"] == "eoc_id")
+    eoc_field["type"] = "esriFieldTypeInteger"
+    # Same names and an in-range value would still be serialized as int16 if
+    # this page-level declaration drift were allowed through.
+    self.assertEqual(eoc_field["name"], "eoc_id")
+    self.assertGreaterEqual(77, -32768)
+    self.assertLessEqual(77, 32767)
+    with self.assertRaisesRegex(EOCSourceError, "query_physical_schema_changed"):
+      _validate_query_page_fields(changed_page_fields, layer_fields)
+
+    supplied_nullability = [dict(field) for field in page_fields]
+    supplied_nullability[0]["nullable"] = True
+    with self.assertRaisesRegex(EOCSourceError, "query_physical_schema_changed"):
+      _validate_query_page_fields(supplied_nullability, layer_fields)
 
   def test_explicit_local_staging_path_outside_worker_scratch_is_supported(self):
     with tempfile.TemporaryDirectory() as root:
