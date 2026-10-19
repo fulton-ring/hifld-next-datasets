@@ -106,7 +106,7 @@ class SyntheticObservationBehaviorTests(TestCase):
         marker=root/'metadata/observations_candidate_ready.json';j=json.loads(marker.read_bytes());j['objects'][f'geopackage/{s.SLUG}.gpkg']=s.sha(gp.read_bytes());marker.write_bytes(s.encode(j));before=self.snap(root)
         with self.assertRaisesRegex(s.ObservationQuarantineError,'whole_native_geopackage_bytes_changed'):self.stage()
         self.assertFalse(root.exists());self.assertTrue(any(self.snap(q)==before for q in (Path(self.tmp.name)/'_quarantine'/s.SLUG).glob('invalid-cache-*/candidate')))
-    def test_common_validation_lock_and_losing_install_preserve_winner(self):
+    def test_common_validation_lock_covers_full_native_cache_validation(self):
         out=self.stage();root=self.root(out);original=s.reconcile_cached_candidate
         def validate(*args,**kwargs):
             fd=os.open(root.parent/('.'+root.name+'.lock'),os.O_RDWR)
@@ -115,6 +115,32 @@ class SyntheticObservationBehaviorTests(TestCase):
             finally:os.close(fd)
             return original(*args,**kwargs)
         with mock.patch.object(s,'reconcile_cached_candidate',side_effect=validate):self.stage()
+    def test_install_loser_preserves_complete_concurrent_winner(self):
+        original=s.commit_complete_candidate;winner={}
+        def install_then_lose(storage,prefix,payloads,ready,packs,manifest,identity):
+            original(storage,prefix,payloads,ready,packs,manifest,identity)
+            root=Path(storage.local_dir)/prefix;winner.update(root=root,before=self.snap(root))
+            return original(storage,prefix,payloads,ready,packs,manifest,identity)
+        with mock.patch.object(s,'commit_complete_candidate',side_effect=install_then_lose):
+            with self.assertRaisesRegex(s.ObservationQuarantineError,'concurrent_or_incomplete_existing_candidate'):self.stage()
+        self.assertTrue(winner['root'].exists());self.assertEqual(self.snap(winner['root']),winner['before'])
+        out=self.stage();self.assertEqual(self.root(out),winner['root']);self.assertEqual(self.snap(winner['root']),winner['before'])
+    def test_interrupted_live_extraction_preserves_all_partial_bytes_and_existing_candidate(self):
+        out=self.stage();root=self.root(out);before=self.snap(root);fragment=b'{"incomplete_original_http":'
+        response=mock.MagicMock();response.url=next(iter(s.source_urls().values()));response.status_code=200
+        response.headers={};response.num_bytes_downloaded=len(fragment)
+        def interrupted(*args,**kwargs):
+            yield fragment
+            raise s.httpx.ReadError('synthetic_interrupted_body')
+        response.iter_bytes.side_effect=interrupted;response.__enter__.return_value=response
+        client=mock.MagicMock();client.__enter__.return_value=client;client.stream.return_value=response
+        with mock.patch.object(s.httpx,'Client',return_value=client):
+            with self.assertRaisesRegex(s.ObservationQuarantineError,'bounded_original_http_retry_exhausted'):s.stage_tsunami_observations_candidate(self.storage)
+        self.assertEqual(self.snap(root),before);self.assertEqual(client.stream.call_count,3)
+        retained=[p for p in (Path(self.tmp.name)/'_quarantine'/s.SLUG).rglob('*') if p.is_file() and p.read_bytes()==fragment]
+        self.assertEqual(len(retained),3)
+        archives=list((Path(self.tmp.name)/'_quarantine'/s.SLUG/'acquisitions').rglob('*.zip'));self.assertEqual(len(archives),1)
+        with zipfile.ZipFile(archives[0]) as z:self.assertIsNone(z.testzip())
     def test_private_failure_does_not_pin_first_construction_and_no_remote_write(self):
         with mock.patch.object(s,'write_canonical_geopackage',side_effect=OSError('synthetic_writer_failure')):
             with self.assertRaisesRegex(s.ObservationQuarantineError,'synthetic_writer_failure'):self.stage()
