@@ -390,6 +390,20 @@ def validate_cached_candidate(storage: StagingStorageResource, version: str, rec
     # These metadata products and snapshots belong to the normal downstream catalog.
     # Additional source files, derivatives, layers or self-added roster entries fail.
     authored_body=storage.read_key(f'{prefix}/metadata/source_manifest.json')
+    fingerprint = sha(encode(identity))
+    receipt = strict_json(storage.read_key(f'{prefix}/raw/retrieval.json'))
+    validate_receipt(body, receipt)
+    capture_receipt = f'_raw-captures/{SLUG}/{PIN}/receipts/{sha(encode(receipt))}.json'
+    if not storage.object_exists(capture_receipt) or storage.read_key(capture_receipt) != encode(receipt):
+        raise AquifersQuarantineError('cached_receipt_missing_original_capture')
+    manifest = strict_json(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
+    commit = manifest.get('code_commit', '')
+    code_matches = isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit)
+    if code_matches:
+        code_matches = subprocess.run(['git', 'diff', '--quiet', commit, '--', 'src/dagster_hifld',
+            'uv.lock', 'pyproject.toml'], cwd=Path(__file__).parents[3], check=False).returncode == 0
+    if not code_matches or manifest != source_manifest(receipt, fingerprint, commit):
+        raise AquifersQuarantineError('cached_source_provenance_semantic_or_code_drift')
     authored_snapshot='metadata/source/version_'+sha(authored_body)+'_source_manifest.json'
     downstream = {authored_snapshot, 'metadata/resolved_provenance.json', 'metadata/data_dictionary.json', 'metadata/quality_manifest.json',
                   'metadata/source/source_manifest.json',
@@ -434,19 +448,6 @@ def validate_cached_candidate(storage: StagingStorageResource, version: str, rec
     for name, expected in expected_bytes.items():
         if storage.read_key(f'{prefix}/{name}') != expected:
             raise AquifersQuarantineError(f'cached_original_semantics_changed:{name}')
-    receipt = strict_json(storage.read_key(f'{prefix}/raw/retrieval.json'))
-    validate_receipt(body, receipt)
-    capture_receipt = f'_raw-captures/{SLUG}/{PIN}/receipts/{sha(encode(receipt))}.json'
-    if not storage.object_exists(capture_receipt) or storage.read_key(capture_receipt) != encode(receipt):
-        raise AquifersQuarantineError('cached_receipt_missing_original_capture')
-    manifest = strict_json(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
-    commit = manifest.get('code_commit', '')
-    code_matches = isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit)
-    if code_matches:
-        code_matches = subprocess.run(['git', 'diff', '--quiet', commit, '--', 'src/dagster_hifld',
-            'uv.lock', 'pyproject.toml'], cwd=Path(__file__).parents[3], check=False).returncode == 0
-    if not code_matches or manifest != source_manifest(receipt, fingerprint, commit):
-        raise AquifersQuarantineError('cached_source_provenance_semantic_or_code_drift')
     validate_cached_payloads(path, records, audit)
     for format_name in ('geopackage', 'parquet'):
         report_prefix = f'{prefix}/metadata/{format_name}_fidelity'
