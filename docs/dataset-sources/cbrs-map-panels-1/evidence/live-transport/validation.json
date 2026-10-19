@@ -1,0 +1,61 @@
+{
+  "implementation_head": "291ebf06e31c3468f3ee8557976ee69624402e31",
+  "approved": false,
+  "prior_independent_review": {
+    "head": "78e1f02263ea5b282d3a9ef771276df74df81042",
+    "verdict": "pass_for_reviewable_draft_implementation_only",
+    "comments": {
+      "29": "https://github.com/fulton-ring/hifld-next-datasets/issues/29#issuecomment-6262747017",
+      "438": "https://github.com/fulton-ring/hifld-next-datasets/pull/438#issuecomment-6262747665"
+    },
+    "review_is_not_source_baseline_contract_or_release_approval": true
+  },
+  "actual_pre_fix_live": {
+    "head": "78e1f02263ea5b282d3a9ef771276df74df81042",
+    "mode": "actual_live_acquire_not_capture_replay",
+    "canonical_written": false,
+    "success": false,
+    "error": "bounded_fetch_exhausted:incomplete_content_length; retained:_quarantine/cbrs-map-panels-1/986c4c56ec9ccb672b17cb78ba2c5992cd7645233195081aa763e1fc30118451/ca51a225d56d44c89f00e6e4eb22fbcf",
+    "retained_attempts": 3
+  },
+  "wire_control": {
+    "content_encoding": "gzip",
+    "content_length_header": "19464",
+    "decoded_bytes": 101644,
+    "sha256": "00946aeadcf4fc88d66092e4a6a8933e9a362b46b3e3f5999003bc88056304d3",
+    "status": 200,
+    "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+    "wire_bytes": 19464
+  },
+  "transport_change": "Request Accept-Encoding identity; compare declared Content-Length to actual HTTPX num_bytes_downloaded wire count even if server still compresses. Retain bounded decoded bodies and all failed attempts, with transport diagnostics.",
+  "focused_tests": {
+    "total": 12,
+    "passed": 12,
+    "seconds": 22.56,
+    "new_cases": [
+      "actual HTTPX decoder/wire accounting with server ignoring identity; complete gzip response succeeds although decoded length differs",
+      "compressed stream missing final6wire bytes fails all3attempts and retains decoded bodies",
+      "compressed partial-prefix connection reset fails all3attempts and retains partial decoded prefixes/observed wire counts"
+    ]
+  },
+  "live_after": {
+    "capture_dir": null,
+    "capture_slots": 8,
+    "all_http200": true,
+    "all_declared_lengths_match_observed_wire_bytes": true,
+    "count_before_and_after": 574,
+    "full_ids_before_and_after_coherent": true,
+    "source_page_sha256": "9c4162886e09b2d10152cf83c059fb26dc7825836c4f3ac5ed8b1e5fda074787",
+    "complete574_rows_ids_values_types_native_geometry_byte_identical": true,
+    "complete_provenance_inputs": 8,
+    "no_canonical_or_published_writes": true
+  },
+  "unchanged_constructor_AST": {
+    "inspect_source": "ac932ecb5cefaed75fd509bf50940a1038f9135bc1d805eb4c38e055b1c93a3d",
+    "typed_table": "320bdc38c35fc756be441b8635ce70556ce476e7ea4ab3ea50f33a6fe46a2543",
+    "write_geopackage": "388420cc6c83a4658b81d2e775f498534c550943a70f75e5e7135ab54c044829"
+  },
+  "source_date_semantics": "Fresh capture timestamps and supporting-page changes are not new source publication dates or source approval. Feed publication date remains unknown.",
+  "full_suite_and_terminal_graph": "Prior b0b1de8 proofs retained; not rerun or relabeled for this transport-only change.",
+  "independent_exact_transport_head_review": "pending"
+}

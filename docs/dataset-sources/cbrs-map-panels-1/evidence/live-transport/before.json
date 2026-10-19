@@ -1,0 +1,8 @@
+{
+  "head": "78e1f02263ea5b282d3a9ef771276df74df81042",
+  "mode": "actual_live_acquire_not_capture_replay",
+  "canonical_written": false,
+  "success": false,
+  "error": "bounded_fetch_exhausted:incomplete_content_length; retained:_quarantine/cbrs-map-panels-1/986c4c56ec9ccb672b17cb78ba2c5992cd7645233195081aa763e1fc30118451/ca51a225d56d44c89f00e6e4eb22fbcf",
+  "retained_attempts": 3
+}

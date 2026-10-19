@@ -137,7 +137,8 @@
     "release_gate": "Shared independent exact release registry required; no real approval fixture",
     "invalid_cache": "Existence/marker lookup, all reconciliation and invalid-cache whole-directory quarantine share the installation lock. Missing-ready and forged reports remain byte-preserved outside discoverable staging; a concurrent valid install winner is preserved.",
     "repeat_catalog_lifecycle": "Exact metadata/source snapshots from repeated normal catalogs allowed; no arbitrary source paths admitted.",
-    "shared_verifier_evidence": "All four original shared comparison reports and full sidecars retained under metadata/source-fidelity; checksums bound on reuse."
+    "shared_verifier_evidence": "All four original shared comparison reports and full sidecars retained under metadata/source-fidelity; checksums bound on reuse.",
+    "live_transport": "Request identity encoding; compare Content-Length with HTTPX observed wire bytes, not decompressed body length. Bound decoded bodies and preserve each complete/truncated/partial attempt with encoding/length/wire diagnostics."
   },
   "external_decisions": [
     "Accept exact delegated source and unknown feed publication date with per-map date semantics.",
@@ -165,15 +166,20 @@
       "pmtiles": "Unsupported without approved reprojection/quantization contract."
     }
   },
-  "implementation_head": "3c0dd7576829c84d17b6b6a80aaad7d7306b8d20",
+  "implementation_head": "291ebf06e31c3468f3ee8557976ee69624402e31",
   "verification": {
     "evidence": "evidence/validation.json",
     "actual_dagster_execution": "evidence/execution.json",
     "focused_tests": {
-      "total": 11,
-      "passed": 11,
-      "seconds": 24.051,
-      "source_head": "3c0dd7576829c84d17b6b6a80aaad7d7306b8d20"
+      "total": 12,
+      "passed": 12,
+      "seconds": 22.56,
+      "new_cases": [
+        "actual HTTPX decoder/wire accounting with server ignoring identity; complete gzip response succeeds although decoded length differs",
+        "compressed stream missing final6wire bytes fails all3attempts and retains decoded bodies",
+        "compressed partial-prefix connection reset fails all3attempts and retains partial decoded prefixes/observed wire counts"
+      ],
+      "source_head": "291ebf06e31c3468f3ee8557976ee69624402e31"
     },
     "full_suite": {
       "total": 508,
@@ -187,9 +193,19 @@
       "rerun_on_cache_repair": false
     },
     "source_refresh_after_second_catalog": "PASS",
-    "independent_exact_head_review": "pending",
+    "independent_exact_head_review": "new transport-only head pending independent review; prior78e1f02 passed reviewable draft scope",
     "cache_evidence_repair": "evidence/review-repairs/validation.json",
     "actual_repair_source_runs": "evidence/review-repairs/execution.json",
-    "prior_terminal_graph_data_byte_equivalence": true
+    "prior_terminal_graph_data_byte_equivalence": true,
+    "live_transport": "evidence/live-transport/validation.json",
+    "prior_independent_review": {
+      "head": "78e1f02263ea5b282d3a9ef771276df74df81042",
+      "verdict": "pass_for_reviewable_draft_implementation_only",
+      "comments": {
+        "29": "https://github.com/fulton-ring/hifld-next-datasets/issues/29#issuecomment-6262747017",
+        "438": "https://github.com/fulton-ring/hifld-next-datasets/pull/438#issuecomment-6262747665"
+      },
+      "review_is_not_source_baseline_contract_or_release_approval": true
+    }
   }
 }
