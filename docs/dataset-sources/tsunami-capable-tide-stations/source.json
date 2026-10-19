@@ -1,0 +1,497 @@
+{
+  "schema_version": 1,
+  "inventory_id": "tsunami-capable-tide-stations",
+  "issue": 334,
+  "classification": "Working complete official NOAA station-roster draft; no source/baseline/contract or release approval",
+  "coordinator": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "actual_worker": "/root/review_colleges_38",
+  "producer": "National Oceanic and Atmospheric Administration, National Centers for Environmental Information",
+  "publisher_account": "ncei_noaa",
+  "publisher_org": "C8EMgrsFcRFL6LrL",
+  "official_landing": "https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis/tide-gauge-data",
+  "machine_source": "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Tsunami_Capable_Tide_Stations/FeatureServer/0",
+  "service_item": "a3ae1f2bd8374e28900c43a0e69cc1b4",
+  "delegation_chain": [
+    "Official NOAA tide-gauge-data page links hazards map layers6",
+    "NOAA-hosted map HTML entry JS imports NOAA-hosted store JS selecting webmap5cb326668189408e8c4c20ddd92aa2ed",
+    "Webmap owned ncei_noaa explicitly identifies exact tsunami-capable-tide-stations item and native FeatureServer/0",
+    "Source item owned ncei_noaa delegates exact service; layer serviceItemId agrees"
+  ],
+  "source_relationship": "Complete official NOAA archival station population, same374 literal STAT identifiers as full historical candidates; all374 native STAT_OBJID values changed and native precision/schema differ. Continuation/mapping is not accepted.",
+  "coverage": "Complete374-row NOAA published tide-station archive roster, including original22null state and26null real-time URL values. Not an assertion that every station currently operates or that all possible global tide stations are represented.",
+  "source_release_date": null,
+  "release_date_unknown_reason": "Continuously maintained station archive roster with no explicit dated release established; fetch, portal edit and service data edit timestamps are observations only.",
+  "observed_source_editing_info": {
+    "lastEditDate": 1792404229070,
+    "schemaLastEditDate": 1792404229070,
+    "dataLastEditDate": 1792404229070
+  },
+  "freshness_evidence": "18 complete original anonymous HTTP captures, four100-ID bounded pages(last74), before/after374count/all IDs/schema/CRS/edit stable. Original overlong374-ID URL returned404; bounded actual pages all200.",
+  "network": "Runtime11 configured/observed unrestricted and enforced; successful official/GCS reads, DataLumos archive240726/provider crosswalk241367 origin403. DOI302 to provider retained. No CONNECT denial or unmatched crosswalk inferred.",
+  "crosswalk": {
+    "status": "inaccessible_unverified",
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "original_archive": "https://www.datalumos.org/datalumos/project/240726/version/V1/view",
+    "release_or_match_approved": false
+  },
+  "source_contract_proposal": {
+    "approved": false,
+    "fields": [
+      {
+        "name": "STAT",
+        "type": "esriFieldTypeInteger",
+        "alias": "ID",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "STAT_NAME",
+        "type": "esriFieldTypeString",
+        "alias": "Name",
+        "sqlType": "sqlTypeOther",
+        "length": 100,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "STAT_ST",
+        "type": "esriFieldTypeString",
+        "alias": "State",
+        "sqlType": "sqlTypeOther",
+        "length": 2,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "STAT_LAT",
+        "type": "esriFieldTypeDouble",
+        "alias": "Latitude",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "STAT_LONG",
+        "type": "esriFieldTypeDouble",
+        "alias": "Longitude",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "STAT_OBJID",
+        "type": "esriFieldTypeOID",
+        "alias": "OBJECTID",
+        "sqlType": "sqlTypeOther",
+        "nullable": false,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "STAT_URL_REAL",
+        "type": "esriFieldTypeString",
+        "alias": "URL (Real-Time)",
+        "sqlType": "sqlTypeOther",
+        "length": 4000,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "STAT_URL_RETRO",
+        "type": "esriFieldTypeString",
+        "alias": "URL (Retrospective)",
+        "sqlType": "sqlTypeOther",
+        "length": 4000,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "ORG_LIST",
+        "type": "esriFieldTypeString",
+        "alias": "Organization",
+        "sqlType": "sqlTypeOther",
+        "length": 4000,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "OID",
+        "type": "esriFieldTypeInteger",
+        "alias": "OID",
+        "sqlType": "sqlTypeOther",
+        "nullable": false,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      }
+    ],
+    "original_IDs": [
+      "STAT",
+      "STAT_OBJID",
+      "OID"
+    ],
+    "all374_values_of_each_ID_unique_and_nonnull": true,
+    "STAT_OBJID_original_literal_range": [
+      1630,
+      2003
+    ],
+    "physical_representation": "Esri Integer int32; Double float64; exact String/nulls; source OID declaration retained with explicit unapproved Arrow int64 storage proxy. No source ID replaced by a storage FID.",
+    "geometry": "Original binary64 EPSG3857 Point coordinates; no outSR/quantization/precision/reprojection/snapping/repair",
+    "nullable_source_fields_and_values_preserved": true,
+    "extra_GPKG_storage_index": "Internal _gpkg_storage_fid required by container, separate from every original source ID; no published ID mapping approved."
+  },
+  "published_candidates": {
+    "accepted": false,
+    "release_prefix": "1704edb3-322d-469c-91da-92902fe76a2d",
+    "all_five_full_assets_size_and_collection_MD5_verified": true,
+    "all_original_files_preserved": "evidence/published-candidate/",
+    "collection_assets": {
+      "geojson-30c6ee66fbd2": {
+        "file:checksum": "d50110edc4e6b3301f2f259e2d9e73f36c15e0",
+        "file:size": 176106,
+        "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/geojson/tsunami-capable-tide-stations-geojson.geojson",
+        "roles": [
+          "data"
+        ],
+        "title": "tsunami-capable-tide-stations-geojson.geojson",
+        "type": "application/geo+json"
+      },
+      "geopackage-5f07a8f1d5fb": {
+        "file:checksum": "d501104a14b3e13881513a88b59d6ad3d610e0",
+        "file:size": 241664,
+        "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/geopackage/tsunami-capable-tide-stations-geopackage.gpkg",
+        "roles": [
+          "data"
+        ],
+        "title": "tsunami-capable-tide-stations-geopackage.gpkg",
+        "type": "application/geopackage+sqlite3"
+      },
+      "geoparquet-b708994cc902": {
+        "file:checksum": "d50110502fdeccf6ad0992d10e6934f9a33e62",
+        "file:size": 49051,
+        "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/geoparquet/tsunami-capable-tide-stations.parquet",
+        "roles": [
+          "data"
+        ],
+        "title": "tsunami-capable-tide-stations.parquet",
+        "type": "application/vnd.apache.parquet"
+      },
+      "pmtiles-2f4d83ab4e8a": {
+        "file:checksum": "d5011017454f31b95390372b44fc1cd29d0ccb",
+        "file:size": 52509,
+        "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/pmtiles/tsunami-capable-tide-stations.pmtiles",
+        "roles": [
+          "data"
+        ],
+        "title": "tsunami-capable-tide-stations.pmtiles",
+        "type": "application/vnd.pmtiles"
+      },
+      "shapefile-3465fd9e63cb": {
+        "file:checksum": "d50110f152730e5630a750fce43fd2c32201b8",
+        "file:size": 27029,
+        "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/shapefile/tsunami-capable-tide-stations.zip",
+        "roles": [
+          "data"
+        ],
+        "title": "tsunami-capable-tide-stations.zip",
+        "type": "application/zip"
+      }
+    },
+    "full_native_and_Parquet_and_GeoJSON_comparison": "evidence/comparison.json",
+    "diagnostics": {
+      "native_GPKG": {
+        "rows": 374,
+        "attributes": [
+          "STAT_OBJID",
+          "STAT",
+          "STAT_NAME",
+          "STAT_ST",
+          "STAT_LAT",
+          "STAT_LONG",
+          "STAT_URL_REAL",
+          "STAT_URL_RETRO",
+          "ORG_LIST",
+          "OID",
+          "SHAPE"
+        ],
+        "literal_STAT_unique": 374,
+        "source_missing_STAT": [],
+        "published_extra_STAT": [],
+        "same_literal_STAT_diagnostics": 374,
+        "shared_attribute_difference_counts": {
+          "OID": 0,
+          "ORG_LIST": 0,
+          "STAT": 0,
+          "STAT_LAT": 0,
+          "STAT_LONG": 0,
+          "STAT_NAME": 0,
+          "STAT_OBJID": 374,
+          "STAT_ST": 0,
+          "STAT_URL_REAL": 0,
+          "STAT_URL_RETRO": 0
+        },
+        "native_WKB_exact": 0,
+        "maximum_native_coordinate_component_delta": 4.993099719285965e-05
+      },
+      "published_Parquet": {
+        "rows": 374,
+        "attributes": [
+          "geometry",
+          "STAT",
+          "STAT_NAME",
+          "STAT_ST",
+          "STAT_LAT",
+          "STAT_LONG",
+          "STAT_URL_REAL",
+          "STAT_URL_RETRO",
+          "ORG_LIST",
+          "OID",
+          "bbox"
+        ],
+        "literal_STAT_unique": 374,
+        "source_missing_STAT": [],
+        "published_extra_STAT": [],
+        "same_literal_STAT_diagnostics": 374,
+        "shared_attribute_difference_counts": {
+          "OID": 0,
+          "ORG_LIST": 0,
+          "STAT": 0,
+          "STAT_LAT": 0,
+          "STAT_LONG": 0,
+          "STAT_NAME": 0,
+          "STAT_ST": 0,
+          "STAT_URL_REAL": 0,
+          "STAT_URL_RETRO": 0
+        },
+        "native_WKB_exact": 0,
+        "maximum_native_coordinate_component_delta": 4.993099719285965e-05
+      },
+      "published_GeoJSON": {
+        "rows": 374,
+        "attributes": [
+          "STAT",
+          "STAT_NAME",
+          "STAT_ST",
+          "STAT_LAT",
+          "STAT_LONG",
+          "STAT_OBJID",
+          "STAT_URL_REAL",
+          "STAT_URL_RETRO",
+          "ORG_LIST",
+          "OID",
+          "__geometry"
+        ],
+        "literal_STAT_unique": 374,
+        "source_missing_STAT": [],
+        "published_extra_STAT": [],
+        "same_literal_STAT_diagnostics": 374,
+        "shared_attribute_difference_counts": {
+          "OID": 0,
+          "ORG_LIST": 0,
+          "STAT": 0,
+          "STAT_LAT": 0,
+          "STAT_LONG": 0,
+          "STAT_NAME": 0,
+          "STAT_OBJID": 374,
+          "STAT_ST": 0,
+          "STAT_URL_REAL": 0,
+          "STAT_URL_RETRO": 0
+        },
+        "native_WKB_exact": 3,
+        "maximum_native_coordinate_component_delta": 5.029141902923584e-08
+      }
+    },
+    "Shapefile": "Complete374 OGR-decoded rows and raw original ZIP retained. Names STAT_URL_R/STAT_URL_1 and reduced string-width mappings differ; STAT_OBJID absent. No destructive mapping accepted.",
+    "PMTiles": "Complete original visualization candidate retained with MD5/length; lossy rendering is not an approved native baseline/ID/geometry replacement."
+  },
+  "implementation": {
+    "source": "src/dagster_hifld/sources/tsunami_tide_stations.py",
+    "asset": "src/dagster_hifld/assets/noaa_tsunami_tide_stations.py",
+    "tests": "tests/test_tsunami_tide_stations.py",
+    "source_commit": "2e43108adcd1fa3d1d0e3be90339ed02faf29bae",
+    "registration_commit": "52a00d8",
+    "shared_reviewed_base": "e284617ae16fafeae634efd9c0008d1354b2091a",
+    "shared_first_state_API": "canonical_construction_bundle/load_first_construction/seal_first_construction after complete private native validation under one common lock; no dataset witness fork.",
+    "job": "tsunami_tide_source_integrity",
+    "schedule": "Weekly Monday11:00America/New_York STOPPED; draft polling cadence, not asserted source release frequency.",
+    "refresh": "All18 complete bodies/receipts retained; strict literal int all-ID witnesses, snapshots/metadata and original feature values pin completeness. Changed values/IDs/schema/geometry/coverage are quarantined, never silently substituted. Metadata-only later observations are retained while original source reports/provenance remain fixed.",
+    "cache": "Full original typed data, source-owned objects, manifest, blocked comparison and deterministic complete GPKG bytes+exact Parquet rederived; malformed/missing cache moved whole outside discovery; source winner/lock preservation.",
+    "construction": "Shared permanent full original CAS/marker/alias kept outside candidate quarantine; original Git commit checked against every recomputed source/lock/dependency blob. Missing primary/state never auto bootstraps. Exact trusted-original operator restoration required.",
+    "promotion": "Real independent exact-candidate registry/quality gates required, accepted releases never overwritten by draft; only isolated local storage permitted.",
+    "native_payloads": {
+      "geopackage/tsunami-capable-tide-stations.gpkg": {
+        "bytes": 225280,
+        "sha256": "994a65bc2b0a03275500c4cadcdddfc0f57976cd94c13f27cb2de04eff17c4dc"
+      },
+      "geoparquet/tsunami-capable-tide-stations.parquet": {
+        "bytes": 38247,
+        "sha256": "a6d214fb2e60abc4e1eaaae97f4881aa3a65a842226ff0c2194faeca0601da84"
+      }
+    },
+    "unsupported_formats": [
+      "shapefile_zip",
+      "pmtiles"
+    ]
+  },
+  "verification": {
+    "focused_tests": {
+      "total": 23,
+      "passed": 23,
+      "seconds": 12.098,
+      "scope": "Complete18-input source, all native types/IDs/geometry, raw errors/witnesses/cache/source/sharedstate regressions; initial5test harness errors preserved and corrected."
+    },
+    "full_suite": {
+      "total": 557,
+      "passed": 556,
+      "skipped": 1,
+      "seconds": 178.298,
+      "scope_head": "5e6202f",
+      "real_source_tests_executed": true,
+      "skip": "Opt-in production GCS writes intentionally disabled; no CI pass inferred."
+    },
+    "normal_registered_graph_code_commit": "a30d216eccc7930f3a83654451fc613498bb2ae2",
+    "actual_registered_runs": [
+      {
+        "label": "source",
+        "run_id": "73afe92f-8900-426d-9bca-f78c4141bc25",
+        "success": true
+      },
+      {
+        "label": "refresh",
+        "run_id": "a4671647-6e7e-4def-a3b8-96fa5501af23",
+        "success": true
+      },
+      {
+        "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
+        "run_id": "6347dd71-a30a-440f-a933-7045e2c43efb",
+        "success": false
+      },
+      {
+        "label": "post_catalog_cycle_1_source_refresh",
+        "run_id": "42cf8e2e-8070-4020-92a7-be23e758cd04",
+        "success": true
+      },
+      {
+        "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
+        "run_id": "21cf1e1f-8b07-4ac4-b64c-d40e5fe0e2fa",
+        "success": false
+      },
+      {
+        "label": "post_catalog_cycle_2_source_refresh",
+        "run_id": "cf0306f1-54da-4e07-beab-6583aa81d4b6",
+        "success": true
+      },
+      {
+        "label": "synthetic_failed_quality_blocks_promote",
+        "run_id": "9b4b8560-627b-41ef-af32-ab335e5f8861",
+        "success": false
+      },
+      {
+        "label": "post_gate_source_refresh",
+        "run_id": "da222da6-75c2-4e91-a256-9b9416f6f0b6",
+        "success": true
+      },
+      {
+        "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
+        "run_id": "ec469412-eb6b-408c-a61f-c4a89ff5d122",
+        "success": false
+      },
+      {
+        "label": "original_source_rebuild_after_quarantine",
+        "run_id": "d3a38618-deaa-4aec-abcf-eb1532aa64dc",
+        "success": true
+      },
+      {
+        "label": "rebuilt_cache_refresh",
+        "run_id": "26b3875f-6516-4adf-a619-f901a4027d98",
+        "success": true
+      }
+    ],
+    "normal11_gates_and_preservation": "Two actual catalog/format cycles stop at missing independent registry approval; synthetic false quality flag blocks promote; missing-ready wholequarantine/original rebuild/reuse pass. All18 provenance records retained, generic GeoParquet converter calls zero, source/raw/prior fixture unchanged. Synthetic fixtures grant no real acceptance.",
+    "actual_shared_first_state_fault_runs": [
+      {
+        "label": "missing_original_alias_retry_1",
+        "run_id": "050722b4-4834-4233-a2e7-379418fd0e4b",
+        "success": false,
+        "errors": [
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__tsunami_capable_tide_stations__tsunami_capable_tide_stations\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/334/actual-verified-dagster/staging/_quarantine/tsunami-capable-tide-stations/invalid-candidate-ab2e6f13e17e4eafb1fa2d595d0dcd70:construction_missing_original_state; retained:_quarantine/tsunami-capable-tide-stations/5a8b4a95585d4a02b924617bf1aeb4c4\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/assets/noaa_tsunami_tide_stations.py\", line 9, in noaa_tsunami_tide_stations\n    result=stage_tide_stations(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_TIDE_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 363, in stage_tide_stations\n    where=quarantine(storage,captures,str(exc));raise TideStationQuarantineError(f'{exc}; retained:{where}')from exc\n                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/334/actual-verified-dagster/staging/_quarantine/tsunami-capable-tide-stations/invalid-candidate-ab2e6f13e17e4eafb1fa2d595d0dcd70:construction_missing_original_state\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 342, in stage_tide_stations\n    raise TideStationQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc))from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_state.ConstructionStateError: construction_missing_original_state\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 338, in stage_tide_stations\n    captures,manifest=original_bundle(storage,record,version,identity);table,audit=inspect_originals(captures)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 287, in original_bundle\n    if create is None:body=load_first_construction(storage,key,version,fingerprint)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/construction_state.py\", line 228, in load_first_construction\n    return _load(root, key, version, processing_fingerprint)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/construction_state.py\", line 209, in _load\n    raise ConstructionStateError('construction_missing_original_state')\n"
+        ]
+      },
+      {
+        "label": "missing_original_alias_retry_2",
+        "run_id": "bd211baa-0219-4a13-b206-17dfa98f8ef9",
+        "success": false,
+        "errors": [
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__tsunami_capable_tide_stations__tsunami_capable_tide_stations\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: construction_missing_original_state; retained:_quarantine/tsunami-capable-tide-stations/63846ba5abd94daf88e798372de41e10\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/assets/noaa_tsunami_tide_stations.py\", line 9, in noaa_tsunami_tide_stations\n    result=stage_tide_stations(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_TIDE_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 363, in stage_tide_stations\n    where=quarantine(storage,captures,str(exc));raise TideStationQuarantineError(f'{exc}; retained:{where}')from exc\n                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_state.ConstructionStateError: construction_missing_original_state\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 345, in stage_tide_stations\n    captures,manifest=original_bundle(storage,record,version,identity);table,audit=inspect_originals(captures)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 287, in original_bundle\n    if create is None:body=load_first_construction(storage,key,version,fingerprint)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/construction_state.py\", line 228, in load_first_construction\n    return _load(root, key, version, processing_fingerprint)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/construction_state.py\", line 209, in _load\n    raise ConstructionStateError('construction_missing_original_state')\n"
+        ]
+      },
+      {
+        "label": "missing_original_alias_retry_3",
+        "run_id": "63028491-2105-4ce8-a80d-f61f9ad6c83f",
+        "success": false,
+        "errors": [
+          "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__tsunami_capable_tide_stations__tsunami_capable_tide_stations\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.tsunami_tide_stations.TideStationQuarantineError: construction_missing_original_state; retained:_quarantine/tsunami-capable-tide-stations/cf553641ec074df7b3f5fc7df2f6e415\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/assets/noaa_tsunami_tide_stations.py\", line 9, in noaa_tsunami_tide_stations\n    result=stage_tide_stations(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_TIDE_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 363, in stage_tide_stations\n    where=quarantine(storage,captures,str(exc));raise TideStationQuarantineError(f'{exc}; retained:{where}')from exc\n                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_state.ConstructionStateError: construction_missing_original_state\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 345, in stage_tide_stations\n    captures,manifest=original_bundle(storage,record,version,identity);table,audit=inspect_originals(captures)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/sources/tsunami_tide_stations.py\", line 287, in original_bundle\n    if create is None:body=load_first_construction(storage,key,version,fingerprint)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/construction_state.py\", line 228, in load_first_construction\n    return _load(root, key, version, processing_fingerprint)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/334/src/dagster_hifld/construction_state.py\", line 209, in _load\n    raise ConstructionStateError('construction_missing_original_state')\n"
+        ]
+      },
+      {
+        "label": "exact_trusted_original_alias_restored_rebuild",
+        "run_id": "8778dcfa-6bf6-4bc5-b4c2-888314b56460",
+        "success": true,
+        "output": {
+          "dataset_slug": "tsunami-capable-tide-stations",
+          "file_slug": "tsunami-capable-tide-stations",
+          "version": "v0.0.0-draft-noaa-f6f95a6b53fbdcee",
+          "feature_count": 374,
+          "approved": false,
+          "reused": false
+        }
+      },
+      {
+        "label": "valid_original_reuse",
+        "run_id": "81e11cdf-41c2-44f2-81b0-e7bdd9cd9d18",
+        "success": true,
+        "output": {
+          "dataset_slug": "tsunami-capable-tide-stations",
+          "file_slug": "tsunami-capable-tide-stations",
+          "version": "v0.0.0-draft-noaa-f6f95a6b53fbdcee",
+          "feature_count": 374,
+          "approved": false,
+          "reused": true
+        }
+      }
+    ],
+    "shared_history_result": "Three consecutive missing alias failures, full detached candidate preserved, state/fullCAS unchanged, no rebase; explicit exactoriginal restore then374rebuild/reuse pass.",
+    "literal_binary_native_audit": "evidence/manual-native-audit.json; rawJSON to struct-packed nativePoint WKB and full attr/type/nullability audit without adapter expected-row helpers.",
+    "all_native_rows_values_IDs_types_and_geometry_verified": true,
+    "real_IaC": "Sibling hifld-next-iac actual56aa10757129c457c530d707d9a40bae13e0907f available unchanged; no synthetic IaC/deployment.",
+    "prior_harness_failures": "Initial test fixture names/stateglob corrected; two initial graph harnesses completed their actual11 runs but failed terminal oldOBJECTID references. Final corrected actual11 and all assertions pass. Original logs/runtime retained; no dataset failure or CI claim inferred.",
+    "independent_exact_head_review": "Pending native independent reviewer; author cannot approve own pipeline."
+  },
+  "acceptance_decisions_required": [
+    "Source/archive crosswalk inaccessible; exact accepted continuation/current-operational interpretation and release freshness decision",
+    "Preserved current and historical STAT/STAT_OBJID/OID populations: no automatic ID map",
+    "Physical schema/nullability/sourceOID storage representation and historical Parquet integer widths, omitted STAT_OBJID, derived bbox, original geometry precision/coverage compatibility",
+    "Native prebuilt output mapping and excluded lossy formats",
+    "Independent exact-candidate release approval registry"
+  ],
+  "release_approved": false,
+  "no_merge_closure_or_production_write": true
+}

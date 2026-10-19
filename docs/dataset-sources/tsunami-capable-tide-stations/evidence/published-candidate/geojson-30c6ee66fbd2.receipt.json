@@ -1,0 +1,32 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/geojson/tsunami-capable-tide-stations-geojson.geojson",
+  "fetched_at": "2026-10-19T10:44:00.866440+00:00",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/geojson/tsunami-capable-tide-stations-geojson.geojson",
+  "headers": {
+    "content-type": "application/geo+json",
+    "x-guploader-uploadid": "AP6rU80PTGk7xzvVhJbJh-4-JbOX6Z4V9LoFZ6krdwdB5RYHFpIClKIwHwrk29JjgPXSypF_",
+    "expires": "Mon, 19 Oct 2026 11:44:01 GMT",
+    "date": "Mon, 19 Oct 2026 10:44:01 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:40:38 GMT",
+    "etag": "\"edc4e6b3301f2f259e2d9e73f36c15e0\"",
+    "x-goog-generation": "1791506437992938",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "176106",
+    "x-goog-hash": "crc32c=1URFRQ==, md5=7cTmszAfLyWeLZ5z82wV4A==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "176106",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "337"
+  },
+  "wire_bytes": 176106,
+  "bytes": 176106,
+  "sha256": "3901c22f0a06f544bf5ffaf7dc2bd9c2ed1aee2358f507fdbdaa9772b9016a7e",
+  "complete_body": true
+}

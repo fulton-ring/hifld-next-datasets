@@ -1,0 +1,32 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/geopackage/tsunami-capable-tide-stations-geopackage.gpkg",
+  "fetched_at": "2026-10-19T10:44:00.874526+00:00",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/geopackage/tsunami-capable-tide-stations-geopackage.gpkg",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU81U5Q7tHEHNTgvRtON6p5dfnTdVBk-kCXnMwYVrYrdG9D7DZBXu4IcX21Ao38Anams5",
+    "expires": "Mon, 19 Oct 2026 11:44:01 GMT",
+    "date": "Mon, 19 Oct 2026 10:44:01 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:40:37 GMT",
+    "etag": "\"4a14b3e13881513a88b59d6ad3d610e0\"",
+    "x-goog-generation": "1791506437989742",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "241664",
+    "x-goog-hash": "crc32c=gpUvTA==, md5=ShSz4TiBUTqItZ1q09YQ4A==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "241664",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "318"
+  },
+  "wire_bytes": 241664,
+  "bytes": 241664,
+  "sha256": "0d4a933342a4c2c5ad4513404af48b2122aa8a93df08c3c14d27e6296719733e",
+  "complete_body": true
+}

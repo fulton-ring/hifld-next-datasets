@@ -1,0 +1,106 @@
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py:137: RuntimeWarning: File /workspace/work/hifld-coordinator/334/baseline/geopackage-5f07a8f1d5fb.body has GPKG application_id, but non conformant file extension
+  return next(self.gen)
+GPfields ['STAT_OBJID', 'STAT', 'STAT_NAME', 'STAT_ST', 'STAT_LAT', 'STAT_LONG', 'STAT_URL_REAL', 'STAT_URL_RETRO', 'ORG_LIST', 'OID', 'SHAPE'] metaFID STAT_OBJID
+{
+  "native_GPKG": {
+    "rows": 374,
+    "attributes": [
+      "STAT_OBJID",
+      "STAT",
+      "STAT_NAME",
+      "STAT_ST",
+      "STAT_LAT",
+      "STAT_LONG",
+      "STAT_URL_REAL",
+      "STAT_URL_RETRO",
+      "ORG_LIST",
+      "OID",
+      "SHAPE"
+    ],
+    "literal_STAT_unique": 374,
+    "source_missing_STAT": [],
+    "published_extra_STAT": [],
+    "same_literal_STAT_diagnostics": 374,
+    "shared_attribute_difference_counts": {
+      "OID": 0,
+      "ORG_LIST": 0,
+      "STAT": 0,
+      "STAT_LAT": 0,
+      "STAT_LONG": 0,
+      "STAT_NAME": 0,
+      "STAT_OBJID": 374,
+      "STAT_ST": 0,
+      "STAT_URL_REAL": 0,
+      "STAT_URL_RETRO": 0
+    },
+    "native_WKB_exact": 0,
+    "maximum_native_coordinate_component_delta": 4.993099719285965e-05
+  },
+  "published_Parquet": {
+    "rows": 374,
+    "attributes": [
+      "geometry",
+      "STAT",
+      "STAT_NAME",
+      "STAT_ST",
+      "STAT_LAT",
+      "STAT_LONG",
+      "STAT_URL_REAL",
+      "STAT_URL_RETRO",
+      "ORG_LIST",
+      "OID",
+      "bbox"
+    ],
+    "literal_STAT_unique": 374,
+    "source_missing_STAT": [],
+    "published_extra_STAT": [],
+    "same_literal_STAT_diagnostics": 374,
+    "shared_attribute_difference_counts": {
+      "OID": 0,
+      "ORG_LIST": 0,
+      "STAT": 0,
+      "STAT_LAT": 0,
+      "STAT_LONG": 0,
+      "STAT_NAME": 0,
+      "STAT_ST": 0,
+      "STAT_URL_REAL": 0,
+      "STAT_URL_RETRO": 0
+    },
+    "native_WKB_exact": 0,
+    "maximum_native_coordinate_component_delta": 4.993099719285965e-05
+  },
+  "published_GeoJSON": {
+    "rows": 374,
+    "attributes": [
+      "STAT",
+      "STAT_NAME",
+      "STAT_ST",
+      "STAT_LAT",
+      "STAT_LONG",
+      "STAT_OBJID",
+      "STAT_URL_REAL",
+      "STAT_URL_RETRO",
+      "ORG_LIST",
+      "OID",
+      "__geometry"
+    ],
+    "literal_STAT_unique": 374,
+    "source_missing_STAT": [],
+    "published_extra_STAT": [],
+    "same_literal_STAT_diagnostics": 374,
+    "shared_attribute_difference_counts": {
+      "OID": 0,
+      "ORG_LIST": 0,
+      "STAT": 0,
+      "STAT_LAT": 0,
+      "STAT_LONG": 0,
+      "STAT_NAME": 0,
+      "STAT_OBJID": 374,
+      "STAT_ST": 0,
+      "STAT_URL_REAL": 0,
+      "STAT_URL_RETRO": 0
+    },
+    "native_WKB_exact": 3,
+    "maximum_native_coordinate_component_delta": 5.029141902923584e-08
+  }
+}

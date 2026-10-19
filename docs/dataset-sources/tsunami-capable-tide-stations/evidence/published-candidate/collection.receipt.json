@@ -1,0 +1,33 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/collection.json",
+  "fetched_at": "2026-10-19T10:43:59.756434+00:00",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/tsunami-capable-tide-stations/tsunami-capable-tide-stations/v1.0.0/collection.json",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU802xO-545jd_l8IH6ervsS5NFItNeSvh_aMKJlYdGbGOv0gzn03aJbKFmrVxYV_P5Li",
+    "date": "Mon, 19 Oct 2026 10:44:00 GMT",
+    "cache-control": "no-cache",
+    "expires": "Tue, 19 Oct 2027 10:44:00 GMT",
+    "last-modified": "Sat, 10 Oct 2026 00:24:16 GMT",
+    "etag": "\"54e901405c0cf5b93d421d11b459b192\"",
+    "x-goog-generation": "1791591856047606",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "13043",
+    "x-goog-meta-sha256": "24fb1eaea658221296a460555366979674c62c5a6b9d2cc0c387ac50e98fcd95",
+    "x-goog-hash": "crc32c=CObUyw==, md5=VOkBQFwM9bk9Qh0RtFmxkg==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "13043",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "349"
+  },
+  "wire_bytes": 13043,
+  "bytes": 13043,
+  "sha256": "24fb1eaea658221296a460555366979674c62c5a6b9d2cc0c387ac50e98fcd95",
+  "complete_body": true
+}
