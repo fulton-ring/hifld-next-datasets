@@ -165,7 +165,9 @@
     "tree": "b3e7c9c14d0de9714a514ee3ee03f154abf5911d"
   },
   "independent_review": {
-    "status": "pending"
+    "finding_issue_comment": 6267611274,
+    "finding_pr_comment": 6267612916,
+    "status": "initial FIRST native/source/baseline/gate audit settled; P2 JSON-type validation defect found and separately repaired"
   },
   "live_intake": {
     "all_success": true,
@@ -1286,5 +1288,5 @@
     "spatial_status": "spatial",
     "version": "v1"
   },
-  "scope": "Current C0 native source/registered integration, no source changes afterward;22main actual registered runs plus1supplemental actual genuine freshHTTP capture reuse."
+  "scope": "HISTORICAL original7e1719e C0 implementation/full550suite/22main+1freshcapture runs. Current JSON-type validation repair is documented separately in json-type-validation-repair.json; do not attribute these runs to the repair."
 }

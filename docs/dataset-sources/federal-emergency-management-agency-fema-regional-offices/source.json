@@ -17,7 +17,9 @@
   "fresh_implementation_live_observed_at": "2026-10-19T12:30:07.530907+00:00",
   "implementation": {
     "asset": "src/dagster_hifld/assets/fema_regional_offices.py",
-    "processing_commit": "7e1719e1539af1a0e09fc2bdfc5dc1370f0d4cd5",
+    "historical_processing_commit": "7e1719e1539af1a0e09fc2bdfc5dc1370f0d4cd5",
+    "metadata_type_repair_runner": "scripts/verify_fema_offices_metadata_types.py",
+    "processing_commit": "20135d1b61fb27b950fc5845a410fc49de9573bd",
     "runner": "scripts/verify_fema_regional_offices_draft.py",
     "source": "src/dagster_hifld/sources/fema_regional_offices.py",
     "tests": "tests/test_fema_regional_offices.py"
@@ -208,6 +210,7 @@
       "rights/citation and promotion"
     ],
     "geometry": "Point",
+    "geopackage_storage_proposal": "SQL TEXT without TEXT(n) constraints; producer max widths are enforced during extraction and preserved in complete raw metadata/sidecars/Parquet field metadata. No SQL-width constraint preservation or schema migration accepted.",
     "native_feature_count_at_observation": 14,
     "proposed_aliases_diagnostic_only": {
       "region_num": "region_number",
@@ -221,7 +224,7 @@
   "release_approval": false,
   "release_date_unknown_reason": "Producer service provides no verified record release date. XML CreaDate20201016 is metadata creation; inventory issued2019-04-09/modified2025-04-08 and portal times are separate observations.",
   "schema_version": 1,
-  "semantic_exclusion": "Only drawingInfo renderer is excluded: repeat FEMA reads demonstrably change random legend colors. Complete wire metadata preserved; other source semantics fail drift checks.",
+  "semantic_exclusion": "Only drawingInfo renderer is excluded: repeat FEMA reads demonstrably change random legend colors. Complete wire metadata preserved; other source semantics fail drift checks. Every non-display comparison uses canonical JSON bytes to distinguish booleans, integers and floats; layer/CRS/record-limit identities require JSON integer types.",
   "source_input_plan": "Before/after metadata/count/full sorted OID roster; exact ID-targeted pages<=100; all source properties and native geometry, no outSR/precision transform; full raw bodies and receipt bytes preserved.",
   "status": "reviewable_working_local_draft_release_blocked"
 }
