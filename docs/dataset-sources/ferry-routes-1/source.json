@@ -2048,5 +2048,47 @@
       "metadata_regression": "Test-only metadata observation falsely rejected before repair (65.266s failing reproduction); corrected original-capture audit binding passes34.250s, retains later observation without rewriting original candidate/provenance. No claim of real producer metadata change."
     },
     "evidence": "evidence/historical-132/"
+  },
+  "published_identifier_occurrence_acceptance_question": {
+    "source_OBJECTID": {
+      "rows": 964,
+      "unique": 964,
+      "literal_range": [
+        1,
+        964
+      ]
+    },
+    "native_GDB_OBJECTID": {
+      "rows": 964,
+      "unique": 964,
+      "literal_range": [
+        1,
+        964
+      ]
+    },
+    "historical_Parquet_id": {
+      "rows": 964,
+      "unique": 954,
+      "literal_range": [
+        1,
+        954
+      ],
+      "duplicate_literal_values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "occurrences_per_duplicate": 2
+    },
+    "all_published_occurrences_retained": true,
+    "source_to_published_Parquet_id_mapping_approved": false,
+    "reason": "Duplicate published identifiers must remain explicit in compatibility acceptance; full diagnostics preserve all occurrences without inventing a join."
   }
 }
