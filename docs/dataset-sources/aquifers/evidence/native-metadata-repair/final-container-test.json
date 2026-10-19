@@ -1,0 +1,14 @@
+{
+  "real_cache_negative_cases": [
+    {
+      "case": "geopackage-ancillary-table",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    }
+  ],
+  "tested_head": "d9b5df75a952c9552723fa33887c6def0e72fd88",
+  "tests": 4,
+  "passed": 4,
+  "duration_seconds": 118.39
+}

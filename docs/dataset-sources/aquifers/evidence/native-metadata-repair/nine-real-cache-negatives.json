@@ -1,0 +1,62 @@
+{
+  "real_cache_negative_cases": [
+    {
+      "case": "geopackage-contents-crs",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-contents-bounds",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-column-crs",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-srs-definition",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-srs-authority",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-rtree-bounds",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-header-crs",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-header-bounds",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-value",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    }
+  ],
+  "tested_head": "b6c3fe2472c638f2e70332264d6b527692def55e",
+  "tests": 1,
+  "passed": 1,
+  "duration_seconds": 323.588
+}

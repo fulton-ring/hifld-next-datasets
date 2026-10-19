@@ -1,0 +1,14 @@
+{
+  "rejected": false,
+  "result": {
+    "dataset_slug": "aquifers",
+    "file_slug": "aquifers",
+    "version": "v0.0.0-draft-usgs2003-3c597778c5132501-bbb9be135df1dff5",
+    "feature_count": 4637,
+    "status": "working_draft_candidate_ready",
+    "processing_fingerprint": "bbb9be135df1dff52077ba37395db51ae4a72aeb0163fd7ea99989dadd3d8dda"
+  },
+  "cached_fidelity_claim": true,
+  "gpkg_contents_srs": 4326,
+  "gpkg_geometry_column_srs": 4269
+}

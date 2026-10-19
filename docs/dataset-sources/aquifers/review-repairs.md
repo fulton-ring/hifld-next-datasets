@@ -22,3 +22,24 @@ Verified repair source head: `4e7a9dbc261c67bbf0b5f5b822fa7207a68fd164`. Seven f
 | `7283f241-bac1-475c-8d97-1f015873cf31` | Expected existing verifier denial for missing independent approval registry |
 
 All original raw/candidate objects and the prior local accepted-data fixture survive both denials. [`evidence/review-repairs/validation.json`](evidence/review-repairs/validation.json) records precise scope; complete negative probe results, native graph logs and unchanged payload hashes accompany it. The earlier 479-test full-suite result remains historical at its original tested head; no final-repair-head full-suite or CI success is inferred.
+
+The follow-up independent review of source `4e7a9d` (identical source in docs head `6c17bbb`) found one remaining P2: changing only `gpkg_contents.srs_id` and repinning the ready hash could preserve a stale source-fidelity claim. Final source/tests checkpoint `d9b5df75a952c9552723fa33887c6def0e72fd88` reconstructs the canonical GeoPackage from the freshly decoded complete original rows. It compares all contents, geometry-column and spatial-reference rows, every native binary geometry header/envelope and all RTree bounds exactly. A measured deterministic complete-file match additionally permits strict whole-container byte equality, covering ancillary metadata, indexes and DDL. Any mismatch quarantines the existing version; no tolerance, geometry repair or cache repair is introduced.
+
+Nine authentic complete-source self-repin variants passed at the metadata-check checkpoint `b6c3fe2` (323.588s): contents CRS/bounds, geometry-column CRS, substituted EPSG4326 definition, changed authority code, RTree bounds, geometry-header CRS/envelope, and the earlier attribute case. The final `d9b5df7` checkpoint passed four focused tests (118.390s), including an additional ancillary-table mutation rejected by the canonical-container guard. Every negative requires quarantine, absence from actual normal discovery, and preservation of original raw/prior fixture bytes. Disposable test fixtures are restored only after these assertions so one complete copy can serve multiple probes; production runtime never restores a rejected cache.
+
+Final actual registered Dagster results at `d9b5df7`:
+
+| Run ID | Result |
+| --- | --- |
+| `aa736700-be17-47e4-b706-e1489d48395c` | Complete original 4,637-row source SUCCESS |
+| `e60beb45-69f1-463e-aafd-39704d8f1d99` | Fresh original-derived canonical cache reuse SUCCESS |
+| `c085a30d-46fb-43bf-be83-f831beb24160` | Expected self-repinned contents-CRS cache rejection |
+| `5131fa9c-e911-44c3-a710-e4817ec135ec` | Restored original test fixture reuse SUCCESS |
+| `e2e72b8b-4fdb-435a-a921-e006e746593c` | Expected self-repinned EPSG4326-definition cache rejection |
+| `169097dd-3ca4-43db-8c28-da1bf026924a` | Restored original test fixture reuse SUCCESS |
+| `0601d7f5-836d-4aa0-bbce-a1e2434f1470` | Expected normal quality denial for 20 retained invalid polygons |
+| `335c738f-4463-484b-a604-39c118f28ca8` | Expected missing independent approval registry denial |
+
+The actual produced source and cache retain all 4,637 IDs, all seven attributes and nulls, physical types, original native Polygon geometry and coverage. Catalog input provenance remains identical to the validated source manifest. Raw ZIP, GeoPackage, typed Parquet and canonical records match the earlier verified payload bytes exactly; their writer block remains unchanged. No terminal-format rerun, final-head full-suite or CI pass is inferred. The earlier 479-test suite retains its original tested-head scope.
+
+[`evidence/native-metadata-repair/validation.json`](evidence/native-metadata-repair/validation.json) records the precise checkpoints, negative results, final run logs and unchanged hashes. Native independent review of the exact final PR head remains pending. The original geometry, ID/schema/CRS, crosswalk and source/baseline/contract/release decisions remain blocked.
