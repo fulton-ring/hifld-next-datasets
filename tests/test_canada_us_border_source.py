@@ -1,5 +1,8 @@
 """Complete authentic producer release fixtures test draft mechanics, not acceptance."""
 import copy
+import gzip
+import os
+import fcntl
 import json
 import shutil
 import sqlite3
@@ -284,3 +287,61 @@ class BoundaryTests(unittest.TestCase):
                 retained=list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'))
                 self.assertEqual(len(retained),1)
                 self.assertEqual(before,{str(p.relative_to(retained[0])):s.sha(p.read_bytes()) for p in retained[0].rglob('*') if p.is_file()})
+
+
+    def test_cache_observation_lock_and_concurrent_install_winner(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);install=s.commit_complete_candidate
+            def competing(store,prefix,payloads,ready):
+                install(store,prefix,payloads,ready)
+                raise s.BoundaryQuarantineError('simulated_concurrent_install_winner')
+            with patch.object(s,'commit_complete_candidate',side_effect=competing),self.assertRaisesRegex(ValueError,'simulated_concurrent_install_winner'):
+                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            versions=list(Path(d,s.SLUG,s.SLUG).glob('v*'));self.assertEqual(len(versions),1)
+            root=versions[0];before={str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+            reconcile=s.reconcile_cached_candidate
+            def check_held(store,prefix,*args):
+                target=s.local_candidate_path(store,prefix)
+                fd=os.open(target.parent/('.'+target.name+'.lock'),os.O_RDWR)
+                try:
+                    with self.assertRaises(BlockingIOError):
+                        fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                finally:os.close(fd)
+                return reconcile(store,prefix,*args)
+            with patch.object(s,'reconcile_cached_candidate',side_effect=check_held):
+                self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)['feature_count'],30)
+            self.assertEqual(before,{str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()})
+            self.assertFalse(list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*')))
+            (root/'metadata/canada_us_border_candidate_ready.json').unlink()
+            with patch.object(s,'commit_complete_candidate') as commit,self.assertRaisesRegex(ValueError,'missing_candidate_ready'):
+                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            commit.assert_not_called();self.assertFalse(root.exists())
+
+    def test_encoded_wire_length_and_partial_diagnostics(self):
+        actual_client=httpx.Client
+        bodies={url:(CAPTURE/(name+'.body')).read_bytes() for name,url in s.URLS.items()}
+        seen=[]
+        def success(request):
+            seen.append(request.headers.get('accept-encoding'))
+            raw=gzip.compress(bodies[str(request.url)])
+            return httpx.Response(200,headers={'content-encoding':'gzip','content-length':str(len(raw))},
+                stream=httpx.ByteStream(raw),request=request)
+        with tempfile.TemporaryDirectory() as d:
+            transport=httpx.MockTransport(success)
+            with patch.object(s.httpx,'Client',side_effect=lambda **kw:actual_client(transport=transport,**kw)):
+                captured=s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual(len(captured),4);self.assertEqual(seen,['identity']*4)
+            for name,url in s.URLS.items():
+                body,receipt=captured[name];self.assertEqual(body,bodies[url])
+                self.assertEqual(receipt['wire_bytes'],len(gzip.compress(body)))
+                self.assertEqual(receipt['content_encoding'],'gzip')
+        def wrong_length(request):
+            raw=gzip.compress(bodies[str(request.url)])
+            return httpx.Response(200,headers={'content-encoding':'gzip','content-length':str(len(raw)+1)},
+                stream=httpx.ByteStream(raw),request=request)
+        with tempfile.TemporaryDirectory() as d:
+            transport=httpx.MockTransport(wrong_length)
+            with patch.object(s.httpx,'Client',side_effect=lambda **kw:actual_client(transport=transport,**kw)),self.assertRaisesRegex(ValueError,'incomplete_content_length'):
+                s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual(len(list(Path(d,'_quarantine').rglob('response.body'))),3)
+            for path in Path(d,'_quarantine').rglob('response.body'):self.assertEqual(path.read_bytes(),bodies[s.URL])

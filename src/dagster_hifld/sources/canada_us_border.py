@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 import zipfile
 from datetime import datetime, timezone
+from contextlib import contextmanager, nullcontext
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -142,15 +143,20 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
             for attempt in range(3):
                 body=b'';receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
-                    with httpx.Client(follow_redirects=False,timeout=45) as client:
+                    with httpx.Client(follow_redirects=False,timeout=45,headers={'Accept-Encoding':'identity'}) as client:
                         with client.stream('GET',url) as response:
-                            receipt.update(final_url=str(response.url),status=response.status_code)
+                            receipt.update(final_url=str(response.url),status=response.status_code,
+                                content_encoding=response.headers.get('content-encoding','identity'),
+                                declared_wire_length=response.headers.get('content-length'))
                             for block in response.iter_bytes(chunk_size=65536):
                                 body+=block
+                                receipt['wire_bytes']=getattr(response,'num_bytes_downloaded',None)
                                 if len(body)>MAX_BYTES: raise BoundaryQuarantineError('response_size_limit')
                             receipt.update(bytes=len(body),sha256=sha(body))
                             validate_receipt(body,receipt,url)
-                            if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=len(body):
+                            receipt['wire_bytes']=getattr(response,'num_bytes_downloaded',None)
+                            if (response.headers.get('content-length') is not None
+                                    and int(response.headers['content-length'])!=receipt['wire_bytes']):
                                 raise BoundaryQuarantineError('incomplete_content_length')
                     break
                 except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
@@ -399,16 +405,23 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
 
 
 
-def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
-    """Install one fully built local version atomically; partial builds are never discoverable."""
+
+@contextmanager
+def candidate_version_lock(storage: StagingStorageResource, prefix: str):
+    """One stable lock inode for lookup, validation, invalid detach and install."""
     target=local_candidate_path(storage,prefix)
     target.parent.mkdir(parents=True,exist_ok=True)
-    # Cooperating refresh processes cannot replace an existing version or race its first commit.
-    lock=target.parent/('.'+target.name+'.lock')
-    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
     with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1: raise BoundaryQuarantineError('linked_candidate_lock')
+        if os.fstat(held.fileno()).st_nlink!=1:
+            raise BoundaryQuarantineError('linked_candidate_lock')
         fcntl.flock(held,fcntl.LOCK_EX)
+        yield target
+
+
+def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
+    """Install complete private output; an existing concurrent winner stays intact."""
+    with candidate_version_lock(storage,prefix) as target:
         if target.exists() or target.is_symlink():
             raise BoundaryQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
@@ -416,20 +429,12 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
             for name,value in payloads.items(): immutable(private,name,value)
             immutable(private,'metadata/canada_us_border_candidate_ready.json',encode(ready))
             os.rename(tmp,target)
-    # Keep the tiny lock inode: unlinking permits a third process to bypass a waiter.
 
 
-
-
-def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str) -> str | None:
-    """Move a rejected local draft intact outside version discovery."""
-    target=local_candidate_path(storage,prefix)
-    lock=target.parent/('.'+target.name+'.lock')
-    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:
-            raise BoundaryQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str, *, already_locked: bool=False) -> str | None:
+    """Move only the invalid target observed under the common version lock."""
+    context=nullcontext(local_candidate_path(storage,prefix)) if already_locked else candidate_version_lock(storage,prefix)
+    with context as target:
         if not target.exists():
             return None
         destination=Path(storage.local_dir)/'_quarantine'/SLUG/('invalid-cache-'+uuid4().hex)
@@ -440,11 +445,11 @@ def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, re
         return str(destination)
 
 
+
 def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
     body,receipt = captures['ibc-zip']
-    existing_prefix=None
     try:
         manifest=provenance(captures)
         with tempfile.TemporaryDirectory(prefix='canada_us_border-source-') as tmp:
@@ -457,24 +462,29 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             version = f'v0.0.0-draft-ibc13-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/canada_us_border_candidate_ready.json'
-            if local_candidate_path(storage,prefix).exists():
-                existing_prefix=prefix
-            if storage.object_exists(ready_key):
-                ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/canada_us_border_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'metadata/source-fidelity/{name}' for name in FIDELITY_FILES} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
-                if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
-                    raise BoundaryQuarantineError('existing_candidate_inventory_conflict')
-                if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
-                        or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
-                    raise BoundaryQuarantineError('existing_candidate_identity_conflict')
-                for name, expected in ready['objects'].items():
-                    key = f'{prefix}/{name}'
-                    snapshot = storage.object_snapshot(key)
-                    if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
-                        raise BoundaryQuarantineError(f'existing_candidate_object_changed:{name}')
-                reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)
-                return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
-                        'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
+            with candidate_version_lock(storage,prefix) as target:
+                if target.exists():
+                    try:
+                        if not storage.object_exists(ready_key):
+                            raise BoundaryQuarantineError('concurrent_or_incomplete_existing_candidate:missing_candidate_ready')
+                        ready = strict_json(storage.read_key(ready_key))
+                        expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/canada_us_border_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'metadata/source-fidelity/{name}' for name in FIDELITY_FILES} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
+                        if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
+                            raise BoundaryQuarantineError('existing_candidate_inventory_conflict')
+                        if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
+                                or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
+                            raise BoundaryQuarantineError('existing_candidate_identity_conflict')
+                        for name, expected in ready['objects'].items():
+                            key = f'{prefix}/{name}'
+                            snapshot = storage.object_snapshot(key)
+                            if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
+                                raise BoundaryQuarantineError(f'existing_candidate_object_changed:{name}')
+                        reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)
+                        return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
+                                'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
+                    except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
+                        retained=quarantine_cached_candidate(storage,prefix,str(exc),already_locked=True)
+                        raise BoundaryQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc
             geopackage = directory / f'{SLUG}.gpkg'
             write_canonical_geopackage(geopackage,rows)
             source_records = directory / 'source.jsonl'
@@ -521,6 +531,7 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
-        retained=quarantine_cached_candidate(storage,existing_prefix,str(exc)) if existing_prefix else None
+        # Cache failures are detached under the observation lock above. A
+        # separate installation conflict must never quarantine a newer winner.
         location = quarantine(storage, body, receipt, str(exc))
-        raise BoundaryQuarantineError(f'{exc}; retained:{location}; cached_candidate_retained:{retained}') from exc
+        raise BoundaryQuarantineError(f'{exc}; retained:{location}') from exc
