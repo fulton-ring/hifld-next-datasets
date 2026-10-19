@@ -85,6 +85,15 @@ class MineralsTests(unittest.TestCase):
             else:b+=b'junk'
             with self.subTest(which=which),self.assertRaises(ValueError):s.decode_points(b,i)
 
+    def test_bounded_input_reads_exact_limit_and_rejects_oversize_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'body';path.write_bytes(b'1234');self.assertEqual(s.bounded_input(path,4),b'1234')
+            with self.assertRaises(ValueError):s.bounded_input(path,3)
+            linked=Path(tmp)/'linked';linked.symlink_to(path)
+            with self.assertRaises(OSError):s.bounded_input(linked,4)
+            hard=Path(tmp)/'hard';os.link(path,hard)
+            with self.assertRaises(ValueError):s.bounded_input(path,4)
+
     def test_first_malformed_or_invalid_receipt_preserves_full_attempt_before_parse(self):
         with tempfile.TemporaryDirectory() as tmp:
             package=Path(tmp)/'input';shutil.copytree(self.package,package);storage=StagingStorageResource(local_dir=tmp+'/stage');name='legacy_metadata';body=(package/(name+'.body')).read_bytes()

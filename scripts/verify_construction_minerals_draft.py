@@ -48,6 +48,16 @@ with DagsterInstance.get() as instance:
         assert result.success if expected is None else (not result.success and any(expected in e for e in errors)),errors
         assert snap(published)==prior
         return result
+    # Synthetic malformed first receipt must preserve full attempted bytes before
+    # parsing and cannot create a candidate or first-construction witness.
+    invalid=runtime/'synthetic-malformed-receipt-input';shutil.copytree(captures,invalid);name='legacy_metadata';bad_receipt=b'{ malformed first receipt';(invalid/(name+'.receipt.json')).write_bytes(bad_receipt)
+    os.environ['HIFLD_CONSTRUCTION_MINERALS_CAPTURE_DIR']=str(invalid)
+    try:run('synthetic_malformed_first_receipt_retained','Expecting property name')
+    finally:os.environ['HIFLD_CONSTRUCTION_MINERALS_CAPTURE_DIR']=str(captures)
+    attempted_body=(captures/(name+'.body')).read_bytes();bodykey=f'_raw-captures/{source.SLUG}/{source.digest(attempted_body)}/{name}.body';receiptkey=f'_raw-captures/{source.SLUG}/{source.digest(attempted_body)}/{name}.raw-receipt-{source.digest(bad_receipt)}.body'
+    assert staging.read_key(bodykey)==attempted_body and staging.read_key(receiptkey)==bad_receipt and not (runtime/'staging/_construction-state').exists()
+    attempts=list((runtime/'staging/_quarantine').rglob('attempted-inputs.json'));assert any(json.loads(p.read_text())['objects'][name]['raw_receipt_key']==receiptkey for p in attempts)
+    report['malformed_receipt_regression']={'full_original_body_preserved':True,'full_bad_receipt_preserved':True,'diagnostic_links_preserved':True,'receipt_accepted':False,'body_key':bodykey,'raw_receipt_key':receiptkey}
     install=construction_state._install_once
     def fail_marker(base,key,body):
         if key.endswith('.first-construction.json'):raise OSError('synthetic first-marker fault after CAS installation')
