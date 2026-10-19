@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "outcome",
+    "summary"
+  ],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "breaking_change",
+        "blocked"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    }
+  }
+}
