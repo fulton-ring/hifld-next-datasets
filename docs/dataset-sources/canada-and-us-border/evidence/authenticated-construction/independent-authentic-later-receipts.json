@@ -1,0 +1,35 @@
+{
+  "run_id": "650ce2b0-3aa2-4104-9b41-d6e5407878fb",
+  "success": true,
+  "scope": "Replay of actual later live receipts captured by coordinator; no invented fetch time or new reviewer network read",
+  "original_bundle_and_all_candidate_bytes_unchanged": true,
+  "prior_published_fixture_unchanged": true,
+  "existing_raw_bytes_unchanged": true,
+  "additional_observed_receipt_files": 8,
+  "actual_receipts": [
+    {
+      "name": "ibc-zip",
+      "original_observed_at": "2026-10-19T06:38:53.434517+00:00",
+      "later_actual_observed_at": "2026-10-19T08:31:49.264715+00:00",
+      "actual_later_receipt": "/workspace/work/hifld-coordinator/26/live-transport/raw-only/_raw-captures/canada-and-us-border/eb327459528b87cbc27e55ccc6bfd6982562c75559823a00b6dc50c04abcaab1/cba5ed508995e35172e60ad1d2abdf7a3b4e8cd9689826a70b0e6ea7a93ae142.receipt.json"
+    },
+    {
+      "name": "ibc-digital",
+      "original_observed_at": "2026-10-19T06:38:37.154496+00:00",
+      "later_actual_observed_at": "2026-10-19T08:31:50.047805+00:00",
+      "actual_later_receipt": "/workspace/work/hifld-coordinator/26/live-transport/raw-only/_raw-captures/canada-and-us-border/d840f22df49c99cd6ca807f85edd416322422d18b1f2898032267e2afc0f1cc6/407147bef2a91679d31cacdd756213facd2f97e2791903a1ae728a4dcd2a9053.receipt.json"
+    },
+    {
+      "name": "ibc-terms",
+      "original_observed_at": "2026-10-19T06:38:37.168517+00:00",
+      "later_actual_observed_at": "2026-10-19T08:31:50.500152+00:00",
+      "actual_later_receipt": "/workspace/work/hifld-coordinator/26/live-transport/raw-only/_raw-captures/canada-and-us-border/df8d3cda6eb70b9471958a0fdea208739a26db7feb98fe5c8581180348d2572d/d92ac8172736870c0d4206123adc2e18823a89744d504ac3d048e9194e376f1c.receipt.json"
+    },
+    {
+      "name": "ibc-about",
+      "original_observed_at": "2026-10-19T06:38:37.158544+00:00",
+      "later_actual_observed_at": "2026-10-19T08:31:50.963147+00:00",
+      "actual_later_receipt": "/workspace/work/hifld-coordinator/26/live-transport/raw-only/_raw-captures/canada-and-us-border/419b2740d7171340e763789fcff608c18b04fcbad6200b7eb88a456901a6bfaa/149802dd1e4ca0631c7ad8b4b4b9ba000600f57c3da43d95c5c802b992f51b6e.receipt.json"
+    }
+  ]
+}

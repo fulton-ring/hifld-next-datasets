@@ -1,0 +1,36 @@
+{
+  "source_code_head": "5258d5b3a195e188b53480ec492aa88f380dddcf",
+  "shared_code_head": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+  "scope": "Working unapproved draft; authenticated original construction repairs prior source147 coforged-anchor gap",
+  "focused_tests": {
+    "tests": 18,
+    "passed": 18,
+    "seconds": 372.199
+  },
+  "full_local_suite": {
+    "total": 540,
+    "passed": 539,
+    "skipped": 1,
+    "errors": 0,
+    "seconds": 423.139,
+    "production_opt_in_skipped": true,
+    "real_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f"
+  },
+  "actual_registered_lifecycle": "actual13-execution.json",
+  "independent_actual_provenance_checks": "independent-provenance-execution.json",
+  "independent_actual_authentic_later_receipts": "independent-authentic-later-receipts.json",
+  "direct_binary_audit": "direct-binary-audit.json",
+  "reproduce_binary_audit": "PYTHONPATH=src uv run --frozen python docs/dataset-sources/canada-and-us-border/evidence/authenticated-construction/audit_native_binary.py /tmp/ibc-cache-transport-draft",
+  "first_binding": "Full original manifest/capture receipts retained outside candidate; authenticate actual reachable Git commit and all regular processing blobs on fresh creation and reuse; persist first anchor only after completed private candidate",
+  "cache": "Candidate-only and coforged external/canonical commit failures quarantine candidate and preserve raw/original forensic evidence; trusted original receipts restore exact native artifacts; no missing-anchor bootstrap",
+  "historical_reuse": "Authentic later four LIVE receipts verified with same bodies preserve first manifest; genuine subsequent docs-only HEAD reuse independently checked after this docs-only checkpoint",
+  "native_source_rows": 30,
+  "native_attribute_fields": 5,
+  "native_vertices": 18265,
+  "original_codepage": "ANSI 1252",
+  "native_container_sha256": "bb84e2991c7ffbd1cc6195587d2193b9cae5f34a79b7fb060430607578802201",
+  "terminal_schema": "Native primary typed source exact; derived terminal bbox/nullability and source LineString vs published singlepartMultiLineString remain compatibility decisions",
+  "approved": false,
+  "ci_claim": false,
+  "independent_final_exact_head_review": "Pending genuine docs-only final checkpoint; source525 separately reviewed"
+}

@@ -1,0 +1,44 @@
+{
+  "source_code_head": "5258d5b3a195e188b53480ec492aa88f380dddcf",
+  "classification": "Coordinator direct binary audit; independent native reviewer checks separately",
+  "source_rows": 30,
+  "original_fields": [
+    [
+      "SectionNum",
+      "N",
+      5,
+      0
+    ],
+    [
+      "SectionEng",
+      "C",
+      150,
+      0
+    ],
+    [
+      "SectionFre",
+      "C",
+      150,
+      0
+    ],
+    [
+      "MaxScale",
+      "C",
+      50,
+      0
+    ],
+    [
+      "Shape_Leng",
+      "F",
+      19,
+      11
+    ]
+  ],
+  "original_codepage": "ANSI 1252",
+  "all_30_by_5_native_attribute_values_exact": true,
+  "leading_character_values": [],
+  "all_original_binary_polyline_coordinates_wkb_exact": true,
+  "raw_vertex_count": 18265,
+  "complete_zip_sha256": "eb327459528b87cbc27e55ccc6bfd6982562c75559823a00b6dc50c04abcaab1",
+  "approved": false
+}
