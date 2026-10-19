@@ -16,11 +16,9 @@ from pathlib import Path
 import fiona
 import pyarrow.parquet as pq
 import dagster_hifld
-from dagster import DagsterInstance, Definitions, define_asset_job, materialize
-from dagster_hifld.assets.catalog import catalog_assets
+from dagster import AssetSelection, DagsterInstance, Definitions, define_asset_job
 from dagster_hifld.assets.noaa import noaa_200nm_eez_and_maritime_boundaries as ingest
-from dagster_hifld.assets.publish import publish_assets
-from dagster_hifld.checks import hifld_asset_checks
+from dagster_hifld.definitions import defs as normal_definitions
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
@@ -65,9 +63,18 @@ def main():
     staging = StagingStorageResource(local_dir=str(root / 'staging'), use_local=True)
     published = PublishedStorageResource(local_dir=str(root / 'published'), use_local=True)
     with DagsterInstance.get() as instance:
-        source = materialize([ingest], resources={'staging_storage': staging}, instance=instance,
-                             run_config={'ops': {ingest.op.name: {'config': {'allow_unapproved_local_draft': True, 'capture_directory': args.capture_directory}}}},
-                             tags={'hifld/source_code_commit': head}, raise_on_error=False)
+        registered = {key for asset in normal_definitions.assets for key in asset.keys}
+        assert ingest.key in registered, "EEZ source asset missing from normal registry"
+        publish_keys = [key for key in registered if key.path[0] == "publish"]
+        definitions = Definitions(assets=normal_definitions.assets, asset_checks=normal_definitions.asset_checks,
+                                  resources={"staging_storage": staging, "published_storage": published},
+                                  jobs=[define_asset_job("noaa_eez_normal_ingest", selection=AssetSelection.assets(ingest.key)),
+                                        define_asset_job("noaa_eez_normal_full_graph", selection=AssetSelection.assets(*publish_keys))])
+        report["normal_definitions_registered_eez"] = True
+        report["normal_definitions_asset_count"] = len(registered)
+        source = definitions.resolve_job_def("noaa_eez_normal_ingest").execute_in_process(instance=instance,
+                             run_config={"ops": {ingest.op.name: {"config": {"allow_unapproved_local_draft": True, "capture_directory": args.capture_directory}}}},
+                             tags={"hifld/source_code_commit": head}, raise_on_error=False)
         report.update(ingest_run_id=source.run_id, ingest_success=source.success)
         if source.success:
             output = source.output_for_node(ingest.op.name)
@@ -83,10 +90,7 @@ def main():
                 report['gpkg_schema'] = dict(dataset.schema)
             partition = '/'.join([SLUG, SLUG, output['version']])
             instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition])
-            definitions = Definitions(assets=[*catalog_assets, *publish_assets], asset_checks=hifld_asset_checks,
-                                      resources={'staging_storage': staging, 'published_storage': published},
-                                      jobs=[define_asset_job('noaa_eez_local_full_graph')])
-            graph = definitions.resolve_job_def('noaa_eez_local_full_graph').execute_in_process(instance=instance, partition_key=partition, raise_on_error=False)
+            graph = definitions.resolve_job_def('noaa_eez_normal_full_graph').execute_in_process(instance=instance, partition_key=partition, raise_on_error=False)
             report.update(partition=partition, graph_run_id=graph.run_id, graph_success=graph.success,
                           materialized_asset_keys=[event.asset_key.to_user_string() for event in graph.get_asset_materialization_events()],
                           step_failures=[{'step': event.step_key, 'message': event.event_specific_data.error.to_string()} for event in graph.get_step_failure_events()])
