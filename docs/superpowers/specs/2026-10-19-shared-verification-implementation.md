@@ -66,6 +66,21 @@ bytes requires a separately accepted immutable version.
 - The registry fixture in `tests/test_full_verification.py` demonstrates schema
   shape with synthetic decisions only; it is not a registry for real datasets.
 
+Real draft integrations subsequently exposed two shared correctness issues. The
+catalog now rebuilds numeric sample columns from original Fiona values and its
+declared schema using nullable numeric dtypes; it does not cast the already
+rounded float sample back to integers. Nullable int64 identifiers beyond 2^53,
+integer examples and integer extrema remain exact, while source-declared floats
+remain floats, including all-null float columns.
+
+An evidenced format limitation is recorded in the **version** source manifest as
+`"unsupported_output_formats": {"shapefile_zip": "concrete fidelity-loss reason"}`.
+This is a string map, not an acceptance decision. Shapefile generation and reuse
+are skipped with that visible reason, and the release gate rejects stale staged
+Shapefile artifacts under an excluded format. Canonical source/other terminal
+formats remain subject to verification and independent acceptance. The shared
+code contains no NOAA-specific branches and does not silently repair source data.
+
 ## Remaining #417 requirements
 
 No real accepted-baseline pilot exists. Direct Fiona/Arrow/partitioned readers,
