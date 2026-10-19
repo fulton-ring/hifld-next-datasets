@@ -30,6 +30,7 @@ from shapely import from_wkb
 from shapely.geometry import LineString, MultiLineString, mapping
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.release_approval import verifier_implementation_sha256
 
 _CAPTURE_NAMES = ("layer", "count_before", "features", "ids_before", "ids_after", "count_after", "geojson")
 
@@ -55,7 +56,14 @@ def _digest(value: object) -> str:
 
 
 def _body(captures: dict[str, bytes], name: str) -> dict:
-    result = json.loads(captures[name])
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"NOAA {name}: duplicate JSON member {key}")
+            result[key] = value
+        return result
+    result = json.loads(captures[name], object_pairs_hook=unique_object)
     if not isinstance(result, dict) or "error" in result:
         raise ValueError(f"NOAA {name}: invalid JSON object or ArcGIS error response")
     return result
@@ -140,6 +148,8 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
     actual_fields = {f["name"]: f["type"] for f in layer["fields"]}
     if actual_fields != expected_fields or len(actual_fields) != len(layer["fields"]):
         raise ValueError("NOAA schema drift: fields missing, renamed, duplicated, unexpected or changed type")
+    if "fields" in full and (len(full["fields"]) != len(actual_fields) - 1 or {f["name"]: f["type"] for f in full["fields"]} != {name: kind for name, kind in actual_fields.items() if kind != "esriFieldTypeGeometry"}):
+        raise ValueError("NOAA full response field declarations differ from layer")
     if layer.get("geometryType") != "esriGeometryPolyline" or full.get("geometryType") != "esriGeometryPolyline":
         raise ValueError("NOAA geometry type drift")
     sr = full.get("spatialReference", {})
@@ -197,6 +207,8 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
         if geometry.is_empty or not geometry.is_valid:
             raise ValueError("NOAA invalid or empty geometry")
         gf = geos[object_id]
+        if gf["geometry"]["type"] != geometry.geom_type:
+            raise ValueError("NOAA independent GeoJSON physical geometry type mismatch")
         coordinates = gf["geometry"]["coordinates"]
         parts = [coordinates] if gf["geometry"]["type"] == "LineString" else coordinates
         if parts != g["paths"] or gf["properties"] != f["attributes"] or gf.get("id") != object_id:
@@ -252,7 +264,11 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     """
     if isinstance(staging, PublishedStorageResource) or not staging.use_local or staging.bucket:
         raise ValueError("Unapproved NOAA draft extraction requires isolated local storage")
-    identity = _digest({name: hashlib.sha256(raw).hexdigest() for name, raw in sorted(captures.items())})
+    raw_identity = _digest({name: hashlib.sha256(raw).hexdigest() for name, raw in sorted(captures.items())})
+    processing_fingerprint = verifier_implementation_sha256()
+    identity = _digest({"raw_identity": raw_identity, "processing_fingerprint": processing_fingerprint,
+                        "expected_fields": expected_fields, "expected_fingerprints": expected_fingerprints, "expected_count": expected_count,
+                        "retrieval_urls": {r["capture"]: r.get("url") for r in receipts}})
     version = "v0.0.0-draft.noaa." + identity[:20]
     prefix = f"{dataset_slug}/{file_slug}/{version}"
     if not set(captures).issubset(_CAPTURE_NAMES):
@@ -264,7 +280,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     try:
         table, quality = validate_noaa_capture(captures, expected_fields=expected_fields, expected_fingerprints=expected_fingerprints, expected_count=expected_count)
     except (ValueError, KeyError, TypeError, OverflowError, pa.ArrowException) as exc:
-        _write_draft_staging(staging, f"{prefix}/metadata/quarantine.json", _json_bytes({"status": "quarantined", "promotion_approved": False, "reason": str(exc), "raw_identity": identity}))
+        _write_draft_staging(staging, f"{prefix}/metadata/quarantine.json", _json_bytes({"status": "quarantined", "promotion_approved": False, "reason": str(exc), "raw_identity": raw_identity, "processing_fingerprint": processing_fingerprint}))
         raise ValueError(f"NOAA extraction quarantined at {prefix}: {exc}") from exc
     buffer = io.BytesIO()
     pq.write_table(table, buffer, compression="zstd", use_dictionary=False, write_statistics=True, version="2.6")
@@ -293,7 +309,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
         "schema_version": 1, "processor": "HIFLD Next", "title": dataset_slug,
         "producer": "NOAA / NOS / Office of Coast Survey", "publisher": "NOAA / NOS / Office of Coast Survey",
         "source_url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
-        "code_commit": code_commit, "baseline_accepted": False, "contract_approved": False,
+        "code_commit": code_commit, "processing_fingerprint": processing_fingerprint, "baseline_accepted": False, "contract_approved": False,
         "unsupported_output_formats": unsupported,
         "inputs": [{"input_id": name, "producer": "NOAA / NOS / Office of Coast Survey",
                     "host": urlsplit(receipt_by_name.get(name, {}).get("url", "")).hostname,
@@ -314,10 +330,17 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     else:
         previous = json.loads(staging.read_key(manifest_key))
         # Keep original extraction attribution immutable; refresh receipts append.
-        if {i["input_id"]: i["sha256"] for i in previous["inputs"]} != {i["input_id"]: i["sha256"] for i in source_manifest["inputs"]}:
-            raise ValueError("NOAA existing provenance input identity changed")
+        def semantic_manifest(value):
+            clean = json.loads(json.dumps(value))
+            clean.pop("code_commit", None)  # First code commit remains valid for identical installed code bytes.
+            for item in clean["inputs"]:
+                item.pop("retrieved_at", None)  # Keep first extraction attribution; later receipts are appended.
+            return clean
+        if semantic_manifest(previous) != semantic_manifest(source_manifest):
+            raise ValueError("NOAA existing provenance semantics changed; use new processing namespace")
     report = {**quality, "catalog_source_key": source_key, "dataset_slug": dataset_slug, "file_slug": file_slug, "version": version, "candidate_key": key,
-              "candidate_sha256": hashlib.sha256(candidate).hexdigest(), "raw_identity": identity,
+              "candidate_sha256": hashlib.sha256(candidate).hexdigest(), "raw_identity": raw_identity,
+              "processing_fingerprint": processing_fingerprint, "namespace_identity": identity,
               "status": "draft_candidate_unapproved", "receipt_directory": "raw/receipts",
               "refresh_policy": "Bounded retry on transport failure; content-addressed no-op for identical extraction; any proposed schema/IDs/geometry/coverage drift quarantines; not a release-date assertion"}
     _write_draft_staging(staging, f"{prefix}/metadata/noaa_extraction.json", _json_bytes(report))

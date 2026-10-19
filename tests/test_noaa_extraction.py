@@ -75,6 +75,22 @@ class NoaaExtractionTests(unittest.TestCase):
                     self.assertFalse(list(Path(directory).rglob("*.parquet")))
                     self.assertFalse(list(Path(directory).rglob("*.gpkg")))
 
+    def test_changed_processing_policy_gets_new_namespace_and_stale_provenance_rejects(self):
+        captures, kwargs = fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            storage = StagingStorageResource(local_dir=directory, use_local=True)
+            args = {"staging": storage, "dataset_slug": "synthetic", "file_slug": "synthetic", "captures": captures, "receipts": [], **kwargs}
+            with patch("dagster_hifld.noaa_extract.verifier_implementation_sha256", return_value="a" * 64):
+                first = stage_noaa_candidate(**args)
+            with patch("dagster_hifld.noaa_extract.verifier_implementation_sha256", return_value="b" * 64):
+                changed = stage_noaa_candidate(**args)
+                self.assertNotEqual(first["version"], changed["version"])
+                path = Path(directory) / "synthetic/synthetic" / changed["version"] / "metadata/source_manifest.json"
+                value = json.loads(path.read_text()); value["unsupported_output_formats"] = {}; path.write_text(json.dumps(value))
+                with self.assertRaisesRegex(ValueError, "provenance semantics changed"):
+                    stage_noaa_candidate(**args)
+            self.assertTrue((Path(directory) / first["candidate_key"]).exists())
+
     def test_bounded_application_error_retries_retain_failed_raw_body(self):
         class Response:
             status = 200
