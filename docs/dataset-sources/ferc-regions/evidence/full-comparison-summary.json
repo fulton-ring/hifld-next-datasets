@@ -1,0 +1,402 @@
+{
+  "schema_version": 1,
+  "accepted": false,
+  "complete_capture_count": 5,
+  "complete_record_formats": 4,
+  "full_report": {
+    "artifact_path": "/workspace/work/hifld-coordinator/85/baseline/full-five-comparison.json",
+    "bytes": 40767,
+    "sha256": "726c00f2212a81f0d976bdc73d83d52ec7727bf353922d68ac49b720747cdcbc"
+  },
+  "source_original_invalid_OBJECTIDs": [
+    2,
+    3
+  ],
+  "full_formats": {
+    "parquet": {
+      "feature_count": 5,
+      "OBJECTID_order": [
+        1,
+        2,
+        5,
+        4,
+        3
+      ],
+      "physical_fields": [
+        {
+          "name": "geometry",
+          "type": "binary",
+          "nullable": true,
+          "metadata": {
+            "ARROW:extension:name": "geoarrow.wkb",
+            "ARROW:extension:metadata": "{\"crs\": {\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\", \"type\": \"GeographicCRS\", \"name\": \"WGS 84\", \"datum\": {\"type\": \"GeodeticReferenceFrame\", \"name\": \"World Geodetic System 1984\", \"ellipsoid\": {\"name\": \"WGS 84\", \"semi_major_axis\": 6378137, \"inverse_flattening\": 298.257223563}}, \"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": [{\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"}, {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]}, \"id\": {\"authority\": \"EPSG\", \"code\": 4326}}}"
+          }
+        },
+        {
+          "name": "OBJECTID",
+          "type": "int64",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "source_ID",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "NAME",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "COUNTRY",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SOURCE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SOURCEDATE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "VAL_METHOD",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "VAL_DATE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SHAPE__Area",
+          "type": "double",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SHAPE__Length",
+          "type": "double",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "bbox",
+          "type": "struct<xmin: double, ymin: double, xmax: double, ymax: double>",
+          "nullable": true,
+          "metadata": {}
+        }
+      ],
+      "all_coordinate_counts": [
+        132772,
+        1918180,
+        159669,
+        252719,
+        1264252
+      ],
+      "invalid_OBJECTIDs": [
+        2,
+        3
+      ],
+      "WKB_exact_equals_published_Parquet_count": 5,
+      "WKB_exact_equals_selected_original_count": 0
+    },
+    "geopackage": {
+      "feature_count": 5,
+      "OBJECTID_order": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "physical_fields": [
+        {
+          "name": "fid",
+          "type": "int64",
+          "nullable": false,
+          "metadata": {}
+        },
+        {
+          "name": "OBJECTID",
+          "type": "int64",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "source_ID",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "NAME",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "COUNTRY",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SOURCE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SOURCEDATE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "VAL_METHOD",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "VAL_DATE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SHAPE__Area",
+          "type": "double",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SHAPE__Length",
+          "type": "double",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "geom",
+          "type": "binary",
+          "nullable": true,
+          "metadata": {
+            "ARROW:extension:name": "geoarrow.wkb",
+            "ARROW:extension:metadata": "{\"crs\":{\n  \"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\",\n  \"type\": \"GeographicCRS\",\n  \"name\": \"WGS 84\",\n  \"datum_ensemble\": {\n    \"name\": \"World Geodetic System 1984 ensemble\",\n    \"members\": [\n      {\n        \"name\": \"World Geodetic System 1984 (Transit)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1166\n        }\n      },\n      {\n        \"name\": \"World Geodetic System 1984 (G730)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1152\n        }\n      },\n      {\n        \"name\": \"World Geodetic System 1984 (G873)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1153\n        }\n      },\n      {\n        \"name\": \"World Geodetic System 1984 (G1150)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1154\n        }\n      },\n      {\n        \"name\": \"World Geodetic System 1984 (G1674)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1155\n        }\n      },\n      {\n        \"name\": \"World Geodetic System 1984 (G1762)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1156\n        }\n      },\n      {\n        \"name\": \"World Geodetic System 1984 (G2139)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1309\n        }\n      },\n      {\n        \"name\": \"World Geodetic System 1984 (G2296)\",\n        \"id\": {\n          \"authority\": \"EPSG\",\n          \"code\": 1383\n        }\n      }\n    ],\n    \"ellipsoid\": {\n      \"name\": \"WGS 84\",\n      \"semi_major_axis\": 6378137,\n      \"inverse_flattening\": 298.257223563\n    },\n    \"accuracy\": \"2.0\",\n    \"id\": {\n      \"authority\": \"EPSG\",\n      \"code\": 6326\n    }\n  },\n  \"coordinate_system\": {\n    \"subtype\": \"ellipsoidal\",\n    \"axis\": [\n      {\n        \"name\": \"Geodetic latitude\",\n        \"abbreviation\": \"Lat\",\n        \"direction\": \"north\",\n        \"unit\": \"degree\"\n      },\n      {\n        \"name\": \"Geodetic longitude\",\n        \"abbreviation\": \"Lon\",\n        \"direction\": \"east\",\n        \"unit\": \"degree\"\n      }\n    ]\n  },\n  \"scope\": \"Horizontal component of 3D system.\",\n  \"area\": \"World.\",\n  \"bbox\": {\n    \"south_latitude\": -90,\n    \"west_longitude\": -180,\n    \"north_latitude\": 90,\n    \"east_longitude\": 180\n  },\n  \"id\": {\n    \"authority\": \"EPSG\",\n    \"code\": 4326\n  }\n}}"
+          }
+        }
+      ],
+      "all_coordinate_counts": [
+        132772,
+        1918180,
+        1264252,
+        252719,
+        159669
+      ],
+      "invalid_OBJECTIDs": [
+        2,
+        3
+      ],
+      "WKB_exact_equals_published_Parquet_count": 5,
+      "WKB_exact_equals_selected_original_count": 0
+    },
+    "shapefile": {
+      "feature_count": 5,
+      "OBJECTID_order": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "physical_fields": [
+        {
+          "name": "OGC_FID",
+          "type": "int64",
+          "nullable": false,
+          "metadata": {}
+        },
+        {
+          "name": "OBJECTID",
+          "type": "int64",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "source_ID",
+          "type": "string",
+          "nullable": true,
+          "metadata": {
+            "GDAL:OGR:width": "80"
+          }
+        },
+        {
+          "name": "NAME",
+          "type": "string",
+          "nullable": true,
+          "metadata": {
+            "GDAL:OGR:width": "80"
+          }
+        },
+        {
+          "name": "COUNTRY",
+          "type": "string",
+          "nullable": true,
+          "metadata": {
+            "GDAL:OGR:width": "80"
+          }
+        },
+        {
+          "name": "SOURCE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {
+            "GDAL:OGR:width": "80"
+          }
+        },
+        {
+          "name": "SOURCEDATE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {
+            "GDAL:OGR:width": "80"
+          }
+        },
+        {
+          "name": "VAL_METHOD",
+          "type": "string",
+          "nullable": true,
+          "metadata": {
+            "GDAL:OGR:width": "80"
+          }
+        },
+        {
+          "name": "VAL_DATE",
+          "type": "string",
+          "nullable": true,
+          "metadata": {
+            "GDAL:OGR:width": "80"
+          }
+        },
+        {
+          "name": "SHAPE__Are",
+          "type": "double",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "SHAPE__Len",
+          "type": "double",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "wkb_geometry",
+          "type": "binary",
+          "nullable": true,
+          "metadata": {
+            "ARROW:extension:name": "geoarrow.wkb",
+            "ARROW:extension:metadata": "{\"crs\":{\n  \"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\",\n  \"type\": \"GeographicCRS\",\n  \"name\": \"WGS 84\",\n  \"datum\": {\n    \"type\": \"GeodeticReferenceFrame\",\n    \"name\": \"World Geodetic System 1984\",\n    \"ellipsoid\": {\n      \"name\": \"WGS 84\",\n      \"semi_major_axis\": 6378137,\n      \"inverse_flattening\": 298.257223563\n    }\n  },\n  \"coordinate_system\": {\n    \"subtype\": \"ellipsoidal\",\n    \"axis\": [\n      {\n        \"name\": \"Latitude\",\n        \"abbreviation\": \"lat\",\n        \"direction\": \"north\",\n        \"unit\": \"degree\"\n      },\n      {\n        \"name\": \"Longitude\",\n        \"abbreviation\": \"lon\",\n        \"direction\": \"east\",\n        \"unit\": \"degree\"\n      }\n    ]\n  },\n  \"id\": {\n    \"authority\": \"EPSG\",\n    \"code\": 4326\n  }\n}}"
+          }
+        }
+      ],
+      "all_coordinate_counts": [
+        132772,
+        1918180,
+        1264252,
+        252719,
+        159669
+      ],
+      "invalid_OBJECTIDs": [
+        2,
+        3
+      ],
+      "WKB_exact_equals_published_Parquet_count": 0,
+      "WKB_exact_equals_selected_original_count": 0
+    },
+    "geojson": {
+      "feature_count": 5,
+      "OBJECTID_order": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "physical_fields": {
+        "OBJECTID": "int",
+        "ID": "str",
+        "NAME": "str",
+        "COUNTRY": "str",
+        "SOURCE": "str",
+        "SOURCEDATE": "str",
+        "VAL_METHOD": "str",
+        "VAL_DATE": "str",
+        "SHAPE__Area": "float",
+        "SHAPE__Length": "float"
+      },
+      "all_coordinate_counts": [
+        132772,
+        1918180,
+        1264252,
+        252719,
+        159669
+      ],
+      "invalid_OBJECTIDs": [
+        2,
+        3
+      ],
+      "WKB_exact_equals_published_Parquet_count": 5,
+      "WKB_exact_equals_selected_original_count": 0
+    }
+  },
+  "GeoJSON_top_level_Feature_IDs": {
+    "present": false,
+    "all_five_headers": [
+      {
+        "type": "Feature"
+      },
+      {
+        "type": "Feature"
+      },
+      {
+        "type": "Feature"
+      },
+      {
+        "type": "Feature"
+      },
+      {
+        "type": "Feature"
+      }
+    ]
+  },
+  "PMTiles_scope": {
+    "vector_layers": [
+      "fercregionschunk0fgb"
+    ],
+    "comparison_scope": "Complete byte pin and display-layer metadata only; generalized tiles are not a lossless original-geometry/row-ID representation."
+  },
+  "unapproved_decisions": [
+    "Historical mirror selection/edition/rights",
+    "CONUS coverage continuation",
+    "Original ID vs Parquet source_ID; retain independent identities",
+    "OBJECTID int32 vs published int64; Date32 vs published strings",
+    "Original Decimal(38,15) proposal vs published double",
+    "Original shape field names vs published renamed names",
+    "All source WKB differ from historical publication; no tolerance/repair accepted",
+    "Two original invalid polygons require blocking quality or explicit external decision"
+  ]
+}

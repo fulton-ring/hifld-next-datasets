@@ -51,7 +51,7 @@
     "all5nativeWKB differdespite equalcoordinatecounts",
     "originalfileFIDadditionalcolumn inproposednativecandidate"
   ],
-  "pipeline_implemented": false,
+  "pipeline_implemented": true,
   "baseline_capture_scope": "All five complete advertised formats captured; full SHA256/size and collection MD5 verified. Full physical-format comparison artifact retained.",
   "proposed_numeric_policy": {
     "status": "unapproved",
@@ -61,12 +61,17 @@
     "geopackage": "unsupported: unapproved SQLiteREAL decimal loss"
   },
   "draft_code_present": true,
-  "actual_registered_materialization": false,
+  "actual_registered_materialization": true,
   "shared_native_parquet_catalog_support": "Explicitly merged independently reviewed #417 checkpoint230ead9; native-only pinned opt-in, no lossy GPKG or disguised SHP fallback.",
   "decimal_literal_audit": {
     "total": 10,
     "GDAL_double_not_exact_literal": 8,
     "report": "Artifact decimal-and-geometry-diagnostic.json, pinned in evidence/artifact-manifest.json"
   },
-  "large_capture_and_report_artifacts": "evidence/artifact-manifest.json"
+  "large_capture_and_report_artifacts": "evidence/artifact-manifest.json",
+  "processing_commit": "c62ab714b6911bfccc9300fe13a12b2be180a5d5",
+  "PR": 460,
+  "release_ready": false,
+  "validation_summary": "evidence/validation-summary.json",
+  "full_comparison_summary": "evidence/full-comparison-summary.json"
 }
