@@ -1,1 +1,0 @@
-{"rows": 374, "fields": 10, "literal_native_WKB_exact": true, "payloads": {"geopackage/tsunami-capable-tide-stations.gpkg": {"bytes": 225280, "sha256": "994a65bc2b0a03275500c4cadcdddfc0f57976cd94c13f27cb2de04eff17c4dc"}, "geoparquet/tsunami-capable-tide-stations.parquet": {"bytes": 38247, "sha256": "a6d214fb2e60abc4e1eaaae97f4881aa3a65a842226ff0c2194faeca0601da84"}}}
