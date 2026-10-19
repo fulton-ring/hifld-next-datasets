@@ -1,0 +1,352 @@
+{
+  "code_commit": "bac1c538d80b4b67a098de1d3e5cd7d2a2603030",
+  "columns": [
+    {
+      "name": "geometry",
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "0560",
+        "5136",
+        "5690",
+        "2490",
+        "0275"
+      ],
+      "length": 4,
+      "name": "AIANNHCE",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "02419333",
+        "00361918",
+        "01925070",
+        "01637567",
+        "00219277"
+      ],
+      "length": 8,
+      "name": "AIANNHNS",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0560T",
+        "5136T",
+        "5690R",
+        "2490T",
+        "0275R"
+      ],
+      "length": 5,
+      "name": "GEOID",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2520000US0560T",
+        "2520000US5136T",
+        "2520000US5690R",
+        "2520000US2490T",
+        "2520000US0275R"
+      ],
+      "length": 14,
+      "name": "GEOIDFQ",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Celilo",
+        "Lualualei",
+        "Kaw",
+        "Northern Cheyenne",
+        "Big Valley"
+      ],
+      "length": 59,
+      "name": "NAME",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Celilo Village",
+        "Lualualei Hawaiian Home Land",
+        "Kaw OTSA",
+        "Northern Cheyenne Off-Reservation Trust Land",
+        "Big Valley Rancheria"
+      ],
+      "length": 74,
+      "name": "NAMELSAD",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "94",
+        "78",
+        "88",
+        "OT",
+        "85"
+      ],
+      "length": 2,
+      "name": "LSAD",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "D3",
+        "F1",
+        "D6",
+        "D5",
+        "D2"
+      ],
+      "length": 2,
+      "name": "CLASSFP",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "D0",
+        "D2",
+        "D3",
+        "D4",
+        "D5",
+        "D6",
+        "D8",
+        "D9",
+        "E1",
+        "F1"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "T",
+        "T",
+        "R",
+        "T",
+        "R"
+      ],
+      "length": 1,
+      "name": "COMPTYP",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "R",
+        "T"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "F"
+      ],
+      "length": 1,
+      "name": "AIANNHR",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "F",
+        "S"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "G2102",
+        "G2120",
+        "G2140",
+        "G2102",
+        "G2101"
+      ],
+      "length": 5,
+      "name": "MTFCC",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "G2101",
+        "G2102",
+        "G2120",
+        "G2130",
+        "G2140",
+        "G2150",
+        "G2160",
+        "G2170"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "A",
+        "N",
+        "S",
+        "A",
+        "A"
+      ],
+      "length": 1,
+      "name": "FUNCSTAT",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "A",
+        "N",
+        "S"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "460479",
+        "1947518",
+        "1233419998",
+        "26446649",
+        "482651"
+      ],
+      "max": 58370681618,
+      "min": 304,
+      "name": "ALAND",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "0",
+        "0",
+        "53310198",
+        "31616",
+        "0"
+      ],
+      "max": 1402706586,
+      "min": 0,
+      "name": "AWATER",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "+45.6445947",
+        "+21.4579263",
+        "+36.8902973",
+        "+45.3784418",
+        "+39.0203649"
+      ],
+      "length": 11,
+      "name": "INTPTLAT",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-120.9662614",
+        "-158.1556485",
+        "-097.0224714",
+        "-106.6550060",
+        "-122.8871413"
+      ],
+      "length": 12,
+      "name": "INTPTLON",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    }
+  ],
+  "inputs": [
+    {
+      "attribution": "U.S. Census Bureau, Geography Division",
+      "bytes": 9086993,
+      "canonical_url": "https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip",
+      "host": "www2.census.gov",
+      "input_id": "tiger2023-aiannh-sha256:4155f58dfefcc40cfe61d741f760f882ebe6c6008537c0c7bc58075871af2f40",
+      "license": "U.S. Census Bureau public data",
+      "lineage": "TIGER2023/Boundary and Annexation Survey; exact inventory URL; DHS crosswalk remains unverified",
+      "producer": "U.S. Census Bureau, Geography Division",
+      "release_date": "2023-11-22",
+      "retrieval": {
+        "capture_path": "/workspace/work/hifld-coordinator/aiannh-8/zip2023.body",
+        "mode": "preserved_capture",
+        "url": "https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip"
+      },
+      "retrieval_url": "https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip",
+      "retrieved_at": "2026-10-19T07:10:18.319441+00:00",
+      "role": "producer_publication",
+      "sha256": "4155f58dfefcc40cfe61d741f760f882ebe6c6008537c0c7bc58075871af2f40"
+    }
+  ],
+  "manifest_keys": [
+    "aiannh-areas-1/aiannh-areas-1/v0.0.0-draft-tiger2023-4155f58dfefcc40c-2b1294b7ef73f25d/metadata/source_manifest.json"
+  ],
+  "metadata_resolved_from": {
+    "approved": "version",
+    "builder_sha256": "version",
+    "code_commit": "version",
+    "implementation_sha256": "version",
+    "inputs": "version",
+    "native_crs": "version",
+    "processor": "version",
+    "processor_description": "version",
+    "refresh_policy": "version",
+    "schema_version": "version",
+    "title": "version",
+    "transformations": "version",
+    "unsupported_output_formats": "version"
+  },
+  "metadata_sources": [
+    "version"
+  ],
+  "name": "aiannh-areas-1",
+  "processor": "HIFLD Next",
+  "schema_version": 1,
+  "title": "Census TIGER2023 AIANNH components \u2014 unapproved draft",
+  "transformations": [
+    {
+      "geometry": "No repair, projection, simplification or combined-M dissolve",
+      "operation": "decode_native_shapefile_to_sorted_typed_feature_jsonl",
+      "raw_preservation": "Original ZIP plus every member unchanged",
+      "sort_key": "GEOID"
+    },
+    {
+      "internal_fid": "GeoPackage storage index only; no generated source ID or published mapping",
+      "metadata": "Fixed gpkg_contents.last_change to source release date for deterministic bytes",
+      "operation": "lossless_native_mixed_geometry_geopackage"
+    }
+  ],
+  "unsupported_output_formats": {
+    "pmtiles": "Visualization simplification/precision and source-ID fidelity are not approved; raw native polygons are authoritative for this draft.",
+    "shapefile_zip": "Do not regenerate a physical DBF/geometry derivative: original producer ZIP and every sidecar are retained losslessly under raw/. Source mixed Polygon/MultiPolygon representation must not be coerced by a regenerated driver."
+  }
+}

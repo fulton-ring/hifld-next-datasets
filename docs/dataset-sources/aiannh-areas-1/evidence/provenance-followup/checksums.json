@@ -1,0 +1,26 @@
+{
+  "assertions.json": {
+    "bytes": 6546,
+    "sha256": "c3917ea0869a984cc3ac4e2fe4e21f558376d889732d01bb8f16d7545f338352"
+  },
+  "data_dictionary.json": {
+    "bytes": 8352,
+    "sha256": "63e4e7d4307c4b0092a3ebf2f6d3b6e800452d97231383bb95cb26c7a52c40d7"
+  },
+  "normal-graph.json": {
+    "bytes": 14832,
+    "sha256": "84f97cee55d9d9e3c96e19c4c74072ccb2bcb8047e399a9978bb6dcbc355694e"
+  },
+  "processor-focused-summary.txt": {
+    "bytes": 107,
+    "sha256": "bedb62a9b627cf3ad7783bbd55d23373852f487f63bbe19931d14895e4f6e9ae"
+  },
+  "processor-full-suite-summary.txt": {
+    "bytes": 166,
+    "sha256": "65864c4ded0407175f0c3bc904d2bb51b69287554714d2b4c58ab46844d2e898"
+  },
+  "source_manifest.json": {
+    "bytes": 2486,
+    "sha256": "a34ff1245ac11a45c5d9f28e2779fb2e5e1f8fb881c5e7646babe9adf4352ff3"
+  }
+}

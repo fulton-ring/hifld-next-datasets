@@ -318,6 +318,27 @@
     "checks": "Pinned bytes/size,7member names and ZIP CRC, DBF/SHP count, full862 row/physicalschema/ID/value/geometry/coverage hashes; source fidelity via shared verifier; invalid inputs and failed derivatives quarantined",
     "reproduce": "scripts/verification/aiannh_draft_integration.py",
     "approved": false,
-    "normal_registered_graph": "evidence/implementation/normal-graph.json"
+    "normal_registered_graph": "evidence/implementation/normal-graph.json",
+    "provenance_followup": {
+      "code_head": "bac1c538d80b4b67a098de1d3e5cd7d2a2603030",
+      "processor": "HIFLD Next",
+      "description_preserved": true,
+      "validation": "Authored canonical manifest before writes/reuse and actual catalog dictionary both pass shared provenance validation; identical input rosters",
+      "evidence": "evidence/provenance-followup/assertions.json",
+      "source_run": "ed4ff6ef-9353-42ef-8800-a6aa9c2c0ab3",
+      "refresh_run": "c553c28c-9978-41dd-a71d-2f8be60d6456",
+      "normal_graph_run": "9ad472d8-08d6-4481-9adb-c7cbc04c4a27",
+      "normal_graph_expected_denial": "missing_independent_release_approval_registry",
+      "focused_tests": 12,
+      "full_suite": {
+        "total": 485,
+        "passed": 484,
+        "skipped": 1,
+        "errors": 0,
+        "actual_iac_snapshot": "56aa10757129c457c530d707d9a40bae13e0907f"
+      },
+      "dataset_mapping_and_geometry_writers_changed": false,
+      "release_acceptance": false
+    }
   }
 }
