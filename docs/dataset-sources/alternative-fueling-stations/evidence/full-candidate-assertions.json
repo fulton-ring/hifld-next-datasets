@@ -2,11 +2,12 @@
   "rows_asserted": 103502,
   "raw_attribute_values_and_declared_types_asserted": 8280160,
   "declared_double_fields_with_integer_JSON_tokens": 6,
-  "json_token_policy": "Source declares Double; integer-looking JSON tokens stored as physical double; all original JSON bytes retained. No ID/string coercion.",
+  "json_token_policy": "Source-declared Double physical storage retains exact numeric value; original JSON bytes retained. No ID/string coercion.",
   "native_geometry_points_asserted": 103502,
   "unique_station_ids": 103502,
   "unique_OBJECTIDs": 103502,
   "all_raw_source_fields_retained": true,
+  "candidate_sha256": "312e63540633797b63792751249e7cbe2cc0a41e8560b692e03d585eefd5d58b",
   "parquet_schema": [
     {
       "name": "OBJECTID",
@@ -414,7 +415,6 @@
       "nullable": false
     }
   ],
-  "candidate_sha256": "312e63540633797b63792751249e7cbe2cc0a41e8560b692e03d585eefd5d58b",
   "crs": {
     "authority": "EPSG",
     "code": 3857

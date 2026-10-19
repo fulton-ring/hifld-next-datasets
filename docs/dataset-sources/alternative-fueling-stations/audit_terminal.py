@@ -1,7 +1,7 @@
 """Full streamed canonical typed candidate vs generated terminal Parquet audit.
 
 Usage: ... audit_terminal.py STAGED_VERSION_ROOT OUTPUT_JSON
-The accepted raw/source pins are checked by audit.py and source module first.
+The preserved unapproved raw/source pins are checked by audit.py and source module first.
 """
 import collections
 import hashlib

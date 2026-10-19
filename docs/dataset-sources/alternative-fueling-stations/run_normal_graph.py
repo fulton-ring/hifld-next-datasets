@@ -1,7 +1,8 @@
 """Replay the normal registered source + catalog + format graph, without approval.
 
 Usage: uv run python .../run_normal_graph.py CAPTURE_ROOT NEW_PRIVATE_ROOT VERSION
-Requires tippecanoe on PATH. The complete official capture is replayed; no live
+Append --source-catalog-only for source/catalog/provenance and direct-gate checks.
+The full format run requires tippecanoe on PATH. The complete official capture is replayed; no live
 retrieval is implied. A new private directory is required, with cloud buckets
 and release-approval environment variables removed before Definitions imports.
 """

@@ -1,0 +1,22 @@
+{
+  "code_commit": "9e78800754dd2c43fa6e61876dbacdd9ba210c58",
+  "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_fuel_review_boundaries tests.test_refresh_registration_11 tests.test_conversion_integer_fidelity tests.test_source_manifest",
+  "tests_passed": 39,
+  "log_sha256": "c511bce95ea2b21727714d9af60db52fae100e2174796b9a975c8152bab28d9b",
+  "repairs_verified": [
+    "PublishedStorageResource rejected before network/write at helper and normal registered source job",
+    "strict pre/post count/ID integer types, exact cardinality and uniqueness",
+    "duplicate JSON members rejected before identifier use",
+    "integer geometry coordinate roundtrip rejects precision loss",
+    "exact raw successful/error/partial bytes retained before validation; three bounded retries; failed later page/schema drift preserve previous candidate",
+    "same-version processing changes reject reuse and preserve original provenance and partial output",
+    "whole installed dagster_hifld fingerprint/library versions, actual Git commit/dirty state and original retrieval receipts",
+    "all58data receipts require exact official request and observed final URL scope; missing final observation, mirror, wrong layer, extra projection or duplicate filter rejected",
+    "normal registered source-only refresh selection and STOPPED schedule",
+    "shared schema1/HIFLD Next; one standards-shaped input per59originalcanonicalHTTPbodies, direct authored/resolved validator PASS",
+    "top-level error marker in item/layer/count/IDs/page object rejected even when all old fields and new valid receipt checksums remain",
+    "entire installeddistribution inventory and native GDAL/GEOS/PROJ/Shapely/pyproj version changes reject immutable reuse",
+    "PMTiles source-version exclusion skips before conversion and existing reuse; real diagnostic bytes and prior publication fixture preserved"
+  ],
+  "scope": "Synthetic negative fixtures and actual registered job boundary tests; no real approval authored. Additional descriptive BTS metadata receipts remain unapproved and are distinct from guarded data queries."
+}

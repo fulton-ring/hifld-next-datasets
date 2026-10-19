@@ -43,7 +43,7 @@
   },
   "external_decision_document": "DECISION.md",
   "external_decisions": [
-    "Accept exact source/distributor lineage and crosswalk unmatched result or supply accepted crosswalk evidence.",
+    "Review exact source/distributor lineage and establish the inaccessible DHS crosswalk, or explicitly decide the missing evidence; no matched or unmatched result is established.",
     "Accept a pinned historical baseline and versioned raw/published schema/ID mapping preserving all identifiers.",
     "Decide migration for21474added/13010removedstationIDs and source geometry anomaly id390105 (NC\u2192AK). Do not silently accept it.",
     "Choose daily snapshot version/freshness policy and approved column/date/numeric mapping before release."
@@ -58,19 +58,25 @@
   },
   "issue": 11,
   "pipeline": {
-    "dependency_commit": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
-    "final_real_graph_receipt": "evidence/final-graph-assertions.json",
+    "dependency_commit": "c7343b802966c566e8f6088bf31f19081b2a0cde",
+    "direct_provenance_validation": "evidence/current-provenance-assertions.json",
+    "final_implementation_commit": "9e78800754dd2c43fa6e61876dbacdd9ba210c58",
+    "final_provenance_manifest": "evidence/current-source-manifest.json",
+    "final_real_graph_receipt": "evidence/repaired-format-graph.json",
+    "final_source_and_catalog": "evidence/current-source-catalog.json",
+    "format_scope": "Full unchanged-converter real103502 format graph ataa7253e; final9e788 source/catalog/provenance and direct gate replay. Final exclusions skip Shapefile/PMTiles before generation/reuse; no final-head terminal reconversion claimed.",
     "integer_conversion_fix": "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
     "module": "src/dagster_hifld/assets/fuel_stations.py",
+    "pmtiles_diagnostic_policy": "evidence/pmtiles-policy-assertions.json",
     "previous_generic_format_diagnostic": "evidence/generated-gpkg-audit.json retains full audit of old experimental GeoJSON\u2192GeoPackage coercions; those artifacts are quarantined and not the typed bridge.",
     "promotion": "Independent exact-release approval required by shared #417; missing registry rejects. No registry/approval authored here.",
     "refresh_poll": {
       "cron": "0 9 * * *",
       "default_status": "STOPPED",
-      "definition_registration": "Coordinator-owned integration; no activation authorized",
+      "definition_registration": "Registered in normal Definitions by bb594a02b69c87550fa78cdd21e3496b768f89c0; verified source-only and STOPPED; no activation.",
       "execution_timezone": "America/New_York",
       "job": "fuel_stations_draft_refresh_job",
-      "local_guard": "Refuse bucket/remote staging before any network capture",
+      "local_guard": "Reject PublishedStorageResource, bucket and remote resources before any network capture/write.",
       "official_release_cadence_inferred": false,
       "proposed_only": true,
       "schedule": "fuel_stations_draft_refresh_schedule",
@@ -78,8 +84,12 @@
     },
     "registry": "src/dagster_hifld/assets/ingest_registry.py",
     "review_repairs": {
+      "application_errors": "Every canonical ArcGIS body must be an object with no top-level error marker, including item/layer/count/IDs as well as pages. Repinned old fields plus error is rejected with raw quarantine.",
       "failure_evidence": "Successful, failed and partial response bytes and receipts stream to durable isolated quarantine before validation; three bounded attempts; failed source/schema/ID/geometry captures remain with blocked reason.",
-      "processing_identity": "Entire installed dagster_hifld fingerprint plus library versions and actual original Git commit/dirty state; changed builder rejects same-version reuse; original retrieval receipts retained without fresh-fetch claims.",
+      "geometry": "Exact source XY to native WKB numeric roundtrip; integer coordinate precision loss is rejected with original bytes preserved.",
+      "origin": "Every layer/count/ID/page data receipt requires exact official BTS request URL and observed final_url, exact layer/query scope, no duplicate or extra query members; absent final observation blocks canonical staging.",
+      "processing_identity": "Entire installed dagster_hifld fingerprint, complete installeddistribution versions and native GDAL/GEOS/PROJ/Shapely/pyproj versions plus original actual Git commit/dirty state. Changed effective dependency or code rejects same-version reuse; original provenance remains immutable.",
+      "provenance": "Shared schema1 / HIFLD Next; one complete standards-shaped input per59 original canonical HTTP bodies (58 data+official BTSitem), actual observed request/final URL/time/SHA/bytes, captured rights/attribution/delegation; direct shared validation before writing. Unknown immutable producer release date is explicit.",
       "published_storage": "Explicit class rejection at source/helper before network, quarantine or data writes.",
       "witnesses": "Strict duplicate-member/non-JSON-number loader; positive integer counts and exact integer/cardinality/unique pre/post OID census."
     },
@@ -97,7 +107,11 @@
         "bbox"
       ]
     },
-    "typed_geopackage": "Streaming pyogrio Arrow bridge verified every raw source field/name/physical type/nullability/value and native WKB for103502rows; avoids generic GeoPandas coercion. Internal format fid never replaces OBJECTID/id."
+    "typed_geopackage": "Streaming pyogrio Arrow bridge verified every raw source field/name/physical type/nullability/value and native WKB for103502rows; avoids generic GeoPandas coercion. Internal format fid never replaces OBJECTID/id.",
+    "unsupported_output_formats": {
+      "pmtiles": "Actual converter allows density dropping and reports sequence-assigned tile featureIDs. No rendered per-zoom station-ID/coverage proof; preserve generated diagnostic bytes only.",
+      "shapefile_zip": "Long field names, embedded JSON length, physical type/null fidelity lack a reviewed DBF mapping."
+    }
   },
   "proposed_contract": {
     "additional_identifier_bearing_columns": "All80fields preserved, including zip/plus4/agency and network-ID text; lists embedded as strings remain strings. No substitute row IDs. OBJECTID is distributor row ID and is not assumed stable across refreshes.",

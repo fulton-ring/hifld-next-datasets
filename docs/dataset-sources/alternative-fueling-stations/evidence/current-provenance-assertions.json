@@ -1,0 +1,21 @@
+{
+  "code_commit": "9e78800754dd2c43fa6e61876dbacdd9ba210c58",
+  "schema_version": 1,
+  "processor": "HIFLD Next",
+  "authored_and_resolved_shared_validation": "PASS, called directly without registry",
+  "canonical_http_body_inputs": 59,
+  "data_bodies": 58,
+  "official_distributor_item_bodies": 1,
+  "all_original_body_and_receipt_bytes_hashes_lengths_urls_final_urls_timestamps_equal": true,
+  "license_and_attribution_exactly_original_item": true,
+  "delegation_item_sha256": "e4ead050dfc29225e8195acbb5cb683854b10cbbb9ac65d349d51913f63f4829",
+  "source_and_catalog_runs": "0a29d4f5-4114-41ea-81c8-7b18984dc3ae / f112c1be-01a2-4596-92b3-efef65675991",
+  "current_candidate_sha256": "312e63540633797b63792751249e7cbe2cc0a41e8560b692e03d585eefd5d58b",
+  "current_typed_GPKG_sha256": "5d1a3dc40bdfb7b380f4b90a1795d6a0d10fd664c77c76af5e490c8de1e8f0ee",
+  "candidate_and_GPKG_bytes_identical_to_full_103502_record_audits": true,
+  "terminal_conversion_audit_scope": "AA725 full normalgraph; later changes only provenance/format exclusion/dependency fingerprints. Final source/catalog regenerated on actual final processing code; no repeated terminal conversion claimed.",
+  "source_acceptance": null,
+  "baseline_acceptance": null,
+  "contract_approval": null,
+  "release_approval": null
+}
