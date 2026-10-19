@@ -11,6 +11,7 @@ import importlib.metadata
 import datetime
 import json
 import math
+import re
 import shutil
 import subprocess
 import time
@@ -129,8 +130,7 @@ def _observed_retrieval_time(receipt):
 def _release_inputs(capture, audit):
     evidence = audit['distribution_evidence']
     inputs = []
-    for record in audit['raw_files']:
-        if not record['name'].endswith('.body') or '/' in record['name']: continue
+    for record in audit['canonical_http_bodies']:
         receipt = _json(capture / record['name'].replace('.body', '.receipt.json'))
         observed = _observed_retrieval_time(receipt)
         inputs.append({'input_id': f'BTS:{SLUG}:{record["name"]}',
@@ -146,6 +146,22 @@ def _release_inputs(capture, audit):
             'delegation_evidence': evidence,
             'release_date_unknown_reason': 'Mutable daily BTS feed; no separately established immutable producer release ID/date. Original retrieval and layer edit metadata are retained separately.'})
     return inputs
+
+
+def _source_manifest(capture, audit, processing):
+    """Validate the complete rights/input/transformation shape before staging."""
+    manifest = {'title':'Alternative Fueling Stations', 'agency':'U.S. Department of Energy / National Laboratory of the Rockies',
+        'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
+        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':1,
+        'processor':'HIFLD Next', 'processing_identity':processing, 'code_commit':processing['code_commit'],
+        'original_retrieval_receipts':audit['canonical_retrieval_receipts'],
+        'inputs':_release_inputs(capture, audit),
+        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
+        'lineage':{'raw_capture_files':audit['raw_files'], 'untrusted_diagnostic_files':audit['untrusted_diagnostic_files'], 'retrieval_attempt_role':'Noncanonical attempts are raw diagnostic evidence, not successful source inputs; all canonical HTTP bodies are individually represented in inputs.', 'processing_identity':processing, 'raw_fields':audit['fields'], 'raw_crs':audit['crs'], 'producer':'DOE/NLR AFDC', 'distributor_item':'9010c04bcdf84c36abb74e98778af579','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
+        'promotion_allowed':False, 'complete_rows':audit['rows'],
+        'unsupported_output_formats':dict(UNSUPPORTED_OUTPUT_FORMATS)}
+    validate_release_provenance(manifest)
+    return manifest
 
 
 def _require_review_staging(staging):
@@ -224,6 +240,10 @@ def _verify_data_receipt_scope(name, receipt, identifiers):
             params['f'] = 'json'
         if params != expected:
             raise ValueError(f'Unverified official data receipt query scope for {name}')
+
+
+def _page_paths(root):
+    return sorted(path for path in root.glob('page-*.body') if re.fullmatch(r'page-[0-9]{3}\.body', path.name))
 
 
 def _raw_files(root):
@@ -438,7 +458,7 @@ def inspect_capture(root: Path) -> dict:
     _census(final_count, ending)
     if count != final_count or set(expected) != set(ending):
         raise ValueError('Changed or incomplete source ID census')
-    paths = sorted(root.glob('page-*.body'))
+    paths = _page_paths(root)
     expected_pages = (count + 1999) // 2000
     if [p.name for p in paths] != [f'page-{n:03d}.body' for n in range(expected_pages)]:
         raise ValueError('Missing or extra page')
@@ -498,7 +518,9 @@ def inspect_capture(root: Path) -> dict:
     distribution = _distribution_evidence(root)
     path = root / 'bts_item.body'
     files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+    canonical_bodies = list(files)
     receipts = []
+    summaries = []
     for record in files:
         receipt_path = root / record['name'].replace('.body', '.receipt.json')
         receipt = _json(receipt_path)
@@ -510,17 +532,23 @@ def inspect_capture(root: Path) -> dict:
                 or receipt.get('complete_body', True) is not True):
             raise ValueError('HTTP receipt/checksum mismatch')
         receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': _digest(receipt_path)})
+        headers = receipt.get('headers')
+        http_date = receipt.get('date')
+        if not isinstance(http_date, str):
+            http_date = headers.get('date') if isinstance(headers, dict) else None
+        if not isinstance(http_date, str): http_date = None
+        summaries.append({'name': receipt_path.name, 'url': receipt['url'], 'final_url': receipt['final_url'],
+            'observed_at': receipt['observed_at'], 'http_date': http_date})
     files.extend(receipts)
-    if (root / 'capture-status.json').is_file():
-        path = root / 'capture-status.json'
-        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
-    attempts_dir = root / 'attempts'
-    if attempts_dir.exists():
-        files.extend({'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': _digest(path)}
-            for path in sorted(attempts_dir.rglob('*')) if path.is_file())
+    canonical_names = {record['name'] for record in files}
+    diagnostics = [{'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': _digest(path)}
+        for path in _raw_files(root) if str(path.relative_to(root)) not in canonical_names]
+    files.extend(diagnostics)
     return {'rows': len(seen), 'station_ids': len(station_ids), 'pages': len(paths), 'bounds': bounds,
             'source': SERVICE, 'editing_info': layer['editingInfo'], 'fields': layer['fields'],
             'crs': layer['extent']['spatialReference'], 'raw_files': files, 'distribution_evidence': distribution,
+            'canonical_http_bodies': canonical_bodies, 'canonical_retrieval_receipts': summaries,
+            'untrusted_diagnostic_files': diagnostics,
             'acceptance': 'unapproved_draft', 'promotion_allowed': False}
 
 
@@ -528,6 +556,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     """Lossless native-schema GeoParquet draft, never a published projection."""
     audit = inspect_capture(capture)
     processing = processing_identity()
+    _source_manifest(capture, audit, processing)
     fields = audit['fields']
     schema = pa.schema([pa.field(f['name'], _TYPES[f['type']], nullable=f['nullable']) for f in fields] + [pa.field('geometry', pa.binary(), nullable=False)])
     crs = CRS.from_epsg(_native_crs(audit['crs'])).to_json_dict()
@@ -555,15 +584,13 @@ def build_candidate(capture: Path, destination: Path) -> dict:
         raise FileExistsError('Immutable candidate version collision')
     temporary = destination / 'candidate.parquet.partial'
     with pq.ParquetWriter(temporary, schema, compression='zstd') as writer:
-        for path in sorted(capture.glob('page-*.body')):
+        for path in _page_paths(capture):
             rows = []
             for feature in _arcgis_json(path)['features']:
                 rows.append({**feature['attributes'], 'geometry': to_wkb(_exact_point(feature['geometry']), byte_order=1)})
             writer.write_table(pa.Table.from_pylist(rows, schema=schema))
     temporary.replace(target)
-    audit.update(processing=processing, original_retrieval_receipts=[{'name': p.name, 'url': _json(p).get('url'), 'final_url': _json(p).get('final_url'),
-                    'observed_at': _json(p).get('observed_at'), 'http_date': _json(p).get('date', _json(p).get('headers', {}).get('date'))}
-                    for p in sorted(capture.glob('*.receipt.json')) if p.name.startswith(('bts_', 'page-'))],
+    audit.update(processing=processing, original_retrieval_receipts=audit['canonical_retrieval_receipts'],
                  producer='DOE/NLR AFDC', distributor='USDOT_BTS official NTAD distribution',
                  candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
                  proposed_mapping='identity for every raw field; epoch-ms dates remain int64; native EPSG:3857 geometry',
@@ -579,10 +606,11 @@ def fuel_stations_raw(context, fuel_draft_storage: FuelDraftStorage) -> str:
     root = retained / 'raw'
     try:
         audit = inspect_capture(root)
+        audit['processing'] = processing_identity()
+        _source_manifest(root, audit, audit['processing'])
     except Exception as error:
         (retained / 'status.json').write_text(json.dumps({'state': 'blocked', 'reason': str(error), 'raw_preserved': True, 'approval': None}))
         raise
-    audit['processing'] = processing_identity()
     target = Path(fuel_draft_storage.draft_dir) / SLUG / context.partition_key / 'raw'
     target.mkdir(parents=True, exist_ok=True)
     for record in audit['raw_files']:
@@ -687,6 +715,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     schema_digest = hashlib.sha256(json.dumps(signature, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     if schema_digest != PROPOSED_SCHEMA_SHA256:
         raise ValueError('Source schema drift quarantined; revise the review draft explicitly')
+    _source_manifest(capture, audit, processing_identity())
     root = Path(staging.local_dir).resolve() / staging.prefix / SLUG / SLUG / version
     root.mkdir(parents=True, exist_ok=True)
     for record in audit['raw_files']:
@@ -704,7 +733,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     with partial.open('w') as output:
         output.write('{"type":"FeatureCollection","crs":{"type":"name","properties":{"name":"EPSG:3857"}},"features":[')
         first = True
-        for page in sorted(capture.glob('page-*.body')):
+        for page in _page_paths(capture):
             for feature in _arcgis_json(page)['features']:
                 if not first: output.write(',')
                 first = False
@@ -715,17 +744,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     if path.exists(): partial.unlink()
     else: partial.replace(path)
     metadata = root / 'metadata'; metadata.mkdir(exist_ok=True)
-    manifest = {'title':'Alternative Fueling Stations', 'agency':'U.S. Department of Energy / National Laboratory of the Rockies',
-        'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
-        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':1,
-        'processor':'HIFLD Next', 'processing_identity':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
-        'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-        'inputs':_release_inputs(capture, audit),
-        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
-        'lineage':{'raw_capture_files':audit['raw_files'], 'retrieval_attempt_role':'Noncanonical attempts are raw diagnostic evidence, not successful source inputs; all canonical HTTP bodies are individually represented in inputs.', 'processing_identity':candidate['processing'], 'raw_fields':audit['fields'], 'raw_crs':audit['crs'], 'producer':'DOE/NLR AFDC', 'distributor_item':'9010c04bcdf84c36abb74e98778af579','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
-        'promotion_allowed':False, 'complete_rows':audit['rows'],
-        'unsupported_output_formats':dict(UNSUPPORTED_OUTPUT_FORMATS)}
-    validate_release_provenance(manifest)
+    manifest = _source_manifest(capture, audit, candidate['processing'])
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:
