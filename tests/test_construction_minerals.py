@@ -16,8 +16,10 @@ from dagster_hifld import construction_state
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import construction_minerals as s
 
-ARCHIVE=Path(__file__).parents[1]/'docs/dataset-sources/construction-minerals-operations/evidence/complete-candidate-captures.tar.gz'
+_CAPTURE_ARCHIVE_ENV='HIFLD_CONSTRUCTION_MINERALS_TEST_CAPTURE_ARCHIVE'
+ARCHIVE=Path(os.environ[_CAPTURE_ARCHIVE_ENV]) if os.environ.get(_CAPTURE_ARCHIVE_ENV) else None
 
+@unittest.skipUnless(os.environ.get(_CAPTURE_ARCHIVE_ENV), 'complete original construction-minerals captures opt-in required; see docs/dataset-sources/construction-minerals-operations/README.md')
 class MineralsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
