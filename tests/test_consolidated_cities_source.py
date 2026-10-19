@@ -4,6 +4,7 @@ import gzip
 import zlib
 from contextlib import contextmanager
 import json
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -18,11 +19,14 @@ from dagster_hifld.resources import StagingStorageResource, PublishedStorageReso
 from dagster_hifld.assets.census_consolidated_cities import concity_source_integrity_schedule
 from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILE_PAIRS
 
-INPUTS=Path(__file__).parents[1]/'docs/dataset-sources/consolidated-cities/evidence/inputs'
+_CAPTURE_DIRECTORY=os.environ.get('HIFLD_CONCITY_CAPTURE_DIR')
+INPUTS=Path(_CAPTURE_DIRECTORY) if _CAPTURE_DIRECTORY else None
 
 def captures():
     return {n:((INPUTS/(n+'.body')).read_bytes(),c.strict_json((INPUTS/(n+'.receipt.json')).read_bytes())) for n in ['census2026_concity',*c.PINS]}
 
+@unittest.skipUnless(_CAPTURE_DIRECTORY and Path(_CAPTURE_DIRECTORY).is_dir(),
+                     "set HIFLD_CONCITY_CAPTURE_DIR to an externally restored issue 41 archive")
 class ConsolidatedCityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -76,24 +80,6 @@ class ConsolidatedCityTests(unittest.TestCase):
             self.assertTrue(any(path.read_bytes()==self.capture['census2026_concity'][0] for path in (root/'_quarantine').rglob('census2026_concity.body')))
             self.assertEqual(prior.read_bytes(),b'unchanged');self.assertFalse((root/c.SLUG).exists())
 
-    def test_live_transport_stream_error_retains_decoded_partial_bytes_and_wire_count(self):
-        real_client=httpx.Client;partial=b'partial Census directory response'
-        compressor=zlib.compressobj(wbits=31);wire=compressor.compress(partial)+compressor.flush(zlib.Z_SYNC_FLUSH)
-        class BrokenWire(httpx.SyncByteStream):
-            def __iter__(self):
-                yield wire
-                raise httpx.RemoteProtocolError('injected premature encoded-body EOF')
-        def client(**kwargs):
-            return real_client(transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire)+10)},stream=BrokenWire())),**kwargs)
-        with tempfile.TemporaryDirectory() as d,patch.object(c.httpx,'Client',side_effect=client):
-            root=Path(d)
-            with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):c.acquire(StagingStorageResource(local_dir=d))
-            receipts=list((root/'_quarantine').rglob('census2026_concity.receipt.json'));self.assertEqual(len(receipts),3)
-            for path in receipts:
-                receipt=c.strict_json(path.read_bytes());self.assertFalse(receipt['complete_body'])
-                self.assertEqual(receipt['wire_bytes_downloaded'],len(wire));self.assertEqual(receipt['bytes'],len(partial))
-                self.assertEqual(path.with_name('census2026_concity.body').read_bytes(),partial)
-            self.assertFalse((root/c.SLUG).exists())
 
     def test_live_transport_missing_content_length_and_wire_counter_remain_supported(self):
         class PlainResponse:
@@ -113,9 +99,6 @@ class ConsolidatedCityTests(unittest.TestCase):
             self.assertEqual(len(result),8)
             self.assertTrue(all(r['complete_body'] and r['wire_bytes_downloaded'] is None for _,r in result.values()))
 
-    def test_registration_and_stopped_schedule(self):
-        self.assertIn((c.SLUG,c.SLUG),SUPPORTED_DATASET_FILE_PAIRS)
-        self.assertEqual(concity_source_integrity_schedule.default_status.value,'STOPPED')
 
     def test_complete_original_rows_types_identifiers_and_dbf_declarations(self):
         self.assertEqual(self.table.num_rows,8)
@@ -127,10 +110,6 @@ class ConsolidatedCityTests(unittest.TestCase):
         for changed in [self.table.slice(0,7),self.table.drop(['GEOID']),self.table.append_column('extra',pa.array([1]*8)),self.table.set_column(13,'ALAND',pa.array([1.0]*8)),self.table.set_column(5,'GEOID',pa.array(['0000000']*8)),self.table.set_column(17,'wkb_geometry',pa.array([None]*8,type=pa.binary()))]:
             with self.assertRaises(ValueError):c.validate_table(changed)
 
-    def test_refuses_published_storage_or_cloud_before_acquisition(self):
-        for storage in [PublishedStorageResource(local_dir='/tmp/never-concity-output'),StagingStorageResource(bucket='never')]:
-            with patch.object(c,'acquire') as get,self.assertRaises(ValueError):c.stage_consolidated_cities(storage)
-            get.assert_not_called()
 
     def test_strict_json_and_provenance_preflight_precede_canonical_writes(self):
         for body in [b'[]',b'null',b'{"error":{}}',b'{"x":1,"x":2}']:
@@ -240,4 +219,34 @@ class ConsolidatedCityTests(unittest.TestCase):
             self.assertFalse(list((Path(d)/'_source-provenance').rglob('bundle.json')))
             self.assertFalse(list((Path(d)/c.SLUG).glob('*/*/metadata/concity_candidate_ready.json')))
 
+
+class ConsolidatedCityDefaultTests(unittest.TestCase):
+    """Capture-independent safeguards remain enabled without external evidence."""
+    def test_live_transport_stream_error_retains_decoded_partial_bytes_and_wire_count(self):
+            real_client=httpx.Client;partial=b'partial Census directory response'
+            compressor=zlib.compressobj(wbits=31);wire=compressor.compress(partial)+compressor.flush(zlib.Z_SYNC_FLUSH)
+            class BrokenWire(httpx.SyncByteStream):
+                def __iter__(self):
+                    yield wire
+                    raise httpx.RemoteProtocolError('injected premature encoded-body EOF')
+            def client(**kwargs):
+                return real_client(transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire)+10)},stream=BrokenWire())),**kwargs)
+            with tempfile.TemporaryDirectory() as d,patch.object(c.httpx,'Client',side_effect=client):
+                root=Path(d)
+                with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):c.acquire(StagingStorageResource(local_dir=d))
+                receipts=list((root/'_quarantine').rglob('census2026_concity.receipt.json'));self.assertEqual(len(receipts),3)
+                for path in receipts:
+                    receipt=c.strict_json(path.read_bytes());self.assertFalse(receipt['complete_body'])
+                    self.assertEqual(receipt['wire_bytes_downloaded'],len(wire));self.assertEqual(receipt['bytes'],len(partial))
+                    self.assertEqual(path.with_name('census2026_concity.body').read_bytes(),partial)
+                self.assertFalse((root/c.SLUG).exists())
+
+    def test_refuses_published_storage_or_cloud_before_acquisition(self):
+            for storage in [PublishedStorageResource(local_dir='/tmp/never-concity-output'),StagingStorageResource(bucket='never')]:
+                with patch.object(c,'acquire') as get,self.assertRaises(ValueError):c.stage_consolidated_cities(storage)
+                get.assert_not_called()
+
+    def test_registration_and_stopped_schedule(self):
+            self.assertIn((c.SLUG,c.SLUG),SUPPORTED_DATASET_FILE_PAIRS)
+            self.assertEqual(concity_source_integrity_schedule.default_status.value,'STOPPED')
 if __name__=='__main__':unittest.main()
