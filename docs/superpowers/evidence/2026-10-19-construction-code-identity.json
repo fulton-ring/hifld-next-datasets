@@ -1,0 +1,158 @@
+{
+  "classification": "additive shared read-only Git content validator; no real acceptance",
+  "code_checkpoint": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+  "parent_checkpoint": "4800e4f5df550bfadd3631585268ce68a0fa25d9",
+  "parent_review": {
+    "scope": "inherited whole-format ban repair",
+    "outcome": "independent narrow PASS",
+    "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/421#issuecomment-6263112922"
+  },
+  "api": "validate_construction_code_identity(repo_root, code_commit, processing_files)->None; ConstructionCodeIdentityError(ValueError).code",
+  "input_pins": [
+    {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/construction_provenance.py",
+      "sha256": "9e5d78a17a6628c1e30bf8b4c253c33ea9a4e163e045a88e93a2094a3d2b7550",
+      "bytes": 8395
+    },
+    {
+      "path": "/workspace/hifld-worker-worktrees/417/tests/test_construction_provenance.py",
+      "sha256": "88167f29a97e9714ccdc341866419394c9c3d91a20738f305c6360ce0c868bab",
+      "bytes": 9908
+    },
+    {
+      "path": "/workspace/hifld-worker-worktrees/417/scripts/verification/construction_identity_local.py",
+      "sha256": "3a746df61ccb961218620efce16393b55efd4ee4cd0f41b5e79dfa6297e76431",
+      "bytes": 4677
+    }
+  ],
+  "focused": {
+    "run": 11,
+    "passed": 11,
+    "failures": 0,
+    "errors": 0,
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-construction-focused-verified.log",
+      "sha256": "14e5386922da693d4f0671f8a3ab97314ce70a09d63a6a0d7a72d240e8bbe348",
+      "bytes": 2173
+    },
+    "command": "PYTHONPATH=src:tests UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m unittest test_construction_provenance -v"
+  },
+  "full_suite": {
+    "tested_head": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+    "run": 522,
+    "passed": 521,
+    "skipped": 1,
+    "skip": "production-write opt-in",
+    "failures": 0,
+    "errors": 0,
+    "seconds": 75.632,
+    "real_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-construction-full-suite.log",
+      "sha256": "29e8cf0637fce0ec4f87e9660b2333faad3b1d7b953fb62692a6e5488a544ef5",
+      "bytes": 18604
+    },
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src:tests UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m unittest discover tests",
+    "ci_success_inferred": false
+  },
+  "local_replay": {
+    "result": {
+      "classification": "read-only actual Git/content proof; no dataset acceptance or release",
+      "repo_root": "/workspace/hifld-worker-worktrees/417",
+      "code_commit": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+      "processing_file_count": 50,
+      "processing_files": {
+        "src/dagster_hifld/__init__.py": "2cea15fbd11683a52ca0adb2d58875368387d9455385059b2f6f11b71bafed06",
+        "src/dagster_hifld/assets/__init__.py": "081aee383a3d33dad1e1e5f8ca9d411a898e7752744a4e1c16e2e66ff775499f",
+        "src/dagster_hifld/assets/bts.py": "17e2d1ee939f74f5785428a0ad55c8c17fd95b4cae22f726293f2b61871f8bb6",
+        "src/dagster_hifld/assets/catalog.py": "fcc932d9281eccd8a76c4593716d0897d452c5a527ba3db2bfb2d512c3540f07",
+        "src/dagster_hifld/assets/census_blocks_2020.py": "13edcb9890d3538323d91e4193c883067160ff6d34527e7c746a5b83b24bfd09",
+        "src/dagster_hifld/assets/census_bureau.py": "2aede607259bcbdec1066a23437d8f67536529b909b1b02e5ee0b5d24e0dc955",
+        "src/dagster_hifld/assets/dhs_hifld.py": "48c8a1b9b7f2ba2dbd1c61ef0761497eccc3b5832bf8f50ec347a57f9a1ad6cf",
+        "src/dagster_hifld/assets/faa.py": "3b3952c6b23a88da9f3099152e3b28364cd492d05b3774ca97648b21df57dc3c",
+        "src/dagster_hifld/assets/ingest_registry.py": "385bf1ce15d658b899ed850b345b1e600f759b044a27cc29a4af73042051b597",
+        "src/dagster_hifld/assets/noaa.py": "4ccb282d333164b0f9b581c112a52ff169c9ce435859681a37b0c4ab60c09b4f",
+        "src/dagster_hifld/assets/portolan.py": "f164eed96e8e297f152e2e6a655158d6fef638ecffe1e61ae2fb4e0d3360a68d",
+        "src/dagster_hifld/assets/publish.py": "d70f79ece81105e66476acf38de7fd1e5bf093fd917c1bebcca8ee2e550b14e2",
+        "src/dagster_hifld/assets/red_cross.py": "2178efc039799e57834414ccfc94f748c6ab1d68244b0db535f2ad920e7b7f0b",
+        "src/dagster_hifld/assets/supported_assets.py": "61c82aa315eaf52c219e5e3da46336eda357a7eb7134dff37bc4d785753ddc7e",
+        "src/dagster_hifld/assets/usace.py": "268b43d713107dc2f0391cf5329ad3a3bf37886868b8ad05a595f068772e3c26",
+        "src/dagster_hifld/catalog.py": "593f064c13abcbb88fed9032a2fc5357921542be5e9cf08d35470d44cfbfc7ba",
+        "src/dagster_hifld/checks/__init__.py": "5c9dee2841fb5b59c0959111ff7ba8e38d9a3c5a4eed4421cda1ac7ad357cb4d",
+        "src/dagster_hifld/checks/common.py": "b0bfd1b151343439ffd24765115a0c618e1ab2c46e7ef9e29b790446a0476ea9",
+        "src/dagster_hifld/construction_provenance.py": "9e5d78a17a6628c1e30bf8b4c253c33ea9a4e163e045a88e93a2094a3d2b7550",
+        "src/dagster_hifld/conversion.py": "5b1e861e501eac516aa9f3e259abbeacc92b866eca94401e994b031076538381",
+        "src/dagster_hifld/definitions.py": "7cb5979e3982f56e40d96ddafa78e6fb24b7657bb26f0d0a5d9d4e4aa7626f03",
+        "src/dagster_hifld/download.py": "5919da5fe0d2c453a82daf213b7f157cb5472e3bfd120fc5dd5fffdc1412a948",
+        "src/dagster_hifld/evidence_io.py": "2f350c38c729cea35c6d26bfae9aa14edb767c1681b70fd8c53751ff99e0f69f",
+        "src/dagster_hifld/file_geodatabase.py": "41bd3d2856cf1df7c99d83a39d131be66d7a8f04807b8d050142430d087d20bc",
+        "src/dagster_hifld/gdal.py": "3dbbdf1d614fce8ba0c98dd4ebd2fe9f69ba53315481776cab305f0b8c1d8ccf",
+        "src/dagster_hifld/maintenance.py": "5e66d345156ed290d4d51010bc1a68075535074424a9d09dc02247c58837628e",
+        "src/dagster_hifld/native_verification.py": "d3d13c34225aa0200dc461a338951febb84077ada79c0fbe7f2f7318a65c6b65",
+        "src/dagster_hifld/output_policy.py": "5bbccc8a85c7c7cd27dca0a43a2c111bf3d1255369d401861ecb27b1a91cc49d",
+        "src/dagster_hifld/partitions.py": "9db2daf664c3786bfa31a77920798aab93d64ea1a6eb38ba029a717d2b127c14",
+        "src/dagster_hifld/portolan/__init__.py": "e896ad92c7ce2cc65dc301a163580813a3182f3263332e414a26faf05324a3ce",
+        "src/dagster_hifld/portolan/build_inventory_catalog.py": "b9310657f9425a9d8ccc499174836c7f4690363194359ca5c1bf99d533a8f885",
+        "src/dagster_hifld/portolan/catalog.py": "faed5a65d493e18e315e2427d86fc61e8987aae2a21998ba6eef3f19bdf9efc3",
+        "src/dagster_hifld/portolan/cli.py": "d060491a71fd7509b0bbdd5a3e4c47b7695ac56815c4ae8cef4938310367363b",
+        "src/dagster_hifld/portolan/inventory.py": "331d970af849a7c40a201874a8d236d4d3e91d515a99ec677466b8d5a61b6442",
+        "src/dagster_hifld/portolan/pmtiles.py": "fd1eaf1668158632d93fd882b1c6994dd7d91d4e320a7f7f12f554033d0f6c06",
+        "src/dagster_hifld/portolan/provenance.py": "a8325387e8105c2b06761eb561d465ce38048b4d5bbdb21d0d857c9a75897732",
+        "src/dagster_hifld/portolan/release.py": "331dbec0fa2fccd2ee164b9f3c6b37d8f08c1513bd6daea53cb5ebea80f9127b",
+        "src/dagster_hifld/portolan/thumbnail.py": "a36544b9e421fb30e3703dd8886d18de96b981c96418491de386f8eece688ce7",
+        "src/dagster_hifld/portolan/validation.py": "6edac63e6e16b8bcebf16d0ae2948dd5f4e7bef726d5954b77e1f6dafd9e7289",
+        "src/dagster_hifld/portolan/workflow.py": "7f2842637ab2d552cef0b258badaebdcebbeb5c7462c6054219e8a02e552db29",
+        "src/dagster_hifld/promotion.py": "ab124284a6f59e92a9b9fb6d2d1e1c7e2ae270cd5c2d6045d51a1c74ca49cad7",
+        "src/dagster_hifld/provenance.py": "a8e498b86f17490605ae758b903caa43e0a1c310aee61ae897986fb5b5ee2210",
+        "src/dagster_hifld/real_gcs_e2e.py": "0025288331f9a90a2f2eb957173f8834f7937b6c131fb70f5aa130fb75957c0f",
+        "src/dagster_hifld/release_approval.py": "070ded16937ff8390fccb926144567a548b7507274cf55ff07d115fbe67f3090",
+        "src/dagster_hifld/resources.py": "a87c40dd0470169d5713c1cf82a2d95314d51ed120f1e9a96378e2ca178a22cc",
+        "src/dagster_hifld/source_formats.py": "7af0eb92ecfd30750bf6ad2ad14676918840804ddbf236b6f949ae29bde3aa35",
+        "src/dagster_hifld/source_manifest.py": "821d5ec1faacbc7b8ae0b53bb3b49ce0bf2dab3a68ff587e70f54b188136577c",
+        "src/dagster_hifld/validation.py": "e09afaf16c27df65b9a8e0bbfde9c46e89c436d4335bdfaef9436609876ff206",
+        "pyproject.toml": "391e683c201d621dcc34ee0f9c900f613d0102b49107b34b9a0f57e0cfbe1a4f",
+        "uv.lock": "138b5fc34312598341658524a2e61a5962beb4c353bc119368fb3a64bbfe0da7"
+      },
+      "all_recorded_blobs_verified": true,
+      "historical_docs_only_commit_valid": "06cc4bf980171c2e08d612c4db8665ae88b4d5f8",
+      "historical_commit_valid_after_source_changed": true,
+      "negative_cases": {
+        "zero_commit": "construction_invalid_commit",
+        "wrong_source_blob": "construction_processing_blob_hash_mismatch",
+        "wrong_lock_blob": "construction_processing_blob_hash_mismatch",
+        "wrong_project_blob": "construction_processing_blob_hash_mismatch",
+        "changed_source_commit": "construction_processing_blob_hash_mismatch"
+      },
+      "staged_and_published_bytes_preserved": {
+        "staged/original-source.body": "fb7eb9a637f2758ea048b9ec4095a55c07154f1c98a96410bf5f6bfde202ade4",
+        "published/prior-release.body": "40b3a7a3dadc8798b4d65a1ba3c47d0e3ae92121450708245b2acc175db51d28"
+      },
+      "limits": "Callers must independently bind original identity and complete file roster to preserved capture evidence; this does not prove execution time or authority."
+    },
+    "result_pin": {
+      "path": "/workspace/hifld-worker-runtime/417/construction-identity-verified/result.json",
+      "sha256": "32d01b22c1108f9a2a2606f330476f2810b1c1ae88e09cab93f78aaffe81388c",
+      "bytes": 6763
+    },
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-construction-local.log",
+      "sha256": "035dc0e2bd7ebf496f5d8516b81876ca1384d33edb4f1d44981e899071ada320",
+      "bytes": 1209
+    },
+    "command": "PYTHONPATH=src UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python scripts/verification/construction_identity_local.py --repo-root /workspace/hifld-worker-worktrees/417 --work-dir /workspace/hifld-worker-runtime/417/construction-identity-verified"
+  },
+  "scope_limits": [
+    "No dataset-specific caller wired in this shared-only change; root/source owners integrate deliberately after review",
+    "Caller must anchor original construction identity and complete roster to preserved original capture evidence",
+    "Git content/reachability is not execution-time proof, signed authority, source/contract/baseline approval or release permission",
+    "Existing repository object store and qualifying refs are trusted inputs; no fetch or source retrieval",
+    "Existing release behavior and compatibility proposals unchanged"
+  ],
+  "review": {
+    "head": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+    "outcome": "pending independent native exact-head review"
+  },
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "production_write": false,
+  "real_acceptance": false
+}

@@ -694,3 +694,52 @@ pins the original independent reproductions, code and logs, new actual runs and
 native replay. This narrower checkpoint awaits independent review; the parent
 `81433b3` finding remains honestly recorded. Source #30/#31 integration and all
 real acceptance/deployment decisions remain external.
+
+The inherited-policy repair `4800e4f` subsequently received a separate narrow
+independent PASS: 36 focused tests, original real Date32 writer/promotion positive
+replays, ten inherited-ban/null-map negatives and an actual registered fixture
+graph. That review does not imply acceptance of any real dataset or of the next
+additive helper.
+
+A new additive `construction_provenance.validate_construction_code_identity`
+checks an original processing-code claim against the actual local Git object
+store. It requires a canonical full SHA-1/SHA-256 commit reachable from HEAD or
+an actual branch/remote-tracking/tag ref, then verifies SHA-256 for **every**
+declared source/project/lockfile against a regular committed blob. It does not
+compare to current HEAD: genuine historical processing code remains valid after
+documentation-only commits and after later implementation changes. Unknown,
+zero, dangling, non-commit, missing or mismatching claims fail with stable
+`ConstructionCodeIdentityError(ValueError).code` reasons. Committed symlinks,
+gitlinks, directories, traversal/noncanonical paths, invalid hashes and oversized
+rosters/blobs reject. Reads use literal argument lists without a shell, disable
+Git object replacement/lazy fetching, support linked worktrees, ignore inherited
+repository-selection controls and leave working files untouched.
+
+This is a Git content proof, not proof of execution time, signed authority,
+complete dependency discovery, dataset acceptance or release permission. The
+caller must independently bind the original construction manifest, complete
+processing-file roster and capture bundle outside the mutable candidate cache.
+Existing source adapters are deliberately not wired by this shared-only change;
+source owners must integrate the reviewed helper and test their own lifecycle.
+The original Git object store and qualifying refs remain trusted inputs. No
+existing release gate or accepted storage behavior changes here.
+
+The eleven focused tests use real temporary Git repositories and cover historical
+code, every declared source/lock/project hash, SHA-256 repositories, unreachable
+commits, linked worktrees, unavailable Git/missing objects, literal shell/pathspec
+filenames, symlinks/gitlinks, replace refs and size/type/path rejection. The
+reproducible `scripts/verification/construction_identity_local.py` additionally
+verified all 50 actual Python/project/lockfiles at frozen code checkpoint
+`0223a2ccab8cd7f10d291c90ead94956b09493c4`, reproduced a historical docs-only
+positive and five false-code claims, and preserved isolated original-source and
+prior-release bytes. It performs no promotion and requires no dataset decisions.
+The [construction identity evidence](../evidence/2026-10-19-construction-code-identity.json)
+records exact code, test, replay and validation pins. Independent review of this
+new helper is separate from the earlier policy/verification scopes.
+
+Frozen full-suite validation of code checkpoint `0223a2c`: **522 local tests,
+521 passed, one production-write opt-in skipped, zero errors/failures** in
+75.632 seconds, using Tippecanoe and the real pinned sibling IaC checkout. No CI
+success is inferred. The focused module has eleven passing tests. This additive
+content validator does not require rerunning large source-data builds; existing
+registered synthetic Dagster integration tests ran as part of the full suite.
