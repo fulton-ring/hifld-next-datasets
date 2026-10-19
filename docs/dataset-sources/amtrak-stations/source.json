@@ -1,0 +1,474 @@
+{
+  "acceptance_decision": null,
+  "compatibility_decisions_required": [
+    "Accept the exact pinned historical baseline candidate and DHS crosswalk relationship, or supply another complete accepted reference.",
+    "Approve source/published identifier preservation contract: source OBJECTID and published id differ; do not rename or generate replacements.",
+    "Review complete coverage changes:1036 source versus1056 published; Code diagnostic1018 common/18 added/38 removed, plus all fields/geometry changes.",
+    "Approve any output schema/nullability/bbox/format mapping changes and provenance/normalization contract before release."
+  ],
+  "complete_extraction": {
+    "bounds": [
+      -124.2883110002154,
+      25.849554000308068,
+      -68.67001500030132,
+      49.2737569998778
+    ],
+    "controls": [
+      "before/after official item identity and change witnesses",
+      "before/after complete count and strict integer ID census",
+      "exact page windows/schema/CRS, all rows and all unique OBJECTID/Code",
+      "strict JSON duplicate member and non-JSON numeric rejection",
+      "bounded per-page size/retries with durable failed/partial bodies and HTTP receipts",
+      "receipt byte SHA/length/status/completeness plus exact expected request and observed final response URL",
+      "all source named values/declared types retained; no source/published ID replacement"
+    ],
+    "distinct_Code": 1036,
+    "distinct_source_OBJECTID": 1036,
+    "native_crs": {
+      "latestWkid": 4326,
+      "wkid": 4326
+    },
+    "pages": 1,
+    "raw_files": [
+      {
+        "bytes": 452376,
+        "name": "page-000.body",
+        "sha256": "a9941b4d1bbf84072024b2e371bcaff399d61d4dfe5368167c0b7a66a69f42ec"
+      },
+      {
+        "bytes": 2723,
+        "name": "bts_item.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 2723,
+        "name": "bts_item_after.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 14551,
+        "name": "bts_layer.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 14551,
+        "name": "bts_layer_after.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 4119,
+        "name": "bts_ids.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 4119,
+        "name": "bts_ids_after.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 14,
+        "name": "bts_count.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 14,
+        "name": "bts_count_after.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 763,
+        "name": "page-000.receipt.json",
+        "sha256": "f66c228b7795fe91fa243eb379209940c4ade039ae789697b5d0677ee354cca1"
+      },
+      {
+        "bytes": 445,
+        "name": "bts_item.receipt.json",
+        "sha256": "df677c5d7dd8c9fec553b40b2be22bdac0a31eb9a4e55b6330674459fed7edbd"
+      },
+      {
+        "bytes": 445,
+        "name": "bts_item_after.receipt.json",
+        "sha256": "783d48caaf3ef31cd15c90dd757cee6d395517dcf42df6790e32c14ee6eccf4a"
+      },
+      {
+        "bytes": 486,
+        "name": "bts_layer.receipt.json",
+        "sha256": "a4e6fbdd62514a3e09df908810a8eaeada5e143743fdb3c58ed87b271888550e"
+      },
+      {
+        "bytes": 486,
+        "name": "bts_layer_after.receipt.json",
+        "sha256": "669659df4e8a627611e5574bc7ff3c4bd4167717b1f135a9f6ca16725e9d2af0"
+      },
+      {
+        "bytes": 557,
+        "name": "bts_ids.receipt.json",
+        "sha256": "09f4d3647eac33296067d2535e073cdb9964f93070f401526e8f243a4a5a9622"
+      },
+      {
+        "bytes": 557,
+        "name": "bts_ids_after.receipt.json",
+        "sha256": "03a1f79494810a7ba7c19ba9e5269e93d9816825013b3d66376536de2a03b32f"
+      },
+      {
+        "bytes": 559,
+        "name": "bts_count.receipt.json",
+        "sha256": "50b364f6909cf87a79fa3d620e09776e5cc457f08fffcceda2e698cce4831164"
+      },
+      {
+        "bytes": 559,
+        "name": "bts_count_after.receipt.json",
+        "sha256": "d941fbdd21526cc921ff667bad1fec067e5736703cd3ceaddd7b43d84c1b2012"
+      },
+      {
+        "bytes": 14,
+        "name": "attempts/bts_count/000.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 559,
+        "name": "attempts/bts_count/000.receipt.json",
+        "sha256": "50b364f6909cf87a79fa3d620e09776e5cc457f08fffcceda2e698cce4831164"
+      },
+      {
+        "bytes": 14,
+        "name": "attempts/bts_count_after/000.body",
+        "sha256": "7574c853e617a60ef0d42f3e1cf783e403f991b3dff93507048f27cf144d4744"
+      },
+      {
+        "bytes": 559,
+        "name": "attempts/bts_count_after/000.receipt.json",
+        "sha256": "d941fbdd21526cc921ff667bad1fec067e5736703cd3ceaddd7b43d84c1b2012"
+      },
+      {
+        "bytes": 4119,
+        "name": "attempts/bts_ids/000.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 557,
+        "name": "attempts/bts_ids/000.receipt.json",
+        "sha256": "09f4d3647eac33296067d2535e073cdb9964f93070f401526e8f243a4a5a9622"
+      },
+      {
+        "bytes": 4119,
+        "name": "attempts/bts_ids_after/000.body",
+        "sha256": "b3da05162872e436e8401d3820f8ab6b2ca197ce706a15394569761a0c1f8555"
+      },
+      {
+        "bytes": 557,
+        "name": "attempts/bts_ids_after/000.receipt.json",
+        "sha256": "03a1f79494810a7ba7c19ba9e5269e93d9816825013b3d66376536de2a03b32f"
+      },
+      {
+        "bytes": 2723,
+        "name": "attempts/bts_item/000.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 445,
+        "name": "attempts/bts_item/000.receipt.json",
+        "sha256": "df677c5d7dd8c9fec553b40b2be22bdac0a31eb9a4e55b6330674459fed7edbd"
+      },
+      {
+        "bytes": 2723,
+        "name": "attempts/bts_item_after/000.body",
+        "sha256": "e3bb6503190f26fffdc7f724eb10ec05885e3deee957581699aacacd4f96be6b"
+      },
+      {
+        "bytes": 445,
+        "name": "attempts/bts_item_after/000.receipt.json",
+        "sha256": "783d48caaf3ef31cd15c90dd757cee6d395517dcf42df6790e32c14ee6eccf4a"
+      },
+      {
+        "bytes": 14551,
+        "name": "attempts/bts_layer/000.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 486,
+        "name": "attempts/bts_layer/000.receipt.json",
+        "sha256": "a4e6fbdd62514a3e09df908810a8eaeada5e143743fdb3c58ed87b271888550e"
+      },
+      {
+        "bytes": 14551,
+        "name": "attempts/bts_layer_after/000.body",
+        "sha256": "067d0f44f1efcff227b3e16591b9381d89f1f3ea644fabb14f2aa60a3b27cc90"
+      },
+      {
+        "bytes": 486,
+        "name": "attempts/bts_layer_after/000.receipt.json",
+        "sha256": "669659df4e8a627611e5574bc7ff3c4bd4167717b1f135a9f6ca16725e9d2af0"
+      },
+      {
+        "bytes": 452376,
+        "name": "attempts/page-000/000.body",
+        "sha256": "a9941b4d1bbf84072024b2e371bcaff399d61d4dfe5368167c0b7a66a69f42ec"
+      },
+      {
+        "bytes": 763,
+        "name": "attempts/page-000/000.receipt.json",
+        "sha256": "f66c228b7795fe91fa243eb379209940c4ade039ae789697b5d0677ee354cca1"
+      }
+    ],
+    "rows": 1036,
+    "source_named_fields": 16
+  },
+  "coordinator": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "dataset_slug": "amtrak-stations",
+  "draft_contract": {
+    "derivatives_pending_review": {
+      "pmtiles": "Local generic visualization derivative only; no assertion of lossless geometry or production approval.",
+      "shapefile_zip": "Excluded draft derivative: >10-character source field names and nullable whitespace strings have no reviewed lossless DBF mapping. Exclusion is not approval to remove a published format.",
+      "terminal_geoparquet": "All16 source values/types/nativeWKB exact; additional bbox and nullable metadata False\u2192True on OBJECTID/geometry are quarantined behind approval gate."
+    },
+    "identifier_columns": {
+      "Code": "Exact original source string; leading zero/whitespace retained",
+      "OBJECTID": "Exact original source integer, stored as int64 without substitution",
+      "published_id": "Retained only in the complete historical published candidate; no unapproved OBJECTID-to-id replacement or invented mapping"
+    },
+    "mapping": "Every raw source attribute keeps its original name and semantic value. DateModif stays original string; native4326 coordinates and point WKB retained.",
+    "raw_geometry": "Original Esri JSON bytes retained alongside typed native candidate and Arrow-stream GeoPackage.",
+    "source_fields": [
+      {
+        "alias": "OBJECTID",
+        "defaultValue": null,
+        "domain": null,
+        "editable": false,
+        "name": "OBJECTID",
+        "nullable": false,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "alias": "StaType",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 36,
+        "name": "StaType",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StnType",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 5,
+        "name": "StnType",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "ZipCode",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 7,
+        "name": "ZipCode",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "State",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 2,
+        "name": "State",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "City",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 22,
+        "name": "City",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Address2",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 33,
+        "name": "Address2",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Address1",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 55,
+        "name": "Address1",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Name",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 32,
+        "name": "Name",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Code",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 3,
+        "name": "Code",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StationName",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 32,
+        "name": "StationName",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StationFacilityName",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 32,
+        "name": "StationFacilityName",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "StationAliases",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 107,
+        "name": "StationAliases",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "DateModif",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 19,
+        "name": "DateModif",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "lon",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "name": "lon",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeDouble"
+      },
+      {
+        "alias": "lat",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "name": "lat",
+        "nullable": true,
+        "sqlType": "sqlTypeOther",
+        "type": "esriFieldTypeDouble"
+      }
+    ],
+    "source_full_field_metadata_sha256": "5b45c633339cafafcc85d1d034581534da2b055611633a00b4aa60b3a85aa2fe",
+    "status": "unapproved"
+  },
+  "issue": 17,
+  "promotion_allowed": false,
+  "published_baseline_candidate": {
+    "bytes": 132155,
+    "catalog_checksum_matches_complete_object": true,
+    "catalog_sha256": "a5e6ca1aaff344992b5a6b57dda72c60e19a4009eb2156a4e807d0cb89f6ef46",
+    "catalog_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/amtrak-stations/amtrak-stations/v1.0.0/collection.json",
+    "complete_binary": "evidence/published-baseline-candidate.parquet",
+    "generation": "1791506349323303",
+    "rows": 1056,
+    "sha256": "38d7c8e2431805734c5db6718629070e6eeb325160aff5fcca3a17eaa4ffa9a7",
+    "status": "candidate_not_accepted",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/amtrak-stations/amtrak-stations/v1.0.0/geoparquet/amtrak-stations.parquet",
+    "version": "v1.0.0"
+  },
+  "refresh": {
+    "default_status": "STOPPED",
+    "idempotency": "Immutable semantic namespace binds all original raw/receipt SHA pins, installed source fingerprint and proposed schema guard; same capture/code returns identical bytes, changed semantics or modified provenance collide instead of overwriting.",
+    "job": "amtrak_draft_refresh_job",
+    "meaning": "Proposed source-only weekly integrity poll, not an official source release cadence; remote/published storage rejected before fetch/write.",
+    "proposed_cron": "0 8 * * 1",
+    "schedule": "amtrak_draft_refresh_schedule",
+    "timezone": "America/New_York"
+  },
+  "scope": "Reviewable draft implementation and isolated local tests authorized before contract acceptance by user correction. No source, baseline, contract or release decision is granted.",
+  "source": {
+    "classification": "Producer-attributed official USDOT/BTS NTAD distribution",
+    "crosswalk": {
+      "meaning": "Provider Cloudflare403 after DOI resolution; no asserted DHS crosswalk match.",
+      "observed_status": 403,
+      "status": "unmatched_pending_provider_access",
+      "url": "https://doi.org/10.3886/E241367V1"
+    },
+    "dictionary_observation": "HTTP200 complete XLSX preserved; ephemeral redirected download query omitted from documentation receipt only.",
+    "distributor": "Bureau of Transportation Statistics, USDOT_BTS ArcGIS account",
+    "editing_info": {
+      "dataLastEditDate": 1791909192290,
+      "lastEditDate": 1791909192290,
+      "schemaLastEditDate": 1791909192290
+    },
+    "machine_layer": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Amtrak_Stations/FeatureServer/0",
+    "metadata_dictionary": "https://doi.org/10.21949/1529010",
+    "official_item": "https://www.arcgis.com/home/item.html?id=1ed62a9f46304679aaa396bed4c8565a",
+    "producer": "National Railroad Passenger Corporation (Amtrak)",
+    "release_statement_basis": "Dated text and explicit producer/distributor attribution in preserved official item and layer; portal edit timestamps are separately preserved, not used as release date.",
+    "source_release_statement": "The Amtrak Stations dataset is as of October 08, 2026 from Amtrak"
+  },
+  "verification": {
+    "code_checkpoint": "be49bcb93f1901b408e709b6df33bb58dcc98681",
+    "focused_tests": 18,
+    "full_source_and_baseline_comparison": "evidence/complete-baseline-comparison.zip",
+    "local_execution": "evidence/local-dagster-execution.json",
+    "normal_registration_test": "Root independently passed normal repository source-only job and stopped schedule registration test.",
+    "release_gate": "Actual full normal local graph prevents unapproved promotion via shared#417; accepted local fixture remains byte-identical after missing-approval and synthetic failed-geometry gates.",
+    "suite": {
+      "error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf",
+      "errors": 1,
+      "limitation": "Full suite started at992690b source checkpoint; separate normal registration check atbe49bcb. No full-suite or CI success inferred.",
+      "passed": 490,
+      "skipped": 1,
+      "total": 492
+    }
+  },
+  "worker": "/root/amtrak_17"
+}

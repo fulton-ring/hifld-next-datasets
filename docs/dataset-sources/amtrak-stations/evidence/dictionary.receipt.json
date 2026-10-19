@@ -1,0 +1,16 @@
+{
+  "url": "https://doi.org/10.21949/1529010",
+  "final_url": "https://www.arcgis.com/itemdata/92d347a7683b26a11dab76ccf9a5cac2/25757cb472b3485ab638bf7c76b6bc06/Amtrak_Stations.xlsx",
+  "status": 200,
+  "bytes": 52157,
+  "sha256": "0ec67b5e6261bc936cb4d7e976d2cab5bb69c3ab87e28f3cc0b3f07c1aa9ae74",
+  "headers": {
+    "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "content-length": "52157",
+    "date": "Mon, 19 Oct 2026 05:49:19 GMT",
+    "last-modified": "Fri, 12 Dec 2025 23:28:26 GMT",
+    "etag": "\"e25e1b66a4c06da416fd3846b42d886a\""
+  },
+  "observed_at": "2026-10-19T05:49:18.823485+00:00",
+  "final_url_query_redacted": "Ephemeral storage signature omitted; original public DOI is preserved."
+}
