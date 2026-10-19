@@ -2,8 +2,8 @@
   "schema_version": 1,
   "processing_commit": "c62ab714b6911bfccc9300fe13a12b2be180a5d5",
   "PR": 460,
-  "actual_registered_cases": 16,
-  "expected_successes": 6,
+  "actual_registered_cases": 17,
+  "expected_successes": 7,
   "expected_blocked": 10,
   "runs": [
     {
@@ -85,6 +85,11 @@
       "label": "post_restore_actual_normal_catalog_quality",
       "run_id": "2c1beb6e-a98c-4e8c-a25a-2266f3ab0e66",
       "success": false
+    },
+    {
+      "label": "public_docs_C1_actual_relative_root_reuse",
+      "run_id": "766d2a8b-e5fd-4972-bbff-20ab1b60d342",
+      "success": true
     }
   ],
   "full_suite": {
@@ -175,6 +180,28 @@
       "artifact_path": "/workspace/work/hifld-coordinator/85/actual-public-c0/staging/ferc-regions/ferc-regions/v0.0.0-draft-ferc-historical-193ff6b88794185d/metadata/data_dictionary.json",
       "bytes": 25527,
       "sha256": "debf49e9cee7cd67e1d89dba54a98db60b3d97247ca316bb204aa08ee2b1bfb1"
+    },
+    {
+      "artifact_path": "/workspace/work/hifld-coordinator/85/actual-public-c0/public-docs-relative-reuse.json",
+      "bytes": 415,
+      "sha256": "0b0cea91cad19abbf2004d8708a65bfde105b3cbed85caac6939fe48b6190e6f"
+    },
+    {
+      "artifact_path": "/workspace/work/hifld-coordinator/85/public-docs-relative-reuse.log",
+      "bytes": 2359,
+      "sha256": "d086de3d1480b2da3e8cf9dd1d0dd2195384f520d249f7c2f679db240be7de50"
     }
-  ]
+  ],
+  "genuine_public_docs_reuse": {
+    "run_id": "766d2a8b-e5fd-4972-bbff-20ab1b60d342",
+    "success": true,
+    "reused": true,
+    "actual_relative_staging_root": "staging",
+    "public_docs_head": "801822d1d8989c293af416a204fa921d85bddddd",
+    "original_code_commit": "c62ab714b6911bfccc9300fe13a12b2be180a5d5",
+    "all_staging_files_unchanged": 47,
+    "all_original_first_receipts_preserved": true,
+    "prior_preserved": true,
+    "release_approved": false
+  }
 }
