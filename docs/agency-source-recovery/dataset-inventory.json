@@ -14,7 +14,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "200nm-eez-and-maritime-boundaries",
@@ -28,7 +33,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "24nm-contiguous-zone",
@@ -42,7 +52,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "above-ground-lng-storage-facilities",
@@ -56,7 +71,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "replace_archive_ingest_with_agency_source",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "administrative-areas-usace-ienc",
@@ -70,7 +90,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "replace_archive_ingest_with_agency_source",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "agricultural-minerals-operations",
@@ -84,7 +109,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "aiannh-areas-1",
@@ -98,7 +128,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "verify_release_and_refresh_policy",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "airport-area-usace-ienc",
@@ -112,7 +147,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "airspace-boundaries-1",
@@ -126,7 +166,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "alternative-fueling-stations",
@@ -140,7 +185,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "american-red-cross-chapter-1",
@@ -154,7 +204,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "american-red-cross-counties-chapters-regions-divisions-1",
@@ -168,7 +223,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "american-red-cross-divisions",
@@ -182,7 +242,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "american-red-cross-headquarters-1",
@@ -196,7 +261,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "american-red-cross-regions",
@@ -210,7 +280,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "amtrak-stations",
@@ -224,7 +299,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "antenna-structure-registration-asr",
@@ -238,7 +318,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "aquifers",
@@ -252,7 +337,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "aviation-facilities",
@@ -266,7 +356,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "berths-areas-usace-ienc",
@@ -280,7 +375,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "biodiesel-plants-1",
@@ -294,7 +394,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "border-crossings-natural-gas",
@@ -308,7 +413,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "broadband-radio-service-transmitters",
@@ -322,7 +432,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "building-locations-usace-ienc",
@@ -336,7 +451,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "canada-and-us-border",
@@ -350,7 +470,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "caution-area-locations-usace-ienc",
@@ -364,7 +489,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "cbrs-buffer-zone-1",
@@ -378,7 +508,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "cbrs-map-panels-1",
@@ -392,7 +527,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "cbrs-prohibitions-1",
@@ -406,7 +546,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "cbrs-units-2",
@@ -420,7 +565,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "cellular-towers",
@@ -434,7 +584,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "census-block-groups-3",
@@ -448,7 +603,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "census-designated-places",
@@ -462,7 +622,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "census-tracts-2",
@@ -476,7 +641,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "child-care-centers",
@@ -490,7 +660,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "coastlines-usace-ienc",
@@ -504,7 +679,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "colleges-and-universities",
@@ -518,7 +698,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "colleges-and-universities-campuses",
@@ -532,7 +717,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "combined-statistical-areas-3",
@@ -546,7 +736,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "consolidated-cities",
@@ -560,7 +755,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "construction-minerals-operations",
@@ -574,7 +774,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "control-areas",
@@ -588,7 +793,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "conveyor-areas-usace-ienc",
@@ -602,7 +812,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "county-subdivisions-1",
@@ -616,7 +831,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "courthouses-3",
@@ -630,7 +850,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "crane-locations-usace-ienc",
@@ -644,7 +869,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "crushed-stone-operations",
@@ -658,7 +888,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "current-dart-deployments",
@@ -672,7 +907,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "dam-lines-usace-ienc-2",
@@ -686,7 +926,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "data-coverage-areas-usace-ienc",
@@ -700,7 +945,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "data-quality-assessment-areas-usace-ienc",
@@ -714,7 +964,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "daymark-locations-usace-ienc-2",
@@ -728,7 +983,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "depth-areas-usace-ienc-2",
@@ -742,7 +1002,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "dialysis-centers",
@@ -756,7 +1021,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "distance-marks-usace-ienc-2",
@@ -770,7 +1040,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "docks-1",
@@ -784,7 +1059,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "dry-docks-usace-ienc-2",
@@ -798,7 +1078,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "dumping-ground-areas-usace-ienc",
@@ -812,7 +1097,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "dynamic-buoys-usace-ienc-",
@@ -826,7 +1116,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "electric-holding-company-areas-1",
@@ -840,7 +1135,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "electric-planning-areas",
@@ -854,7 +1154,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "electric-retail-service-territories",
@@ -868,7 +1173,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "elementary-school-districts",
@@ -882,7 +1192,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-disaster-debris-recovery-data",
@@ -896,7 +1211,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-emergency-response-rmp-facilities",
@@ -910,7 +1230,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-facilities",
@@ -924,7 +1249,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-facilities-labels",
@@ -938,7 +1268,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-frs-eia-860-power-generation-facilities-by-source",
@@ -952,7 +1287,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-frs-eia-860-power-generation-facilities-naics-codes",
@@ -966,7 +1306,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-frs-eia-860-power-generation-facilities-sic-codes",
@@ -980,7 +1325,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-frs-toxic-release-inventory",
@@ -994,7 +1344,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-frs-toxic-substances-control-act-tsca",
@@ -1008,7 +1363,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-rcra-treatment-storage-and-disposal-facilities",
@@ -1022,7 +1382,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-region-boundaries-exclusive-economic-zone-eez",
@@ -1036,7 +1401,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-region-boundaries-with-exclusive-economic-zone",
@@ -1050,7 +1420,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-regions",
@@ -1064,7 +1439,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-regions-large-scale-15000000",
@@ -1078,7 +1458,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-regions-small-scale-15000001",
@@ -1092,7 +1477,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-superfund-enterprise-management-system-sems-sites-1",
@@ -1106,7 +1496,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "ethanol-plants-1",
@@ -1120,7 +1515,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "fdic-insured-banks",
@@ -1134,7 +1534,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "federal-emergency-management-agency-fema-regional-offices",
@@ -1148,7 +1553,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "federal-emergency-management-agency-fema-regions",
@@ -1162,7 +1572,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "ferc-regions",
@@ -1176,7 +1591,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "ferrous-metal-mines",
@@ -1190,7 +1610,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "ferrous-metal-processing-plants",
@@ -1204,7 +1629,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "ferry-routes-1",
@@ -1218,7 +1648,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "ferry-terminals",
@@ -1232,7 +1667,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "final-critical-habitat-features",
@@ -1246,7 +1686,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "fire-and-emergency-medical-service-ems-stations",
@@ -1260,7 +1705,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "floating-docks-usace-ienc",
@@ -1274,7 +1724,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "floodwalls-usace-ienc-2",
@@ -1288,7 +1743,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "formerly-used-defense-sites-district-boundaries",
@@ -1302,11 +1762,16 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "formerly-used-defense-sites-division-boundaries",
-      "title": "Formerly Used Defense Sites (FUDS)\u00a0Program Division Boundaries",
+      "title": "Formerly Used Defense Sites (FUDS) Program Division Boundaries",
       "agency": "US Army Corps of Engineers",
       "publisher": "",
       "archive_url": "https://www.datalumos.org/datalumos/project/239285/version/V1/view",
@@ -1316,7 +1781,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "formerly-used-defense-sites-projects-points",
@@ -1330,7 +1800,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "formerly-used-defense-sites-property-boundaries",
@@ -1344,7 +1819,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "formerly-used-defense-sites-public-mrs",
@@ -1358,7 +1838,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "formerly-used-defense-sites-public-properties",
@@ -1372,7 +1857,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "frs-interest-contact",
@@ -1386,7 +1876,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "frs-interests",
@@ -1400,7 +1895,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "frs-naics",
@@ -1414,7 +1914,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "frs-sic",
@@ -1428,7 +1933,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "generalized-units-1",
@@ -1442,7 +1952,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "generating-units-1",
@@ -1456,7 +1971,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "harbor-administrative-areas-usace-ienc",
@@ -1470,7 +1990,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "harbor-facility-areas-usace-ienc-1",
@@ -1484,7 +2009,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "harbor-facility-locations-usace-ienc-1",
@@ -1498,7 +2028,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "historic-perimeters-combined-2000-2018-geomac",
@@ -1512,7 +2047,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "historical-holocene-volcano-locations",
@@ -1526,7 +2066,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "historical-significant-earthquake-locations",
@@ -1540,7 +2085,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "historical-significant-volcanic-event-locations",
@@ -1554,7 +2104,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "historical-tsunami-event-locations-",
@@ -1568,7 +2123,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "historical-tsunami-observations",
@@ -1582,7 +2142,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "hospitals-3",
@@ -1596,7 +2161,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "hulke-areas-usace-ienc-1",
@@ -1610,7 +2180,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "hydrocarbon-gas-liquid-pipelines-1",
@@ -1624,7 +2199,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "icis-wastewater-treatment-plants",
@@ -1638,7 +2218,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "icis-wastewater-treatment-plants-naics-codes",
@@ -1652,7 +2237,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "icis-wastewater-treatment-plants-sic-codes",
@@ -1666,7 +2256,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "incorporated-places",
@@ -1680,7 +2275,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "independent-systems-operators",
@@ -1694,7 +2294,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "interim-risk-management-irm-project-boundary",
@@ -1708,7 +2313,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "interim-risk-management-irm-property-boundary",
@@ -1722,7 +2332,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "interim-risk-management-irm-property-point",
@@ -1736,7 +2351,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "intermodal-freight-facilities-air-to-truck",
@@ -1750,7 +2370,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "intermodal-freight-facilities-marine-roll-on-roll-off",
@@ -1764,7 +2389,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "intermodal-freight-facilities-rail-tofc-cofc",
@@ -1778,7 +2408,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "intermodal-passenger-connectivity-database-ipcd",
@@ -1792,7 +2427,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "isolated-danger-buoy-point-usace-ienc",
@@ -1806,7 +2446,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "lakes-usace-ienc-2",
@@ -1820,7 +2465,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "land-mobile-broadcast-towers-1",
@@ -1834,7 +2484,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "land-mobile-commercial-transmission-towers",
@@ -1848,7 +2503,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "land-mobile-private-transmission-towers",
@@ -1862,7 +2522,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "land-region-areas-usace-ienc-2",
@@ -1876,7 +2541,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "land-region-locations-usace-ienc",
@@ -1890,7 +2560,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "land-surface-areas-usace-ienc-2",
@@ -1904,7 +2579,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "landmark-areas-usace-ienc-2",
@@ -1918,7 +2598,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "landmark-locations-usace-ienc-2",
@@ -1932,7 +2617,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "lateral-beacons-usace-ienc-2",
@@ -1946,7 +2636,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "lateral-buoys-usace-ienc",
@@ -1960,7 +2655,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "levee-areas-usace-ienc-2",
@@ -1974,7 +2674,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "levee-lines-usace-ienc",
@@ -1988,7 +2693,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "liquified-natural-gas-lng-import-and-export-terminals-1",
@@ -2002,7 +2712,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "local-emergency-operations-center-eoc",
@@ -2016,7 +2731,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "local-law-enforcement-locations",
@@ -2030,7 +2750,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "lock-basins-usace-ienc",
@@ -2044,7 +2769,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "lock-gate-areas-usace-ienc",
@@ -2058,7 +2788,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "lock-gate-lines-usace-ienc-2",
@@ -2072,7 +2807,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "lock-traffic-signal-stations-usace-ienc",
@@ -2086,7 +2826,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "locks-usace-ienc-1",
@@ -2100,7 +2845,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "metropolitan-divisions-2",
@@ -2114,7 +2864,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mexico-and-us-border-1",
@@ -2128,7 +2883,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "microwave-service-towers",
@@ -2142,7 +2902,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mines-and-mineral-resources",
@@ -2156,7 +2921,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mirta-dod-sites-boundaries",
@@ -2170,7 +2940,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mirta-dod-sites-points",
@@ -2184,7 +2959,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "miscellaneous-industrial-mineral-operations",
@@ -2198,7 +2978,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mobile-home-parks",
@@ -2212,7 +2997,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mooring-facility-areas-usace-ienc-2",
@@ -2226,7 +3016,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mooring-facility-lines-usace-ienc-2",
@@ -2240,7 +3035,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "mooring-facility-locations-usace-ienc-2",
@@ -2254,7 +3054,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-bridge-inventory-nbi",
@@ -2268,7 +3073,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-forests",
@@ -2282,7 +3092,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-inventory-of-dams-nid-1",
@@ -2296,7 +3111,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-shelter-system-facilities",
@@ -2310,7 +3130,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-transit-map-agencies",
@@ -2324,7 +3149,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-transit-map-routes",
@@ -2338,7 +3168,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-transit-map-stops",
@@ -2352,7 +3187,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "national-tunnel-inventory",
@@ -2366,7 +3206,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "natural-gas-interstate-and-intrastate-pipelines",
@@ -2380,7 +3225,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "natural-gas-processing-plants-1",
@@ -2394,7 +3244,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "natural-gas-service-territories",
@@ -2408,7 +3263,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "natural-gas-trading-hubs",
@@ -2422,7 +3282,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "natural-gas-underground-storage",
@@ -2436,7 +3301,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nautical-navigation-aids-navaid-locations",
@@ -2450,7 +3320,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nautical-publication-information-areas-usace-ienc-2",
@@ -2464,7 +3339,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "navigable-waterway-network-lines",
@@ -2478,7 +3358,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "navigable-waterway-network-node-locations-1",
@@ -2492,7 +3377,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "navigation-lights-usace-ienc-2",
@@ -2506,7 +3396,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "navigation-system-of-marks-areas-usace-ienc-2",
@@ -2520,7 +3415,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "ncua-insured-credit-unions",
@@ -2534,7 +3434,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nerc-regions",
@@ -2548,7 +3453,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nerc-reliability-coordinators-1",
@@ -2562,7 +3472,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/alluvial-fans",
@@ -2576,7 +3491,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/base-flood-elevations-1",
@@ -2590,7 +3510,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/base-index",
@@ -2604,7 +3529,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/coastal-gages-1",
@@ -2618,7 +3548,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/coastal-transects",
@@ -2632,7 +3567,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/cross-sections-1",
@@ -2646,7 +3586,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/datum-conversion-points-1",
@@ -2660,7 +3605,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/firm-panels-1",
@@ -2674,7 +3624,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/flood-hazard-boundaries",
@@ -2688,7 +3643,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/flood-hazard-zones-1",
@@ -2702,7 +3662,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/gages-2",
@@ -2716,7 +3681,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/general-structures",
@@ -2730,7 +3700,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/high-water-marks-1",
@@ -2744,7 +3719,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/hydrologic-reaches-1",
@@ -2758,7 +3738,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/levees-1",
@@ -2772,7 +3757,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/limit-of-moderate-wave-action-1",
@@ -2786,7 +3776,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/lomas-1",
@@ -2800,7 +3795,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/lomrs",
@@ -2814,7 +3814,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/nfhl-availability",
@@ -2828,7 +3833,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/nodes",
@@ -2842,7 +3852,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/plss",
@@ -2856,7 +3871,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/political-jurisdictions-1",
@@ -2870,7 +3890,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/primary-frontal-dunes",
@@ -2884,7 +3909,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/profile-baselines",
@@ -2898,7 +3928,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/river-mile-markers",
@@ -2912,7 +3947,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/seclusion-boundaries",
@@ -2926,7 +3966,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/station-start-points",
@@ -2940,7 +3985,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/study-info",
@@ -2954,7 +4004,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/subbasins",
@@ -2968,7 +4023,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/transect-baselines",
@@ -2982,7 +4042,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/area-large-scale-2",
@@ -2996,7 +4061,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/area-small-scale-2",
@@ -3010,7 +4080,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/area-small-scale-hi-pr-vi-pacific-territories-2",
@@ -3024,7 +4099,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/catchment",
@@ -3038,7 +4118,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/flowline",
@@ -3052,7 +4137,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/flowline-large-scale-2",
@@ -3066,7 +4156,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/flowline-small-scale-2",
@@ -3080,7 +4175,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/flowline-small-scale-hi-pr-vi-pacific-territories-2",
@@ -3094,7 +4194,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/hydrolocation-htdcco",
@@ -3108,7 +4213,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/hydrolocation-sink-spring-waterbody-outlet",
@@ -3122,7 +4232,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/line-large-scale--2",
@@ -3136,7 +4251,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/point-2",
@@ -3150,7 +4270,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/point-event-2",
@@ -3164,7 +4289,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/usgs-hydro-nldi-streamgage-monitoring-locations",
@@ -3178,7 +4308,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/waterbody",
@@ -3192,7 +4327,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/waterbody-large-scale-2",
@@ -3206,7 +4346,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/waterbody-small-scale-2",
@@ -3220,7 +4365,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/waterbody-small-scale-hi-pr-vi-pacific-territories-2",
@@ -3234,7 +4384,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/antarctica-1",
@@ -3248,7 +4403,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/crossings-1",
@@ -3262,7 +4422,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/historical-cultural-political-points-1",
@@ -3276,7 +4441,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/historical-hydrographic-points-1",
@@ -3290,7 +4460,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/historical-physical-points-1",
@@ -3304,7 +4479,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/incorporated-places-civil-1",
@@ -3318,7 +4498,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/landforms-1",
@@ -3332,7 +4517,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/other-hydrographic-features-1",
@@ -3346,7 +4536,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/populated-places-1",
@@ -3360,7 +4555,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/streams-mouth-1",
@@ -3374,7 +4574,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nmg/unincorporated-places-census-1",
@@ -3388,7 +4593,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nonferrous-metal-mines",
@@ -3402,7 +4612,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nonferrous-metal-processing-plants",
@@ -3416,7 +4631,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "north-america-political-divisions-polygons",
@@ -3430,7 +4650,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "north-american-rail-network-lines",
@@ -3444,7 +4669,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "north-american-rail-network-nodes",
@@ -3458,7 +4688,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "northeast-petroleum-reserves",
@@ -3472,7 +4707,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "notice-marks-usace-ienc",
@@ -3486,7 +4726,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nursing-homes",
@@ -3500,7 +4745,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "obstruction-areas-usace-ienc-2",
@@ -3514,7 +4764,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "obstruction-lines-usace-ienc",
@@ -3528,7 +4783,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "obstruction-locations-usace-ienc",
@@ -3542,7 +4802,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "oil-and-natural-gas-platforms",
@@ -3556,7 +4821,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "outer-continental-shelf-ocs-diagrams-maps",
@@ -3570,7 +4840,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "outer-continental-shelf-ocs-drilling-platforms",
@@ -3584,7 +4859,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "outer-continental-shelf-ocs-lease-blocks-1",
@@ -3598,7 +4878,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "outer-continental-shelf-ocs-oil-and-natural-gas-wells",
@@ -3612,7 +4897,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "overhead-cables-usace-ienc",
@@ -3626,7 +4916,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "overhead-pipeline-lines-usace-ienc",
@@ -3640,7 +4935,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "overview-20",
@@ -3654,7 +4954,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pad-us-manager-name",
@@ -3668,7 +4973,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pad-us-protection-mechanism-category",
@@ -3682,7 +4992,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "paging-transmission-towers",
@@ -3696,7 +5011,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "peak-shaving-facilities",
@@ -3710,7 +5030,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "petroleum-product-terminals",
@@ -3724,7 +5049,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "petroleum-refineries",
@@ -3738,7 +5068,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pile-locations-usace-ienc",
@@ -3752,7 +5087,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pipeline-areas-usace-ienc",
@@ -3766,7 +5106,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "plate-boundaries",
@@ -3780,7 +5125,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pol-terminals-1",
@@ -3794,7 +5144,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pontoon-areas-usace-ienc",
@@ -3808,7 +5163,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "power-plants-1",
@@ -3822,7 +5182,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "primary-roads-2",
@@ -3836,7 +5201,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "principal-ports",
@@ -3850,7 +5220,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "prison-boundaries-1",
@@ -3864,7 +5239,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "private-schools",
@@ -3878,7 +5258,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "proposed-critical-habitat-features",
@@ -3892,7 +5277,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "public-refrigerated-warehouses-1",
@@ -3906,7 +5296,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "public-schools",
@@ -3920,7 +5315,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "puerto-rico-subbarrios",
@@ -3934,7 +5334,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pylon-areas-usace-ienc",
@@ -3948,7 +5353,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "pylon-locations-usace-ienc",
@@ -3962,7 +5372,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "quaternary-fault-lines",
@@ -3976,7 +5391,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "railroad-bridges",
@@ -3990,7 +5410,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "railroad-grade-crossings",
@@ -4004,7 +5429,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "railroads",
@@ -4018,7 +5448,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "railways-usace-ienc",
@@ -4032,7 +5467,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "recommended-tracks-usace-ienc",
@@ -4046,7 +5486,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "refractory-abrasive-industrial-mineral-operations",
@@ -4060,7 +5505,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "regulated-navigational-areas",
@@ -4074,7 +5524,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "restricted-navigation-areas-usace-ienc",
@@ -4088,7 +5543,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "retrospective-bpr-deployments",
@@ -4102,7 +5562,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "river-areas-usace-ienc",
@@ -4116,7 +5581,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "river-gauges-usace-ienc",
@@ -4130,7 +5600,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "river-lines-usace-ienc-1",
@@ -4144,7 +5619,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "river-mile-markers-usace-ienc",
@@ -4158,7 +5638,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "roads-usace-ienc-1",
@@ -4172,7 +5657,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "runways-1",
@@ -4186,7 +5676,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "safety-zones",
@@ -4200,7 +5695,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "sand-and-gravel-operations-1",
@@ -4214,7 +5714,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "school-district-administrative-areas",
@@ -4228,7 +5733,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "sea-area-locations-usace-ienc-1",
@@ -4242,7 +5752,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "sea-areas-usace-ienc-1",
@@ -4256,7 +5771,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "secondary-roads-interstates-and-us-highways-2",
@@ -4270,7 +5790,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "secondary-school-districts",
@@ -4284,7 +5809,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "security-zones",
@@ -4298,7 +5828,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "shipping-fairways",
@@ -4312,7 +5847,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "shoreline-construction-areas-usace-ienc-1",
@@ -4326,7 +5866,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "shoreline-construction-lines-usace-ienc-1",
@@ -4340,7 +5885,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "shoreline-construction-locations-usace-ienc",
@@ -4354,7 +5904,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "sloped-ground-areas-usace-ienc-1",
@@ -4368,7 +5923,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "sloped-ground-lines-usace-ienc-1",
@@ -4382,7 +5942,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "small-craft-facility-areas-usace-ienc",
@@ -4396,7 +5961,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "small-craft-facility-locations-usace-ienc",
@@ -4410,7 +5980,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "special-purpose-buoys-usace-ienc-1",
@@ -4424,7 +5999,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "storage-tank-or-silo-areas-usace-ienc-1",
@@ -4438,7 +6018,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "storage-tank-or-silo-locations-usace-ienc-1",
@@ -4452,7 +6037,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "submarine-pipeline-locations-usace-ienc",
@@ -4466,7 +6056,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "submerged-land-act-sla-boundary",
@@ -4480,7 +6075,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "supplemental-colleges",
@@ -4494,7 +6094,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "terminal-areas-usace-ienc",
@@ -4508,7 +6113,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "terminal-points-usace-ienc",
@@ -4522,7 +6132,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "state-capitols-2",
@@ -4536,7 +6151,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "state-emergency-operations-centers-eoc",
@@ -4550,7 +6170,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "strategic-petroleum-reserves",
@@ -4564,7 +6189,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "trails-2",
@@ -4578,7 +6208,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "transmission-lines-1",
@@ -4592,7 +6227,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "trauma-levels",
@@ -4606,7 +6246,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "travel-monitoring-analysis-system-tmas-stations",
@@ -4620,7 +6265,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "truck-driving-schools",
@@ -4634,7 +6284,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "tsunami-capable-tide-stations",
@@ -4648,7 +6303,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "underwater-rock-areas-usace-ienc-1",
@@ -4662,7 +6322,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "unified-school-districts",
@@ -4676,7 +6341,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-pga-10pct50yrs-bc-arc",
@@ -4690,7 +6360,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-pga-10pct50yrs-bc-poly",
@@ -4704,7 +6379,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-pga-2pct50yrs-bc-arc",
@@ -4718,7 +6398,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-pga-2pct50yrs-bc-poly",
@@ -4732,7 +6417,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "Done",
@@ -4746,7 +6436,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-pga-5pct50yrs-bc-poly",
@@ -4760,7 +6455,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa0p2-10pct50yrs-bc-poly",
@@ -4774,7 +6474,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa0p2-2pct50yrs-bc-poly",
@@ -4788,7 +6493,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa0p2-5pct50yrs-bc-poly",
@@ -4802,7 +6512,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa1p0-10pct50yrs-bc-poly",
@@ -4816,7 +6531,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa1p0-2pct50yrs-bc-poly",
@@ -4830,7 +6550,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa1p0-5pct50yrs-bc-poly",
@@ -4844,7 +6569,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa5p0-10pct50yrs-bc-poly",
@@ -4858,7 +6588,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa5p0-2pct50yrs-bc-poly",
@@ -4872,7 +6607,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uniform-hazard-ground-motion/us-sa5p0-5pct50yrs-bc-poly",
@@ -4886,7 +6626,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uranium-and-vanadium-deposits",
@@ -4900,7 +6645,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "urban-areas-1",
@@ -4914,7 +6664,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-army-corps-of-engineers-usace-civil-works-districts",
@@ -4928,7 +6683,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-army-corps-of-engineers-usace-civil-works-divisions",
@@ -4942,7 +6702,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-army-corps-of-engineers-usace-military-districts",
@@ -4956,7 +6721,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-army-corps-of-engineers-usace-military-divisions",
@@ -4970,7 +6740,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-army-corps-of-engineers-usace-offices",
@@ -4984,7 +6759,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-army-corps-of-engineers-usace-owned-reservoirs",
@@ -4998,7 +6778,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-canada-land-boundary",
@@ -5012,7 +6797,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-coal-fields-1",
@@ -5026,7 +6816,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-coast-guard-uscg-captain-of-the-port-zones",
@@ -5040,7 +6835,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-coast-guard-uscg-maritime-dgps-locations",
@@ -5054,7 +6854,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-county-boundaries-1",
@@ -5068,7 +6873,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-courts-of-appeals-circuits",
@@ -5082,7 +6892,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-district-court-jurisdictions",
@@ -5096,7 +6911,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-fish-and-wildlife-service-corporate-master-table-cmt",
@@ -5110,7 +6930,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-international-boundaries",
@@ -5124,7 +6949,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-landslide-regions",
@@ -5138,7 +6968,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-state-boundaries-1",
@@ -5152,7 +6987,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "us-virgin-islands-estates",
@@ -5166,7 +7006,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uscg-districts",
@@ -5180,7 +7025,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "uscg-sectors",
@@ -5194,7 +7044,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "veterans-health-administration-medical-facilities",
@@ -5208,7 +7063,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "voting-districts",
@@ -5222,7 +7082,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/10-digit-hu-watershed",
@@ -5236,7 +7101,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/12-digit-hu-subwatershed",
@@ -5250,7 +7120,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/14-digit-hu",
@@ -5264,7 +7139,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/16-digit-hu",
@@ -5278,7 +7158,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/2-digit-hu-region",
@@ -5292,7 +7177,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/4-digit-hu-subregion",
@@ -5306,7 +7196,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/6-digit-hu-basin",
@@ -5320,7 +7215,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/8-digit-hu-subbasin",
@@ -5334,7 +7234,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wbd/wbdline",
@@ -5348,7 +7253,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wfigs-interagency-fire-perimeters",
@@ -5362,7 +7272,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wreck-areas-usace-ienc",
@@ -5376,7 +7291,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wrecks-and-obstructions-1",
@@ -5390,7 +7310,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "wrecks-usace-ienc",
@@ -5404,7 +7329,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "119th-congressional-districts",
@@ -5418,7 +7348,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "bridge-areas-usace-ienc",
@@ -5432,7 +7367,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "cable-areas-usace-ienc",
@@ -5446,7 +7386,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-facility-registry-service-frs-interests",
@@ -5460,7 +7405,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-facility-registry-service-frs-power-plants-2",
@@ -5474,7 +7424,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "epa-frs-icis-wastewater-treatment-plants",
@@ -5488,7 +7443,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "gsa-inventory-of-owned-and-leased-properties-iolp-buildings",
@@ -5502,7 +7462,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "gsa-inventory-of-owned-and-leased-properties-iolp-leases",
@@ -5516,7 +7481,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "metropolitan-statistical-areas",
@@ -5530,7 +7500,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "micropolitan-statistical-areas-3",
@@ -5544,7 +7519,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/national-flood-hazard-layer-area-nfhl-1-east",
@@ -5558,7 +7538,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/national-flood-hazard-layer-area-nfhl-1-west",
@@ -5572,7 +7557,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/national-flood-hazard-layer-line-nfhl-1",
@@ -5586,7 +7576,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/topographic-low-confidence-areas-1",
@@ -5600,7 +7595,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/water-areas-1",
@@ -5614,7 +7614,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nhd/hydrolocation-reach-code-external-connection",
@@ -5628,7 +7633,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "oil-and-natural-gas-wells",
@@ -5642,7 +7652,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "state-legislative-districts-lower",
@@ -5656,7 +7671,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "state-legislative-districts-upper",
@@ -5670,7 +7690,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "submarine-pipeline-lines-usace-ienc",
@@ -5684,7 +7709,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "warning-signal-stations-usace-ienc",
@@ -5698,7 +7728,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "address-ranges",
@@ -5712,7 +7747,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "bathymetric-contours",
@@ -5726,7 +7766,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "intermodal-freight-facilities-pipeline-terminals",
@@ -5740,7 +7785,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "local-roads-2",
@@ -5754,7 +7804,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "built-up-areas-point-usace-ienc",
@@ -5768,7 +7823,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "submarine-cable-lines-usace-ienc",
@@ -5782,7 +7842,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "2020-census-blocks-1",
@@ -5796,7 +7861,12 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     },
     {
       "dataset_id": "nfhl/water-lines-1",
@@ -5810,7 +7880,20 @@
       "crosswalk_match": null,
       "source_candidates": [],
       "implementation_status": "needs_source_verification",
-      "issue_url": null
+      "issue_url": null,
+      "schema_compatibility": "unverified",
+      "source_role": "unresolved",
+      "schema_contract": null,
+      "schema_diff": null,
+      "maintainer_decision": null
     }
-  ]
+  ],
+  "review_policy": {
+    "breaking_change_lane": "Potential breaking change",
+    "unexpected_schema_change": "block_publication_and_auto_merge",
+    "resolution": "explicit_maintainer_approval_of_contract_and_pr_head",
+    "published_columns": "explicit_approved_allowlist",
+    "identifiers": "preserve_all_source_and_published_ids",
+    "source_authority": "verify_producer_or_documented_delegation"
+  }
 }
