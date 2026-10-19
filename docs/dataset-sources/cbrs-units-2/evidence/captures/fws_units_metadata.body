@@ -1,0 +1,352 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!--Record created using version 2.0.7 of the USGS Metadata Wizard tool. (https://github.com/usgs/fort-pymdwizard)-->
+<metadata>
+  <idinfo>
+    <citation>
+      <citeinfo>
+        <origin>U.S. Fish and Wildlife Service</origin>
+        <pubdate>20241219</pubdate>
+        <title>CBRS_Polygons</title>
+        <geoform>vector digital data</geoform>
+        <pubinfo>
+          <pubplace>Falls Church, VA</pubplace>
+          <publish>U.S. Fish and Wildlife Service</publish>
+        </pubinfo>
+        <onlink>https://www.fws.gov/media/digital-coastal-barrier-resources-system-boundaries</onlink>
+        <onlink>https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data</onlink>
+      </citeinfo>
+    </citation>
+    <descript>
+      <abstract>This Coastal Barrier Resources System (CBRS) data set, produced by the U.S. Fish and Wildlife Service (Service), contains areas designated as undeveloped coastal barriers in accordance with the Coastal Barrier Resources Act (CBRA), as amended (16 U.S.C. 3501 et seq.). These digital polygons are representations of the CBRS boundaries shown on the official CBRS maps referenced in 16 U.S.C. 3503(a). Copies of the official CBRS maps are available for viewing at Service’s Headquarters office and are also available to view or download at https://www.fws.gov/service/coastal-barrier-resources-system-property-documentation. The boundaries used to create the polygons herein were compiled between 12/6/2013 and 12/19/2024 from the official CBRS maps. The boundaries of the CBRS Units in Connecticut, Massachusetts, Rhode Island, and the Long Island portion of New York, were digitized from the official paper maps according to the guidelines in a notice published in the Federal Register on August 29, 2013 (see the “Georeferencing and Boundary Interpretation” and “Boundary Transcription” sections of 78 FR 53467; available at https://www.federalregister.gov/d/2013-21167). In all other cases where the official map was created through digital methods, the digital boundary was used. CBRS boundaries viewed using the CBRS Mapper or shapefiles are subject to misrepresentations beyond the Service’s control, including misalignments of the boundaries with third party base layers and misprojections of spatial data. The Service is not responsible for any misuse or misinterpretation of this digital data set, including use of the data to determine eligibility for Federal funding or financial assistance. Users should pair these data with the CBRS Buffer Zone shapefile and an orthoimage when inspecting areas that are within or in close proximity to the CBRS. Properties or structures that fall partially or entirely within the buffer area may be within the CBRS, and an official determination from the Service is recommended. For an official determination of whether or not an area or specific property is located within the CBRS, please follow the procedures found at https://www.fws.gov/service/coastal-barrier-resources-system-property-documentation. The official CBRS map is the controlling document and should be consulted for all official determinations in close proximity (within 20 feet) of a CBRS boundary. For any questions regarding the CBRS, please contact your local Service field office or email CBRA@fws.gov. Contact information for Service field offices can be found at https://www.fws.gov/node/267216.</abstract>
+      <purpose>This CBRS data set was created to depict areas designated as undeveloped coastal barriers in accordance with the CBRA. These digital polygons are representations of the CBRS boundaries shown on the official CBRS maps referenced in 16 U.S.C. 3503(a). This data set should be paired with the CBRS Buffer Zone shapefile to illustrate the stated horizontal accuracy of the boundaries herein. This data set is intended for use by those seeking general information about the location of CBRS units that do not need the establishment date or flood insurance prohibition date for any particular area and by users seeking CBRS acreage information. Users are advised to contact the Service for an official determination as to whether a particular property or structure that falls either partially or completely within the CBRS Buffer Zone is located within CBRS.</purpose>
+    </descript>
+    <timeperd>
+      <timeinfo>
+        <rngdates>
+          <begdate>19901024</begdate>
+          <enddate>20241219</enddate>
+        </rngdates>
+      </timeinfo>
+      <current>Publication date</current>
+    </timeperd>
+    <status>
+      <progress>Complete</progress>
+      <update>CBRS maps are either enacted by Congress through legislation or adopted administratively by the Service, and are also maintained by the Service. As maps are revised, this data set will be updated with the revised boundaries.</update>
+    </status>
+    <spdom>
+      <bounding>
+        <westbc>-97.6388</westbc>
+        <eastbc>-64.6231</eastbc>
+        <northbc>47.4356</northbc>
+        <southbc>17.6619</southbc>
+      </bounding>
+    </spdom>
+    <keywords>
+      <theme>
+        <themekt>CBRS Keywords</themekt>
+        <themekey>CBIA</themekey>
+        <themekey>CBRS</themekey>
+        <themekey>CBRA</themekey>
+        <themekey>Coastal Barrier Resources System</themekey>
+        <themekey>System Unit</themekey>
+        <themekey>Otherwise Protected Area</themekey>
+        <themekey>John H. Chafee</themekey>
+        <themekey>CBRS Unit</themekey>
+        <themekey>Coastal Barrier</themekey>
+        <themekey>Coastal Barrier Improvement Act</themekey>
+        <themekey>Coastal Barrier Resources Act</themekey>
+        <themekey>Flood Insurance Prohibition</themekey>
+        <themekey>OPA</themekey>
+      </theme>
+      <place>
+        <placekt>CBRS states</placekt>
+        <placekey>Alabama</placekey>
+        <placekey>Connecticut</placekey>
+        <placekey>Delaware</placekey>
+        <placekey>Florida</placekey>
+        <placekey>Georgia</placekey>
+        <placekey>Louisiana</placekey>
+        <placekey>Maine</placekey>
+        <placekey>Maryland</placekey>
+        <placekey>Massachusetts</placekey>
+        <placekey>Michigan</placekey>
+        <placekey>Minnesota</placekey>
+        <placekey>Mississippi</placekey>
+        <placekey>New Jersey</placekey>
+        <placekey>New York</placekey>
+        <placekey>North Carolina</placekey>
+        <placekey>Ohio</placekey>
+        <placekey>Puerto Rico</placekey>
+        <placekey>Rhode Island</placekey>
+        <placekey>South Carolina</placekey>
+        <placekey>Texas</placekey>
+        <placekey>United States Virgin Islands</placekey>
+        <placekey>Virginia</placekey>
+        <placekey>Wisconsin</placekey>
+      </place>
+    </keywords>
+    <accconst>None</accconst>
+    <useconst>User must read and fully comprehend the metadata prior to data use. User must acknowledge the U.S. Fish and Wildlife Service as the originator when using the data set as a source. User must share data products developed using this source data set with the U.S. Fish and Wildlife Service. Data should not be used beyond the limits of the source scale. The data set is NOT a survey document and should not be utilized as such. The data set is NOT to be used for definitive in/out determinations within 20 feet of a CBRS boundary (i.e., the area within the “CBRS Buffer Zone” available as a separate shapefile).</useconst>
+    <ptcontac>
+      <cntinfo>
+        <cntorgp>
+          <cntorg>U.S. Fish and Wildlife Service</cntorg>
+          <cntper>Katie Niemi</cntper>
+        </cntorgp>
+        <cntpos>National Coastal Barriers Coordinator</cntpos>
+        <cntaddr>
+          <addrtype>mailing and physical address</addrtype>
+          <address>5275 Leesburg Pike, MS: ES</address>
+          <city>Falls Church</city>
+          <state>VA</state>
+          <postal>22041</postal>
+        </cntaddr>
+        <cntvoice>703-358-2171</cntvoice>
+        <cntemail>CBRA@fws.gov</cntemail>
+      </cntinfo>
+    </ptcontac>
+    <crossref>
+      <citeinfo>
+        <origin>U.S. Fish &amp; Wildlife Service</origin>
+        <pubdate>20241219</pubdate>
+        <title>CBRS_Prohibitions	</title>
+        <geoform>vector digital data</geoform>
+        <onlink>https://www.fws.gov/media/digital-coastal-barrier-resources-system-boundaries</onlink>
+      </citeinfo>
+    </crossref>
+    <crossref>
+      <citeinfo>
+        <origin>U.S. Fish &amp; Wildlife Service</origin>
+        <pubdate>20241219</pubdate>
+        <title>CBRS_Buffer_Zone</title>
+        <geoform>vector digital data</geoform>
+        <onlink>https://www.fws.gov/media/digital-coastal-barrier-resources-system-boundaries</onlink>
+      </citeinfo>
+    </crossref>
+  </idinfo>
+  <dataqual>
+    <attracc>
+      <attraccr>There are no known inaccuracies in the attribute values of this dataset. QC inspections of Unit and Unit_Type were conducted at several stages in the development of the data.  The acreage and shoreline length values were validated against results of the acreage and shoreline calculation process detailed on pages 33-34 of "Report to Congress: John H. Chafee Coastal Barrier Resources System Hurricane Sandy Remapping Project" (https://www.fws.gov/media/report-congress-john-h-chafee-coastal-barrier-resources-system-hurricane-sandy-remapping).  Acreage and shoreline lengths are estimates and intended for informational purposes only.</attraccr>
+    </attracc>
+    <logic>These polygons were derived from CBRS_Boundary line data, which ensures that there are no overlaps or gaps between coincident units.  Additionally, the symmetric difference between the superseded and new data was calculated to ensure that changes to the data only occcured where expected, and that the superseded data has been removed from this dataset.</logic>
+    <complete>QC checks were conducted to ensure that all CBRS units depicted on the official CBRS maps referenced in 16 U.S.C. 3503(a) are present in this dataset. In most cases the seaward boundary of a CBRS unit is defined by the 30-ft bathymetric contour rather than a hard boundary depicted on the official source map. In these cases, the digital boundaries have been terminated by connecting the ends of the lateral boundaries on the seaward side. Therefore, the actual CBRS seaward boundary may extend farther offshore than is shown by the polygons. In large coastal embayments and the Great Lakes, the boundary is defined by the 20-ft bathymetric contour or a line approximately one mile seaward of the shoreline, whichever is nearer the coastal barrier.</complete>
+    <posacc>
+      <horizpa>
+        <horizpar>Because many CBRS boundaries have specific relationships to features visible on the base map, the CBRS boundaries are most reliable when paired with the orthoimagery that was used in the boundary digitization. Therefore, a potential source of error is the spatial accuracy of the base map orthoimagery. The CBRS boundaries inherit the spatial accuracy of the base orthoimagery that was used in their creation, and may appear not to fit other images properly. The orthoimagery is obtained from multiple sources and is selected based on quality, cost, and coverage availability. The imagery selected generally met the following guidelines: it must be no more than five years old at the time of boundary digitization, it must have a resolution of 1 meter pixels or less, the imagery must be orthorectified, and the imagery must be available free of charge. Commonly used orthoimagery for CBRS mapping is from the National Agriculture Imagery Program (NAIP). NAIP imagery has a stated horizontal accuracy of +/- 20 feet. This data set is intended to be paired with the CBRS Buffer Zone data, which illustrates the stated horizontal accuracy of the boundaries herein. Users should pair these data with the CBRS Buffer Zone shapefile and an orthoimage when inspecting areas that are within or in close proximity to the CBRS. Properties or structures that fall partially or entirely within the buffer area may be within the CBRS, and an official determination from the Service is recommended. For an official determination of whether or not an area or specific property is located within the CBRS, please follow the procedures found at https://www.fws.gov/service/coastal-barrier-resources-system-property-documentation. For official CBRS maps produced since 2014, the base map image source is printed in the title block of the map. To obtain the source of the base map image for a particular map or for other information about CBRS mapping, please email CBRA@fws.gov.</horizpar>
+      </horizpa>
+      <vertacc>
+        <vertaccr>A formal accuracy assessment of the vertical positional information in the data set is not applicable.</vertaccr>
+      </vertacc>
+    </posacc>
+    <lineage>
+      <srcinfo>
+        <srccite>
+          <citeinfo>
+            <origin>U.S. Fish &amp; Wildlife Service</origin>
+            <pubdate>Unknown</pubdate>
+            <title>National Wetlands Inventory</title>
+            <geoform>vector digital data</geoform>
+            <onlink>https://www.fws.gov/program/national-wetlands-inventory/wetlands-data</onlink>
+          </citeinfo>
+        </srccite>
+        <typesrc>Digital and/or Hardcopy</typesrc>
+        <srctime>
+          <timeinfo>
+            <rngdates>
+              <begdate>1977</begdate>
+              <enddate>2023</enddate>
+            </rngdates>
+          </timeinfo>
+          <srccurr>ground condition</srccurr>
+        </srctime>
+        <srccitea>National Wetlands Inventory</srccitea>
+        <srccontr>NWI data used in calculating wetlands and fastland acreage.</srccontr>
+      </srcinfo>
+      <srcinfo>
+        <srccite>
+          <citeinfo>
+            <origin>U.S. Department of Agriculture	</origin>
+            <pubdate>20241219</pubdate>
+            <title>National Agruculture Imagery Program aerial imagery</title>
+            <geoform>remote-sensing image</geoform>
+            <onlink>https://naip-usdaonline.hub.arcgis.com/</onlink>
+          </citeinfo>
+        </srccite>
+        <typesrc>Digital and/or Hardcopy</typesrc>
+        <srctime>
+          <timeinfo>
+            <rngdates>
+              <begdate>20040101</begdate>
+              <enddate>20220101</enddate>
+            </rngdates>
+          </timeinfo>
+          <srccurr>ground condition</srccurr>
+        </srctime>
+        <srccitea>NAIP Imagery</srccitea>
+        <srccontr>NAIP serves as the base map for most official CBRS maps. The base map source and date is listed on the bottom of all digital CBRS maps</srccontr>
+      </srcinfo>
+      <procstep>
+        <procdesc>These polygons were generated from the locally projected CBRS boundary lines used to create the official maps and then compiled into this national dataset.</procdesc>
+        <procdate>Unknown</procdate>
+      </procstep>
+    </lineage>
+  </dataqual>
+  <spref>
+    <horizsys>
+      <geograph>
+        <latres/>
+        <longres/>
+        <geogunit>Decimal degrees</geogunit>
+      </geograph>
+      <geodetic>
+        <horizdn>North American Datum of 1983</horizdn>
+        <ellips>Geodetic Reference System 1980</ellips>
+        <semiaxis>6378137.000000</semiaxis>
+        <denflat>298.257222</denflat>
+      </geodetic>
+    </horizsys>
+  </spref>
+  <eainfo>
+    <detailed>
+      <enttyp>
+        <enttypl>Attribute Table</enttypl>
+        <enttypd>Table containing attribute information associated with the data set.</enttypd>
+        <enttypds>Producer defined</enttypds>
+      </enttyp>
+      <attr>
+        <attrlabl>Shape</attrlabl>
+        <attrdef>Feature geometry</attrdef>
+        <attrdefs>Esri</attrdefs>
+        <attrdomv>
+          <udom>Coordinates defining the features.</udom>
+        </attrdomv>
+      </attr>
+      <attr>
+        <attrlabl>Shape_Area</attrlabl>
+        <attrdef>Area of feature in internal units squared.</attrdef>
+        <attrdefs>Esri</attrdefs>
+        <attrdomv><rdom>
+<rdommin>1.2325683947843E-06</rdommin>
+<rdommax>0.0936371408613191</rdommax>
+</rdom>
+</attrdomv>
+      </attr>
+      <attr>
+        <attrlabl>Unit</attrlabl>
+        <attrdef>Unique identifier for each individual CBRS unit.</attrdef>
+        <attrdefs>U.S. Fish and Wildlife Service</attrdefs>
+        <attrdomv><udom>Units designated in 1982 typically start with letters A (Maine), C (Massachusetts), D (Rhode Island), E (Connecticut), F (New York), H (Delaware), K (Virginia), L (North Carolina), M (South Carolina), N (Georgia), P (Florida), Q (Alabama), R (Mississippi), S (Louisiana), or T (Texas). Units designated in 1990 typically start with the two letter state abbreviation. The unit numbers for Otherwise Protected Areas end in “P”.</udom>
+</attrdomv>
+      </attr>
+      <attr>
+        <attrlabl>Name</attrlabl>
+        <attrdef>The name of the unit.</attrdef>
+        <attrdefs>U.S. Fish and Wildlife Service</attrdefs>
+        <attrdomv><udom>The units are generally assigned names based on a prominent feature in the vicinity of the unit.</udom>
+</attrdomv>
+      </attr>
+      <attr>
+  <attrlabl>Unit_Type</attrlabl><attrdef>CBRS units are one of two types: “System Units” and “Otherwise Protected Areas”.</attrdef><attrdefs>U.S. Fish and Wildlife Service</attrdefs><attrdomv>
+    <edom>
+      <edomv>Otherwise Protected Area</edomv>
+      <edomvd>The only Federal spending prohibition within OPAs is the prohibition on Federal flood insurance.</edomvd>
+      <edomvds>U.S. Fish and Wildlife Service</edomvds>
+    </edom>
+  </attrdomv>
+  <attrdomv>
+    <edom>
+      <edomv>System Unit</edomv>
+      <edomvd>Most new Federal expenditures and financial assistance, including Federal flood insurance, are prohibited within System units.</edomvd>
+      <edomvds>U.S. Fish and Wildlife Service</edomvds>
+    </edom>
+  </attrdomv>
+</attr>
+      <attr>
+        <attrlabl>Fast_Acres</attrlabl>
+        <attrdef>The approximate amount of fastlands (also known as uplands), in acres. Land of this type is considered to generally consist of land above mean high tide. The value is derived by calculating the portion of the unit, inland of the shoreline, that is not covered by the National Wetlands Inventory (NWI) polygons.</attrdef>
+        <attrdefs>U.S. Fish and Wildlife Service</attrdefs>
+        <attrdomv><rdom>
+            <rdommin>0</rdommin>
+            <rdommax>45893</rdommax>
+          </rdom>
+        </attrdomv>
+      </attr>
+      <attr>
+        <attrlabl>Wet_Acres</attrlabl>
+        <attrdef>The approximate amount of wetlands and open water landward of the shoreline of a unit, in acres. This value is most often derived by calculating the portion of the unit, landward of the shoreline, that contains NWI polygons. The associated aquatic habitat acreage numbers include open water landward of the coastal barrier, but not nearshore waters seaward of the shoreline. For the purpose of the acreage calculation, all units were artificially closed at the seaward shoreline using a dataset digitized for this purpose before acreage calculations were performed.</attrdef>
+        <attrdefs>U.S. Fish and Wildlife Service</attrdefs>
+        <attrdomv><codesetd>
+            <codesetn>0</codesetn>
+            <codesets>120308</codesets>
+          </codesetd>
+        </attrdomv>
+      </attr>
+      <attr>
+        <attrlabl>Shore_Mile</attrlabl>
+        <attrdef>The approximate length of shoreline within a unit in miles. The Service digitized a shoreline boundary to artificially close off the units along the seaward shoreline. This shoreline boundary generally follows the wet/dry sand line as interpreted from the base map image. Additionally, the shoreline boundary crosses any inlets and/or other dividing water bodies within each unit. In conjunction with the boundaries of the unit, the shoreline boundary is used to define the total area of a unit that is subject to an acreage calculation.</attrdef>
+        <attrdefs>U.S. Fish and Wildlife Service</attrdefs>
+        <attrdomv><rdom>
+            <rdommin>0</rdommin>
+            <rdommax>123.599998474121</rdommax>
+          </rdom>
+        </attrdomv>
+      </attr>
+    </detailed>
+    <overview>
+      <eaover>CBRS Units: The Coastal Barrier Resources Act (CBRA), as amended (16 U.S.C. 3501 et seq.), established the John H. Chafee Coastal Barrier Resources System (CBRS), a defined set of geographic units along the Atlantic, Gulf of Mexico, Great Lakes, U.S. Virgin Islands, and Puerto Rico coasts. Most new Federal expenditures and financial assistance are prohibited within the CBRS, unless those activities qualify for an exception under Section 6 of CBRA (16 U.S.C. 3505). The U.S. Fish and Wildlife Service (Service), through the Secretary of the Interior, is responsible for administering CBRA, which includes consulting with Federal agencies that propose spending funds within the CBRS. There are two types of units within the CBRS; “System Units” and “Otherwise Protected Areas” (OPAs). System Units contain areas that were relatively undeveloped at the time of their designation within the CBRS. System Units are predominantly comprised of privately owned areas, though they may also contain areas that are held for conservation and/or recreation. The boundaries for areas included within System Units are generally intended to follow geomorphic, development, or cultural features. Most new Federal expenditures and financial assistance, including Federal flood insurance, are prohibited within System units. The CBRS currently includes 588 System units encompassing approximately 1.4 million acres of land and associated aquatic habitat. OPAs are predominantly comprised of conservation and/or recreation areas such as national wildlife refuges, state and national parks, local conservation areas, and private conservation areas, though they may also contain private areas that are not held for conservation and/or recreation. The boundaries of these units are generally intended to coincide with the boundaries of conservation or recreation areas such as state parks and national wildlife refuges. The only Federal spending prohibition within OPAs is the prohibition on Federal flood insurance. The CBRS currently includes 282 OPAs encompassing approximately 2.1 million acres of land and associated aquatic habitat. This data set includes polygons covering each area designated within the CBRS. Each polygon is attributed with the unit number, unit name, unit type (i.e., OPA or System Unit), and acreage information.</eaover>
+      <eadetcit>The entity and attribute information was generated by the individual and/or agency identified as the originator of the data set. Please review the rest of the metadata record for additional details and information.</eadetcit>
+    </overview>
+  </eainfo>
+  <distinfo>
+    <distrib>
+      <cntinfo>
+        <cntorgp>
+          <cntorg>U.S. Fish and Wildlife Service</cntorg>
+          <cntper>Katie Niemi</cntper>
+        </cntorgp>
+        <cntpos>National Coastal Barriers Coordinator</cntpos>
+        <cntaddr>
+          <addrtype>mailing and physical address</addrtype>
+          <address>5275 Leesburg Pike, MS: ES</address>
+          <city>Falls Church</city>
+          <state>VA</state>
+          <postal>22041</postal>
+        </cntaddr>
+        <cntvoice>703-358-2171</cntvoice>
+        <cntemail>CBRA@fws.gov</cntemail>
+      </cntinfo>
+    </distrib>
+    <resdesc>Downloadable Data</resdesc>
+    <distliab>Although these data and information have been processed successfully on a computer system at the U.S. Fish and Wildlife Service, no warranty expressed or implied is made regarding the accuracy or utility of the data and information on any other system or for general or scientific purposes, nor shall the act of distribution constitute any such warranty. This disclaimer applies both to individual use of the data, and information, and aggregate use with other data and information. It is also strongly recommended that careful attention be paid to the contents of the metadata file associated with these data and information. The U.S. Fish and Wildlife Service shall not be held liable for improper or incorrect use of the data and information described and/or contained herein.</distliab>
+    <stdorder>
+      <digform><digtinfo>
+          <formname>Digital Data</formname>
+        </digtinfo>
+        <digtopt><onlinopt><computer><networka><networkr>https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer</networkr></networka></computer></onlinopt></digtopt></digform>
+      <fees>None</fees>
+    </stdorder>
+  </distinfo>
+  <metainfo>
+    <metd>20241219</metd>
+    <metc>
+      <cntinfo>
+        <cntorgp>
+          <cntorg>U.S. Fish and Wildlife Service</cntorg>
+          <cntper>Katie Niemi</cntper>
+        </cntorgp>
+        <cntpos>National Coastal Barriers Coordinator</cntpos>
+        <cntaddr>
+          <addrtype>mailing and physical address</addrtype>
+          <address>5275 Leesburg Pike, MS: ES</address>
+          <city>Falls Church</city>
+          <state>VA</state>
+          <postal>22041</postal>
+        </cntaddr>
+        <cntvoice>703-358-2171</cntvoice>
+        <cntemail>CBRA@fws.gov</cntemail>
+      </cntinfo>
+    </metc>
+    <metstdn>FGDC Content Standard for Digital Geospatial Metadata</metstdn>
+    <metstdv>FGDC-STD-001-1998</metstdv>
+  </metainfo>
+</metadata>

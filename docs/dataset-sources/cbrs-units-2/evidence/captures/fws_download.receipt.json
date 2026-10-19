@@ -1,0 +1,32 @@
+{
+  "requested_url": "https://www.fws.gov/media/digital-coastal-barrier-resources-system-boundaries",
+  "final_url": "https://www.fws.gov/media/digital-coastal-barrier-resources-system-boundaries",
+  "observed_at": "2026-10-19T07:52:05.851769+00:00",
+  "status": 200,
+  "byte_length": 92508,
+  "sha256": "26e0d3910924a8f90033e3e560b5086e598bb3f25b62bd9e337e49859568d094",
+  "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "x-drupal-dynamic-cache": "HIT",
+    "content-language": "en",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "SAMEORIGIN",
+    "content-security-policy-report-only": "object-src 'none'; script-src 'self' 'report-sample' addtocalendar.com cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.knightlab.com https://code.jquery.com https://science-catalog.fws.gov https://touchpoints.app.cloud.gov https://unpkg.com https://www.google.com maps.google.com unpkg.com; style-src 'self' 'report-sample' addtocalendar.com cdnjs.cloudflare.com fonts.googleapis.com https://cdn.jsdelivr.net https://cdn.knightlab.com https://fonts.googleapis.com https://science-catalog.fws.gov https://unpkg.com unpkg.com; webrtc 'block'; worker-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+    "content-security-policy": "frame-ancestors 'self' https://fws.gov https://www.fws.gov",
+    "last-modified": "Mon, 19 Oct 2026 05:20:23 GMT",
+    "etag": "\"1792387223-gzip\"",
+    "x-request-id": "v-c8d11074-cb7c-11f1-bb78-abb7e7efa9bf",
+    "x-ah-environment": "prod",
+    "x-age": "0",
+    "x-akamai-transformed": "9 14601 0 pmb=mRUM,1",
+    "vary": "Accept-Encoding",
+    "cache-control": "public, max-age=900",
+    "date": "Mon, 19 Oct 2026 07:52:05 GMT",
+    "server-timing": "cdn-cache; desc=HIT",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-envoy-upstream-service-time": "277",
+    "server": "envoy",
+    "connection": "close",
+    "transfer-encoding": "chunked"
+  }
+}

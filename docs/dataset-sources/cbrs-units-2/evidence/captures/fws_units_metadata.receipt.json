@@ -1,0 +1,25 @@
+{
+  "requested_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-polygons-metadata.txt",
+  "final_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-polygons-metadata.txt",
+  "observed_at": "2026-10-19T07:52:05.954671+00:00",
+  "status": 200,
+  "byte_length": 25709,
+  "sha256": "8fc6db0523f981a7c4d50b4107fc463b1e8ffcce16d5adc2df2fd8de7df16604",
+  "headers": {
+    "content-type": "text/plain",
+    "x-content-type-options": "nosniff",
+    "last-modified": "Thu, 19 Dec 2024 13:23:41 GMT",
+    "x-request-id": "ff98e10c-1a12-4e68-814b-71cd5348107d",
+    "x-ah-environment": "prod",
+    "x-age": "0",
+    "vary": "Accept-Encoding",
+    "cache-control": "max-age=900",
+    "date": "Mon, 19 Oct 2026 07:52:05 GMT",
+    "content-length": "25709",
+    "server-timing": "cdn-cache; desc=MISS",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-envoy-upstream-service-time": "442",
+    "server": "envoy",
+    "connection": "close"
+  }
+}
