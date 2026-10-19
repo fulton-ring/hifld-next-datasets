@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.historical_tsunami_events import tsunami_events_draft_job, tsunami_events_draft_schedule
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
@@ -390,6 +391,8 @@ def _configured_sensors():
 
 
 defs = Definitions(
+    jobs=[tsunami_events_draft_job],
+    schedules=[tsunami_events_draft_schedule],
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),

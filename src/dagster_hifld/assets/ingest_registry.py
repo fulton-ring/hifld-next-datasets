@@ -17,7 +17,10 @@ from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 
+from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
+
 hifld_ingest_assets = [
+    noaa_historical_tsunami_events,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     *census_blocks_2020_ingest_assets,
