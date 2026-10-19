@@ -142,7 +142,9 @@ def manifest_for(body,receipt,identity):
 def processing_identity():
     root = Path(__file__).parents[3]
     return {'python':platform.python_version(),'implementation':platform.python_implementation(),'platform':platform.platform(),
-        'distributions':sorted((d.metadata['Name'],d.version) for d in importlib.metadata.distributions()),
+        # The shared first-construction witness accepts canonical JSON types;
+        # use lists instead of tuples so the identity can be sealed losslessly.
+        'distributions':sorted([d.metadata['Name'],d.version] for d in importlib.metadata.distributions()),
         'gdal':pyogrio.__gdal_version_string__,'geos':shapely.geos_version_string,'proj':pyproj.proj_version_str,
         'files':{str(p.relative_to(root)):sha256_file(p) for p in sorted(root.joinpath('src/dagster_hifld').rglob('*.py'))+[root/'uv.lock',root/'pyproject.toml']},
         'verifier_sha256':verifier_implementation_sha256()}
