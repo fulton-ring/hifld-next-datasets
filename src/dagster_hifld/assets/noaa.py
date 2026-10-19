@@ -124,6 +124,7 @@ def noaa_200nm_eez_and_maritime_boundaries(context, staging_storage: StagingStor
         captures, receipts = fetch_noaa_layer(_NOAA_MAPSERVER_BASE + "/3")
     result = stage_noaa_candidate(
         staging=staging_storage,
+        expected_layer_url=_NOAA_MAPSERVER_BASE + "/3",
         dataset_slug=_EEZ_DATASET_SLUG,
         file_slug=_EEZ_FILE_SLUG,
         captures=captures,

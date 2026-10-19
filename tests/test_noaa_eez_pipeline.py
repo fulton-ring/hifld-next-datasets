@@ -23,14 +23,11 @@ EVIDENCE = Path(__file__).parents[1] / 'docs/dataset-sources/200nm-eez-and-marit
 
 def replay_directory(root):
     root.mkdir()
-    names = {'layer': 'layer.body', 'features': 'all.json.gz', 'geojson': 'geojson.json.gz', 'count_before': 'count.json', 'count_after': 'count.json', 'ids_before': 'id-page.json', 'ids_after': 'id-page.json'}
-    receipts = []
-    for name, filename in names.items():
-        raw = (EVIDENCE / filename).read_bytes()
-        if filename.endswith('.gz'):
-            raw = gzip.decompress(raw)
+    receipts = json.loads((EVIDENCE / 'verified-capture-receipts.json').read_text())
+    for receipt in receipts:
+        name = receipt['capture']
+        raw = gzip.decompress((EVIDENCE / ('verified-capture-' + name + '.json.gz')).read_bytes())
         (root / (name + '.json')).write_bytes(raw)
-        receipts.append({'capture': name, 'url': 'https://maritimeboundaries.noaa.gov/replay/' + name, 'http_status': 200, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(), 'fetched_at': '2026-10-19T04:19:08Z', 'fixture_note': 'Historical complete real96 rows; count/ID projection reused across before/after fixture slots, not independent live requests'})
     (root / 'receipts.json').write_text(json.dumps(receipts))
 
 
