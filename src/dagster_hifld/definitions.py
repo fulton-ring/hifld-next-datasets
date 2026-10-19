@@ -437,6 +437,11 @@ from dagster_hifld.assets.epa_facilities_labels import (
     epa_facilities_labels_draft_job,
     epa_facilities_labels_draft_schedule,
 )
+from dagster_hifld.assets.epa_tsca import (
+    epa_frs_tsca_complete,
+    epa_tsca_draft_job,
+    epa_tsca_draft_schedule,
+)
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -872,6 +877,7 @@ defs = Definitions(
         electric_retail_service_territories_release_pending,
         epa_facilities_full_quality,
         epa_facilities_labels_full_quality,
+        epa_frs_tsca_complete,
     ],
     jobs=[
         elsd_source_integrity_job,
@@ -946,6 +952,7 @@ defs = Definitions(
         electric_retail_service_territories_preservation_job,
         epa_facilities_draft_job,
         epa_facilities_labels_draft_job,
+        epa_tsca_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
@@ -1025,6 +1032,7 @@ defs = Definitions(
         docks_draft_schedule,
         epa_facilities_draft_schedule,
         epa_facilities_labels_draft_schedule,
+        epa_tsca_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
