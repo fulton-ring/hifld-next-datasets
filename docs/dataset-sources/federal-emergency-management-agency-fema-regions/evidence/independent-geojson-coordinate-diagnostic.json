@@ -1,0 +1,145 @@
+{
+  "scope": "Full historical GeoJSON versus historicalParquet literalcoordinate diagnostic, no tolerance/equivalence or produceredit approval",
+  "rows": [
+    {
+      "objectid": 11,
+      "rings": 156,
+      "nonclosing_vertices": 364245,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 2,
+      "Parquet_nonmatching_coordinate_occurrences": 2,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 2,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        1.4210854715202004e-14,
+        7.105427357601002e-15
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 12,
+      "rings": 1373,
+      "nonclosing_vertices": 313698,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 3,
+      "Parquet_nonmatching_coordinate_occurrences": 3,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 3,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        0.0,
+        3.552713678800501e-14
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 13,
+      "rings": 244,
+      "nonclosing_vertices": 309750,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 5,
+      "Parquet_nonmatching_coordinate_occurrences": 5,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 5,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        1.4210854715202004e-14,
+        7.105427357601002e-15
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 14,
+      "rings": 100,
+      "nonclosing_vertices": 377537,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 7,
+      "Parquet_nonmatching_coordinate_occurrences": 7,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 7,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        7.105427357601002e-14,
+        7.105427357601002e-15
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 15,
+      "rings": 461,
+      "nonclosing_vertices": 527403,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 8,
+      "Parquet_nonmatching_coordinate_occurrences": 8,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 8,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        8.526512829121202e-14,
+        8.526512829121202e-14
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 16,
+      "rings": 69,
+      "nonclosing_vertices": 213875,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 5,
+      "Parquet_nonmatching_coordinate_occurrences": 5,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 5,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        5.684341886080802e-14,
+        4.263256414560601e-14
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 17,
+      "rings": 251,
+      "nonclosing_vertices": 230776,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 5,
+      "Parquet_nonmatching_coordinate_occurrences": 5,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 5,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        9.947598300641403e-14,
+        7.105427357601002e-15
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 18,
+      "rings": 1,
+      "nonclosing_vertices": 16165,
+      "coordinate_multisets_exact_excluding_closing_duplicates": true,
+      "GeoJSON_nonmatching_coordinate_occurrences": 0,
+      "Parquet_nonmatching_coordinate_occurrences": 0,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 0,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        0.0,
+        0.0
+      ],
+      "canonical_ring_bag_exact": true
+    },
+    {
+      "objectid": 19,
+      "rings": 1,
+      "nonclosing_vertices": 31358,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 1,
+      "Parquet_nonmatching_coordinate_occurrences": 1,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 1,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        0.0,
+        4.263256414560601e-14
+      ],
+      "canonical_ring_bag_exact": false
+    },
+    {
+      "objectid": 20,
+      "rings": 355,
+      "nonclosing_vertices": 252348,
+      "coordinate_multisets_exact_excluding_closing_duplicates": false,
+      "GeoJSON_nonmatching_coordinate_occurrences": 382,
+      "Parquet_nonmatching_coordinate_occurrences": 382,
+      "corresponding_canonical_ring_positions_with_unequal_float_pairs": 382,
+      "maximum_absolute_pairwise_delta_degrees_UNAPPROVED_diagnostic": [
+        0.0,
+        4.973799150320701e-14
+      ],
+      "canonical_ring_bag_exact": false
+    }
+  ]
+}

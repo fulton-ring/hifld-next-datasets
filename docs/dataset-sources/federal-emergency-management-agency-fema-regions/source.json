@@ -1,6 +1,6 @@
 {
   "issue": 84,
-  "status": "draft_implementation_validation_pending",
+  "status": "draft_pipeline_locally_verified_final_independent_review_pending",
   "classification": "Direct official FEMA GIS polygon publication; exact source release/baseline/contract/rights acceptance pending",
   "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
   "dataset_slug": "federal-emergency-management-agency-fema-regions",
@@ -86,7 +86,8 @@
     "Review source int32 versus historical Parquet int64 and original full Shape__Area/Shape__Length names versus truncated historical names.",
     "Review source shape/API geometry to native WKB geometry column and preservation of Polygon versus historical MultiPolygon wrapping for objectids18/19.",
     "Approve explicit source objectid / published id / native storage FID / MVT ID contracts independently, retaining all originals.",
-    "Approve attribution/rights and exact release candidate; none approved here."
+    "Approve attribution/rights and exact release candidate; none approved here.",
+    "Historical GeoJSON literal WKB differs in all ten records; a diagnostic ring-direction/start normalization finds418unequal coordinate pairs over9records, maximum absolute component about9.95e-14degrees. No tolerance/equivalence or producer-coordinate-edit inference is approved; native source output remains unchanged."
   ],
   "inaccessible_crosswalks": [
     {
@@ -101,5 +102,29 @@
     }
   ],
   "approved": false,
-  "validation": "Focused and complete pure extraction results only until actual Dagster execution evidence is added."
+  "validation": {
+    "full_suite": {
+      "tests": 552,
+      "passed": 551,
+      "skipped": 1,
+      "seconds": 107.937,
+      "complete_real_FEMA_input_opt_in_included": true,
+      "skipped_scope": "Real GCS E2E opt-in not configured.",
+      "log_sha256": "de04e79cd8e2babc11932b89d39f2b34049244e9f597ea427dc8a0cd2c675463",
+      "command": "HIFLD_FEMA_REGIONS_TEST_CAPTURE_DIR=<preserved-capture-directory> PYTHONPATH=src python -m unittest discover tests",
+      "tools": "Managed Python environment; Tippecanoe on PATH.",
+      "IaC_test_input": {
+        "actual_unchanged_source_snapshot": "56aa10757129c457c530d707d9a40bae13e0907f",
+        "full_snapshot_archive_sha256": "ee36600c45e5bb71d5b96736a34ec4391a31dc1502c7c01ff8b2413eeadebc00",
+        "scope": "Supplied actual unchanged sibling dagster.tf source input. No Git checkout, whole-IaC validation, infrastructure deployment or CI claim."
+      }
+    },
+    "actual_registered_Dagster_runs": 12,
+    "complete_native_vertices": 2640166,
+    "all_10_rows_types_nulls_IDs_ordered_native_WKB_exact": true,
+    "prior_data_and_original_raw_preserved": true,
+    "release_promoted": false
+  },
+  "public_source_commit": "25df8c4f20eb595fc99c99aa201b10f1753c77a5",
+  "pull_request": "https://github.com/fulton-ring/hifld-next-datasets/pull/458"
 }

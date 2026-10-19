@@ -1,0 +1,11 @@
+{
+  "native_backup_commit": "3259b87d2cb3cf944dc38883140edd81ad526a1b",
+  "public_source_commit": "25df8c4f20eb595fc99c99aa201b10f1753c77a5",
+  "tree_sha256_git": "0b1cf374ac488745961d7b1122546779c763b5f3",
+  "identical_trees": true,
+  "all_90_git_blobs_verified": true,
+  "public_parent": "08e575415891cef6609366a303a5d28dba4a3cc6",
+  "read_only_fetch_verified": true,
+  "clean_local_ref_aligned_before_first_construction": true,
+  "observed_at": "2026-10-19T13:09:30.307535+00:00"
+}
