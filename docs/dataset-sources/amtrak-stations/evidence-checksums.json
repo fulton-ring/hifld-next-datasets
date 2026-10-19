@@ -38,5 +38,17 @@
   "evidence/published-stac-item.receipt.json": {
     "bytes": 1400,
     "sha256": "7e475f87eb8974273bbdae90c96788f1d13a27698318dcd0e5b3a87f2b126b7e"
+  },
+  "evidence/review-fixes-data-dictionary.json": {
+    "bytes": 59515,
+    "sha256": "bac45ec9a5a40285418fef8da30ca895e75e3041a3bef523d447317c8b3429ea"
+  },
+  "evidence/review-fixes-execution.json": {
+    "bytes": 8019,
+    "sha256": "b7156930741a71d5bfcf58a278846884a263ebea36757721f951117c08ed4637"
+  },
+  "evidence/review-fixes-source-manifest.json": {
+    "bytes": 72698,
+    "sha256": "5d9e29e21c6523d25d67edd7a613392a6030ee40430e14c7f2f183906842e660"
   }
 }
