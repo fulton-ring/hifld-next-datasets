@@ -15,7 +15,7 @@
     "relationship": "Material datasetidentity/coverage/schema/source-selection break requiring decision; no exactcontinuation claimed",
     "rows": 766
   },
-  "canonical_candidate": "Opted-in native GeoParquet only; original masters/archive stay raw-only. General shared417 reader/discovery integration is pending before actual materialization. No canonical Shapefile or unknown-format workaround.",
+  "canonical_candidate": "Opted-in native GeoParquet only; raw original masters/archive retained separately. Independently reviewed shared417 reader/discovery230ead9 deliberately integrated before portable processing d71230be and actual materializations; no canonical Shapefile/unknown workaround.",
   "contract_approved": false,
   "coverage_criteria": "Active2002, production>50000tons, non-government/non-portable; complete preserved2324 records/48states, not allcurrentoperations/50statecensus",
   "crosswalk": {
@@ -213,5 +213,6 @@
   "schema_version": 1,
   "source_approved": false,
   "status": "working_explicit_historical_preservation_candidate_draft",
-  "test_fixture": "Small synthetic structural seed only in Git; full real captures via explicit opt-in checksummed artifact."
+  "test_fixture": "Small synthetic structural seed only in Git; full real captures via explicit opt-in checksummed artifact.",
+  "verification": "evidence/implementation-verification.json"
 }
