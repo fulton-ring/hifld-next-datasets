@@ -21,6 +21,10 @@
       "sha256": "f2cf39c53479249ae5b806fd84cdd5a7a2f709ddf796c19e20dcacac54c6a20a",
       "bytes": 39997
     },
+    "docs-only-reuse-check.py": {
+      "sha256": "dbb57d89f00bea4125649298a9461cf3c3f311d1539704151b07c45053eb537d",
+      "bytes": 5360
+    },
     "focused-tests.log": {
       "sha256": "5f428bb01498c9e2ad6285c27ca1cd11e5a6406c7920bcc5a5f531230eb892bf",
       "bytes": 2818
@@ -34,12 +38,16 @@
       "bytes": 14654
     },
     "README.md": {
-      "sha256": "5e2e7b235ed2d32bcf544a566e887f5edf5c44eb72769f8d1b7f32598d143a8a",
-      "bytes": 2450
+      "sha256": "e429bd9e6a3451f2df44abfeab1d4b5f3f7c1abe81ed80fcf208b0e07dd6efed",
+      "bytes": 3569
     },
     "actual-candidate-object-inventory.json": {
       "sha256": "b1608355cba2ac9545c55d9f49eb8a0fdb6e45139c9a1c92a97b8705dece0ccb",
       "bytes": 9517
+    },
+    "docs-only-reuse.json": {
+      "sha256": "846c1ad84006aea314a49f08161f1ee3bb3d4eb93083e971eb6ce34eb491dddc",
+      "bytes": 9909
     },
     "actual-proposed_source_contract.json": {
       "sha256": "cbd8c869478274f43a3e683a25a5bf88194bf6b35866e55fe50f101747e4a1dc",
@@ -65,9 +73,21 @@
       "sha256": "9890b9e4a05555aca56043d71eae06a9a1814476ace6151f3d917c46ffccf4c0",
       "bytes": 1644
     },
+    "docs-only-reuse.log": {
+      "sha256": "4ca1e736fc6eb2289dfdf37abfc9601719e44a4edb24b81c4a74131d6046b21a",
+      "bytes": 14525
+    },
     "full-suite.log": {
       "sha256": "b90cef9e5c12dc00c5d434ea993abaae89e34d2261556b131edc4163250fffad",
       "bytes": 18574
+    },
+    "closed-duplicate-archives/synthetic-quality-candidate.manifest.json": {
+      "sha256": "de852cc03905b2f7202d3abfe5b7bd020d168043c8c55759f4cb2bcd6e2f2abf",
+      "bytes": 15434
+    },
+    "closed-duplicate-archives/post-catalog-seed.manifest.json": {
+      "sha256": "a3fa53cac5fb1e72bcee0071f5a554f93a2e5b15b90d059c8a5d7856fa8358f9",
+      "bytes": 11965
     },
     "bad-cache-archives/missing_construction_bundle.manifest.json": {
       "sha256": "c9bb6b63b2bc1a4b4202f2973dfe1cdd5b12d8a82c6f9bc4781b15cabbe41674",
@@ -120,6 +140,14 @@
     "source-fidelity/baseline_comparison.json": {
       "sha256": "21412bd8ecc8828933481ed6074280757f5f1919be68d13f505e47324d8742c4",
       "bytes": 1824
+    },
+    "later-real-capture-receipts/official_zip.receipt.json": {
+      "sha256": "a1b0e56e7c5910a40da89299ddcf74cf7a554d9951e5eaee2752f9cc44ed10e0",
+      "bytes": 474
+    },
+    "later-real-capture-receipts/fws_prohibitions_metadata.receipt.json": {
+      "sha256": "c45f1b9c20df96ed7caf9d78f049229abe6b1101cff1003d6483eb1bb2689321",
+      "bytes": 487
     }
   }
 }

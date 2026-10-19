@@ -165,7 +165,16 @@
     },
     "independent_exact_final_head_review": "pending",
     "release_approval": false,
-    "CI": "No full-suite CI claim"
+    "CI": "No full-suite CI claim",
+    "documentation_only_HEAD": {
+      "head": "a2c018ebe0e252610a9d48791f5b68820d62878a",
+      "original_construction_commit": "264cdd2b58e6e717a28337bb00a78e38d931ebfd",
+      "execution": "evidence/construction-binding/docs-only-reuse.json",
+      "actual_runs": 3,
+      "refresh_later_real_same_byte_capture_receipts_and_fresh_rebuild": "PASS",
+      "original_manifest_bundle_receipts_all_source_owned_bytes_prior_raw_publication_preserved": true
+    },
+    "actual_runs_total_with_documentation_only_HEAD": 16
   },
   "historical_policy_verification": {
     "execution": "evidence/policy-integration/execution.json",
