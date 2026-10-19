@@ -1,0 +1,31 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/historical-tsunami-observations/historical-tsunami-observations/v1.0.0/geoparquet/historical-tsunami-observations.parquet",
+  "fetched_at": "2026-10-19T10:10:13.330644+00:00",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/historical-tsunami-observations/historical-tsunami-observations/v1.0.0/geoparquet/historical-tsunami-observations.parquet",
+  "status": 200,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU83HoMgAn0hDmJf3qB9iPDYMhzFXtl_i4FYrDbsSJRkqm-k9k-9UOYqaClkh3ulFx9MD",
+    "expires": "Mon, 19 Oct 2026 11:10:13 GMT",
+    "date": "Mon, 19 Oct 2026 10:10:13 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:37 GMT",
+    "etag": "\"8eb897e972e2e263f3a034d6195c3c7e\"",
+    "x-goog-generation": "1791506377968604",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "3112102",
+    "x-goog-hash": "crc32c=ibcUvQ==, md5=jriX6XLi4mPzoDTWGVw8fg==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "3112102",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "412"
+  },
+  "wire_bytes": 3112102,
+  "bytes": 3112102,
+  "sha256": "fe0e3fe4c91dfb6f3a559231951065a6a2f314c2a84054525be214ad5e961cc2"
+}

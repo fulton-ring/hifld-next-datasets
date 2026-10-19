@@ -1,0 +1,31 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/historical-tsunami-observations/historical-tsunami-observations/v1.0.0/pmtiles/historical-tsunami-observations.pmtiles",
+  "fetched_at": "2026-10-19T10:10:14.480134+00:00",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/historical-tsunami-observations/historical-tsunami-observations/v1.0.0/pmtiles/historical-tsunami-observations.pmtiles",
+  "status": 200,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU806os7zfuhiuVGDnJ-S67GQ2KxLGc42SPwvtOFkomPuLQ7ncJLM0ms8-C2UQYwBZnuX",
+    "expires": "Mon, 19 Oct 2026 11:10:14 GMT",
+    "date": "Mon, 19 Oct 2026 10:10:14 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:37 GMT",
+    "etag": "\"290bc9507171a4d228e04b17dbc418bf\"",
+    "x-goog-generation": "1791506377978704",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "14269755",
+    "x-goog-hash": "crc32c=u4eFhg==, md5=KQvJUHFxpNIo4EsX28QYvw==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "14269755",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "310"
+  },
+  "wire_bytes": 14269755,
+  "bytes": 14269755,
+  "sha256": "d5afe0e5f5f4ee8ad7af670cfed5447b5dffa639fbef3f71ef161be656a84937"
+}
