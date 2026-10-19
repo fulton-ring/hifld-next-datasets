@@ -23,6 +23,18 @@
     "bytes": 12928,
     "sha256": "df3b8b37beb01e5167a21c993816d817571d6a3209bc59b4a630bf8a7fa9d86a"
   },
+  "evidence/preflight-fixes-data-dictionary.json": {
+    "bytes": 59515,
+    "sha256": "0ca5eb76f5c09081b440faacef926160d0d504a9da82ff8bf64c87b994c26972"
+  },
+  "evidence/preflight-fixes-execution.json": {
+    "bytes": 8706,
+    "sha256": "9e0e03bc6e26b9101a8cd283ed4ee26087cf0fb1ecf7b58a582f08a7d91e8fa7"
+  },
+  "evidence/preflight-fixes-source-manifest.json": {
+    "bytes": 72698,
+    "sha256": "e706bb172cee18fb21bf2e805c42739ed450502185c2583d77298103f9b9171a"
+  },
   "evidence/published-baseline-candidate.parquet": {
     "bytes": 132155,
     "sha256": "38d7c8e2431805734c5db6718629070e6eeb325160aff5fcca3a17eaa4ffa9a7"
