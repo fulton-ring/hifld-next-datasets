@@ -1,6 +1,7 @@
 """Real complete captures establish draft fidelity; synthetic negatives grant no approval."""
 import copy
 import gzip
+import os
 
 import httpx
 import json
@@ -19,9 +20,11 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import cbrs_map_panels as s
 
-CAPTURE=Path(__file__).parents[1]/'docs/dataset-sources/cbrs-map-panels-1/evidence/captures'
+_CAPTURE_ENV = 'HIFLD_CBRS_MAP_PANELS_TEST_CAPTURE_DIR'
+CAPTURE=Path(os.environ[_CAPTURE_ENV]) if os.environ.get(_CAPTURE_ENV) else None
 def captures(): return {n:((CAPTURE/(n+'.body')).read_bytes(),json.loads((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
 
+@unittest.skipUnless(os.environ.get(_CAPTURE_ENV), 'complete original CBRS captures opt-in required; see docs/dataset-sources/cbrs-map-panels-1/README.md')
 class PanelsTests(unittest.TestCase):
     def test_complete_original(self):
         rows,audit,_=s.inspect_source(captures())
@@ -30,12 +33,6 @@ class PanelsTests(unittest.TestCase):
         self.assertEqual(len(s.provenance(captures())['inputs']),8)
         self.assertEqual(s.typed_table(rows,audit).schema.field('Map_Date').type.bit_width,64)
 
-    def test_registry_schedule_and_remote_rejected(self):
-        self.assertIn(fws_cbrs_map_panels,hifld_ingest_assets)
-        self.assertEqual(fws_cbrs_map_panels_draft_refresh_schedule.default_status,DefaultScheduleStatus.STOPPED)
-        for storage in [PublishedStorageResource(local_dir='/tmp/no-write'),StagingStorageResource(bucket='never',use_local=False)]:
-            with patch.object(s,'acquire') as acquire,self.assertRaises(ValueError):s.stage_cbrs_map_panels_candidate(storage,capture_dir=CAPTURE)
-            acquire.assert_not_called()
 
     def test_receipt_and_provenance_preflight(self):
         for name in s.URLS:
@@ -170,6 +167,15 @@ class PanelsTests(unittest.TestCase):
             self.assertTrue(any(p.read_bytes()==bad for p in stage.rglob('original-receipt.body')))
             self.assertTrue(any(p.read_bytes()==body for p in stage.rglob('response.body')))
             self.assertFalse((stage/s.SLUG).exists())
+
+
+class PanelsMechanicsTests(unittest.TestCase):
+    def test_registry_schedule_and_remote_rejected(self):
+        self.assertIn(fws_cbrs_map_panels,hifld_ingest_assets)
+        self.assertEqual(fws_cbrs_map_panels_draft_refresh_schedule.default_status,DefaultScheduleStatus.STOPPED)
+        for storage in [PublishedStorageResource(local_dir='/tmp/no-write'),StagingStorageResource(bucket='never',use_local=False)]:
+            with patch.object(s,'acquire') as acquire,self.assertRaises(ValueError):s.stage_cbrs_map_panels_candidate(storage,capture_dir=CAPTURE)
+            acquire.assert_not_called()
 
     def test_live_partial_attempts_retained(self):
         import httpx

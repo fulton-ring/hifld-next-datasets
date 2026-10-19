@@ -1,31 +1,11 @@
-# CBRS Map Panels — reviewable draft pipeline
+# FWS CBRS Map Panels draft
 
-Issue #29 has a feasible complete delegated official source. FWS maps-and-data links the exact USGS CBRS Mapper and ArcGIS item; layer5 is CBRS Map Panels, distinct from buffer/prohibition/unit layers. The captured national response has574 unique OBJECTID and Panel_No values,13 original attributes,574 valid native EPSG4269 Polygon geometries. Count and full identifier roster match before and after extraction. Complete original bodies and dated receipts are retained. The native service field declarations remain intact; draft int64 OBJECTID storage is a proxy because source OID physical width is not exposed. Millisecond date integers remain numeric, rather than being silently converted to published strings.
-
-All574 published candidate OBJECTID/id values and all574 geometry WKBs match the complete source. The field contract still differs: three truncated published names, numeric dates versus strings, empty strings versus nulls, two changed Title values, and floating precision differences. The complete published Parquet and all comparison evidence remain candidates; no accepted baseline exists. Exact floating values and nulls remain preserved.
-
-The user’s scope correction authorizes preparing reviewable draft code/local tests while source, baseline and contract acceptance is pending. It does not authorize release, merge, closure or production data. The source-only STOPPED monthly job writes explicitly isolated local staging, preserves all raw inputs and historical versions, validates canonical provenance before canonical writes, and atomically exposes only complete candidates. Refresh re-derives cached data and metadata from original source rather than trusting self-pinned cache hashes. Unknown/partial/changed sources are quarantined for review. Invalid existing draft caches are atomically moved intact outside discoverable staging, with every byte retained. Complete shared verifier reports and sidecars remain available under metadata/source-fidelity; repeated normal catalogs retain their exact legitimate metadata snapshots without false quarantine.
-
-Per-map Map_Date and Effective_Date are not feed publication dates; no release date is invented from portal edits or fetch time. The DOI crosswalk returned Cloudflare403 in the preserved same-day coordinator capture, so the historical crosswalk remains unmatched. The direct current source delegation is separately evidenced. Official digital footprints are not definitive property eligibility determinations.
-
-The working pipeline has executed all574 real rows through actual isolated Dagster source, refresh, normal formats, second catalog and post-catalog refresh. Both normal format runs stop only at the missing independent release registry. A separate synthetic missing-geometry partition fails its blocking quality check. All original raw captures and prior local published fixture bytes remain unchanged; that fixture is not an accepted real dataset. Complete source IDs/values/types/native WKB match produced GeoPackage and terminal GeoParquet. Exact run IDs and logs are in evidence/execution.json and evidence/dagster.log. Nine focused tests pass; full suite508 tests:507 pass, one real production-GCS E2E skip, using the actual sibling IaC snapshot. This does not infer CI success or dataset approval. Independent exact-head review remains pending.
-
-Replay the complete574-row published-candidate comparison without network access:
-
-```bash
-PYTHONPATH=src python scripts/compare_cbrs_map_panels.py --output /tmp/cbrs-map-panels-comparison.json
-```
-
-The original complete published candidate is generation `1791506354782168`, SHA256 `36662423bf6f187a2efb9b399d44ca78e25532c7d3b8200e609028ea88df659d`; it remains unaccepted. The official ArcGIS item account is `richard_easterbrook@fws.gov_fws`, explicitly delegated by FWS, with the full original use constraints retained.
-
-
-The independently reported missing-marker and forged-evidence defects are repaired at source checkpoint `3c0dd7576829c84d17b6b6a80aaad7d7306b8d20`. Existing directory lookup, ready validation and invalid-cache quarantine now share the install lock, so incomplete versions are retained intact outside discovery. Refresh reruns the shared comparator against all original574 rows and checks every deterministic report/sidecar/Markdown/wrapper and the exact unapproved baseline placeholder. A self-repinned cache cannot retain forged population or acceptance claims. Eleven focused tests pass, including exact quarantine inventories and preserving a concurrent valid install winner.
-
-Six actual registered refresh-job runs demonstrate source/reuse success, missing-ready and both reviewer evidence attacks fail with complete-byte quarantine, and restored-cache success. These run IDs and logs are in `evidence/review-repairs/`. The four complete real data payloads and all three data constructor ASTs are identical to the earlier fully formatted574-row proof. That terminal graph and508-test suite remain historical evidence at `b0b1de8`; neither was rerun or relabeled as a new repair-head pass. Independent review of the exact repaired final head is pending. No release decision changed.
-
-
-A subsequent actual anonymous LIVE refresh exposed a transport defect despite captured-input replay passing: FWS served gzip with Content-Length19464wire bytes and101644decoded bytes. The old length check falsely rejected three HTTP200responses. Transport checkpoint `291ebf06e31c3468f3ee8557976ee69624402e31` requests identity encoding and verifies Content-Length against HTTPX’s actual wire counter, handling servers that still compress. All decoded-size bounds and failed-attempt retention remain enforced. Real HTTPX gzip complete/truncated/partial tests pass; twelve focused tests pass overall.
-
-After this repair, actual `acquire(storage, None)` read all eight live capture slots anonymously, not replayed files: official FWS page/item/layer, complete574-row native API page and before/after count/ID witnesses. Every response was200and every declared wire length matched. The fresh complete native page hash, all574 IDs/values/types/native geometry and source audit match the original complete captures exactly. Only isolated raw storage was written. Fresh supporting-page bytes and fetch times do not establish a source publication date or acceptance. Complete bodies, original observations, three pre-fix failed attempts and current diagnostics are preserved in `evidence/live-transport/`; replay is `scripts/verify_cbrs_map_panels_live.py --runtime /tmp/panels-live-new`.
-
-The prior exact head `78e1f02` independently passed reviewable draft scope (issue review6262747017/PR6262747665), without source/baseline/contract/release approval. The new transport head requires its own narrow independent review. Prior pipeline/materialization/gate proofs are preserved; no full-suite or terminal graph rerun is claimed for this transport-only change.
+- Official landing: https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data
+- Candidate endpoint: https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query
+- Local job: `fws_cbrs_map_panels_draft_refresh_job`; schedule remains stopped.
+- Blockers: feed publication date is unknown; use limits and FWS share-back/attribution terms require review.
+- Archived research and all original captured test inputs: `/workspace/work/hifld-coordinator/artifacts/issue-29-removed-research-docs-44d3150d4398.tar.gz`.
+- Archive SHA256: `ef8619e786de209d0edb4bfe0b557caee3979694d09a4f4c3d23bb1efad4cb68`.
+- Four capture-independent mechanics tests stay in the default run; full-capture tests require `HIFLD_CBRS_MAP_PANELS_TEST_CAPTURE_DIR`.
+- Opt in: `HIFLD_CBRS_MAP_PANELS_TEST_CAPTURE_DIR=/workspace/work/hifld-coordinator/29/artifact-cleanup-29/original-complete-captures PYTHONPATH=src:tests:. /workspace/hifld-worker-worktrees/19/.venv/bin/python -m unittest discover -s tests -p test_cbrs_map_panels_source.py`.
+- Draft only; no source, legal, baseline, or release acceptance is implied.

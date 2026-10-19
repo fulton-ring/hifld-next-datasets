@@ -4,7 +4,10 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime
+from pathlib import PurePosixPath
 from urllib.parse import parse_qsl, urlsplit
+from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.literal_geojson_policy import literal_geojson_spec
 
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
 INPUT_URL_FIELDS = ("canonical_url", "retrieval_url", "requested_url", "request_url", "observed_final_url", "final_url")
@@ -60,6 +63,8 @@ def validate_provenance(manifest: object) -> None:
     if (not isinstance(manifest, dict) or type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1
             or manifest.get("processor") != "HIFLD Next" or not isinstance(manifest.get("inputs"), list) or not manifest["inputs"]):
         raise ValueError("missing_versioned_multi_input_provenance")
+    validate_output_policy(manifest)
+    literal_geojson_spec(manifest)
     try:
         json.dumps(manifest, allow_nan=False)
     except (TypeError, ValueError, RecursionError) as exc:
@@ -77,6 +82,26 @@ def validate_provenance(manifest: object) -> None:
                 raise ValueError("invalid_transformation_parameters")
         else:
             raise ValueError("incomplete_transformation_provenance")
+    if "manifest_layers" in manifest:
+        layers = manifest["manifest_layers"]
+        if not isinstance(layers, list) or not 0 < len(layers) <= 3:
+            raise ValueError("invalid_authored_manifest_layers")
+        layer_names = set()
+        for layer in layers:
+            if not isinstance(layer, dict) or not isinstance(layer.get("layer"), str) or layer["layer"] not in {"dataset", "file", "version"} or layer["layer"] in layer_names:
+                raise ValueError("invalid_authored_manifest_layer_identity")
+            layer_names.add(layer["layer"])
+            if not isinstance(layer.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", layer["sha256"]):
+                raise ValueError("invalid_authored_manifest_layer_checksum")
+            for name in ("snapshot", "manifest_key"):
+                value = layer.get(name)
+                if (not isinstance(value, str) or not value or PurePosixPath(value).is_absolute() or ".." in PurePosixPath(value).parts
+                        or PurePosixPath(value).as_posix() != value):
+                    raise ValueError("unsafe_authored_manifest_layer_path")
+            if not layer["snapshot"].startswith("metadata/source/"):
+                raise ValueError("unsafe_authored_manifest_layer_snapshot")
+            if not isinstance(layer.get("input_ids"), list) or any(not isinstance(identity, str) for identity in layer["input_ids"]):
+                raise ValueError("invalid_authored_manifest_layer_inputs")
     seen = set()
     for item in manifest["inputs"]:
         if not isinstance(item, dict):
@@ -133,9 +158,12 @@ def validate_provenance(manifest: object) -> None:
             raise ValueError("unexplained_unknown_release_date")
         if "release_date_unknown_reason" in item and item["release_date_unknown_reason"] is not None:
             _text(item["release_date_unknown_reason"], "invalid_unknown_release_date_explanation")
+    if any(identity not in seen for layer in manifest.get("manifest_layers", []) for identity in layer["input_ids"]):
+        raise ValueError("authored_manifest_layer_has_unresolved_input_identity")
 
 
-PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "lineage")
+PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "lineage", "manifest_layers",
+                     "unsupported_output_formats", "prebuilt_output_policy", "literal_geojson_catalog")
 
 
 def provenance_projection(metadata: dict) -> dict | None:

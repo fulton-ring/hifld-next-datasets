@@ -49,6 +49,7 @@ from dagster_hifld.source_manifest import (
     load_resolved_source_manifest,
     snapshot_source_metadata,
     unsupported_output_reason,
+    prebuilt_output_keys,
 )
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
@@ -851,6 +852,12 @@ def _write_and_publish_geoparquet(
     unsupported = unsupported_output_reason(manifest.metadata, "geoparquet")
     if unsupported:
         return [_skip_output(file_slug, "geoparquet", f"unsupported_output_format:{unsupported}")]
+    prebuilt = prebuilt_output_keys(manifest.metadata, staging_storage, f"{dataset_slug}/{file_slug}/{version}", "geoparquet")
+    if prebuilt is not None:
+        outputs = _existing_format_outputs(dataset_slug, file_slug, version, prebuilt)
+        return [PublishedFormatOutput(item.file_slug, item.format_type, item.path,
+                    {"generation_mode": "preserved_prebuilt", "generic_regeneration": "disabled",
+                     "reason": manifest.metadata["prebuilt_output_policy"]["formats"]["geoparquet"]["reason"]}) for item in outputs]
     existing = _prepare_format_publish(
         staging_storage,
         dataset_slug,
@@ -1347,6 +1354,9 @@ def _output_for_partition(
     }
     if skip_reasons:
         metadata["skip_reason"] = skip_reasons[0]
+    preserved = [output.source_metadata for output in outputs if output.source_metadata and output.source_metadata.get("generation_mode") == "preserved_prebuilt"]
+    if preserved:
+        metadata.update(generation_mode="preserved_prebuilt", generic_regeneration="disabled", reason=preserved[0]["reason"])
     return Output(
         {"version": version, "files": files},
         metadata=metadata,
