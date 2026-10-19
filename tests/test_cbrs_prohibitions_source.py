@@ -2,6 +2,7 @@
 import copy
 import gzip
 import json
+import os
 import tempfile
 import sqlite3
 import struct
@@ -18,9 +19,11 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import cbrs_prohibitions as s
 
-CAPTURE=Path(__file__).parents[1]/'docs/dataset-sources/cbrs-prohibitions-1/evidence/captures'
+CAPTURE=Path(os.environ.get('HIFLD_CBRS_PROHIBITIONS_CAPTURE_DIR','__full_capture_optin_not_configured__'))
+REAL_CAPTURE=unittest.skipUnless(os.environ.get('HIFLD_CBRS_PROHIBITIONS_CAPTURE_DIR'),'Complete producer capture is an external artifact; set HIFLD_CBRS_PROHIBITIONS_CAPTURE_DIR')
 
 class CBRSTests(unittest.TestCase):
+    @REAL_CAPTURE
     def test_complete_original_release(self):
         with tempfile.TemporaryDirectory() as d:
             rows,audit,members=s.inspect_archive((CAPTURE/'official_zip.body').read_bytes(),Path(d))
@@ -29,6 +32,38 @@ class CBRSTests(unittest.TestCase):
         self.assertEqual(audit['coverage']['CBRS_Type'],{'System Unit':1129,'Otherwise Protected Area':564})
         self.assertEqual(audit['nulls']['SU_Date'],564)
         self.assertEqual({r['properties']['__source_fid'] for r in rows},{str(i) for i in range(1693)})
+
+    def test_synthetic_native_date_null_fid_and_geometry_roundtrip(self):
+        """Two invented rows exercise native serialization; no producer acceptance."""
+        import pyarrow.parquet as pq
+        from datetime import date
+        from shapely.geometry import shape
+        from shapely import from_wkb
+        polygon={'type':'Polygon','coordinates':[[[0,0],[1,0],[1,1],[0,0]]]}
+        multi={'type':'MultiPolygon','coordinates':[[[[2,0],[3,0],[3,1],[2,0]]]]}
+        rows=[{'properties':{'Unit':'SYNTH-001','CBRS_Type':'System Unit','FI_Date':'2000-01-02','SU_Date':'2001-02-03','SHAPE_Leng':1.125,'SHAPE_Area':0.5,'__source_fid':'0'},'geometry':polygon},
+              {'properties':{'Unit':'SYNTH-002','CBRS_Type':'Otherwise Protected Area','FI_Date':'2000-01-02','SU_Date':None,'SHAPE_Leng':2.25,'SHAPE_Area':0.5,'__source_fid':'1'},'geometry':multi}]
+        table=s.typed_table(rows,{'bounds':[0,0,3,1]})
+        self.assertEqual(str(table.schema.field('FI_Date').type),'date32[day]')
+        self.assertEqual(str(table.schema.field('SU_Date').type),'date32[day]')
+        self.assertEqual(table['SU_Date'].null_count,1)
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'synthetic.parquet';pq.write_table(table,path);result=pq.read_table(path)
+        self.assertEqual(result.schema,table.schema)
+        self.assertEqual(result['__source_fid'].to_pylist(),['0','1'])
+        self.assertEqual(result['FI_Date'].to_pylist(),[date(2000,1,2)]*2)
+        for actual,original in zip(result.to_pylist(),rows):
+            self.assertEqual(actual['geometry'],shape(original['geometry']).wkb)
+            self.assertEqual(from_wkb(actual['geometry']).geom_type,original['geometry']['type'])
+            for name in ['Unit','CBRS_Type','SHAPE_Leng','SHAPE_Area']:
+                self.assertEqual(actual[name],original['properties'][name])
+
+    def test_synthetic_receipt_type_and_origin_guards(self):
+        body=b'synthetic bounded observation only'
+        valid={'requested_url':s.URL,'final_url':s.URL,'status':200,'byte_length':len(body),'sha256':s.sha(body),'observed_at':'2026-10-19T00:00:00+00:00'}
+        s.validate_receipt(body,valid,s.URL)
+        for field,value in [('status',True),('byte_length',True),('requested_url','https://example.invalid/mirror'),('final_url','https://example.invalid/redirect'),('sha256','0'*64),('observed_at','2026-10-19T00:00:00+00:99')]:
+            with self.subTest(field=field),self.assertRaises(ValueError):s.validate_receipt(body,{**valid,field:value},s.URL)
 
     def test_registry_schedule_and_published_rejected_before_acquisition(self):
         self.assertEqual(sum(a is fws_cbrs_prohibitions for a in hifld_ingest_assets),1)
@@ -39,6 +74,7 @@ class CBRSTests(unittest.TestCase):
                 s.stage_cbrs_prohibitions_candidate(storage,capture_dir=CAPTURE)
             acquire.assert_not_called()
 
+    @REAL_CAPTURE
     def test_all_receipts_preflight_strict_timestamp_url_pins(self):
         captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
         self.assertEqual(len(s.provenance(captures)['inputs']),4)
@@ -55,7 +91,7 @@ class CBRSTests(unittest.TestCase):
 
     def test_bad_receipt_exact_bytes_retained_and_no_candidate(self):
         with tempfile.TemporaryDirectory() as d:
-            capture=Path(d,'capture');capture.mkdir();body=(CAPTURE/'official_zip.body').read_bytes()
+            capture=Path(d,'capture');capture.mkdir();body=b'synthetic untrusted archive observation, not producer data'
             (capture/'official_zip.body').write_bytes(body);bad=b'{"malformed":'
             (capture/'official_zip.receipt.json').write_bytes(bad);stage=Path(d,'stage')
             with self.assertRaises(ValueError):s.acquire(StagingStorageResource(local_dir=str(stage)),capture)
@@ -89,12 +125,13 @@ class CBRSTests(unittest.TestCase):
                 self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
 
     def test_archive_pin_and_zip_roster_changes_fail_before_decode(self):
-        body=(CAPTURE/'official_zip.body').read_bytes()
+        body=b'PK\x03\x04synthetic unapproved invalid archive'
         for changed in [body[:-1],body[:1000],b'error']:
             with tempfile.TemporaryDirectory() as d,patch.object(s.fiona,'open') as opened,self.assertRaisesRegex(ValueError,'changed_truncated'):
                 s.inspect_archive(changed,Path(d))
             opened.assert_not_called()
 
+    @REAL_CAPTURE
     def test_missing_extra_type_id_and_geometry_drift(self):
         body=(CAPTURE/'official_zip.body').read_bytes()
         with tempfile.TemporaryDirectory() as d:
@@ -129,6 +166,7 @@ class CBRSTests(unittest.TestCase):
             with self.assertRaises(ValueError):s.commit_complete_candidate(storage,prefix,{'geopackage/a.gpkg':b'new'}, {})
             self.assertEqual(Path(d,prefix,'geopackage/a.gpkg').read_bytes(),b'prior')
 
+    @REAL_CAPTURE
     def test_cache_metadata_guards_original_gpkg_and_native_date_parquet(self):
         import fiona
         import pyarrow.parquet as pq
@@ -163,6 +201,7 @@ class CBRSTests(unittest.TestCase):
             self.assertEqual(str(table.schema.field('SU_Date').type),'date32[day]')
             self.assertEqual(table.column('SU_Date').null_count,564)
 
+    @REAL_CAPTURE
     def test_native_prebuilt_policy_binds_existing_artifact_without_whole_format_ban(self):
         from dagster_hifld.output_policy import validate_output_policy
         captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
@@ -196,6 +235,7 @@ class CBRSTests(unittest.TestCase):
             self.assertTrue(outcome and 'concurrent_or_incomplete_existing_candidate' in outcome[0])
             self.assertEqual((Path(d)/prefix/'winner').read_bytes(),b'valid-concurrent-winner')
 
+    @REAL_CAPTURE
     def test_external_first_construction_preserves_original_receipts_and_commit(self):
         captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
         repo=Path(__file__).parents[1];commit=s.subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()

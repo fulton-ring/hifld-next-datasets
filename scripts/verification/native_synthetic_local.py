@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import fiona
@@ -69,7 +70,8 @@ def forge_synthetic_candidate_labels(source, registry: Path, prefix: str) -> Non
     registry.write_text(json.dumps(value))
 
 
-def run(work, *, prebuilt_date32=False):
+def run(work, *, prebuilt_date32=False, native_only=False):
+    prebuilt_date32 = prebuilt_date32 or native_only
     if work.exists() and any(work.iterdir()):
         raise ValueError("Use a new empty local synthetic work folder; preserved evidence is never removed")
     work.mkdir(parents=True, exist_ok=True)
@@ -91,7 +93,7 @@ def run(work, *, prebuilt_date32=False):
 
     @asset(key=["synthetic", "source"], partitions_def=PUBLISH_PARTITIONS)
     def fixture_source():
-        path = version_root / "geopackage" / "typed.gpkg"
+        path = version_root / ("geoparquet" if native_only else "geopackage") / ("typed.parquet" if native_only else "typed.gpkg")
         if not path.exists():
             path.parent.mkdir(parents=True)
             auxiliary = version_root / "raw" / "regions.csv"
@@ -99,30 +101,46 @@ def run(work, *, prebuilt_date32=False):
             auxiliary.write_text("state,label\nPA,Synthetic region\n")
             with auxiliary.open() as stream:
                 region = next(csv.DictReader(stream))["state"]
-            schema = {"geometry": "Point", "properties": {"id": "int64", "nullable_id": "int64", "state": "str", "name": "str"}}
-            if prebuilt_date32:
-                schema["properties"]["capture_date"] = "date"
-            with fiona.open(path, "w", driver="GPKG", layer="typed", crs="EPSG:4326", schema=schema) as output:
-                for index, value in enumerate([2 ** 53 + 1, 2 ** 63 - 1]):
-                    properties = {"id": value, "nullable_id": None if index == 0 else -(2 ** 63), "state": region, "name": " "}
-                    if prebuilt_date32:
-                        properties["capture_date"] = "2026-10-19" if index == 0 else None
-                    output.write({"geometry": {"type": "Point", "coordinates": [index, index]},
-                                  "properties": properties})
-            if prebuilt_date32:
+            if native_only:
                 geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
                     "encoding": "WKB", "crs": CRS.from_epsg(4326).to_json_dict(), "geometry_types": ["Point"]}}}
                 typed = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("nullable_id", pa.int64()),
                     pa.field("state", pa.string(), nullable=False), pa.field("name", pa.string(), nullable=False),
                     pa.field("capture_date", pa.date32()), pa.field("__source_fid", pa.string(), nullable=False),
-                    pa.field("geometry", pa.binary(), nullable=False)],
+                    pa.field("amount", pa.decimal128(38,15), nullable=False), pa.field("geometry", pa.binary(), nullable=False)],
                     metadata={b"geo": json.dumps(geo).encode()})
-                with fiona.open(path, layer="typed") as original:
-                    rows = [{**dict(row["properties"]), "__source_fid": str(row["id"]), "capture_date": date.fromisoformat(row["properties"]["capture_date"]) if row["properties"]["capture_date"] else None,
-                             "geometry": to_wkb(shape(row["geometry"]))} for row in original]
-                prebuilt = version_root / "geoparquet/typed.parquet"
-                prebuilt.parent.mkdir()
-                pq.write_table(pa.Table.from_pylist(rows, schema=typed), prebuilt)
+                rows = [{"id":value,"nullable_id":None if index==0 else -(2**63),"state":region,"name":" ",
+                    "capture_date":date(2026,10,19) if index==0 else None,"__source_fid":str(index+1),
+                    "amount":Decimal("2586408727577.089843750000000"),
+                    "geometry":to_wkb(shape({"type":"Point","coordinates":[index,index]}))}
+                    for index,value in enumerate([2**53+1,2**63-1])]
+                pq.write_table(pa.Table.from_pylist(rows,schema=typed),path)
+                prebuilt=path
+            else:
+                schema = {"geometry": "Point", "properties": {"id": "int64", "nullable_id": "int64", "state": "str", "name": "str"}}
+                if prebuilt_date32:
+                    schema["properties"]["capture_date"] = "date"
+                with fiona.open(path, "w", driver="GPKG", layer="typed", crs="EPSG:4326", schema=schema) as output:
+                    for index, value in enumerate([2 ** 53 + 1, 2 ** 63 - 1]):
+                        properties = {"id": value, "nullable_id": None if index == 0 else -(2 ** 63), "state": region, "name": " "}
+                        if prebuilt_date32:
+                            properties["capture_date"] = "2026-10-19" if index == 0 else None
+                        output.write({"geometry": {"type": "Point", "coordinates": [index, index]},
+                                      "properties": properties})
+                if prebuilt_date32:
+                    geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
+                        "encoding": "WKB", "crs": CRS.from_epsg(4326).to_json_dict(), "geometry_types": ["Point"]}}}
+                    typed = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("nullable_id", pa.int64()),
+                        pa.field("state", pa.string(), nullable=False), pa.field("name", pa.string(), nullable=False),
+                        pa.field("capture_date", pa.date32()), pa.field("__source_fid", pa.string(), nullable=False),
+                        pa.field("geometry", pa.binary(), nullable=False)],
+                        metadata={b"geo": json.dumps(geo).encode()})
+                    with fiona.open(path, layer="typed") as original:
+                        rows = [{**dict(row["properties"]), "__source_fid": str(row["id"]), "capture_date": date.fromisoformat(row["properties"]["capture_date"]) if row["properties"]["capture_date"] else None,
+                                 "geometry": to_wkb(shape(row["geometry"]))} for row in original]
+                    prebuilt = version_root / "geoparquet/typed.parquet"
+                    prebuilt.parent.mkdir()
+                    pq.write_table(pa.Table.from_pylist(rows, schema=typed), prebuilt)
             manifest = {"schema_version": 1, "processor": "HIFLD Next", "code_commit": "synthetic-fixture-only",
                         "unsupported_output_formats": {"shapefile_zip": "Synthetic int64/null/text has no verified lossless DBF rule",
                                                        "pmtiles": "Synthetic archival fixture has no approved visualization comparison rule"},
@@ -139,6 +157,8 @@ def run(work, *, prebuilt_date32=False):
                                     "retrieved_at": "2026-10-19T00:00:00Z", "sha256": sha256_file(auxiliary), "bytes": auxiliary.stat().st_size,
                                     "license": "Synthetic auxiliary notice", "attribution": "Synthetic Region Agency"}],
                         "transformations": [{"name": "archival format conversion", "parameters": {"no_real_acceptance": True}}]}
+            if native_only:
+                manifest["unsupported_output_formats"]["geopackage"] = "Synthetic exact Decimal128 has no approved SQLite REAL mapping"
             if prebuilt_date32:
                 manifest["prebuilt_output_policy"] = {"schema_version": 1, "formats": {"geoparquet": {
                     "reason": "Synthetic GPKG generic conversion loses native date32. Preserve exact explicitly typed output; no real approval.",
@@ -233,6 +253,15 @@ def run(work, *, prebuilt_date32=False):
             for filename in ["data_dictionary.json", "resolved_provenance.json"]:
                 assert json.loads(published.read_key(f"{prefix}/metadata/{filename}"))["prebuilt_output_policy"] == declared
             assert pq.ParquetFile(Path(published.local_dir) / key).schema_arrow.field("capture_date").type == pa.date32()
+            if native_only:
+                assert not (version_root / "geopackage").exists()
+                native_table = pq.read_table(Path(published.local_dir) / key)
+                assert native_table.schema.field("amount").type == pa.decimal128(38,15)
+                assert native_table["amount"].to_pylist() == [Decimal("2586408727577.089843750000000")] * 2
+                dictionary = json.loads(published.read_key(f"{prefix}/metadata/data_dictionary.json"))
+                amount = next(c for c in dictionary["columns"] if c["name"] == "amount")
+                assert amount["type"] == "decimal" and amount["min"] == "2586408727577.089843750000000"
+                assert json.loads(published.read_key(f"{prefix}/metadata/quality_manifest.json"))["catalog_mode"] == "native_geoparquet_full_population"
             assert pq.ParquetFile(Path(published.local_dir) / key).read(columns=["capture_date"]).to_pylist() == [
                 {"capture_date": date(2026, 10, 19)}, {"capture_date": None}]
             registry_before = registry.read_bytes()
@@ -279,6 +308,9 @@ def run(work, *, prebuilt_date32=False):
                 "success_run_id": success.run_id, "quality_failure_run_id": quality_failure.run_id, "staged_mutation_run_id": drift.run_id,
                 "date32_and_null_preserved": True, "failed_quality_blocked": True, "staged_mutation_blocked": True,
                 "whole_format_ban_blocked": True, "published_objects_preserved": len(before), "dagster_home": str(home)}
+            if native_only:
+                outcome.update(classification="Actual synthetic native-only Decimal128/Date32 registered graph; no real acceptance",
+                               native_decimal_exact=True, canonical_raw_absent=True)
             (work / "integration_result.json").write_text(json.dumps(outcome, indent=2) + "\n")
             return outcome
         # Independent exact approval labels are deliberately repinned here to
