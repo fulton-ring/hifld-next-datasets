@@ -2,8 +2,8 @@
   "schema_version": 1,
   "files": {
     "README.md": {
-      "bytes": 16415,
-      "sha256": "69e11dc1c6b73cfe61acec0882b0510dbc6e4855affcbec9b13487410cf3b6e6"
+      "bytes": 16748,
+      "sha256": "29a41796d46311fc0a298243d2cae5a90bf48aa48642b7b16583dea03749a42a"
     },
     "evidence/baseline_comparison.json": {
       "bytes": 202,
@@ -308,6 +308,10 @@
     "evidence/review-repairs/late-binding-failed-first-build.log": {
       "bytes": 2622,
       "sha256": "309662e24c34303a2c13889ba2f4471633b9631e13f9b99b422362518388e834"
+    },
+    "evidence/review-repairs/late-binding-full-suite-540.log": {
+      "bytes": 18350,
+      "sha256": "8e3719e6dbce980f0e81f11df85a7c5e99dff89988569fdb521163e3101d3628"
     },
     "evidence/review-repairs/late-binding-native-writer-and-data-parity.json": {
       "bytes": 1037,
