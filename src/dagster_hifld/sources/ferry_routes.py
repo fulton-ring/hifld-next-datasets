@@ -399,7 +399,7 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,
     evidence_key=evidence_prefix+digest(bundle_body)+'.json'
     expected_state={'schema_version':1,'version':version,'processing_fingerprint':fingerprint,
         'original_bundle_sha256':digest(bundle_body),'original_bundle_evidence_key':evidence_key}
-    if not storage.object_exists(state_key)or strict_json(storage.read_key(state_key))!=expected_state:
+    if not storage.object_exists(state_key)or storage.read_key(state_key)!=encode(expected_state):
         raise FerryRouteQuarantineError('missing_or_invalid_first_construction_state')
     if not storage.object_exists(evidence_key)or storage.read_key(evidence_key)!=bundle_body:
         raise FerryRouteQuarantineError('missing_or_invalid_original_construction_evidence')

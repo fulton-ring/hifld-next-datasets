@@ -213,3 +213,13 @@ class FerryOriginalCaptureTests(unittest.TestCase):
             self.assertFalse(evidence.exists());self.assertFalse(self.root.exists());self.assertEqual(self.state().read_bytes(),state)
         evidence.parent.mkdir(parents=True,exist_ok=True);evidence.write_bytes(original);self.restore_primary()
         self.assertFalse(self.refresh()['reused'])
+
+    def test_first_state_schema_version_rejects_bool_and_float_without_trust_rewrite(self):
+        for malformed in [True,1.0]:
+            with self.subTest(value=malformed):
+                state=self.state();original=state.read_bytes();marker=json.loads(original);marker['schema_version']=malformed;state.write_bytes(f.encode(marker));bad=state.read_bytes();evidence=self.evidence().read_bytes()
+                self.reject('missing_or_invalid_first_construction_state')
+                self.assertEqual(state.read_bytes(),bad);self.assertEqual(self.evidence().read_bytes(),evidence)
+                with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):self.refresh()
+                self.assertEqual(state.read_bytes(),bad);self.assertFalse(self.root.exists())
+                state.write_bytes(original);self.restore_primary();self.assertFalse(self.refresh()['reused']);self.assertTrue(self.refresh()['reused'])
