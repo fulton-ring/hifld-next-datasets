@@ -1,0 +1,13 @@
+# American Red Cross Divisions — decision required
+
+The public ArcGIS item [8c6753c3c5814d05be65723cd4615d7c](https://www.arcgis.com/home/item.html?id=8c6753c3c5814d05be65723cd4615d7c), owned by `NHQRedCrossGIS` in organization `pGfbNJoYypmNq86F`, exposes layer 1 `Master_RC_Geo_Division_2027`. The published candidate and live layer each contain OBJECTIDs 1–6; all eight diagnostic attribute pairs and all six ring-coordinate multisets match. This relationship does not establish delegation, rights, or an effective release.
+
+The item/service claim FY27 / July 2026 while an active notice says temporarily reverted to FY26 / January 2026. The official SSO→RC View→Volunteer Connection path checked did not connect this exact account/item/layer. DHS crosswalk DOI and DataLumos reads returned provider HTTP 403; the exact crosswalk remains unverified, not unmatched.
+
+Compatibility remains unresolved: source `Division_DCODE` and full `Shape__Area`/`Shape__Length` names are absent or truncated in the candidate; source `Acres`/`SQ_MI` are Double while candidate types are int64; candidate `id`/`bbox` are not source fields. OBJECTID5 has published nested-shell invalidity despite identical rings; OBJECTID6 retains a self-intersection in both. No schema mapping or geometry repair is approved.
+
+Decision: establish official producer delegation and the actual effective release, or explicitly authorize a named historical-snapshot candidate with unresolved lineage/vintage. Then review the complete ID/schema/quality compatibility plan and accessible exact crosswalk. No current archive-refresh feed is substituted. Keep **Blocked / Potential breaking change / Needs decision**; source, rights, baseline, contract, release, merge and closure approvals remain false.
+
+All 24 tracked research files, captures, candidate metadata, reports and audit scripts (153,408 original bytes) are preserved at `/tmp/hifld-native-reconstruction/cleanup14/issue-14-removed-research-docs-622709ac8978.tar.gz`, SHA-256 `47bd7ff0a2d386d183f9941af266be51af5d6bfaa5af6a07cea3ba2476205e24`. Restore from repository root with `tar -xzf /tmp/hifld-native-reconstruction/cleanup14/issue-14-removed-research-docs-622709ac8978.tar.gz -C .`; sidecars record original hashes, Git blobs/modes and archived physical modes.
+
+Evidence: [issue #14 exact audit](https://github.com/fulton-ring/hifld-next-datasets/issues/14#issuecomment-6265891690), [independent review](https://github.com/fulton-ring/hifld-next-datasets/issues/14#issuecomment-6265955114), [PR #451](https://github.com/fulton-ring/hifld-next-datasets/pull/451). Runtime originals remain at `/workspace/work/hifld-coordinator/14` and were not read or changed for this cleanup.
