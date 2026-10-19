@@ -845,3 +845,12 @@ refresh and missing-approval promotion failed as intended at
 `f14e3e8f-0ccf-4c33-b045-539be4baad77` and
 `7bbed1b7-4a41-4218-ad7f-65c403530773`. All prior raw/witness/published fixture
 bytes remain preserved. These implementation proofs grant no real acceptance.
+
+
+### Native FLOAT catalog integration
+
+Source/test head `be3e49d` deliberately integrates only the independently reviewed catalog and self-contained regression fixture from #114 head `7ea570c` (catalog blob `f0c47531580f58da41dde00f4f679131c3ba0439`). Fiona omits native SQLite FLOAT fields; bounded Arrow sampling preserves those fields and physical widths. Attributes-only GeoPackages, including literal `geometry` and `wkb_geometry` string columns, retain their original values. Other source types keep the existing reader. No #114 adapter or acceptance is incorporated.
+
+All 21 catalog tests pass in 1.277 seconds. The shared full suite completes 536 tests: 535 passed, one production-GCS test skipped, in 98.664 seconds using the actual pinned unmodified IaC source snapshot. The actual isolated synthetic native Dagster graph records unapproved failure `04f5dcdc`, a synthetic-only accepted fixture run `832fd118`, then drift failure `13c79c70`; all 22 synthetically accepted objects remain unchanged, and false derivation/provenance is rejected. These fixture decisions approve no real data.
+
+Complete evidence and the original independent review are in `../evidence/catalog-native-float/`. The shared construction-state API is unchanged.
