@@ -1,6 +1,7 @@
 """Draft source fidelity/denial behavior; fixtures confer no release approval."""
 import copy
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,10 +9,14 @@ from unittest.mock import patch
 
 import httpx
 import fiona
+import pyarrow as pa
+import pyarrow.parquet as pq
+import shapely
 from shapely.geometry import mapping, shape
 from dagster import AssetKey, DefaultScheduleStatus, build_schedule_context
 from dagster._core.errors import ScheduleExecutionError
 
+from dagster_hifld.definitions import _iter_staged_version_paths
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usgs import usgs_aquifers, usgs_aquifers_draft_refresh_schedule
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -112,10 +117,12 @@ class AquifersTests(unittest.TestCase):
                 self.assertEqual(source.sha(artifact.joinpath(comparison['sidecar']['path']).read_bytes()),comparison['sidecar']['sha256'])
             manifest=json.loads(prefix.joinpath('metadata/source_manifest.json').read_text())
             source.validate_release_provenance(manifest)
+            self.assert_cached_self_repin_rejected(storage, prefix, kwargs, Path(tmp))
             marker=prefix/'metadata/aquifers_candidate_ready.json';ready=json.loads(marker.read_text())
             del ready['objects']['raw/members/us_aquifers.dbf'];marker.write_text(json.dumps(ready))
             with self.assertRaisesRegex(ValueError,'inventory_conflict'):
                 source.stage_aquifers_candidate(storage,**kwargs)
+            self.assertFalse(prefix.exists())
 
     @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
     def test_missing_duplicate_lossy_types_columns_and_geometry_reject(self):
@@ -137,3 +144,99 @@ class AquifersTests(unittest.TestCase):
             with self.subTest(name=name),tempfile.TemporaryDirectory() as tmp,patch.object(source.fiona,'open',return_value=stream):
                 with self.assertRaises((ValueError,TypeError)):
                     source.inspect_archive(CAPTURES.joinpath('zip.body').read_bytes(),Path(tmp))
+
+
+    def assert_cached_self_repin_rejected(self, storage, prefix, kwargs, root):
+        marker=prefix/'metadata/aquifers_candidate_ready.json'
+        original_marker=marker.read_bytes()
+        parquet=prefix/'candidate/typed-source.parquet'
+        geopackage=prefix/'geopackage/aquifers.gpkg'
+        manifest=prefix/'metadata/source_manifest.json'
+        originals={path.relative_to(prefix).as_posix():path.read_bytes()
+                   for path in (parquet,geopackage,manifest)}
+        prior={str(path.relative_to(root)):source.sha(path.read_bytes())
+               for path in root.glob('aquifers/aquifers/*/metadata/aquifers_candidate_ready.json')
+               if path.parent.parent!=prefix}
+        sentinel=root/'published/prior-local-accepted-fixture'
+        sentinel.parent.mkdir();sentinel.write_bytes(b'prior local fixture; no dataset acceptance')
+        extra='candidate/unapproved-extra.parquet'
+        cases=['parquet-value','parquet-integer-width','parquet-native-geometry',
+               'parquet-nullability','geopackage-value','provenance','extra-output','missing-output']
+        observed=[]
+        for case in cases:
+            ready=json.loads(original_marker)
+            if case.startswith('parquet-'):
+                table=pq.read_table(parquet)
+                if case=='parquet-value':
+                    values=table['AQ_NAME'].to_pylist();values[0]='INDEPENDENT CACHE TAMPER'
+                    table=table.set_column(table.schema.get_field_index('AQ_NAME'),table.schema.field('AQ_NAME'),pa.array(values))
+                elif case=='parquet-integer-width':
+                    table=table.set_column(table.schema.get_field_index('OBJECTID_1'),pa.field('OBJECTID_1',pa.int64(),nullable=False),table['OBJECTID_1'].cast(pa.int64()))
+                elif case=='parquet-nullability':
+                    table=table.set_column(table.schema.get_field_index('AQ_NAME'),pa.field('AQ_NAME',pa.string(),nullable=True),table['AQ_NAME'])
+                else:
+                    values=table['geometry'].to_pylist()
+                    values[2]=shapely.make_valid(shapely.from_wkb(values[2])).wkb
+                    table=table.set_column(table.schema.get_field_index('geometry'),table.schema.field('geometry'),pa.array(values,pa.binary()))
+                pq.write_table(table,parquet)
+                ready['objects']['candidate/typed-source.parquet']=source.sha(parquet.read_bytes())
+            elif case=='geopackage-value':
+                with sqlite3.connect(geopackage) as database:
+                    database.execute("UPDATE aquifers SET AQ_NAME='INDEPENDENT CACHE TAMPER' WHERE OBJECTID_1=1")
+                ready['objects']['geopackage/aquifers.gpkg']=source.sha(geopackage.read_bytes())
+            elif case=='provenance':
+                value=json.loads(manifest.read_text());value['inputs'][0]['attribution']='Invented attribution'
+                manifest.write_bytes(source.encode(value))
+                ready['objects']['metadata/source_manifest.json']=source.sha(manifest.read_bytes())
+            elif case=='extra-output':
+                (prefix/extra).write_bytes(b'unapproved extra output')
+                ready['objects'][extra]=source.sha((prefix/extra).read_bytes())
+            else:
+                parquet.unlink()
+            marker.write_bytes(source.encode(ready))
+            with self.subTest(cache_case=case),self.assertRaises(source.AquifersQuarantineError) as caught:
+                source.stage_aquifers_candidate(storage,**kwargs)
+            retained=str(caught.exception).split('retained:',1)[1]
+            preserved=root/retained/'candidate'
+            self.assertTrue(preserved.exists())
+            self.assertFalse(prefix.exists())
+            self.assertNotIn(('aquifers','aquifers',prefix.name),list(_iter_staged_version_paths(storage)))
+            self.assertEqual(sentinel.read_bytes(),b'prior local fixture; no dataset acceptance')
+            self.assertEqual(source.sha((root/f'_raw-captures/aquifers/{source.PIN}/{source.ARCHIVE_NAME}').read_bytes()),source.PIN)
+            for name,digest in prior.items():self.assertEqual(source.sha((root/name).read_bytes()),digest)
+            observed.append({'case':case,'quarantined':True,'corrupt_version_discoverable':False,
+                             'original_raw_and_prior_fixture_preserved':True})
+            # Reset only this disposable test fixture after checking the quarantined
+            # bytes. Runtime never repairs or silently restores a rejected cache.
+            for name,body in originals.items():
+                (preserved/name).write_bytes(body)
+            (preserved/extra).unlink(missing_ok=True)
+            (preserved/'metadata/aquifers_candidate_ready.json').write_bytes(original_marker)
+            preserved.rename(prefix)
+        print(json.dumps({'real_cache_negative_cases':observed},sort_keys=True))
+
+    @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
+    def test_interrupted_source_never_exposes_discoverable_partial_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            storage=StagingStorageResource(local_dir=tmp,prefix='nested')
+            prior=root/'nested/aquifers/aquifers/v1.0.0/geopackage/prior.gpkg'
+            prior.parent.mkdir(parents=True);prior.write_bytes(b'prior local fixture; no source acceptance')
+            normal_before=list(_iter_staged_version_paths(storage))
+            original_write=source.immutable
+            discovery_at_interruption=[]
+            def interrupt(target,key,body):
+                if key.endswith('candidate/typed-source.parquet'):
+                    discovery_at_interruption.extend(_iter_staged_version_paths(storage))
+                    raise OSError('injected typed candidate write interruption')
+                return original_write(target,key,body)
+            with patch.object(source,'immutable',side_effect=interrupt),self.assertRaisesRegex(ValueError,'injected typed candidate write interruption'):
+                source.stage_aquifers_candidate(storage,archive_path=CAPTURES/'zip.body',receipt_path=CAPTURES/'zip.json')
+            self.assertEqual(discovery_at_interruption,normal_before)
+            self.assertEqual(list(_iter_staged_version_paths(storage)),normal_before)
+            self.assertEqual(prior.read_bytes(),b'prior local fixture; no source acceptance')
+            self.assertEqual(source.sha((root/f'nested/_raw-captures/aquifers/{source.PIN}/{source.ARCHIVE_NAME}').read_bytes()),source.PIN)
+            self.assertTrue(list(root.glob('nested/_quarantine/aquifers/*/*/report.json')))
+            self.assertFalse(list(prior.parent.parent.parent.glob('.aquifers-build-*')))
+            print(json.dumps({'real_write_interruption':{'canonical_partial_discoverable':False,
+                'prior_and_original_raw_preserved':True,'quarantined':True}},sort_keys=True))

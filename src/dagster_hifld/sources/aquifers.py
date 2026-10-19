@@ -7,11 +7,13 @@ mapping, published baseline, schema migration, or release.
 from __future__ import annotations
 
 import collections
+import fcntl
 import hashlib
 import importlib.metadata
 import io
 import json
 import platform
+import re
 import sqlite3
 import stat
 import struct
@@ -234,6 +236,225 @@ def compare_derivative(source: Path, candidate: Path, output: Path) -> dict:
                 'sha256': pin, 'bytes': source.stat().st_size}})
 
 
+def source_manifest(receipt: dict, fingerprint: str, commit: str) -> dict:
+    """Deterministic producer attribution; caller validates original receipt first."""
+    manifest = {'schema_version': 1, 'processor': 'HIFLD Next', 'approved': False, 'code_commit': commit,
+        'processing_fingerprint': fingerprint, 'title': 'USGS 2003 Principal Aquifers — unapproved working draft',
+        'publisher': 'U.S. Geological Survey', 'agency': 'U.S. Geological Survey', 'source_url': LANDING,
+        'license': 'http://www.usa.gov/publicdomain/label/1.0/',
+        'date_issued': '2003-10-01',
+        'unsupported_output_formats': {
+            'shapefile_zip': 'Original producer ZIP, DBF declarations, spatial indexes and metadata preserved under raw/. Regenerated ZIP omits producer .sbn/.sbx/.shp.xml sidecars and is not byte/physical-archive equivalent; output mapping is unapproved.',
+            'pmtiles': 'Visualization requires reprojection and integer tile-coordinate quantization of native NAD83 double coordinates; full native coordinates/geometry fidelity cannot be preserved. No visualization mapping is approved.'},
+        'inputs': [{'input_id': f'usgs-principal-aquifers-2003:{PIN}', 'producer': 'U.S. Geological Survey',
+            'host': 'water.usgs.gov', 'role': 'producer_publication', 'canonical_url': URL,
+            'retrieval_url': receipt['requested_url'], 'observed_final_url': receipt['final_url'],
+            'retrieved_at': receipt['fetched_at'], 'release_date': '2003-10-01', 'sha256': PIN, 'bytes': ARCHIVE_BYTES,
+            'license': 'http://www.usa.gov/publicdomain/label/1.0/', 'attribution': 'U.S. Geological Survey, 2003, Principal Aquifers of the 48 Conterminous United States, Hawaii, Puerto Rico, and the U.S. Virgin Islands, https://doi.org/10.5066/P9Y2HOUJ',
+            'lineage': 'Original USGS producer release linked by the official principal-aquifers landing; HTTP Last-Modified2015 is packaging, not source currency.',
+            'authority_evidence': LANDING}],
+        'transformations': [{'operation': 'decode_original_shapefile', 'preserved': 'all source columns, physical DBF types/widths, all native Polygon coordinates, CRS, original archive and7sidecars', 'sort_key': 'OBJECTID_1', 'repair_or_projection': False},
+            {'operation': 'typed_native_geopackage_and_arrow_parquet', 'gpkg_internal_fid': 'storage index only; never source or published ID', 'mapping_approval': 'not established'}]}
+    validate_release_provenance(manifest)
+    return manifest
+
+
+def candidate_object_names() -> set[str]:
+    return {
+        f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg',
+        'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl',
+        'metadata/source_manifest.json', 'metadata/processing_identity.json',
+        'metadata/aquifers_source_audit.json', 'metadata/proposed_source_contract.json',
+        'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json',
+        'metadata/baseline_comparison.json',
+        'metadata/geopackage_fidelity/baseline_comparison.json',
+        'metadata/geopackage_fidelity/baseline_differences.jsonl',
+        'metadata/parquet_fidelity/baseline_comparison.json',
+        'metadata/parquet_fidelity/baseline_differences.jsonl',
+    } | {f'raw/members/{name}' for name in MEMBERS}
+
+
+def local_candidate_path(storage: StagingStorageResource, version: str) -> Path:
+    root = Path(storage.local_dir).resolve()
+    path = root / storage.build_target_location(SLUG, SLUG, version, '')
+    if not path.resolve().is_relative_to(root):
+        raise AquifersQuarantineError('candidate_path_outside_local_staging')
+    return path
+
+
+def candidate_arrow_schema(audit: dict) -> pa.Schema:
+    schema = pa.schema([
+        pa.field(name, pa.int32() if kind.startswith('int32') else
+                 pa.float64() if kind.startswith('float') else pa.string(),
+                 nullable=name == 'ROCK_NAME') for name, kind in SCHEMA.items()
+    ] + [pa.field('geometry', pa.binary(), nullable=False)])
+    geo = {'version': '1.1.0', 'primary_column': 'geometry', 'columns': {'geometry': {
+        'encoding': 'WKB', 'geometry_types': ['Polygon'],
+        'crs': pyproj.CRS(4269).to_json_dict(), 'bbox': audit['bounds']}}}
+    return schema.with_metadata({b'geo': encode(geo)})
+
+
+def validate_cached_payloads(path: Path, records: bytes, audit: dict) -> None:
+    """Fresh physical/semantic checks against the decoded pinned producer rows.
+
+    The ready marker is an inventory, never authority for a changed derivative.
+    Known native invalid geometries are preserved, not repaired to pass a check.
+    """
+    geopackage = path / 'geopackage' / f'{SLUG}.gpkg'
+    if fiona.listlayers(geopackage) != [SLUG]:
+        raise AquifersQuarantineError('cached_geopackage_unexpected_layers')
+    expected_schema = {'properties': {
+        name: 'int32' if kind.startswith('int32') else
+        'float' if kind.startswith('float') else kind for name, kind in SCHEMA.items()
+    }, 'geometry': 'Polygon'}
+    with fiona.open(geopackage) as source:
+        if dict(source.schema) != expected_schema or not pyproj.CRS(source.crs).equals(pyproj.CRS(4269)):
+            raise AquifersQuarantineError('cached_geopackage_physical_schema_or_crs_drift')
+        decoded = b''.join(encode({'type': 'Feature', 'properties': dict(row['properties']),
+            'geometry': mapping(shape(row['geometry'])) if row['geometry'] else None}) for row in source)
+    if decoded != records:
+        raise AquifersQuarantineError('cached_geopackage_original_row_or_geometry_mismatch')
+    with sqlite3.connect(f'file:{geopackage}?mode=ro', uri=True) as database:
+        columns = database.execute('PRAGMA table_info(aquifers)').fetchall()
+    expected_columns = [('fid', 'INTEGER', 1, None, 1), ('geom', 'POLYGON', 0, None, 0)] + [
+        (name, 'MEDIUMINT' if kind.startswith('int32') else 'REAL' if kind.startswith('float')
+         else f'TEXT({kind.split(":")[1]})', 0, None, 0) for name, kind in SCHEMA.items()]
+    if [column[1:] for column in columns] != expected_columns:
+        raise AquifersQuarantineError('cached_geopackage_sql_physical_schema_drift')
+    parquet = path / 'candidate/typed-source.parquet'
+    table = pq.read_table(parquet)
+    if not table.schema.equals(candidate_arrow_schema(audit), check_metadata=True):
+        raise AquifersQuarantineError('cached_parquet_physical_schema_metadata_or_crs_drift')
+    decoded = b''.join(encode({'type': 'Feature', 'properties': {name: row[name] for name in SCHEMA},
+        'geometry': mapping(shapely.from_wkb(row['geometry'])) if row['geometry'] else None})
+        for row in table.to_pylist())
+    if decoded != records:
+        raise AquifersQuarantineError('cached_parquet_original_row_or_geometry_mismatch')
+
+
+def validate_cached_candidate(storage: StagingStorageResource, version: str, records: bytes,
+                              body: bytes, members: dict, audit: dict, identity: dict) -> None:
+    path = local_candidate_path(storage, version)
+    prefix = f'{SLUG}/{SLUG}/{version}'
+    marker = 'metadata/aquifers_candidate_ready.json'
+    ready = strict_json(storage.read_key(f'{prefix}/{marker}'))
+    names = candidate_object_names()
+    # These three metadata products belong to the normal downstream catalog.
+    # Additional source files, derivatives, layers or self-added roster entries fail.
+    downstream = {'metadata/data_dictionary.json', 'metadata/quality_manifest.json',
+                  'metadata/source/source_manifest.json'}
+    present = set()
+    for item in path.rglob('*'):
+        if item.is_symlink():
+            raise AquifersQuarantineError('cached_candidate_contains_symlink')
+        if item.is_file():
+            present.add(item.relative_to(path).as_posix())
+    if (set(ready) != {'status', 'approved', 'source_sha256', 'candidate_records_sha256',
+                       'processing_fingerprint', 'version', 'objects'}
+            or set(ready.get('objects', {})) != names or not (names | {marker}) <= present
+            or present - names - {marker} - downstream or ready.get('version') != version
+            or ready.get('status') != 'working_draft_candidate_ready'):
+        raise AquifersQuarantineError('existing_candidate_inventory_conflict')
+    fingerprint = sha(encode(identity))
+    if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
+            or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
+        raise AquifersQuarantineError('existing_candidate_identity_conflict')
+    snapshots = {}
+    for name, expected in ready['objects'].items():
+        key = f'{prefix}/{name}'
+        snapshots[key] = storage.object_snapshot(key)
+        if snapshots[key] is None or sha(storage.read_key(key)) != expected:
+            raise AquifersQuarantineError(f'existing_candidate_object_changed:{name}')
+    expected_bytes = {f'raw/{ARCHIVE_NAME}': body, 'metadata/candidate.records.jsonl': records,
+                      'metadata/processing_identity.json': encode(identity),
+                      'metadata/aquifers_source_audit.json': encode(audit),
+                      'metadata/proposed_source_contract.json': encode(PROPOSAL),
+                      'metadata/baseline_comparison.json': encode({'schema_version': 1, 'status': 'blocked',
+                          'approved': False, 'reason_codes': ['unapproved_baseline_and_source_published_id_schema_crs_mapping'],
+                          'acceptance': 'not_established'})}
+    expected_bytes.update({f'raw/members/{name}': value for name, value in members.items()})
+    for name, expected in expected_bytes.items():
+        if storage.read_key(f'{prefix}/{name}') != expected:
+            raise AquifersQuarantineError(f'cached_original_semantics_changed:{name}')
+    receipt = strict_json(storage.read_key(f'{prefix}/raw/retrieval.json'))
+    validate_receipt(body, receipt)
+    capture_receipt = f'_raw-captures/{SLUG}/{PIN}/receipts/{sha(encode(receipt))}.json'
+    if not storage.object_exists(capture_receipt) or storage.read_key(capture_receipt) != encode(receipt):
+        raise AquifersQuarantineError('cached_receipt_missing_original_capture')
+    manifest = strict_json(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
+    commit = manifest.get('code_commit', '')
+    code_matches = isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit)
+    if code_matches:
+        code_matches = subprocess.run(['git', 'diff', '--quiet', commit, '--', 'src/dagster_hifld',
+            'uv.lock', 'pyproject.toml'], cwd=Path(__file__).parents[3], check=False).returncode == 0
+    if not code_matches or manifest != source_manifest(receipt, fingerprint, commit):
+        raise AquifersQuarantineError('cached_source_provenance_semantic_or_code_drift')
+    validate_cached_payloads(path, records, audit)
+    for format_name in ('geopackage', 'parquet'):
+        report_prefix = f'{prefix}/metadata/{format_name}_fidelity'
+        report = strict_json(storage.read_key(f'{report_prefix}/baseline_comparison.json'))
+        wrapper = strict_json(storage.read_key(f'{prefix}/metadata/{format_name}_source_fidelity.json'))
+        population = {'rows': len(records.splitlines()), 'null_keys': 0,
+                      'invalid_records': audit['invalid_geometry_count'], 'duplicate_keys': 0}
+        expected_reference = {'role': 'unapproved_producer_source_fidelity_reference', 'approved': False,
+            'source_archive_sha256': PIN, 'comparison_input': {'adapter': 'typed-geojson-feature-jsonl-v1',
+                'sha256': sha(records), 'bytes': len(records)}}
+        if (set(wrapper) != {'canonical_full_records_byte_identical', 'shared_verifier_artifact_prefix',
+                             'shared_verifier', 'known_invalid_native_geometry_release_blocked'}
+                or wrapper.get('shared_verifier_artifact_prefix') != f'metadata/{format_name}_fidelity/'
+                or wrapper.get('shared_verifier') != report
+                or wrapper.get('canonical_full_records_byte_identical') is not True
+                or wrapper.get('known_invalid_native_geometry_release_blocked') is not True
+                or report.get('baseline_sha256') != sha(records)
+                or report.get('candidate_sha256') != sha(records)
+                or report.get('schema_version') != 1
+                or report.get('adapter') != 'typed-geojson-feature-jsonl-v1'
+                or report.get('baseline') != expected_reference
+                or report.get('populations') != {'baseline': population, 'candidate': population}
+                or report.get('reason_codes') != ['invalid_schema_key_or_geometry']
+                or report.get('acceptance') != 'not_established_by_comparison'
+                or report.get('baseline_input_bytes') != len(records)
+                or report.get('candidate_input_bytes') != len(records)
+                or report.get('contract_sha256') != sha(json.dumps(PROPOSAL, sort_keys=True).encode())
+                or report.get('comparator_sha256') != sha256_file(Path(compare_full_rows.__code__.co_filename))
+                or report.get('status') != 'fail'
+                or report.get('differences') != {'added': 0, 'removed': 0, 'attributes': 0,
+                                                'geometry': 0, 'coverage_buckets': 0}):
+            raise AquifersQuarantineError('cached_fidelity_claim_semantic_drift')
+        sidecar = storage.read_key(f'{report_prefix}/baseline_differences.jsonl')
+        expected_errors = [{'kind': 'invalid_record', 'side': side, 'row': index,
+                            'errors': ['empty_or_invalid_geometry']}
+                           for side in ('baseline', 'candidate')
+                           for index, row in enumerate(records.splitlines(), 1)
+                           if index in audit['native_invalid_geometries']
+                           or str(index) in audit['native_invalid_geometries']]
+        if ([strict_json(line) for line in sidecar.splitlines()] != expected_errors
+                or report.get('sidecar') != {'path': 'baseline_differences.jsonl',
+                                             'sha256': sha(sidecar), 'bytes': len(sidecar)}):
+            raise AquifersQuarantineError('cached_fidelity_difference_artifact_drift')
+    for key, snapshot in snapshots.items():
+        if storage.object_snapshot(key) != snapshot:
+            raise AquifersQuarantineError(f'cached_candidate_changed_during_validation:{key}')
+
+
+def expose_completed_candidate(storage: StagingStorageResource, version: str,
+                               payloads: dict[str, bytes], ready: dict) -> None:
+    """No discoverable semver directory until every complete object is present."""
+    target = local_candidate_path(storage, version)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.aquifers-build-', dir=target.parent) as temporary:
+        build = Path(temporary)
+        hidden_storage = StagingStorageResource(local_dir=str(build), use_local=True)
+        for name, contents in payloads.items():
+            immutable(hidden_storage, name, contents)
+        immutable(hidden_storage, 'metadata/aquifers_candidate_ready.json', encode(ready))
+        # A cooperating refresh holds this same per-version advisory lock from
+        # cache inspection through rename. Existing versions are never replaced.
+        if target.exists() or target.is_symlink():
+            raise AquifersQuarantineError('candidate_appeared_before_atomic_exposure')
+        build.rename(target)
+
+
 def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: Path | None = None,
                               receipt_path: Path | None = None) -> dict:
     require_local(storage)
@@ -242,6 +463,8 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
     capture = f'_raw-captures/{SLUG}/{sha(body)}'
     immutable(storage, f'{capture}/{ARCHIVE_NAME}', body)
     immutable(storage, f'{capture}/receipts/{sha(encode(receipt))}.json', encode(receipt))
+    lock = None
+    cached_path = None
     try:
         with tempfile.TemporaryDirectory(prefix='aquifers-source-') as tmp:
             directory = Path(tmp)
@@ -252,21 +475,16 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
             version = f'v0.0.0-draft-usgs2003-{PIN[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/aquifers_candidate_ready.json'
-            if storage.object_exists(ready_key):
-                ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/aquifers_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json', 'metadata/geopackage_fidelity/baseline_comparison.json', 'metadata/geopackage_fidelity/baseline_differences.jsonl', 'metadata/parquet_fidelity/baseline_comparison.json', 'metadata/parquet_fidelity/baseline_differences.jsonl'} | {f'raw/members/{name}' for name in MEMBERS}
-                if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
-                    raise AquifersQuarantineError('existing_candidate_inventory_conflict')
-                if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
-                        or ready.get('processing_fingerprint') != fingerprint or ready.get('approved') is not False):
-                    raise AquifersQuarantineError('existing_candidate_identity_conflict')
-                for name, expected in ready['objects'].items():
-                    key = f'{prefix}/{name}'
-                    snapshot = storage.object_snapshot(key)
-                    if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
-                        raise AquifersQuarantineError(f'existing_candidate_object_changed:{name}')
-                return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
-                        'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
+            candidate_path = local_candidate_path(storage, version)
+            candidate_path.parent.mkdir(parents=True, exist_ok=True)
+            lock = (candidate_path.parent / f'.aquifers-lock-{version}').open('a+b')
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            if candidate_path.exists() or candidate_path.is_symlink():
+                cached_path = candidate_path
+                validate_cached_candidate(storage, version, records, body, members, audit, identity)
+                return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version,
+                        'feature_count': len(rows), 'status': 'working_draft_candidate_ready',
+                        'processing_fingerprint': fingerprint}
             geopackage = directory / f'{SLUG}.gpkg'
             with fiona.open(geopackage, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
                             schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
@@ -298,23 +516,7 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise AquifersQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest = {'schema_version': 1, 'processor': 'HIFLD Next', 'approved': False, 'code_commit': commit,
-                'processing_fingerprint': fingerprint, 'title': 'USGS 2003 Principal Aquifers — unapproved working draft',
-                'publisher': 'U.S. Geological Survey', 'agency': 'U.S. Geological Survey', 'source_url': LANDING,
-                'license': 'http://www.usa.gov/publicdomain/label/1.0/',
-                'date_issued': '2003-10-01',
-                'unsupported_output_formats': {
-                    'shapefile_zip': 'Original producer ZIP, DBF declarations, spatial indexes and metadata preserved under raw/. Regenerated ZIP omits producer .sbn/.sbx/.shp.xml sidecars and is not byte/physical-archive equivalent; output mapping is unapproved.',
-                    'pmtiles': 'Visualization requires reprojection and integer tile-coordinate quantization of native NAD83 double coordinates; full native coordinates/geometry fidelity cannot be preserved. No visualization mapping is approved.'},
-                'inputs': [{'input_id': f'usgs-principal-aquifers-2003:{PIN}', 'producer': 'U.S. Geological Survey',
-                    'host': 'water.usgs.gov', 'role': 'producer_publication', 'canonical_url': URL,
-                    'retrieval_url': receipt['requested_url'], 'observed_final_url': receipt['final_url'],
-                    'retrieved_at': receipt['fetched_at'], 'release_date': '2003-10-01', 'sha256': PIN, 'bytes': len(body),
-                    'license': 'http://www.usa.gov/publicdomain/label/1.0/', 'attribution': 'U.S. Geological Survey, 2003, Principal Aquifers of the 48 Conterminous United States, Hawaii, Puerto Rico, and the U.S. Virgin Islands, https://doi.org/10.5066/P9Y2HOUJ',
-                    'lineage': 'Original USGS producer release linked by the official principal-aquifers landing; HTTP Last-Modified2015 is packaging, not source currency.',
-                    'authority_evidence': LANDING}],
-                'transformations': [{'operation': 'decode_original_shapefile', 'preserved': 'all source columns, physical DBF types/widths, all native Polygon coordinates, CRS, original archive and7sidecars', 'sort_key': 'OBJECTID_1', 'repair_or_projection': False},
-                    {'operation': 'typed_native_geopackage_and_arrow_parquet', 'gpkg_internal_fid': 'storage index only; never source or published ID', 'mapping_approval': 'not established'}]}
+            manifest = source_manifest(receipt, fingerprint, commit)
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(),
@@ -329,14 +531,20 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
                 'metadata/baseline_comparison.json': encode({'schema_version':1, 'status':'blocked', 'approved':False,
                     'reason_codes':['unapproved_baseline_and_source_published_id_schema_crs_mapping'], 'acceptance':'not_established'})}
             payloads.update({f'raw/members/{name}': value for name,value in members.items()})
-            for name,value in payloads.items():
-                immutable(storage, f'{prefix}/{name}', value)
+            if set(payloads) != candidate_object_names():
+                raise AquifersQuarantineError('incomplete_new_candidate_inventory')
             ready = {'status':'working_draft_candidate_ready', 'approved':False, 'source_sha256':PIN,
                 'candidate_records_sha256':sha(records), 'processing_fingerprint':fingerprint, 'version':version,
                 'objects':{name:sha(value) for name,value in payloads.items()}}
-            immutable(storage, ready_key, encode(ready))
+            expose_completed_candidate(storage, version, payloads, ready)
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
         location = quarantine(storage, body, receipt, str(exc))
+        if cached_path is not None and (cached_path.exists() or cached_path.is_symlink()):
+            destination = Path(storage.local_dir).resolve() / storage._ensure_prefixed(location) / 'candidate'
+            cached_path.rename(destination)
         raise AquifersQuarantineError(f'{exc}; retained:{location}') from exc
+    finally:
+        if lock is not None:
+            lock.close()
