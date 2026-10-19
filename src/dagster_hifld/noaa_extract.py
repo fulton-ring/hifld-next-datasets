@@ -158,7 +158,7 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
     if full.get("hasZ") or full.get("hasM") or layer.get("hasZ") or layer.get("hasM"):
         raise ValueError("NOAA unexpected Z/M dimensions")
     count = bodies["count_before"].get("count")
-    if type(count) is not int or count < 1 or count != bodies["count_after"].get("count"):
+    if type(count) is not int or count < 1 or type(bodies["count_after"].get("count")) is not int or count != bodies["count_after"].get("count"):
         raise ValueError("NOAA incomplete extraction: before/after count changed or invalid")
     if expected_count is not None and count != expected_count:
         raise ValueError("NOAA count/coverage drift from proposed research snapshot")
@@ -191,6 +191,8 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
     for category, fingerprint in fingerprints.items():
         if expected_fingerprints[category] != fingerprint:
             raise ValueError(f"NOAA {category} drift from proposed snapshot; quarantine for review")
+    if any(type(f["properties"].get("OBJECTID")) is not int or type(f.get("id")) is not int for f in geo["features"]):
+        raise ValueError("NOAA independent GeoJSON identifier physical type mismatch")
     geos = {f["properties"]["OBJECTID"]: f for f in geo["features"]}
     if len(geos) != count or set(geos) != set(ids):
         raise ValueError("NOAA GeoJSON IDs mismatch or duplicate")
@@ -211,6 +213,18 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
             raise ValueError("NOAA independent GeoJSON physical geometry type mismatch")
         coordinates = gf["geometry"]["coordinates"]
         parts = [coordinates] if gf["geometry"]["type"] == "LineString" else coordinates
+        if any(type(n) not in (int, float) or not math.isfinite(n) for part in parts for vertex in part for n in vertex):
+            raise ValueError("NOAA independent GeoJSON coordinate physical type mismatch")
+        for field_name, field_type in actual_fields.items():
+            if field_type == "esriFieldTypeGeometry":
+                continue
+            value = gf["properties"].get(field_name)
+            if value is None:
+                continue
+            if ((field_type in ("esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeDate") and type(value) is not int)
+                    or (field_type == "esriFieldTypeString" and type(value) is not str)
+                    or (field_type == "esriFieldTypeDouble" and type(value) not in (int, float))):
+                raise ValueError(f"NOAA independent GeoJSON attribute physical type mismatch: {field_name}")
         if parts != g["paths"] or gf["properties"] != f["attributes"] or gf.get("id") != object_id:
             raise ValueError("NOAA independent GeoJSON geometry/attribute/ID mismatch")
         geometries.append(geometry)

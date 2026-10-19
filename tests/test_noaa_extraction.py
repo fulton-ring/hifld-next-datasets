@@ -54,6 +54,10 @@ class NoaaExtractionTests(unittest.TestCase):
     def test_rejects_partial_error_type_id_schema_geometry_and_coverage_changes(self):
         cases = [
             ("features", lambda d: d.update(error={"code": 500})),
+            ("geojson", lambda d: d["features"][1].update(id=True)),
+            ("geojson", lambda d: d["features"][1]["properties"].update(OBJECTID=True)),
+            ("geojson", lambda d: d["features"][1]["properties"].update(UNILATERAL=False)),
+            ("geojson", lambda d: d["features"][1]["geometry"].update(type="Polygon")),
             ("features", lambda d: d.update(exceededTransferLimit=True)),
             ("count_after", lambda d: d.update(count=3)),
             ("ids_after", lambda d: d.update(objectIds=[1, 1])),
@@ -74,6 +78,12 @@ class NoaaExtractionTests(unittest.TestCase):
                     self.assertEqual(len(list(Path(directory).rglob("quarantine.json"))), 1)
                     self.assertFalse(list(Path(directory).rglob("*.parquet")))
                     self.assertFalse(list(Path(directory).rglob("*.gpkg")))
+
+    def test_duplicate_json_members_quarantine_instead_of_overriding(self):
+        captures, kwargs = fixture()
+        captures["count_after"] = b'{"count":2,"count":2}'
+        with self.assertRaisesRegex(ValueError, "duplicate JSON member"):
+            validate_noaa_capture(captures, **kwargs)
 
     def test_changed_processing_policy_gets_new_namespace_and_stale_provenance_rejects(self):
         captures, kwargs = fixture()
