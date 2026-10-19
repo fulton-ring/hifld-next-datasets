@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
@@ -33,18 +34,20 @@ class EpaIcisWastewaterTests(unittest.TestCase):
         schema_sha = hashlib.sha256(canonical(plain)).hexdigest()
         portal={"id":source.ITEM_ID,"owner":"EPA_GEO","title":"EPA Facility Registry Service - Integrated Compliance Information System (ICIS) Wastewater Treatment Plants","url":source.SERVICE_URL,"access":"public","modified":1779295761000}
         service = {"serviceItemId":source.ITEM_ID, "layers":[{"id":0,"name":source.LAYER_NAME}]}
-        layer = {"name":source.LAYER_NAME, "geometryType":"esriGeometryPoint", "hasZ":False, "hasM":False, "extent":{"spatialReference":{"latestWkid":4269}}, "fields":fields}
-        ids = {"objectIds":list(range(1,252))}
-        rows=[{"attributes":{"OBJECTID":i,"REGISTRY_ID":f"00000{i:05d}","FAC_LAT":40.1+i/1000,"FAC_LONG":-72.25-i/1000},
+        layer = {"name":source.LAYER_NAME, "geometryType":"esriGeometryPoint", "hasZ":False, "hasM":False, "advancedQueryCapabilities":{"supportsPagination":True,"supportsOrderBy":True}, "extent":{"spatialReference":{"latestWkid":4269}}, "fields":fields}
+        ids = {"objectIds":list(range(10001,10252))}
+        rows=[{"attributes":{"OBJECTID":i+10000,"REGISTRY_ID":f"00000{i+10000:05d}","FAC_LAT":40.1+i/1000,"FAC_LONG":-72.25-i/1000},
                "geometry":{"x":-72.25-i/1000,"y":40.1+i/1000}} for i in range(1,252)]
-        rows[-1]={"attributes":{"OBJECTID":251,"REGISTRY_ID":"0000000251","FAC_LAT":None,"FAC_LONG":None},"geometry":None}
+        rows[-1]={"attributes":{"OBJECTID":10251,"REGISTRY_ID":"0000010251","FAC_LAT":None,"FAC_LONG":None},"geometry":None}
         row=rows[0]
         bodies = {"portal_item":portal,"service_before":service,"service_after":service,"layer_before":layer,"layer_after":layer,
                  "count_before":{"count":251},"count_after":{"count":251},"ids_before":ids,"ids_after":ids,
                  "page_000":{"spatialReference":{"latestWkid":4269},"features":rows[:250]},
                  "page_001":{"spatialReference":{"latestWkid":4269},"features":rows[250:]}}
 
+        request_urls={}
         def capture(_client, url, root, name, **_kwargs):
+            request_urls[name]=url
             payload = bodies[name]
             body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
             receipt = {"url":url,"final_url":url,"observed_at":"2026-01-01T00:00:00+00:00","status":200,
@@ -69,11 +72,14 @@ class EpaIcisWastewaterTests(unittest.TestCase):
             self.assertFalse(ready["approved"])
             parquet_path=Path(tmp)/result["candidate_ready"].replace("metadata/candidate_ready.json",f"geoparquet/{source.DATASET_SLUG}.parquet")
             table=pq.read_table(parquet_path)
-            self.assertEqual(table["OBJECTID"].to_pylist(),list(range(1,252)))
-            self.assertEqual(table["REGISTRY_ID"].to_pylist()[0],"0000000001")
+            self.assertEqual(table["OBJECTID"].to_pylist(),list(range(10001,10252)))
+            self.assertEqual(table["REGISTRY_ID"].to_pylist()[0],"0000010001")
             self.assertEqual(table["geometry"].to_pylist()[0],shapely.geometry.Point(-72.251,40.101).wkb)
             self.assertIsNone(table["geometry"].to_pylist()[-1])
             self.assertIn(b"geo", table.schema.metadata)
+            self.assertEqual(parse_qs(urlsplit(request_urls["page_000"]).query)["resultOffset"],["0"])
+            self.assertEqual(parse_qs(urlsplit(request_urls["page_001"]).query)["resultOffset"],["250"])
+            self.assertNotIn("objectIds",parse_qs(urlsplit(request_urls["page_001"]).query))
 
             partition=build_publish_partition_key(source.DATASET_SLUG,source.FILE_SLUG,result["version"])
             instance_dir=Path(tmp)/"dagster"; instance_dir.mkdir()

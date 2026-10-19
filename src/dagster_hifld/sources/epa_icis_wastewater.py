@@ -102,6 +102,9 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
             fields = _field_contract(layer)
             has_z, has_m = layer.get("hasZ", False), layer.get("hasM", False)
             if type(has_z) is not bool or type(has_m) is not bool: raise ValueError("source_geometry_dimensions_unpinned")
+            query_caps=layer.get("advancedQueryCapabilities",{})
+            if not isinstance(query_caps,dict) or query_caps.get("supportsPagination") is not True or query_caps.get("supportsOrderBy") is not True:
+                raise ValueError("source_ordered_pagination_not_supported")
             sr = layer.get("extent", {}).get("spatialReference", {})
             if sr.get("latestWkid") != 4269: raise ValueError("source_crs_drift")
             count = get(client, "count_before", LAYER_URL+"/query", {"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
@@ -109,11 +112,13 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
             if type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count: raise ValueError("source_initial_id_roster_invalid")
             seed = sorted(ids); features=[]
             for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
-                page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {"objectIds":",".join(map(str,seed[offset:offset+PAGE_SIZE])),"outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4269","orderByFields":"OBJECTID ASC","f":"json"})
+                page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {"where":"1=1","outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4269","orderByFields":"OBJECTID ASC","resultOffset":offset,"resultRecordCount":PAGE_SIZE,"f":"json"})
                 rows=page.get("features"); expected=min(PAGE_SIZE,count-offset)
                 if not isinstance(rows,list) or len(rows)!=expected or page.get("exceededTransferLimit") is True: raise ValueError("source_page_incomplete")
                 page_sr=page.get("spatialReference",{})
                 if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4269: raise ValueError("source_page_crs_drift")
+                page_ids=[row.get("attributes",{}).get("OBJECTID") if isinstance(row,dict) else None for row in rows]
+                if page_ids!=seed[offset:offset+expected]: raise ValueError("source_page_id_slice_mismatch")
                 features.extend(rows)
             layer_after=get(client,"layer_after",LAYER_URL,{"f":"pjson"})
             service_after=get(client,"service_after",SERVICE_URL,{"f":"pjson"})
