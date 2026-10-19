@@ -343,10 +343,11 @@ def validate_cached_candidate(storage: StagingStorageResource, version: str, rec
     names = candidate_object_names()
     if not isinstance(ready.get('objects'), dict):
         raise AquifersQuarantineError('existing_candidate_inventory_must_be_object')
-    # These three metadata products belong to the normal downstream catalog.
+    # These metadata products and snapshots belong to the normal downstream catalog.
     # Additional source files, derivatives, layers or self-added roster entries fail.
     downstream = {'metadata/data_dictionary.json', 'metadata/quality_manifest.json',
-                  'metadata/source/source_manifest.json'}
+                  'metadata/source/source_manifest.json',
+                  'metadata/source/data_dictionary.json', 'metadata/source/quality_manifest.json'}
     present = set()
     for item in path.rglob('*'):
         if item.is_symlink():

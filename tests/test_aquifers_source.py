@@ -12,10 +12,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 from shapely.geometry import mapping, shape
-from dagster import AssetKey, DefaultScheduleStatus, build_schedule_context
+from dagster import AssetKey, DefaultScheduleStatus, build_schedule_context, build_asset_context
 from dagster._core.errors import ScheduleExecutionError
 
 from dagster_hifld.definitions import _iter_staged_version_paths
+from dagster_hifld.assets.catalog import publish_catalog
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usgs import usgs_aquifers, usgs_aquifers_draft_refresh_schedule
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -104,6 +105,14 @@ class AquifersTests(unittest.TestCase):
             kwargs=dict(archive_path=CAPTURES/'zip.body',receipt_path=CAPTURES/'zip.json')
             first=source.stage_aquifers_candidate(storage,**kwargs)
             prefix=Path(tmp,'aquifers','aquifers',first['version'])
+            # Run the actual normal catalog body twice: its second pass snapshots
+            # existing quality/dictionary products. These are permitted metadata,
+            # not unexpected additional source outputs.
+            for _ in range(2):
+                with build_asset_context(partition_key=f'aquifers/aquifers/{first["version"]}') as context:
+                    publish_catalog(context,storage)
+            self.assertTrue(prefix.joinpath('metadata/source/data_dictionary.json').exists())
+            self.assertTrue(prefix.joinpath('metadata/source/quality_manifest.json').exists())
             before={str(p.relative_to(prefix)):source.sha(p.read_bytes()) for p in prefix.rglob('*') if p.is_file()}
             repeated=source.stage_aquifers_candidate(storage,**kwargs)
             self.assertEqual(first,repeated)
@@ -207,6 +216,20 @@ class AquifersTests(unittest.TestCase):
             marker.write_bytes(source.encode(ready))
             with self.subTest(cache_case=case),self.assertRaises(source.AquifersQuarantineError) as caught:
                 source.stage_aquifers_candidate(storage,**kwargs)
+            expected_reasons={
+                'parquet-value':'cached_parquet_original_row_or_geometry_mismatch',
+                'parquet-native-geometry':'cached_parquet_original_row_or_geometry_mismatch',
+                'parquet-integer-width':'cached_parquet_physical_schema_metadata_or_crs_drift',
+                'parquet-nullability':'cached_parquet_physical_schema_metadata_or_crs_drift',
+                'geopackage-value':'cached_geopackage_original_row_or_geometry_mismatch',
+                'provenance':'cached_source_provenance_semantic_or_code_drift',
+                'extra-output':'existing_candidate_inventory_conflict',
+                'missing-output':'existing_candidate_inventory_conflict',
+                'nonobject-roster':'existing_candidate_inventory_must_be_object'}
+            if case=='parquet-malformed-geometry':
+                self.assertIsInstance(caught.exception.__cause__,shapely.errors.ShapelyError)
+            else:
+                self.assertIn(expected_reasons[case],str(caught.exception))
             retained=str(caught.exception).split('retained:',1)[1]
             preserved=root/retained/'candidate'
             self.assertTrue(preserved.exists())
