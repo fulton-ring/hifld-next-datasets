@@ -179,6 +179,7 @@ class BoundaryTests(unittest.TestCase):
                 self.assertEqual(list(_iter_staged_version_paths(storage)),[])
                 self.assertTrue(list(Path(d,'_raw-captures').rglob('ibc-zip.body')))
                 self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
+                self.assertFalse(list(Path(d,'_source-provenance').rglob('bundle.json')))
 
     def test_invalid_offset_and_original_bad_receipt_bytes_retained(self):
         for original in [b'{"url":"x","url":"y"}',b'[]']:
@@ -349,6 +350,31 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'missing_original_construction_provenance_bundle'):
                 s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
             self.assertFalse(root.exists());self.assertFalse(bundle.exists())
+
+    def test_coforged_original_commit_requires_authentic_matching_git_files(self):
+        for claimed_commit in ['0'*40,'4800e4f5df550bfadd3631585268ce68a0fa25d9']:
+            with self.subTest(claimed_commit=claimed_commit),tempfile.TemporaryDirectory() as d:
+                storage=StagingStorageResource(local_dir=d)
+                out=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                root=Path(d,s.SLUG,s.SLUG,out['version']);manifest=root/'metadata/source_manifest.json'
+                bundle=Path(d,'_source-provenance',s.SLUG,out['version'],'bundle.json');original_bundle=bundle.read_bytes()
+                value=json.loads(manifest.read_text());value['code_commit']=claimed_commit;manifest.write_bytes(s.encode(value))
+                external=json.loads(bundle.read_text());external['manifest']=value;bundle.write_bytes(s.encode(external))
+                readyfile=root/'metadata/canada_us_border_candidate_ready.json';ready=json.loads(readyfile.read_text())
+                ready['objects']['metadata/source_manifest.json']=s.sha(manifest.read_bytes());readyfile.write_bytes(s.encode(ready))
+                before={str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+                forged_bundle=bundle.read_bytes()
+                with self.assertRaisesRegex(ValueError,'construction_'):
+                    s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                self.assertFalse(root.exists());self.assertEqual(list(_iter_staged_version_paths(storage)),[])
+                retained=list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'));self.assertEqual(len(retained),1)
+                self.assertEqual(before,{str(p.relative_to(retained[0])):s.sha(p.read_bytes()) for p in retained[0].rglob('*') if p.is_file()})
+                self.assertEqual(bundle.read_bytes(),forged_bundle)
+                # Restore the independently retained original record, never bless
+                # a forged record or rewrite historical construction metadata.
+                bundle.write_bytes(original_bundle)
+                self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
+                self.assertEqual(json.loads(manifest.read_text())['code_commit'],json.loads(original_bundle)['manifest']['code_commit'])
 
     def test_encoded_wire_length_and_partial_diagnostics(self):
         actual_client=httpx.Client

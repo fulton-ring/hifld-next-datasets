@@ -33,6 +33,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
@@ -343,7 +344,7 @@ def write_canonical_geopackage(destination: Path, rows: list[dict]) -> None:
 
 
 def original_provenance_bundle(storage: StagingStorageResource, version: str,
-                               captures: dict, manifest: dict, *, create: bool=False) -> tuple[dict,dict]:
+                               captures: dict, manifest: dict, processing_files: dict, *, create: bool=False) -> tuple[dict,dict]:
     """Bind the first construction and original receipts outside self-pinned caches.
 
     The caller holds the stable version lock. Fresh observations stay in the raw
@@ -353,6 +354,7 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     if not storage.object_exists(key):
         if not create:
             raise BoundaryQuarantineError('missing_original_construction_provenance_bundle')
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
         bundle={'manifest':manifest,'captures':{name:{
             'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
             'receipt':receipt} for name,(body,receipt) in captures.items()}}
@@ -376,6 +378,7 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     expected_manifest['processing_fingerprint']=manifest['processing_fingerprint']
     actual=bundle['manifest']
     validate_release_provenance(actual)
+    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)
     if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
         raise BoundaryQuarantineError('original_construction_manifest_drift')
     return original,actual
@@ -471,6 +474,14 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
             private=StagingStorageResource(local_dir=tmp,use_local=True)
             for name,value in payloads.items(): immutable(private,name,value)
             immutable(private,'metadata/canada_us_border_candidate_ready.json',encode(ready))
+            # Only a complete private candidate may establish its first binding.
+            manifest=strict_json(payloads['metadata/source_manifest.json'])
+            identity=strict_json(payloads['metadata/processing_identity.json'])
+            captures={name:(payloads[f'raw/captures/{name}.body'],
+                strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
+            _,original_manifest=original_provenance_bundle(storage,ready['version'],captures,manifest,identity['files'],create=True)
+            if manifest!=original_manifest:
+                raise BoundaryQuarantineError('concurrent_original_construction_manifest_changed')
             os.rename(tmp,target)
 
 
@@ -509,7 +520,7 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             with candidate_version_lock(storage,prefix) as target:
                 if target.exists():
                     try:
-                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest)
+                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
                         if not storage.object_exists(ready_key):
                             raise BoundaryQuarantineError('concurrent_or_incomplete_existing_candidate:missing_candidate_ready')
                         ready = strict_json(storage.read_key(ready_key))
@@ -530,7 +541,11 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
                         retained=quarantine_cached_candidate(storage,prefix,str(exc),already_locked=True)
                         raise BoundaryQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc
-                captures,manifest=original_provenance_bundle(storage,version,captures,manifest,create=True)
+                bundle_key=f'_source-provenance/{SLUG}/{version}/bundle.json'
+                if storage.object_exists(bundle_key):
+                    captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
+                else:
+                    validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
                 body,receipt=captures['ibc-zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_canonical_geopackage(geopackage,rows)
