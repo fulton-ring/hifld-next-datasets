@@ -421,6 +421,7 @@ def manifest_for(captures,identity,geojson):
         'unsupported_output_formats':{'geopackage':unsupported,'geoparquet':unsupported,'shapefile_zip':unsupported+' Full original field names also exceed Shapefile limits.',
             'pmtiles':'No approvedcartographicID/field/type/geometrycontract; native types/absence must not be normalized.'},
         'preserved_native_output':{'path':GEOJSON_KEY,'bytes':len(geojson),'sha256':digest(geojson)},
+        'literal_geojson_catalog':{'schema_version':1,'path':GEOJSON_KEY,'bytes':len(geojson),'sha256':digest(geojson)},
         'native_schema_authority':'Complete source primitive/presence audit; generic catalog inferred types are exploratory metadata, not a homogeneous contract.'}
     validate_release_provenance(manifest);return manifest
 

@@ -1,25 +1,16 @@
-# FDIC locations reconstruction draft — issue #82
+# FDIC locations — draft reconstruction (#82)
 
-This adapter preserves the complete official FDIC **locations** population. The existing HIFLD release contains branches and headquarters; replacing it with the institutions population would change its grain. Source selection, baseline, contract, rights, identifier mappings and the proposed coordinate interpretation require independent acceptance before release.
+Source: [official FDIC locations API](https://api.fdic.gov/banks/locations), pinned index `locations_20261016090006`. The complete 78,028-record branch/headquarters population is checked against before/after ID censuses. Raw responses, native IDs, JSON primitive types, absent keys, explicit nulls, leading-zero ZIP strings and historical releases remain intact. This is observed source coherence, not a transactional snapshot.
 
-The pinned 2026-10-16 index has 78,028 records: 4,216 headquarters and 73,812 other offices. Eight full pages are bounded by two complete ID censuses. Counts, index and sorted unique identifiers agree; this is observed coherence, not a transactional snapshot guarantee. All original responses and aware observation receipts remain required external artifacts.
+The output is lossless-property GeoJSON with a **proposed**, unapproved `[LONGITUDE,LATITUDE]` interpretation; the producer does not declare a CRS. All 803 integer zero pairs remain. Two out-of-range latitudes retain literal properties with null proposed geometries. The full-population quality check blocks all 805 rows. Homogeneous derivatives remain unsupported until an accepted lossless variant/presence contract exists. Source/baseline selection, IDs/schema/date/CRS/rights and release decisions remain pending.
 
-Canonical GeoJSON preserves every native property, JSON primitive, absent key and explicit null. Seven fields mix strings and integers, 18,270 records omit `CBSA_METRO_NAME`, 33,831 have explicit null `ACQDATE`, and 7,405 ZIP strings start with zero. Native `ID` strings and `UNINUM` integers remain separate. The producer's documentation and actual JSON physical types differ; the adapter retains the bytes' types.
+The explicit `fdic_locations_draft_reconstruction` Dagster job proves preservation only and excludes the registered blocking quality check. Configure its ingest op's `capture_directory` to the matching preserved artifact directory, with isolated `DAGSTER_HOME`, `HIFLD_STAGING_DIR` and `HIFLD_DATASETS_DIR`. The weekly schedule is STOPPED; changed source/index/schema/coverage is quarantined. No production write or release approval is implied.
 
-Points are a proposed `[LONGITUDE, LATITUDE]` interpretation, not a producer-declared CRS approval. All 803 literal integer `(0,0)` pairs remain. Two latitude values exceed 90: native IDs `259663` (158.227518485, 6.880382388) and `522154` (138.097, 9.538). Their proposed geometries remain null and their literal coordinate properties remain unchanged. The full-population blocking check fails on these **805** rows. No swapping, geocoding, filling or row removal occurs.
-
-The complete historical v1.0.0 candidate has 79,542 Parquet rows, including a literal header row and 5,766 zero points. Its `OBJECTID`, `source_ID`, `UNINUM` and other identifiers remain in original raw files and the complete compressed lineage sidecar. Diagnostic UNINUM joins do not approve an identifier mapping or type/date migration. GeoPackage, Parquet, Shapefile and PMTiles generation are explicitly unsupported until a lossless mixed-type/presence encoding and the relevant format contracts are accepted.
-
-`fdic_locations_draft_reconstruction` runs source integrity and preservation **without** the blocking quality check. Its success establishes staging only. The full quality check remains registered; promotion also requires the independent release registry and verifier. The weekly refresh schedule is STOPPED. Official refresh rechecks all 24 page/census requests; schema, values, count, coverage or index drift is quarantined for an explicit new source decision. The published baseline is never automatically refetched or accepted.
-
-Reproduce from the complete preserved capture artifact, using the filenames and SHA-256/length pins in `fdic_locations_spec.py` plus the receipt pins in `replay.json`:
+Required complete input artifact: `fdic-82-original-captures.tar.gz`, 64,717,414 bytes, SHA-256 `05b9fbf0650f403bcc95feb8b3e853780d05750277106d672a36c2c23c7f48f1`. Its 74 members have been fully hash-replayed. Original bodies/receipts, full comparisons and actual-run replay evidence remain checksummed artifacts, outside Git; historical replay requires these originals, not live refetch.
 
 ```sh
-PYTHONPATH=src python scripts/verify_fdic_locations_draft.py \
-  --capture-dir /operator/preserved-fdic-captures \
-  --runtime-dir /operator/empty-isolated-fdic-runtime
-HIFLD_FDIC_LOCATIONS_TEST_CAPTURE_DIR=/operator/preserved-fdic-captures \
+HIFLD_FDIC_LOCATIONS_TEST_CAPTURE_DIR=/operator/preserved-captures \
   PYTHONPATH=src python -m unittest discover -s tests -p 'test_fdic_locations*.py'
 ```
 
-The six-record fixture is structural evidence only. Full source/baseline captures and generated audits are checksummed artifacts, not Git fixtures. Matching original artifacts are required for historical replay; live refetch is not a substitute. Actual execution results and exact commits will be recorded after the portable source checkpoint is published and independently reviewed. No CI, release approval or production materialization is asserted here.
+The six-record fixture tests structure only; it does not establish national completeness or approval.
