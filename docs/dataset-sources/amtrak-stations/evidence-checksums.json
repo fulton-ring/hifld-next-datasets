@@ -71,6 +71,10 @@
     "bytes": 72698,
     "sha256": "5d9e29e21c6523d25d67edd7a613392a6030ee40430e14c7f2f183906842e660"
   },
+  "evidence/standalone-fixes-execution.json": {
+    "bytes": 11188,
+    "sha256": "42079742495e3ca395f0c18e25c88c7cee533d427e8fde506fe087418b3d51bd"
+  },
   "evidence/strict-receipts-data-dictionary.json": {
     "bytes": 59548,
     "sha256": "bf94f8028f797d7b432b8ed078221472a74ba4e5423adb7f906b593cfc18db18"

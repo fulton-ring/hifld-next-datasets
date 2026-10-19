@@ -1,0 +1,199 @@
+{
+  "classification": "Unapproved real-source draft; narrow independent-review repair validation",
+  "code_commit": "59dacbdbe88dc895322f9b62da35cbee97e0fc34",
+  "implementation_sha256": "aa6b7d88e6deffef04cff4b92a5fc39b8b54facd227f2b59a94a66da4d6ed5b3",
+  "module": "/workspace/hifld-worker-worktrees/17/src/dagster_hifld/amtrak_extract.py",
+  "version": "v0.0.0-reviewfix-aa6b7d88e6de",
+  "published_before": {
+    "accepted-fixture.bin": "87a9470eb51243de8984251c583915a0452f4b36928618b8dc6e5212564a8ada"
+  },
+  "no_dataset_acceptance": true,
+  "ingest": {
+    "run_id": "3e063959-4005-48ae-a06f-fe6ac6242663",
+    "success": true
+  },
+  "refresh": {
+    "run_id": "6451d5c8-9d66-4543-9cce-0babec33fdd4",
+    "success": true,
+    "all_version_bytes_identical": true
+  },
+  "catalog": {
+    "run_id": "0efc8f6a-f285-4696-9fdc-49d983d54de0",
+    "success": true
+  },
+  "provenance": {
+    "schema_version": 1,
+    "processor": "HIFLD Next",
+    "observed_body_inputs": 18,
+    "every_retained_observed_body_hash_length_url_time_verified": true,
+    "shared_validator_manifest_and_dictionary_pass": true,
+    "catalog_inputs_equal": true,
+    "promotion_allowed": false
+  },
+  "prior_full_terminal_proof": {
+    "prior_source_checkpoint": "be49bcb93f1901b408e709b6df33bb58dcc98681",
+    "prior_full_graph_run_id": "31a4790d-6d47-4167-8fe1-a34b852ee7a9",
+    "prior_fidelity": {
+      "rows": 1036,
+      "all_source_values_types_native_geometry_equal": true,
+      "extra_columns": [
+        "bbox"
+      ],
+      "nullable_metadata_changes": [
+        {
+          "name": "OBJECTID",
+          "candidate": false,
+          "terminal": true
+        },
+        {
+          "name": "geometry",
+          "candidate": false,
+          "terminal": true
+        }
+      ]
+    },
+    "canonical_bytes_unchanged": {
+      "draft_candidate/candidate.parquet": {
+        "prior_sha256": "0747b06f0033ab751bd5d64b648f8156e541482691eb7126987353914e3ca143",
+        "current_sha256": "0747b06f0033ab751bd5d64b648f8156e541482691eb7126987353914e3ca143"
+      },
+      "geopackage/amtrak-stations.gpkg": {
+        "prior_sha256": "646db794b8ec3457494187f67d4a1451521ddc20c2618272c13f84c137dc8b4c",
+        "current_sha256": "646db794b8ec3457494187f67d4a1451521ddc20c2618272c13f84c137dc8b4c"
+      },
+      "geojson/amtrak-stations.geojson": {
+        "prior_sha256": "8af15a48887392751b7e03fc0a95b9d026c487e8a64a28270a7a682f757791de",
+        "current_sha256": "8af15a48887392751b7e03fc0a95b9d026c487e8a64a28270a7a682f757791de"
+      }
+    },
+    "named_transformation_ASTs_unchanged": [
+      "build_candidate::ParquetWriter",
+      "write_typed_geopackage",
+      "verify_typed_geopackage"
+    ],
+    "meaning": "Prior full terminal proof retained; this repair changes error/provenance/identity handling, not source data transformations. No full conversion repeat claimed."
+  },
+  "narrow_unapproved_gate": {
+    "run_id": "833c4090-3156-4dde-80e2-7bc420ffc8b1",
+    "success": false,
+    "failed_steps": {
+      "publish__verify": "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/src/dagster_hifld/assets/publish.py\", line 1380, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/17/src/dagster_hifld/release_approval.py\", line 120, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/17/src/dagster_hifld/release_approval.py\", line 48, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+    },
+    "promote_never_ran": true,
+    "selection": "verify/promote only against canonical staged outputs, no full conversion repeat"
+  },
+  "synthetic_replay_failures": [
+    {
+      "kind": "error",
+      "body": "bts_count",
+      "run_id": "e06344e6-fd85-4cbc-9cb5-a34b093edb47",
+      "success": false,
+      "exact_raw_quarantined": true,
+      "no_canonical_candidate": true,
+      "meaning": "Deliberately corrupted local copies, not observed producer errors"
+    },
+    {
+      "kind": "array",
+      "body": "bts_ids_after",
+      "run_id": "c67876aa-87c2-4e04-9bc7-260295e93fd2",
+      "success": false,
+      "exact_raw_quarantined": true,
+      "no_canonical_candidate": true,
+      "meaning": "Deliberately corrupted local copies, not observed producer errors"
+    }
+  ],
+  "synthetic_attempt_provenance_failures": [
+    {
+      "kind": "invalid",
+      "run_id": "125cef80-71be-4d09-8cd2-7599f7ce6555",
+      "success": false,
+      "exact_raw_and_receipts_quarantined": true,
+      "no_canonical_version": true,
+      "receipt": "attempts/page-000/000.receipt.json",
+      "meaning": "Deliberately corrupted local receipt timestamp; not an observed source defect"
+    },
+    {
+      "kind": "naive",
+      "run_id": "32cc6e70-a088-4674-b7f6-1f99e7e0bea3",
+      "success": false,
+      "exact_raw_and_receipts_quarantined": true,
+      "no_canonical_version": true,
+      "receipt": "attempts/page-000/000.receipt.json",
+      "meaning": "Deliberately corrupted local receipt timestamp; not an observed source defect"
+    },
+    {
+      "kind": "invalid-offset-attempt",
+      "run_id": "d9f87049-b414-44b5-8fa1-8ffd4bf6ee27",
+      "success": false,
+      "exact_raw_and_receipts_quarantined": true,
+      "no_canonical_version": true,
+      "receipt": "attempts/page-000/000.receipt.json",
+      "meaning": "Deliberately corrupted local receipt timestamp; not an observed source defect"
+    },
+    {
+      "kind": "invalid-offset-terminal",
+      "run_id": "7d472d6a-0d81-4b81-8b7e-f1437f6acc45",
+      "success": false,
+      "exact_raw_and_receipts_quarantined": true,
+      "no_canonical_version": true,
+      "receipt": "page-000.receipt.json",
+      "meaning": "Deliberately corrupted local receipt timestamp; not an observed source defect"
+    }
+  ],
+  "untrusted_diagnostic_receipt": {
+    "run_id": "c1986286-a142-4dbb-8381-42cb0d7568f9",
+    "success": true,
+    "byte_hash_pinned": true,
+    "preserved": true,
+    "retrieval_claims_exclude_diagnostic": true,
+    "source_inputs_unchanged": 18
+  },
+  "standalone_builder_provenance_preflight": {
+    "positive_rows": 1036,
+    "candidate_sha256": "0747b06f0033ab751bd5d64b648f8156e541482691eb7126987353914e3ca143",
+    "cases": [
+      {
+        "date": [],
+        "errors": [
+          "Observed HTTP Date must retain its original string type",
+          "Observed HTTP Date must retain its original string type"
+        ],
+        "new_destination_absent": true,
+        "prior_candidate_and_fixture_preserved": true
+      },
+      {
+        "date": {},
+        "errors": [
+          "Observed HTTP Date must retain its original string type",
+          "Observed HTTP Date must retain its original string type"
+        ],
+        "new_destination_absent": true,
+        "prior_candidate_and_fixture_preserved": true
+      },
+      {
+        "date": "not-an-http-date",
+        "errors": [
+          "Observed HTTP Date is invalid",
+          "Observed HTTP Date is invalid"
+        ],
+        "new_destination_absent": true,
+        "prior_candidate_and_fixture_preserved": true
+      }
+    ],
+    "valid_reuse_identical": true
+  },
+  "published_after": {
+    "accepted-fixture.bin": "87a9470eb51243de8984251c583915a0452f4b36928618b8dc6e5212564a8ada"
+  },
+  "accepted_fixture_and_real_raw_preserved": true,
+  "current_provenance_output_pins": {
+    "source_manifest.json": {
+      "sha256": "680fb87b84a5c5b52d8541338ccfc4efedfce1ef2d960989702f2f89b56bb9cb",
+      "bytes": 72731
+    },
+    "data_dictionary.json": {
+      "sha256": "61c3b1c0cbe5e8e3c636c2618dddfe4c33a3354436447ee47da338a4ac6661af",
+      "bytes": 59548
+    }
+  }
+}
