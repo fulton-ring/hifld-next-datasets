@@ -4,7 +4,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from dagster import AssetKey, Field, asset
+from dagster import (
+    AssetKey, AssetSelection, DefaultScheduleStatus, Field, ScheduleDefinition,
+    asset, define_asset_job,
+)
 
 from dagster_hifld.download import build_version_id, download_convert_and_stage
 from dagster_hifld.resources import StagingStorageResource
@@ -114,3 +117,24 @@ def noaa_24nm_contiguous_zone(context, staging_storage: StagingStorageResource) 
         version,
         staging_storage,
     )
+
+
+# Scheduling is reviewable configuration only; no schedule is activated here.
+# The source job stages local drafts and never selects catalog/publish/promotion.
+noaa_eez_draft_refresh_job = define_asset_job(
+    "noaa_eez_draft_refresh",
+    selection=AssetSelection.assets(noaa_200nm_eez_and_maritime_boundaries.key),
+    config={"ops": {noaa_200nm_eez_and_maritime_boundaries.op.name: {
+        "config": {"allow_unapproved_local_draft": True}
+    }}},
+    tags={"hifld/draft": "true", "hifld/promotion": "disabled"},
+    description="Refresh an unapproved NOAA EEZ draft in local staging only; source extraction only, no publication.",
+)
+noaa_eez_draft_weekly_schedule = ScheduleDefinition(
+    name="noaa_eez_draft_weekly",
+    job=noaa_eez_draft_refresh_job,
+    cron_schedule="0 6 * * 1",
+    execution_timezone="America/New_York",
+    default_status=DefaultScheduleStatus.STOPPED,
+    description="Stopped weekly Monday 06:00 America/New_York local-draft refresh; activation requires an explicit operator action.",
+)
