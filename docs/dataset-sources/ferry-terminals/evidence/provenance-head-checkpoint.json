@@ -1,0 +1,6 @@
+{
+  "source_commit": "8e8300719530b604387b2dbb4b77873cfdbb692d",
+  "wrong_source_commit_with_all_processing_files_present": "f710c92ac7ca7da36a861e9cec6a9aa419319bdf",
+  "scope": "Genuine docs-only checkpoint after13actualsource/normalgraph runs; upcoming11recovery/history runs retain same frozen code.",
+  "approved": false
+}

@@ -1,0 +1,22 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/ferry-terminals/ferry-terminals/v1.0.0/file_geodatabase/ferry-terminals-file_geodatabase.zip",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/ferry-terminals/ferry-terminals/v1.0.0/file_geodatabase/ferry-terminals-file_geodatabase.zip",
+  "status": 404,
+  "fetched_at": "2026-10-19T09:40:52.376843+00:00",
+  "bytes": 331,
+  "sha256": "2e6d49a23ee7f6d3c56bbcce6d7f0238d24e3bf6fb372eac60897e90aa0ee9bf",
+  "headers": {
+    "content-type": "application/xml; charset=UTF-8",
+    "x-guploader-uploadid": "AP6rU82p3PWjr-dPb36zNvf_zpZRA363DvifjPCNvkUqPWapZ6h8GjL_IUVKZ0daRN-F0xnL",
+    "content-length": "331",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "date": "Mon, 19 Oct 2026 09:40:52 GMT",
+    "expires": "Mon, 19 Oct 2026 09:40:52 GMT",
+    "cache-control": "private, max-age=0",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "343"
+  },
+  "wire_bytes": 331
+}
