@@ -107,6 +107,16 @@
   "evidence": {
     "audit": "evidence/baseline-audit.json",
     "replay": "evidence/audit.py",
-    "source_capture_count": 12
+    "source_capture_count": 12,
+    "verification": "evidence/verification.json",
+    "source_code_head": "97f45abb559b28cf43f0859df151ca19a2326ed7",
+    "published_assets_full_captures": 6,
+    "local_dagster_run_count": 13,
+    "full_suite": {
+      "total": 524,
+      "passed": 523,
+      "skipped": 1
+    },
+    "independent_review": "pending"
   }
 }

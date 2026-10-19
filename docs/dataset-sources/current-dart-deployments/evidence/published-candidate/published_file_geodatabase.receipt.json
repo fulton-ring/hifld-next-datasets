@@ -1,0 +1,31 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/current-dart-deployments/current-dart-deployments/v1.0.0/file_geodatabase/current-dart-deployments-file_geodatabase.zip",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/current-dart-deployments/current-dart-deployments/v1.0.0/file_geodatabase/current-dart-deployments-file_geodatabase.zip",
+  "status": 200,
+  "headers": {
+    "content-type": "application/zip",
+    "x-guploader-uploadid": "AP6rU82RqiiUX0qgCZ5dtpzojpXXIOMVVIAAt8jr4nUukHtrOVCl4-PjYWexmQ_scsetD4MC",
+    "expires": "Mon, 19 Oct 2026 09:58:57 GMT",
+    "date": "Mon, 19 Oct 2026 08:58:57 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:20 GMT",
+    "etag": "\"ce236c06b0f6417569d6e9aacd1e65ad\"",
+    "x-goog-generation": "1791506360482993",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "35477",
+    "x-goog-hash": "crc32c=F5pfiQ==, md5=ziNsBrD2QXVp1umqzR5lrQ==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "35477",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "426"
+  },
+  "wire_bytes": 35477,
+  "bytes": 35477,
+  "sha256": "3218746b5ed6ca4b933eb28b78d4b3b39f152781fb247fe007341a4b91b505a8",
+  "fetched_at": "2026-10-19T08:58:58.184792+00:00"
+}

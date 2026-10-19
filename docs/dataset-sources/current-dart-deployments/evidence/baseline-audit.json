@@ -1,6 +1,1436 @@
 {
   "approved": false,
   "classification": "unapproved_published_candidate_diagnostic",
+  "all_six_complete_published_assets_checksums": {
+    "file_geodatabase": {
+      "file_size": 35477,
+      "stac_multihash_md5_verified": true,
+      "sha256": "3218746b5ed6ca4b933eb28b78d4b3b39f152781fb247fe007341a4b91b505a8"
+    },
+    "geojson": {
+      "file_size": 18337,
+      "stac_multihash_md5_verified": true,
+      "sha256": "77fa60fc17fbc9e4931b9a3f70ace005cab4da8f37ed0e3c4b1584d2cc646629"
+    },
+    "geopackage": {
+      "file_size": 139264,
+      "stac_multihash_md5_verified": true,
+      "sha256": "cb9ac58b18de6622a8850a19869ff793caa96a0d035be6d6a3b114237673bcd8"
+    },
+    "geoparquet": {
+      "file_size": 16158,
+      "stac_multihash_md5_verified": true,
+      "sha256": "1cb1d80efc3b1f921d0a6cc1bd982a2c7816e4e70bc21651581b9875f524e4e8"
+    },
+    "pmtiles": {
+      "file_size": 4806,
+      "stac_multihash_md5_verified": true,
+      "sha256": "81dc31842da435e1e3623c6da98548406d707bd1ad8a107067cdebb8825a9f90"
+    },
+    "shapefile": {
+      "file_size": 4180,
+      "stac_multihash_md5_verified": true,
+      "sha256": "10b0de9917596c0d5240a8bbd18bb704b43959141afc76df02e5e5b4a0fc29d4"
+    }
+  },
+  "archive_formats": {
+    "shapefile": {
+      "schema": {
+        "properties": {
+          "STATION": "int32:9",
+          "DESCRIPTIO": "str:80",
+          "DEPLOYED": "str:80",
+          "DATA_URL": "str:80",
+          "OID": "int32:9"
+        },
+        "geometry": "Point"
+      },
+      "crs": "EPSG:3857",
+      "count": 62,
+      "rows": [
+        {
+          "intrinsic_fid": "0",
+          "attributes": {
+            "STATION": 21414,
+            "DESCRIPTIO": "184 NM Southwest of Adak, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21414",
+            "OID": 1
+          },
+          "wkb": "01010000008e06f05c69eb7241409b55dbdfea5741"
+        },
+        {
+          "intrinsic_fid": "1",
+          "attributes": {
+            "STATION": 32401,
+            "DESCRIPTIO": "180 NM West of Iquique, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32401",
+            "OID": 2
+          },
+          "wkb": "0101000000aaf1d279e92e5fc130992a3819c441c1"
+        },
+        {
+          "intrinsic_fid": "2",
+          "attributes": {
+            "STATION": 41420,
+            "DESCRIPTIO": "690 NM East of Miami, Florida, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=41420",
+            "OID": 3
+          },
+          "wkb": "0101000000b27bf2f87b935cc1085f98dcb97e4441"
+        },
+        {
+          "intrinsic_fid": "3",
+          "attributes": {
+            "STATION": 41421,
+            "DESCRIPTIO": "320 NM North of San Juan, Puerto Rico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=41421",
+            "OID": 4
+          },
+          "wkb": "0101000000ae25e4d7b9165bc10066f79c35784441"
+        },
+        {
+          "intrinsic_fid": "4",
+          "attributes": {
+            "STATION": 42407,
+            "DESCRIPTIO": "230 NM South of San Juan, Puerto Rico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=42407",
+            "OID": 6
+          },
+          "wkb": "0101000000c286a77798f65cc1003b709ed4403a41"
+        },
+        {
+          "intrinsic_fid": "5",
+          "attributes": {
+            "STATION": 46402,
+            "DESCRIPTIO": "240 NM South-southeast of Dutch Harbor, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46402",
+            "OID": 8
+          },
+          "wkb": "0101000000dc6800d8f06a71c1b8fc871022465941"
+        },
+        {
+          "intrinsic_fid": "6",
+          "attributes": {
+            "STATION": 46403,
+            "DESCRIPTIO": "230 NM Southeast of Shumagin Island, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46403",
+            "OID": 9
+          },
+          "wkb": "0101000000014d84c711aa70c138b4c822a5675a41"
+        },
+        {
+          "intrinsic_fid": "7",
+          "attributes": {
+            "STATION": 46404,
+            "DESCRIPTIO": "230 NM West of Astoria, Oregon, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46404",
+            "OID": 10
+          },
+          "wkb": "0101000000302aa9ed97576bc1d0b3595962f45541"
+        },
+        {
+          "intrinsic_fid": "8",
+          "attributes": {
+            "STATION": 46407,
+            "DESCRIPTIO": "210 NM West of Coos Bay, Oregon, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46407",
+            "OID": 11
+          },
+          "wkb": "0101000000547424bdf4236bc160ba494037185441"
+        },
+        {
+          "intrinsic_fid": "9",
+          "attributes": {
+            "STATION": 46408,
+            "DESCRIPTIO": "212 NM South of Umnak Island, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46408",
+            "OID": 13
+          },
+          "wkb": "01010000001361c370280972c1b047e13aed5b5841"
+        },
+        {
+          "intrinsic_fid": "10",
+          "attributes": {
+            "STATION": 46409,
+            "DESCRIPTIO": "240 NM Southeast of Kodiak, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46409",
+            "OID": 14
+          },
+          "wkb": "01010000005cfe43da62886fc1c064aac01d4d5c41"
+        },
+        {
+          "intrinsic_fid": "11",
+          "attributes": {
+            "STATION": 46410,
+            "DESCRIPTIO": "330 NM Southeast of Anchorage, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46410",
+            "OID": 15
+          },
+          "wkb": "010100000080d93df9eb866ec178832f28cd1d5e41"
+        },
+        {
+          "intrinsic_fid": "12",
+          "attributes": {
+            "STATION": 46411,
+            "DESCRIPTIO": "150 NM West of Mendocino Bay, California, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46411",
+            "OID": 16
+          },
+          "wkb": "01010000003108acfc63fa6ac1708104ed9d305241"
+        },
+        {
+          "intrinsic_fid": "13",
+          "attributes": {
+            "STATION": 46412,
+            "DESCRIPTIO": "190 NM West-southwest of San Diego, California, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46412",
+            "OID": 17
+          },
+          "wkb": "0101000000560e2dae3e9a69c12097ff10fe1c4d41"
+        },
+        {
+          "intrinsic_fid": "14",
+          "attributes": {
+            "STATION": 46413,
+            "DESCRIPTIO": "243 NM South-southeast of Adak, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46413",
+            "OID": 18
+          },
+          "wkb": "010100000009f9a0c8627e72c1580e2d6a004c5741"
+        },
+        {
+          "intrinsic_fid": "15",
+          "attributes": {
+            "STATION": 46419,
+            "DESCRIPTIO": "300 NM West-northwest of Seattle, Washington, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46419",
+            "OID": 19
+          },
+          "wkb": "010100000088855a2158856bc1c07d1d18cacc5741"
+        },
+        {
+          "intrinsic_fid": "16",
+          "attributes": {
+            "STATION": 51407,
+            "DESCRIPTIO": "140 NM Southeast of Honolulu, Hawaii, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=51407",
+            "OID": 20
+          },
+          "wkb": "01010000004772f97f4c9e70c1f80fe99757f14041"
+        },
+        {
+          "intrinsic_fid": "17",
+          "attributes": {
+            "STATION": 21413,
+            "DESCRIPTIO": "690 NM Southeast of Tokyo, Japan",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21413",
+            "OID": 70
+          },
+          "wkb": "0101000000b0e1e97bfc25704150c1a874a5434b41"
+        },
+        {
+          "intrinsic_fid": "18",
+          "attributes": {
+            "STATION": 23401,
+            "DESCRIPTIO": "600 NM West-northwest of Phuket, Thailand",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23401",
+            "OID": 71
+          },
+          "wkb": "01010000000a8a1f5398cd6241c06b0979fe382e41"
+        },
+        {
+          "intrinsic_fid": "19",
+          "attributes": {
+            "STATION": 52401,
+            "DESCRIPTIO": "610 NM East-northeast of Saipan, Northern Mariana Islands",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52401",
+            "OID": 74
+          },
+          "wkb": "0101000000e0be0eabe988704150af948dfbad4041"
+        },
+        {
+          "intrinsic_fid": "20",
+          "attributes": {
+            "STATION": 52402,
+            "DESCRIPTIO": "540 NM East-southeast of Saipan, Northern Mariana Islands",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52402",
+            "OID": 75
+          },
+          "wkb": "01010000000a682272d456704140136143d3673441"
+        },
+        {
+          "intrinsic_fid": "21",
+          "attributes": {
+            "STATION": 52403,
+            "DESCRIPTIO": "345 NM North of Manus Island, Papua New Guinea",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52403",
+            "OID": 76
+          },
+          "wkb": "01010000003c0ad7971ee66e41c044d8f079551b41"
+        },
+        {
+          "intrinsic_fid": "22",
+          "attributes": {
+            "STATION": 52404,
+            "DESCRIPTIO": "760 NM Northeast of Manila, Philippines",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52404",
+            "OID": 77
+          },
+          "wkb": "0101000000283a92299a0f6c41b8627f1937f64141"
+        },
+        {
+          "intrinsic_fid": "23",
+          "attributes": {
+            "STATION": 52405,
+            "DESCRIPTIO": "725 NM West of Agana, Guam",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52405",
+            "OID": 78
+          },
+          "wkb": "0101000000cca145f2e3106c41d0dee09b623f3641"
+        },
+        {
+          "intrinsic_fid": "24",
+          "attributes": {
+            "STATION": 32411,
+            "DESCRIPTIO": "710 NM West-southwest of Panama City, Panama",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32411",
+            "OID": 79
+          },
+          "wkb": "0101000000ecc039d7874b63c1e073b53507df2041"
+        },
+        {
+          "intrinsic_fid": "25",
+          "attributes": {
+            "STATION": 43412,
+            "DESCRIPTIO": "240 NM Southwest of Manzanillo, Mexico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=43412",
+            "OID": 80
+          },
+          "wkb": "01010000006519e250a6b666c190c2f5384d9a3b41"
+        },
+        {
+          "intrinsic_fid": "26",
+          "attributes": {
+            "STATION": 43413,
+            "DESCRIPTIO": "360 NM South-southwest of Acapulco, Mexico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=43413",
+            "OID": 81
+          },
+          "wkb": "01010000002a3a9235c74065c1207c61d221cf3241"
+        },
+        {
+          "intrinsic_fid": "27",
+          "attributes": {
+            "STATION": 55401,
+            "DESCRIPTIO": "600 NM Southeast of Hobart, Tasmania",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55401",
+            "OID": 82
+          },
+          "wkb": "0101000000168c4a01b10b714150b81ef1619e56c1"
+        },
+        {
+          "intrinsic_fid": "28",
+          "attributes": {
+            "STATION": 21416,
+            "DESCRIPTIO": "240 NM Southeast of Kamchatka Peninsula, Russia",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21416",
+            "OID": 114
+          },
+          "wkb": "010100000026750273df567141905cfe53855f5741"
+        },
+        {
+          "intrinsic_fid": "29",
+          "attributes": {
+            "STATION": 21418,
+            "DESCRIPTIO": "450 NM Northeast of Tokyo, Japan",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21418",
+            "OID": 116
+          },
+          "wkb": "010100000038454796fd906f41886ce7e3f0de5141"
+        },
+        {
+          "intrinsic_fid": "30",
+          "attributes": {
+            "STATION": 21415,
+            "DESCRIPTIO": "175 NM South of Attu, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21415",
+            "OID": 117
+          },
+          "wkb": "0101000000d24d62e376407241f0a7c60725b35841"
+        },
+        {
+          "intrinsic_fid": "31",
+          "attributes": {
+            "STATION": 51425,
+            "DESCRIPTIO": "370 NM Northwest of Apia, Samoa",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=51425",
+            "OID": 120
+          },
+          "wkb": "0101000000d200dec9f4b772c170a3015cab3c30c1"
+        },
+        {
+          "intrinsic_fid": "32",
+          "attributes": {
+            "STATION": 52406,
+            "DESCRIPTIO": "370 NM Northeast of Guadalcanal, Solomon Islands",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52406",
+            "OID": 121
+          },
+          "wkb": "0101000000441ceb295c847141402cd4dacb0122c1"
+        },
+        {
+          "intrinsic_fid": "33",
+          "attributes": {
+            "STATION": 44402,
+            "DESCRIPTIO": "136 NM Southeast of Fire Island, New York, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=44402",
+            "OID": 123
+          },
+          "wkb": "0101000000cae53f58c0005ec170567d36992c5241"
+        },
+        {
+          "intrinsic_fid": "34",
+          "attributes": {
+            "STATION": 32412,
+            "DESCRIPTIO": "630 NM Southwest of Lima, Peru",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32412",
+            "OID": 125
+          },
+          "wkb": "01010000000a6822cad95762c1d09ae67dc10d3fc1"
+        },
+        {
+          "intrinsic_fid": "35",
+          "attributes": {
+            "STATION": 55012,
+            "DESCRIPTIO": "Coral Sea 1",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55012",
+            "OID": 126
+          },
+          "wkb": "010100000064ee5a00e8d07041608863cd5d2e3bc1"
+        },
+        {
+          "intrinsic_fid": "36",
+          "attributes": {
+            "STATION": 55015,
+            "DESCRIPTIO": "Tasman Sea 1",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55015",
+            "OID": 127
+          },
+          "wkb": "01010000002acb100560037141c01726c3978f56c1"
+        },
+        {
+          "intrinsic_fid": "37",
+          "attributes": {
+            "STATION": 56001,
+            "DESCRIPTIO": "Indian Ocean 1",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=56001",
+            "OID": 132
+          },
+          "wkb": "01010000002acb10c307586741701b0d40740c38c1"
+        },
+        {
+          "intrinsic_fid": "38",
+          "attributes": {
+            "STATION": 56003,
+            "DESCRIPTIO": "Indian Ocean 2",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=56003",
+            "OID": 133
+          },
+          "wkb": "0101000000ee5a426cc30a6941c01726f3cad039c1"
+        },
+        {
+          "intrinsic_fid": "39",
+          "attributes": {
+            "STATION": 42409,
+            "DESCRIPTIO": "300 NM Southwest of New Orleans, Louisiana, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=42409",
+            "OID": 134
+          },
+          "wkb": "0101000000d34d626e9cf362c1c8dcb5acabbe4641"
+        },
+        {
+          "intrinsic_fid": "40",
+          "attributes": {
+            "STATION": 21419,
+            "DESCRIPTIO": "209 NM Southeast of Kuril Islands, Russia",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21419",
+            "OID": 135
+          },
+          "wkb": "01010000002a18955ed3877041d878e93ac9185541"
+        },
+        {
+          "intrinsic_fid": "41",
+          "attributes": {
+            "STATION": 55023,
+            "DESCRIPTIO": "Coral Sea 2",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55023",
+            "OID": 136
+          },
+          "wkb": "0101000000180456f6ef4d70410066f794716c39c1"
+        },
+        {
+          "intrinsic_fid": "42",
+          "attributes": {
+            "STATION": 32413,
+            "DESCRIPTIO": "1000 West-northwest of Lima, Peru",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32413",
+            "OID": 137
+          },
+          "wkb": "010100000055302affd7db63c1c07bf2f08d3729c1"
+        },
+        {
+          "intrinsic_fid": "43",
+          "attributes": {
+            "STATION": 23228,
+            "DESCRIPTIO": "Arabian Sea",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23228",
+            "OID": 139
+          },
+          "wkb": "01010000002cb29d57debf5b41a8dfbef6c3104241"
+        },
+        {
+          "intrinsic_fid": "44",
+          "attributes": {
+            "STATION": 23227,
+            "DESCRIPTIO": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23227",
+            "OID": 140
+          },
+          "wkb": "010100000094f606a34dda624180d2de20724a2541"
+        },
+        {
+          "intrinsic_fid": "45",
+          "attributes": {
+            "STATION": 55042,
+            "DESCRIPTIO": "Tasman Sea 2",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55042",
+            "OID": 141
+          },
+          "wkb": "0101000000a245b669612b714130772d3d325b55c1"
+        },
+        {
+          "intrinsic_fid": "46",
+          "attributes": {
+            "STATION": 32402,
+            "DESCRIPTIO": "180 NM West of Caldera, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32402",
+            "OID": 142
+          },
+          "wkb": "010100000062325568206a5fc1b0946578de9347c1"
+        },
+        {
+          "intrinsic_fid": "47",
+          "attributes": {
+            "STATION": 32066,
+            "DESCRIPTIO": "Ecuador INOCAR",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32066",
+            "OID": 143
+          },
+          "wkb": "0101000000ef3845c55a5c61c100c1a8a433e0fec0"
+        },
+        {
+          "intrinsic_fid": "48",
+          "attributes": {
+            "STATION": 32067,
+            "DESCRIPTIO": "Ecuador INOCAR",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32067",
+            "OID": 144
+          },
+          "wkb": "01010000003f575b39ed3e61c100280f0b54cff140"
+        },
+        {
+          "intrinsic_fid": "49",
+          "attributes": {
+            "STATION": 41425,
+            "DESCRIPTIO": "220 NM Southwest of Bermuda",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=41425",
+            "OID": 150
+          },
+          "wkb": "01010000002aa9137406e15bc1d056ecbf9e6a4941"
+        },
+        {
+          "intrinsic_fid": "50",
+          "attributes": {
+            "STATION": 46414,
+            "DESCRIPTIO": "160 NM Southeast of Chirikof Island, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46414",
+            "OID": 151
+          },
+          "wkb": "0101000000d9cef7b4213070c1401361a385275b41"
+        },
+        {
+          "intrinsic_fid": "51",
+          "attributes": {
+            "STATION": 46415,
+            "DESCRIPTIO": "370 NM Southwest of Juneau, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46415",
+            "OID": 152
+          },
+          "wkb": "01010000007268915703b76dc188635dd4b89f5a41"
+        },
+        {
+          "intrinsic_fid": "52",
+          "attributes": {
+            "STATION": 23218,
+            "DESCRIPTIO": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23218",
+            "OID": 153
+          },
+          "wkb": "01010000008c28eddd6fca6241402575a22d123141"
+        },
+        {
+          "intrinsic_fid": "53",
+          "attributes": {
+            "STATION": 23219,
+            "DESCRIPTIO": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23219",
+            "OID": 154
+          },
+          "wkb": "01010000001cebe2b87ee56241f0ebc01950253741"
+        },
+        {
+          "intrinsic_fid": "54",
+          "attributes": {
+            "STATION": 23223,
+            "DESCRIPTIO": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23223",
+            "OID": 155
+          },
+          "wkb": "0101000000dcf97e6ce2ff6241c05b20e1e9e63d41"
+        },
+        {
+          "intrinsic_fid": "55",
+          "attributes": {
+            "STATION": 23226,
+            "DESCRIPTIO": "Arabian Sea",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23226",
+            "OID": 156
+          },
+          "wkb": "01010000001873d72ad5975c4140f16364d1854141"
+        },
+        {
+          "intrinsic_fid": "56",
+          "attributes": {
+            "STATION": 32403,
+            "DESCRIPTIO": "91 NM West of Antofagasta, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32403",
+            "OID": 157
+          },
+          "wkb": "0101000000c442ad9dde965ec1b8a67947f63844c1"
+        },
+        {
+          "intrinsic_fid": "57",
+          "attributes": {
+            "STATION": 32404,
+            "DESCRIPTIO": "120 NM Northwest of Valparaiso, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32404",
+            "OID": 158
+          },
+          "wkb": "0101000000267502ce51565fc1f8a0676b3ad14cc1"
+        },
+        {
+          "intrinsic_fid": "58",
+          "attributes": {
+            "STATION": 32489,
+            "DESCRIPTIO": "121 NM Southwest of Buenaventura, Colombia",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32489",
+            "OID": 159
+          },
+          "wkb": "0101000000f775e01e97cb60c140b1bfac86611441"
+        },
+        {
+          "intrinsic_fid": "59",
+          "attributes": {
+            "STATION": 34420,
+            "DESCRIPTIO": "119 NM Northwest of Concepcion, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=34420",
+            "OID": 160
+          },
+          "wkb": "010100000040c6dc75bbf35fc1c0caa1a5654750c1"
+        },
+        {
+          "intrinsic_fid": "60",
+          "attributes": {
+            "STATION": 21420,
+            "DESCRIPTIO": "260 NM Southeast of Miyazaki, Japan",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21420",
+            "OID": 161
+          },
+          "wkb": "0101000000e09c112137a86c4190f6062f31ab4941"
+        },
+        {
+          "intrinsic_fid": "61",
+          "attributes": {
+            "STATION": 46416,
+            "DESCRIPTIO": "442 NM West of Vancouver, BC, Canada",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46416",
+            "OID": 162
+          },
+          "wkb": "01010000001cebe2de11896cc1403ee81977865841"
+        }
+      ]
+    },
+    "file_geodatabase": {
+      "schema": {
+        "properties": {
+          "STATION": "int32",
+          "DESCRIPTION": "str:80",
+          "DEPLOYED": "str:1",
+          "DATA_URL": "str:90",
+          "OID": "int32"
+        },
+        "geometry": "Point"
+      },
+      "crs": "EPSG:3857",
+      "count": 62,
+      "rows": [
+        {
+          "intrinsic_fid": "1",
+          "attributes": {
+            "STATION": 21414,
+            "DESCRIPTION": "184 NM Southwest of Adak, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21414",
+            "OID": 1
+          },
+          "wkb": "01010000008e06f05c69eb7241409b55dbdfea5741"
+        },
+        {
+          "intrinsic_fid": "2",
+          "attributes": {
+            "STATION": 32401,
+            "DESCRIPTION": "180 NM West of Iquique, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32401",
+            "OID": 2
+          },
+          "wkb": "0101000000aaf1d279e92e5fc130992a3819c441c1"
+        },
+        {
+          "intrinsic_fid": "3",
+          "attributes": {
+            "STATION": 41420,
+            "DESCRIPTION": "690 NM East of Miami, Florida, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=41420",
+            "OID": 3
+          },
+          "wkb": "0101000000b27bf2f87b935cc1085f98dcb97e4441"
+        },
+        {
+          "intrinsic_fid": "4",
+          "attributes": {
+            "STATION": 41421,
+            "DESCRIPTION": "320 NM North of San Juan, Puerto Rico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=41421",
+            "OID": 4
+          },
+          "wkb": "0101000000ae25e4d7b9165bc10066f79c35784441"
+        },
+        {
+          "intrinsic_fid": "6",
+          "attributes": {
+            "STATION": 42407,
+            "DESCRIPTION": "230 NM South of San Juan, Puerto Rico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=42407",
+            "OID": 6
+          },
+          "wkb": "0101000000c286a77798f65cc1003b709ed4403a41"
+        },
+        {
+          "intrinsic_fid": "7",
+          "attributes": {
+            "STATION": 46402,
+            "DESCRIPTION": "240 NM South-southeast of Dutch Harbor, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46402",
+            "OID": 8
+          },
+          "wkb": "0101000000dc6800d8f06a71c1b8fc871022465941"
+        },
+        {
+          "intrinsic_fid": "8",
+          "attributes": {
+            "STATION": 46403,
+            "DESCRIPTION": "230 NM Southeast of Shumagin Island, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46403",
+            "OID": 9
+          },
+          "wkb": "0101000000014d84c711aa70c138b4c822a5675a41"
+        },
+        {
+          "intrinsic_fid": "9",
+          "attributes": {
+            "STATION": 46404,
+            "DESCRIPTION": "230 NM West of Astoria, Oregon, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46404",
+            "OID": 10
+          },
+          "wkb": "0101000000302aa9ed97576bc1d0b3595962f45541"
+        },
+        {
+          "intrinsic_fid": "10",
+          "attributes": {
+            "STATION": 46407,
+            "DESCRIPTION": "210 NM West of Coos Bay, Oregon, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46407",
+            "OID": 11
+          },
+          "wkb": "0101000000547424bdf4236bc160ba494037185441"
+        },
+        {
+          "intrinsic_fid": "12",
+          "attributes": {
+            "STATION": 46408,
+            "DESCRIPTION": "212 NM South of Umnak Island, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46408",
+            "OID": 13
+          },
+          "wkb": "01010000001361c370280972c1b047e13aed5b5841"
+        },
+        {
+          "intrinsic_fid": "13",
+          "attributes": {
+            "STATION": 46409,
+            "DESCRIPTION": "240 NM Southeast of Kodiak, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46409",
+            "OID": 14
+          },
+          "wkb": "01010000005cfe43da62886fc1c064aac01d4d5c41"
+        },
+        {
+          "intrinsic_fid": "14",
+          "attributes": {
+            "STATION": 46410,
+            "DESCRIPTION": "330 NM Southeast of Anchorage, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46410",
+            "OID": 15
+          },
+          "wkb": "010100000080d93df9eb866ec178832f28cd1d5e41"
+        },
+        {
+          "intrinsic_fid": "15",
+          "attributes": {
+            "STATION": 46411,
+            "DESCRIPTION": "150 NM West of Mendocino Bay, California, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46411",
+            "OID": 16
+          },
+          "wkb": "01010000003108acfc63fa6ac1708104ed9d305241"
+        },
+        {
+          "intrinsic_fid": "16",
+          "attributes": {
+            "STATION": 46412,
+            "DESCRIPTION": "190 NM West-southwest of San Diego, California, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46412",
+            "OID": 17
+          },
+          "wkb": "0101000000560e2dae3e9a69c12097ff10fe1c4d41"
+        },
+        {
+          "intrinsic_fid": "17",
+          "attributes": {
+            "STATION": 46413,
+            "DESCRIPTION": "243 NM South-southeast of Adak, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46413",
+            "OID": 18
+          },
+          "wkb": "010100000009f9a0c8627e72c1580e2d6a004c5741"
+        },
+        {
+          "intrinsic_fid": "18",
+          "attributes": {
+            "STATION": 46419,
+            "DESCRIPTION": "300 NM West-northwest of Seattle, Washington, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46419",
+            "OID": 19
+          },
+          "wkb": "010100000088855a2158856bc1c07d1d18cacc5741"
+        },
+        {
+          "intrinsic_fid": "19",
+          "attributes": {
+            "STATION": 51407,
+            "DESCRIPTION": "140 NM Southeast of Honolulu, Hawaii, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=51407",
+            "OID": 20
+          },
+          "wkb": "01010000004772f97f4c9e70c1f80fe99757f14041"
+        },
+        {
+          "intrinsic_fid": "20",
+          "attributes": {
+            "STATION": 21413,
+            "DESCRIPTION": "690 NM Southeast of Tokyo, Japan",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21413",
+            "OID": 70
+          },
+          "wkb": "0101000000b0e1e97bfc25704150c1a874a5434b41"
+        },
+        {
+          "intrinsic_fid": "21",
+          "attributes": {
+            "STATION": 23401,
+            "DESCRIPTION": "600 NM West-northwest of Phuket, Thailand",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23401",
+            "OID": 71
+          },
+          "wkb": "01010000000a8a1f5398cd6241c06b0979fe382e41"
+        },
+        {
+          "intrinsic_fid": "22",
+          "attributes": {
+            "STATION": 52401,
+            "DESCRIPTION": "610 NM East-northeast of Saipan, Northern Mariana Islands",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52401",
+            "OID": 74
+          },
+          "wkb": "0101000000e0be0eabe988704150af948dfbad4041"
+        },
+        {
+          "intrinsic_fid": "23",
+          "attributes": {
+            "STATION": 52402,
+            "DESCRIPTION": "540 NM East-southeast of Saipan, Northern Mariana Islands",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52402",
+            "OID": 75
+          },
+          "wkb": "01010000000a682272d456704140136143d3673441"
+        },
+        {
+          "intrinsic_fid": "24",
+          "attributes": {
+            "STATION": 52403,
+            "DESCRIPTION": "345 NM North of Manus Island, Papua New Guinea",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52403",
+            "OID": 76
+          },
+          "wkb": "01010000003c0ad7971ee66e41c044d8f079551b41"
+        },
+        {
+          "intrinsic_fid": "25",
+          "attributes": {
+            "STATION": 52404,
+            "DESCRIPTION": "760 NM Northeast of Manila, Philippines",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52404",
+            "OID": 77
+          },
+          "wkb": "0101000000283a92299a0f6c41b8627f1937f64141"
+        },
+        {
+          "intrinsic_fid": "26",
+          "attributes": {
+            "STATION": 52405,
+            "DESCRIPTION": "725 NM West of Agana, Guam",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52405",
+            "OID": 78
+          },
+          "wkb": "0101000000cca145f2e3106c41d0dee09b623f3641"
+        },
+        {
+          "intrinsic_fid": "27",
+          "attributes": {
+            "STATION": 32411,
+            "DESCRIPTION": "710 NM West-southwest of Panama City, Panama",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32411",
+            "OID": 79
+          },
+          "wkb": "0101000000ecc039d7874b63c1e073b53507df2041"
+        },
+        {
+          "intrinsic_fid": "28",
+          "attributes": {
+            "STATION": 43412,
+            "DESCRIPTION": "240 NM Southwest of Manzanillo, Mexico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=43412",
+            "OID": 80
+          },
+          "wkb": "01010000006519e250a6b666c190c2f5384d9a3b41"
+        },
+        {
+          "intrinsic_fid": "29",
+          "attributes": {
+            "STATION": 43413,
+            "DESCRIPTION": "360 NM South-southwest of Acapulco, Mexico",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=43413",
+            "OID": 81
+          },
+          "wkb": "01010000002a3a9235c74065c1207c61d221cf3241"
+        },
+        {
+          "intrinsic_fid": "30",
+          "attributes": {
+            "STATION": 55401,
+            "DESCRIPTION": "600 NM Southeast of Hobart, Tasmania",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55401",
+            "OID": 82
+          },
+          "wkb": "0101000000168c4a01b10b714150b81ef1619e56c1"
+        },
+        {
+          "intrinsic_fid": "31",
+          "attributes": {
+            "STATION": 21416,
+            "DESCRIPTION": "240 NM Southeast of Kamchatka Peninsula, Russia",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21416",
+            "OID": 114
+          },
+          "wkb": "010100000026750273df567141905cfe53855f5741"
+        },
+        {
+          "intrinsic_fid": "32",
+          "attributes": {
+            "STATION": 21418,
+            "DESCRIPTION": "450 NM Northeast of Tokyo, Japan",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21418",
+            "OID": 116
+          },
+          "wkb": "010100000038454796fd906f41886ce7e3f0de5141"
+        },
+        {
+          "intrinsic_fid": "33",
+          "attributes": {
+            "STATION": 21415,
+            "DESCRIPTION": "175 NM South of Attu, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21415",
+            "OID": 117
+          },
+          "wkb": "0101000000d24d62e376407241f0a7c60725b35841"
+        },
+        {
+          "intrinsic_fid": "36",
+          "attributes": {
+            "STATION": 51425,
+            "DESCRIPTION": "370 NM Northwest of Apia, Samoa",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=51425",
+            "OID": 120
+          },
+          "wkb": "0101000000d200dec9f4b772c170a3015cab3c30c1"
+        },
+        {
+          "intrinsic_fid": "37",
+          "attributes": {
+            "STATION": 52406,
+            "DESCRIPTION": "370 NM Northeast of Guadalcanal, Solomon Islands",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=52406",
+            "OID": 121
+          },
+          "wkb": "0101000000441ceb295c847141402cd4dacb0122c1"
+        },
+        {
+          "intrinsic_fid": "39",
+          "attributes": {
+            "STATION": 44402,
+            "DESCRIPTION": "136 NM Southeast of Fire Island, New York, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=44402",
+            "OID": 123
+          },
+          "wkb": "0101000000cae53f58c0005ec170567d36992c5241"
+        },
+        {
+          "intrinsic_fid": "41",
+          "attributes": {
+            "STATION": 32412,
+            "DESCRIPTION": "630 NM Southwest of Lima, Peru",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32412",
+            "OID": 125
+          },
+          "wkb": "01010000000a6822cad95762c1d09ae67dc10d3fc1"
+        },
+        {
+          "intrinsic_fid": "42",
+          "attributes": {
+            "STATION": 55012,
+            "DESCRIPTION": "Coral Sea 1",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55012",
+            "OID": 126
+          },
+          "wkb": "010100000064ee5a00e8d07041608863cd5d2e3bc1"
+        },
+        {
+          "intrinsic_fid": "43",
+          "attributes": {
+            "STATION": 55015,
+            "DESCRIPTION": "Tasman Sea 1",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55015",
+            "OID": 127
+          },
+          "wkb": "01010000002acb100560037141c01726c3978f56c1"
+        },
+        {
+          "intrinsic_fid": "46",
+          "attributes": {
+            "STATION": 56001,
+            "DESCRIPTION": "Indian Ocean 1",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=56001",
+            "OID": 132
+          },
+          "wkb": "01010000002acb10c307586741701b0d40740c38c1"
+        },
+        {
+          "intrinsic_fid": "47",
+          "attributes": {
+            "STATION": 56003,
+            "DESCRIPTION": "Indian Ocean 2",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=56003",
+            "OID": 133
+          },
+          "wkb": "0101000000ee5a426cc30a6941c01726f3cad039c1"
+        },
+        {
+          "intrinsic_fid": "48",
+          "attributes": {
+            "STATION": 42409,
+            "DESCRIPTION": "300 NM Southwest of New Orleans, Louisiana, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=42409",
+            "OID": 134
+          },
+          "wkb": "0101000000d34d626e9cf362c1c8dcb5acabbe4641"
+        },
+        {
+          "intrinsic_fid": "49",
+          "attributes": {
+            "STATION": 21419,
+            "DESCRIPTION": "209 NM Southeast of Kuril Islands, Russia",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21419",
+            "OID": 135
+          },
+          "wkb": "01010000002a18955ed3877041d878e93ac9185541"
+        },
+        {
+          "intrinsic_fid": "50",
+          "attributes": {
+            "STATION": 55023,
+            "DESCRIPTION": "Coral Sea 2",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55023",
+            "OID": 136
+          },
+          "wkb": "0101000000180456f6ef4d70410066f794716c39c1"
+        },
+        {
+          "intrinsic_fid": "51",
+          "attributes": {
+            "STATION": 32413,
+            "DESCRIPTION": "1000 West-northwest of Lima, Peru",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32413",
+            "OID": 137
+          },
+          "wkb": "010100000055302affd7db63c1c07bf2f08d3729c1"
+        },
+        {
+          "intrinsic_fid": "53",
+          "attributes": {
+            "STATION": 23228,
+            "DESCRIPTION": "Arabian Sea",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23228",
+            "OID": 139
+          },
+          "wkb": "01010000002cb29d57debf5b41a8dfbef6c3104241"
+        },
+        {
+          "intrinsic_fid": "54",
+          "attributes": {
+            "STATION": 23227,
+            "DESCRIPTION": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23227",
+            "OID": 140
+          },
+          "wkb": "010100000094f606a34dda624180d2de20724a2541"
+        },
+        {
+          "intrinsic_fid": "55",
+          "attributes": {
+            "STATION": 55042,
+            "DESCRIPTION": "Tasman Sea 2",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=55042",
+            "OID": 141
+          },
+          "wkb": "0101000000a245b669612b714130772d3d325b55c1"
+        },
+        {
+          "intrinsic_fid": "56",
+          "attributes": {
+            "STATION": 32402,
+            "DESCRIPTION": "180 NM West of Caldera, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32402",
+            "OID": 142
+          },
+          "wkb": "010100000062325568206a5fc1b0946578de9347c1"
+        },
+        {
+          "intrinsic_fid": "57",
+          "attributes": {
+            "STATION": 32066,
+            "DESCRIPTION": "Ecuador INOCAR",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32066",
+            "OID": 143
+          },
+          "wkb": "0101000000ef3845c55a5c61c100c1a8a433e0fec0"
+        },
+        {
+          "intrinsic_fid": "58",
+          "attributes": {
+            "STATION": 32067,
+            "DESCRIPTION": "Ecuador INOCAR",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32067",
+            "OID": 144
+          },
+          "wkb": "01010000003f575b39ed3e61c100280f0b54cff140"
+        },
+        {
+          "intrinsic_fid": "63",
+          "attributes": {
+            "STATION": 41425,
+            "DESCRIPTION": "220 NM Southwest of Bermuda",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=41425",
+            "OID": 150
+          },
+          "wkb": "01010000002aa9137406e15bc1d056ecbf9e6a4941"
+        },
+        {
+          "intrinsic_fid": "64",
+          "attributes": {
+            "STATION": 46414,
+            "DESCRIPTION": "160 NM Southeast of Chirikof Island, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46414",
+            "OID": 151
+          },
+          "wkb": "0101000000d9cef7b4213070c1401361a385275b41"
+        },
+        {
+          "intrinsic_fid": "65",
+          "attributes": {
+            "STATION": 46415,
+            "DESCRIPTION": "370 NM Southwest of Juneau, Alaska, USA",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46415",
+            "OID": 152
+          },
+          "wkb": "01010000007268915703b76dc188635dd4b89f5a41"
+        },
+        {
+          "intrinsic_fid": "66",
+          "attributes": {
+            "STATION": 23218,
+            "DESCRIPTION": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23218",
+            "OID": 153
+          },
+          "wkb": "01010000008c28eddd6fca6241402575a22d123141"
+        },
+        {
+          "intrinsic_fid": "67",
+          "attributes": {
+            "STATION": 23219,
+            "DESCRIPTION": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23219",
+            "OID": 154
+          },
+          "wkb": "01010000001cebe2b87ee56241f0ebc01950253741"
+        },
+        {
+          "intrinsic_fid": "68",
+          "attributes": {
+            "STATION": 23223,
+            "DESCRIPTION": "Bay of Bengal",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23223",
+            "OID": 155
+          },
+          "wkb": "0101000000dcf97e6ce2ff6241c05b20e1e9e63d41"
+        },
+        {
+          "intrinsic_fid": "69",
+          "attributes": {
+            "STATION": 23226,
+            "DESCRIPTION": "Arabian Sea",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=23226",
+            "OID": 156
+          },
+          "wkb": "01010000001873d72ad5975c4140f16364d1854141"
+        },
+        {
+          "intrinsic_fid": "70",
+          "attributes": {
+            "STATION": 32403,
+            "DESCRIPTION": "91 NM West of Antofagasta, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32403",
+            "OID": 157
+          },
+          "wkb": "0101000000c442ad9dde965ec1b8a67947f63844c1"
+        },
+        {
+          "intrinsic_fid": "71",
+          "attributes": {
+            "STATION": 32404,
+            "DESCRIPTION": "120 NM Northwest of Valparaiso, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32404",
+            "OID": 158
+          },
+          "wkb": "0101000000267502ce51565fc1f8a0676b3ad14cc1"
+        },
+        {
+          "intrinsic_fid": "72",
+          "attributes": {
+            "STATION": 32489,
+            "DESCRIPTION": "121 NM Southwest of Buenaventura, Colombia",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=32489",
+            "OID": 159
+          },
+          "wkb": "0101000000f775e01e97cb60c140b1bfac86611441"
+        },
+        {
+          "intrinsic_fid": "73",
+          "attributes": {
+            "STATION": 34420,
+            "DESCRIPTION": "119 NM Northwest of Concepcion, Chile",
+            "DEPLOYED": "P",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=34420",
+            "OID": 160
+          },
+          "wkb": "010100000040c6dc75bbf35fc1c0caa1a5654750c1"
+        },
+        {
+          "intrinsic_fid": "74",
+          "attributes": {
+            "STATION": 21420,
+            "DESCRIPTION": "260 NM Southeast of Miyazaki, Japan",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=21420",
+            "OID": 161
+          },
+          "wkb": "0101000000e09c112137a86c4190f6062f31ab4941"
+        },
+        {
+          "intrinsic_fid": "75",
+          "attributes": {
+            "STATION": 46416,
+            "DESCRIPTION": "442 NM West of Vancouver, BC, Canada",
+            "DEPLOYED": "Y",
+            "DATA_URL": "http://www.ndbc.noaa.gov/station_page.php?station=46416",
+            "OID": 162
+          },
+          "wkb": "01010000001cebe2de11896cc1403ee81977865841"
+        }
+      ]
+    }
+  },
   "source_count": 62,
   "published_counts": {
     "geoparquet": 62,
@@ -716,6 +2146,14 @@
       "bytes": 1642,
       "sha256": "f6536a28b4a96604186f464849d274d9a0701fcec5927bafad72f355a87cc531"
     },
+    "published-candidate/current-dart-deployments-file_geodatabase.zip": {
+      "bytes": 35477,
+      "sha256": "3218746b5ed6ca4b933eb28b78d4b3b39f152781fb247fe007341a4b91b505a8"
+    },
+    "published-candidate/current-dart-deployments-shapefile.zip": {
+      "bytes": 4180,
+      "sha256": "10b0de9917596c0d5240a8bbd18bb704b43959141afc76df02e5e5b4a0fc29d4"
+    },
     "published-candidate/current-dart-deployments.geojson": {
       "bytes": 18337,
       "sha256": "77fa60fc17fbc9e4931b9a3f70ace005cab4da8f37ed0e3c4b1584d2cc646629"
@@ -728,6 +2166,14 @@
       "bytes": 16158,
       "sha256": "1cb1d80efc3b1f921d0a6cc1bd982a2c7816e4e70bc21651581b9875f524e4e8"
     },
+    "published-candidate/current-dart-deployments.pmtiles": {
+      "bytes": 4806,
+      "sha256": "81dc31842da435e1e3623c6da98548406d707bd1ad8a107067cdebb8825a9f90"
+    },
+    "published-candidate/published_file_geodatabase.receipt.json": {
+      "bytes": 1553,
+      "sha256": "14e7c0f99353043d0eb0148b3eb14e17ad3da896c59049bea86b5afff64f8e94"
+    },
     "published-candidate/published_geojson.receipt.json": {
       "bytes": 1530,
       "sha256": "5416ebfad61ae5b21f58b3ef143ebdaab2a1476e7749a87623da60feabcf67ad"
@@ -739,6 +2185,14 @@
     "published-candidate/published_geoparquet.receipt.json": {
       "bytes": 1524,
       "sha256": "cb69814d0b8ac2772f5411d8d8d9dd666a8e625aae1c100ced7fa9c2ef62f8ac"
+    },
+    "published-candidate/published_pmtiles.receipt.json": {
+      "bytes": 1521,
+      "sha256": "7b0e5f417a5087b0f4e80dd6bdc69b840c4ccc6a9f40f4fc2f71431357ab0fb5"
+    },
+    "published-candidate/published_shapefile.receipt.json": {
+      "bytes": 1501,
+      "sha256": "79ccffa3f44fe452a24c0e9259465cb801de9296a57561687d64a1b7d5e0d15c"
     }
   },
   "release_gate": "No source, baseline, schema/nullability/int32-vs-int64/ID mapping/format approval. All published identifiers remain in full raw candidates; no join or destructive schema migration applied."

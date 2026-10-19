@@ -1,0 +1,228 @@
+{
+  "code_head": "97f45abb559b28cf43f0859df151ca19a2326ed7",
+  "module": "/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py",
+  "runtime": "/workspace/work/hifld-coordinator/49/actual-dagster-final",
+  "approved": false,
+  "runs": [
+    {
+      "kind": "real_complete_source",
+      "run_id": "abe7974e-5c0d-40b7-9c67-c07f884e0721",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/current-dart-deployments/current-dart-deployments"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "real_complete_refresh",
+      "run_id": "f7523dba-a80f-4a9b-bef6-5d5b0313b832",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/current-dart-deployments/current-dart-deployments"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_formats_missing_approval",
+      "run_id": "d6ad6196-abbe-4df0-a1a6-74d319d5babd",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "real_complete_post_formats_refresh",
+      "run_id": "34c15d0a-ae42-4899-8681-fae6c46d4840",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/current-dart-deployments/current-dart-deployments"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "second_normal_catalog_missing_approval",
+      "run_id": "dd9a9d78-9b5a-41cc-b03a-6cecabfd5854",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "source_after_second_catalog",
+      "run_id": "6c246650-c52c-41c0-a4d9-0da85e0c6b66",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/current-dart-deployments/current-dart-deployments"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "synthetic_failed_geometry_quality_gate",
+      "run_id": "7a558171-4c09-4afc-b6ea-a67d5f006ca4",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ],
+      "materializations": [
+        "publish/catalog"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ]
+    },
+    {
+      "kind": "metadata_self_repin_contents_crs",
+      "run_id": "8c90f526-d695-4705-bc78-d709237e4b3f",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__current_dart_deployments__current_dart_deployments\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs; cached_candidate_retained:/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-e1332bda2b0945ad94d313163d381d2b; retained:_quarantine/current-dart-deployments/00d93ba1dcc546476c11efdf71b1f0b6afd131325ba3ca3e32675285120d72f6/43ffd797a42f429da7187f224e5edf19\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/assets/noaa_current_dart.py\", line 16, in noaa_current_dart\n    return stage_current_dart_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 554, in stage_current_dart_candidate\n    raise DartQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs; cached_candidate_retained:/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-e1332bda2b0945ad94d313163d381d2b\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 499, in stage_current_dart_candidate\n    raise DartQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 494, in stage_current_dart_candidate\n    reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 407, in reconcile_cached_candidate\n    raise DartQuarantineError('cached_geopackage_canonical_container_differs')\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "fresh_source_after_quarantine_contents_crs",
+      "run_id": "681a3a28-7337-4096-b2f6-0e883a145679",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/current-dart-deployments/current-dart-deployments"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "metadata_self_repin_authority",
+      "run_id": "934b17dc-5f2a-4dee-92e1-554988564f11",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__current_dart_deployments__current_dart_deployments\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs; cached_candidate_retained:/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-29e2716b3472425baf3bd3e843e81583; retained:_quarantine/current-dart-deployments/00d93ba1dcc546476c11efdf71b1f0b6afd131325ba3ca3e32675285120d72f6/330b60e207d848d4afd3e95069b0c9a6\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/assets/noaa_current_dart.py\", line 16, in noaa_current_dart\n    return stage_current_dart_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 554, in stage_current_dart_candidate\n    raise DartQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs; cached_candidate_retained:/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-29e2716b3472425baf3bd3e843e81583\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 499, in stage_current_dart_candidate\n    raise DartQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 494, in stage_current_dart_candidate\n    reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 407, in reconcile_cached_candidate\n    raise DartQuarantineError('cached_geopackage_canonical_container_differs')\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "fresh_source_after_quarantine_authority",
+      "run_id": "489114ca-1780-431c-926e-c90188856d37",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/current-dart-deployments/current-dart-deployments"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "metadata_self_repin_ancillary_table",
+      "run_id": "3c46ba17-2d10-41f0-9ca2-9a1bef43ce0a",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__current_dart_deployments__current_dart_deployments\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs; cached_candidate_retained:/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-9c34550b78904ae2bb5c1fd0f0b4e15a; retained:_quarantine/current-dart-deployments/00d93ba1dcc546476c11efdf71b1f0b6afd131325ba3ca3e32675285120d72f6/40a9aa48e2d54bb194db8b556e184d5b\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/assets/noaa_current_dart.py\", line 16, in noaa_current_dart\n    return stage_current_dart_candidate(staging_storage,capture_dir=Path(capture) if capture else None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 554, in stage_current_dart_candidate\n    raise DartQuarantineError(f'{exc}; retained:{location}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs; cached_candidate_retained:/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-9c34550b78904ae2bb5c1fd0f0b4e15a\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 499, in stage_current_dart_candidate\n    raise DartQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.current_dart.DartQuarantineError: cached_geopackage_canonical_container_differs\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 494, in stage_current_dart_candidate\n    reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)\n  File \"/workspace/hifld-worker-worktrees/49/src/dagster_hifld/sources/current_dart.py\", line 407, in reconcile_cached_candidate\n    raise DartQuarantineError('cached_geopackage_canonical_container_differs')\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "fresh_source_after_quarantine_ancillary_table",
+      "run_id": "1c94a04f-c2b8-40a5-82ae-bbc8230b3d7d",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/current-dart-deployments/current-dart-deployments"
+      ],
+      "checks": []
+    }
+  ],
+  "terminal_parquet": {
+    "rows": 62,
+    "all_source_values_types_wkb_exact": true,
+    "prebuilt_parquet_bytes_equal": true,
+    "source_nullable_declarations_preserved": true
+  },
+  "cache_metadata_probes": [
+    {
+      "kind": "contents_crs",
+      "failure_run_id": "8c90f526-d695-4705-bc78-d709237e4b3f",
+      "fresh_source_run_id": "681a3a28-7337-4096-b2f6-0e883a145679",
+      "quarantine": "/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-e1332bda2b0945ad94d313163d381d2b/candidate",
+      "all_failed_cache_bytes_preserved": true
+    },
+    {
+      "kind": "authority",
+      "failure_run_id": "934b17dc-5f2a-4dee-92e1-554988564f11",
+      "fresh_source_run_id": "489114ca-1780-431c-926e-c90188856d37",
+      "quarantine": "/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-29e2716b3472425baf3bd3e843e81583/candidate",
+      "all_failed_cache_bytes_preserved": true
+    },
+    {
+      "kind": "ancillary_table",
+      "failure_run_id": "3c46ba17-2d10-41f0-9ca2-9a1bef43ce0a",
+      "fresh_source_run_id": "1c94a04f-c2b8-40a5-82ae-bbc8230b3d7d",
+      "quarantine": "/workspace/work/hifld-coordinator/49/actual-dagster-final/staging/_quarantine/current-dart-deployments/invalid-cache-9c34550b78904ae2bb5c1fd0f0b4e15a/candidate",
+      "all_failed_cache_bytes_preserved": true
+    }
+  ],
+  "output": {
+    "dataset_slug": "current-dart-deployments",
+    "file_slug": "current-dart-deployments",
+    "version": "v0.0.0-draft-dart-a3d341c9064b99d0-82e2ca3747cdbcce",
+    "feature_count": 62,
+    "status": "working_draft_candidate_ready",
+    "processing_fingerprint": "82e2ca3747cdbcce92c2ed383012f8e62ca7120976a5414d1d5a7f73064a19a5"
+  },
+  "all_62_ids_values_types_wkb_preserved": true,
+  "source_discoverable_without_manual_copy": true,
+  "refresh_byte_idempotent": true,
+  "prior_published_fixture_preserved": true,
+  "quality": {
+    "bounds": [
+      -19627852.61667,
+      -5929351.767462,
+      19838613.808589,
+      7894836.627929
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "b1b7c526e094830c338ea6253dd15d9c2b6f26e5014b987a303ce428fae73386",
+    "feature_count": 62,
+    "geometry_type": "Point",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 62,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "provenance_input_count": 12
+}

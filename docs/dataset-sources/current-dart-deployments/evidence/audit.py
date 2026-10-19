@@ -3,6 +3,8 @@ from pathlib import Path
 import collections
 import hashlib
 import json
+import tempfile
+import zipfile
 import fiona
 import pyarrow.parquet as pq
 import shapely
@@ -18,10 +20,32 @@ oldgeo={f['properties']['STATION']:f for f in geojson['features']}
 with fiona.open(R/'published-candidate/current-dart-deployments.gpkg') as stream:
     gpschema=dict(stream.schema);gpcrs=pyproj.CRS(stream.crs).to_string()
     gp={f['properties']['STATION']:{'source_fid':f.id,'properties':dict(f['properties']),'wkb':shapely.geometry.shape(f['geometry']).wkb.hex()} for f in stream}
+collection=json.loads((R/'published-candidate/collection.json').read_bytes())
+filenames={'geojson':'current-dart-deployments.geojson','geopackage':'current-dart-deployments.gpkg','geoparquet':'current-dart-deployments.parquet','file_geodatabase':'current-dart-deployments-file_geodatabase.zip','shapefile':'current-dart-deployments-shapefile.zip','pmtiles':'current-dart-deployments.pmtiles'}
+provider_checksums={}
+for key,asset in collection['assets'].items():
+    name=key.split('-')[0];body=(R/'published-candidate'/filenames[name]).read_bytes()
+    assert len(body)==asset['file:size']
+    assert asset['file:checksum']=='d50110'+hashlib.md5(body).hexdigest()
+    provider_checksums[name]={'file_size':len(body),'stac_multihash_md5_verified':True,'sha256':hashlib.sha256(body).hexdigest()}
+archive_formats={}
+for name in ['shapefile','file_geodatabase']:
+    with zipfile.ZipFile(R/'published-candidate'/filenames[name]) as archive:
+        assert archive.testzip() is None
+        assert all(not Path(n).is_absolute() and '..' not in Path(n).parts for n in archive.namelist())
+        with tempfile.TemporaryDirectory() as tmp:
+            archive.extractall(tmp)
+            dataset=next(Path(tmp).rglob('*.shp' if name=='shapefile' else '*.gdb'))
+            with fiona.open(dataset) as stream:
+                records=[{'intrinsic_fid':row.id,'attributes':dict(row.properties),'wkb':shapely.geometry.shape(row.geometry).wkb.hex()} for row in stream]
+                archive_formats[name]={'schema':dict(stream.schema),'crs':pyproj.CRS(stream.crs).to_string(),'count':len(records),'rows':records}
+            assert len(records)==62 and {r['attributes']['STATION'] for r in records}==set(original)
+
 assert len(original)==len(old)==len(oldgeo)==len(gp)==62
 assert set(original)==set(old)==set(oldgeo)==set(gp)
 common=['STATION','DESCRIPTION','DEPLOYED','DATA_URL','OID']
 result={'approved':False,'classification':'unapproved_published_candidate_diagnostic',
+ 'all_six_complete_published_assets_checksums':provider_checksums,'archive_formats':archive_formats,
  'source_count':len(original),'published_counts':{'geoparquet':len(old),'geojson':len(oldgeo),'geopackage':len(gp)},
  'source_schema':source['fields'],'published_parquet_schema':str(parquet.schema),'published_geopackage_schema':gpschema,
  'source_crs':source['spatialReference'],'published_geopackage_crs':gpcrs,

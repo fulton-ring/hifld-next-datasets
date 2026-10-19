@@ -1,0 +1,31 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/current-dart-deployments/current-dart-deployments/v1.0.0/pmtiles/current-dart-deployments.pmtiles",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/current-dart-deployments/current-dart-deployments/v1.0.0/pmtiles/current-dart-deployments.pmtiles",
+  "status": 200,
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU82Kj61et_eVwFNsDPOy_nDCG0vRqswrBPiFr5YJT9ScF9FS4xrb6EKzuYXgU54kd6rt2K8bjus",
+    "expires": "Mon, 19 Oct 2026 09:58:58 GMT",
+    "date": "Mon, 19 Oct 2026 08:58:58 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:20 GMT",
+    "etag": "\"74d7a13e626a17b728f08989d05f2c62\"",
+    "x-goog-generation": "1791506360609125",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "4806",
+    "x-goog-hash": "crc32c=z09vwQ==, md5=dNehPmJqF7co8ImJ0F8sYg==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "4806",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "364"
+  },
+  "wire_bytes": 4806,
+  "bytes": 4806,
+  "sha256": "81dc31842da435e1e3623c6da98548406d707bd1ad8a107067cdebb8825a9f90",
+  "fetched_at": "2026-10-19T08:58:58.647419+00:00"
+}
