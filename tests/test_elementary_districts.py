@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest.mock import patch
 import httpx
 import pyarrow as pa
+import pyarrow.parquet as pq
+import pyogrio
 from dagster_hifld.sources import elementary_school_districts as f
 
 INPUTS=Path(__file__).parents[1]/'docs/dataset-sources/elementary-school-districts/evidence/inputs'
@@ -97,6 +99,27 @@ class ElementaryOriginalTests(unittest.TestCase):
         self.assertEqual(self.table['ELSDLEA'].type,pa.string())
         self.assertEqual(self.table['ALAND'].type,pa.int64())
         f.reconcile_outputs(self.root,self.table);self.assertTrue(self.refresh()['reused'])
+    def test_terminal_schema_preserves_original_fields_and_complete_lineage_sidecar(self):
+        parquet=pq.read_table(self.root/'geoparquet'/f'{f.SLUG}.parquet')
+        _,gpkg=pyogrio.read_arrow(self.root/'geopackage'/f'{f.SLUG}.gpkg',layer=f.LAYER)
+        self.assertEqual(tuple(parquet.column_names),f.SOURCE_FIELDS)
+        self.assertEqual(tuple(gpkg.column_names),f.SOURCE_FIELDS)
+        self.assertNotIn('source_archive',parquet.column_names)
+        self.assertEqual(parquet['OGC_FID'].to_pylist(),self.table['OGC_FID'].to_pylist())
+        self.assertLess(len(set(parquet['OGC_FID'].to_pylist())),2030)
+        lineage=[json.loads(b)for b in(self.root/'metadata/source_record_lineage.jsonl').read_bytes().splitlines()]
+        self.assertEqual(len(lineage),2030)
+        self.assertEqual(len({r['original_identifiers']['GEOID']for r in lineage}),2030)
+        for record,row in zip(lineage,self.table.to_pylist()):
+            self.assertEqual(record['source_archive'],row['source_archive']+'.zip')
+            self.assertEqual(record['source_member'],row['source_archive']+'.dbf')
+            self.assertEqual(record['original_file_local_OGC_FID'],row['OGC_FID'])
+            self.assertEqual(record['original_identifiers'],{n:row[n]for n in ['STATEFP','ELSDLEA','GEOID','GEOIDFQ']})
+            self.assertEqual(record['original_input_sha256'],f.PINS[row['source_archive']]['sha256'])
+        name='metadata/source_record_lineage.jsonl'
+        records=lineage.copy();records[0]=dict(records[0]);records[0]['source_archive']='invented.zip'
+        (self.root/name).write_bytes(b''.join(f.encode(r)for r in records));self.repin(name);self.reject('source_owned_bytes')
+
     def test_missing_renamed_retyped_ids_duplicate_coverage_and_unexpected_fields(self):
         for table in [self.table.drop(['GEOID']),self.table.rename_columns(['wrong']+self.table.column_names[1:]),self.table.slice(1),
                       self.table.set_column(4,'GEOID',pa.array(['0000000']*2030)),self.table.append_column('extra',pa.array([1]*2030)),
@@ -151,9 +174,11 @@ class ElementaryOriginalTests(unittest.TestCase):
         record.write_bytes(original);self.assertFalse(self.refresh()['reused']);self.assertTrue(self.refresh()['reused'])
     def test_marker_bool_or_float_version_fails_without_self_repair(self):
         marker=Path(str(self.record())+'.first-construction.json');original=marker.read_bytes()
-        j=json.loads(original);j['schema_version']=True;marker.write_bytes(f.encode(j));self.reject('construction')
-        with self.assertRaisesRegex(ValueError,'construction'):self.refresh()
-        marker.write_bytes(original);self.assertFalse(self.refresh()['reused'])
+        for value in [True,1.0]:
+            with self.subTest(schema_version=value):
+                j=json.loads(original);j['schema_version']=value;marker.write_bytes(f.encode(j));self.reject('construction')
+                with self.assertRaisesRegex(ValueError,'construction'):self.refresh()
+                marker.write_bytes(original);self.assertFalse(self.refresh()['reused'])
     def test_original_and_candidate_coforge_cannot_change_construction_claim(self):
         record=self.record();j=json.loads(record.read_bytes());j['payload']['manifest']['code_commit']='0'*40
         record.write_bytes(f.encode(j));name='metadata/source_manifest.json';j=json.loads((self.root/name).read_bytes());j['code_commit']='0'*40

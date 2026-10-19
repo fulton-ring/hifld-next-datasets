@@ -50,7 +50,7 @@ STATE_COUNTS={'04': 102, '06': 517, '09': 44, '13': 1, '17': 371, '21': 4, '23':
 NULL_COUNTS={'OGC_FID': 0, 'STATEFP': 0, 'ELSDLEA': 0, 'GEOID': 0, 'GEOIDFQ': 0, 'NAME': 0, 'LSAD': 0, 'LOGRADE': 0, 'HIGRADE': 0, 'MTFCC': 0, 'SDTYP': 1988, 'FUNCSTAT': 0, 'ALAND': 0, 'AWATER': 0, 'INTPTLAT': 0, 'INTPTLON': 0, 'wkb_geometry': 0}
 GEOIDS_SHA256='a26ea567e3ae3bf8671d8622d394c6c81e349c4f15235aca80a4555836808697'
 MEMBER_SUFFIXES=('.cpg','.dbf','.prj','.shp','.shp.ea.iso.xml','.shp.iso.xml','.shx')
-PARQUET_PIN={'sha256': 'b969423641e1d492ab1f4e7b5d4c226cc314b2d79a056df46deabf0163285622', 'bytes': 18613579}
+PARQUET_PIN={'sha256': 'a736e98a9babb61162a31cb06a099847bd44c1dd25d56d042b50861677f242f7', 'bytes': 18613074}
 READY='metadata/elsd_candidate_ready.json'
 SOURCE_RECORDS_SHA256='898df6fdde5f35c7ccd62707e60c5b7b92544e582d93b2b9f5427d404233fe4f'
 COUNT=2030
@@ -240,9 +240,10 @@ def inspect_archives(paths,captures):
             raise ElementaryDistrictQuarantineError('file_local_fid_or_state_coverage_drift')
         if [{k:r[k] for k,_,_,_ in DBF_FIELDS} for r in table.to_pylist()]!=physical_rows:
             raise ElementaryDistrictQuarantineError('driver_attribute_values_disagree_with_independent_physical_dbf_decode')
+        original_driver_schema=str(table.schema)
         table=table.add_column(0,'source_archive',pa.array([name]*table.num_rows))
         tables.append(table)
-        audit[name]={'dbf':dbf,'members':inventory,'producer_citation':citations[0],'producer_resource_constraints':rights,'driver_arrow_schema':str(table.schema),'full_source_GEOIDs':table['GEOID'].to_pylist()}
+        audit[name]={'dbf':dbf,'members':inventory,'producer_citation':citations[0],'producer_resource_constraints':rights,'driver_arrow_schema':original_driver_schema,'full_source_GEOIDs':table['GEOID'].to_pylist()}
     combined=pa.concat_tables(tables)
     validate_table(combined)
     return combined,audit
@@ -296,7 +297,7 @@ def manifest_for(captures,identity):
         'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(n,*captures[n])for n in URLS],
         'transformations':[{'operation':'decode_all_25_original_state_shapefiles','parameters':{
             'source_identifiers':'STATEFP, ELSDLEA, GEOID, GEOIDFQ and file-local OGC_FID retained exactly; no published-ID substitution',
-            'source_archive':'literal original ZIP stem disambiguates repeated file-local FIDs; extra provenance column remains unapproved',
+            'record_lineage':'metadata/source_record_lineage.jsonl binds each original GEOID/OGC_FID to its literal ZIP/member/raw pin; archive filename is never added to the main data schema',
             'raw_dbf':'all original DBF names/types/widths/null conventions retained in raw archives/audit; blank C fields decode to source-driver NULL, leading characters retained',
             'geometry':'native EPSG4269 Polygon/MultiPolygon WKB, no repair, wrapping, simplification or reprojection',
             'coverage':'all25 state publications in exact official2026ELSD directory; elementary districts only, no unified/secondary districts or fabricated territories'}},
@@ -316,11 +317,11 @@ def expected_parquet_table(table):
     geo={'version':'1.1.0','primary_column':'wkb_geometry','columns':{'wkb_geometry':{
         'encoding':'WKB','geometry_types':['Polygon','MultiPolygon'],'crs':pyproj.CRS(4269).to_json_dict(),
         'bbox':shapely.total_bounds(shapely.from_wkb(table['wkb_geometry'].to_pylist())).tolist()}}}
-    return table.replace_schema_metadata({b'geo':encode(geo)})
+    return table.drop(['source_archive']).replace_schema_metadata({b'geo':encode(geo)})
 
 
 def write_native_gpkg(table,path):
-    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='wkb_geometry',geometry_type='Unknown',crs='EPSG:4269',
+    pyogrio.write_arrow(table.drop(['source_archive']),path,layer=LAYER,driver='GPKG',geometry_name='wkb_geometry',geometry_type='Unknown',crs='EPSG:4269',
         layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'wkb_geometry'})
     with sqlite3.connect(path)as db:
         db.execute("UPDATE gpkg_contents SET last_change='2026-01-01T00:00:00.000Z'")
@@ -331,7 +332,7 @@ def reconcile_outputs(root,table):
     if sha256_file(path)!=PARQUET_PIN['sha256'] or path.stat().st_size!=PARQUET_PIN['bytes'] or not pq.read_table(path).equals(expected_parquet_table(table),check_metadata=True):
         raise ElementaryDistrictQuarantineError('native_parquet_full_values_types_WKB_or_metadata_drift')
     gm,gt=pyogrio.read_arrow(root/'geopackage'/f'{SLUG}.gpkg',layer=LAYER)
-    if gm['crs']!='EPSG:4269'or tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES or gt.to_pylist()!=table.to_pylist():
+    if gm['crs']!='EPSG:4269'or tuple(gt.column_names)!=SOURCE_FIELDS or tuple(f.type for f in gt.schema)!=TYPES[1:] or gt.to_pylist()!=table.drop(['source_archive']).to_pylist():
         raise ElementaryDistrictQuarantineError('native_geopackage_full_values_types_or_WKB_drift')
     with tempfile.TemporaryDirectory(prefix='elsd-canonical-gpkg-')as tmp:
         fresh=Path(tmp)/'fresh.gpkg';write_native_gpkg(table,fresh)
@@ -346,6 +347,7 @@ def source_payloads(captures,identity,table,audit,manifest):
             'complete_original_publication_audit':audit,'all_values_ids_declared_types_native_WKB_roundtrip':True}),
         'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked',
             'reason_codes':['source_baseline_ID_schema_type_geometry_coverage_mapping_not_approved']})}
+    values['metadata/source_record_lineage.jsonl']=lineage_sidecar(table)
     for name,(body,receipt)in captures.items():
         values['raw/captures/'+name+'.body']=body
         values['raw/captures/'+name+'.receipt.json']=encode(receipt)
@@ -453,3 +455,17 @@ def record_hash(table):
         row['wkb_geometry']=row['wkb_geometry'].hex()
         value.update(encode(row))
     return value.hexdigest()
+
+def lineage_sidecar(table):
+    """Bounded source-record/partition lineage, never an invented main-table ID."""
+    records=[]
+    for row in table.to_pylist():
+        archive=row['source_archive'];pin=PINS[archive]
+        records.append(encode({
+            'source_archive':archive+'.zip',
+            'source_member':archive+'.dbf',
+            'raw_body_key':f"_raw-captures/{SLUG}/{pin['sha256']}/{archive}.body",
+            'original_input_sha256':pin['sha256'],
+            'original_file_local_OGC_FID':row['OGC_FID'],
+            'original_identifiers':{name:row[name]for name in ['STATEFP','ELSDLEA','GEOID','GEOIDFQ']}}))
+    return b''.join(records)

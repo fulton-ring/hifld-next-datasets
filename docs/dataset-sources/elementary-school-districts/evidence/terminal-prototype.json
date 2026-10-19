@@ -1,0 +1,38 @@
+{
+  "source_rows": 2030,
+  "terminal_fields": [
+    "OGC_FID",
+    "STATEFP",
+    "ELSDLEA",
+    "GEOID",
+    "GEOIDFQ",
+    "NAME",
+    "LSAD",
+    "LOGRADE",
+    "HIGRADE",
+    "MTFCC",
+    "SDTYP",
+    "FUNCSTAT",
+    "ALAND",
+    "AWATER",
+    "INTPTLAT",
+    "INTPTLON",
+    "wkb_geometry"
+  ],
+  "terminal_constructed_columns": [],
+  "record_lineage_sidecar": "metadata/source_record_lineage.jsonl",
+  "lineage_records": 2030,
+  "lineage_sha256": "c3a1b860c2d266d7b78ec1b52aea093a1f004e114af361a9984e52956b3facc6",
+  "lineage_bytes": 920281,
+  "source_native_records_sha256": "898df6fdde5f35c7ccd62707e60c5b7b92544e582d93b2b9f5427d404233fe4f",
+  "geoparquet": {
+    "sha256": "a736e98a9babb61162a31cb06a099847bd44c1dd25d56d042b50861677f242f7",
+    "bytes": 18613074
+  },
+  "geopackage": {
+    "sha256": "0cda0883e47a7dcc892c808602964f9f774246303b9831455db0bf169ebd6f2f",
+    "bytes": 25452544
+  },
+  "all_original_fids_preserved_including_duplicates": true,
+  "approval": false
+}
