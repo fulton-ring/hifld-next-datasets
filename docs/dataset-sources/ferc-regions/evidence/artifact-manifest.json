@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "scope": "Lossless original capture/receipt/generated report artifacts removed from Git; no bytes discarded or altered. Small source-focused fixtures remain in tests/fixtures.",
+  "entries": [
+    {
+      "name": "archive.receipt.json",
+      "bytes": 694,
+      "sha256": "399d6073898d2fe556918587c5b926cdfa74a34cfe930ed218398dbd9c6ae8b0",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/archive.receipt.json"
+    },
+    {
+      "name": "baseline-captures-progress.json",
+      "bytes": 877,
+      "sha256": "dba12e1b915369864c128d1ace17b70db14572ada5810010289dd8e60311ef28",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/baseline-captures-progress.json"
+    },
+    {
+      "name": "baseline_collection.body",
+      "bytes": 8437,
+      "sha256": "da13dd35f4b060cff44890949292f6f124a73253d410fcc030a5752d701bbcbe",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/baseline_collection.body"
+    },
+    {
+      "name": "baseline_collection.receipt.json",
+      "bytes": 880,
+      "sha256": "6bfabeb208ed10139695d3d5b65d1f2bc0d5a54857fcdeed294ea47081b78e44",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/baseline_collection.receipt.json"
+    },
+    {
+      "name": "baseline_release.body",
+      "bytes": 11435,
+      "sha256": "714244b97218ef8fb1044e63433a46bc0a987af9920ccc150b1c209d1cdc03d5",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/baseline_release.body"
+    },
+    {
+      "name": "baseline_release.receipt.json",
+      "bytes": 983,
+      "sha256": "6849f1d31a13b8a44359d90aa799c4548dbf8515a016171eb0d7845c5039a927",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/baseline_release.receipt.json"
+    },
+    {
+      "name": "crosswalk.receipt.json",
+      "bytes": 834,
+      "sha256": "fdc5ad803693e342689a9c34a5869ac36c9352ee3d2a5c785bc30e67051e4958",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/crosswalk.receipt.json"
+    },
+    {
+      "name": "dc_item.body",
+      "bytes": 2121,
+      "sha256": "d51006a5120a92bc2f99cf5dcc928cd0847468b7b732c4da439cb1df6b9c29a5",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dc_item.body"
+    },
+    {
+      "name": "dc_item.receipt.json",
+      "bytes": 712,
+      "sha256": "0be0b40cfa5da57d8ad0017f62105b073afb05fa0467f93d0a22617f2eb5df9f",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dc_item.receipt.json"
+    },
+    {
+      "name": "dc_owner.body",
+      "bytes": 576,
+      "sha256": "dc9d67614aaeadf736307ac424018b0309b7ef4abff1f987b301807a2392df9e",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dc_owner.body"
+    },
+    {
+      "name": "dc_owner.receipt.json",
+      "bytes": 668,
+      "sha256": "bc333c0975f2aa933c793159e35400ab378995fe9f8e0109b955f30e845447f8",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dc_owner.receipt.json"
+    },
+    {
+      "name": "dc_service.body",
+      "bytes": 130,
+      "sha256": "0b679644c877cfdcd4b90912e34575cd2ad3cba69eeab90392eaeb50b3ae3382",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dc_service.body"
+    },
+    {
+      "name": "dc_service.receipt.json",
+      "bytes": 776,
+      "sha256": "1f8484b6032f3da0c9c28c9cc53183ea2bf8749887eb37fc2de5ade5e43fe9b9",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dc_service.receipt.json"
+    },
+    {
+      "name": "decimal-and-geometry-diagnostic.json",
+      "bytes": 10051,
+      "sha256": "fe651fd975702cfbd964e6d68707d25d690cdf47cf4b6fbd8724175c6f4f215c",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/decimal-and-geometry-diagnostic.json"
+    },
+    {
+      "name": "dhs_raw.body",
+      "bytes": 731,
+      "sha256": "2ea4ec0c29fb5f6e973114b549464884de74db7ea6691e4fe11edbcfb3cf359b",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dhs_raw.body"
+    },
+    {
+      "name": "dhs_raw.receipt.json",
+      "bytes": 899,
+      "sha256": "537906ab91ea2a3f2cbb1c936d4461466a1d56d16785665d95a26d49b5f88be3",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/dhs_raw.receipt.json"
+    },
+    {
+      "name": "ferc_boundary_map.body",
+      "bytes": 76203,
+      "sha256": "9038148fab60e2b9f86f1025071fad567a4ec44e68ecf4b54eb155b97f76cec5",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/ferc_boundary_map.body"
+    },
+    {
+      "name": "ferc_boundary_map.receipt.json",
+      "bytes": 964,
+      "sha256": "e8204aed6a3da036b747a6f4db2bd07e94f06a32c40f70dd2652a8e827c5dd9d",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/ferc_boundary_map.receipt.json"
+    },
+    {
+      "name": "ferc_main.body",
+      "bytes": 267859,
+      "sha256": "0c0d9cec1ecc982113c4400dfd8235d5957a0546ef4d983e3abfea43ae6f1f0f",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/ferc_main.body"
+    },
+    {
+      "name": "ferc_main.receipt.json",
+      "bytes": 684,
+      "sha256": "5f1c89cc228a1a6a121018ebe7aa83fc706aee4ce7d484be39102bd23f141cd4",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/ferc_main.receipt.json"
+    },
+    {
+      "name": "full-original-comparison.json",
+      "bytes": 9169,
+      "sha256": "bd5004b9ddd28fca547252e51f129cec32b1a12213063fcbe6677a8732a0ee31",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/full-original-comparison.json"
+    },
+    {
+      "name": "initial-inspection.json",
+      "bytes": 3466,
+      "sha256": "00527776724e0fa69fed452d3145d3723e6e9d68eba37485f1687d11361473d3",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/initial-inspection.json"
+    },
+    {
+      "name": "local-only-diagnostics.json",
+      "bytes": 1044,
+      "sha256": "d88bb7995debb048ac3951c80d33aff1ec1693162e0704959321174402ff7142",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/local-only-diagnostics.json"
+    },
+    {
+      "name": "pasda.body",
+      "bytes": 11304,
+      "sha256": "f016ab48e77fbc79057e10a44458d73a267f76ac507a943d0d48084606b536b6",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/pasda.body"
+    },
+    {
+      "name": "pasda.receipt.json",
+      "bytes": 683,
+      "sha256": "2bbeb8270f6e20b909bed79e377dedabc32ecf42bc45b06299243661019af644",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/pasda.receipt.json"
+    },
+    {
+      "name": "pasda_full_metadata.body",
+      "bytes": 10369,
+      "sha256": "b0275b5b071aa2085433c5eee818ff743961213338b3c42989e2bf2dfc68aebe",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/pasda_full_metadata.body"
+    },
+    {
+      "name": "pasda_full_metadata.receipt.json",
+      "bytes": 777,
+      "sha256": "f8471672848fb10f01b761ebef138fe049687fda71f3c7d9150188b4aae2b5d1",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/pasda_full_metadata.receipt.json"
+    },
+    {
+      "name": "pasda_metadata.body",
+      "bytes": 14487,
+      "sha256": "5af3b386a65d6a50a26cd636edda58027d86786dbfb3bfcee282f5f4a26880ed",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/pasda_metadata.body"
+    },
+    {
+      "name": "pasda_metadata.receipt.json",
+      "bytes": 914,
+      "sha256": "1ed247c50f65818f5fb712e3f0470a37cbadd8916f766961c340321ba811579d",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/pasda_metadata.receipt.json"
+    },
+    {
+      "name": "receipts/dhs_raw.json",
+      "bytes": 899,
+      "sha256": "537906ab91ea2a3f2cbb1c936d4461466a1d56d16785665d95a26d49b5f88be3",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/receipts/dhs_raw.json"
+    },
+    {
+      "name": "receipts/ferc_boundary_map.json",
+      "bytes": 964,
+      "sha256": "e8204aed6a3da036b747a6f4db2bd07e94f06a32c40f70dd2652a8e827c5dd9d",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/receipts/ferc_boundary_map.json"
+    },
+    {
+      "name": "receipts/pasda_original.json",
+      "bytes": 989,
+      "sha256": "45ea900176b0cd26ac35614be28aa39649cd0c158cbfa0c076e7890812476da4",
+      "artifact_path": "/workspace/work/hifld-coordinator/85/artifacts/git-evidence-original/receipts/pasda_original.json"
+    }
+  ],
+  "original_source_directory": "/workspace/work/hifld-coordinator/85/source",
+  "complete_baseline_directory": "/workspace/work/hifld-coordinator/85/baseline",
+  "originals_preserved": true,
+  "accepted": false
+}

@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "issue": 85,
+  "actual_worker_name": "/root/verifier_417",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "status": "draft_implementation_in_progress",
+  "selected_candidate": "Historical PASDA FERC_Regions_.zip exactly as captured; third-party mirror, never current FERCfeed",
+  "scope": "Full captured5CONUSregions only; no national/AK/HI claim or inventedrows",
+  "source_selection_approved": false,
+  "baseline_approved": false,
+  "contract_approved": false,
+  "rights_approved": false,
+  "release_approved": false,
+  "producer_credits": "HistoricalHIFLD/HSIP credits ORNL/LANL/INL/NGA; current FERC jurisdiction and exactDHSproduct family captured separately",
+  "complete_original_inputs": {
+    "pasda_original": {
+      "url": "https://www.pasda.psu.edu/download/hifld_fema/FERC_Regions_.zip",
+      "sha256": "d95afa79a4827b2e18d21acc9c5d9ad8f201a5f5f498e7b5a55ef47df1655ced",
+      "bytes": 43569780
+    },
+    "ferc_boundary_map": {
+      "url": "https://www.ferc.gov/sites/default/files/2020-04/USA_Map.pdf",
+      "sha256": "9038148fab60e2b9f86f1025071fad567a4ec44e68ecf4b54eb155b97f76cec5",
+      "bytes": 76203
+    },
+    "dhs_raw": {
+      "url": "https://catalog.data.gov/harvest_record/879bf348-3aec-4c05-850f-3b9411c73282/raw",
+      "sha256": "2ea4ec0c29fb5f6e973114b549464884de74db7ea6691e4fe11edbcfb3cf359b",
+      "bytes": 731
+    }
+  },
+  "large_original_capture_directory": "/workspace/work/hifld-coordinator/85/source",
+  "large_originals_committed_to_Git": false,
+  "full_original_replay_requires_matching_preserved_archive": true,
+  "authority_gaps": [
+    "Datalumosarchive239062/crosswalk241367provider403",
+    "HSEMA-linkedhistoricalfeature service200bodyArcGIS400InvalidURL",
+    "No maintainedproducer/delegatedmachinepublicationverified"
+  ],
+  "full_source_records": 5,
+  "original_coordinates": 3727592,
+  "invalid_original_objectids": [
+    2,
+    3
+  ],
+  "unapproved_migrations": [
+    "originalID toactualpublishedsource_ID (collectionmetadata saysID)",
+    "OBJECTIDint32 to publishedint64",
+    "nativeDate32 to publishedISOstrings",
+    "SHAPE__Are/SHAPE__Len physicalnames to publishedfullnames",
+    "all5nativeWKB differdespite equalcoordinatecounts",
+    "originalfileFIDadditionalcolumn inproposednativecandidate"
+  ],
+  "pipeline_implemented": false,
+  "baseline_capture_scope": "All five complete advertised formats captured; full SHA256/size and collection MD5 verified. Full physical-format comparison artifact retained.",
+  "proposed_numeric_policy": {
+    "status": "unapproved",
+    "physical_original": "DBF N24,15 literal text",
+    "proposed_arrow": "Decimal128(38,15), exact values without rounding",
+    "reason": "Actual13integral-digit area plus declared15fraction digits cannot fitDecimal(24,15); original width/scale/literal formatting preserved in raw/audit",
+    "geopackage": "unsupported: unapproved SQLiteREAL decimal loss"
+  },
+  "draft_code_present": true,
+  "actual_registered_materialization": false,
+  "shared_native_parquet_catalog_support": "Explicitly merged independently reviewed #417 checkpoint230ead9; native-only pinned opt-in, no lossy GPKG or disguised SHP fallback.",
+  "decimal_literal_audit": {
+    "total": 10,
+    "GDAL_double_not_exact_literal": 8,
+    "report": "Artifact decimal-and-geometry-diagnostic.json, pinned in evidence/artifact-manifest.json"
+  },
+  "large_capture_and_report_artifacts": "evidence/artifact-manifest.json"
+}

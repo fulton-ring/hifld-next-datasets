@@ -15,6 +15,9 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.ferc_regions import (
+    ferc_historical_reconstruction_job, ferc_historical_integrity_schedule, ferc_historical_full_quality,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -408,7 +411,9 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=hifld_asset_checks,
+    asset_checks=[*hifld_asset_checks, ferc_historical_full_quality],
+    jobs=[ferc_historical_reconstruction_job],
+    schedules=[ferc_historical_integrity_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "all_five_complete": true,
+  "accepted": false,
+  "artifacts": {
+    "parquet": {
+      "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferc-regions/ferc-regions/v1.0.0/geoparquet/ferc-regions.parquet",
+      "observed_at": "2026-10-19T12:48:10.352820+00:00",
+      "bytes": 47951849,
+      "sha256": "76fa3f266315422024f789edfb133651aa0f3d61e9625c3f99ae3fb9c9d3814b",
+      "md5": "0659faa7fcc043dbf532d7c8e9aa0ab4",
+      "capture_format": "decoded_response_body",
+      "retained_path": "/workspace/work/hifld-coordinator/85/baseline/parquet.body",
+      "retained_bytes": 47951849,
+      "retained_sha256": "76fa3f266315422024f789edfb133651aa0f3d61e9625c3f99ae3fb9c9d3814b"
+    },
+    "pmtiles": {
+      "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferc-regions/ferc-regions/v1.0.0/pmtiles/ferc-regions.pmtiles",
+      "observed_at": "2026-10-19T12:48:07.993148+00:00",
+      "bytes": 9730206,
+      "sha256": "9f5e3d6f67c9b86a4589c846176f4eafa19cf58fda02da2b709875b7eb725c32",
+      "md5": "fd616c69f20f05dd4bb31c06b361ea9f",
+      "capture_format": "decoded_response_body",
+      "retained_path": "/workspace/work/hifld-coordinator/85/baseline/pmtiles.body",
+      "retained_bytes": 9730206,
+      "retained_sha256": "9f5e3d6f67c9b86a4589c846176f4eafa19cf58fda02da2b709875b7eb725c32"
+    },
+    "geojson": {
+      "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferc-regions/ferc-regions/v1.0.0/geojson/ferc-regions-geojson.geojson",
+      "observed_at": "2026-10-19T14:00:31.462186+00:00",
+      "bytes": 138523335,
+      "sha256": "7c27a8876ef3aef4156273697b4a7a9afde32b829d1b9090cdef02f955b1af63",
+      "md5": "ba5f98b93fbd99ff741325c63f41c0c4",
+      "capture_format": "lossless_gzip_of_decoded_response_body",
+      "retained_path": "/workspace/work/hifld-coordinator/85/baseline/geojson.body.gz",
+      "retained_bytes": 37646803,
+      "retained_sha256": "c1b134f7509c9061f9f2110c0a2cebc3f6fed54d77b30ab578955d5131a18cc3"
+    },
+    "geopackage": {
+      "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferc-regions/ferc-regions/v1.0.0/geopackage/ferc-regions.gpkg",
+      "observed_at": "2026-10-19T14:00:09.276988+00:00",
+      "bytes": 60022784,
+      "sha256": "bd00780502981dd5ba154386eb802e70e82690f8a2ac5591f5aa423ee5369f97",
+      "md5": "636fd18a8546179ece448efe02c7e4eb",
+      "capture_format": "lossless_gzip_of_decoded_response_body",
+      "retained_path": "/workspace/work/hifld-coordinator/85/baseline/geopackage.body.gz",
+      "retained_bytes": 43319561,
+      "retained_sha256": "976c72f9c327af0e528d6c39689642625c8a95d3b813c1d216eb5a9875c65991"
+    },
+    "shapefile": {
+      "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferc-regions/ferc-regions/v1.0.0/shapefile/ferc-regions.zip",
+      "observed_at": "2026-10-19T13:59:49.281758+00:00",
+      "bytes": 43092082,
+      "sha256": "f9e9cecc5d0ae3893f471e1eee53521e2aaab12088c5a012cd5dcb47711125ec",
+      "md5": "ac8c2488358448f54f685de3cba4125b",
+      "capture_format": "decoded_response_body",
+      "retained_path": "/workspace/work/hifld-coordinator/85/baseline/shapefile.body",
+      "retained_bytes": 43092082,
+      "retained_sha256": "f9e9cecc5d0ae3893f471e1eee53521e2aaab12088c5a012cd5dcb47711125ec"
+    }
+  }
+}
