@@ -39,3 +39,7 @@ python -m unittest discover -s tests/pipeline_workers -v
 ```
 
 Tests simulate assignments, human lanes, dry-runs, retry phase/budget, stale heads, independent review and merge decisions, and schema/identifier drift. They make no GitHub or model calls. The workflow has not been live-validated until secrets and a real project are configured; a passing local suite does not claim that setup is complete.
+
+## Data verification against HIFLD Next
+
+The acceptance contract is in [verification.md](../../docs/agency-source-recovery/verification.md). It requires a pinned accepted HIFLD Next data version, complete agency extraction, record-preserving conversion and full row/quality comparisons. The current controller/schema tests do not establish dataset correctness. A shared comparator and blocking pre-promotion integration remain prerequisites before automatic implementation acceptance; do not treat legacy schema/count checks or a missing baseline as success.
