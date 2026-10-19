@@ -1,0 +1,506 @@
+{
+  "schema_version": 1,
+  "issue": 13,
+  "inventory_id": "american-red-cross-counties-chapters-regions-divisions-1",
+  "observed_at": "2026-10-19",
+  "status": "blocked_unresolved_producer_delegation_and_release_vintage",
+  "promotion_allowed": false,
+  "draft_implementation_authorized_before_contract_acceptance": true,
+  "implementation_feasibility": "Complete county-layer extraction and coherent dataset identity are established; independent producer/delegation and actual effective release are not. This is not the sibling Chapter/State mismatch and not merely a missing contract.",
+  "producer_claim": "American Red Cross Humanitarian Services Operations / Disaster Data and Systems Operations",
+  "actual_publisher_account": "NHQRedCrossGIS",
+  "publisher_org_id": "pGfbNJoYypmNq86F",
+  "publisher_attribution_independently_anchored": false,
+  "landing_url": "https://www.arcgis.com/home/item.html?id=8c6753c3c5814d05be65723cd4615d7c",
+  "machine_layer_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/5",
+  "source_relationship": "Changed county-assignment successor candidate; not approved as official continuation",
+  "release": {
+    "item_service_title_claim": "FY27 / July 2026",
+    "conflicting_service_notice": "TEMPORARILY REVERTED TO FY26 JANUARY 2026 MASTER GEOGRAPHY. WILL BE UPDATED TO FY27 JULY 2026 ON OR ABOUT JULY 14.",
+    "actual_effective_release": null,
+    "data_last_edit_epoch_ms": 1789304520591,
+    "edit_time_is_not_release": true,
+    "fetch_date_is_not_release": true
+  },
+  "crosswalk": {
+    "status": "unverified_provider_side_403",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "unmatched": false
+  },
+  "baseline_candidate": {
+    "approved": false,
+    "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-counties-chapters-regions-divisions-1/american-red-cross-counties-chapters-regions-divisions-1/v1.0.0/geoparquet/american-red-cross-counties-chapters-regions-divisions-1.parquet",
+    "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-counties-chapters-regions-divisions-1/american-red-cross-counties-chapters-regions-divisions-1/v1.0.0/geoparquet/american-red-cross-counties-chapters-regions-divisions-1.parquet",
+    "bytes": 14701784,
+    "sha256": "120ad4bc02081f4c2f0d28e8031a6d0be1eb3a5d19dacc6c9e43375fb31bd834",
+    "generation": "1791506348001312",
+    "etag": "\"ef7bac85d129d5308c3643e19f5ae920\"",
+    "rows": 3162,
+    "source_identifiers": [
+      "OBJECTID",
+      "GeoID",
+      "FIPS",
+      "ECODE",
+      "RCODE",
+      "DCODE"
+    ],
+    "additional_published_id": "id equals original OBJECTID on all3162 rows"
+  },
+  "source_candidate": {
+    "rows": 3163,
+    "page_counts": [
+      1000,
+      1000,
+      1000,
+      163
+    ],
+    "before_after_count_schema_edits_ids_stable": true,
+    "terminal_page_empty": true,
+    "native_crs": {
+      "wkid": 102100,
+      "latestWkid": 3857
+    },
+    "source_fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "nullable": false,
+        "length": null
+      },
+      {
+        "name": "GeoID",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "FIPS",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "County",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "County_Long",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "County_ST",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "County_ST_Long",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "ECODE",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "Chapter",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "RCODE",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "Region",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "DCODE",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "Division",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "Address",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Address_2",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "City",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "State",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Zip",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Phone",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Time_Zone",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "FEMA_Region",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 254
+      },
+      {
+        "name": "Acres",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "length": null
+      },
+      {
+        "name": "SQ_MI",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "length": null
+      },
+      {
+        "name": "Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_2028",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Male_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Female_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "HH_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Fam_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_Den_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Total_HH_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Avg_HH_Size_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Avg_Fam_Size_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Total_HU_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Owner_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Renter_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Vacant_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Med_Home_Val_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Avg_Home_Val_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Median_Age_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Youth_0_14_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Yng_Adult_15_24_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Adult_25_64_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Seniors_65_up_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_White_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_Black_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_Am_Indian_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_Asian_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_Pacific_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_Other_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Pop_2_Plus_Races_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Hisp_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Diversity_Index_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Med_HH_Inc_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Avg_HH_Inc_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Per_Cap_Inc_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Emp_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Unemp_Pop_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Unemp_Rate_2023",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "length": 255
+      },
+      {
+        "name": "Shape__Area",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "length": null
+      },
+      {
+        "name": "Shape__Length",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "length": null
+      }
+    ],
+    "original_identifiers": [
+      "OBJECTID",
+      "GeoID",
+      "FIPS",
+      "ECODE",
+      "RCODE",
+      "DCODE"
+    ],
+    "identifier_values_coerced": false,
+    "raw_inputs_complete_and_lossless": true,
+    "geometry_types": {
+      "MultiPolygon": 236,
+      "Polygon": 2927
+    },
+    "invalid_geometry_count": 16,
+    "geometry_repairs": null,
+    "proposed_typed_contract": {
+      "status": "unapproved_draft_only",
+      "OID": "exact source integer values; proposed int64 output must be reviewed",
+      "String": "source string or null; retain commas, currency characters and leading zeros",
+      "Double": "source declared Double; proposed float64 without inferring int64 from integral JSON lexical values",
+      "geometry": "native EPSG3857 Polygon/MultiPolygon with invalid features retained; do not normalize/repair silently",
+      "source_column_names": "retain all61 native names; historical ten-character truncations are diagnostics, not an approved mapping"
+    },
+    "approved_published_mapping": null,
+    "approved_contract": null
+  },
+  "comparison": {
+    "shared_GeoID": 3150,
+    "baseline_only_GeoID": 12,
+    "source_only_GeoID": 13,
+    "OBJECTID_changed_among_shared_GeoID": 145,
+    "topologically_identical_geometry_among_shared_GeoID": 3143,
+    "topologically_changed_geometry_among_shared_GeoID": 7,
+    "ordered_and_normalized_exact_geometry_count": 228,
+    "baseline_invalid_geometries": 23,
+    "candidate_invalid_geometries": 16,
+    "native_physical_type_migration": [
+      "Acres: historical int64 versus current esriFieldTypeDouble",
+      "SQ_MI: historical int64 versus current esriFieldTypeDouble"
+    ],
+    "detailed_diagnostics": "evidence/full-comparison.json"
+  },
+  "external_decisions_required": [
+    {
+      "decision": "producer_and_delegation",
+      "request": "Supply an official Red Cross link, publication/delegation statement or producer confirmation tying NHQRedCrossGIS / org pGfbNJoYypmNq86F / master item8c6753c3c5814d05be65723cd4615d7c specifically to the maintained county feed."
+    },
+    {
+      "decision": "effective_release",
+      "request": "Producer confirmation of actual FY26/FY27 county content and effective date, resolving simultaneous FY27 title and FY26 temporary-reversion notice."
+    }
+  ],
+  "later_acceptance_prerequisites": [
+    "Review complete source/published schema and all original IDs, including145 OBJECTID reassignments.",
+    "Accept or reject12 removed/13 added composite GeoIDs and changed Alaska county coverage.",
+    "Review7 shared-GeoID geometry changes, invalid geometries, Polygon/MultiPolygon representation and Double/int64 differences.",
+    "Independently approve pinned baseline and versioned compatibility contract before promotion."
+  ],
+  "execution": {
+    "dagster_materialized": false,
+    "reason": "No independently producer-anchored maintained county source and effective release established; no fabricated authority or archive-refresh adapter. Full captured-source comparison is a feasibility audit, not pipeline verification.",
+    "full_suite_rerun": false,
+    "ci_success_claimed": false,
+    "source_or_shared_machinery_changed": false
+  },
+  "preserved_captures": {
+    "directory": "/workspace/work/hifld-coordinator/13",
+    "checksum_manifest": "evidence/capture-manifest.json",
+    "original_inputs_must_be_preserved": true
+  },
+  "review": {
+    "required": "independent native exact-head review of evidence and blocker",
+    "status": "pending"
+  }
+}
