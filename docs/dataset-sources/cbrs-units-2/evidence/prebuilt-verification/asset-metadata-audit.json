@@ -1,0 +1,36 @@
+{
+  "actual_persisted_dagster_events": [
+    {
+      "run_id": "2506e2b2-befe-417a-aeac-cbed93fa6a07",
+      "generation_mode": "preserved_prebuilt",
+      "generic_regeneration": "disabled",
+      "metadata": {
+        "dataset_slug": "cbrs-units-2",
+        "file_slug": "cbrs-units-2",
+        "version": "v0.0.0-draft-cbrs20241219-39b6fadee7492bec-e3bcbeafbaf5dd74",
+        "format": "geoparquet",
+        "file_count": 1,
+        "generation_mode": "preserved_prebuilt",
+        "generic_regeneration": "disabled",
+        "reason": "Observed generic conversion adds bbox and changes field/nullability metadata. Preserve this complete native source-typed GeoParquet without generic regeneration; independent mapping and release approvals remain mandatory.",
+        "path": "/workspace/work/hifld-coordinator/31/graph-prebuilt/dagster/storage/publish/formats/geoparquet/cbrs-units-2/cbrs-units-2/v0.0.0-draft-cbrs20241219-39b6fadee7492bec-e3bcbeafbaf5dd74"
+      }
+    },
+    {
+      "run_id": "6b397d00-b6b2-4609-895d-7d15a08e67eb",
+      "generation_mode": "preserved_prebuilt",
+      "generic_regeneration": "disabled",
+      "metadata": {
+        "dataset_slug": "cbrs-units-2",
+        "file_slug": "cbrs-units-2",
+        "version": "v0.0.0-draft-cbrs20241219-39b6fadee7492bec-e3bcbeafbaf5dd74",
+        "format": "geoparquet",
+        "file_count": 1,
+        "generation_mode": "preserved_prebuilt",
+        "generic_regeneration": "disabled",
+        "reason": "Observed generic conversion adds bbox and changes field/nullability metadata. Preserve this complete native source-typed GeoParquet without generic regeneration; independent mapping and release approvals remain mandatory.",
+        "path": "/workspace/work/hifld-coordinator/31/graph-prebuilt/dagster/storage/publish/formats/geoparquet/cbrs-units-2/cbrs-units-2/v0.0.0-draft-cbrs20241219-39b6fadee7492bec-e3bcbeafbaf5dd74"
+      }
+    }
+  ]
+}
