@@ -130,6 +130,31 @@ class NaturalGasCrossingsBehavior(unittest.TestCase):
             storage=StagingStorageResource(use_local=True,local_dir=tmp);source.record_observed_loss(storage,'v0-test','0'*64,'synthetic missing witness')
             with self.assertRaisesRegex(ValueError,'permanent_observed'):source.refuse_observed_loss(storage,'v0-test')
 
+    def test_final_ready_truthful_and_lying_short_writes_refused(self):
+        original=Path.write_bytes
+        for lie in (False,True):
+            with self.subTest(lying_count=lie),tempfile.TemporaryDirectory()as tmp:
+                path=Path(tmp)/'ready.json';body=b'{"approved":false,"complete":true}\n'
+                def short_write(target,value):
+                    actual=original(target,value[:17]);return len(value)if lie else actual
+                with patch.object(Path,'write_bytes',short_write):
+                    with self.assertRaisesRegex(ValueError,'private_ready_incomplete_write'):source.checked_ready_write(path,body)
+                self.assertEqual(path.read_bytes(),body[:17])
+
+    def test_complete_private_inventory_and_ready_are_bound(self):
+        captures=synthetic_captures();table,audit=source.inspect_captures(captures);identity={'fixture':'explicit synthetic'}
+        with tempfile.TemporaryDirectory()as tmp,patch.object(source,'source_payloads',return_value={'metadata/source.json':b'original'}):
+            root=Path(tmp)
+            for part in ('metadata','candidate','geopackage','geoparquet'):(root/part).mkdir()
+            (root/'metadata/source.json').write_bytes(b'original')
+            path=root/f'geoparquet/{source.SLUG}.parquet';pq.write_table(source.expected_parquet(table),path,compression='zstd');(root/'candidate/typed-source.parquet').write_bytes(path.read_bytes());source.write_gpkg(table,root/f'geopackage/{source.SLUG}.gpkg')
+            ready={'version':'v0-test','approved':False,'processing_fingerprint':source.digest(source.encode(identity)),'capture_fingerprint':'0'*64,'objects':{str(p.relative_to(root)):source.sha256_file(p)for p in root.rglob('*')if p.is_file()}}
+            ready_path=root/source.READY;source.checked_ready_write(ready_path,source.encode(ready));source.verify_private(root,'v0-test','0'*64,captures,identity,audit,{},table)
+            (root/'metadata/source.json').write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError,'private_source_object_drift'):source.verify_private(root,'v0-test','0'*64,captures,identity,audit,{},table)
+            (root/'metadata/source.json').write_bytes(b'original');ready['extra']=True;ready_path.write_bytes(source.encode(ready))
+            with self.assertRaisesRegex(ValueError,'private_ready_or_inventory_drift'):source.verify_private(root,'v0-test','0'*64,captures,identity,audit,{},table)
+
 
 class CompleteRetainedNaturalGasInput(unittest.TestCase):
     @unittest.skipUnless(os.environ.get('HIFLD_NATURAL_GAS_CROSSINGS_CAPTURE_DIR'),'explicit complete real captured input opt-in')

@@ -383,6 +383,26 @@ def source_payloads(captures,identity,audit,manifest,table):
     for name,(body,receipt) in captures.items():values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
     return values
 
+def checked_ready_write(path,body):
+    if path.write_bytes(body)!=len(body) or bounded_input(path,2*1024*1024)!=body:
+        raise NaturalGasCrossingsQuarantineError('private_ready_incomplete_write')
+
+def verify_private(root,version,capture_hash,captures,identity,audit,manifest,table):
+    """Bind the complete source-owned inventory before first seal and exposure."""
+    payloads=source_payloads(captures,identity,audit,manifest,table)
+    names={*payloads,'candidate/typed-source.parquet',f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'}
+    actual={str(path.relative_to(root))for path in root.rglob('*')if path.is_file()}
+    if actual!=names|{READY} or any(path.is_symlink()or(path.is_file()and path.stat().st_nlink!=1)for path in root.rglob('*')):
+        raise NaturalGasCrossingsQuarantineError('private_candidate_inventory_drift')
+    for name,body in payloads.items():
+        if bounded_input(root/name,MAX_CAPTURE_BYTES)!=body:
+            raise NaturalGasCrossingsQuarantineError('private_source_object_drift:'+name)
+    ready={'version':version,'approved':False,'processing_fingerprint':digest(encode(identity)),
+        'capture_fingerprint':capture_hash,'objects':{name:sha256_file(root/name)for name in names}}
+    if bounded_input(root/READY,2*1024*1024)!=encode(ready):
+        raise NaturalGasCrossingsQuarantineError('private_ready_or_inventory_drift')
+    verify_outputs(root,table)
+
 def reconcile_cache(storage,prefix,version,table,audit,captures,identity,pin,capture_hash):
     root=Path(storage.local_dir).absolute()/prefix
     if not (root/READY).is_file():raise NaturalGasCrossingsQuarantineError('incomplete_existing_candidate_missing_ready')
@@ -444,15 +464,17 @@ def stage_natural_gas_border_crossings(storage,*,capture_dir=None):
                     (private/name).parent.mkdir(parents=True,exist_ok=True)
                     if (private/name).write_bytes(body)!=len(body)or(private/name).read_bytes()!=body:raise NaturalGasCrossingsQuarantineError('private_source_object_incomplete_write')
                 ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
-                if (private/READY).write_bytes(encode(ready))!=len(encode(ready))or(private/READY).read_bytes()!=encode(ready):raise NaturalGasCrossingsQuarantineError('private_ready_incomplete_write')
-                verify_outputs(private,table)
+                checked_ready_write(private/READY,encode(ready))
+                verify_private(private,version,capture_hash,captures,identity,audit,manifest,table)
                 captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
                 # An existing complete outside witness returns original receipts.
                 # Rebuild only the private candidate from those exact originals.
                 for name,body in source_payloads(captures,identity,audit,manifest,table).items():
                     if (private/name).write_bytes(body)!=len(body)or(private/name).read_bytes()!=body:raise NaturalGasCrossingsQuarantineError('original_private_source_object_incomplete_write')
                 ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY}
-                (private/READY).write_bytes(encode(ready));verify_outputs(private,table);os.rename(private,target)
+                checked_ready_write(private/READY,encode(ready))
+                verify_private(private,version,capture_hash,captures,identity,audit,manifest,table)
+                os.rename(private,target)
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise NaturalGasCrossingsQuarantineError(str(exc)+'; retained:'+retained) from exc
