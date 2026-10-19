@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 38,
   "inventory_id": "colleges-and-universities",
-  "status": "working_draft_pending_independent_review_and_real_acceptance",
+  "status": "working_draft_locally_verified_pending_new_independent_review_and_real_acceptance",
   "approved": false,
   "scope_authorization": "User authorizes draft implementation/local testing before real acceptance; this does not approve source replacement, contracts, baselines, IDs/schema/CRS/geometry/coverage migrations, merge or release.",
   "inventory": {
@@ -291,14 +291,19 @@
     "isolated_only": true,
     "shared_verifier_base": "230ead9f8607017bd6b2323518e7d8879dc18e69",
     "shared_construction_provenance_helper": "Reviewed shared230e construction_state/Git guard; no private substitute verifier.",
-    "provenance_anchor_lifecycle": "Complete native private build/source/Git/fullmanifest checked BEFOREsharedCAS seal. Permanent outside negative journal precedes invalid candidate detach; missing/partial/journal-IO faults refuse repeated cold bootstrap; no silent repair. Legacyoldfingerprint contexts remain untouched; new protocol uses new processing namespace."
+    "provenance_anchor_lifecycle": "Complete native private build/source/Git/fullmanifest checked BEFOREsharedCAS seal. Permanent outside negative journal precedes invalid candidate detach; missing/partial/journal-IO faults refuse repeated cold bootstrap; no silent repair. Legacyoldfingerprint contexts remain untouched; new protocol uses new processing namespace.",
+    "code_commit": "a3dfa779e0d6686029fadb8e44a02a4a5f26d249"
   },
   "verification": {
-    "historical_reviewed_head": "929eceb8a7d8d9e8e23a8ea298e6f7d8683f38dc",
-    "historical_evidence": "evidence/artifact-replay.json; all original raw/source/baselines/full generated reports preserved losslessly outsideGit",
-    "current_scope": "Reviewed shared230e integrated; source-specific CAS/marker/negativejournal and body-before-receipt migration under test. All9 native functions AST-identical.",
-    "default_tests": "32total;14passed;18explicitfull-realoptinskips0.648s",
-    "new_complete_real_and_registered_and_full_suite": "Pending new public portable processing commit; no previous results relabelled."
+    "source_commit": "a3dfa779e0d6686029fadb8e44a02a4a5f26d249",
+    "complete_real_tests": "32PASS89.463s",
+    "default_tests": "32total14PASS18explicitrealoptinskips0.648s",
+    "full_suite": "580total561PASS19skips105.272s;18realoptin separatelyPASS+1existingprodGCS",
+    "actual_registered_runs": 26,
+    "exact_artifact_manifest": "evidence/implementation-verification.json",
+    "all9_native_functions_and_terminal_bytes_unchanged": true,
+    "new_independent_review": "pending",
+    "fresh_live_and_genuine_docs_only_supplement": "pending storage budget/public documentation checkpoint"
   },
   "release_prerequisites": [
     "Approve NCES changed successor vs retaining ORNL enriched historical product",
