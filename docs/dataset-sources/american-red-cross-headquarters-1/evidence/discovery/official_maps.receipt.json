@@ -1,8 +1,0 @@
-{
-  "url": "https://maps.redcross.org/",
-  "fetched_at": "2026-10-19T11:17:53.693456+00:00",
-  "error": "ProxyError('403 Forbidden')",
-  "complete_body": false,
-  "bytes": 0,
-  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-}
