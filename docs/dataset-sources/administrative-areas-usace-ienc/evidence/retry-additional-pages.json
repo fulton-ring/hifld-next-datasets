@@ -1,0 +1,47 @@
+[
+  {
+    "name": "agc-root",
+    "url": "https://www.agc.army.mil/",
+    "final_url": "https://www.agc.army.mil/",
+    "checked_at": "2026-10-19T04:50:18.182956+00:00",
+    "status": 403,
+    "bytes": 372,
+    "sha256": "347c7090fc0e6293f484a3d30105c709b8e6ef439e8b27707a64cf99f5f37c71"
+  },
+  {
+    "name": "agc-ienc-factsheet",
+    "url": "https://www.agc.army.mil/Portals/75/docs/factsheets/2024/FACTSHEET%20IENC.pdf",
+    "final_url": "https://www.agc.army.mil/Portals/75/docs/factsheets/2024/FACTSHEET%20IENC.pdf",
+    "checked_at": "2026-10-19T04:50:18.877380+00:00",
+    "status": 403,
+    "bytes": 452,
+    "sha256": "7fb02ab86edb514679986310218d3fe49e87445e99e1b225405e0f228d8e294b"
+  },
+  {
+    "name": "ienc-root",
+    "url": "https://ienccloud.us/arcgis/rest/services?f=json",
+    "final_url": "https://ienccloud.us/arcgis/rest/services?f=json",
+    "checked_at": "2026-10-19T04:50:19.509847+00:00",
+    "status": 200,
+    "bytes": 138,
+    "sha256": "00bba896df8d50b2f33c3abffb83363a9adc0cbe252244fd38463c7a37c719c8"
+  },
+  {
+    "name": "ienc-old-service",
+    "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/ADMINISTRATIVE_AREA/MapServer?f=json",
+    "final_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/ADMINISTRATIVE_AREA/MapServer?f=json",
+    "checked_at": "2026-10-19T04:50:19.956954+00:00",
+    "status": 200,
+    "bytes": 4950,
+    "sha256": "0f1ad6ca7f64a906efc63ed2536ab39e4fe9e86036a277383de94870ff4ae845"
+  },
+  {
+    "name": "candidate-layer",
+    "url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/56?f=json",
+    "final_url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/56?f=json",
+    "checked_at": "2026-10-19T04:50:20.324384+00:00",
+    "status": 200,
+    "bytes": 10749,
+    "sha256": "115b4f1663a94044b1eb8ba0ed1eb8573a1b6a299aa7597dc4c0d4a2a5e549e2"
+  }
+]

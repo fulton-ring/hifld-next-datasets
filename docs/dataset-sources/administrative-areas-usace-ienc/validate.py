@@ -24,4 +24,21 @@ d=json.loads((P/'evidence/dagster-repositories.json').read_text());assert 'error
 repo=d['data']['repositoriesOrError'];assert repo['__typename']=='RepositoryConnection'
 paths=[a['assetKey']['path'] for n in repo['nodes'] for a in n['assetNodes']]
 assert any('administrative-areas-usace-ienc' in a for a in paths)
-print('PASS: hashes, all raw attributes/count/IDs/pages, nonunique source IDs, proposed contract, geometry sample, Dagster repository loading. No geometry completeness or ingestion approval.')
+full=json.loads((P/'evidence/complete-comparison.json').read_text())
+assert full['source_rows']==2966 and full['published_rows']==3131
+assert full['published_candidate']['acceptance']=='candidate only; not accepted'
+assert full['source_geometry']['nulls']==full['source_geometry']['empty']==full['source_geometry']['invalid']==0
+assert full['published_geometry']['nulls']==full['published_geometry']['empty']==full['published_geometry']['invalid']==0
+assert full['exact_normalized_geometry_multiset_intersection']==0
+for diagnostic in full['diagnostic_precision_grid_comparisons'].values():
+    assert diagnostic['multiset_intersection']==2757
+    assert diagnostic['source_unmatched_occurrences']==209 and diagnostic['published_unmatched_occurrences']==374
+manifest=json.loads((P/'evidence/geometry-pages.json').read_text())
+assert len(manifest['pages'])==119 and sum(e['count'] for e in manifest['pages'])==2966
+assert manifest['ids_unchanged'] and sorted(i for e in manifest['pages'] for i in e['ids'])==manifest['expected_ids']
+for e in manifest['pages']: assert e['status']==200 and not e['exceededTransferLimit']
+audit=json.loads(gzip.decompress((P/'evidence/source-feature-geometry-hashes.json.gz').read_bytes()))
+assert len(audit)==2966 and len({r['OBJECTID'] for r in audit})==2966
+ready=json.loads((P/'evidence/readiness-retry.json').read_text())
+assert ready['loaded_dataset_ingest'] and ready['webserver_stopped'] and ready['bucket_variables_unset'] and not ready['materialization']
+print('PASS: committed hashes, complete raw attribute replay/IDs, proposed contract, bounded full geometry receipts/hash inventory/comparison, isolated Dagster loading. Complete raw geometry replay requires preserved runtime files; no ingestion approval.')

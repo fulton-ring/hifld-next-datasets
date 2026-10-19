@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-10-19T04:50:40.245488+00:00",
+  "dagster_version": {
+    "dagster_webserver_version": "1.12.19",
+    "dagster_version": "1.12.19",
+    "dagster_graphql_version": "1.12.19"
+  },
+  "loaded_dataset_ingest": true,
+  "asset_nodes": 73,
+  "frozen_worktree_venv": true,
+  "dagster_home": "/workspace/hifld-worker-runtime/6/dagster",
+  "staging": "/workspace/hifld-worker-runtime/6/staging",
+  "published": "/workspace/hifld-worker-runtime/6/published",
+  "bucket_variables_unset": true,
+  "materialization": false,
+  "limit": "Research loading only; no approved ingestion contract. Shared promotion/materialization integration owned by #417.",
+  "webserver_stopped": true
+}

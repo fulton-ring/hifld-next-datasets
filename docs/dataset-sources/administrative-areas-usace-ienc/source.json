@@ -8,7 +8,7 @@
     "Potential breaking change",
     "Needs decision"
   ],
-  "checked_at": "2026-10-19T04:20:04.736474+00:00",
+  "checked_at": "2026-10-19T04:52:04.729270+00:00",
   "source_role": "unresolved",
   "producer": {
     "name": "US Army Corps of Engineers / Army Geospatial Center",
@@ -37,16 +37,20 @@
       "claim": "historical exact-title item links ADMINISTRATIVE_AREA old endpoint; no accepted crosswalk join"
     },
     {
-      "evidence": "evidence/requests.json",
-      "claim": "DOI redirected to DataLumos host blocked by inherited proxy; old ienccloud and AGC landing also blocked"
+      "evidence": "evidence/retry-pages.json",
+      "claim": "Unrestricted/enforced runtime revision6: DataLumos and AGC provider/CDN HTTP403, not CONNECT denials; old ienccloud service reachable with layer56 replacing stale /0 reference. No verified delegation or release."
+    },
+    {
+      "evidence": "evidence/retry-old-attributes.json",
+      "claim": "Historical ienccloud /56 complete2966 attributes: non-OBJECTID row multisets equal master, but532 values differ on302 OBJECTID joins. No stable ID mapping/delegation/geometry equivalence accepted."
     }
   ],
   "crosswalk": {
     "doi": "https://doi.org/10.3886/E241367V1",
-    "status": "unverified_network_blocked",
+    "status": "unverified_provider_access_denied",
     "exact_match_verified": false,
     "hyperlink_targets_parsed": false,
-    "reason": "Original XLSX unavailable; CONNECT403 at www.datalumos.org. Not a verified unmatched result."
+    "reason": "DOI resolves to www.datalumos.org; HTTP403 Cloudflare page under unrestricted enforced policy. Original XLSX still unavailable; exact match remains unverified."
   },
   "release_date": null,
   "release_evidence": {
@@ -59,9 +63,9 @@
     "caution": "None of portal edit, retrieval, inventory issue/modification timestamps accepted as current source release date"
   },
   "relationship_to_archive": {
-    "classification": "unresolved",
+    "classification": "changed_source_candidate_unapproved",
     "exact_continuation_verified": false,
-    "reason": "No accepted published HIFLD Next version or archive schema/rows/geometry available for comparison"
+    "reason": "Pinned published v1.0.0 candidate3131 polygons vs complete candidate2966 polygons; renamed/missing/extra fields and geometry differences require explicit migration review. Candidate retrieval is not baseline acceptance."
   },
   "fallback_candidates": [
     {
@@ -74,14 +78,15 @@
       "source_role": "archive",
       "publisher": "DataLumos",
       "url": "https://www.datalumos.org/datalumos/project/238556/version/V1/view",
-      "health": "network_blocked"
+      "health": "provider_access_denied_http403"
     }
   ],
   "extraction": {
     "attributes": "complete 2966 rows; count/all-ID/page reconciliation in evidence/extraction-summary.json",
-    "geometry": "one exact raw geometry sample; full unsimplified geometry extraction not completed within bounded capture",
-    "pagination": "maxRecordCount2000 supportsPagination true; 100-row ordered attribute pages",
-    "unknown_fields": "all source fields retained in raw captures; no published projection activated"
+    "geometry": "Complete2966 service-generated GeoJSON polygons, EPSG:4326, 119 exact-ID pages; no precision/simplification parameters; complete raw pages preserved outside Git.",
+    "pagination": "119 exact-ID batches of25 (last16), bounded25MB per response; count and ID sets equal before/after. Complete geometry attributes equal prior2966-row capture.",
+    "unknown_fields": "all source fields retained in raw captures; no published projection activated",
+    "geometry_audit": "All2966 nonnull/nonempty/valid Polygon. Complete published candidate3131 polygons also nonnull/nonempty/valid. Bounds nearly identical; this does not establish equivalent coverage."
   },
   "published_contract": {
     "status": "proposed_unapproved",
@@ -93,7 +98,7 @@
         "name": "OBJECTID",
         "type": "esriFieldTypeOID",
         "nullable": false,
-        "meaning": "ArcGIS service-assigned row object identifier; stability across releases unverified",
+        "meaning": "ArcGIS service-assigned row identifier; cross-service stable identity disproven by532 differing attribute values on302 shared OBJECTIDs",
         "id_role": "service row key; not accepted stable published key",
         "mapping": "identity; explicitly proposed, unapproved",
         "length": null
@@ -202,9 +207,9 @@
       "proposed_name": "geometry",
       "type": "esriGeometryPolygon",
       "nullable": false,
-      "nullable_basis": "layer enableNullGeometry false; full geometry scan not performed",
+      "nullable_basis": "All2966 complete captured geometries nonnull; proposed, not approved",
       "crs": "EPSG:4326",
-      "mapping": "lossless source rings; conversion/topology not approved"
+      "mapping": "Preserve original source captures; service-generated GeoJSON audit does not approve conversion/topology or precision tolerance."
     },
     "coverage": {
       "meaning": "Defined administrative areas along inland navigation charts; not all US administrative units",
@@ -229,13 +234,47 @@
     "retry": "Bounded transient retries only after authority/contract approval; fail/quarantine JSON errors, incomplete rows, ID/schema/geometry/coverage drift; retain last accepted release"
   },
   "blockers": [
-    "Exact inventory-crosswalk/hyperlink match unavailable",
-    "Independent producer authority/delegation unverified",
-    "Real layer release date unverified",
-    "No accepted published baseline/schema/ID migration decision",
-    "Full geometry extraction and geographic equivalence unverified",
-    "#417 shared comparison/promotion prerequisite not accepted",
-    "Feature_ID is nonunique: 2781 distinct in2966 rows, 185 rows beyond first; key continuity/mapping requires maintainer decision"
+    "Exact inventory-crosswalk/hyperlink match still unavailable: provider-side DataLumos403",
+    "Independent producer authority/delegation unverified: AGC provider/CDN403; ArcGIS organization JSON403",
+    "Real layer release date unverified; item snippet16-Sep-26 remains assertion only",
+    "Maintainer acceptance of pinned published candidate and versioned full schema/ID migration decision required",
+    "2966 source vs3131 published polygons and diagnostic unmatched209/374 require explicit geometry/coverage migration review",
+    "#417 shared comparison/promotion implementation/acceptance tracked separately",
+    "Feature_ID and Source_Dataset+Feature_ID are nonunique; no substitute IDs or deduplication permitted"
   ],
-  "implementation_approved": false
+  "implementation_approved": false,
+  "published_candidate": {
+    "slug": "administrative-areas-usace-ienc",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/administrative-areas-usace-ienc/administrative-areas-usace-ienc/v1.0.0/geoparquet/administrative-areas-usace-ienc.parquet",
+    "expected_bytes": 19872024,
+    "catalog_asset": {
+      "file:checksum": "d501102e3d93ebfa6223082168be7c5f06d9e7",
+      "file:size": 19872024,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/administrative-areas-usace-ienc/administrative-areas-usace-ienc/v1.0.0/geoparquet/administrative-areas-usace-ienc.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "administrative-areas-usace-ienc.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "catalog_sha256": "fbf6eacb099984776df8ed196b7f16e9b20cff56558855178cb405e425bc21ee",
+    "version_id": "hifld/administrative-areas-usace-ienc/administrative-areas-usace-ienc/v1.0.0",
+    "status": 200,
+    "bytes": 19872024,
+    "sha256": "4d02e7126c589bf7b108d959633faeef8a56d2a64c62c24a999eab979157cd46",
+    "generation": "1791506346226344",
+    "etag": "\"2e3d93ebfa6223082168be7c5f06d9e7\"",
+    "capture": "data/administrative-areas-usace-ienc.parquet",
+    "size_matches": true,
+    "acceptance": "candidate only; not accepted",
+    "observed_at": "2026-10-19T04:41:05.522625+00:00"
+  },
+  "migration_decision": {
+    "status": "maintainer_required",
+    "baseline_candidate_acceptance": "Approve or reject generation 1791506346226344 with SHA256 4d02e7126c589bf7b108d959633faeef8a56d2a64c62c24a999eab979157cd46",
+    "schema": "Approve an explicit versioned mapping for all original columns; Feature_ID is absent in published candidate; published id has no verified source mapping. Name truncation must not be silently treated as an approved mapping.",
+    "ids": "Feature_ID2781 distinct in2966; Source_Dataset+Feature_ID2937 distinct. Preserve exact strings and OBJECTID; no deduplication/substitute key. Decide stable key semantics or explicit nonunique identity policy.",
+    "geometry": "Review2966 vs3131 polygons. Diagnostic1e-9/1e-7 degree precision grids find2757 matching occurrences,209 source and374 published unmatched. No tolerance approved, no repair or dropping.",
+    "source": "Independent producer delegation and real release date still required; exact crosswalk XLSX match unavailable."
+  }
 }

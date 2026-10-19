@@ -1,0 +1,47 @@
+[
+  {
+    "name": "agc",
+    "url": "https://www.agc.army.mil/Missions/Navigation/Inland-Electronic-Navigational-Charts/",
+    "final_url": "https://www.agc.army.mil/Missions/Navigation/Inland-Electronic-Navigational-Charts/",
+    "status": 403,
+    "bytes": 454,
+    "sha256": "8ad318a8c80e09ed0bdc4601de054ba4537af3c7ac9f730423d1dbc61b6fb609",
+    "checked_at": "2026-10-19T04:48:38.610579+00:00"
+  },
+  {
+    "name": "ienc-old",
+    "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/ADMINISTRATIVE_AREA/MapServer/0?f=json",
+    "final_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/ADMINISTRATIVE_AREA/MapServer/0?f=json",
+    "status": 200,
+    "bytes": 63,
+    "sha256": "d3f5fb2e0455127bfdfe22607504e12cea287ff684433c01f04f50ee6e211f2a",
+    "checked_at": "2026-10-19T04:48:34.237084+00:00"
+  },
+  {
+    "name": "ienc",
+    "url": "https://www.agc.army.mil/Missions/Navigation/",
+    "final_url": "https://www.agc.army.mil/Missions/Navigation/",
+    "status": 403,
+    "bytes": 400,
+    "sha256": "8c10ebb995a36eca9f784b0b0dcf4f19c17bb0b1b928690008bd577600c008fb",
+    "checked_at": "2026-10-19T04:48:42.829625+00:00"
+  },
+  {
+    "name": "org",
+    "url": "https://www.arcgis.com/sharing/rest/portals/n1YM8pTrFmm7L4hs?f=json",
+    "final_url": "https://www.arcgis.com/sharing/rest/portals/n1YM8pTrFmm7L4hs?f=json",
+    "status": 200,
+    "bytes": 151,
+    "sha256": "9c0f313cfa3d399abb1dedb14f7d50ed9bc32c4bcdc87cd616e5de988e787542",
+    "checked_at": "2026-10-19T04:48:34.202346+00:00"
+  },
+  {
+    "name": "crosswalk",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "status": 403,
+    "bytes": 6178,
+    "sha256": "1c3f1268001a413508ea14dcdd25039d30e3337acac69c00aa59479d0b01f238",
+    "checked_at": "2026-10-19T04:48:34.187088+00:00"
+  }
+]
