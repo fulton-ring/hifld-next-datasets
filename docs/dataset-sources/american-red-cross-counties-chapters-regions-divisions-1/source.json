@@ -502,5 +502,19 @@
   "review": {
     "required": "independent native exact-head review of evidence and blocker",
     "status": "pending"
+  },
+  "independent_review_clarification": {
+    "original_audited_head": "ebc6cff15ebabae247374152ef221fbed167f887",
+    "reviewer": "review_research",
+    "clarification_authorship": "Reviewer-authored bounded docs/evidence after independent complete audit; no source pipeline changes.",
+    "source_distinct_FIPS": 3153,
+    "source_repeated_FIPS_values": 7,
+    "topological_false_cases": 7,
+    "all_seven_same_vertices_and_canonical_rings_ignoring_start_direction": true,
+    "interpretation": "Different grouping/validity is recorded, not proven producer coordinate edits or approved repair/equivalence.",
+    "source_native_ring_sequences_exact_all_rows": 3163,
+    "proof": "evidence/ring-representation.json",
+    "replay": "audit_ring_representation.py",
+    "acceptance_granted": false
   }
 }

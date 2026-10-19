@@ -8,14 +8,14 @@ The item/service title says FY27, effective July 2026. The same service descript
 
 ## Complete evidence and compatibility differences
 
-Four ordered original ESRI JSON pages contain 1,000 / 1,000 / 1,000 / 163 records with native geometry, all 61 fields and unchanged original identifiers. Counts, full OBJECTID sets, layer schema/edit metadata agree before and after extraction; the terminal page is empty. Transfer-limit flags are true on the first three pages and false/absent only on the last. All 3,163 GeoIDs are unique, while 3,153 FIPS values repeat across assignment pieces. FIPS is therefore not a row key.
+Four ordered original ESRI JSON pages contain 1,000 / 1,000 / 1,000 / 163 records with native geometry, all 61 fields and unchanged original identifiers. Counts, full OBJECTID sets, layer schema/edit metadata agree before and after extraction; the terminal page is empty. Transfer-limit flags are true on the first three pages and false/absent only on the last. All 3,163 GeoIDs are unique. There are 3,153 distinct FIPS codes; only seven codes repeat across assignment pieces (06037 occurs five times, and six other codes occur twice). FIPS is therefore not a row key.
 
 The complete comparison joins **original GeoID values for diagnostics only**:
 
 - 3,150 GeoIDs overlap; 12 historical GeoIDs disappear and 13 current GeoIDs appear. Alaska changes from 29 to 30 assignment rows; county/chapter assignments also change elsewhere.
 - Among shared GeoIDs, 145 original OBJECTIDs differ. Historical published `id` equals historical OBJECTID on every row. No replacement IDs or cross-version remapping is approved.
-- 3,143 shared geometries are topologically equal; seven differ topologically. Only 228 are ordered/normalized exact, because the historical candidate contains only MultiPolygons while the source contains 2,927 Polygons and 236 MultiPolygons. Native CRS is EPSG:3857 on both sides.
-- The historical candidate has 23 invalid geometries and the current candidate 16. Invalid coordinates are preserved; no repair or simplification is authorized.
+- 3,143 shared geometries are topologically equal; seven differ under the recorded geometry interpretation. All seven have identical vertex multisets and canonical ring sequences when start point and direction are ignored, but different multipart/hole grouping and validity. This does not establish producer coordinate edits or an approved equivalence. Only 228 are ordered/normalized exact. Representation differences include the historical candidate's all-MultiPolygon type versus 2,927 source Polygons and 236 MultiPolygons, as well as the seven grouping differences. Native CRS is EPSG:3857 on both sides.
+- The historical candidate has 23 invalid geometries and the current candidate 16. Invalid geometry representations are retained; no repair or simplification is authorized.
 - The historical schema truncates field names to ten characters. The report explicitly labels positional/truncation correspondences as diagnostic hypotheses. They are not approved output mappings. Current `Acres` / `SQ_MI` are declared Double although the historical output uses int64. Source population/income strings retain commas, dollar signs, nulls and leading-zero identifiers without inferred conversion.
 
 `evidence/full-comparison.json` records every shared-GeoID attribute difference and geometry comparison, complete schemas, source-only/baseline-only rows, IDs, coverage and validity. `evidence/public-reads.json` records dated request URLs, status, wire/decoded sizes, response metadata, redirects and SHA-256 pins. The small checked-in portal metadata JSON files are decoded, formatted views; their original byte streams are retained with all other raw captures. Raw captures are preserved at `/workspace/work/hifld-coordinator/13`, with their complete roster in `evidence/capture-manifest.json`. The complete 14,701,784-byte published GeoParquet candidate is pinned independently; it remains unapproved.
@@ -38,3 +38,19 @@ PYTHONPATH=src /workspace/hifld-worker-worktrees/19/.venv/bin/python \
 ```
 
 The replay verifies every raw-file SHA-256/size before parsing. It checks complete pagination, original IDs, exact schemas, before/after metadata, source/published coverage and every shared geometry without a tolerance or repair. It passed on the actual full captures. This is source-feasibility evidence; no Dagster materialization, integration, CI or full-suite success is implied. No source, dependency, workflow, contract, accepted release or production object was changed.
+
+## Independent review clarification
+
+Independent reviewer `review_research` replayed all 36 preserved raw-capture pins and reproduced the complete comparison exactly at original head `ebc6cff15ebabae247374152ef221fbed167f887`, before authoring this bounded clarification. The reviewer additionally checked every original ring sequence in all 3,163 source records against the native ESRIJSON interpretation. No source ring or coordinate was dropped or repaired. The seven baseline-invalid/current-valid topological-false cases preserve identical vertices and canonical rings but differ in representation/grouping; their historical construction cause is not established. Ring rotation/direction invariance here is diagnostic only, not an accepted mapping or repair.
+
+`evidence/ring-representation.json` records the bounded independent results. After the complete capture audit above, reproduce them with:
+
+```bash
+PYTHONPATH=src /workspace/hifld-worker-worktrees/19/.venv/bin/python \
+  docs/dataset-sources/american-red-cross-counties-chapters-regions-divisions-1/audit_ring_representation.py \
+  /workspace/work/hifld-coordinator/13 \
+  --comparison docs/dataset-sources/american-red-cross-counties-chapters-regions-divisions-1/evidence/full-comparison.json \
+  --output /tmp/red-cross-counties-rings.json
+```
+
+The existing numerical comparison and all original raw inputs remain unchanged. `evidence/review-clarification-manifest.json` pins the new/clarified bounded files, including the original comparison and raw-capture roster. The reviewer authored only these clarification documents/evidence; the prior complete extraction and independent replay were performed before this edit. This is an evidence-blocker handoff, with no pipeline, source, baseline, contract or release approval.

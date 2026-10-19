@@ -1,0 +1,26 @@
+{
+  "README.md": {
+    "bytes": 8454,
+    "sha256": "d2479753c8cd56e9107a374e1720c0b2fe628a20de63e7136cceae85d944d8d3"
+  },
+  "audit_ring_representation.py": {
+    "bytes": 2924,
+    "sha256": "d5046fcf31df7207f33eab4eaa9b60e4e8f339df21aaf31820d7c8996b14c3a1"
+  },
+  "evidence/capture-manifest.json": {
+    "bytes": 4653,
+    "sha256": "448489c50f86fae58c0f9b1bf655dd82a123b9cf15e78c170773e78173b8b824"
+  },
+  "evidence/full-comparison.json": {
+    "bytes": 1211469,
+    "sha256": "1952d0b76f82c5f10aef911021968868645f088ce4e5c2c166c04eded4dac252"
+  },
+  "evidence/ring-representation.json": {
+    "bytes": 2838,
+    "sha256": "a44c1391f16b6c7eac36415f91eb67c6cff51314a00d5653d089e648fe550978"
+  },
+  "source.json": {
+    "bytes": 15644,
+    "sha256": "4e309a55006c5348bf98552904c6d19535369de6d8021d2460ded0a350d36900"
+  }
+}
