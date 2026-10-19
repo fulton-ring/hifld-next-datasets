@@ -25,7 +25,7 @@ class AviationTests(unittest.TestCase):
         attrs = {f['name']: ('000001' if f['type']=='esriFieldTypeString' else 1.25 if f['type']=='esriFieldTypeDouble' else 7) for f in fields}
         first = dict(attrs, OBJECTID=2**53+1, SITE_NO='00001.00', ARPT_ID='A001')
         second = dict(attrs, OBJECTID=2**53+2, SITE_NO='00001.00', ARPT_ID='A002', LAT_DEG=None)
-        layer = {'fields':fields,'geometryType':'esriGeometryPoint','objectIdField':'OBJECTID',
+        layer = {'spatialReference':{'wkid':4326,'latestWkid':4326},'fields':fields,'geometryType':'esriGeometryPoint','objectIdField':'OBJECTID',
             'extent':{'spatialReference':{'wkid':102100,'latestWkid':3857}},
             'editingInfo':{'dataLastEditDate':1790959621805}}
         ids=[first['OBJECTID'],second['OBJECTID']]
@@ -144,6 +144,65 @@ class AviationTests(unittest.TestCase):
         self.assertTrue(retained)
         self.assertFalse(list((self.root/'stage').glob('aviation-facilities/aviation-facilities/*/draft_candidate/candidate.parquet')))
         self.assertTrue(any(b'Synthetic upstream failure' in p.read_bytes() for p in retained))
+
+    def test_conflicting_or_extra_returned_crs_witnesses_quarantine_raw(self):
+        original=copy.deepcopy(self.data)
+        cases=[{'wkid':4326,'latestWkid':3857},{'wkid':999999,'latestWkid':3857},
+               {'wkid':102100}, {'latestWkid':3857}, {},
+               {'wkid':True,'latestWkid':3857}, {'wkid':102100,'latestWkid':True},
+               {'wkid':102100,'latestWkid':3857,'wkt':'GEOGCS["unapproved"]'},
+               {'wkid':102100,'latestWkid':3857,'vcsWkid':5703},
+               {'wkid':102100,'latestWkid':3857,'latestVcsWkid':5703}]
+        for reference in cases:
+            with self.subTest(reference=reference):
+                self.data=copy.deepcopy(original)
+                for name in ('bts_layer','bts_layer_after'):
+                    self.data[name]['extent']['spatialReference']=copy.deepcopy(reference)
+                self.data['page-000']['spatialReference']=copy.deepcopy(reference);self.write()
+                with self.assertRaisesRegex(ValueError,'CRS authority'):_stage_aviation(self.capture,self.storage)
+        self.assertTrue(list((self.root/'stage/quarantine').rglob('*.body')))
+        self.assertFalse(list((self.root/'stage').glob('aviation-facilities/aviation-facilities/*/draft_candidate/candidate.parquet')))
+        self.data=copy.deepcopy(original)
+        for name in ('bts_layer','bts_layer_after'):self.data[name]['extent']['spatialReference']['wkid']=3857
+        self.data['page-000']['spatialReference']['wkid']=3857;self.write()
+        self.assertEqual(a.inspect_capture(self.capture)['rows'],2)
+
+    def test_observed_service_crs_and_extent_geometry_identity_are_pinned_stable(self):
+        original=copy.deepcopy(self.data)
+        cases=[('extent',{'spatialReference':{'wkid':102100,'latestWkid':3857},'xmin':1}),
+               ('spatialReference',{'wkid':3857,'latestWkid':3857}),
+               ('hasZ',True),('hasM',0),('objectIdField','RENAMED'),('geometryType','esriGeometryPolygon')]
+        for key,value in cases:
+            with self.subTest(key=key):
+                self.data=copy.deepcopy(original);self.data['bts_layer_after'][key]=value;self.write()
+                with self.assertRaises(ValueError):a.inspect_capture(self.capture)
+        self.data=copy.deepcopy(original)
+        for name in ('bts_layer','bts_layer_after'):self.data[name]['spatialReference']={'wkid':3857,'latestWkid':3857}
+        self.write()
+        with self.assertRaisesRegex(ValueError,'discrepancy changed'):a.inspect_capture(self.capture)
+
+    def test_every_original_retrieval_time_requires_valid_aware_iso_and_is_preserved(self):
+        original=(self.capture/'item.receipt.json').read_bytes()
+        bad=['not-a-date','','2026-10-19','2026-10-19T00:00:00','2026-99-19T00:00:00+00:00',True,None,123]
+        for value in bad:
+            with self.subTest(value=value):
+                receipt=json.loads(original);receipt['observed_at']=value
+                (self.capture/'item.receipt.json').write_text(json.dumps(receipt))
+                with self.assertRaisesRegex(ValueError,'observed_at'):_stage_aviation(self.capture,self.storage)
+        (self.capture/'item.receipt.json').write_bytes(original)
+        for name in self.data:
+            path=self.capture/(name+'.receipt.json');body=path.read_bytes();receipt=json.loads(body);receipt.pop('observed_at')
+            path.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(ValueError,'observed_at'):a.inspect_capture(self.capture)
+            path.write_bytes(body)
+        for value in ('2026-10-19T05:30:00+05:30','2026-10-18T19:00:00-05:00','2026-10-19T00:00:00Z'):
+            receipt=json.loads(original);receipt['observed_at']=value
+            (self.capture/'item.receipt.json').write_text(json.dumps(receipt))
+            result=_stage_aviation(self.capture,self.storage)
+            manifest=json.loads((self.root/'stage'/a.SLUG/a.SLUG/result['version']/'metadata/source_manifest.json').read_bytes())
+            self.assertEqual(next(i for i in manifest['inputs'] if i['input_id'].endswith(':item'))['retrieved_at'],value)
+        attempts=self.capture/'attempts';attempts.mkdir();(attempts/'failed.receipt.json').write_text(json.dumps({'observed_at':'2026-10-19','error':'retained upstream failure'}))
+        with self.assertRaisesRegex(ValueError,'observed_at'):a.inspect_capture(self.capture)
 
     def test_fractional_boolean_overflow_and_duplicate_oid(self):
         for value in (True,1.5,2**63,None):

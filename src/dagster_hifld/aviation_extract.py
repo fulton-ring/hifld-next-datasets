@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import platform
+import re
 import sys
 import datetime
 import json
@@ -264,6 +265,33 @@ def capture_live(destination: Path) -> None:
         'raw_preserved': True, 'approval': None}, sort_keys=True))
 
 
+def _observed_at(receipt: dict) -> str:
+    """Validate original aware ISO receipt time without replacing its spelling."""
+    value = receipt.get('observed_at')
+    if (not isinstance(value, str) or not re.fullmatch(
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})', value)):
+        raise ValueError('Original observed_at must be a timezone-aware ISO timestamp')
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+        if parsed.utcoffset() is None:
+            raise ValueError('Missing timezone')
+    except (TypeError, ValueError) as error:
+        raise ValueError('Original observed_at must be a valid timezone-aware ISO timestamp') from error
+    return value
+
+
+def _returned_crs(reference: dict) -> None:
+    """Only the returned API3857 / ArcGIS102100 alias policy is implemented.
+
+    Extra WKT/vertical/authority witnesses require an explicit reviewed policy;
+    none is discarded or interpreted as an approved coordinate transformation.
+    """
+    if (not isinstance(reference, dict) or set(reference) != {'wkid', 'latestWkid'}
+            or type(reference['wkid']) is not int or reference['wkid'] not in (3857, 102100)
+            or type(reference['latestWkid']) is not int or reference['latestWkid'] != 3857):
+        raise ValueError('Unsupported, missing or contradictory returned source API CRS authority witnesses')
+
+
 def inspect_capture(root: Path) -> dict:
     """Fail closed on changed census/schema/edit date, truncation, IDs or geometry."""
     item = _json(root / 'item.body')
@@ -271,8 +299,15 @@ def inspect_capture(root: Path) -> dict:
         raise ValueError('Distributor item identity drift requires review')
     layer = _json(root / 'bts_layer.body')
     after = _json(root / 'bts_layer_after.body')
-    if any(layer.get(k) != after.get(k) for k in ('fields','editingInfo','geometryType','objectIdField','hasZ','hasM')) or layer['extent']['spatialReference'] != after['extent']['spatialReference']:
+    if any(layer.get(k) != after.get(k) for k in ('fields','editingInfo','geometryType','objectIdField','hasZ','hasM','extent','spatialReference','sourceSpatialReference')):
         raise ValueError('Source changed during extraction')
+    for witness in (layer, after):
+        if witness.get('spatialReference') != {'wkid':4326,'latestWkid':4326} or 'sourceSpatialReference' in witness:
+            raise ValueError('Observed top-level service CRS metadata discrepancy changed; review required')
+    if any(k in witness and type(witness[k]) is not bool for witness in (layer, after) for k in ('hasZ','hasM')):
+        raise ValueError('Invalid geometry dimensionality witness type')
+    _returned_crs(layer['extent']['spatialReference'])
+    _returned_crs(after['extent']['spatialReference'])
     if layer['geometryType'] != 'esriGeometryPoint' or layer.get('hasZ') or layer.get('hasM'):
         raise ValueError('Unsupported geometry dimensionality')
     expected = _json(root / 'bts_ids.body')['objectIds']
@@ -291,8 +326,6 @@ def inspect_capture(root: Path) -> dict:
     signature = [{k: f[k] for k in ('name', 'type', 'nullable')} for f in layer['fields']]
     if hashlib.sha256(json.dumps(signature, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != PROPOSED_SCHEMA_SHA256:
         raise ValueError('Source physical schema drift requires review')
-    if layer['extent']['spatialReference'].get('latestWkid') != 3857:
-        raise ValueError('Native CRS drift requires review')
     if len(fields) != len(layer['fields']) or any(f['type'] not in _TYPES for f in fields.values()):
         raise ValueError('Unsupported or duplicate schema field')
     oid_field = layer['objectIdField']
@@ -309,6 +342,7 @@ def inspect_capture(root: Path) -> dict:
             signatures = lambda fs: [(f['name'], f['type']) for f in fs]
             if signatures(page.get('fields', [])) != signatures(layer['fields']):
                 raise ValueError('Page schema differs')
+        _returned_crs(page.get('spatialReference'))
         if page.get('spatialReference') != layer['extent']['spatialReference']:
             raise ValueError('Page CRS differs')
         if len(page['features']) > 2000:
@@ -353,6 +387,7 @@ def inspect_capture(root: Path) -> dict:
     for record in files:
         receipt_path = root / record['name'].replace('.body', '.receipt.json')
         receipt = _json(receipt_path)
+        _observed_at(receipt)
         if (receipt.get('url') != expected_urls[record['name'].removesuffix('.body')]
                 or receipt.get('final_url') != receipt.get('url')
                 or receipt.get('status') != 200 or receipt.get('sha256') != record['sha256']
@@ -361,6 +396,11 @@ def inspect_capture(root: Path) -> dict:
             raise ValueError('HTTP receipt/checksum mismatch')
         receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': _digest(receipt_path)})
     files.extend(receipts)
+    for receipt_path in root.rglob('*.receipt.json'):
+        original = _strict_json(receipt_path.read_bytes())
+        if not isinstance(original, dict):
+            raise ValueError('Receipt must be a JSON object')
+        _observed_at(original)
     if (root / 'capture-status.json').is_file():
         path = root / 'capture-status.json'
         files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
@@ -371,6 +411,11 @@ def inspect_capture(root: Path) -> dict:
     return {'rows': len(seen), 'unique_SITE_NO': len(site_ids), 'duplicate_SITE_NO_rows': len(seen)-len(site_ids), 'pages': len(paths), 'bounds': bounds,
             'source': SERVICE, 'editing_info': layer['editingInfo'], 'fields': layer['fields'],
             'crs': layer['extent']['spatialReference'], 'raw_files': files,
+            'crs_witnesses': {
+                'query_page_spatialReference': layer['extent']['spatialReference'],
+                'layer.extent.spatialReference': layer['extent']['spatialReference'],
+                'layer.spatialReference': layer['spatialReference'],
+                'interpretation': 'Returned source API coordinates are3857 per every page and the extent; no client reprojection. Differing top-level layer.spatialReference4326 is preserved as an unresolved metadata discrepancy; its service/source/display meaning is not established. Requires independent release review; original producer storage CRS is not asserted.'},
             'identifier_policy': 'Only OBJECTID is unique row census; SITE_NO and ARPT_ID retained exactly, no invented replacement or assumed SITE_NO uniqueness',
             'acceptance': 'unapproved_draft', 'promotion_allowed': False}
 
@@ -490,7 +535,7 @@ def release_inputs(capture: Path, audit: dict, version: str) -> list[dict]:
             'host': urllib.parse.urlsplit(receipt['url']).hostname,
             'canonical_url': receipt['url'], 'retrieval_url': receipt['url'],
             'observed_final_url': receipt['final_url'],
-            'retrieved_at': receipt['observed_at'],
+            'retrieved_at': _observed_at(receipt),
             'sha256': record['sha256'], 'bytes': record['bytes'],
             'raw_key': f'{SLUG}/{SLUG}/{version}/raw_arcgis/{record["name"]}',
             'license': license_text, 'attribution': attribution,
@@ -563,6 +608,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
         'lineage':{'producer':'FAA NASR', 'distributor_item':'1551114f78e34d8395fd77bf41cd8a80','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
+        'crs_witnesses':audit['crs_witnesses'],
         'unsupported_output_formats':{'pmtiles':'Actual tippecanoe reconstruction assigns sequential internal feature IDs and drops dense features to meet tile size; rendered quantized geometry/full coverage/identifier mapping is unapproved. Primary typed Parquet and native GeoPackage preserve every source row, ID, type and point.', 'shapefile_zip':'Source field names exceed the DBF ten-character limit; no destructive field-name or type/null migration is approved.'}}
     validate_release_provenance(manifest)
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
