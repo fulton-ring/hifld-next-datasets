@@ -381,8 +381,13 @@ def state_present(storage,version):
 def refuse_observed_loss(storage,version):
     if(Path(storage.local_dir).absolute()/incident_directory(version)).exists():raise CollegeQuarantineError('permanent_observed_original_trust_loss_requires_explicit_reviewed_restore')
 def record_observed_loss(storage,version,fingerprint,reason):
-    directory=Path(storage.local_dir).absolute()/incident_directory(version);directory.mkdir(parents=True,exist_ok=True)
-    immutable(storage,incident_directory(version)+'/incident.json',encode({'approved':False,'version':version,'processing_fingerprint':fingerprint,'reason':reason,'operator_action':'Restore exact original witnesses and explicitly retain/review this negative incident; no automatic bootstrap.'}))
+    # The reviewed shared protocol fsyncs each created directory and the final
+    # records before returning. Any failure preserves the existing candidate;
+    # even an incomplete incident directory blocks subsequent cold retries.
+    key=incident_directory(version)+'/record.json'
+    body=canonical_construction_bundle(version,fingerprint,{'approved':False,'kind':'observed_original_trust_loss','reason':reason,
+        'operator_action':'Restore exact original witnesses and explicitly retain/review this negative incident; no automatic bootstrap.'})
+    seal_first_construction(storage,key,version,fingerprint,body)
 
 
 def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
@@ -408,6 +413,29 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,
     expected=manifest_for(original,identity);actual=bundle['manifest']
     if encode({k:v for k,v in expected.items()if k!='code_commit'})!=encode({k:v for k,v in actual.items()if k!='code_commit'}):raise CollegeQuarantineError('original_manifest_or_retrieval_context_drift')
     validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files']);return original,actual
+
+
+def write_private(root,name,body):
+    path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
+    if path.write_bytes(body)!=len(body) or path.read_bytes()!=body:
+        raise CollegeQuarantineError('incomplete_private_write:'+name)
+
+
+def reconcile_private(root,table,audit,captures,identity,manifest,version):
+    # Re-read the complete closed candidate, not only native data, before the
+    # first outside seal and again before exposing a discoverable version.
+    expected=source_payloads(captures,identity,table,audit,manifest)
+    names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'}
+    actual={str(p.relative_to(root))for p in root.rglob('*')if p.is_file()}
+    if actual!=names|{READY}:raise CollegeQuarantineError('private_candidate_closed_roster_drift')
+    for name,body in expected.items():
+        if(root/name).read_bytes()!=body:raise CollegeQuarantineError('private_candidate_source_bytes_drift:'+name)
+    actual_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
+    validate_release_provenance(actual_manifest);validate_output_policy(actual_manifest)
+    ready={'version':version,'approved':False,'processing_fingerprint':digest(encode(identity)),
+        'objects':{name:sha256_file(root/name)for name in names}}
+    if(root/READY).read_bytes()!=encode(ready):raise CollegeQuarantineError('private_candidate_ready_drift')
+    reconcile_outputs(root,table)
 
 
 def stage_colleges(storage,*,capture_dir=None):
@@ -447,11 +475,11 @@ def stage_colleges(storage,*,capture_dir=None):
                 temp=Path(tmp)
                 for part in('geopackage','geoparquet','metadata','raw'):(temp/part).mkdir()
                 write_native_gpkg(table,temp/'geopackage'/f'{SLUG}.gpkg');pq.write_table(expected_parquet_table(table),temp/'geoparquet/colleges-and-universities.parquet',compression='zstd');reconcile_outputs(temp,table)
-                for name,value in source_payloads(captures,identity,table,audit,manifest).items():(temp/name).parent.mkdir(parents=True,exist_ok=True);(temp/name).write_bytes(value)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};(temp/READY).write_bytes(encode(ready));reconcile_outputs(temp,table)
+                for name,value in source_payloads(captures,identity,table,audit,manifest).items():write_private(temp,name,value)
+                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));reconcile_private(temp,table,audit,captures,identity,manifest,version)
                 captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
-                for name,value in source_payloads(captures,identity,table,audit,manifest).items():(temp/name).write_bytes(value)
-                ready['objects']={str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()and str(p.relative_to(temp))!=READY};(temp/READY).write_bytes(encode(ready));reconcile_outputs(temp,table);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+                for name,value in source_payloads(captures,identity,table,audit,manifest).items():write_private(temp,name,value)
+                ready['objects']={str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()and str(p.relative_to(temp))!=READY};write_private(temp,READY,encode(ready));reconcile_private(temp,table,audit,captures,identity,manifest,version);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
     except(ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError)as exc:
         where=quarantine(storage,captures,str(exc));raise CollegeQuarantineError(f'{exc}; retained:{where}')from exc

@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -150,6 +151,44 @@ class CollegeOriginalCaptureTests(unittest.TestCase):
         for _ in range(2):
             with self.assertRaisesRegex(c.CollegeQuarantineError,'permanent_observed_original_trust_loss'):self.refresh()
             self.assertEqual(before,{str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()})
+    def test_directory_fsync_failure_preserves_candidate_and_partial_incident_blocks_retry(self):
+        bundle=self.bundle_path();body=bundle.read_bytes();bundle.unlink();before={str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()};real=os.fsync;calls=[]
+        def fail_directory(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):calls.append(os.readlink('/proc/self/fd/'+str(fd)));raise OSError('synthetic directory fsync failure')
+            return real(fd)
+        with patch('os.fsync',side_effect=fail_directory),self.assertRaisesRegex(c.IncidentWriteError,'candidate_preserved'):self.refresh()
+        self.assertTrue(calls);self.assertEqual(before,{str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()});bundle.write_bytes(body)
+        for _ in range(2):
+            with self.assertRaisesRegex(c.CollegeQuarantineError,'permanent_observed_original_trust_loss'):self.refresh()
+            self.assertEqual(before,{str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()})
+    def test_short_private_manifest_and_ready_writes_never_expose_bad_candidate(self):
+        real=Path.write_bytes
+        for name,occurrence,first_sealed in [('source_manifest.json',1,False),('source_manifest.json',2,True),(Path(c.READY).name,1,False)]:
+            with self.subTest(name=name,occurrence=occurrence),tempfile.TemporaryDirectory()as tmp:
+                root=Path(tmp);storage=c.StagingStorageResource(local_dir=tmp);seen=[]
+                def short(path,body):
+                    if '_building'in path.parts and path.name==name:
+                        seen.append(len(body))
+                        if len(seen)==occurrence:return real(path,body[:17])
+                    return real(path,body)
+                with patch.object(Path,'write_bytes',short),self.assertRaisesRegex(c.CollegeQuarantineError,'incomplete_private_write'):c.stage_colleges(storage,capture_dir=CAPTURE)
+                self.assertEqual(len(seen),occurrence);self.assertFalse(list(root.glob(f'{c.SLUG}/{c.SLUG}/*')));self.assertTrue((root/'_raw-captures'/c.SLUG).exists())
+                original=[q for q in(root/'_construction-state').rglob('*.first-construction.json')if q.is_file()]if(root/'_construction-state').exists()else[]
+                self.assertEqual(bool(original),first_sealed)
+                if first_sealed:
+                    witnesses={q:q.read_bytes()for q in(root/'_construction-state').rglob('*')if q.is_file()};self.assertFalse(c.stage_colleges(storage,capture_dir=CAPTURE)['reused']);self.assertTrue(c.stage_colleges(storage,capture_dir=CAPTURE)['reused']);self.assertEqual(witnesses,{q:q.read_bytes()for q in witnesses})
+
+    def test_complete_private_metadata_ready_and_closed_roster_reread_before_seal(self):
+        real=c.write_private
+        for target in('metadata/colleges_source_audit.json',c.READY,'invented-source.csv'):
+            with self.subTest(target=target),tempfile.TemporaryDirectory()as tmp:
+                root=Path(tmp);storage=c.StagingStorageResource(local_dir=tmp);seen=[]
+                def corrupt(private,name,body):
+                    real(private,name,body)
+                    if name==c.READY and not seen:seen.append(name);(private/target).write_bytes(b'{}')
+                with patch.object(c,'write_private',corrupt),self.assertRaisesRegex(c.CollegeQuarantineError,'private_candidate_'):c.stage_colleges(storage,capture_dir=CAPTURE)
+                self.assertTrue(seen);self.assertFalse((root/'_construction-state').exists());self.assertFalse(list(root.glob(f'{c.SLUG}/{c.SLUG}/*')));self.assertTrue((root/'_raw-captures'/c.SLUG).exists())
+
     def test_bad_Git_claim_fails_before_first_shared_seal(self):
         identity=c.processing_identity();manifest=c.manifest_for(self.captures,identity);manifest['code_commit']='0'*40
         with tempfile.TemporaryDirectory()as tmp:
@@ -195,6 +234,39 @@ class CollegeStructuralTests(unittest.TestCase):
                 if name=='one.txt':c.check_zip(z,{'one.txt'},100)
                 else:
                     with self.assertRaises(c.CollegeQuarantineError):c.check_zip(z,{name},100)
+    def test_private_write_checks_truthful_count_and_false_full_count_with_readback(self):
+        real=Path.write_bytes;body=b'explicit synthetic complete private metadata'
+        for truthful in(True,False):
+            with self.subTest(truthful=truthful),tempfile.TemporaryDirectory()as tmp:
+                root=Path(tmp)
+                def short(path,value):
+                    count=real(path,value[:5]);return count if truthful else len(value)
+                with patch.object(Path,'write_bytes',short),self.assertRaisesRegex(c.CollegeQuarantineError,'incomplete_private_write'):c.write_private(root,'metadata/example.json',body)
+                self.assertEqual((root/'metadata/example.json').read_bytes(),body[:5])
+    def test_negative_incident_uses_directory_durable_shared_records(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            storage=c.StagingStorageResource(local_dir=tmp);c.local_only(storage);real=os.fsync;calls=[]
+            def sync(fd):
+                if stat.S_ISDIR(os.fstat(fd).st_mode):calls.append(os.readlink('/proc/self/fd/'+str(fd)))
+                return real(fd)
+            with patch('os.fsync',side_effect=sync):c.record_observed_loss(storage,'vsynthetic','a'*64,'synthetic missing original')
+            directory=Path(tmp)/c.incident_directory('vsynthetic');self.assertIn(str(directory),calls);self.assertIn(str(directory.parent),calls)
+            value=c.strict_json(c.load_first_construction(storage,c.incident_directory('vsynthetic')+'/record.json','vsynthetic','a'*64));self.assertEqual(value['payload']['kind'],'observed_original_trust_loss')
+            with self.assertRaisesRegex(c.CollegeQuarantineError,'permanent_observed_original_trust_loss'):c.refuse_observed_loss(storage,'vsynthetic')
+    def test_negative_incident_directory_and_body_fsync_faults_leave_blocking_evidence(self):
+        for directory_fault in(True,False):
+            with self.subTest(directory_fault=directory_fault),tempfile.TemporaryDirectory()as tmp:
+                storage=c.StagingStorageResource(local_dir=tmp);c.local_only(storage);real=os.fsync;seen=[]
+                def fail(fd):
+                    if stat.S_ISDIR(os.fstat(fd).st_mode)==directory_fault:seen.append(fd);raise OSError('synthetic incident fsync failure')
+                    return real(fd)
+                with patch('os.fsync',side_effect=fail),self.assertRaises((OSError,ValueError)):c.record_observed_loss(storage,'vsynthetic','a'*64,'synthetic missing original')
+                self.assertTrue(seen)
+                # The first parent fsync can fail before the incident directory
+                # exists; later faults leave a permanent partial incident.
+                if not directory_fault:
+                    with self.assertRaisesRegex(c.CollegeQuarantineError,'permanent_observed_original_trust_loss'):c.refuse_observed_loss(storage,'vsynthetic')
+
     def test_permanent_empty_incident_refuses_cold_retry_without_history_repair(self):
         with tempfile.TemporaryDirectory()as tmp:
             storage=c.StagingStorageResource(local_dir=tmp);c.local_only(storage);directory=Path(tmp)/c.incident_directory('vsynthetic');directory.mkdir(parents=True)
