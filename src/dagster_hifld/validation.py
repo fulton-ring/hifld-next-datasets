@@ -108,7 +108,7 @@ def _record_errors(record: dict, contract: dict) -> list[str]:
                     xmin, ymin, xmax, ymax = geom.bounds
                     if xmin < -180 or xmax > 180 or ymin < -90 or ymax > 90:
                         errors.append("coordinates_outside_declared_crs_domain")
-            except (ValueError, TypeError, KeyError, ShapelyError, CRSError):
+            except (ValueError, TypeError, KeyError, OverflowError, ShapelyError, CRSError):
                 errors.append("invalid_geometry")
     elif geometry is not None:
         errors.append("unexpected_geometry")
@@ -223,11 +223,13 @@ def compare_full_rows(
                     db.execute("CREATE TABLE rows (side TEXT, key BLOB, props BLOB, geom BLOB)")
                     db.execute("CREATE INDEX row_keys ON rows(side,key)")
                     db.execute("CREATE TABLE coverage(side TEXT, field TEXT, bucket BLOB)")
-                    db.execute("CREATE INDEX coverage_keys ON coverage(side,field,bucket)")
+                    db.execute("CREATE INDEX coverage_keys ON coverage(field,bucket,side)")
+                    page_size = db.execute("PRAGMA page_size").fetchone()[0]
 
                     def quota() -> None:
                         diffs.flush()
-                        size = sidecar.stat().st_size + sum(p.stat().st_size for p in Path(scratch).iterdir())
+                        allocated = db.execute("PRAGMA page_count").fetchone()[0] * page_size
+                        size = sidecar.stat().st_size + max(allocated, sum(p.stat().st_size for p in Path(scratch).iterdir()))
                         if size > limits.max_scratch_bytes:
                             raise ValueError("Scratch quota exceeded")
 
@@ -256,8 +258,7 @@ def compare_full_rows(
                                 db.execute("INSERT INTO rows VALUES (?,?,?,?)", (side, key, _encode(props), _encode(record.get("geometry"))))
                                 for field in contract["coverage_fields"]:
                                     db.execute("INSERT INTO coverage VALUES (?,?,?)", (side, field, _encode(props.get(field))))
-                                if counts["rows"] % 100 == 0:
-                                    quota()
+                                quota()
                         db.commit()
                         for key, count in db.execute("SELECT key,COUNT(*) FROM rows WHERE side=? GROUP BY key HAVING COUNT(*)>1", (side,)):
                             counts["duplicate_keys"] += count - 1
@@ -303,7 +304,7 @@ def compare_full_rows(
                     elif any(changes.values()):
                         report["reason_codes"].append("full_population_changes_require_acceptance")
                     quota()
-        except (ValueError, OSError, sqlite3.Error, KeyError, TypeError, ShapelyError, CRSError, RecursionError) as exc:
+        except (ValueError, OSError, sqlite3.Error, KeyError, TypeError, OverflowError, ShapelyError, CRSError, RecursionError) as exc:
             report["status"] = "blocked"
             report["reason_codes"].append(f"comparison_incomplete:{type(exc).__name__}:{exc}")
     report["sidecar"] = {"path": sidecar.name, "sha256": sha256_file(sidecar), "bytes": sidecar.stat().st_size}

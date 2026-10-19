@@ -103,6 +103,52 @@ def accepted_fixture(root):
 
 
 class FullPopulationTests(unittest.TestCase):
+    def test_unmatched_baseline_input_pin_and_unknown_crs_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            left, right = root / "left", root / "right"
+            stream(left, [feature()])
+            stream(right, [feature()])
+            reference = baseline_reference(left)
+            reference["comparison_input"]["sha256"] = "0" * 64
+            report = compare_full_rows(left, right, CONTRACT, root / "out", baseline_sha256=sha256_file(left),
+                                       candidate_sha256=sha256_file(right), baseline_reference=reference)
+            self.assertEqual(report["status"], "blocked")
+            reference = baseline_reference(left)
+            reference["comparison_input"]["bytes"] += 1
+            report = compare_full_rows(left, right, CONTRACT, root / "out", baseline_sha256=sha256_file(left),
+                                       candidate_sha256=sha256_file(right), baseline_reference=reference)
+            self.assertEqual(report["status"], "blocked")
+            contract = {**CONTRACT, "crs": "unrecognized-crs-with-no-authority"}
+            self.assertEqual(comparison(root, [feature()], [feature()], contract)["status"], "blocked")
+
+    def test_geometry_coercion_foreign_members_invalid_type_and_overflow_fail(self):
+        geometries = [
+            {"type": "Point", "coordinates": ["1", "2"]},
+            {"type": "Point", "coordinates": [True, False]},
+            {"type": "Point", "coordinates": [1, 2], "crs": "EPSG:3857"},
+            {"type": "UnknownGeometry", "coordinates": [1, 2]},
+            {"type": "Point", "coordinates": [10 ** 400, 2]},
+            {"type": "GeometryCollection", "geometries": [{"type": "Point", "coordinates": [1, 2], "bbox": [1, 2, 1, 2]}]},
+            {"type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0]]]},
+        ]
+        for geom in geometries:
+            with self.subTest(geometry=geom), tempfile.TemporaryDirectory() as d:
+                row = {**feature(), "geometry": geom}
+                self.assertEqual(comparison(Path(d), [row], [row])["status"], "fail")
+
+    def test_deep_json_parser_error_replaces_stale_pass_report(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            comparison(root, [feature()], [feature()])
+            nested = root / "nested"
+            nested.write_text("[" * 1100 + "0" + "]" * 1100 + "\n")
+            candidate = root / "candidate.jsonl"
+            report = compare_full_rows(nested, candidate, CONTRACT, root / "metadata", baseline_sha256=sha256_file(nested),
+                                       candidate_sha256=sha256_file(candidate), baseline_reference=baseline_reference(nested))
+            self.assertEqual(report["status"], "blocked")
+            self.assertEqual(json.loads((root / "metadata/baseline_comparison.json").read_text())["status"], "blocked")
+
     def test_input_mutation_during_comparison_is_blocked(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -194,6 +240,22 @@ class FullPopulationTests(unittest.TestCase):
 
 
 class ReleaseBoundaryTests(unittest.TestCase):
+    def test_candidate_comparison_input_pin_and_derivation_cannot_drift(self):
+        for mutation in ("sha256", "source"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as d:
+                source, target, registry = accepted_fixture(Path(d))
+                value = json.loads(registry.read_text())
+                candidate = value["releases"][0]["candidate_comparison_input"]
+                if mutation == "sha256":
+                    candidate["sha256"] = "0" * 64
+                else:
+                    candidate["derivation"]["source_objects"] = {"unreviewed-object": "0" * 64}
+                registry.write_text(json.dumps(value))
+                with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                    with self.assertRaises(ReleaseApprovalError):
+                        _copy_version_files(source, target, "synthetic", "points", "vtest")
+                self.assertEqual(target.list_prefix(), [])
+
     def test_storage_resource_subclass_cannot_bypass_release_gate(self):
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
             source, target, _ = accepted_fixture(Path(d))
