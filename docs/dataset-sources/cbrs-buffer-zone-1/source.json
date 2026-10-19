@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 28,
-  "status": "remaining_construction_code_identity_gap_reproduced_shared_verifier_integration_required",
+  "status": "shared_git_identity_integrated_normal_graph_verified_focused_actual_coforgery_rereview_pending",
   "approval": {
     "source": false,
     "baseline": false,
@@ -83,7 +83,7 @@
     "CBRS_specific_mentions_found": false,
     "classification": "Background only, not a fresh endpoint audit."
   },
-  "implementation_head": "1c117ca414e7e11347ee29dc542581852096106f",
+  "implementation_head": "5ad3cfa229b4fd7236902b13b4c7c63e373b3400",
   "verification": {
     "execution": "evidence/execution.json",
     "full_suite": {
@@ -159,5 +159,17 @@
       "scope": "staged construction code identity; independent approval gate not bypassed",
       "resolution_pending": "reviewed shared #417 Git/source identity validator integration"
     }
+  },
+  "shared_construction_git_identity": {
+    "reviewed_shared_code": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+    "deliberate_integration_base": "6eb0b7fdc6991bbd92240a1e630689c5c753eca9",
+    "source_adoption": "5ad3cfa229b4fd7236902b13b4c7c63e373b3400",
+    "validator": "dagster_hifld.construction_provenance.validate_construction_code_identity",
+    "fresh_full_processing_file_map": true,
+    "source_tests": 16,
+    "shared_helper_tests": 11,
+    "normal_graph_execution": "evidence/review-repairs/git-identity-normal-graph-execution.json",
+    "writer_AST_and_native_byte_parity": "evidence/review-repairs/git-identity-native-writer-and-data-parity.json",
+    "focused_full_pipeline_coforgery_rejections_and_exact_independent_review": "pending; no handoff-ready or source/release acceptance"
   }
 }

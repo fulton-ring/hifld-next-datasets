@@ -1,0 +1,42 @@
+{
+  "previous_source": "1c117ca414e7e11347ee29dc542581852096106f",
+  "current_source": "5ad3cfa229b4fd7236902b13b4c7c63e373b3400",
+  "functions": {
+    "inspect_archive": {
+      "old_AST_sha256": "653137d7bbc97d05e88752d25c252e13c61b8b155e28f230a6692cf9b2bc023e",
+      "new_AST_sha256": "653137d7bbc97d05e88752d25c252e13c61b8b155e28f230a6692cf9b2bc023e",
+      "equal": true
+    },
+    "write_native_geopackage": {
+      "old_AST_sha256": "904653fd586ec2d1625d17d5366cd84fdef315ec0979e4b55c62d718319ab11d",
+      "new_AST_sha256": "904653fd586ec2d1625d17d5366cd84fdef315ec0979e4b55c62d718319ab11d",
+      "equal": true
+    },
+    "typed_table": {
+      "old_AST_sha256": "3e28d464300f9d8fcad97ae2e3b1e7bb78fae008a220851376ca4f94e1a55875",
+      "new_AST_sha256": "3e28d464300f9d8fcad97ae2e3b1e7bb78fae008a220851376ca4f94e1a55875",
+      "equal": true
+    },
+    "compare_derivative": {
+      "old_AST_sha256": "ff7b658bf7a0c370ec59f3a696c0d702667500d4f29d809106a788017babe9ea",
+      "new_AST_sha256": "ff7b658bf7a0c370ec59f3a696c0d702667500d4f29d809106a788017babe9ea",
+      "equal": true
+    },
+    "fidelity_payloads": {
+      "old_AST_sha256": "9056f31e42e487217f7c755f6857e8fd01bde5af4d2332daf8e0fc77ec4746b1",
+      "new_AST_sha256": "9056f31e42e487217f7c755f6857e8fd01bde5af4d2332daf8e0fc77ec4746b1",
+      "equal": true
+    }
+  },
+  "no_native_writer_or_data_mapping_change": true,
+  "geopackage/cbrs-buffer-zone-1.gpkg": {
+    "bytes": 31358976,
+    "old_and_current_sha256": "29edab0b125fc438930422b0f5ff395869d25fa4854077222632515423c79a56",
+    "equal": true
+  },
+  "candidate/typed-source.parquet": {
+    "bytes": 26264868,
+    "old_and_current_sha256": "54b294ce12e616ade4b8fa8b00bd27cab9ce320a7ef4af7ce24807a7d4e1480e",
+    "equal": true
+  }
+}

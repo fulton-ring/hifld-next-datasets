@@ -1,0 +1,116 @@
+{
+  "code_head": "5ad3cfa229b4fd7236902b13b4c7c63e373b3400",
+  "module": "/workspace/hifld-worker-worktrees/28/src/dagster_hifld/sources/cbrs_buffer.py",
+  "runtime": "/workspace/work/hifld-coordinator/28/git-identity-verification",
+  "approved": false,
+  "runs": [
+    {
+      "kind": "real_complete_source",
+      "run_id": "628f7fe3-45d9-48ae-bd47-a1cef323513e",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/cbrs-buffer-zone-1/cbrs-buffer-zone-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "real_complete_refresh",
+      "run_id": "890c5c20-fa36-4a65-b755-92ecd2c913da",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/cbrs-buffer-zone-1/cbrs-buffer-zone-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_formats_missing_approval",
+      "run_id": "29e37f0f-4495-4b36-99a0-cc75840c613f",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/28/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "real_complete_post_formats_refresh",
+      "run_id": "18ed71a7-d5a9-469b-8e12-5b8c21d85141",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/cbrs-buffer-zone-1/cbrs-buffer-zone-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "synthetic_failed_geometry_quality_gate",
+      "run_id": "a5feaa04-3f3f-4e6d-8eae-fe84c830c0e7",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ],
+      "materializations": [
+        "publish/catalog"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ]
+    }
+  ],
+  "terminal_parquet": {
+    "rows": 1145,
+    "all_source_values_types_wkb_exact": true,
+    "extra_columns": [
+      "bbox"
+    ],
+    "nullable_inference_requires_review": true
+  },
+  "output": {
+    "dataset_slug": "cbrs-buffer-zone-1",
+    "file_slug": "cbrs-buffer-zone-1",
+    "version": "v0.0.0-draft-cbrs20241219-4079524bf98da1fb-e590a1a630f6ff6d",
+    "feature_count": 1145,
+    "status": "working_draft_candidate_ready",
+    "processing_fingerprint": "e590a1a630f6ff6d93a1e9c9d2d320102305d39c5cf7bf17489e3e8263f3896f"
+  },
+  "all_1145_ids_values_types_wkb_preserved": true,
+  "source_discoverable_without_manual_copy": true,
+  "refresh_byte_idempotent": true,
+  "prior_published_fixture_preserved": true,
+  "quality": {
+    "bounds": [
+      -97.638893,
+      17.661798,
+      -64.623143,
+      47.435669
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "582b93229a407690366b9ec7a1303b94ebd3feff3d71269e5512c2e4e1c06755",
+    "feature_count": 1145,
+    "geometry_type": "Polygon",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 1145,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "provenance_input_count": 4
+}
