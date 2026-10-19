@@ -4,6 +4,7 @@ Usage: uv run --frozen python <this-file> --baseline /path/to/preserved.parquet
 All input checksums are checked before parsing. Output is a deterministic report.
 """
 import argparse
+import os
 import collections
 import gzip
 import hashlib
@@ -15,7 +16,7 @@ import pyarrow.parquet as pq
 from shapely import from_wkb
 from shapely.geometry import shape
 
-EVIDENCE = Path(__file__).parent / 'evidence'
+EVIDENCE = Path(os.environ['HIFLD_NOAA_EEZ_EVIDENCE_DIR'])
 
 
 def read(name):

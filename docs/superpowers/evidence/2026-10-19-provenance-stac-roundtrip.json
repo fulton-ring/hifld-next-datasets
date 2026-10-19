@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "classification": "partial shared implementation; actual synthetic roundtrip, no real acceptance",
+  "parent_commit": "582079b706ec6811a6e91e23e5537fed340aa8bb",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "implementation_sha256": "85e8ff09c7ef260b2f4cf5fee5ef727ab58be75cc4ea3e3d6412047c39fc05d2",
+  "implementation": {
+    "src/dagster_hifld/catalog.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/catalog.py",
+      "sha256": "1f66ebfefd8b09871ec336964dac24abaee65416d8f0b7e67cf71afd511c1f02",
+      "bytes": 20850
+    },
+    "src/dagster_hifld/source_manifest.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/source_manifest.py",
+      "sha256": "6efca8e1d597c8dd1b79e5d12b9ee77a404964257c5ca6c195599fe215b75fdd",
+      "bytes": 13936
+    },
+    "src/dagster_hifld/provenance.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/provenance.py",
+      "sha256": "7ffdc0a2eecc4dad3e12923e02dc58469c0ec729ad950b6f3aac5b69345f1285",
+      "bytes": 9661
+    },
+    "src/dagster_hifld/release_approval.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/release_approval.py",
+      "sha256": "80853e8456da76493bea26f92d11ed0e761b497f3c3fa0822c9fbb2a9bc853d2",
+      "bytes": 25134
+    },
+    "src/dagster_hifld/portolan/catalog.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/catalog.py",
+      "sha256": "a84642c8c58158f563436bdc6a4a3dd811bf484745da7a423550106f38b0d703",
+      "bytes": 47176
+    },
+    "src/dagster_hifld/portolan/inventory.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/inventory.py",
+      "sha256": "331d970af849a7c40a201874a8d236d4d3e91d515a99ec677466b8d5a61b6442",
+      "bytes": 23336
+    },
+    "src/dagster_hifld/portolan/provenance.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/provenance.py",
+      "sha256": "fcb82e53207a03288e9d82ce166cd8dd28988f8ff055ecbef0b9733d4578dd26",
+      "bytes": 9051
+    },
+    "src/dagster_hifld/portolan/validation.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/validation.py",
+      "sha256": "6edac63e6e16b8bcebf16d0ae2948dd5f4e7bef726d5954b77e1f6dafd9e7289",
+      "bytes": 16332
+    },
+    "src/dagster_hifld/portolan/workflow.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/workflow.py",
+      "sha256": "00d90c42ba45696adb41fc16465df928c2bca7bd4240e24781dd4e1e96291bbf",
+      "bytes": 66491
+    }
+  },
+  "full_suite": {
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src:tests UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m unittest discover tests",
+    "run": 504,
+    "passed": 503,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 1,
+    "skip": "opt-in production-write integration",
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-provenance-full-suite-verified.log",
+      "sha256": "653b59730688a7ee0b9d7437dee63f5caa0f87a466ff2a2052560fc32628c2bc",
+      "bytes": 18091
+    },
+    "ci_success_inferred": false
+  },
+  "real_iac_dependency": {
+    "repository": "fulton-ring/hifld-next-iac",
+    "commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "source_url": "https://api.github.com/repos/fulton-ring/hifld-next-iac/tarball/56aa10757129c457c530d707d9a40bae13e0907f",
+    "archive_sha256": "ee36600c45e5bb71d5b96736a34ec4391a31dc1502c7c01ff8b2413eeadebc00",
+    "archive_bytes": 336477,
+    "classification": "Unmodified complete real pinned sibling repository source snapshot, not a fabricated test fixture. No infrastructure commands or writes to cloud."
+  },
+  "actual_roundtrip": {
+    "classification": "actual isolated synthetic publication; no real acceptance",
+    "source_input_count": 2,
+    "generation": "55b31d63-dc3d-49ff-8da1-f1a411bfc3f1",
+    "release_pointer_key": "_catalog/current.json",
+    "collection_key": "releases/55b31d63-dc3d-49ff-8da1-f1a411bfc3f1/synthetic/synthetic-native/typed/v0.0.0-fixture/collection.json",
+    "metadata_assets_roundtripped": 19,
+    "sqlite_metadata_rows": 19,
+    "missing_approval_blocked": true,
+    "removed_dependency_labels_blocked": true,
+    "repinned_omitted_input_blocked": true,
+    "prior_published_objects_preserved": 40,
+    "native_graph": {
+      "classification": "actual local synthetic full graph; no real baseline acceptance",
+      "unapproved_run_id": "dba54a3f-074f-49c0-a518-2e87888c0373",
+      "success_run_id": "54794624-b9a3-4a04-aa3f-2bf3e99a36bd",
+      "failed_drift_run_id": "6cd99ce6-c6c9-43fa-acfe-a5c33a653513",
+      "published_objects": 22,
+      "accepted_objects_unchanged": true,
+      "candidate_evidence_preserved": true,
+      "repinned_false_derivation_blocked": true,
+      "invalid_provenance_blocked": true,
+      "source_input_count": 2,
+      "dagster_home": "/workspace/hifld-worker-runtime/417/provenance-roundtrip-verified/native/dagster",
+      "archival_formats": [
+        "geopackage",
+        "geoparquet"
+      ],
+      "evidenced_skips": [
+        "pmtiles",
+        "shapefile_zip"
+      ]
+    }
+  },
+  "roundtrip_command": "PYTHONPATH=src:. UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m scripts.verification.provenance_roundtrip_local --work-dir /workspace/hifld-worker-runtime/417/provenance-roundtrip-verified",
+  "roundtrip_log": {
+    "path": "/workspace/work/hifld-coordinator/417-provenance-roundtrip-verified.log",
+    "sha256": "e7a573a38613d3fc2a14a8db667caeee236414508cd78035e28e6b4f353e922b",
+    "bytes": 36184
+  },
+  "canonical_source_compatibility": {
+    "classification": "read-only canonical source metadata structural compatibility; no source acceptance",
+    "records": [
+      {
+        "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/airspace-boundaries-1/airspace-boundaries-1/v0.0.0-draft.207e45869bb99d17b5081cd787b4725f273be936d57a3d695fcb21eb27edd770/metadata/source_manifest.json",
+        "inputs": 7,
+        "outcome": "valid_structure_only",
+        "reason": null,
+        "acceptance": false
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/12nm-territorial-sea/12nm-territorial-sea/v0.0.0-draft.noaa.be3aadb4f0818f246d91/metadata/source_manifest.json",
+        "inputs": 7,
+        "outcome": "valid_structure_only",
+        "reason": null,
+        "acceptance": false
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.d25aafc16a1102f0702a/metadata/source_manifest.json",
+        "inputs": 7,
+        "outcome": "valid_structure_only",
+        "reason": null,
+        "acceptance": false
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.225b42ee559a0276acfe/metadata/source_manifest.json",
+        "inputs": 7,
+        "outcome": "valid_structure_only",
+        "reason": null,
+        "acceptance": false
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/11/final-dependencies-pipeline/staging/alternative-fueling-stations/alternative-fueling-stations/v0.0.0-research-20261019-6/metadata/source_manifest.json",
+        "inputs": 59,
+        "outcome": "valid_structure_only",
+        "reason": null,
+        "acceptance": false
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/17/review-fixes-run/staging/amtrak-stations/amtrak-stations/v0.0.0-reviewfix-fe5539283335/metadata/source_manifest.json",
+        "inputs": 18,
+        "outcome": "valid_structure_only",
+        "reason": null,
+        "acceptance": false
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/20/combined-parent-ingest/staging/aviation-facilities/aviation-facilities/v0.0.0-draft-fa280578413734d12414e8e8/metadata/source_manifest.json",
+        "inputs": 17,
+        "outcome": "valid_structure_only",
+        "reason": null,
+        "acceptance": false
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/aiannh-areas-1/aiannh-areas-1/v0.0.0-draft-tiger2023-4155f58dfefcc40c-893ebde572086b6e/metadata/source_manifest.json",
+        "outcome": "blocked",
+        "reason": "missing_versioned_multi_input_provenance: processor differs from established HIFLD Next standard",
+        "acceptance": false,
+        "hypothetical_processor_only_probe": "no further structural failure after hypothetical processor-only correction",
+        "actual_manifest_changed": false
+      }
+    ]
+  },
+  "limits": [
+    "No real source, baseline, contract or release acceptance supplied",
+    "No CI or production integration assertion",
+    "No production write or infrastructure execution",
+    "Native additional formats, extraction pagination proofs, full transformation reconciliation and domain policy remain",
+    "Modern inventory-only imports without exact metadata SHA256 pins explicitly unsupported",
+    "Persistent prepared bundle API covers immutable pointer release path; legacy in-place root catalog lacks persistent planner",
+    "No hard OS resource quota or hostile concurrent ancestor-directory replacement guarantee"
+  ]
+}

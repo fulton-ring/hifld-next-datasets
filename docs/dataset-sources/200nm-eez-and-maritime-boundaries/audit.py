@@ -1,7 +1,7 @@
 """Replay bounded historical captures without network or source mutation."""
-import collections, gzip, json, pathlib, sys
+import collections, gzip, json, os, pathlib, sys
 from shapely.geometry import shape
-P=pathlib.Path(__file__).parent/'evidence'
+P=pathlib.Path(os.environ['HIFLD_NOAA_EEZ_EVIDENCE_DIR'])
 def read(n):
  p=P/n
  return json.loads(gzip.decompress(p.read_bytes()) if p.suffix=='.gz' else p.read_bytes())

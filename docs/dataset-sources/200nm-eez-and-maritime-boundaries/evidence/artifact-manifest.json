@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "issue": 3,
+  "original_git_head": "06a989e0ace3b72cfde5097ba2507367f3347778",
+  "artifact": "issue-3-full-evidence-06a989e0ace3.tar.zst",
+  "bytes": 916735,
+  "sha256": "e7391f8d8d2a0836ad316a8efc291557435f957b1bbef8346a2b1e61577605ae",
+  "files": {
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/published-candidate.json": {
+      "bytes": 1729,
+      "sha256": "f99ff49bfaac32e35bc179b7601ef405462f9ab20bf379b2cd75871f6cf95c7b"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-count_after.json.gz": {
+      "bytes": 32,
+      "sha256": "fe5fc8138f6d1e32985e25d8f52c7d06484cc553de7d657224e3fe7bb7ec41ff"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/current-layer.body.gz": {
+      "bytes": 1944,
+      "sha256": "e70a9ff7576bdaf93a2dbbb91d56f37c402ca3531183545785453f16261aef3d"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/prior.body": {
+      "bytes": 7066,
+      "sha256": "47df89b2cb912c3ee1826afe3b1547f42dfd421a0219e24673e9c6b2e34cdf64"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/draft-integration-result.json": {
+      "bytes": 17809,
+      "sha256": "e1c916ec7ed4b1d2e68521e2f9979169631387433844b71c8f43a1fd9d631c60"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-geojson.json.gz": {
+      "bytes": 401107,
+      "sha256": "124f8d24797428270411d93a55cc8e123eecad4edfabf7c51131b9d695c10675"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/readiness-20261019.json": {
+      "bytes": 656,
+      "sha256": "e282c24702c7f4a438140755eac9a274441eff349f16498b960d3af6b502a0b5"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/ids-pjson.json": {
+      "bytes": 173,
+      "sha256": "a0adda6785a012bcfa2129f8d3b497d0bd219db83ca5270d9ee7e55d90a1557f"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/requests.json": {
+      "bytes": 5859,
+      "sha256": "3739a898c468c10deedbac278b441281e452eb03d0e924e8f28a7b39ee8fa61c"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/comparison-inputs.json": {
+      "bytes": 907,
+      "sha256": "6fb686c6e6ce683231867a701b002c16806a87c369aae9b5289385d99fe3fc88"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/layer.body": {
+      "bytes": 7531,
+      "sha256": "fadf9c0309e28e10b38f5e2988de4d7fcae9f70e7e6d80dc862243e8070f8f34"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/current-requests.json": {
+      "bytes": 4112,
+      "sha256": "7a2d437aae6290d90e73aaab2d322ae162204cb757a37244610d6a3f099b0fba"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/ids.json": {
+      "bytes": 155,
+      "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-ids_after.json.gz": {
+      "bytes": 445,
+      "sha256": "08b1ef24e5b7357c5350128d08c7c4ab0adb3aff8bcb84145fa97b27617c33fb"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/inport-item.body.gz": {
+      "bytes": 17843,
+      "sha256": "7a629861c436829d21afe126663fb7482deb8f42201f1206e9509577b82f5d28"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/published-candidate-comparison.json": {
+      "bytes": 84453,
+      "sha256": "670e91c515342986b51fee4f5773ae421ae1c90e99cfe86eb0a14e6dcd5464fb"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/server-info.json": {
+      "bytes": 103,
+      "sha256": "11e6e25dec060da800aa035ad32004dded3704cc788e6a5d2d46f612f0958f27"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/network-retry.json": {
+      "bytes": 2671,
+      "sha256": "c4e6cb5f349b4f9b6e45938648fa990aca54d6377dbb5c204a3f29c590f8969f"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/landing.body.gz": {
+      "bytes": 15789,
+      "sha256": "c1f1aaffd19098be2d57e22160f45325d467ea153d2f2fa8b2b21de34390b492"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/inport-xml.body.gz": {
+      "bytes": 257,
+      "sha256": "c264ff4b8720259cfbcb38860a061d8dfd725fd739a342c57de5047212faca40"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/geojson.json.gz": {
+      "bytes": 401107,
+      "sha256": "124f8d24797428270411d93a55cc8e123eecad4edfabf7c51131b9d695c10675"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/current-full.body.gz": {
+      "bytes": 142,
+      "sha256": "4c61938436517a94ae4f724990e45aca24712a6ca422b651c6b023eaead9eb1a"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/service.body": {
+      "bytes": 5035,
+      "sha256": "97809f0a68927620fcf9a797dbea3b5cf89193c263897c0802cb707a996bb493"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/inventory-row.json": {
+      "bytes": 2480,
+      "sha256": "52537ed06165efca55bcbf5a13e84fe15cf347b7197386925301b5af2124e823"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/draft-validation.json": {
+      "bytes": 2981,
+      "sha256": "c220d398714cdd6a95c79cbbcbea2b100cb45475a7d7fb44bdd69851d7006695"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/draft-terminal-audit.json": {
+      "bytes": 19327,
+      "sha256": "a5449d66d6a82e9ecfcda0bb887265844b55f62471461ad993db2c75a2f89f98"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/draft-origin-validation.json": {
+      "bytes": 13483,
+      "sha256": "9ce4aad8bda1a44c564215881070868ed524297ebc7edb38a6368cfd84a82e39"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-layer.json.gz": {
+      "bytes": 1944,
+      "sha256": "e70a9ff7576bdaf93a2dbbb91d56f37c402ca3531183545785453f16261aef3d"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/graphql.json": {
+      "bytes": 8451,
+      "sha256": "76d49ebedeb5a100842b6fe5bbb920f549eb9840107eaab7d9c047eb404b7c11"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-features.json.gz": {
+      "bytes": 432716,
+      "sha256": "d669ce5669a07e123c6916096ee9251ec230d1e8a531348b271a2abb5e324251"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/crosswalk-retry.body.gz": {
+      "bytes": 3670,
+      "sha256": "abbe34d30dcd3732f11e95e3a9771e251ce6962c04676178a1b547e37098c91b"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/extraction-summary.json": {
+      "bytes": 3994,
+      "sha256": "10db235ec27cced5e94d76111537faabe65e0580bcb3238e11add66f5d8e0e72"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/archive-retry.body.gz": {
+      "bytes": 3680,
+      "sha256": "de256fb9aaa2680ff7b826981f7448a46efd4d50a798a2e1eb902c7be90bf9f2"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/quality.json": {
+      "bytes": 296,
+      "sha256": "ce35d300967c11646ae6bc4a2483d4f422736c23b2c3f26bebfbf0cd982b89f3"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/current-count.body.gz": {
+      "bytes": 32,
+      "sha256": "fe5fc8138f6d1e32985e25d8f52c7d06484cc553de7d657224e3fe7bb7ec41ff"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-receipts.json": {
+      "bytes": 5364,
+      "sha256": "4985f5ece0b316ed6c3f56e77ae6f6fa28a9376bd898284268368dd19bbfa111"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/published-candidate-catalog.json": {
+      "bytes": 18861,
+      "sha256": "1c22a7e80bfc3efa075714f1247afa8dbcee873c89a2b69a2ff6fd9d28e53b68"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-ids_before.json.gz": {
+      "bytes": 445,
+      "sha256": "08b1ef24e5b7357c5350128d08c7c4ab0adb3aff8bcb84145fa97b27617c33fb"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/count.json": {
+      "bytes": 12,
+      "sha256": "f0fcfac5df83c5dd87531d6712a9ae25d70400545047a1a84b587e36859a5f28"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/id-page.json": {
+      "bytes": 5369,
+      "sha256": "9e33c23d32fb8b4b40e77b0d4a5e4b95ff23a8e800df5a1e26ed1f31f0d7a919"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/verified-capture-count_before.json.gz": {
+      "bytes": 32,
+      "sha256": "fe5fc8138f6d1e32985e25d8f52c7d06484cc553de7d657224e3fe7bb7ec41ff"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/initial-derived-loss-audit.json": {
+      "bytes": 38624,
+      "sha256": "412ca8f4bb1e453cbf9d9bb90374d8b874f291ec3f6dae31d3b13788653b3c85"
+    },
+    "docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence/all.json.gz": {
+      "bytes": 432716,
+      "sha256": "d669ce5669a07e123c6916096ee9251ec230d1e8a531348b271a2abb5e324251"
+    }
+  },
+  "all_members_verified": true,
+  "member_count": 43,
+  "captured_at": "2026-10-19T13:49:02.356714+00:00",
+  "classification": "Complete historical captures and generated reports, retained losslessly as a local artifact; no source/baseline/contract/release approval",
+  "restore": "Verify artifact SHA256, then tar --use-compress-program=\"zstd -d\" -xf ARTIFACT -C EXTERNAL_REPLAY_ROOT; verify every extracted member against files before replay."
+}
