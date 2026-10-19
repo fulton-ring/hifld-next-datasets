@@ -241,3 +241,46 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'cached_authored_manifest_snapshot_differs'):
                 s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
             self.assertFalse(Path(d,prefix).exists())
+
+
+    def test_missing_ready_version_is_retained_outside_discovery(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d)
+            out=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            root=Path(d,s.SLUG,s.SLUG,out['version'])
+            (root/'metadata/canada_us_border_candidate_ready.json').unlink()
+            before={str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+            with self.assertRaisesRegex(ValueError,'concurrent_or_incomplete_existing_candidate'):
+                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            self.assertFalse(root.exists());self.assertEqual(list(_iter_staged_version_paths(storage)),[])
+            retained=list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'))
+            self.assertEqual(len(retained),1)
+            self.assertEqual(before,{str(p.relative_to(retained[0])):s.sha(p.read_bytes()) for p in retained[0].rglob('*') if p.is_file()})
+            self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
+
+    def test_full_source_reports_and_unapproved_placeholder_cannot_self_repin(self):
+        names=['metadata/geopackage_source_fidelity.json','metadata/parquet_source_fidelity.json',
+            'metadata/baseline_comparison.json','metadata/source-fidelity/baseline_comparison.json',
+            'metadata/source-fidelity/baseline_comparison.md','metadata/source-fidelity/baseline_differences.jsonl']
+        for name in names:
+            with self.subTest(name=name),tempfile.TemporaryDirectory() as d:
+                storage=StagingStorageResource(local_dir=d)
+                out=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                root=Path(d,s.SLUG,s.SLUG,out['version']);target=root/name
+                if name.endswith('.json'):
+                    value=json.loads(target.read_text())
+                    if name.endswith('_source_fidelity.json'):
+                        value['shared_verifier']['populations']['baseline']['rows']=1
+                        value['shared_verifier']['baseline']['approved']=True
+                    else:value.update(status='pass',approved=True,acceptance='approved')
+                    target.write_bytes(s.encode(value))
+                else:target.write_bytes(b'forged evidence')
+                marker=root/'metadata/canada_us_border_candidate_ready.json'
+                ready=json.loads(marker.read_text());ready['objects'][name]=s.sha(target.read_bytes());marker.write_text(json.dumps(ready))
+                before={str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+                with self.assertRaisesRegex(ValueError,'cached_source_fidelity_evidence_differs'):
+                    s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                self.assertFalse(root.exists());self.assertEqual(list(_iter_staged_version_paths(storage)),[])
+                retained=list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'))
+                self.assertEqual(len(retained),1)
+                self.assertEqual(before,{str(p.relative_to(retained[0])):s.sha(p.read_bytes()) for p in retained[0].rglob('*') if p.is_file()})

@@ -36,6 +36,7 @@ from dagster_hifld.release_approval import validate_release_provenance, verifier
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
+FIDELITY_FILES = ('baseline_comparison.json','baseline_comparison.md','baseline_differences.jsonl','baseline_field_changes.jsonl')
 SLUG = 'canada-and-us-border'
 URL = 'https://www.internationalboundarycommission.org/uploads/shapefile/us-canada-boundary-v1-3.zip'
 LANDING = 'https://www.internationalboundarycommission.org/en/maps-coordinates/coordinates.php'
@@ -296,6 +297,36 @@ def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
 
 
 
+
+def unapproved_baseline_comparison() -> dict:
+    return {'schema_version':1,'status':'blocked','approved':False,
+        'reason_codes':['unapproved_baseline_and_source_published_id_schema_crs_mapping'],
+        'acceptance':'not_established'}
+
+
+def fidelity_wrapper(report: dict) -> bytes:
+    return encode({'canonical_full_records_byte_identical':True,'shared_verifier':report,
+        'retained_shared_report_prefix':'metadata/source-fidelity',
+        'known_invalid_native_geometry_release_blocked':False})
+
+
+def expected_fidelity_payloads(rows: list[dict], directory: Path) -> dict[str,bytes]:
+    # Actual native rows and typed output are reconciled independently before
+    # using this exact original-to-original report as the expected full evidence.
+    original=directory/'source.jsonl'
+    original.write_bytes(b''.join(encode(row) for row in rows))
+    replay=directory/'independent-replay.jsonl'
+    replay.write_bytes(original.read_bytes())
+    report=compare_derivative(original,replay,directory/'comparison')
+    if report.get('status')!='pass':
+        raise BoundaryQuarantineError('original_source_evidence_replay_not_passed')
+    return {'metadata/geopackage_source_fidelity.json':fidelity_wrapper(report),
+        'metadata/parquet_source_fidelity.json':fidelity_wrapper(report),
+        'metadata/baseline_comparison.json':encode(unapproved_baseline_comparison()),
+        **{f'metadata/source-fidelity/{name}':(directory/'comparison'/name).read_bytes()
+           for name in FIDELITY_FILES}}
+
+
 def write_canonical_geopackage(destination: Path, rows: list[dict]) -> None:
     """Deterministic native container; no coordinate, ID, field or type changes."""
     with fiona.open(destination, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
@@ -361,6 +392,11 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
             raise BoundaryQuarantineError('cached_geopackage_canonical_container_differs')
     if not pq.read_table(root/'candidate/typed-source.parquet').equals(typed_table(rows,audit),check_metadata=True):
         raise BoundaryQuarantineError('cached_typed_parquet_source_fidelity_failure')
+    with tempfile.TemporaryDirectory(prefix='ibc-cache-source-evidence-') as tmp:
+        expected=expected_fidelity_payloads(rows,Path(tmp))
+        if any((root/name).read_bytes()!=body for name,body in expected.items()):
+            raise BoundaryQuarantineError('cached_source_fidelity_evidence_differs')
+
 
 
 def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
@@ -421,10 +457,11 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             version = f'v0.0.0-draft-ibc13-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/canada_us_border_candidate_ready.json'
-            if storage.object_exists(ready_key):
+            if local_candidate_path(storage,prefix).exists():
                 existing_prefix=prefix
+            if storage.object_exists(ready_key):
                 ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/canada_us_border_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
+                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/canada_us_border_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'metadata/source-fidelity/{name}' for name in FIDELITY_FILES} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
                 if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
                     raise BoundaryQuarantineError('existing_candidate_inventory_conflict')
                 if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
@@ -469,9 +506,11 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
                 'metadata/candidate.records.jsonl': records, 'metadata/source_manifest.json': encode(manifest),
                 'metadata/processing_identity.json': encode(identity), 'metadata/canada_us_border_source_audit.json': encode(audit),
                 'metadata/proposed_source_contract.json': encode(PROPOSAL),
-                'metadata/geopackage_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': fidelity, 'known_invalid_native_geometry_release_blocked': False}), 'metadata/parquet_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': parquet_fidelity, 'known_invalid_native_geometry_release_blocked': False}),
-                'metadata/baseline_comparison.json': encode({'schema_version':1, 'status':'blocked', 'approved':False,
-                    'reason_codes':['unapproved_baseline_and_source_published_id_schema_crs_mapping'], 'acceptance':'not_established'})}
+                'metadata/geopackage_source_fidelity.json': fidelity_wrapper(fidelity),
+                'metadata/parquet_source_fidelity.json': fidelity_wrapper(parquet_fidelity),
+                'metadata/baseline_comparison.json': encode(unapproved_baseline_comparison())}
+            payloads.update({f'metadata/source-fidelity/{name}':(directory/'comparison'/name).read_bytes()
+                for name in FIDELITY_FILES})
             payloads.update({f'raw/members/{name}': value for name,value in members.items()})
             payloads.update({f'raw/captures/{name}.body':value[0] for name,value in captures.items()})
             payloads.update({f'raw/captures/{name}.receipt.json':encode(value[1]) for name,value in captures.items()})
