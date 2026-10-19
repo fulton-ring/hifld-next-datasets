@@ -98,7 +98,7 @@
     "runner": "scripts/verify_cbrs_units_draft.py",
     "refresh": "STOPPED monthly1st15:00 America/New_York source-only integrity/availability refresh. Newly changed ZIP/schema/coverage quarantined for review; no automatic source edition replacement.",
     "atomicity": "Complete hidden local construction renamed into canonical version only after full reconstruction and validation; interrupt/OSError cannot expose partial version.",
-    "cache": "Fresh original ZIP decode revalidates complete cached rows/IDs/attributes/WKB, Arrow physical schema+all metadata and complete deterministically rederived GPKG container bytes. Entire SRS tables/authorities/WKT, geometry flags/envelopes, RTree/indexes/triggers are bound, rather than Fiona-selected CRS alone.",
+    "cache": "One shared local per-version lock spans existing lookup, cache validation and atomic invalid-version quarantine; first construction happens privately and installation conflicts never trigger stale cleanup. Exact native derivatives/metadata/reports/sidecars still rederive from original full source.",
     "raw": "Full ZIP/all25members/all original input receipts plus separately complete API and baseline retained. Malformed/partial attempts kept in raw quarantine with exact original bytes.",
     "promotion": "Shared independent exact source/baseline/contract/release registry is mandatory. All real approvals remain absent.",
     "generic_geoparquet_regeneration": {
@@ -107,7 +107,8 @@
       "evidence": "evidence/normal-format-schema-probe.json",
       "behavior": "Actual normal conversion added bbox and changed field/nullability/extension metadata relative to source typed schema; adapter supplies faithful complete typed GeoParquet rather than silently accept additional columns."
     },
-    "geopackage_last_change": "Canonical container representation uses fixed producer publication timestamp2024-12-19 only for deterministic serialization; not a claim about original file modification or extraction time."
+    "geopackage_last_change": "Canonical container representation uses fixed producer publication timestamp2024-12-19 only for deterministic serialization; not a claim about original file modification or extraction time.",
+    "live_transport": "Requests Accept-Encoding identity; if producer nevertheless compresses, validate HTTP Content-Length against actual wire bytes downloaded while bounding decoded bytes separately. Original decoded input and exact partial decoded chunks are retained."
   },
   "release_decisions": [
     "Accept exact source/edition/rights and reconcile one native geometry/two Name differences between ZIP and delegated API.",
@@ -165,5 +166,51 @@
       "reason": "Current unsupported_output_formats.geoparquet prevents all promotion of even the faithful prebuilt native artifact. Need reviewed shared prebuilt_output_policy separating generic regeneration from a fully pinned immutable prebuilt roster, then source-specific manifest update and actual local verification. This is an implementation dependency, not a fabricated source-acceptance decision.",
       "current_gate": "whole-format ban remains intact until reviewed shared integration; no bypass"
     }
-  ]
+  ],
+  "refresh_followup": {
+    "scope": "Transport/concurrency-only source change. Actual live all-four-source acquisition/complete942row inspection and current tests prove the followup. Prior real Dagster source/format/quality run IDs remain attributed to13fd, not relabeled as4614. No broad terminal data rebuild.",
+    "source_checkpoint": "4614cd6ed393044a46f1fdf20896b7aad9a3f4ec",
+    "prior_actual_dagster_source_checkpoint": "13fd9a7106212568bb26ed4491bd5217e224d426",
+    "data_writer_and_decoder_ast": {
+      "inspect_archive": {
+        "ast_unchanged": true,
+        "sha256": "4e8971d396169cab7a777596e46897707ff51f665bfb8527a6adae0f92a9b124"
+      },
+      "write_geopackage": {
+        "ast_unchanged": true,
+        "sha256": "d43fd90f975e113773bb96bc9671cdf2146970d218f6f194179f38ca2c295e9a"
+      },
+      "typed_table": {
+        "ast_unchanged": true,
+        "sha256": "80e88b2e56f4d0e7c57b6f254b81ee8f338c6b488037b639153467ec5967a29b"
+      },
+      "provenance": {
+        "ast_unchanged": true,
+        "sha256": "9c3c1009dba21f57f06e7e25f8023e938878d05f4c1791f26431494d935926d0"
+      },
+      "source_verification_payloads": {
+        "ast_unchanged": true,
+        "sha256": "a086b8cc0c6682bc76d4899c24b066b8ff0815535a6d16d829758936e4a257da"
+      }
+    },
+    "tests": {
+      "focused": 16,
+      "focused_seconds": 60.207,
+      "full": 522,
+      "passed": 521,
+      "skipped": 1,
+      "skip": "production-write E2E",
+      "seconds": 201.598
+    },
+    "live": {
+      "all_four_canonical_inputs_HTTP200": true,
+      "source_rows": 942,
+      "original_full_records_sha256": "1bdda7471edda798577f6a87f83d65e16d92f3e65b27814d469119f36c65b677",
+      "wire_count_not_decoded_length_used": true,
+      "identity_requested_and_all_live_responses_identity": true
+    },
+    "interleaving": "Actual stage lookup reaches invalid missing-ready directory while holding same per-version lock. Concurrent installer blocks until invalid original is atomically retained outside discovery; valid winning object remains after stale stage error. Synthetic control-flow/data fixtures, not real approval.",
+    "retained_partial_bytes": "Actual HTTPX stream emits partial bytes then ReadError. All three attempts retain exact emitted bytes without chunk-size buffering loss.",
+    "implementation_dependency": "Reviewed shared417prebuilt_output_policy must still be integrated deliberately; whole-format ban remains until source-specific policy followup."
+  }
 }

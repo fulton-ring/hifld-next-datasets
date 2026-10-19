@@ -97,6 +97,54 @@
       "bytes": 1456,
       "sha256": "19c0bffaac262f30e465b1bb5560f6c3ed6c92671293ffbb82a5c0b4e330cfaa"
     },
+    "refresh-followup/full-suite-refresh-followup.log": {
+      "bytes": 18571,
+      "sha256": "c9dbfeab05fa4864590681e0efec9e8711f82a454c74b2ba594e89e5fe072bc6"
+    },
+    "refresh-followup/fws_data.body": {
+      "bytes": 101644,
+      "sha256": "5e12c5f4e2c74461d1f67db585e1db5ded68363688934f695de8ffd224f77432"
+    },
+    "refresh-followup/fws_data.receipt.json": {
+      "bytes": 441,
+      "sha256": "6102f5f83e517a073c9f4614cb2fb19f59723ff36c73516f3cbdb2233b8f28f4"
+    },
+    "refresh-followup/fws_download.body": {
+      "bytes": 92508,
+      "sha256": "4df2d5304c7c1828996056e1a1bce26218b808e80a9f61082751816542a148dd"
+    },
+    "refresh-followup/fws_download.receipt.json": {
+      "bytes": 451,
+      "sha256": "f6d098846c8b1555b4e5179a6d75516483fc63af9d041b8f29f5487f86858c8e"
+    },
+    "refresh-followup/fws_units_metadata.receipt.json": {
+      "bytes": 486,
+      "sha256": "c913106a5d7a281f073bfb287bca6bdb3c06a1c81e09bdab718caf909b856757"
+    },
+    "refresh-followup/live-report.json": {
+      "bytes": 8051,
+      "sha256": "87fb192252050b7f5804af05e4e8ae3d1365e50b7fa11370d38dfb6cb46ef9e4"
+    },
+    "refresh-followup/live-source_manifest.json": {
+      "bytes": 7235,
+      "sha256": "1298267ae3c159f277a4a32fced8ced4612445d5655f94afdc644245005b9174"
+    },
+    "refresh-followup/live-transport.log": {
+      "bytes": 944,
+      "sha256": "2b1e87c5259629bafe91e2d78c134abb2f5001e53f441107f89d478accd20697"
+    },
+    "refresh-followup/official_zip.receipt.json": {
+      "bytes": 481,
+      "sha256": "f2d27cd2549b6f6818e3fbc32d76665d1b78979d7cd0ecbf02c4ee049272a80b"
+    },
+    "refresh-followup/proof.json": {
+      "bytes": 2363,
+      "sha256": "28e09b3f1867444021095ea76e9d3882af9cef28eca35da18521ff279fb4423e"
+    },
+    "refresh-followup/tests-refresh-followup.log": {
+      "bytes": 355,
+      "sha256": "1d517139aef7e48e2eeee99feebec4b17ce66363d9ee86679201a34d5dc942f3"
+    },
     "source_count.body": {
       "bytes": 13,
       "sha256": "124682cb1f0877c946977d6891c535553649de2827b26d1c283178a43566efde"
