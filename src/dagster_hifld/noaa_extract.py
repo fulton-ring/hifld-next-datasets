@@ -27,10 +27,21 @@ import pyarrow.parquet as pq
 from shapely import from_wkb
 from shapely.geometry import LineString, MultiLineString, mapping
 
-from dagster_hifld.promotion import write_immutable_object
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 _CAPTURE_NAMES = ("layer", "count_before", "features", "ids_before", "ids_after", "count_after", "geojson")
+
+
+def _write_draft_staging(storage: StagingStorageResource, key: str, contents: bytes) -> str:
+    """Immutable local staging creation; never a published-storage gate bypass."""
+    if isinstance(storage, PublishedStorageResource) or not storage.use_local or storage.bucket:
+        raise ValueError("Unapproved NOAA drafts require local staging, not published storage")
+    before = storage.object_snapshot(key)
+    if before is None:
+        storage.write_key_if_unchanged(key, contents, None)
+    elif storage.read_key(key) != contents or storage.object_snapshot(key) != before:
+        raise ValueError(f"NOAA staged content is immutable: {key}")
+    return storage._ensure_prefixed(key)
 
 
 def _json_bytes(value: object) -> bytes:
@@ -225,7 +236,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     Shared #417 approval gates must be installed before wiring this into an asset.
     Candidate staging remains local-only and never grants promotion approval.
     """
-    if not staging.use_local or staging.bucket:
+    if isinstance(staging, PublishedStorageResource) or not staging.use_local or staging.bucket:
         raise ValueError("Unapproved NOAA draft extraction requires isolated local storage")
     identity = _digest({name: hashlib.sha256(raw).hexdigest() for name, raw in sorted(captures.items())})
     version = "v0.0.0-draft.noaa." + identity[:20]
@@ -233,18 +244,18 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     if not set(captures).issubset(_CAPTURE_NAMES):
         raise ValueError("NOAA unknown raw capture names")
     for name, raw in sorted(captures.items()):
-        write_immutable_object(staging, f"{prefix}/raw/{name}.json", raw)
+        _write_draft_staging(staging, f"{prefix}/raw/{name}.json", raw)
     receipt_key = f"{prefix}/raw/receipts/{_digest(receipts)}.json"
-    write_immutable_object(staging, receipt_key, _json_bytes(receipts))
+    _write_draft_staging(staging, receipt_key, _json_bytes(receipts))
     try:
         table, quality = validate_noaa_capture(captures, expected_fields=expected_fields, expected_fingerprints=expected_fingerprints, expected_count=expected_count)
     except (ValueError, KeyError, TypeError, OverflowError, pa.ArrowException) as exc:
-        write_immutable_object(staging, f"{prefix}/metadata/quarantine.json", _json_bytes({"status": "quarantined", "promotion_approved": False, "reason": str(exc), "raw_identity": identity}))
+        _write_draft_staging(staging, f"{prefix}/metadata/quarantine.json", _json_bytes({"status": "quarantined", "promotion_approved": False, "reason": str(exc), "raw_identity": identity}))
         raise ValueError(f"NOAA extraction quarantined at {prefix}: {exc}") from exc
     buffer = io.BytesIO()
     pq.write_table(table, buffer, compression="zstd", use_dictionary=False, write_statistics=True, version="2.6")
     candidate = buffer.getvalue()
-    key = write_immutable_object(staging, f"{prefix}/candidate/geoparquet/{file_slug}.parquet", candidate)
+    key = _write_draft_staging(staging, f"{prefix}/candidate/geoparquet/{file_slug}.parquet", candidate)
     # Typed local bridge for the existing catalog/format graph. Its internal SQLite
     # feature key is a storage implementation detail, never a substitute source ID.
     # All declared source identifier properties remain explicit and unchanged.
@@ -259,10 +270,10 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
             connection.execute("UPDATE gpkg_contents SET last_change = '1970-01-01T00:00:00.000Z'")
             connection.commit()
             connection.execute("VACUUM")
-        source_key = write_immutable_object(staging, f"{prefix}/geopackage/{file_slug}.gpkg", path.read_bytes())
+        source_key = _write_draft_staging(staging, f"{prefix}/geopackage/{file_slug}.gpkg", path.read_bytes())
     report = {**quality, "catalog_source_key": source_key, "dataset_slug": dataset_slug, "file_slug": file_slug, "version": version, "candidate_key": key,
               "candidate_sha256": hashlib.sha256(candidate).hexdigest(), "raw_identity": identity,
               "status": "draft_candidate_unapproved", "source_receipts": [{k: v for k, v in r.items() if k != "fetched_at"} for r in receipts],
               "refresh_policy": "Bounded retry on transport failure; content-addressed no-op for identical extraction; any proposed schema/IDs/geometry/coverage drift quarantines; not a release-date assertion"}
-    write_immutable_object(staging, f"{prefix}/metadata/noaa_extraction.json", _json_bytes(report))
+    _write_draft_staging(staging, f"{prefix}/metadata/noaa_extraction.json", _json_bytes(report))
     return report
