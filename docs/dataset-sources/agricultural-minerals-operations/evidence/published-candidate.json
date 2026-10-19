@@ -1,0 +1,25 @@
+{
+  "slug": "agricultural-minerals-operations",
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/agricultural-minerals-operations/agricultural-minerals-operations/v1.0.0/geoparquet/agricultural-minerals-operations.parquet",
+  "expected_bytes": 35743,
+  "catalog_asset": {
+    "file:checksum": "1220e2da040103b295bf706bb440a261dcf4f2a9a848898720c6b0d3209bd59ce3d0",
+    "file:size": 35743,
+    "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/agricultural-minerals-operations/agricultural-minerals-operations/v1.0.0/geoparquet/agricultural-minerals-operations.parquet",
+    "roles": [
+      "data"
+    ],
+    "title": "agricultural-minerals-operations.parquet",
+    "type": "application/vnd.apache.parquet"
+  },
+  "catalog_sha256": "7b8d2fc8d483065158c540ab434296fbf28b3aa95876b73a785748cb3376fe8a",
+  "version_id": "hifld/agricultural-minerals-operations/agricultural-minerals-operations/v1.0.0",
+  "status": 200,
+  "bytes": 35743,
+  "sha256": "e2da040103b295bf706bb440a261dcf4f2a9a848898720c6b0d3209bd59ce3d0",
+  "generation": "1791506346444783",
+  "etag": "\"44ab6f9081a149e3c2834927897428aa\"",
+  "capture": "evidence/published-candidate.parquet",
+  "size_matches": true,
+  "acceptance": "unapproved baseline candidate"
+}

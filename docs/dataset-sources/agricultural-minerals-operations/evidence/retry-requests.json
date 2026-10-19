@@ -1,0 +1,46 @@
+[
+  {
+    "name": "usgs-aggr",
+    "url": "https://mrdata.usgs.gov/mineral-resources/aggr.html",
+    "checked_at": "2026-10-19T04:50:47.766908+00:00",
+    "status": 403,
+    "final_url": "https://mrdata.usgs.gov/mineral-resources/aggr.html",
+    "bytes": 25,
+    "sha256": "870d84f11d07934098167265fdbe64f27821a0e5d7843d66b6a27efe8a02461b",
+    "body": "retry-usgs-aggr.body.gz",
+    "cloudflare_challenge": false
+  },
+  {
+    "name": "usgs-nmic",
+    "url": "https://www.usgs.gov/centers/national-minerals-information-center",
+    "checked_at": "2026-10-19T04:50:47.768539+00:00",
+    "status": 200,
+    "final_url": "https://www.usgs.gov/centers/national-minerals-information-center",
+    "bytes": 125087,
+    "sha256": "ff827f0dd9c2bea7691a6e139eb2ba3b82b90a497cc0bcb839c01828fe29417f",
+    "body": "retry-usgs-nmic.body.gz",
+    "cloudflare_challenge": false
+  },
+  {
+    "name": "crosswalk",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "checked_at": "2026-10-19T04:50:47.769415+00:00",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "bytes": 6157,
+    "sha256": "c239a96dbb582d34b28155861db82c43281d50ee8f989eaff479228e009a4338",
+    "body": "retry-crosswalk.body.gz",
+    "cloudflare_challenge": true
+  },
+  {
+    "name": "archive",
+    "url": "https://www.datalumos.org/datalumos/project/238557/version/V1/view",
+    "checked_at": "2026-10-19T04:50:47.770019+00:00",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/238557/version/V1/view",
+    "bytes": 6157,
+    "sha256": "46a9f4c76504d742456adfab15e94ee37838aec9597ec3bc29f59ca0041d0b19",
+    "body": "retry-archive.body.gz",
+    "cloudflare_challenge": true
+  }
+]

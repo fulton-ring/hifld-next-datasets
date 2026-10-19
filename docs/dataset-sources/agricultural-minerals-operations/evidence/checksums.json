@@ -68,12 +68,52 @@
     "sha256": "b6bcadaf37c597615edb741d1da44323dee3404de9746bb2bf44344b3ddb9683"
   },
   {
+    "path": "evidence/published-candidate-stac.json",
+    "sha256": "7b8d2fc8d483065158c540ab434296fbf28b3aa95876b73a785748cb3376fe8a"
+  },
+  {
+    "path": "evidence/published-candidate.json",
+    "sha256": "1751b9479e66a1baba595338c06865f52f571cb31a6cb77f1adfa313617a0fc9"
+  },
+  {
+    "path": "evidence/published-candidate.parquet",
+    "sha256": "e2da040103b295bf706bb440a261dcf4f2a9a848898720c6b0d3209bd59ce3d0"
+  },
+  {
+    "path": "evidence/published-comparison.json",
+    "sha256": "d7bfd9511c01b5162739d17d9b6065f134bdc4990f155523bd306ad33b0a26ed"
+  },
+  {
     "path": "evidence/repositories.json",
     "sha256": "d9450045ccb5c688acaa53f07ec6d764fb59dcd1996380fa9394c2d9f5a6bb0e"
   },
   {
     "path": "evidence/requests.json",
     "sha256": "cef3d114555c38776a7cfb325c60e25ff1ce8123ad318e5b44820b575089f4db"
+  },
+  {
+    "path": "evidence/retry-archive.body.gz",
+    "sha256": "7ef84f52c5d5cb9e089d628e4662be636a8739a39f01250d714e3d9231fc44c8"
+  },
+  {
+    "path": "evidence/retry-crosswalk.body.gz",
+    "sha256": "4f4e409cafa899b785005ab4f5cc2f32f89cdaf872c5f211ff9583179b69cfc6"
+  },
+  {
+    "path": "evidence/retry-readiness.json",
+    "sha256": "ce75581b8b7a3e3220a52852ccd865e1692c4db6f9f2251ac520e21d78f23b07"
+  },
+  {
+    "path": "evidence/retry-requests.json",
+    "sha256": "6ad3397712bd4ca140d44c46a14f35b4e7d449c880fb8af4a802de883338da93"
+  },
+  {
+    "path": "evidence/retry-usgs-aggr.body.gz",
+    "sha256": "0925d2fd1a58de8b669d18aeda2c39e874c607c404a152bb8ad526900759858c"
+  },
+  {
+    "path": "evidence/retry-usgs-nmic.body.gz",
+    "sha256": "3135aacfd686abe7ae5da30cc8dfe7dfeeeb067e617463ac33044030c1a3e47a"
   },
   {
     "path": "evidence/search.body",

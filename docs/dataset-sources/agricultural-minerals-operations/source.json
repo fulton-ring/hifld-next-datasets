@@ -240,5 +240,19 @@
     ],
     "materialized": false,
     "ingestion_acceptance": false
+  },
+  "published_baseline_candidate": {
+    "status": "pinned_unapproved",
+    "version": "v1.0.0",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/agricultural-minerals-operations/agricultural-minerals-operations/v1.0.0/geoparquet/agricultural-minerals-operations.parquet",
+    "generation": "1791506346444783",
+    "sha256": "e2da040103b295bf706bb440a261dcf4f2a9a848898720c6b0d3209bd59ce3d0",
+    "bytes": 35743,
+    "comparison": "evidence/published-comparison.json",
+    "acceptance_decision": null
+  },
+  "network_retry": {
+    "requests": "evidence/retry-requests.json",
+    "result": "Official NMIC200; exploratory mrdata provider403; crosswalk/archive provider Cloudflare403 after successful DOI redirect, no CONNECT denial; exact workbook remains unverified"
   }
 }
