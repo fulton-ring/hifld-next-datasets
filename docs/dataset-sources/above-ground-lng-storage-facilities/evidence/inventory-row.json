@@ -1,0 +1,13 @@
+{
+  "path": ".\\above-ground-lng-storage-facilities",
+  "filename": "above-ground-lng-storage-facilities",
+  "title": "Above Ground LNG Storage Facilities",
+  "description": "This feature class/shapefile represents Above Ground Liquefied Natural Gas Storage (AG_LNG) facilities. Above Ground Liquefied Natural Gas Storage facilities are used to provide Above Ground storage of LNG for multiple purposes, including but not limited to, Peak Shaving Plant operations, Agricultural CO-OP corn drying, manufacturing, vehicular fuel distribution, etc. In some of these cases, the Above Ground LNG storage facility is developed to provide the storage because it is not cost efficient for the natural gas suppliers to install natural gas pipeline for a single large user. This layer consists of LNG Above Ground Storage locations with the exclusion of LNG Import/Export Terminals which are already provided in another existing layer. Temporary or Mobile LNG storage is not included in this layer due to its transitory nature. Data contains locational and other attribute information for Above Ground Liquefied Natural Gas Storage facilities. Geographical coverage includes the continental United States, Alaska, and Hawaii.",
+  "publisher": "",
+  "agency": "Department of Energy",
+  "office": "Energy Information Administration",
+  "keywords": "['homeland security', 'homeland defense', 'emergency response', 'liquefied natural gas', 'natural gas', 'above ground', 'truck', 'ship/barge', 'pipeline', 'liquefaction', 'storage', 'peak shaving', 'satellite', 'other', 'vehicular fuel', 'name', 'address', 'type', 'status', 'population', 'facility characteristics', 'United States', 'USA', 'Alaska', 'Hawaii', 'HIFLD', 'Feature Service', 'SDI', 'NSDI', 'Open Data', 'FGDC', 'Emergency Preparedness', 'Disaster Planning', 'Infrastructure']",
+  "Download Location": "https://www.datalumos.org/datalumos/project/238493/version/V1/view",
+  "date_issued": "2022-10-06",
+  "date_modified": "2025-06-23"
+}
