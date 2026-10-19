@@ -13,8 +13,8 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from urllib.parse import parse_qsl, urlsplit
 
+from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import unsupported_output_reason
 from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, NativeReadLimits, _code_digest, _digest, compare_native_inputs, reader_versions
@@ -339,31 +339,8 @@ def _replay_native_originals(report: dict, entry: dict, source: StagingStorageRe
 
 
 def validate_release_provenance(manifest: dict) -> None:
-    """Minimum multi-input published provenance shape; unknown authority blocks."""
-    if manifest.get("schema_version") != 1 or manifest.get("processor") != "HIFLD Next" or not manifest.get("inputs"):
-        raise ReleaseApprovalError("missing_versioned_multi_input_provenance")
-    seen = set()
-    for item in manifest["inputs"]:
-        fields = ("input_id", "producer", "host", "canonical_url", "retrieval_url", "retrieved_at", "sha256", "license", "attribution")
-        if any(not item.get(field) for field in fields) or not isinstance(item.get("bytes"), int):
-            raise ReleaseApprovalError("incomplete_input_provenance")
-        if not re.fullmatch(r"[0-9a-f]{64}", item["sha256"]) or item["bytes"] < 0:
-            raise ReleaseApprovalError("invalid_input_checksum_or_length")
-        for name in ("canonical_url", "retrieval_url"):
-            parsed = urlsplit(item[name])
-            if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-                raise ReleaseApprovalError("unsafe_provenance_url")
-            if any(re.search(r"token|secret|signature|credential|password|api.?key|^sig$|^key$", key, re.IGNORECASE)
-                   for key, _ in parse_qsl(parsed.query)):
-                raise ReleaseApprovalError("provenance_url_contains_sensitive_query")
-        if item["input_id"] in seen:
-            raise ReleaseApprovalError("conflicting_input_identity")
-        seen.add(item["input_id"])
-        if item.get("role") not in {"producer_publication", "official_distributor", "mirror", "archive"}:
-            raise ReleaseApprovalError("unresolved_source_authority")
-        if item["role"] == "official_distributor" and not item.get("delegation_evidence"):
-            raise ReleaseApprovalError("unverified_official_distribution")
-        if not item.get("release_date") and not item.get("release_date_unknown_reason"):
-            raise ReleaseApprovalError("unexplained_unknown_release_date")
-    if not manifest.get("code_commit") or not isinstance(manifest.get("transformations"), list):
-        raise ReleaseApprovalError("missing_transformation_provenance")
+    """Validate captured provenance structure; never accept source authority."""
+    try:
+        validate_provenance(manifest)
+    except ValueError as exc:
+        raise ReleaseApprovalError(str(exc)) from exc

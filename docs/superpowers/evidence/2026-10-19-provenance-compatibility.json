@@ -1,0 +1,54 @@
+{
+  "classification": "read-only canonical source metadata structural compatibility; no source acceptance",
+  "records": [
+    {
+      "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/airspace-boundaries-1/airspace-boundaries-1/v0.0.0-draft.207e45869bb99d17b5081cd787b4725f273be936d57a3d695fcb21eb27edd770/metadata/source_manifest.json",
+      "inputs": 7,
+      "outcome": "valid_structure_only",
+      "reason": null,
+      "acceptance": false
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/12nm-territorial-sea/12nm-territorial-sea/v0.0.0-draft.noaa.be3aadb4f0818f246d91/metadata/source_manifest.json",
+      "inputs": 7,
+      "outcome": "valid_structure_only",
+      "reason": null,
+      "acceptance": false
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v0.0.0-draft.noaa.d25aafc16a1102f0702a/metadata/source_manifest.json",
+      "inputs": 7,
+      "outcome": "valid_structure_only",
+      "reason": null,
+      "acceptance": false
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/integration-five/runtime/staging/24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.225b42ee559a0276acfe/metadata/source_manifest.json",
+      "inputs": 7,
+      "outcome": "valid_structure_only",
+      "reason": null,
+      "acceptance": false
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/11/final-dependencies-pipeline/staging/alternative-fueling-stations/alternative-fueling-stations/v0.0.0-research-20261019-6/metadata/source_manifest.json",
+      "inputs": 59,
+      "outcome": "valid_structure_only",
+      "reason": null,
+      "acceptance": false
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/17/review-fixes-run/staging/amtrak-stations/amtrak-stations/v0.0.0-reviewfix-fe5539283335/metadata/source_manifest.json",
+      "inputs": 18,
+      "outcome": "valid_structure_only",
+      "reason": null,
+      "acceptance": false
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/20/combined-parent-ingest/staging/aviation-facilities/aviation-facilities/v0.0.0-draft-fa280578413734d12414e8e8/metadata/source_manifest.json",
+      "inputs": 17,
+      "outcome": "valid_structure_only",
+      "reason": null,
+      "acceptance": false
+    }
+  ]
+}

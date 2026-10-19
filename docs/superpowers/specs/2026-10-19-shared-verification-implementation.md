@@ -313,3 +313,25 @@ local full graph additionally preserves all 19 previously published fixture
 objects after this false-derivation attempt and after an extra-shard failed run.
 No real dataset acceptance is supplied. Exact commands, bytes and run IDs are in
 [`2026-10-19-native-replay.json`](../evidence/2026-10-19-native-replay.json).
+
+## Strict captured-provenance validation
+
+`provenance.validate_provenance` is a pure structural validator, re-exported by
+`release_approval.validate_release_provenance` with the existing release-error API.
+It requires timezone-aware ISO retrieval timestamps, actual calendar dates,
+nonblank typed identity/license/attribution fields, exact byte/hash types,
+credential-free HTTP URLs, a matching retrieval host, recognized source roles,
+unique input identities, captured distributor delegation and named
+transformations/code identity. Producer release dates remain separate: a missing
+date requires the captured unknown-date explanation, and no date is synthesized.
+Requested and observed final URLs are preserved and validated when supplied.
+Failed diagnostic attempts are not successful source inputs and need not acquire
+invented successful-input metadata. Claims of delegation/license/attribution are
+retained, not certified or accepted by structural validation.
+
+Four targeted tests cover valid offset/date variants and malformed values,
+including the independently reproduced `retrieved_at="not-a-date"` case. Existing
+41 verifier/native tests also pass. Seven current canonical source manifests from
+the combined source graph and #11/#17/#20 were validated read-only without any
+structural regression; this is not source acceptance. Full attribution/STAC and
+metadata roundtrip integration remains the next implementation slice.
