@@ -1,0 +1,18 @@
+{
+  "inspect_archive": {
+    "unchanged": true,
+    "sha256": "4e8971d396169cab7a777596e46897707ff51f665bfb8527a6adae0f92a9b124"
+  },
+  "write_geopackage": {
+    "unchanged": true,
+    "sha256": "d43fd90f975e113773bb96bc9671cdf2146970d218f6f194179f38ca2c295e9a"
+  },
+  "typed_table": {
+    "unchanged": true,
+    "sha256": "80e88b2e56f4d0e7c57b6f254b81ee8f338c6b488037b639153467ec5967a29b"
+  },
+  "source_verification_payloads": {
+    "unchanged": true,
+    "sha256": "a086b8cc0c6682bc76d4899c24b066b8ff0815535a6d16d829758936e4a257da"
+  }
+}
