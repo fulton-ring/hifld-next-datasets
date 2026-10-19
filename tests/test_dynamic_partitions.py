@@ -116,7 +116,7 @@ class DynamicPartitionTests(unittest.TestCase):
 
     def test_supported_assets_do_not_drive_publish_asset_count(self):
         self.assertEqual(len(catalog_assets_module.catalog_assets), 1)
-        self.assertEqual(len(publish_assets_module.publish_assets), 6)
+        self.assertEqual(len(publish_assets_module.publish_assets), 7)
 
     def test_version_discovery_sensor_discovers_missing_catalog_version_without_requesting_run(
         self,

@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "classification": "synthetic implementation validation; no real dataset acceptance",
+  "worker": "verifier_417",
+  "issue": 417,
+  "pr": 421,
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "implementation_sha256": "33b48817efb12b51bdc8e4272a314e1f1945cd72c384260531ce1e534df72b68",
+  "dependency_commit": "eab40866ef4289cb93b952b1cf7244ff259c372d",
+  "source_scope": "installed src/dagster_hifld/**/*.py bytes; final follow-up changes only validation.py and regression tests, docs/evidence",
+  "runtime_network": {
+    "configuration": "unrestricted",
+    "state": "enforced",
+    "observations_current": true,
+    "observed_revision": "6",
+    "environment_changed": false
+  },
+  "commands": {
+    "frozen_install": "UV_CACHE_DIR=/workspace/work/uv-cache uv sync --frozen",
+    "full_suite": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m unittest discover tests",
+    "focused": "UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m unittest discover -s tests -p test_full_verification.py",
+    "durable_integration": "HIFLD_VERIFICATION_EVIDENCE_DIR=/workspace/hifld-worker-runtime/417/integration-head-final PYTHONPATH=tests UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m unittest test_full_verification.ReleaseBoundaryTests.test_dagster_synthetic_verify_promote_and_failed_promotion_preservation",
+    "resource_probe": "UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python scripts/verification/synthetic_memory_probe.py --rows 100000 --work-dir <isolated local scratch>"
+  },
+  "test_results": {
+    "full_suite": {
+      "total": 465,
+      "passed": 463,
+      "errors": 1,
+      "skipped": 1,
+      "error": "missing sibling /workspace/hifld-worker-worktrees/hifld-next-iac/environments/prod/dagster.tf",
+      "skip": "production-write GCS integration requires explicit opt-in",
+      "full_suite_pass": false
+    },
+    "focused_new_verifier_tests": {
+      "total": 18,
+      "passed": 18
+    },
+    "readiness": {
+      "classification": "local repository readiness only",
+      "repository": "__repository__",
+      "assets": 74,
+      "local_storage_only": true,
+      "sensors_disabled": true
+    },
+    "dagster_synthetic_integration": {
+      "classification": "synthetic integration; no real acceptance",
+      "success_run_id": "998b82c1-42b5-44e3-8dfc-7e16f9661a05",
+      "failed_drift_run_id": "1533e4cc-fc97-42c5-9f8d-a3da5e74c6b8",
+      "success": true,
+      "drift_success": false,
+      "accepted_objects_unchanged": true,
+      "candidate_evidence_preserved": true,
+      "published_object_count": 8,
+      "partition": "synthetic/points/vtest",
+      "dagster_home": "/workspace/hifld-worker-runtime/417/integration-head-final/dagster"
+    },
+    "resource_probes": [
+      {
+        "rows_each": 10000,
+        "input_bytes": 12195055,
+        "peak_rss_kib": 61584,
+        "elapsed_seconds": 3.895,
+        "status": "needs_decision",
+        "differences": {
+          "added": 0,
+          "removed": 0,
+          "attributes": 1,
+          "geometry": 0,
+          "coverage_buckets": 0
+        }
+      },
+      {
+        "rows_each": 100000,
+        "input_bytes": 122355055,
+        "peak_rss_kib": 61348,
+        "elapsed_seconds": 16.688,
+        "status": "needs_decision",
+        "differences": {
+          "added": 0,
+          "removed": 0,
+          "attributes": 1,
+          "geometry": 0,
+          "coverage_buckets": 0
+        }
+      }
+    ]
+  },
+  "tippecanoe": {
+    "path": "/workspace/.tools/tippecanoe/usr/bin/tippecanoe",
+    "version": "2.53.0",
+    "sha256": "d51c0198f42f280824e8dd20287bc4012f4f9b20cf1f4412be2b44dda3737dc6"
+  },
+  "artifacts": [
+    {
+      "path": "/workspace/work/hifld-coordinator/417-final-suite.log",
+      "sha256": "469ec6935424bb826ec1e8ee21196db503731cf36be8d95ce898744d270746b3"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/417-focused-final.log",
+      "sha256": "f9de705048b0fa1d278d62df841772762c8810ac7880fa91a124e357d0e2919a"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/417-integration-head-final.log",
+      "sha256": "a4b6715a8793b261ed760ab726664cb23cd094d7a47fc8d7da63fbccfc460e07"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/417-memory-reviewed-10000.json",
+      "sha256": "f10e55fced65ac950a318e6887aef9e366ee8b18baf1588cb3cdca5f79694ab8"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/417-memory-reviewed-100000.json",
+      "sha256": "69a251033a9f203e09e9b2284a1f45f5e5afcfd9929bf22207598a434bf7fa33"
+    },
+    {
+      "path": "/workspace/work/hifld-coordinator/417-readiness.json",
+      "sha256": "034e086af5fd7e82ac96f2c4aeaa9b5461ba78559b9adf77da1f4aa0fd5ca063"
+    }
+  ],
+  "limitations": [
+    "not a real accepted-baseline pilot",
+    "synthetic graph exercises verify/check/promotion, not real agency ingestion or full formats/STAC roundtrip",
+    "Fiona/Arrow and extraction/transformation verifiers remain unfinished",
+    "memory probes do not establish OS-enforced RSS/disk quota",
+    "no CI pass inferred; missing sibling IaC unresolved",
+    "no production writes, merge, closure or real acceptance approvals"
+  ]
+}

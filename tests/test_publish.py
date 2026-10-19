@@ -1,3 +1,5 @@
+from publication_mechanics import PublicationMechanicsMixin
+
 import json
 import tempfile
 import unittest
@@ -35,7 +37,7 @@ from dagster_hifld.conversion import (
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
-class PublishTests(unittest.TestCase):
+class PublishTests(PublicationMechanicsMixin, unittest.TestCase):
     def test_promotion_rejects_changed_bytes_before_copying_any_objects(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)

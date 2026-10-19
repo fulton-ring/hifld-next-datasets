@@ -1,3 +1,5 @@
+from publication_mechanics import PublicationMechanicsMixin
+
 import os
 import tempfile
 import unittest
@@ -15,7 +17,7 @@ from dagster_hifld.real_gcs_e2e import (
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
-class GcsE2EHelperTests(unittest.TestCase):
+class GcsE2EHelperTests(PublicationMechanicsMixin, unittest.TestCase):
     def test_requires_both_cloud_write_gates_before_accessing_storage(self):
         for environment, expected in (
             ({}, "HIFLD_RUN_GCS_E2E"),
