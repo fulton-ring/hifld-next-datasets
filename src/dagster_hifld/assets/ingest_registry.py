@@ -18,6 +18,7 @@ from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_fa
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
+from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -33,4 +34,5 @@ hifld_ingest_assets = [
     usace_administrative_areas_usace_ienc,
     epa_frs_naics_powerplants,
     epa_frs_eia_860_power_generation_facilities_by_source,
+    epa_frs_sic_powerplants,
 ]
