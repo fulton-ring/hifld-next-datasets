@@ -34,6 +34,8 @@ import pyproj
 import shapely
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
+from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -83,15 +85,20 @@ def strict_json(body):
     return value
 
 
+SPACE_FLOOR=300_000_000
+MAX_ARCHIVE_BYTES=3_000_000
+MAX_AUX_BYTES=2_000_000
+
+class IncidentWriteError(Exception):pass
+
 def local_only(storage):
-    if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise CollegeQuarantineError('local_space_guard')
-    if isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
-        raise CollegeQuarantineError('draft_requires_explicit_isolated_local_staging')
-    root=Path(storage.local_dir)
-    if any(path.is_symlink() for path in [root,*root.parents]):
-        raise CollegeQuarantineError('staging_path_symlink_refused')
-    if root.exists() and any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):
-        raise CollegeQuarantineError('staging_alias_refused')
+    if isinstance(storage,PublishedStorageResource)or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
+        raise CollegeQuarantineError('explicit_isolated_local_staging_required')
+    root=Path(storage.local_dir).absolute()
+    if '..'in root.parts or any(p.is_symlink()for p in [root,*root.parents]):raise CollegeQuarantineError('staging_path_symlink_refused')
+    root.mkdir(parents=True,exist_ok=True)
+    if shutil.disk_usage(root).free<SPACE_FLOOR:raise CollegeQuarantineError('disk_floor_before_acquisition')
+    if any(p.is_symlink()or(p.is_file()and p.stat().st_nlink!=1)for p in root.rglob('*')):raise CollegeQuarantineError('staging_alias_refused')
 
 
 def immutable(storage,key,body):
@@ -151,46 +158,54 @@ def manifest_for(captures,identity):
     return manifest
 
 
+def bounded_input(path,limit):
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(descriptor,'rb')as stream:
+        before=os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode)or before.st_nlink!=1 or before.st_size>limit:raise CollegeQuarantineError('unsafe_or_oversized_original_input')
+        body=stream.read(limit+1);after=os.fstat(stream.fileno())
+    identity=lambda v:(v.st_dev,v.st_ino,v.st_size,v.st_mtime_ns,v.st_ctime_ns,v.st_nlink)
+    if len(body)!=before.st_size or len(body)>limit or identity(before)!=identity(after):raise CollegeQuarantineError('changed_or_incomplete_original_input')
+    return body
+
+
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={}
+    local_only(storage);captures={};attempted={};root=Path(capture_dir).absolute()if capture_dir is not None else None
+    if root is not None and('..'in root.parts or not root.is_dir()or any(p.is_symlink()for p in [root,*root.parents])):raise CollegeQuarantineError('unsafe_capture_root')
+    def retain(name,body):
+        key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body';immutable(storage,key,body);attempted[name]={'body_key':key,'body_sha256':digest(body),'body_bytes':len(body),'raw_receipt_read':False}
     try:
-        for name in URLS:
-            if capture_dir is not None:
-                with (Path(capture_dir)/(name+'.body')).open('rb') as stream: body=stream.read(3_000_001)
-                if len(body)>3_000_000: raise CollegeQuarantineError('capture_body_limit')
-                receipt=strict_json((Path(capture_dir)/(name+'.receipt.json')).read_bytes())
-                captures[name]=(body,receipt)
+        for name,url in URLS.items():
+            limit=MAX_ARCHIVE_BYTES if name=='nces_geocode'else MAX_AUX_BYTES
+            if root is not None:
+                body=bounded_input(root/(name+'.body'),limit);retain(name,body)
+                raw_receipt=bounded_input(root/(name+'.receipt.json'),65536)
             else:
-                url=URLS[name]
-                limit=3_000_000 if name=='nces_geocode' else 2_000_000
                 for attempt in range(3):
-                    body=bytearray();receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
+                    body=bytearray();receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1,'complete_body':False}
                     try:
-                        with httpx.Client(follow_redirects=False,timeout=90,headers={'Accept-Encoding':'identity'}) as client,client.stream('GET',url) as response:
-                            receipt.update(status=response.status_code,final_url=str(response.url),
-                                requested_accept_encoding='identity',content_encoding=response.headers.get('content-encoding'),
-                                content_length=response.headers.get('content-length'))
+                        with httpx.Client(follow_redirects=False,timeout=90,headers={'Accept-Encoding':'identity'})as client,client.stream('GET',url)as response:
+                            receipt.update(status=response.status_code,final_url=str(response.url),requested_accept_encoding='identity',content_encoding=response.headers.get('content-encoding'),content_length=response.headers.get('content-length'))
                             try:
-                                for block in response.iter_bytes(None):
+                                iterator=response.iter_bytes(65536)
+                                while True:
+                                    if shutil.disk_usage('/workspace').free<SPACE_FLOOR:raise CollegeQuarantineError('disk_floor_before_next_read')
+                                    try:block=next(iterator)
+                                    except StopIteration:break
                                     body+=block
-                                    if len(body)>limit: raise CollegeQuarantineError('oversized_or_changed_source')
-                            finally:
-                                receipt['wire_bytes_downloaded']=getattr(response,'num_bytes_downloaded',None)
-                            receipt.update(bytes=len(body),sha256=digest(body),complete_body=True)
-                            # HTTP Content-Length measures the encoded transport body.
-                            # iter_bytes transparently decodes Content-Encoding, even
-                            # when the server ignores our identity request.
-                            if response.status_code!=200 or (receipt['content_length'] is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']):
-                                raise CollegeQuarantineError('non200_or_incomplete_http_response')
-                        captures[name]=(bytes(body),receipt);break
-                    except (httpx.HTTPError,OSError,ValueError) as exc:
-                        receipt.update(bytes=len(body),sha256=digest(body),complete_body=False)
-                        quarantine(storage,{name:(bytes(body),receipt)},str(exc))
-                        if attempt==2: raise CollegeQuarantineError('bounded_fetch_exhausted:'+str(exc)) from exc
-        return captures
-    except (OSError,ValueError,TypeError) as exc:
-        where=quarantine(storage,captures,str(exc))
-        raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc
+                                    if len(body)>limit:raise CollegeQuarantineError('oversized_or_changed_source')
+                            finally:receipt['wire_bytes_downloaded']=response.num_bytes_downloaded
+                            if response.status_code!=200 or(receipt['content_length']is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']):raise CollegeQuarantineError('non200_or_incomplete_http_response')
+                        body=bytes(body);receipt.update(bytes=len(body),sha256=digest(body),complete_body=True);retain(name,body);raw_receipt=encode(receipt);break
+                    except(httpx.HTTPError,OSError,ValueError)as exc:
+                        body=bytes(body);receipt.update(bytes=len(body),sha256=digest(body),complete_body=False);retain(name,body);quarantine(storage,{name:(body,receipt)},str(exc))
+                        if attempt==2:raise CollegeQuarantineError('bounded_fetch_exhausted:'+str(exc))from exc
+            key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.raw-receipt-{digest(raw_receipt)}.body';immutable(storage,key,raw_receipt);attempted[name].update(raw_receipt_read=True,raw_receipt_key=key,raw_receipt_sha256=digest(raw_receipt))
+            receipt=strict_json(raw_receipt);captures[name]=(body,receipt);validate_receipt(name,body,receipt)
+        if root is not None and{p.name for p in root.iterdir()}!={name+suffix for name in URLS for suffix in('.body','.receipt.json')}:raise CollegeQuarantineError('extra_or_missing_capture_file')
+        immutable(storage,f'_acquisition-attempts/{SLUG}/{uuid4().hex}.json',encode({'approved':False,'receipt_metadata_validated':True,'objects':attempted}));return captures
+    except(OSError,ValueError,TypeError)as exc:
+        key=f'_quarantine/{SLUG}/attempt-{uuid4().hex}';immutable(storage,key+'/attempted-inputs.json',encode({'approved':False,'objects':attempted}));where=quarantine(storage,captures,str(exc));raise CollegeQuarantineError(f'{exc}; retained:{where}; attempt:{key}')from exc
 
 
 def dbf_definition(body):
@@ -323,7 +338,7 @@ def source_payloads(captures,identity,table,audit,manifest):
     return values
 
 
-def reconcile_cache(storage,prefix,table,audit,captures,identity):
+def reconcile_cache(storage,prefix,table,audit,captures,identity,original_context=None):
     root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     if any(cached[name][0]!=captures[name][0] for name in PINS): raise CollegeQuarantineError('cached_original_publication_changed')
@@ -331,10 +346,9 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
     actual_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(actual_manifest)
     for key,value in manifest.items():
-        if key!='code_commit' and actual_manifest.get(key)!=value: raise CollegeQuarantineError('cached_provenance_disagrees_with_original')
-    pin_key=f'_source-provenance/{SLUG}/{digest(encode(identity))}/bundle.json'
-    pinned=strict_json(storage.read_key(pin_key))
-    if actual_manifest!=pinned['manifest']:raise CollegeQuarantineError('cached_provenance_disagrees_with_immutable_original_bundle')
+        if key!='code_commit' and encode(actual_manifest.get(key))!=encode(value): raise CollegeQuarantineError('cached_provenance_disagrees_with_original')
+    retained,original_manifest=original_context if original_context is not None else original_provenance_bundle(storage,digest(encode(identity)),captures,identity,manifest)
+    if encode(actual_manifest)!=encode(original_manifest):raise CollegeQuarantineError('cached_provenance_disagrees_with_immutable_original_bundle')
     manifest=actual_manifest
     expected=source_payloads(cached,identity,table,audit,manifest)
     expected_names={*expected,f'geopackage/{SLUG}.gpkg','geoparquet/colleges-and-universities.parquet'}
@@ -353,103 +367,91 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
         if (root/name).exists() and (root/name).read_bytes()!=(root/'metadata/source_manifest.json').read_bytes(): raise CollegeQuarantineError('cached_source_snapshot_drift')
     if (root/'metadata/resolved_provenance.json').exists():
         resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
-        if resolved.get('inputs')!=manifest['inputs'] or strict_json((root/'metadata/resolved_provenance.json').read_bytes())!=resolved:
+        if resolved.get('inputs')!=manifest['inputs'] or encode(strict_json((root/'metadata/resolved_provenance.json').read_bytes()))!=encode(resolved):
             raise CollegeQuarantineError('cached_resolved_provenance_drift')
     reconcile_outputs(root,table)
 
 
 
-def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
-    """Pin first construction provenance outside the candidate's self-pinned cache.
+def construction_record_key(version):return f'_construction-state/{SLUG}/{version}.json'
+def incident_directory(version):return f'_construction-state/{SLUG}/incident-{version}'
+def state_present(storage,version):
+    key=construction_record_key(version);root=Path(storage.local_dir).absolute()
+    return any((root/value).exists()for value in(key,key+'.first-construction.json',key+'.evidence'))
+def refuse_observed_loss(storage,version):
+    if(Path(storage.local_dir).absolute()/incident_directory(version)).exists():raise CollegeQuarantineError('permanent_observed_original_trust_loss_requires_explicit_reviewed_restore')
+def record_observed_loss(storage,version,fingerprint,reason):
+    directory=Path(storage.local_dir).absolute()/incident_directory(version);directory.mkdir(parents=True,exist_ok=True)
+    immutable(storage,incident_directory(version)+'/incident.json',encode({'approved':False,'version':version,'processing_fingerprint':fingerprint,'reason':reason,'operator_action':'Restore exact original witnesses and explicitly retain/review this negative incident; no automatic bootstrap.'}))
 
-    A docs-only later commit may reuse identical processing code. Its new fetch
-    receipts are still retained, while the existing candidate keeps its actual
-    original receipts and construction commit. Cache labels cannot rewrite them.
-    """
-    key=f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'
-    if not storage.object_exists(key):
-        if not create: raise CollegeQuarantineError('missing_original_provenance_bundle')
-        validate_release_provenance(manifest)
-        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
-        bundle={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt} for name,(body,receipt) in captures.items()}}
-        immutable(storage,key,encode(bundle))
-    bundle=strict_json(storage.read_key(key))
-    if set(bundle)!= {'manifest','captures'} or set(bundle['captures'])!=set(URLS):
-        raise CollegeQuarantineError('original_provenance_bundle_roster_drift')
+
+def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
+    version=f'v0.0.0-draft-nces2526-{fingerprint[:16]}'
+    legacy=f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'
+    if storage.object_exists(legacy):raise CollegeQuarantineError('legacy_unbound_provenance_requires_explicit_migration')
+    payload={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt}for name,(body,receipt)in captures.items()}}
+    envelope=canonical_construction_bundle(version,fingerprint,payload);key=construction_record_key(version)
+    if create:
+        inspect_archives({},captures);expected=manifest_for(captures,identity)
+        if encode({k:v for k,v in expected.items()if k!='code_commit'})!=encode({k:v for k,v in manifest.items()if k!='code_commit'}):raise CollegeQuarantineError('preseal_full_original_manifest_drift')
+        validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+        body=seal_first_construction(storage,key,version,fingerprint,envelope)
+    else:body=load_first_construction(storage,key,version,fingerprint)
+    bundle=strict_json(body)['payload']
+    if set(bundle)!={'manifest','captures'}or set(bundle['captures'])!=set(URLS):raise CollegeQuarantineError('original_provenance_bundle_roster_drift')
     original={}
     for name,item in bundle['captures'].items():
-        receipt=item['receipt'];expected=f"_raw-captures/{SLUG}/{receipt['sha256']}/{name}.body"
-        if item['body_key']!=expected:raise CollegeQuarantineError('original_provenance_bundle_body_key_drift')
-        original[name]=(storage.read_key(expected),receipt)
-    expected_manifest=manifest_for(original,identity)
-    for name,value in expected_manifest.items():
-        if name!='code_commit' and bundle['manifest'].get(name)!=value:
-            raise CollegeQuarantineError('original_provenance_bundle_manifest_drift')
-    validate_release_provenance(bundle['manifest'])
-    validate_construction_code_identity(Path(__file__).parents[3],bundle['manifest']['code_commit'],identity['files'])
-    return original,bundle['manifest']
+        if set(item)!={'body_key','receipt'}or item['body_key']!=f"_raw-captures/{SLUG}/{item['receipt'].get('sha256')}/{name}.body":raise CollegeQuarantineError('original_provenance_body_key_drift')
+        original[name]=(storage.read_key(item['body_key']),item['receipt'])
+    first,first_audit=inspect_archives({},original);current,current_audit=inspect_archives({},captures)
+    if not first.equals(current,check_metadata=True)or encode(first_audit)!=encode(current_audit)or original['nces_documentation'][0]!=captures['nces_documentation'][0]:raise CollegeQuarantineError('original_source_or_documentation_changed')
+    expected=manifest_for(original,identity);actual=bundle['manifest']
+    if encode({k:v for k,v in expected.items()if k!='code_commit'})!=encode({k:v for k,v in actual.items()if k!='code_commit'}):raise CollegeQuarantineError('original_manifest_or_retrieval_context_drift')
+    validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files']);return original,actual
 
 
 def stage_colleges(storage,*,capture_dir=None):
     local_only(storage);captures=acquire(storage,capture_dir)
-    root=None
     try:
-        identity=processing_identity();manifest=manifest_for(captures,identity)
-        fingerprint=digest(encode(identity));version=f'v0.0.0-draft-nces2526-{fingerprint[:16]}'
-        prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir);root=base/prefix
+        identity=processing_identity();manifest=manifest_for(captures,identity);fingerprint=digest(encode(identity));version=f'v0.0.0-draft-nces2526-{fingerprint[:16]}'
+        prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir).absolute();root=base/prefix
         depot={}
-        for name,(body,receipt) in captures.items():
-            key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'
-            immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt));depot[name]=base/key
-        table,audit=inspect_archives(depot,captures)
-        locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
-        with lockpath.open('a+b') as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX)
-            binding=base/f'_source-provenance/{SLUG}/{fingerprint}'
+        for name,(body,receipt)in captures.items():
+            key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body';immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt));depot[name]=base/key
+        table,audit=inspect_archives(depot,captures);locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
+        descriptor=os.open(lockpath,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+        with os.fdopen(descriptor,'r+b')as lock:
+            if os.fstat(lock.fileno()).st_nlink!=1:raise CollegeQuarantineError('linked_common_lock')
+            fcntl.flock(lock,fcntl.LOCK_EX);refuse_observed_loss(storage,version)
+            original_context=None
             if root.exists():
-                invalid_bundle=False
                 try:
-                    try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
-                    except (ValueError,TypeError,KeyError,OSError,RuntimeError):
-                        invalid_bundle=True
-                        raise
-                    reconcile_cache(storage,prefix,table,audit,captures,identity)
-                except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error) as exc:
-                    incident=uuid4().hex
-                    target=base/'_quarantine'/SLUG/('invalid-candidate-'+incident)
-                    target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
-                    # A bad external anchor is evidence, not a basis for the
-                    # next candidate. Preserve it intact beside the detached
-                    # version while keeping genuine valid original bindings.
-                    if invalid_bundle and binding.exists():
-                        os.rename(binding,target.parent/('invalid-provenance-'+incident))
-                    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc
-                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':6438,'reused':True}
-            # A previous valid construction may survive a rejected candidate.
-            # Read its binding but never create an anchor until this private
-            # reconstruction has passed the full native output verification.
-            if binding.exists():
-                try: captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
-                except (ValueError,TypeError,KeyError,OSError,RuntimeError) as exc:
-                    target=base/'_quarantine'/SLUG/('invalid-provenance-'+uuid4().hex)
-                    target.parent.mkdir(parents=True,exist_ok=True);os.rename(binding,target)
-                    raise CollegeQuarantineError('invalid_original_provenance_preserved:'+str(target)+':'+str(exc)) from exc
+                    try:original_context=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                    except(ValueError,TypeError,KeyError,OSError,RuntimeError)as loss:
+                        try:record_observed_loss(storage,version,fingerprint,str(loss))
+                        except Exception as write:raise IncidentWriteError('incident_write_failed_candidate_preserved')from write
+                        raise CollegeQuarantineError('observed_original_trust_loss:'+str(loss))from loss
+                    captures,manifest=original_context;reconcile_cache(storage,prefix,table,audit,captures,identity,original_context)
+                except(ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error)as exc:
+                    target=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
+                    raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc))from exc
+                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True}
+            if state_present(storage,version):
+                try:captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                except(ValueError,TypeError,KeyError,OSError,RuntimeError)as loss:
+                    try:record_observed_loss(storage,version,fingerprint,str(loss))
+                    except Exception as write:raise IncidentWriteError('incident_write_failed_partial_state_preserved')from write
+                    raise CollegeQuarantineError('observed_original_trust_loss:'+str(loss))from loss
             build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix='candidate-',dir=build) as tmp:
+            with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as tmp:
                 temp=Path(tmp)
-                for part in ('geopackage','geoparquet','metadata','raw'): (temp/part).mkdir()
-                write_native_gpkg(table,temp/'geopackage'/f'{SLUG}.gpkg')
-                pq.write_table(expected_parquet_table(table),temp/'geoparquet/colleges-and-universities.parquet',compression='zstd')
-                reconcile_outputs(temp,table)
-                for name,value in source_payloads(captures,identity,table,audit,manifest).items():
-                    (temp/name).parent.mkdir(parents=True,exist_ok=True);(temp/name).write_bytes(value)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p) for p in temp.rglob('*') if p.is_file()}}
-                (temp/READY).write_bytes(encode(ready))
-                # Only a fully verified private construction can establish a
-                # first anchor. Existing caches can never recreate a lost one.
-                original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
-                root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
-            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':6438,'reused':False}
-    except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError) as exc:
-        where=quarantine(storage,captures,str(exc))
-        raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc
+                for part in('geopackage','geoparquet','metadata','raw'):(temp/part).mkdir()
+                write_native_gpkg(table,temp/'geopackage'/f'{SLUG}.gpkg');pq.write_table(expected_parquet_table(table),temp/'geoparquet/colleges-and-universities.parquet',compression='zstd');reconcile_outputs(temp,table)
+                for name,value in source_payloads(captures,identity,table,audit,manifest).items():(temp/name).parent.mkdir(parents=True,exist_ok=True);(temp/name).write_bytes(value)
+                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};(temp/READY).write_bytes(encode(ready));reconcile_outputs(temp,table)
+                captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
+                for name,value in source_payloads(captures,identity,table,audit,manifest).items():(temp/name).write_bytes(value)
+                ready['objects']={str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()and str(p.relative_to(temp))!=READY};(temp/READY).write_bytes(encode(ready));reconcile_outputs(temp,table);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
+    except(ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError)as exc:
+        where=quarantine(storage,captures,str(exc));raise CollegeQuarantineError(f'{exc}; retained:{where}')from exc

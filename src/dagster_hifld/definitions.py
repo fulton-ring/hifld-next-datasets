@@ -20,6 +20,7 @@ from dagster_hifld.assets.colleges_universities import (
     colleges_source_integrity_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
+from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
     PUBLISH_PARTITIONS,
@@ -37,7 +38,7 @@ from dagster_hifld.source_formats import (
 )
 
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
-_STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown"}
+_STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
 MAX_SENSOR_RUN_REQUESTS_PER_TICK = int(
     os.environ.get("HIFLD_SENSOR_MAX_RUN_REQUESTS_PER_TICK", "25")
@@ -183,15 +184,24 @@ def _iter_staged_version_paths(storage: StagingStorageResource):
                             continue
                         if legacy_source is not None:
                             yield dataset_dir.name, file_dir.name, version_dir.name
+                        continue
+                    if "geoparquet" in format_dirs:
+                        candidate = (dataset_dir.name, file_dir.name, version_dir.name)
+                        try:
+                            if discover_prebuilt_native(storage, "/".join(candidate)):
+                                yield candidate
+                        except (ValueError, OSError, TypeError, RuntimeError) as exc:
+                            logger.warning("Skipping invalid proposed native GeoParquet %s: %s", version_dir, exc)
         return
 
     yield from _iter_validated_gcs_staged_versions(
-        _iter_gcs_staged_source_object_names(storage.bucket, prefix)
+        _iter_gcs_staged_source_object_names(storage.bucket, prefix), storage=storage
     )
 
 
 def _iter_validated_gcs_staged_versions(
     object_names: Iterable[str],
+    *, storage: StagingStorageResource | None = None,
 ):
     keys_by_version: dict[tuple[str, str, str], list[str]] = {}
     formats_by_version: dict[tuple[str, str, str], set[str]] = {}
@@ -225,6 +235,13 @@ def _iter_validated_gcs_staged_versions(
             continue
         if legacy_keys:
             yield candidate
+            continue
+        if "unknown" not in formats and "geoparquet" in formats and storage is not None:
+            try:
+                if discover_prebuilt_native(storage, "/".join(candidate)):
+                    yield candidate
+            except (ValueError, OSError, TypeError, RuntimeError) as exc:
+                logger.warning("Skipping invalid proposed native GeoParquet %s: %s", candidate, exc)
 
 
 def _iter_gcs_staged_source_object_names(bucket: str, prefix: str):
@@ -348,7 +365,7 @@ def _iter_staged_version_paths_for_gcs_tick(
                 storage.bucket or "",
                 prefix,
                 selected_slugs,
-            )
+            ), storage=storage,
         )
     )
     return versions, next_cursor

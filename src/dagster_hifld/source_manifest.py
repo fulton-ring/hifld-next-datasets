@@ -105,7 +105,7 @@ def load_resolved_source_manifest(
     inventory = _inventory_metadata_for(dataset_slug, file_slug, version)
     if layers:
         resolved = _merge_manifest_layers(layers)
-        if "inputs" in resolved.metadata or "processor" in resolved.metadata:
+        if "inputs" in resolved.metadata or "processor" in resolved.metadata or "prebuilt_output_policy" in resolved.metadata:
             resolved.metadata["manifest_layers"] = layer_receipts
         if inventory is None:
             return _checked_manifest(resolved.metadata, resolved.manifest_keys)

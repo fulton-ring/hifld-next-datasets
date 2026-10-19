@@ -1,100 +1,61 @@
-"""Actual registered full-source provenance denials/recovery and docs-only reuse.
+"""Actual complete-source state refusal/recovery; fixture faults grant no acceptance.
 
-The baseline must come from verify_colleges_draft.py on the same committed
-processing files. The current HEAD may advance only documentation afterward.
-No source authority, contract, baseline, execution time or release is accepted.
+Run normal11 lifecycle first at a public processing commit. This harness uses
+independent copies and the actual Git/shared-state/native/source code. --docs-only
+requires a genuine later docs-only HEAD and preserves original first contexts.
 """
-import argparse
-import json
-import os
-import shutil
-import subprocess
+import argparse,json,os,shutil,subprocess
 from pathlib import Path
-
-parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--baseline-runtime',type=Path,required=True)
-parser.add_argument('--runtime-dir',type=Path,required=True)
-parser.add_argument('--capture-dir',type=Path,required=True)
-args=parser.parse_args()
-baseline=args.baseline_runtime.resolve();runtime=args.runtime_dir.resolve();captures=args.capture_dir.resolve()
-if runtime.exists() and any(runtime.iterdir()):raise ValueError('Use an empty isolated repair runtime directory')
-runtime.mkdir(parents=True,exist_ok=True)
-for key in ['HIFLD_STAGING_BUCKET','HIFLD_DATASETS_BUCKET','HIFLD_RELEASE_APPROVALS','KUBERNETES_SERVICE_HOST']:os.environ.pop(key,None)
+from unittest.mock import patch
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline-runtime',type=Path,required=True);p.add_argument('--runtime-dir',type=Path,required=True);p.add_argument('--capture-dir',type=Path,required=True);p.add_argument('--docs-only',action='store_true');a=p.parse_args()
+baseline=a.baseline_runtime.absolute();runtime=a.runtime_dir.absolute();captures=a.capture_dir.absolute();assert not runtime.exists();runtime.mkdir(parents=True)
+for key in('HIFLD_STAGING_BUCKET','HIFLD_DATASETS_BUCKET','HIFLD_RELEASE_APPROVALS','KUBERNETES_SERVICE_HOST'):os.environ.pop(key,None)
 os.environ.update(HIFLD_COLLEGES_CAPTURE_DIR=str(captures),HIFLD_SHADOW_MANUAL_ONLY='1')
-from dagster import DagsterInstance,Definitions
-from dagster_hifld.definitions import _iter_staged_version_paths
+from dagster import Definitions,DagsterInstance
 from dagster_hifld.assets.colleges_universities import nces_colleges_universities,colleges_source_integrity_job
 from dagster_hifld.sources import colleges_universities as c
-
 report={'approved':False,'head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[1],text=True).strip(),'source_rows':6438,'cases':[]}
-
-def hashes(directory):
-    return {str(p.relative_to(directory)):c.sha256_file(p)for p in directory.rglob('*')if p.is_file()}
-
-def save():
-    (runtime/'provenance-repair.json').write_text(json.dumps(report,indent=2)+'\n')
-
-for case in ['genuine_later_docs_only_HEAD','missing_external_anchor','malformed_external_anchor','zero_commit_coforgery','existing_wrong_code_coforgery','candidate_only_forgery']:
-    if shutil.disk_usage(runtime).free<500_000_000:raise RuntimeError('Bounded local free-space guard')
-    work=runtime/case
-    shutil.copytree(baseline/'staging',work/'staging',ignore=shutil.ignore_patterns('_quarantine','_building'))
-    (work/'dagster').mkdir();(work/'dagster/dagster.yaml').write_text('telemetry:\n  enabled: false\n')
-    os.environ['DAGSTER_HOME']=str(work/'dagster')
-    stage=c.StagingStorageResource(use_local=True,local_dir=str(work/'staging'))
-    published=c.PublishedStorageResource(use_local=True,local_dir=str(work/'published'))
-    published.write_key('prior-synthetic-accepted.bin',b'Preserve prior synthetic accepted data; no real acceptance.')
-    prior=hashes(work/'published');raw=hashes(work/'staging/_raw-captures')
-    root=next((work/'staging'/c.SLUG/c.SLUG).glob('v*'));prefix=str(root.relative_to(work/'staging'))
-    manifest=root/'metadata/source_manifest.json';ready=root/c.READY
-    bundle=next((work/'staging/_source-provenance').rglob('bundle.json'))
-    original_code=json.loads(manifest.read_text())['code_commit'];before_all=hashes(work/'staging')
-    if case=='missing_external_anchor':bundle.unlink()
-    elif case=='malformed_external_anchor':bundle.write_bytes(b'{"manifest":{}}\n')
-    elif case!='genuine_later_docs_only_HEAD':
-        metadata=json.loads(manifest.read_text())
-        metadata['code_commit']='4800e4f5df550bfadd3631585268ce68a0fa25d9' if case=='existing_wrong_code_coforgery' else '0'*40
-        manifest.write_bytes(c.encode(metadata));pins=json.loads(ready.read_text());pins['objects']['metadata/source_manifest.json']=c.sha256_file(manifest);ready.write_bytes(c.encode(pins))
-        if case!='candidate_only_forgery':
-            anchor=json.loads(bundle.read_text());anchor['manifest']=metadata;bundle.write_bytes(c.encode(anchor))
-    bad_version=hashes(root);bad_anchor=bundle.read_bytes()if bundle.exists()else None
-    defs=Definitions(assets=[nces_colleges_universities],jobs=[colleges_source_integrity_job],resources={'staging_storage':stage,'published_storage':published})
-    item={'case':case,'original_construction_commit':original_code,'current_head':report['head'],'runs':[]}
-    report['cases'].append(item)
-    def record(label,result):
-        entry={'label':label,'run_id':result.run_id,'success':result.success,'errors':[e.event_specific_data.error.to_string()for e in result.get_step_failure_events()]}
-        item['runs'].append(entry);save();return entry
+def hashes(root):return {str(p.relative_to(root)):c.sha256_file(p)for p in root.rglob('*')if p.is_file()}
+def save():(runtime/'provenance-repair.json').write_bytes(c.encode(report))
+for case in(['genuine_docs_only']if a.docs_only else['primary_receipt_manifest_coforge','all_original_witnesses_missing','failed_and_partial_negative_journal']):
+    if shutil.disk_usage(runtime).free<400_000_000:raise RuntimeError('global disk floor')
+    work=runtime/case;shutil.copytree(baseline/'staging',work/'staging',ignore=shutil.ignore_patterns('_quarantine','_building'))
+    (work/'dagster').mkdir();(work/'dagster/dagster.yaml').write_text('telemetry:\n  enabled: false\n');os.environ['DAGSTER_HOME']=str(work/'dagster')
+    stage=c.StagingStorageResource(local_dir=str(work/'staging'));published=c.PublishedStorageResource(local_dir=str(work/'published'));published.write_key('prior-synthetic-accepted.bin',b'Prior fixture only; no real release acceptance.');prior=hashes(work/'published');raw=hashes(work/'staging/_raw-captures');root=next((work/'staging'/c.SLUG/c.SLUG).glob('v*'));version=root.name;alias=work/'staging'/c.construction_record_key(version)
+    state={p:p.read_bytes()for p in(work/'staging/_construction-state').rglob('*')if p.is_file()};first=alias.read_bytes();original_candidate=hashes(root);original_manifest=(root/'metadata/source_manifest.json').read_bytes();original_code=json.loads(original_manifest)['code_commit'];before=hashes(work/'staging')
+    item={'case':case,'original_commit':original_code,'current_head':report['head'],'runs':[]};report['cases'].append(item)
+    definitions=Definitions(assets=[nces_colleges_universities],jobs=[colleges_source_integrity_job],resources={'staging_storage':stage,'published_storage':published})
+    def refresh(label,expected=None):
+        result=definitions.resolve_job_def('colleges_source_integrity').execute_in_process(instance=instance,raise_on_error=False);errors=[e.event_specific_data.error.to_string()for e in result.get_step_failure_events()];item['runs'].append({'label':label,'run_id':result.run_id,'success':result.success,'errors':errors});save();assert hashes(work/'published')==prior
+        if expected is None:assert result.success,errors
+        else:assert not result.success and any(expected in error for error in errors),errors
+        return result
+    def restore_fixture(label):
+        for p,body in state.items():p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(body)
+        incident=work/'staging'/c.incident_directory(version)
+        if incident.exists():incident.rename(work/('operator-retained-fixture-incident-'+label))
     with DagsterInstance.get()as instance:
-        result=defs.resolve_job_def('colleges_source_integrity').execute_in_process(instance=instance,raise_on_error=False)
-        entry=record(case,result)
-        if case=='genuine_later_docs_only_HEAD':
-            assert original_code!=report['head'],'Advance a genuine docs-only commit before this proof'
-            assert result.success and result.output_for_node(nces_colleges_universities.op.name)['reused'],entry
-            assert before_all==hashes(work/'staging')
-            assert json.loads(manifest.read_text())['code_commit']==original_code
-            item.update(all_staging_objects_unchanged=True,original_construction_commit_retained=True)
+        if case=='genuine_docs_only':
+            assert original_code!=report['head'];changed=subprocess.check_output(['git','diff','--name-only',original_code,report['head']],cwd=Path(__file__).parents[1],text=True).splitlines();assert changed and all(not x.startswith('src/')and x not in('pyproject.toml','uv.lock')for x in changed)
+            result=refresh('genuine_docs_only_preserves_first_context');assert result.output_for_node(nces_colleges_universities.op.name)['reused']is True;assert before.items()<=hashes(work/'staging').items();assert all(k.startswith('_acquisition-attempts/')for k in hashes(work/'staging').keys()-before.keys());item['actual_git_changed_paths']=changed
+        elif case=='primary_receipt_manifest_coforge':
+            value=json.loads(first);receipt=value['payload']['captures']['nces_geocode']['receipt'];receipt['observed_at']='2026-10-19T23:20:00+00:00';next(x for x in value['payload']['manifest']['inputs']if x['input_id'].startswith('nces_geocode:'))['retrieved_at']=receipt['observed_at'];alias.write_bytes(c.canonical_construction_bundle(value['version'],value['processing_fingerprint'],value['payload']));bad=alias.read_bytes();refresh('coforged_first_context_rejected','construction_marker_mismatch');assert not root.exists()and alias.read_bytes()==bad
+            for count in(1,2):refresh('repeated_cold_refusal_'+str(count),'permanent_observed_original_trust_loss')
+            restore_fixture('coforge');refresh('explicit_exact_original_restore');refresh('reused_after_trusted_restore')
+        elif case=='all_original_witnesses_missing':
+            for p in state:p.unlink()
+            refresh('observed_whole_original_state_loss','observed_original_trust_loss');assert not root.exists()
+            for count in(1,2):refresh('repeated_cold_refusal_'+str(count),'permanent_observed_original_trust_loss')
+            for p,body in state.items():p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(body)
+            refresh('trusted_state_restore_alone_cannot_clear_negative_incident','permanent_observed_original_trust_loss');restore_fixture('all-witnesses');refresh('explicit_reviewed_original_restore');refresh('reuse_after_original_restore')
         else:
-            assert not result.success and any('invalid_cache_moved_intact_out_of_discovery' in error for error in entry['errors']),entry
-            if case=='zero_commit_coforgery':assert any('construction_invalid_commit'in error for error in entry['errors'])
-            if case=='existing_wrong_code_coforgery':assert any('construction_processing_blob_missing'in error or 'construction_processing_blob_hash_mismatch'in error for error in entry['errors'])
-            assert not root.exists() and (c.SLUG,c.SLUG,prefix.rsplit('/',1)[1])not in set(_iter_staged_version_paths(stage))
-            rejected=next((work/'staging/_quarantine'/c.SLUG).glob('invalid-candidate-*'))
-            assert bad_version==hashes(rejected)
-            if case!='candidate_only_forgery':
-                assert not bundle.exists()
-                if bad_anchor is not None:
-                    preserved=next((work/'staging/_quarantine'/c.SLUG).glob('invalid-provenance-*/bundle.json'))
-                    assert preserved.read_bytes()==bad_anchor
-            else:assert bundle.exists() and bundle.read_bytes()==bad_anchor
-            item.update(canonical_undiscoverable_after_rejection=True,whole_invalid_version_preserved=True,invalid_anchor_preserved=bad_anchor is not None)
-            for label in ['verified_original_reconstruction','reconstructed_cache_reuse']:
-                result=defs.resolve_job_def('colleges_source_integrity').execute_in_process(instance=instance,raise_on_error=False)
-                entry=record(label,result);assert result.success,entry
-                output=result.output_for_node(nces_colleges_universities.op.name)
-                assert output['feature_count']==6438 and output['reused']==(label=='reconstructed_cache_reuse')
-            item['valid_anchor_established_after_verified_reconstruction']=bundle.exists()
-        assert raw==hashes(work/'staging/_raw-captures') and prior==hashes(work/'published')
-        actual={name:((captures/(name+'.body')).read_bytes(),c.strict_json((captures/(name+'.receipt.json')).read_bytes()))for name in c.URLS}
-        table,audit=c.inspect_archives({},actual);c.reconcile_outputs(root,table)
-        item.update(original_raw_unchanged=True,prior_accepted_fixture_unchanged=True,all_6438_native_rows_IDs_types_WKB_unchanged=True)
-        save()
-report['status']='PASS';save();print(json.dumps({'status':'PASS','cases':len(report['cases']),'runs':sum(len(x['runs'])for x in report['cases'])}))
+            alias.unlink()
+            with patch.object(c,'record_observed_loss',side_effect=OSError('synthetic negative journal IO failure')):refresh('journal_IO_failure_preserves_candidate','incident_write_failed_candidate_preserved')
+            assert hashes(root)==original_candidate;alias.write_bytes(first);incident=work/'staging'/c.incident_directory(version);incident.mkdir()
+            for count in(1,2):refresh('empty_partial_journal_refusal_'+str(count),'permanent_observed_original_trust_loss');assert hashes(root)==original_candidate
+            restore_fixture('partial-journal');refresh('explicit_operator_retains_partial_journal_then_reuses')
+        assert hashes(root)==original_candidate and(root/'metadata/source_manifest.json').read_bytes()==original_manifest;assert hashes(work/'staging/_raw-captures')==raw and hashes(work/'published')==prior
+        assert {p: p.read_bytes()for p in state}==state
+        table,audit=c.inspect_archives({}, {n:((captures/(n+'.body')).read_bytes(),json.loads((captures/(n+'.receipt.json')).read_bytes()))for n in c.URLS});c.reconcile_outputs(root,table)
+        item.update(all6438_native_rows_exact=True,original_context_and_raw_and_prior_preserved=True);save()
+report.update(status='PASS',actual_run_count=sum(len(x['runs'])for x in report['cases']));save();print(json.dumps({'status':'PASS','cases':len(report['cases']),'actual_runs':report['actual_run_count']}))

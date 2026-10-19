@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 parser=argparse.ArgumentParser()
-parser.add_argument('--capture-dir',type=Path,default=Path(__file__).parents[1]/'docs/dataset-sources/colleges-and-universities/evidence/inputs')
+parser.add_argument('--capture-dir',type=Path,required=True)
 parser.add_argument('--runtime-dir',type=Path,required=True)
 args=parser.parse_args()
 runtime=args.runtime_dir.resolve();capture=args.capture_dir.resolve()
