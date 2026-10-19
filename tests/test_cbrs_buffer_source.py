@@ -1,6 +1,7 @@
 """Faithful draft mechanics and failure isolation; fixtures do not grant acceptance."""
 import copy
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -123,5 +124,37 @@ class CBRSTests(unittest.TestCase):
             s.commit_complete_candidate(storage,prefix,{'geopackage/a.gpkg':b'prior'}, {'status':'fixture'})
             with self.assertRaises(ValueError):s.commit_complete_candidate(storage,prefix,{'geopackage/a.gpkg':b'new'}, {})
             self.assertEqual(Path(d,prefix,'geopackage/a.gpkg').read_bytes(),b'prior')
+
+    def test_every_auxiliary_geopackage_byte_is_bound(self):
+        rows=[{'type':'Feature','properties':{'BUFF_DIST':20.0,'Shape_Leng':1.0,'Shape_Area':0.5,'__source_fid':'0'},
+               'geometry':{'type':'Polygon','coordinates':[[[-70.0,40.0],[-70.0,41.0],[-69.0,40.0],[-70.0,40.0]]]}}]
+        mutations=["UPDATE gpkg_contents SET srs_id=4326", "UPDATE gpkg_spatial_ref_sys SET definition='contradictory' WHERE srs_id=4269",
+                   "UPDATE gpkg_spatial_ref_sys SET organization_coordsys_id=4326 WHERE srs_id=4269",
+                   "CREATE TABLE unreviewed_metadata(value TEXT)", "UPDATE gpkg_contents SET min_x=-180",
+                   "UPDATE rtree_cbrs-buffer-zone-1_geom SET minx=-180"]
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'original.gpkg';s.write_native_geopackage(rows,path);original=path.read_bytes()
+            s.verify_canonical_geopackage(path,rows)
+            for sql in mutations:
+                with self.subTest(sql=sql):
+                    path.write_bytes(original)
+                    with sqlite3.connect(path) as db:
+                        if sql.startswith('UPDATE rtree_'):
+                            table=db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'rtree_%_geom' AND type='table'").fetchone()[0]
+                            db.execute('UPDATE "'+table+'" SET minx=-180')
+                        else:db.execute(sql)
+                    with self.assertRaisesRegex(ValueError,'container_bytes_disagree'):s.verify_canonical_geopackage(path,rows)
+            path.write_bytes(original);data=bytearray(original);data[-1]^=1;path.write_bytes(data)
+            with self.assertRaisesRegex(ValueError,'container_bytes_disagree'):s.verify_canonical_geopackage(path,rows)
+
+    def test_rejected_cache_moves_intact_out_of_discovery(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);prefix=s.SLUG+'/'+s.SLUG+'/v0.0.0-fixture'
+            root=Path(d)/prefix;(root/'geopackage').mkdir(parents=True);(root/'geopackage/corrupted.gpkg').write_bytes(b'corrupt')
+            (root/'raw').mkdir();(root/'raw/original.zip').write_bytes(b'preserved original')
+            q=s.quarantine_rejected_cache(storage,prefix,'test')
+            self.assertFalse(root.exists());destination=Path(d)/q/root.name
+            self.assertEqual((destination/'geopackage/corrupted.gpkg').read_bytes(),b'corrupt')
+            self.assertEqual((destination/'raw/original.zip').read_bytes(),b'preserved original')
 
 if __name__=='__main__':unittest.main()

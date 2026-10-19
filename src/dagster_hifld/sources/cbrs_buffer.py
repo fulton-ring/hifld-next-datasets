@@ -298,13 +298,59 @@ def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
     return target
 
 
+def write_native_geopackage(rows: list[dict], path: Path) -> None:
+    """The original deterministic canonical writer, including SQLite metadata."""
+    with fiona.open(path, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
+                    schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
+        destination.writerecords(rows)
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE gpkg_contents SET last_change='2024-12-19T00:00:00.000Z'")
+
+
+def verify_canonical_geopackage(path: Path, rows: list[dict]) -> None:
+    """Bind all immutable container bytes, including reader-invisible metadata."""
+    with tempfile.TemporaryDirectory(prefix='cbrs-fresh-canonical-') as tmp:
+        fresh=Path(tmp)/f'{SLUG}.gpkg'
+        write_native_geopackage(rows,fresh)
+        cached_gp=path
+        if cached_gp.stat().st_size!=fresh.stat().st_size or sha256_file(cached_gp)!=sha256_file(fresh):
+            raise CBRSQuarantineError('cached_geopackage_container_bytes_disagree_with_fresh_original')
+
+
+def quarantine_rejected_cache(storage: StagingStorageResource, prefix: str, reason: str) -> str | None:
+    """Move the complete rejected version intact outside normal version discovery."""
+    base=Path(storage.local_dir).resolve()
+    target=base/storage._ensure_prefixed(prefix)
+    # Check parents without following an alias. A linked version entry itself is
+    # moved as an opaque entry, preserving it without reading its external target.
+    current=base
+    for part in target.relative_to(base).parts[:-1]:
+        current=current/part
+        if current.is_symlink():
+            raise CBRSQuarantineError('cannot_quarantine_cache_through_linked_parent')
+    if not target.exists() and not target.is_symlink():
+        return None
+    relative=f'_quarantine/{SLUG}/rejected-cache/{uuid4().hex}'
+    location=base/relative
+    current=base
+    for part in Path(relative).parts:
+        current=current/part
+        if current.is_symlink():raise CBRSQuarantineError('linked_cache_quarantine_path')
+    location.mkdir(parents=True,exist_ok=False)
+    os.rename(target,location/target.name)
+    immutable(storage,relative+'/report.json',encode({'approved':False,'status':'rejected_cache_quarantined',
+        'original_prefix':prefix,'intact_version':target.name,'reason':reason}))
+    return relative
+
+
 def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready: dict,
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
     root=local_candidate_path(storage,prefix)
     # The normal graph adds only these derivative files. Source-owned directories remain exact.
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
-        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json'}
+        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json',
+        'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise CBRSQuarantineError('linked_candidate_object')
@@ -322,6 +368,16 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     for name,value in expected_manifest.items():
         if name!='code_commit' and manifest.get(name)!=value:
             raise CBRSQuarantineError('cached_provenance_differs_from_original_capture')
+    snapshot=root/'metadata/source/source_manifest.json'
+    if snapshot.exists():
+        nested=strict_json(snapshot.read_bytes())
+        validate_release_provenance(nested)
+        if nested!=manifest:
+            raise CBRSQuarantineError('cached_catalog_source_manifest_differs_from_authored_source')
+    # Reader-selected CRS ignores contradictory auxiliary SRS tables, geometry
+    # headers, envelopes and RTree metadata. Bind the entire immutable container
+    # to an independently rebuilt original, not to the self-pinned ready receipt.
+    verify_canonical_geopackage(root/'geopackage'/f'{SLUG}.gpkg',rows)
     expected_bytes={'raw/'+ARCHIVE_NAME:captures['official_zip'][0],
         'raw/retrieval.json':encode(cached['official_zip'][1]),
         'metadata/candidate.records.jsonl':b''.join(encode(r) for r in rows),
@@ -366,6 +422,7 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
 def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
+    existing_prefix=None
     body,receipt = captures['official_zip']
     try:
         manifest=provenance(captures)
@@ -378,6 +435,7 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
             capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
             version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
+            existing_prefix=prefix
             ready_key = f'{prefix}/metadata/cbrs_buffer_candidate_ready.json'
             if storage.object_exists(ready_key):
                 ready = strict_json(storage.read_key(ready_key))
@@ -396,11 +454,7 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                 return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
                         'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
             geopackage = directory / f'{SLUG}.gpkg'
-            with fiona.open(geopackage, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
-                            schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
-                destination.writerecords(rows)
-            with sqlite3.connect(geopackage) as db:
-                db.execute("UPDATE gpkg_contents SET last_change='2024-12-19T00:00:00.000Z'")
+            write_native_geopackage(rows,geopackage)
             source_records = directory / 'source.jsonl'
             source_records.write_bytes(records)
             decoded = directory / 'geopackage.jsonl'
@@ -447,5 +501,6 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
+        rejected=quarantine_rejected_cache(storage,existing_prefix,str(exc)) if existing_prefix else None
         location = quarantine(storage, body, receipt, str(exc))
-        raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
+        raise CBRSQuarantineError(f'{exc}; rejected_cache:{rejected}; retained:{location}') from exc
