@@ -1,0 +1,12 @@
+{
+  "source_checkpoint": "4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19",
+  "probe": "canonical and external first-construction bundle co-forged original code_commit, all candidate snapshots/resolved/ready self-repinned; implementation behavior only, never source approval",
+  "original_commit": "4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19",
+  "forged_commit": "0000000000000000000000000000000000000000",
+  "run_id": "e70e513a-01fb-4804-a549-738632a8cc30",
+  "success": true,
+  "errors": [],
+  "forged_manifest_persisted": true,
+  "raw_preserved": true,
+  "published_preserved": true
+}

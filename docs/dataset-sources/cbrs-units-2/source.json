@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 31,
   "dataset_slug": "cbrs-units-2",
-  "status": "working_draft_locally_verified_independent_exact_head_review_pending",
+  "status": "working_draft_first_review_repaired_additional_code_authenticity_gap_confirmed",
   "approvals": {
     "source": false,
     "baseline": false,
@@ -28,7 +28,7 @@
     },
     "fields": {
       "Unit": "DBF character8; original unit code preserved string",
-      "Name": "DBF character254; preserved string",
+      "Name": "DBF character254; leading characters preserved, including original FID679 Name=\" Brigantine\" and FID680 Name=\" Island Beach\"",
       "Unit_Type": "DBF character25; preserved string",
       "Fast_Acres": "DBF numeric13.11; float64 decoded, original decimal text retained losslessly in complete ZIP",
       "Wet_Acres": "DBF numeric13.11; float64 decoded, original decimal text retained losslessly in complete ZIP",
@@ -42,7 +42,8 @@
       "Otherwise Protected Area": 350
     },
     "rights": "Acknowledge FWS; share derived products with FWS. Original use constraints, source scale and official-map/survey/in-out limitations retained verbatim in original metadata. This digital representation does not determine property eligibility. No unrestricted-license assertion.",
-    "authority": "Official producer pages directly link full ZIP/metadata and delegate USGS MapServer. Complete delegated layer3 is an independently retained candidate, not silently substituted for ZIP."
+    "authority": "Official producer pages directly link full ZIP/metadata and delegate USGS MapServer. Complete delegated layer3 is an independently retained candidate, not silently substituted for ZIP.",
+    "character_decoding": "All original physical UTF-8 DBF character fields decoded directly, fixed-width right padding excluded, leading literal characters retained. No DATE or OBJECTID field exists in original DBF; C/F/width/decimal declarations recorded in full audit."
   },
   "published_candidate": {
     "accepted": false,
@@ -59,7 +60,7 @@
   },
   "complete_comparison": {
     "geometry_membership": "evidence/complete-comparison.json",
-    "unique_Unit_diagnostic_join": "evidence/unit-key-comparison.json",
+    "unique_Unit_diagnostic_join": "evidence/unit-key-comparison-corrected.json",
     "all_942_unique_Unit_values_equal": true,
     "source_FID_equal_published_OBJECTID_or_id": 0,
     "topologically_equal_same_native_crs": 941,
@@ -67,25 +68,28 @@
     "attributes_differ_under_Unit_join": {
       "Shore_Mile": 734,
       "Shape_Leng": 938,
-      "Shape_Area": 441
+      "Shape_Area": 441,
+      "Name": 2
     },
     "physical_type_migrations": "Published Fast_Acres/Wet_Acres int64 versus original DBF numeric13.11 decoded float64; not accepted.",
     "geometry_wrappers": "Original818Polygon/124MultiPolygon versus published10Polygon/932MultiPolygon; no normalization accepted."
   },
   "delegated_service_comparison": {
     "capture": "evidence/native_page0000.body",
-    "comparison": "evidence/native-api-comparison.json",
+    "comparison": "evidence/unit-key-comparison-corrected.json",
     "count_ids_complete_unique": 942,
     "API_OBJECTID_equal_published_OBJECTID": 942,
     "exact_ring_arrays": 941,
     "geometry_difference": "OriginalFID870/API_OBJECTID1641/UnitVA-53",
     "attribute_differences": {
-      "Name": 2,
+      "Name": 0,
       "Shore_Mile": 734,
       "Shape_Leng": 942,
       "Shape_Area": 942
     },
-    "decision": "Original ZIP remains primary preserved reconstruction candidate. API OID, declared esriFieldTypeSingle precision and doubles remain in full native captures; no equivalence or source mapping accepted."
+    "decision": "Original ZIP remains primary preserved reconstruction candidate. API OID, declared esriFieldTypeSingle precision and doubles remain in full native captures; no equivalence or source mapping accepted.",
+    "historical_driver_comparison": "evidence/native-api-comparison.json; historical Fiona-decoded Name discrepancy superseded by physical DBF decode",
+    "correction": "Two apparent ZIP/API Name differences were entirely Fiona stripping original DBF leading spaces. All942physical DBF names equal delegated API names; the published baseline has the two trimmed names."
   },
   "crosswalk": {
     "status": "explicitly_unmatched",
@@ -98,7 +102,7 @@
     "runner": "scripts/verify_cbrs_units_draft.py",
     "refresh": "STOPPED monthly1st15:00 America/New_York source-only integrity/availability refresh. Newly changed ZIP/schema/coverage quarantined for review; no automatic source edition replacement.",
     "atomicity": "Complete hidden local construction renamed into canonical version only after full reconstruction and validation; interrupt/OSError cannot expose partial version.",
-    "cache": "One shared local per-version lock spans existing lookup, cache validation and atomic invalid-version quarantine; first construction happens privately and installation conflicts never trigger stale cleanup. Exact native derivatives/metadata/reports/sidecars still rederive from original full source.",
+    "cache": "One shared local per-version lock spans existing lookup, cache validation and atomic invalid-version quarantine; first construction happens privately and installation conflicts never trigger stale cleanup. Exact native derivatives/metadata/reports/sidecars still rederive from original full source. Full original first-construction manifest and original receipts are bound outside mutable candidate under _source-provenance/slug/version/bundle.json; missing binding fails closed without cache bootstrap. A further actual co-forged external-record commit gap awaits shared Git authenticity validation.",
     "raw": "Full ZIP/all25members/all original input receipts plus separately complete API and baseline retained. Malformed/partial attempts kept in raw quarantine with exact original bytes.",
     "promotion": "Shared independent exact source/baseline/contract/release registry is mandatory. All real approvals remain absent.",
     "generic_geoparquet_regeneration": {
@@ -109,9 +113,9 @@
           "geoparquet": {
             "objects": [
               {
-                "bytes": 6555616,
+                "bytes": 6555610,
                 "path": "geoparquet/cbrs-units-2.parquet",
-                "sha256": "5f5155eb565c4b566948d4e11e2a946ced98ef48ea0b9682c880315566e93b5b"
+                "sha256": "64f1bb9b98ff27b76bcfbeb8f6dc049815c0a828f022c87f261b1f797707520a"
               }
             ],
             "reason": "Observed generic conversion adds bbox and changes field/nullability metadata. Preserve this complete native source-typed GeoParquet without generic regeneration; independent mapping and release approvals remain mandatory."
@@ -123,15 +127,333 @@
     },
     "geopackage_last_change": "Canonical container representation uses fixed producer publication timestamp2024-12-19 only for deterministic serialization; not a claim about original file modification or extraction time.",
     "live_transport": "Requests Accept-Encoding identity; if producer nevertheless compresses, validate HTTP Content-Length against actual wire bytes downloaded while bounding decoded bytes separately. Original decoded input and exact partial decoded chunks are retained.",
-    "policy_preflight": "Fresh original-derived canonical Parquet bytes define the complete policy before canonical namespace lookup/write; schema validation and exact generated bytes checked before install. Cache rederives controls from complete original rows and validates actual complete object roster/hash/length; self-pinned altered controls reject."
+    "policy_preflight": "Fresh original-derived canonical Parquet bytes define the complete policy before canonical namespace lookup/write; schema validation and exact generated bytes checked before install. Cache rederives controls from complete original rows and validates actual complete object roster/hash/length; self-pinned altered controls reject.",
+    "physical_character_fidelity": "Decode all physical DBF UTF-8 C fields directly, excluding only right padding; numeric source fields independently checked against driver. Corrected2Name values supersede earlier Fiona-decoded complete-value/byte-identical claims."
   },
   "release_decisions": [
-    "Accept exact source/edition/rights and reconcile one native geometry/two Name differences between ZIP and delegated API.",
-    "Accept complete published baseline only after reviewing941/942 topological agreement and numeric field value changes.",
+    "Accept exact source/edition/rights and reconcile one native geometry difference between ZIP and delegated API. All942physical DBF/API Names now match after decoder repair.",
+    "Accept complete published baseline only after reviewing941/942topological agreement, numeric field value changes and2Name values whose original leading blanks the baseline omits.",
     "Approve lossless published output schema and all source physical declaration/float/int/geometry wrapper differences.",
     "Approve explicit nondestructive originalFID/Unit/API_OBJECTID/publishedOBJECTID/id mapping, retaining all identifiers and historical releases."
   ],
   "implementation": {
+    "source_checkpoint": "4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19",
+    "reviewed_shared_policy_checkpoint": "4800e4f5df550bfadd3631585268ce68a0fa25d9",
+    "tests": {
+      "total": 532,
+      "passed": 531,
+      "skipped": 1,
+      "seconds": 264.655,
+      "source_specific_tests": 20,
+      "focused_seconds": 74.814,
+      "actual_iac_source": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "log": "evidence/review-repair-verification/full-suite-review-repair.log"
+    },
+    "actual_execution": "evidence/review-repair-verification/execution.json",
+    "actual_run_count": 24,
+    "source_rows": 942,
+    "actual_registered_job": "fws_cbrs_units_draft_refresh",
+    "registered_source_run": "637127fe-2f9f-4567-aed5-486e177a6de2",
+    "actual_binary_DBF_SHP_replay": "evidence/review-repair-verification/original-binary-audit.json",
+    "all_942_all_8_original_values_and_native_coordinate_rings_exact": true,
+    "actual_policy_control_and_construction_binding_denials": [
+      {
+        "attack": "forged_code_commit",
+        "run_id": "cc7e8a7e-c65f-49da-9f00-e8554adc1c63",
+        "rejected": true,
+        "all_remaining_bytes_preserved": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true
+      },
+      {
+        "attack": "forged_original_receipt",
+        "run_id": "574781f0-bfce-4a6a-89da-32ae447ef93a",
+        "rejected": true,
+        "all_remaining_bytes_preserved": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true
+      },
+      {
+        "attack": "missing_external_binding",
+        "run_id": "398eaf26-7001-452b-9cf4-c15ca15b48ac",
+        "rejected": true,
+        "all_remaining_bytes_preserved": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true
+      }
+    ],
+    "actual_source_cache_integrity_denials": [
+      {
+        "attack": "gpkg_contents_srs",
+        "run_id": "8765da97-07e6-4aaf-a203-20e44d6af1c5",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      },
+      {
+        "attack": "gpkg_spatial_ref_definition",
+        "run_id": "53213f11-9fc3-4662-9935-04ac4bd3549e",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      },
+      {
+        "attack": "gpkg_geometry_envelope",
+        "run_id": "7ac53fe5-1426-4b93-855a-2b65cf58259b",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      },
+      {
+        "attack": "gpkg_rtree",
+        "run_id": "df0d4e07-63af-4a62-bc88-e0cd2a05dfdf",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      },
+      {
+        "attack": "parquet_geo_crs",
+        "run_id": "1cc6784d-5968-4095-b018-a5fef64b7632",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      },
+      {
+        "attack": "fidelity_population",
+        "run_id": "fc4f545d-fb4e-4d7e-a73a-c5faa4146cc4",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      },
+      {
+        "attack": "baseline_approval",
+        "run_id": "8ef49494-7713-40dc-9e9b-30c32f834fca",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      },
+      {
+        "attack": "missing_ready",
+        "run_id": "e7338ae5-8256-4730-be9d-9fc220097678",
+        "rejected": true,
+        "prior_published_preserved": true,
+        "not_discoverable": true,
+        "whole_remaining_candidate_bytes_preserved": true
+      }
+    ],
+    "actual_normal_prebuilt_drift_denials": [
+      {
+        "attack": "missing",
+        "run_id": "a4a8fe00-ec5f-47b9-9095-e9dad76b969d",
+        "rejected": true,
+        "generic_converter_calls": 0,
+        "prior_published_fixture_preserved": true
+      },
+      {
+        "attack": "extra",
+        "run_id": "ce2788fc-f649-4908-b8c4-586b0abc48a9",
+        "rejected": true,
+        "generic_converter_calls": 0,
+        "prior_published_fixture_preserved": true
+      },
+      {
+        "attack": "changed",
+        "run_id": "ebe41db3-988e-4d93-850c-a78080bc3b5a",
+        "rejected": true,
+        "generic_converter_calls": 0,
+        "prior_published_fixture_preserved": true
+      }
+    ],
+    "live_all_four_official_inputs_200_and_complete_corrected_source": {
+      "run_id": "ee045632-24fe-4853-a217-f9aba8259e36",
+      "output": {
+        "dataset_slug": "cbrs-units-2",
+        "file_slug": "cbrs-units-2",
+        "version": "v0.0.0-draft-cbrs20241219-ecb07e7daccac534-fad7a780ce73f0ee",
+        "feature_count": 942,
+        "status": "working_draft_candidate_ready",
+        "processing_fingerprint": "fad7a780ce73f0eebbe4378107a684246db788a8aca91c0ee818ba3458e278a4"
+      },
+      "observations": {
+        "official_zip": {
+          "attempt": 1,
+          "byte_length": 32280370,
+          "content_encoding": "identity",
+          "final_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip",
+          "observed_at": "2026-10-19T09:10:31.898981+00:00",
+          "requested_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip",
+          "response_content_length": "32280370",
+          "sha256": "8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0",
+          "status": 200,
+          "wire_bytes_downloaded": 32280370
+        },
+        "fws_data": {
+          "attempt": 1,
+          "byte_length": 101646,
+          "content_encoding": "identity",
+          "final_url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+          "observed_at": "2026-10-19T09:10:37.881116+00:00",
+          "requested_url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+          "response_content_length": null,
+          "sha256": "4f89a45310e8cdff62d4a0b856cb44580fc5b65c77a203901fb5126ef59ad45f",
+          "status": 200,
+          "wire_bytes_downloaded": 101646
+        },
+        "fws_download": {
+          "attempt": 1,
+          "byte_length": 92510,
+          "content_encoding": "identity",
+          "final_url": "https://www.fws.gov/media/digital-coastal-barrier-resources-system-boundaries",
+          "observed_at": "2026-10-19T09:10:38.409207+00:00",
+          "requested_url": "https://www.fws.gov/media/digital-coastal-barrier-resources-system-boundaries",
+          "response_content_length": null,
+          "sha256": "3888ec81cac5d1a760e52db12c393e188f3626445d735b8d23a3aff959f6b969",
+          "status": 200,
+          "wire_bytes_downloaded": 92510
+        },
+        "fws_units_metadata": {
+          "attempt": 1,
+          "byte_length": 25709,
+          "content_encoding": "identity",
+          "final_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-polygons-metadata.txt",
+          "observed_at": "2026-10-19T09:10:38.783542+00:00",
+          "requested_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-polygons-metadata.txt",
+          "response_content_length": "25709",
+          "sha256": "8fc6db0523f981a7c4d50b4107fc463b1e8ffcce16d5adc2df2fd8de7df16604",
+          "status": 200,
+          "wire_bytes_downloaded": 25709
+        }
+      },
+      "all_942_corrected_values_types_native_wkb_equal": true,
+      "new_observations_preserved": true,
+      "prior_published_preserved": true
+    },
+    "zero_generic_converter_calls": true,
+    "native_products": "evidence/review-repair-verification/corrected-products.json",
+    "persisted_Dagster_metadata": "evidence/review-repair-verification/asset-metadata-audit.json",
+    "remaining_implementation_gap": {
+      "status": "actual_confirmed_not_handoff_ready",
+      "code_identity_coforgery_probe": "evidence/review-repair-verification/coforged-provenance-probe.json",
+      "run_id": "e70e513a-01fb-4804-a549-738632a8cc30",
+      "unexpected_success": true,
+      "action": "Await deliberately integrated independently reviewed shared Git commit/blob authenticity helper; no duplicate shared implementation."
+    },
+    "independent_review": "First9e3review changes requested; actual4cdbrepair evidence complete, further authenticity fix pending before independent exact-head re-review.",
+    "release_approved": false
+  },
+  "implementation_dependencies": [
+    {
+      "issue": 417,
+      "status": "implemented_and_reviewed_shared_checkpoint_integrated; source integration locally verified, independent source review pending",
+      "shared_checkpoint": "4800e4f5df550bfadd3631585268ce68a0fa25d9",
+      "result": "Version1 prebuilt capability pins the complete source-native GeoParquet; generic regeneration remains disabled, whole-format GeoParquet ban removed, all other bans and independent source/baseline/contract/release gates retained.",
+      "remaining_code_dependency": false
+    },
+    {
+      "issue": 417,
+      "status": "shared_git_construction_authenticity_helper_pending_reviewed_deliberate_integration",
+      "remaining_code_dependency": true,
+      "actual_source31_probe": "e70e513a-01fb-4804-a549-738632a8cc30",
+      "result": "Canonical+external bundle code_commit co-forgery passed current control; require actual reachable commit and matching recorded processing code/lock/project Git blobs. Real source acceptance remains separate."
+    }
+  ],
+  "refresh_followup": {
+    "scope": "Transport/concurrency-only source change. Actual live all-four-source acquisition/complete942row inspection and current tests prove the followup. Prior real Dagster source/format/quality run IDs remain attributed to13fd, not relabeled as4614. No broad terminal data rebuild.",
+    "source_checkpoint": "4614cd6ed393044a46f1fdf20896b7aad9a3f4ec",
+    "prior_actual_dagster_source_checkpoint": "13fd9a7106212568bb26ed4491bd5217e224d426",
+    "data_writer_and_decoder_ast": {
+      "inspect_archive": {
+        "ast_unchanged": true,
+        "sha256": "4e8971d396169cab7a777596e46897707ff51f665bfb8527a6adae0f92a9b124"
+      },
+      "write_geopackage": {
+        "ast_unchanged": true,
+        "sha256": "d43fd90f975e113773bb96bc9671cdf2146970d218f6f194179f38ca2c295e9a"
+      },
+      "typed_table": {
+        "ast_unchanged": true,
+        "sha256": "80e88b2e56f4d0e7c57b6f254b81ee8f338c6b488037b639153467ec5967a29b"
+      },
+      "provenance": {
+        "ast_unchanged": true,
+        "sha256": "9c3c1009dba21f57f06e7e25f8023e938878d05f4c1791f26431494d935926d0"
+      },
+      "source_verification_payloads": {
+        "ast_unchanged": true,
+        "sha256": "a086b8cc0c6682bc76d4899c24b066b8ff0815535a6d16d829758936e4a257da"
+      }
+    },
+    "tests": {
+      "focused": 16,
+      "focused_seconds": 60.207,
+      "full": 522,
+      "passed": 521,
+      "skipped": 1,
+      "skip": "production-write E2E",
+      "seconds": 201.598
+    },
+    "live": {
+      "all_four_canonical_inputs_HTTP200": true,
+      "source_rows": 942,
+      "original_full_records_sha256": "1bdda7471edda798577f6a87f83d65e16d92f3e65b27814d469119f36c65b677",
+      "wire_count_not_decoded_length_used": true,
+      "identity_requested_and_all_live_responses_identity": true
+    },
+    "interleaving": "Actual stage lookup reaches invalid missing-ready directory while holding same per-version lock. Concurrent installer blocks until invalid original is atomically retained outside discovery; valid winning object remains after stale stage error. Synthetic control-flow/data fixtures, not real approval.",
+    "retained_partial_bytes": "Actual HTTPX stream emits partial bytes then ReadError. All three attempts retain exact emitted bytes without chunk-size buffering loss.",
+    "implementation_dependency": "Reviewed shared417prebuilt_output_policy must still be integrated deliberately; whole-format ban remains until source-specific policy followup."
+  },
+  "historical_implementation": {
+    "source_checkpoint": "13fd9a7106212568bb26ed4491bd5217e224d426",
+    "shared_base": "abde85be4879feee01e7583b23869617d71a69f6",
+    "actual_execution": "evidence/verification/execution.json",
+    "tests": {
+      "total": 519,
+      "passed": 518,
+      "skipped": 1,
+      "skip": "production-write E2E",
+      "seconds": 122.063,
+      "log": "evidence/verification/full-suite-complete.log",
+      "actual_iac_source": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "tippecanoe": "actual binary available"
+    },
+    "source_rows": 942,
+    "byte_idempotent_refresh": true,
+    "actual_registered_job": "fws_cbrs_units_draft_refresh",
+    "two_normal_catalogs_missing_approval_only": true,
+    "native_typed_geoparquet_exact": true,
+    "original_fids_values_types_wkb_all_verified": true,
+    "failed_quality_and_missing_approval_preserved_local_published_fixture": true,
+    "real_dataset_accepted_release_exists": false,
+    "source_verification_claims": "Fresh full original942row verification report/complete sidecars and exact blocked/unapproved baseline placeholder are rederived; self-pinned cached claim changes reject.",
+    "quarantine": "Missing-ready, invalid cached data/metadata and false approval/population report versions atomically retained outside discovery, all remaining files inventoried. Cooperating local writers use advisory locks/inode checks.",
+    "negative_actual_attacks": [
+      "gpkg_contents_srs",
+      "gpkg_spatial_ref_definition",
+      "gpkg_geometry_envelope",
+      "gpkg_rtree",
+      "parquet_geo_crs",
+      "fidelity_population",
+      "baseline_approval",
+      "missing_ready"
+    ],
+    "harness_continuation": {
+      "reason": "Previous assertion incorrectly rejected a valid zero-byte differences sidecar after all eight attacks completed. SHA validation supports empty files.",
+      "source_or_data_writer_change": false,
+      "prior_runs_preserved": true,
+      "terminal_formats_rebuilt": false
+    },
+    "independent_review": "pending on final exact head",
+    "CI": "no pass inferred"
+  },
+  "historical_prebuilt_implementation": {
     "source_checkpoint": "b1b76f78160f8b20e5b34ea1cec79c03b849e126",
     "reviewed_shared_policy_checkpoint": "4800e4f5df550bfadd3631585268ce68a0fa25d9",
     "deliberate_integration_commit": "e4110139072f8f66b798d13797984c2ddee08641",
@@ -268,102 +590,37 @@
     "independent_review": "pending on final exact head",
     "CI": "no pass inferred"
   },
-  "implementation_dependencies": [
-    {
-      "issue": 417,
-      "status": "implemented_and_reviewed_shared_checkpoint_integrated; source integration locally verified, independent source review pending",
-      "shared_checkpoint": "4800e4f5df550bfadd3631585268ce68a0fa25d9",
-      "result": "Version1 prebuilt capability pins the complete source-native GeoParquet; generic regeneration remains disabled, whole-format GeoParquet ban removed, all other bans and independent source/baseline/contract/release gates retained.",
-      "remaining_code_dependency": false
-    }
-  ],
-  "refresh_followup": {
-    "scope": "Transport/concurrency-only source change. Actual live all-four-source acquisition/complete942row inspection and current tests prove the followup. Prior real Dagster source/format/quality run IDs remain attributed to13fd, not relabeled as4614. No broad terminal data rebuild.",
-    "source_checkpoint": "4614cd6ed393044a46f1fdf20896b7aad9a3f4ec",
-    "prior_actual_dagster_source_checkpoint": "13fd9a7106212568bb26ed4491bd5217e224d426",
-    "data_writer_and_decoder_ast": {
-      "inspect_archive": {
-        "ast_unchanged": true,
-        "sha256": "4e8971d396169cab7a777596e46897707ff51f665bfb8527a6adae0f92a9b124"
-      },
-      "write_geopackage": {
-        "ast_unchanged": true,
-        "sha256": "d43fd90f975e113773bb96bc9671cdf2146970d218f6f194179f38ca2c295e9a"
-      },
-      "typed_table": {
-        "ast_unchanged": true,
-        "sha256": "80e88b2e56f4d0e7c57b6f254b81ee8f338c6b488037b639153467ec5967a29b"
-      },
-      "provenance": {
-        "ast_unchanged": true,
-        "sha256": "9c3c1009dba21f57f06e7e25f8023e938878d05f4c1791f26431494d935926d0"
-      },
-      "source_verification_payloads": {
-        "ast_unchanged": true,
-        "sha256": "a086b8cc0c6682bc76d4899c24b066b8ff0815535a6d16d829758936e4a257da"
-      }
+  "historical_complete_comparison": {
+    "geometry_membership": "evidence/complete-comparison.json",
+    "unique_Unit_diagnostic_join": "evidence/unit-key-comparison-corrected.json",
+    "all_942_unique_Unit_values_equal": true,
+    "source_FID_equal_published_OBJECTID_or_id": 0,
+    "topologically_equal_same_native_crs": 941,
+    "unmatched_geometry_units": 1,
+    "attributes_differ_under_Unit_join": {
+      "Shore_Mile": 734,
+      "Shape_Leng": 938,
+      "Shape_Area": 441,
+      "Name": 2
     },
-    "tests": {
-      "focused": 16,
-      "focused_seconds": 60.207,
-      "full": 522,
-      "passed": 521,
-      "skipped": 1,
-      "skip": "production-write E2E",
-      "seconds": 201.598
-    },
-    "live": {
-      "all_four_canonical_inputs_HTTP200": true,
-      "source_rows": 942,
-      "original_full_records_sha256": "1bdda7471edda798577f6a87f83d65e16d92f3e65b27814d469119f36c65b677",
-      "wire_count_not_decoded_length_used": true,
-      "identity_requested_and_all_live_responses_identity": true
-    },
-    "interleaving": "Actual stage lookup reaches invalid missing-ready directory while holding same per-version lock. Concurrent installer blocks until invalid original is atomically retained outside discovery; valid winning object remains after stale stage error. Synthetic control-flow/data fixtures, not real approval.",
-    "retained_partial_bytes": "Actual HTTPX stream emits partial bytes then ReadError. All three attempts retain exact emitted bytes without chunk-size buffering loss.",
-    "implementation_dependency": "Reviewed shared417prebuilt_output_policy must still be integrated deliberately; whole-format ban remains until source-specific policy followup."
+    "physical_type_migrations": "Published Fast_Acres/Wet_Acres int64 versus original DBF numeric13.11 decoded float64; not accepted.",
+    "geometry_wrappers": "Original818Polygon/124MultiPolygon versus published10Polygon/932MultiPolygon; no normalization accepted."
   },
-  "historical_implementation": {
-    "source_checkpoint": "13fd9a7106212568bb26ed4491bd5217e224d426",
-    "shared_base": "abde85be4879feee01e7583b23869617d71a69f6",
-    "actual_execution": "evidence/verification/execution.json",
-    "tests": {
-      "total": 519,
-      "passed": 518,
-      "skipped": 1,
-      "skip": "production-write E2E",
-      "seconds": 122.063,
-      "log": "evidence/verification/full-suite-complete.log",
-      "actual_iac_source": "56aa10757129c457c530d707d9a40bae13e0907f",
-      "tippecanoe": "actual binary available"
+  "historical_delegated_service_comparison": {
+    "capture": "evidence/native_page0000.body",
+    "comparison": "evidence/unit-key-comparison-corrected.json",
+    "count_ids_complete_unique": 942,
+    "API_OBJECTID_equal_published_OBJECTID": 942,
+    "exact_ring_arrays": 941,
+    "geometry_difference": "OriginalFID870/API_OBJECTID1641/UnitVA-53",
+    "attribute_differences": {
+      "Name": 0,
+      "Shore_Mile": 734,
+      "Shape_Leng": 942,
+      "Shape_Area": 942
     },
-    "source_rows": 942,
-    "byte_idempotent_refresh": true,
-    "actual_registered_job": "fws_cbrs_units_draft_refresh",
-    "two_normal_catalogs_missing_approval_only": true,
-    "native_typed_geoparquet_exact": true,
-    "original_fids_values_types_wkb_all_verified": true,
-    "failed_quality_and_missing_approval_preserved_local_published_fixture": true,
-    "real_dataset_accepted_release_exists": false,
-    "source_verification_claims": "Fresh full original942row verification report/complete sidecars and exact blocked/unapproved baseline placeholder are rederived; self-pinned cached claim changes reject.",
-    "quarantine": "Missing-ready, invalid cached data/metadata and false approval/population report versions atomically retained outside discovery, all remaining files inventoried. Cooperating local writers use advisory locks/inode checks.",
-    "negative_actual_attacks": [
-      "gpkg_contents_srs",
-      "gpkg_spatial_ref_definition",
-      "gpkg_geometry_envelope",
-      "gpkg_rtree",
-      "parquet_geo_crs",
-      "fidelity_population",
-      "baseline_approval",
-      "missing_ready"
-    ],
-    "harness_continuation": {
-      "reason": "Previous assertion incorrectly rejected a valid zero-byte differences sidecar after all eight attacks completed. SHA validation supports empty files.",
-      "source_or_data_writer_change": false,
-      "prior_runs_preserved": true,
-      "terminal_formats_rebuilt": false
-    },
-    "independent_review": "pending on final exact head",
-    "CI": "no pass inferred"
+    "decision": "Original ZIP remains primary preserved reconstruction candidate. API OID, declared esriFieldTypeSingle precision and doubles remain in full native captures; no equivalence or source mapping accepted.",
+    "historical_driver_comparison": "evidence/native-api-comparison.json; historical Fiona-decoded Name discrepancy superseded by physical DBF decode",
+    "correction": "Two apparent ZIP/API Name differences were entirely Fiona stripping original DBF leading spaces. All942physical DBF names equal delegated API names; the published baseline has the two trimmed names."
   }
 }

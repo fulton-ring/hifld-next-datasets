@@ -1,0 +1,41 @@
+{
+  "source_checkpoint": "4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19",
+  "approved": false,
+  "row_count": 942,
+  "physical_schema_and_metadata_unchanged": true,
+  "all_942_native_geometry_wkb_unchanged": true,
+  "only_normalized_value_changes": [
+    {
+      "original_fid": "679",
+      "field": "Name",
+      "previous": "Brigantine",
+      "corrected": " Brigantine"
+    },
+    {
+      "original_fid": "680",
+      "field": "Name",
+      "previous": "Island Beach",
+      "corrected": " Island Beach"
+    }
+  ],
+  "all_original_capture_body_bytes_unchanged": true,
+  "manifest_and_original_receipts_equal_external_construction_binding": true,
+  "products": {
+    "geopackage/cbrs-units-2.gpkg": {
+      "bytes": 8257536,
+      "sha256": "0549479ec4e30738dff31c2b9585db1ae82131b37e993b84c5627f0fb96b9350"
+    },
+    "candidate/typed-source.parquet": {
+      "bytes": 6555610,
+      "sha256": "64f1bb9b98ff27b76bcfbeb8f6dc049815c0a828f022c87f261b1f797707520a"
+    },
+    "geoparquet/cbrs-units-2.parquet": {
+      "bytes": 6555610,
+      "sha256": "64f1bb9b98ff27b76bcfbeb8f6dc049815c0a828f022c87f261b1f797707520a"
+    },
+    "metadata/candidate.records.jsonl": {
+      "bytes": 18507252,
+      "sha256": "320b8cf705073f5042fa230dd02457776612e984a38c50d416c42acdbd8eebcc"
+    }
+  }
+}
