@@ -4,7 +4,7 @@
   "historical_defect": "historical-original-defect.json",
   "actual_normal_lifecycle": "actual-normal-lifecycle.json",
   "actual_provenance_denials_recovery": "actual-provenance-denials-recovery.json",
-  "actual_registered_run_count": 16,
+  "actual_registered_run_count": 18,
   "focused_tests": {
     "total": 14,
     "passed": 14,
@@ -36,7 +36,14 @@
     }
   },
   "construction": "Actual reachable Git commit and all regular processing blobs authenticated on fresh and cached original manifest; existing missing/invalid bundle quarantines whole candidate; complete private candidate is validated before first original receipt/manifest binding is installed under common lock",
-  "historical_reuse": "Genuine subsequent documentation-only HEAD actual reuse/rebuild proof follows this checkpoint, original full manifest retained",
+  "historical_reuse": {
+    "evidence": "genuine-docs-history.json",
+    "actual_later_docs_head": "6e303594f06154e83b09b3d2d12a00bc126e09cd",
+    "original_code_commit": "f300cb5646042079696f28b5ec9c5043f6afb628",
+    "actual_registered_reuse": "04b0983b-68dd-4ab6-9398-9e9d9a88bb52",
+    "actual_registered_original_input_rebuild": "06a07495-991d-43a1-b855-48cb223c9590",
+    "whole_candidate_original_manifest_raw_and_prior_preserved": true
+  },
   "release_decisions": "All actual source-edition/baseline/ID/schema/native4269 vs3857 geometry/format rights and independent contract acceptance remain unapproved",
   "independent_review": "Required on final exact head; prior reviewed native data parity preserved; actual new code reviewed separately",
   "approved": false,
