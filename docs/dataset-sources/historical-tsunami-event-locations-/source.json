@@ -1445,5 +1445,22 @@
     "licenseInfo": "empty; does not invent a license grant",
     "description_match": "Current item description explicitly matches inventory historical event-layer description and links NCEI natural-hazards products/viewers.",
     "evidence": "evidence/official_service_item.body"
+  },
+  "construction_state_repair": {
+    "worker": "/root/verifier_417",
+    "source_code_checkpoint": "794445aef8285ad35a7246d775081a1e2edcaf6d",
+    "shared_reviewed_checkpoint": "e284617ae16fafeae634efd9c0008d1354b2091a",
+    "first_review_finding": "P2 original bundle/receipt bytes unbound; historical acceptance retained as defect evidence",
+    "evidence": "evidence/construction-state-repair.json",
+    "tests": {
+      "source": 14,
+      "state": 12,
+      "full_run": 548,
+      "full_passed": 547,
+      "full_skipped": 1
+    },
+    "actual_registered_runs": 30,
+    "repaired_head_independent_review": "pending",
+    "approved": false
   }
 }

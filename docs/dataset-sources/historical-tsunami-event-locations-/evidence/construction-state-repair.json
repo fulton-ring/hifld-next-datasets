@@ -1,0 +1,444 @@
+{
+  "schema_version": 1,
+  "classification": "source-specific original construction binding repair; real unapproved source with synthetic faults, no acceptance",
+  "worker": "/root/verifier_417",
+  "source_code_checkpoint": "794445aef8285ad35a7246d775081a1e2edcaf6d",
+  "shared_reviewed_checkpoint": "e284617ae16fafeae634efd9c0008d1354b2091a",
+  "shared_integration_merge": "6ddee0f1aafaf3e45d86c30e09b2e8c5b8693baf",
+  "shared_review_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/421#issuecomment-6265297355",
+  "original_independent_finding": {
+    "reviewed_head": "5c25d21f55d63f77fb5f2eda64a540e4815ff7de",
+    "severity": "P2",
+    "run_id": "ab683145-ff85-4534-a85c-d720180ca07b",
+    "reason": "Full original bundle/receipts co-forged with candidate while marker retained only version/fingerprint; old actual refresh incorrectly reused",
+    "review_pin": {
+      "path": "/workspace/work/hifld-coordinator/reviews/tsunami-113-review.json",
+      "sha256": "a009001de442f10fc95fe249b8eda2dfba958202c8de3d41d2b48c13312adf00",
+      "bytes": 3525
+    },
+    "original_review_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/448#issuecomment-6265249479",
+    "prior_scope_not_overclaimed": true
+  },
+  "implementation_pins": [
+    {
+      "path": "/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py",
+      "sha256": "1c62a68f31da77923aecd3316ba6d8f3420fabc1b08a55209f6b1798416c2049",
+      "bytes": 60117
+    },
+    {
+      "path": "/workspace/hifld-worker-worktrees/113/tests/test_historical_tsunami_events.py",
+      "sha256": "453d0aa41ef60a38bd5bdf464af5b616ff967cbc0096b2c088d432bda529a9a0",
+      "bytes": 13765
+    },
+    {
+      "path": "/workspace/hifld-worker-worktrees/113/scripts/verify_historical_tsunami_events_draft.py",
+      "sha256": "d32178c5f7d9d67f6507f491dab004e55ec6b60a6eff9cb999db815726d4351f",
+      "bytes": 13894
+    },
+    {
+      "path": "/workspace/hifld-worker-worktrees/113/src/dagster_hifld/construction_state.py",
+      "sha256": "03e897aed3940c06810e2daf2c78abdc6f36bd9ec31e2f8cdc4368f9f64283f2",
+      "bytes": 12288
+    }
+  ],
+  "mechanics": [
+    "Entire original manifest plus all first-capture receipts/body keys bound by shared canonical envelope, CAS/hashmarker/alias outside candidate quarantine",
+    "First seal after private native files/metadata/ready/native roundtrip validation",
+    "Existing real reachable Git/blob validation, source IDs/types/nulls/geometry and closed inventories preserved",
+    "Legacy unbound current-version records require explicit reviewed migration; no automatic bootstrap",
+    "CAS-only, missing alias/CAS/marker and repeated refresh fail closed without self-healing",
+    "Recovery in tests is explicit trusted operator restoration of exact original bytes, never automatic production repair"
+  ],
+  "focused": {
+    "source_tests": 14,
+    "shared_state_tests": 12,
+    "failures": 0,
+    "errors": 0,
+    "complete_source_capture_enabled": true,
+    "logs": [
+      {
+        "path": "/workspace/work/hifld-coordinator/113/focused-construction-state.log",
+        "sha256": "1711d0dd71f11fa09c653954c11beb9d22d98c1a24f9b646f71c7651dee21e45",
+        "bytes": 2631
+      },
+      {
+        "path": "/workspace/work/hifld-coordinator/113/focused-shared-state.log",
+        "sha256": "170429f7ab0924be4367084ec6ce169a352f215303e75905fdcc6117808134c1",
+        "bytes": 2602
+      }
+    ]
+  },
+  "full_suite": {
+    "tested_head": "794445aef8285ad35a7246d775081a1e2edcaf6d",
+    "run": 548,
+    "passed": 547,
+    "skipped": 1,
+    "skip": "production-write opt-in",
+    "failures": 0,
+    "errors": 0,
+    "seconds": 154.48,
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/113/full-suite-construction-state.log",
+      "sha256": "c690794d9953bc8cab03eff4b49e4a828cae05bc48a6f071e58474dc50042520",
+      "bytes": 18901
+    },
+    "command": "DAGSTER_HOME=/workspace/work/hifld-coordinator/113/construction-full-suite-dagster PYTHONPATH=/workspace/hifld-worker-worktrees/113:/workspace/hifld-worker-worktrees/113/src TSUNAMI_EVENTS_TEST_CAPTURE_DIR=/workspace/work/hifld-coordinator/113/captures PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH /workspace/hifld-worker-worktrees/19/.venv/bin/python -m unittest discover tests",
+    "real_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "ci_claim": false
+  },
+  "actual_lifecycle": {
+    "run_count": 30,
+    "runs": [
+      {
+        "kind": "synthetic_CAS_only_first_marker_failure",
+        "run_id": "9b3bcba8-3e1b-4328-ac5c-0c9a2cdc4a15",
+        "success": false,
+        "observed_error_codes": [
+          "construction_state_io_failed"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "CAS_only_refresh_1_blocked",
+        "run_id": "4bdfd998-40b2-4878-839b-0e3686f2d490",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "CAS_only_refresh_2_blocked",
+        "run_id": "6a7497b6-0d68-4990-b70e-ad2e4e59d129",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "complete_real_source_after_exact_operator_restore",
+        "run_id": "8dec4f68-fe92-47fe-af26-7df7c9b1ae52",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "complete_source_reuse",
+        "run_id": "36664416-6132-4cb1-8e23-3230daa71015",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "normal_catalog_1_missing_approval",
+        "run_id": "49b71339-9fee-4022-94d6-a7cf608c36a6",
+        "success": false,
+        "observed_error_codes": [
+          "missing_independent_release_approval_registry"
+        ],
+        "checks": [
+          {
+            "name": "quality_manifest",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "kind": "source_after_catalog_1",
+        "run_id": "d7249cc8-471d-47e5-874e-570eeb6ae843",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "normal_catalog_2_missing_approval",
+        "run_id": "519718b2-be48-4f6f-b281-983e3cbfb3db",
+        "success": false,
+        "observed_error_codes": [
+          "missing_independent_release_approval_registry"
+        ],
+        "checks": [
+          {
+            "name": "quality_manifest",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "kind": "source_after_catalog_2",
+        "run_id": "c6032ba0-7ca4-4d4a-98dc-ece402ad23e8",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "synthetic_failed_geometry_quality_gate",
+        "run_id": "39e53ed2-8d7c-4e52-bf70-8ee31dab291c",
+        "success": false,
+        "observed_error_codes": [],
+        "checks": [
+          {
+            "name": "quality_manifest",
+            "passed": false
+          }
+        ]
+      },
+      {
+        "kind": "self_repinned_approval_placeholder_blocked",
+        "run_id": "9806e601-861c-4d58-b5fe-28eb64c564e5",
+        "success": false,
+        "observed_error_codes": [
+          "source_owned_report_wrapper_placeholder_or_raw_provenance_drift"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "cold_rebuild_after_approval_placeholder",
+        "run_id": "0501b84b-cafb-4d3c-b226-8f360fa1f756",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "self_repinned_auxiliary_srs_blocked",
+        "run_id": "f549a7d1-2a25-4104-b910-64eabcfd06e6",
+        "success": false,
+        "observed_error_codes": [
+          "gpkg_full_container_srs_headers_sql_or_index_drift"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "cold_rebuild_after_auxiliary_srs",
+        "run_id": "7c30614e-953c-4182-8ab0-04611f3cfb8b",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "self_repinned_forged_reachable_code_commit_blocked",
+        "run_id": "8fd60f1a-f12d-4392-b1b3-f5ed9ee22096",
+        "success": false,
+        "observed_error_codes": [
+          "construction_marker_mismatch"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "cold_rebuild_after_forged_reachable_code_commit",
+        "run_id": "944c9467-7692-4bb9-a058-79c42355f96c",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "self_repinned_forged_original_receipt_blocked",
+        "run_id": "ed2c6e18-d0ee-4ed5-b934-afdbd69e9fd6",
+        "success": false,
+        "observed_error_codes": [
+          "construction_marker_mismatch"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "cold_rebuild_after_forged_original_receipt",
+        "run_id": "b0474605-e6c8-4280-b9fb-b99d48e5958d",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "self_repinned_missing_original_binding_blocked",
+        "run_id": "1d90914a-9456-4fa8-bdd3-7e177423b2a4",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "missing_original_binding_second_refresh_1_blocked",
+        "run_id": "2545dcd3-5639-4cae-b492-0824d62d4a26",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "missing_original_binding_second_refresh_2_blocked",
+        "run_id": "ab8b2685-2c71-4a1b-a142-1761bb0afa91",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "cold_rebuild_after_missing_original_binding",
+        "run_id": "1460a636-dfac-4326-a3d4-c8f8c2331bbe",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "self_repinned_missing_CAS_blocked",
+        "run_id": "aded4b5e-1c3b-4bfb-b8c8-7aedf846a55a",
+        "success": false,
+        "observed_error_codes": [
+          "construction_original_evidence_mismatch"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "missing_CAS_second_refresh_1_blocked",
+        "run_id": "9492ca9b-ed62-4690-b0f7-985575215758",
+        "success": false,
+        "observed_error_codes": [
+          "construction_original_evidence_mismatch"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "missing_CAS_second_refresh_2_blocked",
+        "run_id": "d5cf2c38-0506-4e78-bde5-fd2898325b41",
+        "success": false,
+        "observed_error_codes": [
+          "construction_original_evidence_mismatch"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "cold_rebuild_after_missing_CAS",
+        "run_id": "8b44fbc3-9da9-41ec-8f20-211a950c3367",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      },
+      {
+        "kind": "self_repinned_missing_marker_blocked",
+        "run_id": "d7936f3a-30ee-4c8d-be64-43b175a6f7b1",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "missing_marker_second_refresh_1_blocked",
+        "run_id": "8f67fccb-ab8a-49eb-85a9-252f37b95124",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "missing_marker_second_refresh_2_blocked",
+        "run_id": "b36a79dd-6fbe-4a7f-9d31-c599355db350",
+        "success": false,
+        "observed_error_codes": [
+          "construction_missing_original_state"
+        ],
+        "checks": []
+      },
+      {
+        "kind": "cold_rebuild_after_missing_marker",
+        "run_id": "586b9f13-0c69-4dc6-bd13-7f247cff72cf",
+        "success": true,
+        "observed_error_codes": [],
+        "checks": []
+      }
+    ],
+    "execution_pin": {
+      "path": "/workspace/work/hifld-coordinator/113/construction-state-runtime/execution.json",
+      "sha256": "de1e776ea3d50ad4d1c0da01e9ff250e8046750a04be362921fc0355c611cbdb",
+      "bytes": 130257
+    },
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/113/materialization-construction-state.log",
+      "sha256": "c80ada44948dc326dcbfc8861cbb3e00d549cf98f8ff97c1d43c2ecc7b49359a",
+      "bytes": 80356
+    },
+    "command": "PYTHONPATH=/workspace/hifld-worker-worktrees/113:/workspace/hifld-worker-worktrees/113/src PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH /workspace/hifld-worker-worktrees/19/.venv/bin/python scripts/verify_historical_tsunami_events_draft.py --runtime /workspace/work/hifld-coordinator/113/construction-state-runtime --capture-dir /workspace/work/hifld-coordinator/113/captures",
+    "output": {
+      "dataset_slug": "historical-tsunami-event-locations-",
+      "file_slug": "historical-tsunami-event-locations-",
+      "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-bec17bdffd7cc559",
+      "feature_count": 2590,
+      "reused": false
+    },
+    "terminal_parquet": {
+      "rows": 2590,
+      "all_original_fields": 76,
+      "schema": "UNIQUE_ID: int64 not null\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Unique ID\",\"defaultValue\":null,\"description' + 228\nYEAR: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Year\",\"defaultValue\":null,\"description\":\"{\\' + 204\nMONTH: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Month\",\"defaultValue\":null,\"description\":\"{' + 250\nDAY: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Day\",\"defaultValue\":null,\"description\":\"{\\\"' + 219\nHOUR: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Hour\",\"defaultValue\":null,\"description\":\"{\\' + 227\nMINUTE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Minute\",\"defaultValue\":null,\"description\":\"' + 234\nSECOND: float\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Second\",\"defaultValue\":null,\"description\":\"' + 232\nDATE_STRING: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Date String\",\"defaultValue\":null,\"descripti' + 253\nEVENT_DATE: timestamp[ms, tz=UTC]\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event Date\",\"defaultValue\":null,\"descriptio' + 266\nLATITUDE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Latitude\",\"defaultValue\":null,\"description\"' + 244\nLONGITUDE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Longitude\",\"defaultValue\":null,\"description' + 247\nLOCATION_NAME: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Location Name\",\"defaultValue\":null,\"descrip' + 267\nAREA: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Area\",\"defaultValue\":null,\"description\":\"{\\' + 246\nCOUNTRY: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Country\",\"defaultValue\":null,\"description\":' + 245\nREGION_CODE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Region Code\",\"defaultValue\":null,\"descripti' + 248\nREGION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Region\",\"defaultValue\":null,\"description\":\"' + 262\nCAUSE_CODE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Cause Code\",\"defaultValue\":null,\"descriptio' + 242\nCAUSE: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Cause\",\"defaultValue\":null,\"description\":\"{' + 257\nEVENT_VALIDITY_CODE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event Validity Code\",\"defaultValue\":null,\"d' + 288\nEVENT_VALIDITY: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event Validity\",\"defaultValue\":null,\"descri' + 287\nEQ_MAG_UNK: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Unknown Magnitude\",\"defaultValue\":null,\"des' + 304\nEQ_MAG_MB: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Body Wave Magnitude (MB)\",\"defaultValue\":nu' + 293\nEQ_MAG_MS: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Surface Wave Magnitude (MS)\",\"defaultValue\"' + 299\nEQ_MAG_MW: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Moment Magnitude (MW)\",\"defaultValue\":null,' + 301\nEQ_MAG_ML: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Local Magnitude (ML)\",\"defaultValue\":null,\"' + 294\nEQ_MAG_MFA: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Magnitude from Amplitude (MFA)\",\"defaultVal' + 306\nEQ_MAGNITUDE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Earthquake Magnitude\",\"defaultValue\":null,\"' + 313\nEQ_MAGNITUDE_RANK: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Earthquake Magnitude Rank\",\"defaultValue\":n' + 311\nEQ_DEPTH: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Earthquake Depth (km)\",\"defaultValue\":null,' + 303\nMAX_EVENT_RUNUP: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Maximum Tsunami Runup (m)\",\"defaultValue\":n' + 291\nTS_MT_ABE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Tsunami Magnitude Abe (TS_MT_ABE)\",\"default' + 279\nTS_MT_II: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Tsunami Magnitude II (TS_MT_II)\",\"defaultVa' + 289\nTS_INTENSITY: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Tsunami Intensity\",\"defaultValue\":null,\"des' + 293\nDAMAGE_MILLIONS_DOLLARS: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage (Million USD)\",\"defaultValue\":null,\"' + 288\nDAMAGE_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Amount Rank\",\"defaultValue\":null,\"de' + 301\nDAMAGE_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Description\",\"defaultValue\":null,\"de' + 294\nHOUSES_DESTROYED: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed\",\"defaultValue\":null,\"desc' + 251\nHOUSES_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Rank\",\"defaultValue\":null,' + 302\nHOUSES_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Description\",\"defaultValue' + 338\nDEATHS: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Deaths\",\"defaultValue\":null,\"description\":\"' + 243\nDEATHS_AMOUNT_ORDER: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Deaths Amount Order\",\"defaultValue\":null,\"d' + 321\nDEATHS_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Deaths Description\",\"defaultValue\":null,\"de' + 316\nINJURIES: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Injuries\",\"defaultValue\":null,\"description\"' + 239\nINJURIES_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Injuries Amount Order\",\"defaultValue\":null,' + 298\nINJURIES_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Injuries Description\",\"defaultValue\":null,\"' + 299\nMISSING: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons\",\"defaultValue\":null,\"descr' + 250\nMISSING_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons Amount Order\",\"defaultValue' + 290\nMISSING_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons Description\",\"defaultValue\"' + 307\nNUM_RUNUP: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Number of Runup Measurements\",\"defaultValue' + 275\nDAMAGE_MILLIONS_DOLLARS_TOTAL: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Damage (Million USD)\",\"defaultValue\":' + 308\nDAMAGE_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Severity Order\",\"defaultValue\":null,' + 299\nDAMAGE_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Severity Description\",\"defaultValue\"' + 304\nHOUSES_DESTROYED_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Destroyed\",\"defaultValue\":null' + 281\nHOUSES_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Amount Order\",\"defaultValu' + 295\nHOUSES_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Description\",\"defaultValue' + 308\nDEATHS_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Deaths\",\"defaultValue\":null,\"descript' + 288\nDEATHS_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Deaths Amount Order\",\"defaultValue\":n' + 308\nDEATHS_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Deaths Description\",\"defaultValue\":nu' + 304\nINJURIES_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Injuries\",\"defaultValue\":null,\"descri' + 273\nINJURIES_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Injuries Amount Order\",\"defaultValue\"' + 300\nINJURIES_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Injuries Description\",\"defaultValue\":' + 345\nMISSING_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Missing People\",\"defaultValue\":null,\"' + 267\nMISSING_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons Scale Order\",\"defaultValue\"' + 334\nMISSING_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Missing Description\",\"defaultValue\":n' + 334\nHOUSES_DAMAGED: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Damaged\",\"defaultValue\":null,\"descri' + 267\nHOUSES_DAMAGED_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Damaged Scale Order\",\"defaultValue\":' + 315\nHOUSES_DAM_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Damaged Description\",\"defaultValue\":' + 332\nHOUSES_DAMAGED_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Damaged\",\"defaultValue\":null,\"' + 277\nHOUSES_DAM_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Damaged Scale Order\",\"defaultV' + 327\nHOUSES_DAM_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Damaged Description\",\"defaultV' + 334\nCAUSE_SYMBOL: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Cause Code\",\"defaultValue\":null,\"descriptio' + 298\nURL: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Reference URL\",\"defaultValue\":null,\"descrip' + 259\nCOMMENTS: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Comments\",\"defaultValue\":null,\"description\"' + 298\nID: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event ID\",\"defaultValue\":null,\"description\"' + 244\nMAP_SYMBOL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Map Symbol Code\",\"defaultValue\":null,\"descr' + 288\nOCEANIC_TSUNAMI: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Oceanic Tsunami\",\"defaultValue\":null,\"descr' + 267\ngeometry: binary\n-- schema metadata --\ngeo: '{\"columns\":{\"geometry\":{\"bbox\":[-20034280.077556238,-10881563.71909' + 2437",
+      "sha256": "249dfcf646b5f4be6bea1a03e61043d02a19bf6ce9ba0f8af64f49520dc9171a",
+      "no_bbox_added": true,
+      "all_source_IDs_types_nulls_timestamp_ms_and_native_wkb_exact": true
+    },
+    "cache_probes": [
+      {
+        "kind": "approval_placeholder",
+        "failure_run_id": "9806e601-861c-4d58-b5fe-28eb64c564e5",
+        "restored_run_id": "0501b84b-cafb-4d3c-b226-8f360fa1f756",
+        "quarantine": "/workspace/work/hifld-coordinator/113/construction-state-runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-6c37721230e3425eb2b7e5d1ae379f10",
+        "all_rejected_bytes_preserved": true
+      },
+      {
+        "kind": "auxiliary_srs",
+        "failure_run_id": "f549a7d1-2a25-4104-b910-64eabcfd06e6",
+        "restored_run_id": "7c30614e-953c-4182-8ab0-04611f3cfb8b",
+        "quarantine": "/workspace/work/hifld-coordinator/113/construction-state-runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-220877b45bd64bf38cbc37f6256404ed",
+        "all_rejected_bytes_preserved": true
+      },
+      {
+        "kind": "forged_reachable_code_commit",
+        "failure_run_id": "8fd60f1a-f12d-4392-b1b3-f5ed9ee22096",
+        "restored_run_id": "944c9467-7692-4bb9-a058-79c42355f96c",
+        "quarantine": "/workspace/work/hifld-coordinator/113/construction-state-runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-a9c3e25246d7490881e8c0fff9cf3498",
+        "all_rejected_bytes_preserved": true
+      },
+      {
+        "kind": "forged_original_receipt",
+        "failure_run_id": "ed2c6e18-d0ee-4ed5-b934-afdbd69e9fd6",
+        "restored_run_id": "b0474605-e6c8-4280-b9fb-b99d48e5958d",
+        "quarantine": "/workspace/work/hifld-coordinator/113/construction-state-runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-02a1f4356bea4ad7bdefb80cb0189ce6",
+        "all_rejected_bytes_preserved": true
+      },
+      {
+        "kind": "missing_original_binding",
+        "failure_run_id": "1d90914a-9456-4fa8-bdd3-7e177423b2a4",
+        "restored_run_id": "1460a636-dfac-4326-a3d4-c8f8c2331bbe",
+        "quarantine": "/workspace/work/hifld-coordinator/113/construction-state-runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-9a25f14f36894a6db116441195efc422",
+        "all_rejected_bytes_preserved": true
+      },
+      {
+        "kind": "missing_CAS",
+        "failure_run_id": "aded4b5e-1c3b-4bfb-b8c8-7aedf846a55a",
+        "restored_run_id": "8b44fbc3-9da9-41ec-8f20-211a950c3367",
+        "quarantine": "/workspace/work/hifld-coordinator/113/construction-state-runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-638cfcf340fc41678495eb8d1eb12471",
+        "all_rejected_bytes_preserved": true
+      },
+      {
+        "kind": "missing_marker",
+        "failure_run_id": "d7936f3a-30ee-4c8d-be64-43b175a6f7b1",
+        "restored_run_id": "586b9f13-0c69-4dc6-bd13-7f247cff72cf",
+        "quarantine": "/workspace/work/hifld-coordinator/113/construction-state-runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-71b956ac91ae4d688702342368e400dd",
+        "all_rejected_bytes_preserved": true
+      }
+    ],
+    "all_original_raw_and_prior_fixture_preserved": true,
+    "normal_catalog_cycles": 2,
+    "synthetic_quality_failure_blocks": true
+  },
+  "acceptance": {
+    "source": false,
+    "baseline": false,
+    "contract": false,
+    "release": false
+  },
+  "production_publication": false,
+  "independent_repaired_head_review": "pending",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8"
+}
