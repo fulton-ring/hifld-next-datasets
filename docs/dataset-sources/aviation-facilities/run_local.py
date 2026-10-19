@@ -15,6 +15,7 @@ from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.faa import faa_aviation_facilities
 from dagster_hifld.checks import hifld_asset_checks, publish_catalog_quality_manifest
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.definitions import _iter_staged_version_paths, version_discovery_sensor
 from dagster_hifld.promotion import promote_immutable_objects
 from dagster_hifld.release_approval import ReleaseApprovalError
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -32,7 +33,6 @@ with DagsterInstance.from_config(str(state)) as instance:
     r=defs.resolve_job_def('aviation_real_ingest').execute_in_process(instance=instance,run_config=config)
     assert r.success;out=r.output_for_node(faa_aviation_facilities.op.name)
     result['ingest']={'run_id':r.run_id,'success':True,'output':out}
-    from dagster_hifld.definitions import _iter_staged_version_paths, version_discovery_sensor
     assert (a.SLUG,a.SLUG,out['version']) in list(_iter_staged_version_paths(stage))
     with mock.patch('dagster_hifld.definitions.StagingStorageResource.from_env',return_value=stage):
         discovery=version_discovery_sensor(build_sensor_context(instance=instance))
@@ -72,6 +72,9 @@ with DagsterInstance.from_config(str(state)) as instance:
         'unique_SITE_NO':audit['unique_SITE_NO'],'duplicate_SITE_NO_rows':audit['duplicate_SITE_NO_rows'],
         'effective_dates':sorted(set(table['EFF_DATE'].to_pylist())),'native_crs':'EPSG:3857',
         'bounds':audit['bounds'],'all_raw_receipts_and_bytes_verified':True}
+    if '--ingest-only' in sys.argv[3:]:
+        (runtime/'execution.json').write_text(json.dumps(result,indent=2)+'\n')
+        print(json.dumps(result,indent=2));sys.exit(0)
     # This sentinel models existing accepted data for preservation behavior only.
     published.write_key('accepted/preservation-fixture.json',b'{"release":"fixture-only-not-a-real-approval"}')
     inventory=lambda storage:{k:hashlib.sha256(storage.read_key(k)).hexdigest() for k in storage.list_prefix()}

@@ -93,6 +93,20 @@ class AviationTests(unittest.TestCase):
         self.data['bts_layer_after']=copy.deepcopy(self.data['bts_layer']);self.write()
         with self.assertRaisesRegex(ValueError,'schema drift'):a.inspect_capture(self.capture)
 
+    def test_all_replayed_http200_application_errors_quarantine_raw(self):
+        original=copy.deepcopy(self.data)
+        for name in original:
+            with self.subTest(name=name):
+                self.data=copy.deepcopy(original)
+                self.data[name]['error']={'code':500,'message':'Synthetic upstream failure'}
+                self.write()  # Deliberately repin receipt SHA/length: status200 is insufficient.
+                with self.assertRaisesRegex(ValueError,'application error'):
+                    _stage_aviation(self.capture,self.storage)
+        retained=list((self.root/'stage/quarantine').rglob('*.body'))
+        self.assertTrue(retained)
+        self.assertFalse(list((self.root/'stage').glob('aviation-facilities/aviation-facilities/*/draft_candidate/candidate.parquet')))
+        self.assertTrue(any(b'Synthetic upstream failure' in p.read_bytes() for p in retained))
+
     def test_fractional_boolean_overflow_and_duplicate_oid(self):
         for value in (True,1.5,2**63,None):
             self.data['bts_ids']['objectIds']=[value,2];self.write()

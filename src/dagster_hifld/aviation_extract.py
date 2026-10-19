@@ -48,7 +48,10 @@ def _strict_json(raw):
 
 
 def _json(path: Path):
-    return _strict_json(path.read_bytes())
+    result = _strict_json(path.read_bytes())
+    if not isinstance(result, dict) or 'error' in result:
+        raise ValueError('ArcGIS application error or nonobject response: ' + path.name)
+    return result
 
 
 def _require_review_staging(staging):
