@@ -1,0 +1,104 @@
+{
+  "adapter_module_path": "/workspace/hifld-worker-worktrees/10/src/dagster_hifld/faa_airspace.py",
+  "capture_dir": "/workspace/work/hifld-coordinator/10",
+  "local_storage": "/workspace/work/hifld-coordinator/10/e2e-final",
+  "approval_registry_present": false,
+  "shared_verifier_dependency": "eab40866ef4289cb93b952b1cf7244ff259c372d",
+  "ingest": {
+    "run_id": "d3e3406f-0f47-4969-a2fb-813da078f7e9",
+    "success": true,
+    "output": {
+      "version": "candidate-980c60667faba3e4f4c384f5",
+      "feature_count": 477,
+      "quarantine_prefix": "airspace-boundaries-1/airspace-boundaries-1/candidate-980c60667faba3e4f4c384f5/quarantine",
+      "candidate_sha256": "678d1a2cf09a44272514a8ea090072cb081aa5f3acd065f2056a1549432b1ef9",
+      "promotion_allowed": false
+    }
+  },
+  "assertions": {
+    "rows": 477,
+    "columns": [
+      "OBJECTID",
+      "GLOBAL_ID",
+      "IDENT",
+      "NAME",
+      "TYPE_CODE",
+      "CLASS",
+      "LOCAL_TYPE",
+      "ICAO_ID",
+      "SECTOR",
+      "LEVEL_",
+      "UPPER_DESC",
+      "UPPER_VAL",
+      "UPPER_UOM",
+      "UPPER_CODE",
+      "LOWER_DESC",
+      "LOWER_VAL",
+      "LOWER_UOM",
+      "LOWER_CODE",
+      "COMM_NAME",
+      "ONSHORE",
+      "EXCLUSION",
+      "WKHR_CODE",
+      "WKHR_RMK",
+      "CITY",
+      "STATE",
+      "COUNTRY",
+      "ADHP_ID",
+      "MIL_CODE",
+      "REMARKS",
+      "AK_LOW",
+      "AK_HIGH",
+      "US_LOW",
+      "US_HIGH",
+      "US_AREA",
+      "PACIFIC",
+      "Shape__Area",
+      "Shape__Length",
+      "GlobalID",
+      "geometry",
+      "__source_geojson_feature_id"
+    ],
+    "unique_GLOBAL_ID": 477,
+    "invalid_geometry_count": 22,
+    "raw_source_native_sha256": "ea527b93a0113d87d8377f306b44f3ce50a2689401e9f83c813d3644e985e82b",
+    "candidate_sha256": "678d1a2cf09a44272514a8ea090072cb081aa5f3acd065f2056a1549432b1ef9"
+  },
+  "normal_graph": {
+    "run_id": "a83149bb-ea83-429e-872a-fea73135276e",
+    "success": false,
+    "checks": [
+      {
+        "name": "quality_manifest",
+        "passed": false
+      }
+    ],
+    "quality_manifest": {
+      "bounds": [
+        -180.0,
+        -30.000006,
+        180.0,
+        90.0
+      ],
+      "catalog_mode": "streaming_geospatial",
+      "columns_hash": "9df8470e152dbca8f489a1e0ea134500b6c8edb1496041270cce5f9825507706",
+      "feature_count": 477,
+      "geometry_type": "Mixed",
+      "invalid_geometry_count": 22,
+      "quality_check_passed": false,
+      "sampled_feature_count": 477,
+      "sampled_invalid_geometry_count": 22,
+      "sampled_null_geometry_count": 0,
+      "spatial_status": "spatial",
+      "version": "v1"
+    }
+  },
+  "verify_probe": {
+    "run_id": "e7742332-4088-4a6b-a119-f7c69ae33dbe",
+    "success": false,
+    "reason": "missing_independent_release_approval_registry"
+  },
+  "direct_promotion_error": "missing_independent_release_approval_registry",
+  "accepted_inventory_unchanged": true,
+  "staged_candidate_preserved": true
+}
