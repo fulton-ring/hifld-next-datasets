@@ -1,0 +1,40 @@
+{
+  "actual_anonymous_capture_by": "coordinator",
+  "independent_reviewer_body_receipt_audit": true,
+  "source_head": "25fc2342036d21e94ed4191528da2224580c1916",
+  "inputs": [
+    {
+      "name": "ibc-zip",
+      "sha256": "eb327459528b87cbc27e55ccc6bfd6982562c75559823a00b6dc50c04abcaab1",
+      "bytes": 258764,
+      "wire_bytes": 258764,
+      "encoding": "identity",
+      "source_receipt_verified": true
+    },
+    {
+      "name": "ibc-digital",
+      "sha256": "d840f22df49c99cd6ca807f85edd416322422d18b1f2898032267e2afc0f1cc6",
+      "bytes": 10155,
+      "wire_bytes": 10155,
+      "encoding": "identity",
+      "source_receipt_verified": true
+    },
+    {
+      "name": "ibc-terms",
+      "sha256": "df8d3cda6eb70b9471958a0fdea208739a26db7feb98fe5c8581180348d2572d",
+      "bytes": 14871,
+      "wire_bytes": 14871,
+      "encoding": "identity",
+      "source_receipt_verified": true
+    },
+    {
+      "name": "ibc-about",
+      "sha256": "419b2740d7171340e763789fcff608c18b04fcbad6200b7eb88a456901a6bfaa",
+      "bytes": 17941,
+      "wire_bytes": 17941,
+      "encoding": "identity",
+      "source_receipt_verified": true
+    }
+  ],
+  "approved": false
+}

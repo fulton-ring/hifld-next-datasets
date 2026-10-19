@@ -72,7 +72,8 @@
     },
     "canonical_commit": "Local-only complete hidden sibling version build and atomic directory rename under per-version advisory lock. OSError or KeyboardInterrupt before commit leaves no discoverable SEMVER candidate.",
     "raw_receipts": "Original receipt bytes are retained before parsing; malformed/duplicate receipts are also copied losslessly into quarantine.",
-    "license_inputs": "ZIP uses embedded dataset OGLCanada; each supporting HTML input cites website terms, with applicability unresolved rather than blanket OGL."
+    "license_inputs": "ZIP uses embedded dataset OGLCanada; each supporting HTML input cites website terms, with applicability unresolved rather than blanket OGL.",
+    "latest_source_code_head": "25fc2342036d21e94ed4191528da2224580c1916"
   },
   "validation": {
     "focused_tests": 10,
@@ -267,6 +268,31 @@
       "prior_local_fixture_preserved": true
     },
     "latest_full_suite": {
+      "source_code_head": "25fc2342036d21e94ed4191528da2224580c1916",
+      "tests": 521,
+      "passed": 520,
+      "skipped": 1,
+      "errors": 0,
+      "seconds": 218.846,
+      "status": "PASS local suite; opt-in production E2E skipped",
+      "sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "log": "evidence/cache-transport-repair/full-suite-current.log",
+      "historical_environment_error": "Prior run lacked installed Tippecanoe directory on PATH;2 errors preserved in full-suite-missing-path-historical.log. Corrected PATH rerun above, no source change.",
+      "ci_claim": false
+    },
+    "cache_transport_repair": {
+      "summary": "evidence/cache-transport-repair/summary.json",
+      "actual_13_run_execution": "evidence/cache-transport-repair/actual-13-run-execution.json",
+      "focused_tests": 16,
+      "independent_focused_tests": 16,
+      "actual_4_live_receipts_retained": true,
+      "all_30_source_values_types_wkb_preserved": true,
+      "actual_two_catalog_cycles_and_postcycle_reuse": true,
+      "actual_missing_approval_and_failed_quality_preserve_prior_fixture": true,
+      "native_container_bytes_unchanged": "bb84e2991c7ffbd1cc6195587d2193b9cae5f34a79b7fb060430607578802201",
+      "final_exact_pr_head_review": "Source25 independently verified; final committed evidence-only head consistency review follows"
+    },
+    "historical_full_suite_at_original_review": {
       "code_head": "b9bf9cb0ad7113eb3934ad1f3c7c450324b23d56",
       "tests": 483,
       "passed": 482,
