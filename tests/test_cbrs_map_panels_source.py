@@ -1,5 +1,8 @@
 """Real complete captures establish draft fidelity; synthetic negatives grant no approval."""
 import copy
+import gzip
+
+import httpx
 import json
 import sqlite3
 import struct
@@ -171,7 +174,7 @@ class PanelsTests(unittest.TestCase):
     def test_live_partial_attempts_retained(self):
         import httpx
         class Response:
-            status_code=200;url=s.URLS['fws_data'];headers={}
+            status_code=200;url=s.URLS['fws_data'];headers={};num_bytes_downloaded=7
             def __enter__(self):return self
             def __exit__(self,*args):pass
             def iter_bytes(self,**kwargs):yield b'partial';raise httpx.ReadError('reset')
@@ -183,6 +186,37 @@ class PanelsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):s.acquire(StagingStorageResource(local_dir=tmp),None)
             self.assertEqual(len(list(Path(tmp).rglob('response.body'))),3)
             self.assertFalse(Path(tmp,s.SLUG).exists())
+
+    def test_compressed_transport_wire_count_complete_truncated_partial(self):
+        # Use real HTTPX decoding/accounting even though the deterministic server
+        # intentionally ignores Accept-Encoding: identity.
+        OriginalClient=httpx.Client
+        decoded=bytes(range(256))*800;wire=gzip.compress(decoded,mtime=0)
+        class Interrupted(httpx.SyncByteStream):
+            def __iter__(self):
+                yield wire[:len(wire)*3//4]
+                raise httpx.ReadError('reset after compressed prefix')
+        for mode in ['complete','truncated','partial']:
+            requests=[]
+            def serve(request):
+                requests.append(request)
+                self.assertEqual(request.headers['accept-encoding'],'identity')
+                stream=Interrupted() if mode=='partial' else httpx.ByteStream(wire if mode=='complete' else wire[:-6])
+                return httpx.Response(200,headers={'content-encoding':'gzip','content-length':str(len(wire))},stream=stream)
+            def client(**kwargs):return OriginalClient(transport=httpx.MockTransport(serve),**kwargs)
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as tmp,patch.object(s,'URLS',{'probe':s.LANDING}),patch.object(s.httpx,'Client',side_effect=client):
+                store=StagingStorageResource(local_dir=tmp)
+                if mode=='complete':
+                    result=s.acquire(store,None);body,receipt=result['probe']
+                    self.assertEqual(body,decoded);self.assertEqual(receipt['byte_length'],len(decoded));self.assertEqual(receipt['wire_byte_length'],len(wire))
+                    self.assertNotEqual(receipt['byte_length'],receipt['wire_byte_length']);self.assertEqual(len(requests),1)
+                else:
+                    with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):s.acquire(store,None)
+                    bodies=list(Path(tmp).rglob('response.body'));self.assertEqual(len(bodies),3);self.assertEqual(len(requests),3)
+                    for path in bodies:
+                        partial=path.read_bytes();self.assertTrue(partial and decoded.startswith(partial))
+                        receipt=json.loads((path.parent/'receipt.json').read_bytes());self.assertTrue(receipt['partial']);self.assertLess(receipt['wire_byte_length'],len(wire))
+                    self.assertFalse(Path(tmp,s.SLUG).exists())
 
     def test_json_error_duplicate_nonfinite(self):
         for body in [b'[]',b'{"error":{}}',b'{"x":1,"x":2}',b'{"x":NaN}']:

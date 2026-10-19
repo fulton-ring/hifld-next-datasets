@@ -136,21 +136,25 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                 raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
         else:
             for attempt in range(3):
+                response=None
                 body=b'';receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
-                    with httpx.Client(follow_redirects=False,timeout=45) as client:
+                    with httpx.Client(follow_redirects=False,timeout=45,headers={'Accept-Encoding':'identity'}) as client:
                         with client.stream('GET',url) as response:
-                            receipt.update(final_url=str(response.url),status=response.status_code)
+                            receipt.update(final_url=str(response.url),status=response.status_code,
+                                content_encoding=response.headers.get('content-encoding','identity'),
+                                content_length_header=response.headers.get('content-length'))
                             for block in response.iter_bytes(chunk_size=65536):
                                 body+=block
                                 if len(body)>MAX_BYTES: raise CBRSQuarantineError('response_size_limit')
-                            receipt.update(byte_length=len(body),sha256=sha(body))
+                            receipt.update(byte_length=len(body),sha256=sha(body),wire_byte_length=response.num_bytes_downloaded)
                             validate_receipt(body,receipt,url)
-                            if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=len(body):
+                            if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=response.num_bytes_downloaded:
                                 raise CBRSQuarantineError('incomplete_content_length')
                     break
                 except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                     receipt.update(byte_length=len(body),sha256=sha(body),partial=True)
+                    if response is not None:receipt['wire_byte_length']=response.num_bytes_downloaded
                     location=quarantine(storage,body,receipt,str(exc))
                     if attempt==2: raise CBRSQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
         captures[name]=(body,receipt)
