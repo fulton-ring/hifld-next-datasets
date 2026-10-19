@@ -1,7 +1,6 @@
 """Draft source fidelity/denial behavior; fixtures confer no release approval."""
 import copy
 import json
-import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,6 +49,10 @@ class AquifersTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     source.stage_aquifers_candidate(storage)
                 fetch.assert_not_called()
+                with self.assertRaises(ValueError):
+                    source.expose_completed_candidate(storage,'v0.0.0-draft-test',{}, {})
+                with self.assertRaises(ValueError):
+                    source.immutable(storage,'never-write',b'never')
             with build_schedule_context(resources={'staging_storage': storage}) as context:
                 with self.assertRaises(ScheduleExecutionError) as caught:
                     usgs_aquifers_draft_refresh_schedule.evaluate_tick(context)
@@ -161,7 +164,8 @@ class AquifersTests(unittest.TestCase):
         sentinel.parent.mkdir();sentinel.write_bytes(b'prior local fixture; no dataset acceptance')
         extra='candidate/unapproved-extra.parquet'
         cases=['parquet-value','parquet-integer-width','parquet-native-geometry',
-               'parquet-nullability','geopackage-value','provenance','extra-output','missing-output']
+               'parquet-nullability','parquet-malformed-geometry','geopackage-value','provenance',
+               'extra-output','missing-output','nonobject-roster']
         observed=[]
         for case in cases:
             ready=json.loads(original_marker)
@@ -176,13 +180,18 @@ class AquifersTests(unittest.TestCase):
                     table=table.set_column(table.schema.get_field_index('AQ_NAME'),pa.field('AQ_NAME',pa.string(),nullable=True),table['AQ_NAME'])
                 else:
                     values=table['geometry'].to_pylist()
-                    values[2]=shapely.make_valid(shapely.from_wkb(values[2])).wkb
+                    if case=='parquet-malformed-geometry':values[0]=b'invalid WKB'
+                    else:values[2]=shapely.make_valid(shapely.from_wkb(values[2])).wkb
                     table=table.set_column(table.schema.get_field_index('geometry'),table.schema.field('geometry'),pa.array(values,pa.binary()))
                 pq.write_table(table,parquet)
                 ready['objects']['candidate/typed-source.parquet']=source.sha(parquet.read_bytes())
             elif case=='geopackage-value':
-                with sqlite3.connect(geopackage) as database:
-                    database.execute("UPDATE aquifers SET AQ_NAME='INDEPENDENT CACHE TAMPER' WHERE OBJECTID_1=1")
+                with fiona.open(geopackage) as dataset:
+                    physical,crs=dict(dataset.schema),dataset.crs
+                    features=[{'properties':dict(row['properties']),'geometry':mapping(shape(row['geometry']))} for row in dataset]
+                features[0]['properties']['AQ_NAME']='INDEPENDENT CACHE TAMPER'
+                with fiona.open(geopackage,'w',driver='GPKG',layer=source.SLUG,schema=physical,crs=crs) as destination:
+                    destination.writerecords(features)
                 ready['objects']['geopackage/aquifers.gpkg']=source.sha(geopackage.read_bytes())
             elif case=='provenance':
                 value=json.loads(manifest.read_text());value['inputs'][0]['attribution']='Invented attribution'
@@ -191,8 +200,10 @@ class AquifersTests(unittest.TestCase):
             elif case=='extra-output':
                 (prefix/extra).write_bytes(b'unapproved extra output')
                 ready['objects'][extra]=source.sha((prefix/extra).read_bytes())
-            else:
+            elif case=='missing-output':
                 parquet.unlink()
+            else:
+                ready['objects']=list(ready['objects'])
             marker.write_bytes(source.encode(ready))
             with self.subTest(cache_case=case),self.assertRaises(source.AquifersQuarantineError) as caught:
                 source.stage_aquifers_candidate(storage,**kwargs)

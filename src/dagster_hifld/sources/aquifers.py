@@ -88,6 +88,7 @@ def require_local(storage: StagingStorageResource) -> None:
 
 
 def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
+    require_local(storage)
     before = storage.object_snapshot(key)
     if before is not None:
         if storage.read_key(key) != body or storage.object_snapshot(key) != before:
@@ -275,6 +276,7 @@ def candidate_object_names() -> set[str]:
 
 
 def local_candidate_path(storage: StagingStorageResource, version: str) -> Path:
+    require_local(storage)
     root = Path(storage.local_dir).resolve()
     path = root / storage.build_target_location(SLUG, SLUG, version, '')
     if not path.resolve().is_relative_to(root):
@@ -339,6 +341,8 @@ def validate_cached_candidate(storage: StagingStorageResource, version: str, rec
     marker = 'metadata/aquifers_candidate_ready.json'
     ready = strict_json(storage.read_key(f'{prefix}/{marker}'))
     names = candidate_object_names()
+    if not isinstance(ready.get('objects'), dict):
+        raise AquifersQuarantineError('existing_candidate_inventory_must_be_object')
     # These three metadata products belong to the normal downstream catalog.
     # Additional source files, derivatives, layers or self-added roster entries fail.
     downstream = {'metadata/data_dictionary.json', 'metadata/quality_manifest.json',
@@ -539,7 +543,8 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
             expose_completed_candidate(storage, version, payloads, ready)
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
-    except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
+    except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile,
+            sqlite3.Error, fiona.errors.FionaError, shapely.errors.ShapelyError) as exc:
         location = quarantine(storage, body, receipt, str(exc))
         if cached_path is not None and (cached_path.exists() or cached_path.is_symlink()):
             destination = Path(storage.local_dir).resolve() / storage._ensure_prefixed(location) / 'candidate'
