@@ -445,6 +445,35 @@
       ]
     },
     "ingestion_or_production_run": false,
-    "independent_review": "Dispatcher responsibility; not yet performed"
+    "independent_review": "Dispatcher reviewed head 18741ad744019219d5bd52083c0f83268cf63f71 and requested historical replay and startup-test follow-ups. Follow-up head requires fresh dispatcher review.",
+    "targeted_follow_up": {
+      "checked_at": "2026-10-19T03:59:27.554944+00:00",
+      "startup_exports_source": "/workspace/.setup/install-hifld.sh lines 4-7; installer not executed",
+      "tippecanoe_path": "/workspace/.tools/tippecanoe/usr/bin/tippecanoe",
+      "tile_join_path": "/workspace/.tools/tippecanoe/usr/bin/tile-join",
+      "both_binaries_present_and_executable": true,
+      "tippecanoe_version": "2.53.0",
+      "command": "PYTHONPATH=tests:src uv run --frozen --no-sync python -m unittest -v test_pipeline_update.PipelineUpdateTests.test_local_e2e_converts_and_publishes_version_without_api test_real_gcs_e2e.GcsE2EHelperTests.test_smoke_helper_verifies_storage_and_metadata_without_api",
+      "tests_run": 2,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "duration_seconds": 0.68,
+      "result": "passed",
+      "full_suite_rerun": false,
+      "code_or_test_changes": false,
+      "remaining_suite_limitation": "Missing sibling hifld-next-iac/environments/prod/dagster.tf remains unresolved; original 447-test suite result is preserved."
+    }
+  },
+  "historical_capture": {
+    "archive": "evidence/historical-captures-20261019.tar.gz",
+    "sha256": "18fcd8e7ca75cea5fcc2690a262214bbeff908e0a0c139b15ed369ae351bcc4a",
+    "compressed_bytes": 2604349,
+    "uncompressed_bytes": 7674177,
+    "successful_response_bodies": 10,
+    "original_response_hashes": "evidence/requests.json",
+    "safe_extraction_and_replay": "evidence/HISTORICAL-REPLAY.md",
+    "requires_live_refetch": false,
+    "scope": "Existing historical captures for this 87-feature pilot only; original bytes verified before archiving."
   }
 }
