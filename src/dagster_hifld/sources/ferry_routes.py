@@ -333,22 +333,41 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
 
 
 
-def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
-    """Pin first construction provenance outside the candidate's self-pinned cache.
+def construction_history(storage,fingerprint):
+    """Independent first-use evidence must survive whole primary quarantine."""
+    state=f'_construction-state/{SLUG}/{fingerprint}.json'
+    evidence=f'_construction-evidence/{SLUG}/{fingerprint}/'
+    return storage.object_exists(state) or bool(storage.list_prefix(evidence))
 
-    A docs-only later commit may reuse identical processing code. Its new fetch
-    receipts are still retained, while the existing candidate keeps its actual
-    original receipts and construction commit. Cache labels cannot rewrite them.
+
+def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
+    """Bind first construction through independent immutable state and full CAS.
+
+    Neither loss/quarantine of the primary alias nor repeated retries can turn a
+    previously used namespace into a fresh construction. Trust restoration is an
+    explicit operator action using exact retained original evidence, never a
+    reconstruction of trust from candidate labels or later observations.
     """
     key=f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'
+    state_key=f'_construction-state/{SLUG}/{fingerprint}.json'
+    evidence_prefix=f'_construction-evidence/{SLUG}/{fingerprint}/'
+    version=f'v0.0.0-draft-bts-ncfo2020-{fingerprint[:16]}'
     if not storage.object_exists(key):
-        if not create: raise FerryRouteQuarantineError('missing_original_provenance_bundle')
+        if construction_history(storage,fingerprint):
+            raise FerryRouteQuarantineError('missing_original_provenance_bundle_after_first_construction')
+        if not create:raise FerryRouteQuarantineError('missing_original_provenance_bundle')
         validate_release_provenance(manifest)
         validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
-        bundle={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt} for name,(body,receipt) in captures.items()}}
-        immutable(storage,key,encode(bundle))
-    bundle=strict_json(storage.read_key(key))
-    if set(bundle)!= {'manifest','captures'} or set(bundle['captures'])!=set(URLS):
+        bundle={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt}for name,(body,receipt)in captures.items()}}
+        body=encode(bundle);evidence_key=evidence_prefix+digest(body)+'.json'
+        # A complete verified private candidate precedes all trust records.
+        # Preserve the complete original first, including partial write errors.
+        immutable(storage,evidence_key,body)
+        immutable(storage,state_key,encode({'schema_version':1,'version':version,'processing_fingerprint':fingerprint,
+            'original_bundle_sha256':digest(body),'original_bundle_evidence_key':evidence_key}))
+        immutable(storage,key,body)
+    bundle_body=storage.read_key(key);bundle=strict_json(bundle_body)
+    if set(bundle)!={'manifest','captures'}or set(bundle['captures'])!=set(URLS):
         raise FerryRouteQuarantineError('original_provenance_bundle_roster_drift')
     original={}
     for name,item in bundle['captures'].items():
@@ -357,10 +376,17 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,
         original[name]=(storage.read_key(expected),receipt)
     expected_manifest=manifest_for(original,identity)
     for name,value in expected_manifest.items():
-        if name!='code_commit' and bundle['manifest'].get(name)!=value:
+        if name!='code_commit'and bundle['manifest'].get(name)!=value:
             raise FerryRouteQuarantineError('original_provenance_bundle_manifest_drift')
     validate_release_provenance(bundle['manifest'])
     validate_construction_code_identity(Path(__file__).parents[3],bundle['manifest']['code_commit'],identity['files'])
+    evidence_key=evidence_prefix+digest(bundle_body)+'.json'
+    expected_state={'schema_version':1,'version':version,'processing_fingerprint':fingerprint,
+        'original_bundle_sha256':digest(bundle_body),'original_bundle_evidence_key':evidence_key}
+    if not storage.object_exists(state_key)or strict_json(storage.read_key(state_key))!=expected_state:
+        raise FerryRouteQuarantineError('missing_or_invalid_first_construction_state')
+    if not storage.object_exists(evidence_key)or storage.read_key(evidence_key)!=bundle_body:
+        raise FerryRouteQuarantineError('missing_or_invalid_original_construction_evidence')
     return original,bundle['manifest']
 
 
@@ -406,14 +432,15 @@ def stage_ferry_routes(storage,*,capture_dir=None):
             # A previous valid construction may survive a rejected candidate.
             # Read its binding but never create an anchor until this private
             # reconstruction has passed the full native output verification.
-            if binding.exists():
+            if binding.exists() or construction_history(storage,fingerprint):
                 try:
                     captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
                     table,audit=inspect_originals(captures)
                 except (ValueError,TypeError,KeyError,OSError,RuntimeError) as exc:
                     target=base/'_quarantine'/SLUG/('invalid-provenance-'+uuid4().hex)
-                    target.parent.mkdir(parents=True,exist_ok=True);os.rename(binding,target)
-                    raise FerryRouteQuarantineError('invalid_original_provenance_preserved:'+str(target)+':'+str(exc)) from exc
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    if binding.exists():os.rename(binding,target)
+                    raise FerryRouteQuarantineError('original_construction_trust_requires_exact_restore:'+str(exc)) from exc
             build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='candidate-',dir=build) as tmp:
                 temp=Path(tmp)

@@ -91,7 +91,15 @@ class FerryOriginalCaptureTests(unittest.TestCase):
         (self.root/f.READY).unlink();self.reject('invalid_cache_moved_intact')
     def bundle(self):return next((self.path/'_source-provenance').rglob('bundle.json'))
     def test_missing_original_anchor_never_bootstrapped_from_existing_cache(self):
-        self.bundle().unlink();self.reject('missing_original_provenance_bundle');self.assertFalse(list((self.path/'_source-provenance').rglob('bundle.json')))
+        bundle=self.bundle();original=bundle.read_bytes();bundle.unlink()
+        state=self.state().read_bytes();evidence=self.evidence().read_bytes()
+        self.reject('missing_original_provenance_bundle_after_first_construction')
+        for attempt in range(2):
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):self.refresh()
+            self.assertFalse(self.root.exists());self.assertFalse(bundle.exists())
+            self.assertEqual(self.state().read_bytes(),state);self.assertEqual(self.evidence().read_bytes(),evidence)
+        self.restore_primary()
+        self.assertEqual(bundle.read_bytes(),original)
         self.assertFalse(self.refresh()['reused']);self.assertTrue(self.refresh()['reused'])
     def test_malformed_external_anchor_and_candidate_preserved_outside_discovery(self):
         self.bundle().write_bytes(b'{"manifest":{}}');self.reject('original_provenance_bundle_roster_drift')
@@ -110,6 +118,8 @@ class FerryOriginalCaptureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory()as tmp,patch.object(f,'reconcile_outputs',side_effect=f.FerryRouteQuarantineError('test_only_native_construction_failure')):
             with self.assertRaisesRegex(f.FerryRouteQuarantineError,'test_only_native_construction_failure'):f.stage_ferry_routes(f.StagingStorageResource(use_local=True,local_dir=tmp),capture_dir=CAPTURE)
             self.assertFalse(list(Path(tmp).glob('_source-provenance/**/bundle.json')))
+            self.assertFalse(list(Path(tmp).glob('_construction-state/**/*.json')))
+            self.assertFalse(list(Path(tmp).glob('_construction-evidence/**/*.json')))
             self.assertFalse(list(Path(tmp).glob(f'{f.SLUG}/{f.SLUG}/v*')))
 
     def test_metadata_only_refresh_keeps_original_audit_and_retains_new_observation(self):
@@ -122,3 +132,45 @@ class FerryOriginalCaptureTests(unittest.TestCase):
         self.assertTrue(result['reused'])
         self.assertEqual(before,{str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()})
         self.assertEqual((self.path/f'_raw-captures/{f.SLUG}/{f.digest(body)}/source_item.body').read_bytes(),body)
+
+    def state(self):return next((self.path/'_construction-state'/f.SLUG).glob('*.json'))
+    def evidence(self):
+        marker=json.loads(self.state().read_text());return self.path/marker['original_bundle_evidence_key']
+    def restore_primary(self):
+        marker=json.loads(self.state().read_text());body=self.evidence().read_bytes()
+        self.assertEqual(f.digest(body),marker['original_bundle_sha256'])
+        fingerprint=marker['processing_fingerprint'];path=self.path/f'_source-provenance/{f.SLUG}/{fingerprint}/bundle.json'
+        path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
+    def test_missing_first_state_never_bootstrapped_after_primary_quarantine(self):
+        state=self.state();original=state.read_bytes();state.unlink()
+        self.reject('missing_or_invalid_first_construction_state')
+        with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):self.refresh()
+        self.assertFalse(state.exists());self.assertFalse(self.root.exists())
+        state.parent.mkdir(parents=True,exist_ok=True);state.write_bytes(original);self.restore_primary()
+        self.assertFalse(self.refresh()['reused'])
+    def test_coforged_primary_and_state_cannot_replace_original_CAS_evidence(self):
+        primary=self.bundle();body=json.loads(primary.read_text());body['manifest']['code_commit']='0'*40;primary.write_bytes(f.encode(body))
+        self.reject('construction')
+        marker_before=self.state().read_bytes()
+        with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):self.refresh()
+        self.assertEqual(self.state().read_bytes(),marker_before)
+        self.restore_primary();self.assertFalse(self.refresh()['reused'])
+    def test_invalid_first_state_kept_permanent_and_repeat_rejected(self):
+        state=self.state();marker=json.loads(state.read_text());marker['original_bundle_sha256']='0'*64;state.write_bytes(f.encode(marker));bad=state.read_bytes()
+        self.reject('missing_or_invalid_first_construction_state')
+        with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):self.refresh()
+        self.assertEqual(state.read_bytes(),bad);self.assertFalse(self.root.exists())
+    def test_first_primary_write_failure_cannot_create_new_history_on_retry(self):
+        original=f.immutable
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);storage=f.StagingStorageResource(use_local=True,local_dir=tmp)
+            def failure(store,key,body):
+                if key.endswith('/bundle.json'):raise OSError('test_only_primary_write_failed_after_independent_history')
+                return original(store,key,body)
+            with patch.object(f,'immutable',side_effect=failure):
+                with self.assertRaisesRegex(f.FerryRouteQuarantineError,'primary_write_failed'):f.stage_ferry_routes(storage,capture_dir=CAPTURE)
+            records={str(p.relative_to(root)):p.read_bytes()for base in ['_construction-state','_construction-evidence']for p in(root/base).rglob('*.json')}
+            self.assertEqual(len(records),2)
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'after_first_construction'):f.stage_ferry_routes(storage,capture_dir=CAPTURE)
+            self.assertEqual(records,{str(p.relative_to(root)):p.read_bytes()for base in ['_construction-state','_construction-evidence']for p in(root/base).rglob('*.json')})
+            self.assertFalse(list(root.glob(f'{f.SLUG}/{f.SLUG}/v*')))
