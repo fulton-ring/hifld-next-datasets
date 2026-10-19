@@ -9,8 +9,12 @@ from shapely import from_wkb
 from pyproj import CRS
 from dagster_hifld import aviation_extract as a
 
-root=Path(sys.argv[1]);capture=root/'capture-bound'
-base=pq.read_table(root/'baseline.parquet');originals=[f for p in sorted(capture.glob('page-*.body')) for f in a._json(p)['features']]
+root=Path(sys.argv[1]);root.mkdir(parents=True,exist_ok=True)
+capture=Path(sys.argv[2]) if len(sys.argv)>2 else root/'capture-bound'
+evidence=Path(__file__).parent/'evidence'
+baseline=root/'baseline.parquet' if (root/'baseline.parquet').is_file() else evidence/'baseline.parquet'
+pin=root/'baseline-pin.json' if (root/'baseline-pin.json').is_file() else evidence/'baseline-pin.json'
+base=pq.read_table(baseline);originals=[f for p in sorted(capture.glob('page-*.body')) for f in a._json(p)['features']]
 source=[f['attributes'] for f in originals];old=base.to_pylist();fields=a.inspect_capture(capture)['fields'];declared={f['name']:f for f in fields}
 assert len({r['ARPT_ID'] for r in source})==len(source) and len({r['ARPT_ID'] for r in old})==len(old)
 before={r['ARPT_ID']:r for r in old};after={r['ARPT_ID']:r for r in source};geom={f['attributes']['ARPT_ID']:a._exact_point(f['geometry']) for f in originals}
@@ -27,7 +31,7 @@ for identifier in shared:
 geo=json.loads(base.schema.metadata[b'geo']);native_crs=CRS.from_json_dict(geo['columns'][geo['primary_column']]['crs'])
 result={'acceptance':None,'promotion_allowed':False,'comparison':'all rows/all common attributes, exact native geometry, full identifier census and physical schema',
     'diagnostic_join':'ARPT_ID strings currently unique in both; this is diagnostic correspondence, not an approved stable-key mapping',
-    'baseline_pin':json.loads((root/'baseline-pin.json').read_bytes()),'baseline_rows':base.num_rows,'source_rows':len(source),
+    'baseline_pin':json.loads(pin.read_bytes()),'baseline_rows':base.num_rows,'source_rows':len(source),
     'source_schema_fields':len(fields),'baseline_columns':len(base.column_names),'baseline_crs':native_crs.to_string(),'source_crs':'EPSG:3857',
     'ARPT_ID':{'matched':len(shared),'added':len(set(after)-set(before)),'removed':len(set(before)-set(after)),
         'added_all':sorted(set(after)-set(before)),'removed_all':sorted(set(before)-set(after))},

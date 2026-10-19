@@ -1,0 +1,117 @@
+{
+  "adapter_module": "/workspace/hifld-worker-worktrees/20/src/dagster_hifld/aviation_extract.py",
+  "capture": "/workspace/work/hifld-coordinator/20/capture-bound",
+  "runtime": "/workspace/work/hifld-coordinator/20/materialization-final",
+  "approval_registry_present": false,
+  "ingest": {
+    "run_id": "07a98eb3-23a7-4d8d-9226-fb9123e2edaf",
+    "success": true,
+    "output": {
+      "version": "v0.0.0-draft-3774273f41d7f8cb297a63fd",
+      "rows": 19427,
+      "source": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Aviation_Facilities/FeatureServer/0",
+      "candidate_sha256": "df3f63f78041ddc55246b21bfbe790eddb68180e54add70daaebf7064bf6a139",
+      "promotion_allowed": false
+    }
+  },
+  "idempotent_replay": {
+    "run_id": "eb725b7d-3465-467d-86d8-1aaa6fc6a206",
+    "success": true,
+    "output_identical": true
+  },
+  "candidate_audit": {
+    "rows": 19427,
+    "all_source_fields_types_nullability_values_equal": true,
+    "all_native_geometry_wkb_equal": true,
+    "source_ids_substituted": false,
+    "internal_driver_fid": "GeoPackage format machinery only; original OBJECTID/SITE_NO/ARPT_ID retained as independent named columns",
+    "sha256": "92be1940f074081ec90c8795f3f3712f368f9acb5748787cfea15a73965448b0"
+  },
+  "source_assertions": {
+    "rows": 19427,
+    "source_columns": 91,
+    "all_original_values_physical_types_nullability_geometry_exact": true,
+    "unique_OBJECTID": 19427,
+    "unique_SITE_NO": 19426,
+    "duplicate_SITE_NO_rows": 1,
+    "effective_dates": [
+      "2026/10/01"
+    ],
+    "native_crs": "EPSG:3857",
+    "bounds": [
+      -19745996.9808,
+      -1612294.985100001,
+      19382236.054300003,
+      13627133.328199998
+    ],
+    "all_raw_receipts_and_bytes_verified": true
+  },
+  "normal_graph": {
+    "run_id": "9ff3cc02-716f-4b86-b1af-03ef193e05d2",
+    "success": false,
+    "failures": [
+      {
+        "step": "publish__verify",
+        "reason": "dagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry"
+      }
+    ],
+    "checks": [
+      {
+        "name": "quality_manifest",
+        "passed": true
+      }
+    ],
+    "quality_manifest": {
+      "bounds": [
+        -19745996.9808,
+        -1612294.9851,
+        19382236.0543,
+        13627133.3282
+      ],
+      "catalog_mode": "streaming_geospatial",
+      "columns_hash": "307c91407048b96c9e419513f38185afaa96732b4921f7b7269ffceb43da12b4",
+      "feature_count": 19427,
+      "geometry_type": "Point",
+      "invalid_geometry_count": 0,
+      "quality_check_passed": true,
+      "sampled_feature_count": 5000,
+      "sampled_invalid_geometry_count": 0,
+      "sampled_null_geometry_count": 0,
+      "spatial_status": "spatial",
+      "version": "v1"
+    }
+  },
+  "terminal_parquet": {
+    "rows": 19427,
+    "all_source_columns_values_types_native_wkb_equal": true,
+    "derived_extra_columns": [
+      "bbox"
+    ],
+    "unapproved_nullable_metadata_differences": [
+      {
+        "name": "OBJECTID",
+        "source_nullable": false,
+        "terminal_nullable": true
+      },
+      {
+        "name": "geometry",
+        "source_nullable": false,
+        "terminal_nullable": true
+      }
+    ]
+  },
+  "failed_quality_gate": {
+    "run_id": "cf8ebba3-4e0c-4b44-93cf-12a9b6663bb0",
+    "success": false,
+    "promotion_materialized": false,
+    "synthetic_invalid_manifest_for_behavior_only": true
+  },
+  "direct_promotion_error": "missing_independent_release_approval_registry",
+  "preservation": {
+    "accepted_inventory_unchanged": true,
+    "all_raw_and_candidate_bytes_unchanged": true,
+    "fixture_is_not_real_acceptance": true
+  },
+  "tested_source_commit": "9e3b312ca5831580384b38240af39efc671804c4",
+  "validation_scope": "Final source implementation and normal registry; following changes add evidence/docs only"
+}
