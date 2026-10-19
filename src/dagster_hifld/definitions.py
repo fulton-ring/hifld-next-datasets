@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -410,6 +411,8 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
+    jobs=[holocene_source_integrity_job],
+    schedules=[holocene_source_integrity_schedule],
     executor=_default_executor(),
     resources={
         "staging_storage": StagingStorageResource.from_env(),
