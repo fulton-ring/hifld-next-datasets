@@ -215,8 +215,20 @@
     },
     "remaining_known_implementation_gap": false,
     "independent_review": "exact final head re-review still required",
-    "docs_only_historical_commit_followup": "next actual source refresh after docs-only checkpoint; no current pass inferred",
-    "CI": "not inferred"
+    "docs_only_historical_commit_followup": {
+      "proof": "evidence/construction-auth-verification/construction-history.json",
+      "actual_docs_head": "258ef5da6666c29d1a2bf2ca350c8331a2a02f88",
+      "original_construction_code": "7eac159f64fd2c859fc434bc0833852d3e902599",
+      "post_rebuild_normal_missing_registry_run": "de743da7-67e2-4341-9124-e4d0f4c1e037",
+      "actual_docs_only_authentic_source_run": "d8ae6e30-2eb8-423f-a9c3-db73690f7fc2",
+      "synthetic_same_content_later_receipts_source_run": "cf930bd2-4e3f-48ab-a543-55d00d72dc96",
+      "original_candidate_and_full_binding_bytes_unchanged": true,
+      "new_synthetic_observations_stored_separately": true,
+      "actual_live_acquisition_scope": "Historical4cdbactual24-run proof includes real200all4inputs/full942rebuild; these followups replay complete preserved real captures, with synthetic receipts clearly labeled."
+    },
+    "CI": "not inferred",
+    "total_current_source_and_docs_followup_runs": 16,
+    "actual_persisted_native_formatter_metadata": "evidence/construction-auth-verification/asset-metadata-audit.json"
   },
   "implementation_dependencies": [
     {

@@ -49,6 +49,10 @@
       "bytes": 452292,
       "sha256": "f51213371eea63ad1e1bb64e7102a09d828a36d2fd0b5d4808566ef91d20458a"
     },
+    "construction-auth-verification/asset-metadata-audit.json": {
+      "bytes": 3264,
+      "sha256": "336896ee39a104a0334b725f66cb91b7bd1b2aacfcc755c4c64456d8ec43a084"
+    },
     "construction-auth-verification/baseline_comparison.json": {
       "bytes": 199,
       "sha256": "d2c3112e3c495a0dc6a3e5f68e0f8a315c2d231ba7dd7758abb17a02dc3f937f"
@@ -64,6 +68,18 @@
     "construction-auth-verification/cbrs_units_source_audit.json": {
       "bytes": 4574,
       "sha256": "28b6ce8604087214baede615546beb8a467eab5d269620704aebcdb7990fe4c4"
+    },
+    "construction-auth-verification/construction-history.json": {
+      "bytes": 5551,
+      "sha256": "36686d690d7d18ae3cdda57b761edb1d114e52371de4748f79c06d514f54b8ca"
+    },
+    "construction-auth-verification/construction-history.log": {
+      "bytes": 6178,
+      "sha256": "4bb8897c63eaa5e9e757d312738335b64dd265a104dcf965e558113a48e691c5"
+    },
+    "construction-auth-verification/data_dictionary.json": {
+      "bytes": 13696,
+      "sha256": "85b74ba5e0159b145947f30b1276107a616096de2c7ed22008ba8b184ec28df8"
     },
     "construction-auth-verification/execution.json": {
       "bytes": 40565,
@@ -105,9 +121,21 @@
       "bytes": 551,
       "sha256": "700061cfecd407469480012e7f755de6086c323ee61925385e9ba0410cadcabd"
     },
+    "construction-auth-verification/quality_manifest.json": {
+      "bytes": 482,
+      "sha256": "49b523afcc00256e6bc46bdcb069f549b41c49e48e78b0342f091cc732f59ecd"
+    },
+    "construction-auth-verification/resolved_provenance.json": {
+      "bytes": 9438,
+      "sha256": "d42faeb1b08d486196c62f9c60d9c45e3c009d06c59918c90cf8914096516e47"
+    },
     "construction-auth-verification/source_manifest.json": {
       "bytes": 7661,
       "sha256": "cec42ec9d911bfe82e50a7142ce0d8d670bee1613868c2242d3be68e3bbe0471"
+    },
+    "construction-auth-verification/verify_construction_history.py": {
+      "bytes": 5388,
+      "sha256": "627cc85528e1926ee1efe86ed80544f99456ddf61411a1495a5a10c19b19b1b3"
     },
     "crosswalk.body": {
       "bytes": 6178,
