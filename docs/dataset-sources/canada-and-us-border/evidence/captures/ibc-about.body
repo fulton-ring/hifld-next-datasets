@@ -1,0 +1,402 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="no-js lt-ie10 lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if IE 7]>    <html class="no-js lt-ie10 lt-ie9 lt-ie8" lang="en"> <![endif]-->
+<!--[if IE 8]>    <html class="no-js lt-ie10 lt-ie9" lang="en"> <![endif]-->
+<!--[if IE 9]>    <html class="no-js lt-ie10" lang="en"> <![endif]-->
+<!--[if gt IE 9]><!-->
+<html class="no-js" lang="en"> <!--<![endif]-->
+
+<head>
+  <meta charset="utf-8">
+  <title>The Commission | International Boundary Commission</title>
+    <meta name="viewport" content="width=1000">
+
+  <!-- Web fonts - reminder: if you use mutliple font styles, you MUST load them one by one for IE, see example: -->
+  <link href='https://fonts.googleapis.com/css?family=Open+Sans:300italic,300' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Open+Sans:700' rel='stylesheet' type='text/css'>
+  <link href="https://fonts.googleapis.com/css?family=Droid+Serif:400,400italic" rel="stylesheet" type="text/css">
+  <!--[if IE]>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:300' rel='stylesheet' type='text/css'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:300italic' rel='stylesheet' type='text/css'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:700' rel='stylesheet' type='text/css'>
+<link href="https://fonts.googleapis.com/css?family=Droid+Serif" rel="stylesheet" type="text/css">
+<link href="https://fonts.googleapis.com/css?family=Droid+Serif:400italic" rel="stylesheet" type="text/css">
+<![endif]-->
+
+  <link rel="stylesheet" href="/styles/common.css?v=201208310111">
+  <link rel="stylesheet" href="/styles/content.css?v=201208310111">
+    <script>
+    (function(a) {
+      a.className = a.className.replace(/\bno-js\b/, 'js')
+    })(document.documentElement)
+  </script>
+  <script>(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');ga('create', 'UA-40966744-4', 'auto');ga("set", "anonymizeIp", true);ga('send', 'pageview');</script>
+</head>
+
+<body id="page392" class="contentpage  root_373">
+    <!-- header -->
+  <div class="header">
+    <div class="wrapper clearfix">
+
+      <ul class="nav nav-top">
+        <li><a href="/en/" title="Home Page">Home</a></li>
+        <li><a href="/fr/about/commission.php" title="Proc&eacute;der au site fran&ccedil;ais">Fran&ccedil;ais</a></li>
+        <li><a href="/en/faq.php" title="Frequency asked questions">FAQ's</a></li>
+        <li><a href="/en/contact.php" title="Contact Us">Contact Us</a></li>
+      </ul>
+
+      <p class="name-en">International Boundary <span>Commission</span></p>
+      <p class="name-fr">Commission de la fronti&egrave;re <span>internationale</span></p>
+
+      <!-- logo -->
+      <div class="logo-bg">
+        <a href="/en/" class="logo">
+          <img src="/images/logo.png" width="197" height="180" alt="International Boundry Commission" title="International Boundry Commission">
+        </a>
+        <!-- logo -->
+      </div>
+    </div>
+  </div>
+  <!-- header end -->
+
+  <!-- main navigation -->
+<div class="main-navigation">
+	<div class="wrapper clearfix">
+		<ul class="nav nav-main-left">
+			<li><a href="/en/about.php">About Us</a>
+				<ul class="nav nav-sub">
+					<li><a href="/en/about/commission.php">The Commission</a></li>
+					<li><a href="/en/about/the-boundary.php">The Boundary</a></li>
+					<li><a href="/en/about/what-we-do.php">What We Do</a></li>
+					<li><a href="/en/about/history.php">History</a></li>
+				</ul></li>
+			<li><a href="/en/the-boundary-and-you.php" class="double">The
+					Boundary and You</a>
+				<ul class="nav nav-sub">
+					<li><a href="/en/the-boundary-and-you/interesting-facts.php">Boundary
+							Facts</a></li>
+					<li><a href="/en/the-boundary-and-you/working-near-boundary.php">Working
+							Near the Boundary</a></li>
+					<li><a href="/en/the-boundary-and-you/living-near-boundary.php">Living
+							Near the Boundary</a></li>
+					<li><span><a style="height: 3.5em;" href="/en/the-boundary-and-you/contracting-and-employment.php">Contracting and
+								Employment Opportunities</a></span></li>
+				</ul></li>
+		</ul>
+		<ul class="nav nav-main-right">
+			<li><a href="/en/publications-resources.php" class="double">Publications
+					& Resources</a>
+				<ul class="nav nav-sub">
+					<li><a href="/en/publications-resources/jointannualreports.php">Joint
+							Annual Reports</a></li>
+					<li><a href="/en/publications-resources/sectionalreports.php">Sectional
+							Reports</a></li>
+					<li><a href="/en/publications-resources/specialreports.php">Special
+							Reports</a></li>
+					<li><a href="/en/publications-resources/related-links.php">Related
+							Links</a></li>
+				</ul></li>
+			<li><a href="/en/maps-coordinates.php" class="double">Geographical
+					data</a>
+				<ul class="nav nav-sub">
+					<li><a href="/en/maps-coordinates/maps.php">Maps & Coordinates</a></li>
+					<li><a href="/en/maps-coordinates/coordinates.php">Digital boundary</a></li>
+				</ul></li>
+		</ul>
+	</div>
+</div>
+<!-- main navigation -->
+<div class="breadcrumb">
+	<div class="bg">
+		<div class="wrapper clearfix">
+			<a class="homecrumb" href="/en/">Home</a> <a href="/en/about.php">About
+				Us</a><span>&raquo;</span> <span class="current">The Commission</span>
+		</div>
+	</div>
+</div>
+
+<div class="content-bottom-bg clearfix">
+	<div class="content">
+		<div class="content-bg">
+			<div class="wrapper clearfix">
+
+				<!-- aside -->
+				<div class="aside">
+					<div class="h1">About Us</div>
+
+					<ul class="nav nav-side">
+						<li class="navactive"><a href="commission.php"><span>The
+									Commission</span></a></li>
+						<li><a href="the-boundary.php"><span>The Boundary</span></a></li>
+						<li><a href="what-we-do.php"><span>What We Do</span></a></li>
+						<li><a href="history.php"><span>History</span></a></li>
+					</ul>
+
+					<div id="pos_content2" class="cms_position">
+						<div id="mod_167" class="cms_module">
+							<hr />
+							<h3 class="h2 h4 h5 h6 h3">
+								<strong>PREVIOUS COMMISSIONERS</strong>
+							</h3>
+							<h6 class="h6">
+								<strong>For the United States<br /></strong>
+							</h6>
+							<p>
+								1904-1915&nbsp;&nbsp;&nbsp;Otto H. Tittman<br>
+								1915-1921&nbsp;&nbsp;&nbsp;Edward C. Barnard<br>
+								1921-1929&nbsp;&nbsp;&nbsp;E. Lester Jones<br>
+								1929-1935&nbsp;&nbsp;&nbsp;James H. Van Wagenen<br>
+								1935-1945&nbsp;&nbsp;&nbsp;Thomas Riggs<br>
+								1945-1953&nbsp;&nbsp;&nbsp;John A. Ulinski<br>
+								1953-1961&nbsp;&nbsp;&nbsp;Samuel L. Golan<br>
+								1961-1969&nbsp;&nbsp;&nbsp;Edward King<br>
+								1969-1977&nbsp;&nbsp;&nbsp;Richard L. Herman<br>
+								1977-1981&nbsp;&nbsp;&nbsp;William M. Schreiber<br>
+								1981-1985&nbsp;&nbsp;&nbsp;Frank R. Whetstone<br>
+								1985-1991&nbsp;&nbsp;&nbsp;David C. Fischer<br>
+								1991-1993&nbsp;&nbsp;&nbsp;Allen C. Kolstad<br>
+								1993-1996&nbsp;&nbsp;&nbsp;Clyde Moore (Acting)<br>
+								1996-2002&nbsp;&nbsp;&nbsp;Thomas L. Baldini<br>
+								2002-2007&nbsp;&nbsp;&nbsp;Dennis L. Schornack<br>
+								2007-2008&nbsp;&nbsp;&nbsp;David L. Berhhardt<br>
+								2008-2014&nbsp;&nbsp;&nbsp;Kyle K. Hipsley (Acting)<br>
+								2014-2025&nbsp;&nbsp;&nbsp;Kyle
+								K. Hipsley<br>
+								2025-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;J.T. Moore (Acting)
+							</p>
+							<h6 class="h6">
+								<strong>For Canada</strong>
+							</h6>
+							<p>
+								1904-1916&nbsp;&nbsp;&nbsp;William F. King<br>
+								1916-1924&nbsp;&nbsp;&nbsp;James J. McArthur<br>
+								1924-1931&nbsp;&nbsp;&nbsp;John D. Craig<br>
+								1931-1947&nbsp;&nbsp;&nbsp;Noel J. Ogilvie<br>
+								1947-1950&nbsp;&nbsp;&nbsp;James M. Wardle<br>
+								1950-1951&nbsp;&nbsp;&nbsp;J. Leslie Rannie<br>
+								1951-1957&nbsp;&nbsp;&nbsp;J. Earl R. Ross<br>
+								1957-1976&nbsp;&nbsp;&nbsp;A. Frederick Lambert<br>
+								1976-1991&nbsp;&nbsp;&nbsp;Alec C. McEwen<br>
+								1991-1996&nbsp;&nbsp;&nbsp;Suzanne Jacques<br>
+								1996-2005&nbsp;&nbsp;&nbsp;Michael O'Sullivan<br>
+								2005-2017&nbsp;&nbsp;&nbsp;Peter J. Sullivan<br>
+								2017-2025&nbsp;&nbsp;&nbsp;Jean Gagnon<br>
+								2025-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Martin Gingras
+							</p>
+
+						</div>
+					</div>
+
+				</div>
+				<!-- aside end-->
+
+				<!-- main-content -->
+				<div class="main-content">
+					<div class="h1">The Commission</div>
+
+					<div id="pos_content" class="cms_position">
+						<div id="mod_18" class="cms_module">
+							<p>On June 4, 1908, the United States and the United Kingdom (on
+								behalf of Canada) signed a treaty to create the International
+								Boundary Commission. Both countries assigned their own expert
+								geographer or surveyor to serve as Commissioner. Their roles
+								were to accurately define and mark the boundary separating the
+								two countries.</p>
+							<p>
+								In 1925, a second treaty between the United States and Canada
+								was entered into making the International Boundary Commission a
+								permanent organization and empowered the two Commissioners to
+								maintain an effective boundary line, and to determine the
+								location of any point on the boundary line as needed. The
+								Canadian Commissioner is guided by the <a
+									href="https://laws-lois.justice.gc.ca/eng/acts/I-16/page-1.html"
+									target="_blank">International Boundary Commission Act</a>&#65279;
+								(1960), legislation that coincides with the treaty's purpose of
+								maintaining an effective boundary line between Canada and the
+								United States.
+							</p>
+							<p>
+								The Commission comprises both an American and a Canadian
+								Commissioner, and each is responsible for his own budget,
+								equipment, and staff. The United States Commissioner is
+								appointed by the President and reports directly to the Secretary
+								of State. For Canada, the <span style="font-style: italic;">International
+									Boundary Commission Act</span> provides that the Surveyor
+								General is Canada's Commissioner. The Canadian Commissioner
+								reports to the Minister of Foreign Affairs on policy matters and
+								is located within the Department of Natural Resources for
+								administrative and operational purposes.
+							</p>
+
+						</div>
+						<div id="mod_177" class="cms_module">
+							<div align="center">
+								<table style="width: 702px;">
+									<tbody>
+										<tr>
+											<td valign="top" width="302">
+												<p align="center">
+													<strong><span style="font-family: Calibri;">J.T. Moore</span></strong>
+												</p>
+												<p align="center">
+													<strong><span style="font-family: Calibri;">Acting Commissioner
+															for the United States </span></strong>
+												</p>
+												<p align="center">
+													&nbsp;<span style="font-family: Calibri;"><img
+														src="/uploads/jt-moore.jpg"
+														alt="J. T. Moore, Acting Commissioner for the United States"
+														width="190" height="266" /></span>
+												</p>
+												<p>
+													<span style="font-size: small;">With the passing of Commissioner 
+													Kyle K. Hipsley in March 2025, J.T. Moore became the Acting U.S. 
+													Commissioner for the International Boundary Commission, United 
+													States and Canada. Mr. Moore has been serving as Deputy Commissioner 
+													since 2015. He joined the Commission in 2006 as Lead Survey Engineer 
+													overseeing its three U.S. field offices and boundary maintenance 
+													projects.</span>
+												</p>
+												<p>
+													<span style="font-size: small;">With over 36 years of surveying, he 
+													started his career in the private sector in 1989 in Virginia Beach, 
+													VA. He began his service with the Federal government in 1992 with 
+													the National Geodetic Survey spending seven years conducting high 
+													accuracy GPS surveys on airfields in support of FAA programs. From 
+													there, he moved on to the Department of Defense for another seven 
+													years working for HQ Air Force Flight Standards Agency as a geodesist 
+													supporting air traffic control and landing system evaluations.</span>
+												</p>
+											</td>
+											<td valign="top" width="19">
+												<p align="center">
+													<strong><span style="font-family: Times New Roman;">&nbsp;</span></strong>
+												</p>
+											</td>
+											<td valign="top" width="302">
+												<p align="center">
+													<span style="font-family: Calibri;"><strong>Martin Gingras</strong>,
+														QLS, C.L.S.</span>
+												</p>
+												<p align="center">
+													<strong><span style="font-family: Calibri;">Commissioner
+															for Canada</span></strong>
+												</p>
+												<p align="center">
+													&nbsp;<span style="font-family: Calibri;"><img
+														src="/uploads/martin-gingras.jpg"
+														alt="Martin Gingras, Canadian Commissioner" width="200"
+														height="266" /></span>
+												</p>
+												<p>
+													<span style="font-size: small;">Martin Gingras, QLS, C.L.S., 
+													took office as Canada’s Commissioner to the International 
+													Boundary Commission on April 24, 2025, by virtue of being 
+													appointed Canada’s Surveyor General. As Surveyor General, 
+													he is also responsible for the Canadian Geodetic Survey.</span>
+												</p>
+												<p>
+													<span style="font-size: small;">Prior to his appointment, Mr. 
+													Gingras was a Senior Director with the Department of Natural 
+													Resources and the Deputy Surveyor General – Eastern Canada 
+													Region. His responsibilities included overseeing the operations 
+													of the Canadian Section of the International Boundary Commission.</span>
+												</p>
+												<p>
+													<span style="font-size: small;">Mr. Gingras holds a geomatics 
+													degree from Laval University and holds commissions to practice 
+													land surveying in Quebec and on Federal Lands throughout Canada.</span>
+												</p>
+											</td>
+										</tr>
+									</tbody>
+								</table>
+							</div>
+
+						</div>
+					</div>
+
+				</div>
+				<!-- main-content end -->
+
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- footer -->
+<div class="footer">
+	<div class="wrapper clearfix">
+
+		<ul class="nav nav-footer-main clearfix">
+			<li><a class="nav-home" href="/en/">Home</a></li>
+			<li><a href="/fr/about/commission.php"
+				title="Proc&eacute;der au site fran&ccedil;ais">Fran&ccedil;ais</a></li>
+			<li><a href="/en/faq.php">FAQ's</a></li>
+			<li><a href="/en/contact.php">Contact Us</a></li>
+		</ul>
+
+		<!-- dynamic footer-->
+		<div class="footer-navigation">
+			<ul class="nav nav-footer">
+				<li><a href="/en/about.php">About Us</a></li>
+				<li><a href="/en/about/commission.php">The Commission</a></li>
+				<li><a href="/en/about/the-boundary.php">The Boundary</a></li>
+				<li><a href="/en/about/what-we-do.php">What We Do</a></li>
+				<li><a href="/en/about/history.php">History</a></li>
+			</ul>
+			<ul class="nav nav-footer">
+				<li><a href="/en/the-boundary-and-you.php">The Boundary and You</a></li>
+				<li><a href="/en/the-boundary-and-you/interesting-facts.php">Boundary
+						Facts</a></li>
+				<li><a href="/en/the-boundary-and-you/working-near-boundary.php">Working
+						Near the Boundary</a></li>
+				<li><a href="/en/the-boundary-and-you/living-near-boundary.php">Living
+						Near the Boundary</a></li>
+				<li><a href="/en/the-boundary-and-you/contracting-and-employment.php">Contracting and
+						Employment<br>Opportunities</a></li>
+			</ul>
+			<ul class="nav nav-footer right">
+				<li><a href="/en/publications-resources.php">Publications &
+						Resources</a></li>
+				<li><a href="/en/publications-resources/jointannualreports.php">Joint
+						Annual Reports</a></li>
+				<li><a href="/en/publications-resources/sectionalreports.php">Sectional
+						Reports</a></li>
+				<li><a href="/en/publications-resources/specialreports.php">Special
+						Reports</a></li>
+				<li><a href="/en/publications-resources/related-links.php">Related
+						Links</a></li>
+			</ul>
+			<ul class="nav nav-footer right">
+				<li><a href="/en/maps-coordinates.php" class="">Geographical data</a></li>
+				<li><a href="/en/maps-coordinates/maps.php">Maps & Coordinates</a></li>
+				<li><a href="/en/maps-coordinates/coordinates.php">Digital boundary</a></li>
+			</ul>
+		</div>
+
+		<!--dynamic footer end-->
+
+	</div>
+</div>
+<!-- footer end -->
+
+<!-- copyright -->
+<div class="copyright">
+	<div class="wrapper clearfix">
+		<p class="disclaimer">
+			&copy; Copyright 2015. International Boundary Commission. All Rights
+			Reserved. <a href="/en/sitemap.php">Site Map</a><span
+				class="visuallyhidden">, </span><a href="/en/privacy.php">Terms and
+				conditions</a><span class="visuallyhidden"></span>
+		</p>
+	</div>
+</div>
+<!-- copyright end -->
+
+<script
+	src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+<script src="/scripts/common.js?v=201208310111"></script>
+<script src="/scripts/content.js?v=201208310111"></script>
+</body>
+</html>

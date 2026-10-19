@@ -1,0 +1,66 @@
+{
+  "description": "The shapefile is composed of 30 segments that correspond to the original 256 boundary maps. Attributes of each segment define the scale in which the line in that area may be accurately depicted. It is produced for mapping purposes only and not intended to illustrate the boundary beyond the limits of the scale for any given segment.",
+  "hifld:tags": {
+    "categories": [
+      "Borders",
+      "Boundaries"
+    ],
+    "inventory_name": "canada-and-us-border"
+  },
+  "id": "hifld/canada-and-us-border/canada-and-us-border",
+  "keywords": [
+    "Borders",
+    "Boundaries"
+  ],
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/canada-and-us-border/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/canada-and-us-border/canada-and-us-border/catalog.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/canada-and-us-border/canada-and-us-border/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/canada-and-us-border/canada-and-us-border/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/canada-and-us-border/canada-and-us-border/v1.0.0/collection.json",
+      "rel": "child",
+      "title": "Canada and US Border",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/canada-and-us-border/canada-and-us-border/v1.0.0/collection.json",
+      "rel": "child",
+      "title": "Canada and US Border",
+      "type": "application/json"
+    },
+    {
+      "rel": "latest-version",
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/canada-and-us-border/canada-and-us-border/v1.0.0/collection.json",
+      "type": "application/json",
+      "title": "v1.0.0"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "title": "Canada and US Border",
+  "type": "Catalog"
+}

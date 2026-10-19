@@ -1,0 +1,32 @@
+{
+  "name": "baseline",
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/canada-and-us-border/canada-and-us-border/v1.0.0/geoparquet/canada-and-us-border.parquet",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/canada-and-us-border/canada-and-us-border/v1.0.0/geoparquet/canada-and-us-border.parquet",
+  "observed_at": "2026-10-19T06:39:25.084891+00:00",
+  "status": 200,
+  "bytes": 270300,
+  "sha256": "f419f5cc00580f3e1c3cf70aaa1c8132c02aaed47bac603965cecdf8ad22794b",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU8006ccjmw6PODZ7xbtC6xP-O7kYCEICKI7ZzfMQI-L1Pnens7Kzrx1JAo6OmmijdZk",
+    "expires": "Mon, 19 Oct 2026 07:39:25 GMT",
+    "date": "Mon, 19 Oct 2026 06:39:25 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:13 GMT",
+    "etag": "\"bb31fa5805c8a00183476736d9c1124f\"",
+    "x-goog-generation": "1791506353638353",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "270300",
+    "x-goog-hash": "crc32c=IPNt7Q==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "270300",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "361",
+    "connection": "close"
+  }
+}
