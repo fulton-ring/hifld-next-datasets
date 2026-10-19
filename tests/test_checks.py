@@ -18,7 +18,14 @@ class CheckTests(unittest.TestCase):
     def test_quality_checks_target_catalog_assets(self):
         for check_def in hifld_asset_checks:
             spec = next(iter(check_def.check_specs))
-            self.assertIn(spec.asset_key.path[:2], [["publish", "catalog"], ["publish", "verify"]])
+            self.assertIn(
+                tuple(spec.asset_key.path),
+                [
+                    ("publish", "catalog"),
+                    ("publish", "verify"),
+                    ("ingest", "state-emergency-operations-centers-eoc", "state-emergency-operations-centers-eoc"),
+                ],
+            )
             self.assertTrue(spec.blocking)
 
     def test_manifest_backed_checks_cover_backfill_and_census_assets(self):
@@ -27,8 +34,15 @@ class CheckTests(unittest.TestCase):
             for check_def in hifld_asset_checks
         }
 
-        self.assertEqual(asset_paths, {("publish", "catalog"), ("publish", "verify")})
-        self.assertEqual(len(hifld_asset_checks), 2)
+        self.assertEqual(
+            asset_paths,
+            {
+                ("publish", "catalog"),
+                ("publish", "verify"),
+                ("ingest", "state-emergency-operations-centers-eoc", "state-emergency-operations-centers-eoc"),
+            },
+        )
+        self.assertEqual(len(hifld_asset_checks), 3)
 
     def test_read_quality_check_result_reads_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
