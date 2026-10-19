@@ -165,6 +165,19 @@ class CurrentDartTests(TestCase):
                 else:self.assertEqual(key.read_bytes(),altered)
                 # Explicit operator-fixture restoration, never adapter healing from a cache.
                 key.write_bytes(binding);self.assertEqual(self.stage(),result)
+    def test_coforged_outside_bundle_and_candidate_cannot_invent_git_identity(self):
+        result=self.stage();root=self.root(result)
+        key=Path(self.tmp.name)/'_candidate-construction'/source.SLUG/(result['version']+'.json');binding=key.read_bytes()
+        for claimed in ('0'*40,'4800e4f5df550bfadd3631585268ce68a0fa25d9'):
+            with self.subTest(claimed=claimed):
+                bundle=json.loads(binding);manifest=bundle['manifest'];manifest['code_commit']=claimed
+                (root/'metadata/source_manifest.json').write_bytes(source.encode(manifest));key.write_bytes(source.encode(bundle));forged=key.read_bytes()
+                marker=root/'metadata/current_dart_candidate_ready.json';ready=json.loads(marker.read_bytes());ready['objects']['metadata/source_manifest.json']=source.sha(source.encode(manifest));marker.write_bytes(source.encode(ready));altered=self.snapshot(root)
+                with self.assertRaisesRegex(source.DartQuarantineError,'construction_'):self.stage()
+                self.assertFalse(root.exists());self.assertEqual(key.read_bytes(),forged)
+                self.assertTrue(any(self.snapshot(p)==altered for p in (Path(self.tmp.name)/'_quarantine'/source.SLUG).glob('invalid-cache-*/candidate')))
+                # Restore the original trusted fixture; never repair a bundle from cache.
+                key.write_bytes(binding);self.assertEqual(self.stage(),result)
     def test_failed_source_writer_does_not_create_construction_bundle(self):
         with mock.patch.object(source,'write_canonical_geopackage',side_effect=OSError('test_source_writer_failure')):
             with self.assertRaisesRegex(source.DartQuarantineError,'test_source_writer_failure'):self.stage()
