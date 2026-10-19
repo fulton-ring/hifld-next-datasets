@@ -98,6 +98,28 @@ class ArcRegionsTests(unittest.TestCase):
         for bad in [{**receipt, 'complete': False}, {**receipt, 'status': 403}, {**receipt, 'sha256': '0'*64}]:
             with self.assertRaises(ValueError): s.validate_receipt('features', body, bad)
 
+    def test_schema_metadata_JSON_kinds_are_not_python_bool_integer_float_equality(self):
+        captures, signature = fixture()
+        # These repinned synthetic metadata variants passed Python dict/tuple
+        # equality despite changing physical declaration kinds. No live claim.
+        cases = []
+        for value in [0, 0.0]:
+            cases.append([('layer', lambda v, x=value: v['fields'][0].update(nullable=x)),
+                ('layer_after', lambda v, x=value: v['fields'][0].update(nullable=x))])
+            cases.append([('layer_after', lambda v, x=value: v['fields'][0].update(nullable=x))])
+        cases.extend([
+            [('layer', lambda v: v['fields'][1].update(length=255.0)),
+             ('layer_after', lambda v: v['fields'][1].update(length=255.0)),
+             ('features', lambda v: v['fields'][1].update(length=255.0))],
+            [('features', lambda v: v['fields'][1].update(length=255.0))],
+            [('item', lambda v: v.update(protected=False)), ('item_after', lambda v: v.update(protected=0))],
+            [('layer', lambda v: v.update(id=2.0)), ('layer_after', lambda v: v.update(id=2.0))]])
+        with patch.object(s, 'GEOMETRY_SHA256', signature):
+            for index, mutations in enumerate(cases):
+                candidate = captures
+                for name, mutate in mutations: candidate = changed(candidate, name, mutate)
+                with self.subTest(case=index), self.assertRaises(ValueError): s.inspect_captures(candidate)
+
     def test_capture_malformed_receipt_retains_exact_consumed_bytes_before_parse(self):
         with tempfile.TemporaryDirectory() as d:
             source = Path(d)/'capture'; source.mkdir(); storage = StagingStorageResource(local_dir=str(Path(d)/'staging'))

@@ -261,14 +261,17 @@ def inspect_captures(captures):
     service, item, owner, layer = (values[name] for name in ['service', 'item', 'owner', 'layer'])
     if (service.get('serviceItemId') != ITEM or item.get('id') != ITEM or item.get('owner') != 'NHQRedCrossGIS'
             or item.get('url') != SERVICE or item.get('access') != 'public' or owner.get('username') != 'NHQRedCrossGIS'
-            or layer.get('id') != 2 or layer.get('name') != 'Master_RC_Geo_Region_2027'):
+            or type(layer.get('id')) is not int or layer['id'] != 2 or layer.get('name') != 'Master_RC_Geo_Region_2027'):
         raise ArcRegionsError('publisher_account_or_layer_delegation_drift')
-    if values['layer_after'] != layer or values['item_after'] != item: raise ArcRegionsError('metadata_changed_during_extraction')
+    if encode(values['layer_after']) != encode(layer) or encode(values['item_after']) != encode(item):
+        raise ArcRegionsError('metadata_changed_during_extraction')
     if (layer.get('geometryType') != 'esriGeometryPolygon' or layer.get('hasZ') is not False or layer.get('hasM') is not False
             or layer.get('spatialReference') != {'wkid': 102100, 'latestWkid': 3857}):
         raise ArcRegionsError('native_geometry_or_CRS_profile_drift')
     fields = [(f['name'], f['type'], f['nullable'], f.get('length')) for f in layer['fields']]
-    if fields != FIELDS or layer.get('objectIdField') != 'OBJECTID': raise ArcRegionsError('native_field_declaration_drift')
+    if (any(type(field.get('nullable')) is not bool for field in layer['fields'])
+            or encode(fields) != encode(FIELDS) or layer.get('objectIdField') != 'OBJECTID'):
+        raise ArcRegionsError('native_field_declaration_drift')
     for name in ['count_before', 'count_after']:
         if type(values[name].get('count')) is not int or values[name]['count'] != len(EXPECTED_IDS):
             raise ArcRegionsError('coverage_count_drift')
@@ -286,7 +289,7 @@ def inspect_captures(captures):
     # Query responses omit layer-only editable/nullable declarations. Retain both
     # complete raw schemas and compare the actual query declaration projection.
     expected_query_fields = [{k: v for k, v in field.items() if k not in {'nullable', 'editable'}} for field in layer['fields']]
-    if features.get('fields') != expected_query_fields: raise ArcRegionsError('response_schema_drift')
+    if encode(features.get('fields')) != encode(expected_query_fields): raise ArcRegionsError('response_schema_drift')
     rows = features.get('features'); names = [f[0] for f in FIELDS]
     if type(rows) is not list or len(rows) != len(EXPECTED_IDS): raise ArcRegionsError('incomplete_rows')
     ids = []; raw_rings = []
