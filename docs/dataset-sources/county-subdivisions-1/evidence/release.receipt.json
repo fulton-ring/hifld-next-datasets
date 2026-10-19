@@ -1,0 +1,9 @@
+{
+  "url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html",
+  "final_url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html",
+  "status": 200,
+  "bytes": 348954,
+  "sha256": "5f4c5396e26ced783ee90973bfd476d88ad8433afffa7abaeccc7203d2a45415",
+  "observed_at": "2026-10-19T11:36:25.349255+00:00",
+  "complete_body": true
+}

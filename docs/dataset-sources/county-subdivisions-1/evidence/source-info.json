@@ -1,0 +1,73 @@
+{
+  "layer_name": "County_Subdivision",
+  "crs": "EPSG:4269",
+  "encoding": "UTF-8",
+  "fields": [
+    "COUSUBNS",
+    "GEOID",
+    "GEOIDFQ",
+    "NAMELSAD",
+    "CLASSFP",
+    "FUNCSTAT",
+    "ALAND",
+    "AWATER",
+    "INTPTLAT",
+    "INTPTLON"
+  ],
+  "dtypes": [
+    "object",
+    "object",
+    "object",
+    "object",
+    "object",
+    "object",
+    "float64",
+    "float64",
+    "object",
+    "object"
+  ],
+  "ogr_types": [
+    "OFTString",
+    "OFTString",
+    "OFTString",
+    "OFTString",
+    "OFTString",
+    "OFTString",
+    "OFTReal",
+    "OFTReal",
+    "OFTString",
+    "OFTString"
+  ],
+  "ogr_subtypes": [
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone",
+    "OFSTNone"
+  ],
+  "fid_column": "OBJECTID",
+  "geometry_name": "SHAPE",
+  "geometry_type": "MultiPolygon",
+  "features": 36492,
+  "total_bounds": [
+    -179.231086,
+    -14.601813,
+    179.859681,
+    71.439786
+  ],
+  "driver": "OpenFileGDB",
+  "capabilities": {
+    "random_read": true,
+    "fast_set_next_by_index": true,
+    "fast_spatial_filter": true,
+    "fast_feature_count": true,
+    "fast_total_bounds": true
+  },
+  "layer_metadata": null,
+  "dataset_metadata": null
+}
