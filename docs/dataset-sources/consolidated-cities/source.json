@@ -184,7 +184,79 @@
     "asset": "src/dagster_hifld/assets/census_consolidated_cities.py",
     "test": "tests/test_consolidated_cities_source.py",
     "replay": "scripts/verify_consolidated_cities_draft.py",
-    "state": "local materialization evidence pending final registered Definitions run"
+    "state": "actual_registered_local_pipeline_verified_release_blocked",
+    "code_tested_commit": "9ca31d9a9f06c85449d11bb591fea5982881ec5e",
+    "dagster_evidence": "evidence/local-verification/materialization.json",
+    "actual_runs": [
+      {
+        "label": "source",
+        "run_id": "34e01692-1d28-4124-9d91-6cd3e37012fe",
+        "success": true
+      },
+      {
+        "label": "refresh",
+        "run_id": "9b2beda9-0a07-4697-af79-8dd6dd60f0cb",
+        "success": true
+      },
+      {
+        "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
+        "run_id": "5d2faa46-f4b4-4a1d-b46d-c40356f5910c",
+        "success": false
+      },
+      {
+        "label": "post_catalog_cycle_1_source_refresh",
+        "run_id": "c503d89c-3853-4931-98b5-f6192677e50b",
+        "success": true
+      },
+      {
+        "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
+        "run_id": "76b291db-c204-48a9-b132-b04d2cf7eb8c",
+        "success": false
+      },
+      {
+        "label": "post_catalog_cycle_2_source_refresh",
+        "run_id": "91630590-5f6b-4c32-a471-c94cae831ce4",
+        "success": true
+      },
+      {
+        "label": "synthetic_failed_quality_blocks_promote",
+        "run_id": "73c5b9e8-ed01-4d5b-a866-c0b9798982fa",
+        "success": false
+      },
+      {
+        "label": "post_gate_source_refresh",
+        "run_id": "5306be9a-a1b8-43ca-86f1-a6abb44c02e2",
+        "success": true
+      }
+    ],
+    "assertions": {
+      "discoverable_without_runner_copies": true,
+      "original_capture_objects_unchanged": true,
+      "source_owned_objects_unchanged": true,
+      "prior_accepted_fixture_unchanged": true,
+      "full_eight_rows_ids_attrs_types_native_wkb_and_coverage_exact": true,
+      "seven_polygon_one_multipolygon_preserved": true,
+      "all_eight_input_provenance_records_retained": true
+    },
+    "tests": {
+      "focused": "8 passed; all retained complete real source inputs, corruption/atomicity/provenance negatives",
+      "full_suite": {
+        "tested_commit": "9ca31d9a9f06c85449d11bb591fea5982881ec5e",
+        "total": 514,
+        "passed": 513,
+        "skipped": 1,
+        "failures": 0,
+        "errors": 0,
+        "seconds": 80.046,
+        "evidence": "evidence/local-verification/full-suite.log",
+        "github_ci": "not inferred"
+      }
+    },
+    "iac": {
+      "actual_source_revision": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "archive_sha256": "ee36600c45e5bb71d5b96736a34ec4391a31dc1502c7c01ff8b2413eeadebc00",
+      "historical_missing_sibling_errors": "Historical only; actual unmodified sibling source supplied, no suppression or infrastructure commands."
+    }
   },
   "approval": false
 }

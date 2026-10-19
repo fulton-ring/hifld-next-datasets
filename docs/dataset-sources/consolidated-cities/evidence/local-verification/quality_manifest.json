@@ -1,0 +1,19 @@
+{
+  "bounds": [
+    -113.085517,
+    33.227165,
+    -72.979047,
+    46.185252
+  ],
+  "catalog_mode": "streaming_geospatial",
+  "columns_hash": "73585dd44cca00ecf948dc7e4eb3dc363719b460d64ed1c041faa5a66b622dd4",
+  "feature_count": 8,
+  "geometry_type": "Mixed",
+  "invalid_geometry_count": 0,
+  "quality_check_passed": true,
+  "sampled_feature_count": 8,
+  "sampled_invalid_geometry_count": 0,
+  "sampled_null_geometry_count": 0,
+  "spatial_status": "spatial",
+  "version": "v1"
+}

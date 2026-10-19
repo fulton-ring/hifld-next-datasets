@@ -24,3 +24,20 @@ PYTHONPATH=src python scripts/verify_consolidated_cities_draft.py --runtime-dir 
 The runner requires an empty local runtime directory and uses committed complete original inputs by default. It registers the actual dynamic version partition, runs the normal repository source job, two full catalog/format cycles and source refreshes, verifies all produced rows/types/IDs/native geometry/provenance, and tests failed quality and missing approval preserve a synthetic prior accepted fixture. No real baseline is marked accepted. Actual run IDs and suite results are added in the final evidence checkpoint; loading assets alone is not pipeline verification.
 
 Release remains blocked on crosswalk/source-edition acceptance, an approved versioned raw/published contract and ID mapping, geometry/schema/format compatibility, and independent approval of the exact candidate. No merge, closure, production output, environment change, schedule activation or contract/baseline approval is authorized by these local results.
+
+## Actual local verification
+
+Frozen code `9ca31d9a9f06c85449d11bb591fea5982881ec5e` completed the actual registered Dagster graph in isolated local state, using all complete retained original inputs. Source and refresh succeeded; each normal catalog/format run stopped only at `missing_independent_release_approval_registry`. Source refresh succeeded after both catalog cycles, including hashed original-manifest snapshots and resolved provenance. The synthetic failed-quality run blocked promotion, and every raw/source object and the prior synthetic accepted fixture remained unchanged. All eight terminal rows preserve every source ID/attribute/type/native WKB and coverage.
+
+- source: `34e01692-1d28-4124-9d91-6cd3e37012fe`, success.
+- refresh: `9b2beda9-0a07-4697-af79-8dd6dd60f0cb`, success.
+- normal_catalog_formats_cycle_1_unapproved_promotion: `5d2faa46-f4b4-4a1d-b46d-c40356f5910c`, expected gate failure.
+- post_catalog_cycle_1_source_refresh: `c503d89c-3853-4931-98b5-f6192677e50b`, success.
+- normal_catalog_formats_cycle_2_unapproved_promotion: `76b291db-c204-48a9-b132-b04d2cf7eb8c`, expected gate failure.
+- post_catalog_cycle_2_source_refresh: `91630590-5f6b-4c32-a471-c94cae831ce4`, success.
+- synthetic_failed_quality_blocks_promote: `73c5b9e8-ed01-4d5b-a866-c0b9798982fa`, expected gate failure.
+- post_gate_source_refresh: `5306be9a-a1b8-43ca-86f1-a6abb44c02e2`, success.
+
+The committed [materialization report](evidence/local-verification/materialization.json) and complete log contain assertions and run statuses. Focused tests: **8 passed**. Full-suite outcome will be recorded below when the actual run finishes. No GitHub CI success is inferred.
+
+Actual full repository suite on the same frozen code commit: **514 tests, 513 passed, 1 skipped, zero failures/errors**, 80.046 seconds. The real unmodified sibling IaC snapshot at `56aa10757129c457c530d707d9a40bae13e0907f` was present; its former absence is a historical limitation, not suppressed by a fixture. Tippecanoe was available. Complete output is [full-suite.log](evidence/local-verification/full-suite.log). These results do not assert CI success or real dataset acceptance.

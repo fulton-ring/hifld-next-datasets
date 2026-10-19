@@ -1,0 +1,75 @@
+{
+  "classification": "Exact frozen code actual verification; final docs-only commit may differ",
+  "tested_commit": "9ca31d9a9f06c85449d11bb591fea5982881ec5e",
+  "focused": {
+    "total": 8,
+    "passed": 8
+  },
+  "full_suite": {
+    "tested_commit": "9ca31d9a9f06c85449d11bb591fea5982881ec5e",
+    "total": 514,
+    "passed": 513,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 80.046,
+    "evidence": "evidence/local-verification/full-suite.log",
+    "github_ci": "not inferred"
+  },
+  "dagster_runs": [
+    {
+      "label": "source",
+      "run_id": "34e01692-1d28-4124-9d91-6cd3e37012fe",
+      "success": true
+    },
+    {
+      "label": "refresh",
+      "run_id": "9b2beda9-0a07-4697-af79-8dd6dd60f0cb",
+      "success": true
+    },
+    {
+      "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
+      "run_id": "5d2faa46-f4b4-4a1d-b46d-c40356f5910c",
+      "success": false
+    },
+    {
+      "label": "post_catalog_cycle_1_source_refresh",
+      "run_id": "c503d89c-3853-4931-98b5-f6192677e50b",
+      "success": true
+    },
+    {
+      "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
+      "run_id": "76b291db-c204-48a9-b132-b04d2cf7eb8c",
+      "success": false
+    },
+    {
+      "label": "post_catalog_cycle_2_source_refresh",
+      "run_id": "91630590-5f6b-4c32-a471-c94cae831ce4",
+      "success": true
+    },
+    {
+      "label": "synthetic_failed_quality_blocks_promote",
+      "run_id": "73c5b9e8-ed01-4d5b-a866-c0b9798982fa",
+      "success": false
+    },
+    {
+      "label": "post_gate_source_refresh",
+      "run_id": "5306be9a-a1b8-43ca-86f1-a6abb44c02e2",
+      "success": true
+    }
+  ],
+  "runtime_root": "/workspace/work/hifld-coordinator/41/final-local",
+  "original_capture_roster": 7,
+  "source_feature_count": 8,
+  "source_geometry_types": {
+    "Polygon": 7,
+    "MultiPolygon": 1
+  },
+  "source_crs": "EPSG:4269",
+  "full_row_ids_schema_native_wkb_and_coverage_verified": true,
+  "failed_quality_and_missing_approval_preserve_prior": true,
+  "raw_inputs_preserved": true,
+  "source_owned_outputs_preserved": true,
+  "release_approval": false,
+  "native_independent_review": "pending"
+}
