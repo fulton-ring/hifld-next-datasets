@@ -1,0 +1,106 @@
+{
+  "issue": 89,
+  "pr": 446,
+  "reviewer": "/root/review_units_31",
+  "source_head": "174a8f68cfbe53447800f810672d00fb0593e298",
+  "status": "narrow_CAS_repair_pass_waiting_final_docs_exact_head",
+  "handoff_ready": false,
+  "release_approved": false,
+  "new_findings": [],
+  "new_actual_runs": [
+    {
+      "kind": "actual_first_marker_write_failure_after_full_private_native_build",
+      "run_id": "a9029a81-6457-4fa8-845c-ec96b08b0265",
+      "success": false
+    },
+    {
+      "kind": "CAS_only_second_context_attempt_1",
+      "run_id": "b0c8be5d-a810-4ab1-922a-da31f71192d9",
+      "success": false
+    },
+    {
+      "kind": "CAS_only_second_context_attempt_2",
+      "run_id": "c5667b06-e0a2-4f0b-94c6-9524ac2d40e5",
+      "success": false
+    },
+    {
+      "kind": "explicit_exact_original_CAS_operator_restore_and_complete_reconstruction",
+      "run_id": "363dc9d7-6727-40f8-92e1-39053838afe3",
+      "success": true
+    },
+    {
+      "kind": "complete_native_refresh_retains_original_all9_receipts",
+      "run_id": "dddfe069-3f51-48eb-b6a0-fd9e08e49cf8",
+      "success": true
+    },
+    {
+      "kind": "referenced_CAS_missing_attempt_1",
+      "run_id": "cc831037-c86f-4a95-8e38-c5b30a719c62",
+      "success": false
+    },
+    {
+      "kind": "referenced_CAS_missing_attempt_2",
+      "run_id": "857fcdec-d2e5-4bb5-86c8-f8ddef9b627a",
+      "success": false
+    },
+    {
+      "kind": "explicit_exact_CAS_restore_after_missing",
+      "run_id": "2e3305c0-9437-4910-9c25-48e58df190ce",
+      "success": true
+    },
+    {
+      "kind": "referenced_CAS_corrupt_attempt_1",
+      "run_id": "d9778dfd-a2e8-4253-8c95-985a5d88ae3e",
+      "success": false
+    },
+    {
+      "kind": "referenced_CAS_corrupt_attempt_2",
+      "run_id": "82d06ef4-e74b-488d-b849-d7e1334b82e8",
+      "success": false
+    },
+    {
+      "kind": "explicit_exact_CAS_restore_after_corrupt",
+      "run_id": "c6fc4069-519a-41a8-b8c0-6d3a0cf13c94",
+      "success": true
+    }
+  ],
+  "native_byte_parity": {
+    "candidate/typed-source.parquet": "d8d4e9eab2a3ea39e6a7395309440413d48a5349a91c64d923b90a14434fb8ed",
+    "geopackage/ferry-terminals.gpkg": "78ee31eab7a553979171d127651356db91c67845b9e417665696c300e17fbf99",
+    "geoparquet/ferry-terminals.parquet": "d8d4e9eab2a3ea39e6a7395309440413d48a5349a91c64d923b90a14434fb8ed",
+    "metadata/candidate.records.jsonl": "4f10a072cc3a4b8115f1f4986425144c7bf541e8c639230a0ca7a952cd3bc194"
+  },
+  "assertions": {
+    "all845_rows_fields_types_native_geometry_unchanged": true,
+    "all9_original_manifest_receipts_preserved": true,
+    "approved": false,
+    "first_partial_CAS_preserved_exact": true,
+    "prior_fixture_preserved": true,
+    "referenced_CAS_missing_and_corrupt_fail_repeatedly": true,
+    "repeat_no_bootstrap_before_writer": true
+  },
+  "focused_new_tests": 2,
+  "broader_review_retained": [
+    "ferry-89-review.json",
+    "ferry-89-marker-review-code.json",
+    "ferry-89-marker-runtime/execution.json"
+  ],
+  "evidence": {
+    "ferry-89-cas-runtime/execution.json": {
+      "sha256": "5db7663ffc9509fd430384e59205361d959ecda40aba4514070673a64c1f0f0b",
+      "bytes": 41109
+    },
+    "ferry-89-cas-focused.log": {
+      "sha256": "d0199e02596768f667d21a1e9abe50eb52da5e74c20db18432e42c9fb40cb343",
+      "bytes": 340
+    },
+    "ferry-89-cas-static-parity.json": {
+      "sha256": "0a527919cd8cda002f1b95758835bf6dc44689ec30e4bf7eff223ab253e5dcfd",
+      "bytes": 341
+    },
+    "ferry-89-cas-actual.py": {
+      "sha256": "0cc3fb82192e5945f70f35a12cf1daead3286097a7863a2e1659baeedf4c882b",
+      "bytes": 7589
+    }
+  }
+}

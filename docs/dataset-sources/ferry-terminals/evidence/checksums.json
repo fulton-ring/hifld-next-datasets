@@ -107,6 +107,38 @@
     "bytes": 1611,
     "sha256": "9b54d66e2397041f1d2a83d166bffc0f10728f7520061aabbda1775eb5f948ad"
   },
+  "complete-construction-state/actual-execution.json": {
+    "bytes": 22441,
+    "sha256": "3b6c4948165eea770d662e923eb9d95216fa021dd79e2b4b7e20a778f843173d"
+  },
+  "complete-construction-state/actual-execution.log.gz": {
+    "bytes": 1941,
+    "sha256": "53a011a3211232b6bd8cdfe5b15e9cde2089904b657ad1c9c7cbf7ccd9f36e2d"
+  },
+  "complete-construction-state/actual_first_marker_interruption.py": {
+    "bytes": 6954,
+    "sha256": "41283af4bb0c28026c9d577482186016987dd17f7115492fc3615acf48ae43db"
+  },
+  "complete-construction-state/focused-tests.log": {
+    "bytes": 2437,
+    "sha256": "f30b0dba3f559d4b56d625ffde225a9415159f9304970981df73b07796b64d3f"
+  },
+  "complete-construction-state/full-suite.log.gz": {
+    "bytes": 15155,
+    "sha256": "c2d9798414d386882fe0f00bbf98071bea38b73cfdc01f5ae048bd839ba880a3"
+  },
+  "complete-construction-state/independent-actual-execution.json": {
+    "bytes": 41109,
+    "sha256": "5db7663ffc9509fd430384e59205361d959ecda40aba4514070673a64c1f0f0b"
+  },
+  "complete-construction-state/independent-code-review.json": {
+    "bytes": 3584,
+    "sha256": "090b866dfff8ad38d8ab25ea55e444c9517cda005c4340afa0c400912332515a"
+  },
+  "complete-construction-state/validation.json": {
+    "bytes": 63669,
+    "sha256": "83102e1642bc804c8ae4cf483e641378ed54260c3075f1f4f6f25bb57c01461b"
+  },
   "dagster-execution.json": {
     "bytes": 31989,
     "sha256": "14e18bb5a9b32049763e78d67d367290a06846e0684bd2fe05d99c21004a1e2a"
