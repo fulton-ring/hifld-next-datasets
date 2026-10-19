@@ -1,3 +1,5 @@
+from publication_mechanics import PublicationMechanicsMixin
+
 import gzip
 import hashlib
 import json
@@ -59,7 +61,7 @@ def _pmtiles_archive(layer_id: str = "roads") -> bytes:
     return bytes(header) + payload
 
 
-class PortolanWorkflowTests(unittest.TestCase):
+class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
     @staticmethod
     def _schema_facts(*columns: ColumnRecord) -> GeoParquetFacts:
         return GeoParquetFacts(
