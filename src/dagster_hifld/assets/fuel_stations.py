@@ -11,7 +11,11 @@ import datetime
 import json
 import math
 import shutil
-import tempfile
+import subprocess
+import time
+import uuid
+import urllib.error
+import http.client
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -28,7 +32,8 @@ from pyproj import CRS
 from shapely import Point, to_wkb
 
 from dagster_hifld.partitions import SEMVER_VERSION_RE
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.release_approval import verifier_implementation_sha256
 
 SLUG = 'alternative-fueling-stations'
 SERVICE = 'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0'
@@ -45,8 +50,176 @@ class FuelDraftStorage(ConfigurableResource):
     draft_dir: str
 
 
+def _strict_json(raw):
+    def members(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f'Duplicate JSON member: {key}')
+            result[key] = value
+        return result
+    def invalid_constant(value):
+        raise ValueError(f'Non-JSON numeric constant: {value}')
+    return json.loads(raw, object_pairs_hook=members, parse_constant=invalid_constant)
+
+
 def _json(path: Path):
-    return json.loads(path.read_bytes())
+    return _strict_json(path.read_bytes())
+
+
+def _require_review_staging(staging):
+    if isinstance(staging, PublishedStorageResource):
+        raise ValueError('Review draft refuses published storage before any capture or write')
+    if not isinstance(staging, StagingStorageResource) or not staging.use_local or staging.bucket:
+        raise ValueError('Review draft permits isolated local staging only')
+    prefix = Path(staging.prefix)
+    if prefix.is_absolute() or '..' in prefix.parts:
+        raise ValueError('Review staging prefix must remain inside its local root')
+
+
+def processing_identity():
+    pipeline = verifier_implementation_sha256()
+    versions = {'pyarrow': pa.__version__, 'pyogrio': pyogrio.__version__,
+                'gdal': str(pyogrio.__gdal_version__)}
+    fingerprint = hashlib.sha256(json.dumps({'installed_pipeline_sha256': pipeline,
+        'versions': versions}, sort_keys=True).encode()).hexdigest()
+    root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True)
+    commit = result.stdout.strip() if result.returncode == 0 else None
+    dirty = subprocess.run(['git', '-C', str(root), 'diff', '--quiet', '--', 'src/dagster_hifld'], capture_output=True).returncode
+    return {'builder_fingerprint': fingerprint, 'installed_pipeline_sha256': pipeline,
+        'code_commit': commit, 'working_tree_modified': dirty != 0, 'versions': versions,
+        'meaning': 'Original processing identity; replay does not invent a new upstream retrieval.'}
+
+
+def _census(count, identifiers):
+    if type(count) is not int or not 0 < count <= 250_000:
+        raise ValueError('Invalid/beyond-bounds count witness')
+    if not isinstance(identifiers, list) or len(identifiers) != count:
+        raise ValueError('ID witness cardinality differs from count')
+    if any(type(value) is not int or not -(2**63) <= value < 2**63 for value in identifiers):
+        raise ValueError('ID witnesses must be exact 64-bit integers')
+    if len(set(identifiers)) != count:
+        raise ValueError('Duplicate ID witness')
+    return identifiers
+
+
+def _verify_data_receipt_scope(name, receipt, identifiers):
+    """Request and observed terminal URL must identify this exact official feed."""
+    if name in ('bts_layer', 'bts_layer_after'):
+        path = urllib.parse.urlsplit(SERVICE).path
+        expected = {'f': 'json'}
+    elif name.startswith('bts_count'):
+        path = urllib.parse.urlsplit(SERVICE).path + '/query'
+        expected = {'f': 'json', 'where': '1=1', 'returnCountOnly': 'true'}
+    elif name.startswith('bts_ids'):
+        path = urllib.parse.urlsplit(SERVICE).path + '/query'
+        expected = {'f': 'json', 'where': '1=1', 'returnIdsOnly': 'true'}
+    elif name.startswith('page-'):
+        page = int(name.removeprefix('page-'))
+        group = sorted(identifiers)[page * 2000:(page + 1) * 2000]
+        path = urllib.parse.urlsplit(SERVICE).path + '/query'
+        expected = {'f': 'json', 'where': f'OBJECTID >= {group[0]} AND OBJECTID <= {group[-1]}',
+            'outFields': '*', 'returnGeometry': 'true', 'orderByFields': 'OBJECTID ASC', 'resultRecordCount': '2000'}
+    else:
+        raise ValueError('Unrecognized official data receipt role')
+    for field in ('url', 'final_url'):
+        value = receipt.get(field)
+        if not isinstance(value, str):
+            raise ValueError(f'Unverified retrieval: missing observed {field} for {name}')
+        parsed = urllib.parse.urlsplit(value)
+        pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
+        params = dict(pairs)
+        if (len(params) != len(pairs) or parsed.scheme != 'https'
+                or parsed.hostname != 'services.arcgis.com' or parsed.port not in (None, 443)
+                or parsed.username is not None or parsed.password is not None or parsed.fragment
+                or parsed.path != path):
+            raise ValueError(f'Unverified official data receipt origin/scope for {name}')
+        if name in ('bts_layer', 'bts_layer_after') and params.get('f') == 'pjson':
+            params['f'] = 'json'
+        if params != expected:
+            raise ValueError(f'Unverified official data receipt query scope for {name}')
+
+
+def _raw_files(root):
+    paths = list(root.glob('*.body')) + list(root.glob('*.receipt.json'))
+    if (root / 'capture-status.json').is_file(): paths.append(root / 'capture-status.json')
+    attempts = root / 'attempts'
+    if attempts.exists(): paths.extend(p for p in attempts.rglob('*') if p.is_file())
+    return sorted(set(paths))
+
+
+def _preserve_for_review(capture, staging, version):
+    _require_review_staging(staging)
+    if not SEMVER_VERSION_RE.fullmatch(version):
+        raise ValueError('Explicit immutable semver version required')
+    target = Path(staging.local_dir).resolve() / staging.prefix / 'quarantine' / SLUG / version / uuid.uuid4().hex
+    target.mkdir(parents=True, exist_ok=False)
+    (target / 'raw').mkdir()
+    (target / 'status.json').write_text(json.dumps({'state': 'pending', 'version': version,
+        'source_capture': str(capture), 'approval': None}, sort_keys=True))
+    for path in _raw_files(capture):
+        if path.is_symlink(): raise ValueError('Raw capture symlinks are not accepted')
+        output = target / 'raw' / path.relative_to(capture)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, output)
+    return target
+
+
+def _capture_json(destination, name, url, attempts=3):
+    """Persist every bounded response, including partial/error bytes, before parsing."""
+    folder = destination / 'attempts' / name
+    folder.mkdir(parents=True, exist_ok=False)
+    last_error = None
+    for number in range(attempts):
+        body_path = folder / f'{number:03d}.body'
+        receipt = {'url': url, 'observed_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'attempt': number + 1, 'status': 0, 'complete_body': False}
+        response = None
+        try:
+            try:
+                response = urllib.request.urlopen(url, timeout=30)
+            except urllib.error.HTTPError as error:
+                response = error
+            receipt.update(status=response.status, final_url=response.geturl() if hasattr(response, 'geturl') else None,
+                date=response.headers.get('Date'),
+                content_length=response.headers.get('Content-Length'))
+            with body_path.open('xb', buffering=0) as output:
+                size = 0
+                while True:
+                    try:
+                        block = response.read(min(64 * 1024, 12_000_001 - size))
+                    except http.client.IncompleteRead as error:
+                        output.write(error.partial)
+                        raise
+                    if not block: break
+                    output.write(block); size += len(block)
+                    if size > 12_000_000:
+                        raise ValueError('Response exceeds bounded page size; partial bytes retained')
+            declared = receipt['content_length']
+            if declared is not None and (not declared.isdigit() or size != int(declared)):
+                raise ValueError('HTTP body length differs from declared length; partial bytes retained')
+            receipt['complete_body'] = True
+            if receipt['status'] != 200:
+                raise ValueError(f'HTTP response {receipt["status"]}')
+            data = _json(body_path)
+            if not isinstance(data, dict) or 'error' in data:
+                raise ValueError('ArcGIS application error or nonobject response')
+        except Exception as error:
+            last_error = error
+            receipt['error'] = f'{type(error).__name__}: {error}'
+            if not body_path.exists(): body_path.write_bytes(b'')
+        finally:
+            if response is not None: response.close()
+            receipt.update(bytes=body_path.stat().st_size, sha256=_digest(body_path))
+            (folder / f'{number:03d}.receipt.json').write_text(json.dumps(receipt, sort_keys=True))
+        if 'error' not in receipt:
+            shutil.copyfile(body_path, destination / f'{name}.body')
+            (destination / f'{name}.receipt.json').write_text(json.dumps(receipt, sort_keys=True))
+            return data
+        if number + 1 < attempts: time.sleep(0.05 * 2**number)
+    raise ValueError(f'Capture failed after {attempts} bounded attempts for {name}: {last_error}')
+
 
 
 def _digest(path: Path):
@@ -55,6 +228,16 @@ def _digest(path: Path):
         for chunk in iter(lambda: source.read(1024 * 1024), b''):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _exact_point(geometry):
+    if (set(geometry or {}) != {'x', 'y'}
+            or not all(type(geometry[key]) in (int, float) and math.isfinite(geometry[key]) for key in ('x', 'y'))):
+        raise ValueError('Missing/invalid point geometry')
+    point = Point(geometry['x'], geometry['y'])
+    if point.x != geometry['x'] or point.y != geometry['y']:
+        raise ValueError('Point geometry would lose source numeric precision')
+    return point
 
 
 def capture_live(destination: Path) -> None:
@@ -67,33 +250,26 @@ def capture_live(destination: Path) -> None:
 
     def get(name: str, query: dict | None = None):
         url = SERVICE + ('/query?' + urllib.parse.urlencode(query) if query else '?f=pjson')
-        with urllib.request.urlopen(url, timeout=90) as response:
-            body = response.read(12_000_001)
-            if len(body) > 12_000_000:
-                raise ValueError('Response exceeds bounded page size')
-            data = json.loads(body)
-            if 'error' in data:
-                raise ValueError(f'ArcGIS application error: {data["error"]}')
-            (destination / f'{name}.body').write_bytes(body)
-            (destination / f'{name}.receipt.json').write_text(json.dumps({
-                'url': url, 'status': response.status, 'bytes': len(body),
-                'sha256': hashlib.sha256(body).hexdigest(),
-                'date': response.headers.get('Date')}, sort_keys=True))
-            return data
+        return _capture_json(destination, name, url)
 
-    get('bts_layer')
-    count = get('bts_count', {'f': 'json', 'where': '1=1', 'returnCountOnly': 'true'})['count']
-    ids = sorted(get('bts_ids', {'f': 'json', 'where': '1=1', 'returnIdsOnly': 'true'})['objectIds'])
-    if not 0 < count == len(ids) <= 250_000 or len(set(ids)) != count:
-        raise ValueError('Invalid/beyond-bounds ID census')
-    for index, start in enumerate(range(0, count, 2000)):
-        group = ids[start:start + 2000]
-        get(f'page-{index:03d}', {'f': 'json', 'where': f'OBJECTID >= {group[0]} AND OBJECTID <= {group[-1]}',
-            'outFields': '*', 'returnGeometry': 'true', 'orderByFields': 'OBJECTID ASC', 'resultRecordCount': 2000})
-    get('bts_count_after', {'f': 'json', 'where': '1=1', 'returnCountOnly': 'true'})
-    get('bts_ids_after', {'f': 'json', 'where': '1=1', 'returnIdsOnly': 'true'})
-    get('bts_layer_after')
-    inspect_capture(destination)
+    try:
+        get('bts_layer')
+        count = get('bts_count', {'f': 'json', 'where': '1=1', 'returnCountOnly': 'true'})['count']
+        ids = sorted(_census(count, get('bts_ids', {'f': 'json', 'where': '1=1', 'returnIdsOnly': 'true'})['objectIds']))
+        for index, start in enumerate(range(0, count, 2000)):
+            group = ids[start:start + 2000]
+            get(f'page-{index:03d}', {'f': 'json', 'where': f'OBJECTID >= {group[0]} AND OBJECTID <= {group[-1]}',
+                'outFields': '*', 'returnGeometry': 'true', 'orderByFields': 'OBJECTID ASC', 'resultRecordCount': 2000})
+        get('bts_count_after', {'f': 'json', 'where': '1=1', 'returnCountOnly': 'true'})
+        get('bts_ids_after', {'f': 'json', 'where': '1=1', 'returnIdsOnly': 'true'})
+        get('bts_layer_after')
+        inspect_capture(destination)
+    except Exception as error:
+        (destination / 'capture-status.json').write_text(json.dumps({'state': 'blocked',
+            'reason': f'{type(error).__name__}: {error}', 'raw_preserved': True, 'approval': None}, sort_keys=True))
+        raise
+    (destination / 'capture-status.json').write_text(json.dumps({'state': 'complete_unapproved_draft',
+        'raw_preserved': True, 'approval': None}, sort_keys=True))
 
 
 def inspect_capture(root: Path) -> dict:
@@ -107,7 +283,10 @@ def inspect_capture(root: Path) -> dict:
     expected = _json(root / 'bts_ids.body')['objectIds']
     ending = _json(root / 'bts_ids_after.body')['objectIds']
     count = _json(root / 'bts_count.body')['count']
-    if count != _json(root / 'bts_count_after.body')['count'] or count != len(expected) or len(set(expected)) != count or set(expected) != set(ending):
+    final_count = _json(root / 'bts_count_after.body')['count']
+    _census(count, expected)
+    _census(final_count, ending)
+    if count != final_count or set(expected) != set(ending):
         raise ValueError('Changed or incomplete source ID census')
     paths = sorted(root.glob('page-*.body'))
     expected_pages = (count + 1999) // 2000
@@ -138,8 +317,7 @@ def inspect_capture(root: Path) -> dict:
             attrs, geom = feature['attributes'], feature['geometry']
             if set(attrs) != set(fields):
                 raise ValueError('Missing/extra raw attribute')
-            if set(geom or {}) != {'x', 'y'} or not all(type(geom[k]) in (int, float) and math.isfinite(geom[k]) for k in ('x', 'y')):
-                raise ValueError('Missing/invalid point geometry')
+            _exact_point(geom)
             for name, value in attrs.items():
                 field = fields[name]
                 if value is None:
@@ -172,10 +350,20 @@ def inspect_capture(root: Path) -> dict:
     for record in files:
         receipt_path = root / record['name'].replace('.body', '.receipt.json')
         receipt = _json(receipt_path)
-        if receipt.get('status') != 200 or receipt.get('sha256') != record['sha256'] or receipt.get('bytes') != record['bytes']:
+        _verify_data_receipt_scope(record['name'].removesuffix('.body'), receipt, expected)
+        if (receipt.get('status') != 200 or receipt.get('sha256') != record['sha256']
+                or receipt.get('bytes') != record['bytes']
+                or receipt.get('complete_body', True) is not True):
             raise ValueError('HTTP receipt/checksum mismatch')
         receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': _digest(receipt_path)})
     files.extend(receipts)
+    if (root / 'capture-status.json').is_file():
+        path = root / 'capture-status.json'
+        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+    attempts_dir = root / 'attempts'
+    if attempts_dir.exists():
+        files.extend({'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': _digest(path)}
+            for path in sorted(attempts_dir.rglob('*')) if path.is_file())
     return {'rows': len(seen), 'station_ids': len(station_ids), 'pages': len(paths), 'bounds': bounds,
             'source': SERVICE, 'editing_info': layer['editingInfo'], 'fields': layer['fields'],
             'crs': layer['extent']['spatialReference'], 'raw_files': files,
@@ -185,16 +373,30 @@ def inspect_capture(root: Path) -> dict:
 def build_candidate(capture: Path, destination: Path) -> dict:
     """Lossless native-schema GeoParquet draft, never a published projection."""
     audit = inspect_capture(capture)
+    processing = processing_identity()
     fields = audit['fields']
     schema = pa.schema([pa.field(f['name'], _TYPES[f['type']], nullable=f['nullable']) for f in fields] + [pa.field('geometry', pa.binary(), nullable=False)])
     crs = CRS.from_epsg(audit['crs']['latestWkid']).to_json_dict()
     schema = schema.with_metadata({b'geo': json.dumps({'version': '1.1.0', 'primary_column': 'geometry', 'columns': {'geometry': {'encoding': 'WKB', 'geometry_types': ['Point'], 'crs': crs, 'bbox': audit['bounds']}}}, sort_keys=True).encode()})
     destination.mkdir(parents=True, exist_ok=True)
     target = destination / 'candidate.parquet'
+    request_path = destination / 'processing-request.json'
+    request = {'processing': processing, 'raw_files': audit['raw_files']}
+    if request_path.exists():
+        original = _json(request_path)
+        if (original['processing']['builder_fingerprint'] != processing['builder_fingerprint']
+                or original['raw_files'] != audit['raw_files']):
+            raise FileExistsError('Immutable processing request changed; use a new version')
+    elif target.exists():
+        raise FileExistsError('Existing candidate lacks its immutable processing request')
+    else:
+        with request_path.open('x') as output:
+            output.write(json.dumps(request, sort_keys=True, indent=2) + '\n')
     provenance = destination / 'provenance.json'
     if target.exists():
         previous = _json(provenance)
-        if previous['raw_files'] == audit['raw_files'] and previous['candidate_sha256'] == _digest(target):
+        if (previous.get('processing', {}).get('builder_fingerprint') == processing['builder_fingerprint']
+                and previous['raw_files'] == audit['raw_files'] and previous['candidate_sha256'] == _digest(target)):
             return previous
         raise FileExistsError('Immutable candidate version collision')
     temporary = destination / 'candidate.parquet.partial'
@@ -202,10 +404,14 @@ def build_candidate(capture: Path, destination: Path) -> dict:
         for path in sorted(capture.glob('page-*.body')):
             rows = []
             for feature in _json(path)['features']:
-                rows.append({**feature['attributes'], 'geometry': to_wkb(Point(feature['geometry']['x'], feature['geometry']['y']), byte_order=1)})
+                rows.append({**feature['attributes'], 'geometry': to_wkb(_exact_point(feature['geometry']), byte_order=1)})
             writer.write_table(pa.Table.from_pylist(rows, schema=schema))
     temporary.replace(target)
-    audit.update(candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
+    audit.update(processing=processing, original_retrieval_receipts=[{'name': p.name, 'url': _json(p).get('url'), 'final_url': _json(p).get('final_url'),
+                    'observed_at': _json(p).get('observed_at'), 'http_date': _json(p).get('date', _json(p).get('headers', {}).get('date'))}
+                    for p in sorted(capture.glob('*.receipt.json')) if p.name.startswith(('bts_', 'page-'))],
+                 producer='DOE/NLR AFDC', distributor='USDOT_BTS official NTAD distribution',
+                 candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
                  proposed_mapping='identity for every raw field; epoch-ms dates remain int64; native EPSG:3857 geometry',
                  schema=[{'name': f.name, 'type': str(f.type), 'nullable': f.nullable} for f in schema])
     (destination / 'provenance.json').write_text(json.dumps(audit, sort_keys=True, indent=2) + '\n')
@@ -215,7 +421,14 @@ def build_candidate(capture: Path, destination: Path) -> dict:
 @asset(key=AssetKey(['draft_raw', SLUG, SLUG]), partitions_def=FUEL_PARTITIONS, group_name='draft_bts')
 def fuel_stations_raw(context, fuel_draft_storage: FuelDraftStorage) -> str:
     root = Path(fuel_draft_storage.capture_dir)
-    audit = inspect_capture(root)
+    retained = _preserve_for_review(root, StagingStorageResource(local_dir=fuel_draft_storage.draft_dir, use_local=True), context.partition_key)
+    root = retained / 'raw'
+    try:
+        audit = inspect_capture(root)
+    except Exception as error:
+        (retained / 'status.json').write_text(json.dumps({'state': 'blocked', 'reason': str(error), 'raw_preserved': True, 'approval': None}))
+        raise
+    audit['processing'] = processing_identity()
     target = Path(fuel_draft_storage.draft_dir) / SLUG / context.partition_key / 'raw'
     target.mkdir(parents=True, exist_ok=True)
     for record in audit['raw_files']:
@@ -223,8 +436,17 @@ def fuel_stations_raw(context, fuel_draft_storage: FuelDraftStorage) -> str:
         if output.exists() and _digest(output) != record['sha256']:
             raise ValueError('Immutable raw version collision')
         if not output.exists():
+            output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, output)
-    (target / 'capture-manifest.json').write_text(json.dumps(audit, sort_keys=True, indent=2) + '\n')
+    manifest = target / 'capture-manifest.json'
+    if manifest.exists():
+        previous = _json(manifest)
+        if (previous.get('processing', {}).get('builder_fingerprint') != audit['processing']['builder_fingerprint']
+                or previous['raw_files'] != audit['raw_files']):
+            raise ValueError('Immutable raw processing version collision')
+    else:
+        manifest.write_text(json.dumps(audit, sort_keys=True, indent=2) + '\n')
+    (retained / 'status.json').write_text(json.dumps({'state': 'complete_unapproved_draft', 'raw_preserved': True, 'approval': None}))
     context.add_output_metadata({'rows': audit['rows'], 'pages': audit['pages'], 'promotion_allowed': False})
     return str(target)
 
@@ -297,14 +519,13 @@ def write_typed_geopackage(candidate: Path, destination: Path, source_edit_ms: i
     temporary.replace(destination)
 
 
-def stage_fuel_capture(capture: Path, staging: StagingStorageResource, version: str) -> dict:
+def _stage_capture_payload(capture: Path, staging: StagingStorageResource, version: str) -> dict:
     """Stage native raw proof + lossless typed draft and canonical GeoJSON input.
 
     No publication mapping is applied. Generic downstream conversions remain
     draft candidates behind the #417 release boundary and require type review.
     """
-    if not staging.use_local or staging.bucket:
-        raise ValueError('Review draft permits isolated local staging only')
+    _require_review_staging(staging)
     if not SEMVER_VERSION_RE.fullmatch(version):
         raise ValueError('Explicit immutable semver version required')
     audit = inspect_capture(capture)
@@ -343,9 +564,13 @@ def stage_fuel_capture(capture: Path, staging: StagingStorageResource, version: 
     manifest = {'title':'Alternative Fueling Stations', 'agency':'U.S. Department of Energy / National Laboratory of the Rockies',
         'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
         'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':'draft-unapproved-v1',
-        'inputs':[{'input_id':SERVICE, 'raw_files':audit['raw_files'], 'crs':audit['crs'], 'fields':audit['fields']}],
+        'processor':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
+        'original_retrieval_receipts':candidate['original_retrieval_receipts'],
+        'inputs':[{'input_id':SERVICE, 'producer':candidate['producer'], 'distributor':candidate['distributor'],
+            'original_retrieval_receipts':candidate['original_retrieval_receipts'],
+            'raw_files':audit['raw_files'], 'crs':audit['crs'], 'fields':audit['fields']}],
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
-        'lineage':{'producer':'DOE/NLR AFDC', 'distributor_item':'9010c04bcdf84c36abb74e98778af579','crosswalk':'unmatched; DataLumos403'},
+        'lineage':{'producer':'DOE/NLR AFDC', 'distributor_item':'9010c04bcdf84c36abb74e98778af579','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
         'unsupported_output_formats':{'shapefile_zip':'Unapproved lossy format: 80 source fields include >10-character names/identifier columns and embedded JSON text beyond DBF width; no reviewed lossless name/type/null/value mapping.'}}
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
@@ -356,20 +581,45 @@ def stage_fuel_capture(capture: Path, staging: StagingStorageResource, version: 
     return {'version': version, 'rows':audit['rows'], 'source':SERVICE, 'candidate_sha256':candidate['candidate_sha256'], 'promotion_allowed':False}
 
 
+def stage_fuel_capture(capture: Path, staging: StagingStorageResource, version: str) -> dict:
+    _require_review_staging(staging)
+    retained = _preserve_for_review(capture, staging, version)
+    try:
+        result = _stage_capture_payload(retained / 'raw', staging, version)
+    except Exception as error:
+        (retained / 'status.json').write_text(json.dumps({'state': 'blocked', 'version': version,
+            'reason': f'{type(error).__name__}: {error}', 'raw_preserved': True, 'approval': None}, sort_keys=True))
+        raise
+    (retained / 'status.json').write_text(json.dumps({'state': 'complete_unapproved_draft',
+        'version': version, 'raw_preserved': True, 'approval': None}, sort_keys=True))
+    return result
+
+
 @asset(key=AssetKey(['ingest', SLUG, SLUG]), group_name='bts', compute_kind='http',
        config_schema={'capture_dir':str, 'version':str},
        description='Draft DOE/NLR AFDC feed via official USDOT_BTS distributor; all raw fields and IDs retained. Local research staging only; publication requires independent exact-release approval.')
 def bts_alternative_fueling_stations(context, staging_storage: StagingStorageResource) -> dict:
-    if not staging_storage.use_local or staging_storage.bucket:
-        raise ValueError('Review draft permits isolated local staging only')
+    _require_review_staging(staging_storage)
     capture_dir = context.op_config['capture_dir']
     if capture_dir:
         result = stage_fuel_capture(Path(capture_dir), staging_storage, context.op_config['version'])
     else:
-        with tempfile.TemporaryDirectory() as temporary:
-            capture = Path(temporary) / 'capture'
+        version = context.op_config['version']
+        if not SEMVER_VERSION_RE.fullmatch(version):
+            raise ValueError('Explicit immutable semver version required')
+        retained = Path(staging_storage.local_dir).resolve() / staging_storage.prefix / 'quarantine' / SLUG / version / uuid.uuid4().hex
+        retained.mkdir(parents=True, exist_ok=False)
+        state = retained / 'status.json'
+        state.write_text(json.dumps({'state': 'pending_live_capture', 'version': version, 'approval': None}))
+        capture = retained / 'capture'
+        try:
             capture_live(capture)
-            result = stage_fuel_capture(capture, staging_storage, context.op_config['version'])
+            result = stage_fuel_capture(capture, staging_storage, version)
+        except Exception as error:
+            state.write_text(json.dumps({'state': 'blocked', 'version': version,
+                'reason': f'{type(error).__name__}: {error}', 'raw_preserved': True, 'approval': None}, sort_keys=True))
+            raise
+        state.write_text(json.dumps({'state': 'complete_unapproved_draft', 'version': version, 'raw_preserved': True, 'approval': None}))
     context.add_output_metadata({'rows':result['rows'], 'version':result['version'], 'promotion_allowed':False})
     return result
 

@@ -12,6 +12,7 @@ import pathlib
 import sqlite3
 import sys
 import tempfile
+from dagster_hifld.assets.fuel_stations import _strict_json
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
@@ -26,11 +27,11 @@ def run(root, output):
     output.mkdir(parents=True, exist_ok=True)
     audit = inspect_capture(root)
     baseline = root / 'baseline_parquet.body'
-    receipt = json.loads((root / 'baseline_parquet.receipt.json').read_text())
+    receipt = _strict_json((root / 'baseline_parquet.receipt.json').read_text())
     assert hashlib.sha256(baseline.read_bytes()).hexdigest() == receipt['sha256']
     assert baseline.stat().st_size == receipt['bytes'] == 10134712
     table = pq.ParquetFile(baseline)
-    geo = json.loads(table.schema_arrow.metadata[b'geo'])
+    geo = _strict_json(table.schema_arrow.metadata[b'geo'])
     assert geo['columns']['geometry']['crs']['id']['code'] == 3857
     source_fields = {f['name']:f for f in audit['fields']}
     published_fields = {f.name:str(f.type) for f in table.schema_arrow}
@@ -59,7 +60,7 @@ def run(root, output):
             db.executemany('insert into rows values (?,?,?,?)',insert)
         db.commit()
         for path in sorted(root.glob('page-*.body')):
-            for feature in json.loads(path.read_bytes())['features']:
+            for feature in _strict_json(path.read_bytes())['features']:
                 attrs=feature['attributes']; identifier=attrs['id'];source_ids.add(identifier);all_source_ids.add(attrs['OBJECTID'])
                 if attrs['updated_at'] is not None:row_dates.append(attrs['updated_at'])
                 for name,value in attrs.items():
@@ -68,7 +69,7 @@ def run(root, output):
                 for name in coverage_fields:coverage['source'][name][canonical(attrs[name])]+=1
                 found=db.execute('select attributes,x,y from rows where id=?',(identifier,)).fetchone()
                 if not found:continue
-                published=json.loads(found[0])
+                published=_strict_json(found[0])
                 for name in common:
                     value=attrs[name]; previous=published[name]
                     if type(value) is not type(previous) or value != previous:raw_changed[name]+=1

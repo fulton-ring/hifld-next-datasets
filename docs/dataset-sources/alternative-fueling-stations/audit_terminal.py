@@ -10,6 +10,7 @@ import pathlib
 import sqlite3
 import sys
 import tempfile
+from dagster_hifld.assets.fuel_stations import _strict_json
 
 import pyarrow.parquet as pq
 from pyproj import CRS
@@ -40,7 +41,7 @@ def main(root, output):
         database.commit()
         for path in paths:
             terminal=pq.ParquetFile(path)
-            geo=json.loads(terminal.schema_arrow.metadata[b'geo']);geometry_name=geo['primary_column']
+            geo=_strict_json(terminal.schema_arrow.metadata[b'geo']);geometry_name=geo['primary_column']
             if CRS.from_user_input(geo['columns'][geometry_name]['crs'])!=CRS.from_epsg(3857):raise ValueError('Unexpected terminal CRS; no reprojected equality inferred')
             names=set(terminal.schema_arrow.names)
             if not expected_fields<=names:raise ValueError('Terminal field omission')
@@ -56,7 +57,7 @@ def main(root, output):
                     ids.add(identifier)
                     found=database.execute('select attrs,geometry from rows where id=?',(identifier,)).fetchone()
                     if found is None:raise ValueError('Unexpected terminal ID')
-                    reference=json.loads(found[0])
+                    reference=_strict_json(found[0])
                     for name in expected_fields:
                         if type(row[name]) is not type(reference[name]) or row[name]!=reference[name]:changes[name]+=1
                     if row[geometry_name]!=found[1]:geometry_changes+=1

@@ -9,6 +9,7 @@ import pathlib
 import sys
 import urllib.error
 import urllib.request
+from dagster_hifld.assets.fuel_stations import _strict_json
 
 from dagster_hifld.assets.fuel_stations import capture_live
 
@@ -34,11 +35,11 @@ def main(root):
     catalog='https://hifld.publicenvirodata.org/api/collections/hifld/datasets/alternative-fueling-stations'
     receipt=fetch(root,'baseline',catalog)
     for name in ('baseline_file','baseline_version'):
-        document=json.loads((root/(('baseline' if name=='baseline_file' else 'baseline_file')+'.body')).read_bytes())
+        document=_strict_json((root/(('baseline' if name=='baseline_file' else 'baseline_file')+'.body')).read_bytes())
         children=sorted({link['href'] for link in document['links'] if link['rel']=='child'})
         if len(children)!=1:raise ValueError('Ambiguous baseline catalog traversal')
         receipt=fetch(root,name,children[0])
-    version=json.loads((root/'baseline_version.body').read_bytes())
+    version=_strict_json((root/'baseline_version.body').read_bytes())
     assets=[a for a in version['assets'].values() if a.get('type')=='application/vnd.apache.parquet']
     if len(assets)!=1:raise ValueError('Ambiguous baseline candidate')
     asset=assets[0]; receipt=fetch(root,'baseline_parquet',asset['href'])

@@ -37,8 +37,8 @@
     "removed_station_ids": 13010
   },
   "crosswalk": {
-    "reason": "Provider-side HTTP403 Cloudflare challenge after normal public request. No bypass. Matching catalog/inventory descriptions support candidate identity but do not establish crosswalk acceptance.",
-    "status": "explicit_unmatched",
+    "reason": "The recorded provider-side HTTP403 Cloudflare challenge prevented inspecting the DHS mapping. No matched or unmatched determination is established; no bypass attempted.",
+    "status": "unverified_inaccessible",
     "url": "https://doi.org/10.3886/E241367V1"
   },
   "external_decision_document": "DECISION.md",
@@ -77,6 +77,12 @@
       "selection": "source ingest only; no publish/catalog asset selection"
     },
     "registry": "src/dagster_hifld/assets/ingest_registry.py",
+    "review_repairs": {
+      "failure_evidence": "Successful, failed and partial response bytes and receipts stream to durable isolated quarantine before validation; three bounded attempts; failed source/schema/ID/geometry captures remain with blocked reason.",
+      "processing_identity": "Entire installed dagster_hifld fingerprint plus library versions and actual original Git commit/dirty state; changed builder rejects same-version reuse; original retrieval receipts retained without fresh-fetch claims.",
+      "published_storage": "Explicit class rejection at source/helper before network, quarantine or data writes.",
+      "witnesses": "Strict duplicate-member/non-JSON-number loader; positive integer counts and exact integer/cardinality/unique pre/post OID census."
+    },
     "scope": "Working draft raw+typedcandidate graph and normal explicit ingest+catalog graph; local staging only. No API-funded agent/worker. Shared verifier dependency PR421.",
     "terminal_parquet_audit": "evidence/terminal-parquet-assertions.json",
     "terminal_representational_differences": {
@@ -1618,7 +1624,7 @@
     "producer_access": {
       "afdc_form": "HTTP200 but requires name/email/terms registration; not submitted",
       "api": "developer.nlr.gov responds API_KEY_MISSING HTTP403 without key; no key invented",
-      "legacy_docs_host": "developer.nrel.gov CONNECT403 persists, while new developer.nlr.gov docs200 and AFDC/BTS200. Do not generalize host-specific failure."
+      "legacy_docs_host": "Recorded legacy developer.nrel.gov request returned CONNECT403; new developer.nlr.gov documentation, AFDC and BTS reads returned200 at capture time. Offline replay does not assert current endpoint availability."
     },
     "producer_name_difference": "Inventory retains NREL; current official documentation and BTS identify NLR; do not silently erase historical names.",
     "publication_date_in_metadata": "2026-10-07",

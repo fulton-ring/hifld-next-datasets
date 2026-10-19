@@ -7,6 +7,7 @@ import tempfile
 import sqlite3
 import unittest
 import datetime
+import urllib.parse
 from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus, Definitions, DagsterInstance, build_schedule_context, materialize
@@ -22,7 +23,19 @@ from dagster_hifld.assets.fuel_stations import fuel_stations_draft_refresh_job, 
 def write(root, name, value):
     body = json.dumps(value, sort_keys=True).encode()
     (root / (name + '.body')).write_bytes(body)
-    (root / (name + '.receipt.json')).write_text(json.dumps({'status': 200, 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}))
+    service = 'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0'
+    if name.startswith('page-'):
+        query = {'f':'json', 'where':'OBJECTID >= 9999999999 AND OBJECTID <= 9999999999',
+                 'outFields':'*', 'returnGeometry':'true', 'orderByFields':'OBJECTID ASC', 'resultRecordCount':'2000'}
+        url = service + '/query?' + urllib.parse.urlencode(query)
+    elif name.startswith('bts_count'):
+        url = service + '/query?' + urllib.parse.urlencode({'f':'json','where':'1=1','returnCountOnly':'true'})
+    elif name.startswith('bts_ids'):
+        url = service + '/query?' + urllib.parse.urlencode({'f':'json','where':'1=1','returnIdsOnly':'true'})
+    else:
+        url = service + '?f=pjson'
+    (root / (name + '.receipt.json')).write_text(json.dumps({'url':url,'final_url':url,
+        'status': 200, 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}))
 
 
 def fixture(root):
@@ -128,7 +141,8 @@ class FuelDraftTest(unittest.TestCase):
     def test_unreviewed_schema_drift_and_remote_staging_are_rejected(self):
         storage=StagingStorageResource(local_dir=str(self.root/'staging'),use_local=True)
         with self.assertRaisesRegex(ValueError,'schema drift'): stage_fuel_capture(self.root,storage,'v0.0.0-test')
-        self.assertFalse((self.root/'staging').exists())
+        self.assertTrue((self.root/'staging/quarantine').exists())
+        self.assertFalse((self.root/'staging'/SLUG).exists())
         remote=StagingStorageResource(bucket='not-used',use_local=False)
         with self.assertRaisesRegex(ValueError,'local staging'): stage_fuel_capture(self.root,remote,'v0.0.0-test')
 
