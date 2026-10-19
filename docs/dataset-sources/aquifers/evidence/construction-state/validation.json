@@ -1,0 +1,55 @@
+{
+  "source_test_head": "9a501ce4725d55cba28cd81c35f543699561c68b",
+  "approved": false,
+  "release_approved": false,
+  "full_suite": {
+    "executed": 545,
+    "passed": 544,
+    "skipped": 1,
+    "seconds": 948.414,
+    "ci": false,
+    "dependency": "Unmodified pinned sibling IaC source snapshot56aa10757129c457c530d707d9a40bae13e0907f; earlier missing-IaC failures retainedhistorically"
+  },
+  "new_two_focused_tests": {
+    "partial_state_seconds": 1.266,
+    "bundle_binding_seconds": 5.689,
+    "passed": 2
+  },
+  "actual_registered_runs": [
+    {
+      "run_id": "765d6b5d-a4a9-4342-b789-0dbce5447ed7",
+      "step": "registered_real_source",
+      "success": true
+    },
+    {
+      "run_id": "5481e7c0-5645-4230-a151-36f913da505a",
+      "step": "real_source_idempotent_rerun",
+      "success": true
+    },
+    {
+      "failed_checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ],
+      "run_id": "e031a288-8c8a-4ba8-9baa-7517a9b031cf",
+      "step": "normal_full_graph_real_native_quality_denied",
+      "success": false
+    },
+    {
+      "failures": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/19/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "run_id": "d69c84a7-e63b-4846-9420-4bdec6bcaa79",
+      "step": "existing_verify_asset_missing_approval_denied",
+      "success": false
+    }
+  ],
+  "all4637_original_native_rows_fields_IDs_geometry_verified": true,
+  "source_invalid_geometries_retained": 20,
+  "source_null_ROCK_NAME_retained": 1627,
+  "native_writer_block_byte_identical_to_previous_reviewed_040": true,
+  "shared_integration_base": "e284617ae16fafeae634efd9c0008d1354b2091a",
+  "scope": "Fix modern catalog snapshots and bind fulloriginal manifest/receipt after complete private validation. Existing historical namespaces preserved; no source/ID/schema/quality approval."
+}
