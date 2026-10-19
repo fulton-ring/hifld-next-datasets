@@ -33,28 +33,39 @@
     {
       "capture": "evidence/official.txt",
       "finding": "Agency link unavailable: tunnel CONNECT403"
+    },
+    {
+      "capture": "evidence/network-recovery/historical-service.body",
+      "finding": "Historical ienccloud AIRPORT_AREA MapServer exists at layer57; complete72-feature capture. Self-attribution USACE IENC and S-57-to-FGDB description do not independently establish agency delegation or release date."
+    },
+    {
+      "capture": "evidence/network-recovery/agc.body",
+      "finding": "Current official agency landing request HTTP403 provider denial, not CONNECT. Separate archive/crosswalk requests HTTP403 Cloudflare challenge."
     }
   ],
   "release_date": null,
   "release_date_note": "16-Sep-26 is unverified item snippet date, not accepted release date. Portal modification and layer edit timestamps are not release dates.",
-  "checked_at": "2026-10-19T04:21:00Z",
-  "relationship_to_archive": "unresolved; named layer candidate, no title-only continuity accepted",
+  "checked_at": "2026-10-19T04:52:30Z",
+  "relationship_to_archive": "crosswalk/archive continuity unresolved; full published-candidate comparison establishes changed membership, IDs and attributes, not an accepted continuation",
   "crosswalk": {
     "status": "UNVERIFIED",
     "doi": "10.3886/E241367V1",
-    "reason": "Original XLSX unavailable and DOI/archive CONNECT403; no rows or hyperlink targets parsed. Not an unmatched result."
+    "reason": "2026-10-19 retry resolves DOI to DataLumos but provider HTTP403 with cf-mitigated:challenge; no CONNECT denial. Original XLSX remains inaccessible; no rows or hyperlinks reconciled."
   },
   "archive": {
     "source_role": "archive",
     "url": "https://www.datalumos.org/datalumos/project/238564/version/V1/view",
     "inventory_modified": "2025-04-08",
-    "schema_and_ids": "unavailable"
+    "schema_and_ids": "archive remains unavailable: provider403 Cloudflare challenge on network-recovery retry"
   },
   "accepted_baseline": {
-    "status": "unavailable",
-    "version": null,
-    "checksum": null,
-    "comparison": "blocked; no accepted HIFLD Next output or dictionary retrieved"
+    "status": "candidate_captured_UNAPPROVED",
+    "version": "hifld/airport-area-usace-ienc/airport-area-usace-ienc/v1.0.0",
+    "checksum": "sha256:3cffcba205af2d1439ddf6a15f7cbde821bbd666e853a7c93765ef608774be59",
+    "generation": "1791506346972386",
+    "capture": "evidence/network-recovery/baseline-candidate.parquet",
+    "catalog_capture": "evidence/network-recovery/baseline-catalog.json",
+    "comparison": "Full72-row/geometry audit:71 unique exact-topology pairs,43 changed OBJECTID values,43 Information null/empty differences,10 Source_Indication differences. Unmatched published Gateway Air Tours Helipad; unmatched source Demopolis Municipal Airport. Count/extent unchanged. See comparison.json; acceptance remains unapproved."
   },
   "extraction": {
     "capture": "evidence/features.json",
@@ -192,9 +203,18 @@
   "implementation_gate": [
     "official producer/delegation verification",
     "original crosswalk hyperlink reconciliation",
-    "accepted published baseline and ID/schema comparison",
     "maintainer approval for all-column contract",
-    "shared #417 acceptance prerequisite"
+    "shared #417 acceptance prerequisite",
+    "maintainer acceptance/rejection of exact pinned published candidate",
+    "approve changed membership/ID/schema migration and null/string handling"
   ],
-  "materialization": "not performed; research only"
+  "materialization": "not performed; research only",
+  "baseline_comparison": {
+    "replay": "uv run --frozen python docs/dataset-sources/airport-area-usace-ienc/audit-recovery.py",
+    "report": "evidence/network-recovery/comparison.json",
+    "decision": "decision.json",
+    "mapping_status": "UNAPPROVED; observation mapping only",
+    "source_identifiers": "Feature_ID unique/non-null72 in both services and preserved text; published candidate lacks Feature_ID. Published id equals OBJECTID but cannot reconstruct source Feature_ID. OBJECTID unsafe continuity key."
+  },
+  "local_readiness": "Fresh frozen own environment: isolated local Dagster UI/repository loading, evidence/network-recovery/readiness.json. No materialization or suite pass claimed."
 }

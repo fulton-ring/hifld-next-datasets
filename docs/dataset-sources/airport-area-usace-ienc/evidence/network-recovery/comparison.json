@@ -1,0 +1,1149 @@
+{
+  "acceptance": "NONE; both baseline and mappings remain unapproved",
+  "published_sha256": "3cffcba205af2d1439ddf6a15f7cbde821bbd666e853a7c93765ef608774be59",
+  "published_generation": "1791506346972386",
+  "counts": {
+    "published_candidate": 72,
+    "historical_service": 72,
+    "master_service": 72
+  },
+  "geometry_audit": {
+    "published_candidate": {
+      "invalid": 0,
+      "empty": 0,
+      "bounds": [
+        -96.40238799999997,
+        29.705207700000074,
+        -80.86129599999998,
+        44.94200110000003
+      ]
+    },
+    "historical_service": {
+      "invalid": 0,
+      "empty": 0,
+      "bounds": [
+        -96.40238799999997,
+        29.705207700000074,
+        -80.86129599999998,
+        44.94200110000003
+      ]
+    },
+    "master_service": {
+      "invalid": 0,
+      "empty": 0,
+      "bounds": [
+        -96.402388,
+        29.7052077000001,
+        -80.861296,
+        44.9420011
+      ]
+    }
+  },
+  "published_physical_schema": [
+    {
+      "name": "geometry",
+      "type": "binary",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "OBJECTID",
+      "type": "int64",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "Category_o",
+      "type": "string",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "Object_Nam",
+      "type": "string",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "Informatio",
+      "type": "string",
+      "nullable": true,
+      "null_count": 44
+    },
+    {
+      "name": "Scale_Mini",
+      "type": "int64",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "Source_Dat",
+      "type": "string",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "Source_Ind",
+      "type": "string",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "Source_D_1",
+      "type": "string",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "SHAPE_Leng",
+      "type": "double",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "SHAPE_Area",
+      "type": "double",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "id",
+      "type": "int64",
+      "nullable": true,
+      "null_count": 0
+    },
+    {
+      "name": "bbox",
+      "type": "struct<xmin: double, ymin: double, xmax: double, ymax: double>",
+      "nullable": true,
+      "null_count": 0
+    }
+  ],
+  "historical_schema": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "domain": null
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry",
+      "alias": "SHAPE",
+      "domain": null
+    },
+    {
+      "name": "Category_of_Airport",
+      "type": "esriFieldTypeString",
+      "alias": "Category_of_Airport",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "Object_Name",
+      "type": "esriFieldTypeString",
+      "alias": "Object_Name",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "Information",
+      "type": "esriFieldTypeString",
+      "alias": "Information",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "Scale_Minimum",
+      "type": "esriFieldTypeInteger",
+      "alias": "Scale_Minimum",
+      "domain": null
+    },
+    {
+      "name": "Source_Date",
+      "type": "esriFieldTypeString",
+      "alias": "Source_Date",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "Source_Indication",
+      "type": "esriFieldTypeString",
+      "alias": "Source_Indication",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "Source_Dataset",
+      "type": "esriFieldTypeString",
+      "alias": "Source_Dataset",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "Feature_ID",
+      "type": "esriFieldTypeString",
+      "alias": "Feature_ID",
+      "length": 254,
+      "domain": null
+    }
+  ],
+  "master_schema": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "sqlType": "sqlTypeOther",
+      "nullable": false,
+      "editable": false,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Category_of_Airport",
+      "type": "esriFieldTypeString",
+      "alias": "Category_of_Airport",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Object_Name",
+      "type": "esriFieldTypeString",
+      "alias": "Object_Name",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Information",
+      "type": "esriFieldTypeString",
+      "alias": "Information",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Scale_Minimum",
+      "type": "esriFieldTypeInteger",
+      "alias": "Scale_Minimum",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Source_Date",
+      "type": "esriFieldTypeString",
+      "alias": "Source_Date",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Source_Indication",
+      "type": "esriFieldTypeString",
+      "alias": "Source_Indication",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Source_Dataset",
+      "type": "esriFieldTypeString",
+      "alias": "Source_Dataset",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Feature_ID",
+      "type": "esriFieldTypeString",
+      "alias": "Feature_ID",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Shape__Area",
+      "type": "esriFieldTypeDouble",
+      "alias": "Shape__Area",
+      "sqlType": "sqlTypeDouble",
+      "nullable": true,
+      "editable": false,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "Shape__Length",
+      "type": "esriFieldTypeDouble",
+      "alias": "Shape__Length",
+      "sqlType": "sqlTypeDouble",
+      "nullable": true,
+      "editable": false,
+      "domain": null,
+      "defaultValue": null
+    }
+  ],
+  "geometry_match_method": "Exact GEOS topological equality for every published polygon against every historical polygon; ignores IDs and ring ordering. No rounding/tolerance applied.",
+  "exact_geometry_pairs": [
+    {
+      "published_OBJECTID": 1,
+      "published_id": 1,
+      "source_OBJECTID": 1,
+      "source_Feature_ID": "U3 1617839877 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 2,
+      "published_id": 2,
+      "source_OBJECTID": 2,
+      "source_Feature_ID": "U3 1617839923 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 3,
+      "published_id": 3,
+      "source_OBJECTID": 3,
+      "source_Feature_ID": "U3 1393268673 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 4,
+      "published_id": 4,
+      "source_OBJECTID": 4,
+      "source_Feature_ID": "U3 1392990806 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,graph,USACE_Nashville_SDS",
+          "source": "US,U3,USACE,LRN_GIS"
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 5,
+      "published_id": 5,
+      "source_OBJECTID": 5,
+      "source_Feature_ID": "U3 1617840029 00001",
+      "mapped_attribute_differences": {
+        "Source_Ind": {
+          "published": "US,U3,CEMVN,ILLINOIS RIVER",
+          "source": "US,U3,USACE,MVR_2006_ILLINOIS_RIVER_GIS"
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 6,
+      "published_id": 6,
+      "source_OBJECTID": 6,
+      "source_Feature_ID": "U3 1393147084 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 7,
+      "published_id": 7,
+      "source_OBJECTID": 7,
+      "source_Feature_ID": "U3 1393135375 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 8,
+      "published_id": 8,
+      "source_OBJECTID": 8,
+      "source_Feature_ID": "U3 1393160605 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 9,
+      "published_id": 9,
+      "source_OBJECTID": 9,
+      "source_Feature_ID": "U3 1617840155 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 10,
+      "published_id": 10,
+      "source_OBJECTID": 10,
+      "source_Feature_ID": "U3 1617840201 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 11,
+      "published_id": 11,
+      "source_OBJECTID": 12,
+      "source_Feature_ID": "U3 1617840280 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 12,
+      "published_id": 12,
+      "source_OBJECTID": 11,
+      "source_Feature_ID": "U3 1617840308 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 13,
+      "published_id": 13,
+      "source_OBJECTID": 13,
+      "source_Feature_ID": "U3 1617840266 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 14,
+      "published_id": 14,
+      "source_OBJECTID": 14,
+      "source_Feature_ID": "U3 0000193480 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,graph,USACE_Pittsburgh_SDS",
+          "source": "US,U3,USACE,LRP_GIS_Data"
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 15,
+      "published_id": 15,
+      "source_OBJECTID": 15,
+      "source_Feature_ID": "U3 1392947739 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,graph,USACE Huntington SDS",
+          "source": "US,U3,USACE,LRH_GIS_Data"
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 16,
+      "published_id": 16,
+      "source_OBJECTID": 16,
+      "source_Feature_ID": "U3 0000282602 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,image,2003 WV SAMB",
+          "source": "US,U3,IMAGE,2003_WV_SAMB"
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 17,
+      "published_id": 17,
+      "source_OBJECTID": 17,
+      "source_Feature_ID": "U3 0000068518 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,graph,USACE Louisville SDS",
+          "source": "US,U3,USACE,LRL_GIS_Data"
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 18,
+      "published_id": 18,
+      "source_OBJECTID": 18,
+      "source_Feature_ID": "U3 1393183049 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 19,
+      "published_id": 19,
+      "source_OBJECTID": 20,
+      "source_Feature_ID": "U3 1393042287 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,vectr,2007 Photo Science, Inc.",
+          "source": "US,U3,OTHER,2007_Photo_Science,_Inc."
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 20,
+      "published_id": 20,
+      "source_OBJECTID": 21,
+      "source_Feature_ID": "U3 1393059656 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,vectr,2008 Photo Science, Inc.",
+          "source": "US,U3,OTHER,2008_Photo_Science,_Inc."
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 21,
+      "published_id": 21,
+      "source_OBJECTID": 22,
+      "source_Feature_ID": "U3 1393076933 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,vectr,2008 Photo Science, Inc.",
+          "source": "US,U3,OTHER,2008_Photo_Science,_Inc."
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 22,
+      "published_id": 22,
+      "source_OBJECTID": 23,
+      "source_Feature_ID": "U3 1393076934 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        },
+        "Source_Ind": {
+          "published": "US,U3,vectr,2008 Photo Science, Inc.",
+          "source": "US,U3,OTHER,2008_Photo_Science,_Inc."
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 23,
+      "published_id": 23,
+      "source_OBJECTID": 24,
+      "source_Feature_ID": "U3 1393188707 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 24,
+      "published_id": 24,
+      "source_OBJECTID": 25,
+      "source_Feature_ID": "U3 1393188712 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 25,
+      "published_id": 25,
+      "source_OBJECTID": 26,
+      "source_Feature_ID": "U3 1393188724 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 26,
+      "published_id": 26,
+      "source_OBJECTID": 27,
+      "source_Feature_ID": "U3 1393194209 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 27,
+      "published_id": 27,
+      "source_OBJECTID": 28,
+      "source_Feature_ID": "U3 1393194216 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 29,
+      "published_id": 29,
+      "source_OBJECTID": 29,
+      "source_Feature_ID": "U3 1393201598 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 30,
+      "published_id": 30,
+      "source_OBJECTID": 32,
+      "source_Feature_ID": "U3 1393201601 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 31,
+      "published_id": 31,
+      "source_OBJECTID": 30,
+      "source_Feature_ID": "U3 1393201633 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 32,
+      "published_id": 32,
+      "source_OBJECTID": 31,
+      "source_Feature_ID": "U3 1617839624 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 33,
+      "published_id": 33,
+      "source_OBJECTID": 36,
+      "source_Feature_ID": "U3 1393213504 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 34,
+      "published_id": 34,
+      "source_OBJECTID": 37,
+      "source_Feature_ID": "U3 1393213492 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 35,
+      "published_id": 35,
+      "source_OBJECTID": 35,
+      "source_Feature_ID": "U3 1393213493 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 36,
+      "published_id": 36,
+      "source_OBJECTID": 34,
+      "source_Feature_ID": "U3 1393213498 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 37,
+      "published_id": 37,
+      "source_OBJECTID": 33,
+      "source_Feature_ID": "U3 1393213501 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 38,
+      "published_id": 38,
+      "source_OBJECTID": 38,
+      "source_Feature_ID": "U3 1617840407 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 39,
+      "published_id": 39,
+      "source_OBJECTID": 40,
+      "source_Feature_ID": "U3 1617840392 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 40,
+      "published_id": 40,
+      "source_OBJECTID": 39,
+      "source_Feature_ID": "U3 1617840403 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 41,
+      "published_id": 41,
+      "source_OBJECTID": 41,
+      "source_Feature_ID": "U3 1393232534 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 42,
+      "published_id": 42,
+      "source_OBJECTID": 42,
+      "source_Feature_ID": "U3 1393236644 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 43,
+      "published_id": 43,
+      "source_OBJECTID": 43,
+      "source_Feature_ID": "U3 1393238778 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 44,
+      "published_id": 44,
+      "source_OBJECTID": 44,
+      "source_Feature_ID": "U3 1393238806 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 45,
+      "published_id": 45,
+      "source_OBJECTID": 45,
+      "source_Feature_ID": "U3 1393239403 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 46,
+      "published_id": 46,
+      "source_OBJECTID": 46,
+      "source_Feature_ID": "U3 1393240216 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 47,
+      "published_id": 47,
+      "source_OBJECTID": 49,
+      "source_Feature_ID": "U3 1393242303 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 48,
+      "published_id": 48,
+      "source_OBJECTID": 48,
+      "source_Feature_ID": "U3 1393242308 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 49,
+      "published_id": 49,
+      "source_OBJECTID": 47,
+      "source_Feature_ID": "U3 1393242316 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 50,
+      "published_id": 50,
+      "source_OBJECTID": 50,
+      "source_Feature_ID": "U3 1393250513 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 51,
+      "published_id": 51,
+      "source_OBJECTID": 52,
+      "source_Feature_ID": "U3 1393250536 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 52,
+      "published_id": 52,
+      "source_OBJECTID": 51,
+      "source_Feature_ID": "U3 1393250553 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 53,
+      "published_id": 53,
+      "source_OBJECTID": 54,
+      "source_Feature_ID": "U3 1393257265 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 54,
+      "published_id": 54,
+      "source_OBJECTID": 53,
+      "source_Feature_ID": "U3 1393257288 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 55,
+      "published_id": 55,
+      "source_OBJECTID": 57,
+      "source_Feature_ID": "U3 1393262575 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 56,
+      "published_id": 56,
+      "source_OBJECTID": 66,
+      "source_Feature_ID": "U3 1393262576 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 57,
+      "published_id": 57,
+      "source_OBJECTID": 72,
+      "source_Feature_ID": "U3 1393262581 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 58,
+      "published_id": 58,
+      "source_OBJECTID": 65,
+      "source_Feature_ID": "U3 1393262587 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 59,
+      "published_id": 59,
+      "source_OBJECTID": 63,
+      "source_Feature_ID": "U3 1393262596 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 60,
+      "published_id": 60,
+      "source_OBJECTID": 59,
+      "source_Feature_ID": "U3 1393262600 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 61,
+      "published_id": 61,
+      "source_OBJECTID": 71,
+      "source_Feature_ID": "U3 1393262602 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 62,
+      "published_id": 62,
+      "source_OBJECTID": 62,
+      "source_Feature_ID": "U3 1393262614 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 63,
+      "published_id": 63,
+      "source_OBJECTID": 67,
+      "source_Feature_ID": "U3 1393262616 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 64,
+      "published_id": 64,
+      "source_OBJECTID": 68,
+      "source_Feature_ID": "U3 1617839872 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 65,
+      "published_id": 65,
+      "source_OBJECTID": 70,
+      "source_Feature_ID": "U3 1617839873 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 66,
+      "published_id": 66,
+      "source_OBJECTID": 56,
+      "source_Feature_ID": "U3 1617839874 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 67,
+      "published_id": 67,
+      "source_OBJECTID": 69,
+      "source_Feature_ID": "U3 1617839890 00001",
+      "mapped_attribute_differences": {
+        "Informatio": {
+          "published": null,
+          "source": ""
+        }
+      }
+    },
+    {
+      "published_OBJECTID": 68,
+      "published_id": 68,
+      "source_OBJECTID": 61,
+      "source_Feature_ID": "U3 1617839892 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 69,
+      "published_id": 69,
+      "source_OBJECTID": 55,
+      "source_Feature_ID": "U3 1617839908 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 70,
+      "published_id": 70,
+      "source_OBJECTID": 60,
+      "source_Feature_ID": "U3 1617839931 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 71,
+      "published_id": 71,
+      "source_OBJECTID": 58,
+      "source_Feature_ID": "U3 1617840581 00001",
+      "mapped_attribute_differences": {}
+    },
+    {
+      "published_OBJECTID": 72,
+      "published_id": 72,
+      "source_OBJECTID": 64,
+      "source_Feature_ID": "U3 1617840584 00001",
+      "mapped_attribute_differences": {}
+    }
+  ],
+  "exact_geometry_pair_count": 71,
+  "paired_rows_with_different_OBJECTID": 43,
+  "paired_attribute_difference_counts": {
+    "Informatio": 43,
+    "Source_Ind": 10
+  },
+  "proposed_mapping_UNAPPROVED": {
+    "Category_o": "Category_of_Airport",
+    "Object_Nam": "Object_Name",
+    "Informatio": "Information",
+    "Scale_Mini": "Scale_Minimum",
+    "Source_Dat": "Source_Date",
+    "Source_Ind": "Source_Indication",
+    "Source_D_1": "Source_Dataset"
+  },
+  "unmatched_published": [
+    {
+      "attributes": {
+        "OBJECTID": 28,
+        "Category_o": "Civil Heliport",
+        "Object_Nam": "Gateway Air Tours Helipad",
+        "Informatio": null,
+        "Scale_Mini": 45000,
+        "Source_Dat": "20080923",
+        "Source_Ind": "US,U3,SURVY,MVS_Field_Survey,IENC_09_003",
+        "Source_D_1": "U37UM155.000",
+        "SHAPE_Leng": 0.003532610285139,
+        "SHAPE_Area": 2.41593835e-07,
+        "id": 28
+      },
+      "bounds": [
+        -90.18317099999996,
+        38.625060000000076,
+        -90.18234799999999,
+        38.62575500000003
+      ],
+      "geometry_sha256": "c376efab329c9fb8395f759b730431e613014c3c132160d1a7b49eabbe0272d8"
+    }
+  ],
+  "unmatched_source": [
+    {
+      "attributes": {
+        "OBJECTID": 19,
+        "Category_of_Airport": "",
+        "Object_Name": "Demopolis Municipal Airport",
+        "Information": "",
+        "Scale_Minimum": 45000,
+        "Source_Date": "20260415",
+        "Source_Indication": "US,U3,IMAGE,SAM_BWT_APR2026_NAIP_IMAGERY_IENC_26_045",
+        "Source_Dataset": "U37TB176.000",
+        "Feature_ID": "U3 1617926576 00001"
+      },
+      "bounds": [
+        -87.95973969999994,
+        32.457863700000075,
+        -87.94735259999999,
+        32.469016700000054
+      ]
+    }
+  ],
+  "published_id_equals_OBJECTID_rows": 72,
+  "Feature_ID_unique_nonnull_rows_each_service": 72,
+  "historical_master_attribute_differences": [
+    {
+      "Feature_ID": "U3 1617840392 00001",
+      "column": "OBJECTID",
+      "historical": 40,
+      "master": 38
+    },
+    {
+      "Feature_ID": "U3 1617840407 00001",
+      "column": "OBJECTID",
+      "historical": 38,
+      "master": 40
+    }
+  ],
+  "historical_master_geometry": {
+    "exactly_equal_rows": 0,
+    "maximum_Hausdorff_distance_degrees": 7.944109290391274e-14,
+    "interpretation": "Small differences observed; no tolerance accepted and no coordinate values rounded or rewritten."
+  },
+  "source_date_semantics": "Per-feature Source_Date is not a dataset release date.",
+  "limitations": "Exact geometry pairs establish snapshot observations only, not approved identifiers, lineage, stable continuity, or an approved mapping. Matching counts/extents do not imply unchanged membership. Feature_ID absent in published candidate; id cannot reconstruct it. No dataset release verified."
+}
