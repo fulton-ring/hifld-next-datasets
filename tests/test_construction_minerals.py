@@ -92,7 +92,11 @@ class MineralsTests(unittest.TestCase):
     def test_complete_reuse_and_published_id_or_ready_coforge_quarantines_whole_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage=StagingStorageResource(local_dir=tmp);result=self.stage(storage);self.assertFalse(result['reused']);self.assertTrue(self.stage(storage)['reused'])
-            root=Path(tmp)/s.SLUG/s.SLUG/result['version'];target=root/'candidate/published-identifiers.parquet';target.write_bytes(b'forged');ready=s.strict_json((root/s.READY).read_bytes());ready['objects']['candidate/published-identifiers.parquet']=s.digest(b'forged');(root/s.READY).write_bytes(s.encode(ready))
+            root=Path(tmp)/s.SLUG/s.SLUG/result['version']
+            for name in ('dbf','prj','shp','shp.xml','shx'):self.assertEqual((root/('shapefile/minop2x020.'+name)).read_bytes(),(self.package/('minop2x020.'+name+'.body')).read_bytes())
+            from dagster_hifld.definitions import _iter_staged_version_paths
+            self.assertIn((s.SLUG,s.SLUG,result['version']),list(_iter_staged_version_paths(storage)))
+            target=root/'candidate/published-identifiers.parquet';target.write_bytes(b'forged');ready=s.strict_json((root/s.READY).read_bytes());ready['objects']['candidate/published-identifiers.parquet']=s.digest(b'forged');(root/s.READY).write_bytes(s.encode(ready))
             with self.assertRaisesRegex(ValueError,'detached_intact'):self.stage(storage)
             self.assertFalse(root.exists());self.assertTrue(list((Path(tmp)/'_quarantine').rglob('published-identifiers.parquet')))
             # Trusted original state reconstructs original bytes, not forged cache.

@@ -280,7 +280,12 @@ def manifest_for(captures,identity,parquet_pin):
 def source_payloads(captures,identity,audit,manifest,table,published_ids):
     proof={'status':'pass','approved':False,'rows':766,'method':'All original DBF records/physical declarations and SHP/SHX native points decoded; all766values/IDs/decimaltypes/nativeWKB/schema metadata and exact deterministic Parquet bytes verified; full original masters retained. No source authenticity/datum/compatibility acceptance.'}
     values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/construction_minerals_source_audit.json':encode(audit),'metadata/parquet_source_fidelity.json':encode(proof),'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['unapproved_preservation_input_source_authority_datum_schema_ID_mapping_and_baseline_contract']}),'metadata/baseline_differences.jsonl':b'','metadata/baseline_field_changes.jsonl':b'','candidate/published-identifiers.parquet':parquet_bytes(published_ids)}
-    for name,(body,receipt) in captures.items():values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
+    for name,(body,receipt) in captures.items():
+        values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
+        # Exact original package sidecars make the candidate discoverable and
+        # provide the normal catalog's canonical quality input. They are raw
+        # evidence, not newly generated or approved Shapefile output.
+        if name.startswith('minop2x020.'):values['shapefile/'+name]=body
     return values
 
 
@@ -330,6 +335,8 @@ def stage_construction_minerals(storage,*,capture_dir=None,package_id=None):
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).parent.mkdir(parents=True,exist_ok=True);(private/name).write_bytes(body)
                 ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'package_id':PACKAGE,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
                 (private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids)
+                for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():
+                    if (private/name).read_bytes()!=body:raise MineralsQuarantineError('incomplete_private_source_payload:'+name)
                 # Validate source semantics + exact Git identity before the first seal;
                 # the complete private candidate exists and has been verified first.
                 validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
