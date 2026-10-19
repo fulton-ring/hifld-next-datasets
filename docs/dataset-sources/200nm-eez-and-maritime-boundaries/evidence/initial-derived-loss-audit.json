@@ -1,0 +1,1492 @@
+{
+  "initial_shapefile": {
+    "rows": 96,
+    "unique_ids": 96,
+    "ids_match": true,
+    "fields": {
+      "OBJECTID": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "BOUND_ID": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "REGION": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "FEAT_TYPE": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "PUB_DATE": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 92,
+        "physical_type_differences": [
+          {
+            "OBJECTID": 968,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1000,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1076,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1195,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1142,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1121,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1135,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1071,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1128,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 997,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1041,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1202,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 995,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1201,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1169,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 977,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1044,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1199,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1111,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1086,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1109,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1096,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1105,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1165,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1163,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1015,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1001,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1167,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1107,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1061,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1164,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1166,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1206,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1173,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1074,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1012,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1114,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1090,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1032,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1200,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1098,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1033,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1143,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1119,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 974,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1134,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1178,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1030,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 967,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1133,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 972,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1100,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 971,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 993,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1089,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 996,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1125,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1101,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 973,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1003,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1205,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1097,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1148,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1036,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1136,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 962,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1130,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1073,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1110,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1139,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1067,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 978,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1212,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1035,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1046,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 963,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1141,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1042,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1093,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 976,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1162,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1072,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1011,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1068,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1123,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1043,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1140,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1170,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1211,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1174,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1092,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1014,
+            "source_type": "int",
+            "output_type": "float"
+          }
+        ]
+      },
+      "APPRV_DATE": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 95,
+        "physical_type_differences": [
+          {
+            "OBJECTID": 968,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1000,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1076,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1195,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1142,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1121,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1135,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1071,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1128,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 997,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1041,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1202,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 995,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1201,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1169,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 977,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1044,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1199,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1111,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1086,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 985,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1109,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1096,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1105,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1165,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1163,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1015,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1001,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1167,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1107,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1061,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1164,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1166,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1206,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1173,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1074,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1012,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1114,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1090,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1032,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1200,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1098,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1033,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1143,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1119,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 974,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1134,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1178,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1030,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 967,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1133,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 972,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1100,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 971,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 993,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1089,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 996,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1217,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1125,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1101,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 973,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1003,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1205,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1097,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1148,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1036,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1136,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 962,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1130,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1073,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1110,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1139,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1067,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1055,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 978,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1212,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1035,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1046,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 963,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1141,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1042,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1093,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 976,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1162,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1072,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1011,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1068,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1123,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1043,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1140,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1170,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1211,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1174,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1092,
+            "source_type": "int",
+            "output_type": "float"
+          },
+          {
+            "OBJECTID": 1014,
+            "source_type": "int",
+            "output_type": "float"
+          }
+        ]
+      },
+      "LEGAL_AUTH": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "AOR": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "NOTE": {
+        "value_difference_count": 20,
+        "value_differences": [
+          {
+            "OBJECTID": 1000,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1076,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1135,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 997,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 995,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1096,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1167,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1206,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1114,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1098,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 974,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1178,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1133,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1100,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1205,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1130,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1046,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 976,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1043,
+            "source": " ",
+            "output": null
+          },
+          {
+            "OBJECTID": 1014,
+            "source": " ",
+            "output": null
+          }
+        ],
+        "physical_python_type_difference_count": 20,
+        "physical_type_differences": [
+          {
+            "OBJECTID": 1000,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1076,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1135,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 997,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 995,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1096,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1167,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1206,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1114,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1098,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 974,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1178,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1133,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1100,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1205,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1130,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1046,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 976,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1043,
+            "source_type": "str",
+            "output_type": "NoneType"
+          },
+          {
+            "OBJECTID": 1014,
+            "source_type": "str",
+            "output_type": "NoneType"
+          }
+        ]
+      },
+      "SUPP_INFO": {
+        "value_difference_count": 1,
+        "value_differences": [
+          {
+            "OBJECTID": 1097,
+            "source": "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI029.docx                                                                                                                                                                                                                                                                                                                                                                                                                                                      ",
+            "output": "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI029.docx"
+          }
+        ],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "UNILATERAL": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "RULEID": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "SHAPE.LEN": {
+        "value_difference_count": 26,
+        "value_differences": [
+          {
+            "OBJECTID": 968,
+            "source": 0.0225068718360809,
+            "output": 0.022506871836081
+          },
+          {
+            "OBJECTID": 1142,
+            "source": 5.9581867366343495,
+            "output": 5.95818673663435
+          },
+          {
+            "OBJECTID": 1121,
+            "source": 0.37134069612470605,
+            "output": 0.371340696124706
+          },
+          {
+            "OBJECTID": 997,
+            "source": 0.059066132100023504,
+            "output": 0.059066132100024
+          },
+          {
+            "OBJECTID": 995,
+            "source": 0.055472931906184804,
+            "output": 0.055472931906185
+          },
+          {
+            "OBJECTID": 1201,
+            "source": 3.5518164794031097,
+            "output": 3.55181647940311
+          },
+          {
+            "OBJECTID": 1105,
+            "source": 0.6564799252408829,
+            "output": 0.656479925240883
+          },
+          {
+            "OBJECTID": 1061,
+            "source": 0.20033177600000002,
+            "output": 0.200331776
+          },
+          {
+            "OBJECTID": 1166,
+            "source": 2.9514631691674897,
+            "output": 2.95146316916749
+          },
+          {
+            "OBJECTID": 1074,
+            "source": 0.0709023510037298,
+            "output": 0.07090235100373
+          },
+          {
+            "OBJECTID": 1012,
+            "source": 0.18388775640850702,
+            "output": 0.183887756408507
+          },
+          {
+            "OBJECTID": 1090,
+            "source": 0.0111924424210992,
+            "output": 0.011192442421099
+          },
+          {
+            "OBJECTID": 1032,
+            "source": 0.16343966487657802,
+            "output": 0.163439664876578
+          },
+          {
+            "OBJECTID": 1200,
+            "source": 0.8789698552964711,
+            "output": 0.878969855296471
+          },
+          {
+            "OBJECTID": 971,
+            "source": 2.7457509284480195,
+            "output": 2.745750928448019
+          },
+          {
+            "OBJECTID": 993,
+            "source": 0.43676600564560597,
+            "output": 0.436766005645606
+          },
+          {
+            "OBJECTID": 996,
+            "source": 7.3794722016410494,
+            "output": 7.379472201641049
+          },
+          {
+            "OBJECTID": 1217,
+            "source": 1.8568014617731199,
+            "output": 1.85680146177312
+          },
+          {
+            "OBJECTID": 973,
+            "source": 2.6237336743740403,
+            "output": 2.62373367437404
+          },
+          {
+            "OBJECTID": 1036,
+            "source": 0.058633208751137804,
+            "output": 0.058633208751138
+          },
+          {
+            "OBJECTID": 1067,
+            "source": 0.09366496388697941,
+            "output": 0.093664963886979
+          },
+          {
+            "OBJECTID": 1042,
+            "source": 0.23802521159888101,
+            "output": 0.238025211598881
+          },
+          {
+            "OBJECTID": 1162,
+            "source": 4.8088911973165605,
+            "output": 4.80889119731656
+          },
+          {
+            "OBJECTID": 1072,
+            "source": 3.2498145046951796,
+            "output": 3.24981450469518
+          },
+          {
+            "OBJECTID": 1068,
+            "source": 0.7985728045092709,
+            "output": 0.798572804509271
+          },
+          {
+            "OBJECTID": 1170,
+            "source": 0.12183482407645199,
+            "output": 0.121834824076452
+          }
+        ],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      }
+    },
+    "geometry_coordinate_difference_ids": [],
+    "geometry_type_difference_ids": [],
+    "all_values_and_coordinates_preserved": false,
+    "all_physical_attribute_types_preserved": false,
+    "schema": {
+      "properties": {
+        "OBJECTID": "int:18",
+        "BOUND_ID": "str:80",
+        "REGION": "str:80",
+        "FEAT_TYPE": "str:80",
+        "PUB_DATE": "float:24.15",
+        "APPRV_DATE": "float:24.15",
+        "LEGAL_AUTH": "str:80",
+        "AOR": "str:80",
+        "NOTE": "str:92",
+        "SUPP_INFO": "str:254",
+        "UNILATERAL": "float:24.15",
+        "RULEID": "int:18",
+        "SHAPE.LEN": "float:24.15"
+      },
+      "geometry": "LineString"
+    }
+  },
+  "geopackage": {
+    "rows": 96,
+    "unique_ids": 96,
+    "ids_match": true,
+    "fields": {
+      "OBJECTID": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "BOUND_ID": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "REGION": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "FEAT_TYPE": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "PUB_DATE": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "APPRV_DATE": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "LEGAL_AUTH": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "AOR": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "NOTE": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "SUPP_INFO": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "UNILATERAL": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "RULEID": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      },
+      "SHAPE.LEN": {
+        "value_difference_count": 0,
+        "value_differences": [],
+        "physical_python_type_difference_count": 0,
+        "physical_type_differences": []
+      }
+    },
+    "geometry_coordinate_difference_ids": [],
+    "geometry_type_difference_ids": [],
+    "all_values_and_coordinates_preserved": true,
+    "all_physical_attribute_types_preserved": true,
+    "schema": {
+      "properties": {
+        "OBJECTID": "int",
+        "BOUND_ID": "str",
+        "REGION": "str",
+        "FEAT_TYPE": "str",
+        "PUB_DATE": "int",
+        "APPRV_DATE": "int",
+        "LEGAL_AUTH": "str",
+        "AOR": "str",
+        "NOTE": "str",
+        "SUPP_INFO": "str",
+        "UNILATERAL": "float",
+        "RULEID": "int",
+        "SHAPE.LEN": "float"
+      },
+      "geometry": "Unknown"
+    }
+  }
+}

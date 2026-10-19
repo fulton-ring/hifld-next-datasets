@@ -1,0 +1,138 @@
+{
+ "currentVersion": 10.91,
+ "serviceDescription": "(Version 4.1, 9/13/2013) Maritime limits for the United States are measured from the U.S. baseline, which is recognized as the low-water line along the coast as marked on the official U.S. nautical charts in accordance with the articles of the Law of the Sea. The baseline and related maritime limits are reviewed and approved by the interagency U.S. Baseline Committee. The primary purpose of this dataset is to update the official depiction of these maritime limits and boundaries on NOAA's nautical charts. The Office of Coast Survey depicts on its nautical charts the territorial sea (12 nautical miles), contiguous zone (24nm), and exclusive economic zone (200nm, plus maritime boundaries with adjacent/opposite countries). U.S. maritime limits are ambulatory and are subject to revision based on accretion or erosion of the charted low water line. For more information about U.S. Maritime Limits/Boundaries, and to download data, see: http://www.nauticalcharts.noaa.gov/csdl/mbound.htm For the full FGDC metadata record, see: http://www.ncddc.noaa.gov/approved_recs/nos_de/ocs/ocs/ocs/MB_ParentDataset.html ",
+ "mapName": "US Maritime Limits and Boundaries (version 4.1)",
+ "description": "Territorial Sea, Contiguous Zone, US/Canada International Boundary, Exclusive Economic Zone, and Maritime Boundaries of the United States (revised 9/13/2013).",
+ "copyrightText": "NOAA/NOS/Office of Coast Survey",
+ "supportsDynamicLayers": true,
+ "layers": [
+  {
+   "id": 0,
+   "name": "Overview",
+   "parentLayerId": -1,
+   "defaultVisibility": true,
+   "subLayerIds": null,
+   "minScale": 0,
+   "maxScale": 40000001,
+   "type": "Feature Layer",
+   "geometryType": "esriGeometryPolyline"
+  },
+  {
+   "id": 1,
+   "name": "12NM Territorial Sea",
+   "parentLayerId": -1,
+   "defaultVisibility": true,
+   "subLayerIds": null,
+   "minScale": 40000000,
+   "maxScale": 0,
+   "type": "Feature Layer",
+   "geometryType": "esriGeometryPolyline"
+  },
+  {
+   "id": 2,
+   "name": "24NM Contiguous Zone",
+   "parentLayerId": -1,
+   "defaultVisibility": true,
+   "subLayerIds": null,
+   "minScale": 40000000,
+   "maxScale": 0,
+   "type": "Feature Layer",
+   "geometryType": "esriGeometryPolyline"
+  },
+  {
+   "id": 3,
+   "name": "200NM EEZ and Maritime Boundaries",
+   "parentLayerId": -1,
+   "defaultVisibility": true,
+   "subLayerIds": null,
+   "minScale": 40000000,
+   "maxScale": 0,
+   "type": "Feature Layer",
+   "geometryType": "esriGeometryPolyline"
+  },
+  {
+   "id": 4,
+   "name": "US/Canada Land Boundary",
+   "parentLayerId": -1,
+   "defaultVisibility": true,
+   "subLayerIds": null,
+   "minScale": 40000000,
+   "maxScale": 0,
+   "type": "Feature Layer",
+   "geometryType": "esriGeometryPolyline"
+  }
+ ],
+ "tables": [],
+ "spatialReference": {
+  "wkid": 4326,
+  "latestWkid": 4326
+ },
+ "singleFusedMapCache": false,
+ "initialExtent": {
+  "xmin": -152.83496686920802,
+  "ymin": 41.65918429816332,
+  "xmax": -114.62082311557373,
+  "ymax": 60.07621248328969,
+  "spatialReference": {
+   "wkid": 4326,
+   "latestWkid": 4326
+  }
+ },
+ "fullExtent": {
+  "xmin": -180,
+  "ymin": -17.555000002,
+  "xmax": 180,
+  "ymax": 74.70884000400001,
+  "spatialReference": {
+   "wkid": 4326,
+   "latestWkid": 4326
+  }
+ },
+ "minScale": 0,
+ "maxScale": 0,
+ "units": "esriDecimalDegrees",
+ "supportedImageFormatTypes": "PNG32,PNG24,PNG,JPG,DIB,TIFF,EMF,PS,PDF,GIF,SVG,SVGZ,BMP",
+ "documentInfo": {
+  "Title": "U.S. Maritime Limits and Boundaries (version 4.1)",
+  "Author": "National Oceanic and Atmospheric Administration (NOAA), National Ocean Service (NOS), Office of Coast Survey (OCS)",
+  "Comments": "NOT FOR LEGAL USE. These limits and boundaries were created for internal purposes only to update the charted maritime limits and maritime boundaries on NOAA charts. These limits and boundaries do not represent the official depiction. For official depiction, please see NOAA's paper or raster nautical charts.",
+  "Subject": "U.S. Baseline Committee approved maritime limits and boundaries of the United States",
+  "Category": "",
+  "AntialiasingMode": "None",
+  "TextAntialiasingMode": "Force",
+  "Keywords": "maritime limits,maritime,boundaries,marine boundaries,marine jurisdictions,jurisdictional boundaries and limits,exclusive economic zone (EEZ),territorial sea,contiguous zone,A-16,national,federal,USA"
+ },
+ "capabilities": "Map,Query,Data",
+ "supportedQueryFormats": "JSON, geoJSON",
+ "hasVersionedData": true,
+ "exportTilesAllowed": false,
+ "referenceScale": 0,
+ "datumTransformations": [
+  {
+   "geoTransforms": [
+    {
+     "wkid": 108001,
+     "latestWkid": 1241,
+     "transformForward": true,
+     "name": "NAD_1927_To_NAD_1983_NADCON"
+    }
+   ]
+  },
+  {
+   "geoTransforms": [
+    {
+     "wkid": 108001,
+     "latestWkid": 1241,
+     "transformForward": false,
+     "name": "NAD_1927_To_NAD_1983_NADCON"
+    }
+   ]
+  }
+ ],
+ "supportsDatumTransformation": true,
+ "maxRecordCount": 1000,
+ "maxImageHeight": 4096,
+ "maxImageWidth": 4096,
+ "supportedExtensions": "WMSServer",
+ "resampling": false
+}

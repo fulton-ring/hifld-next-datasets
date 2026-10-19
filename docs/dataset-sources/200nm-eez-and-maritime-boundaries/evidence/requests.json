@@ -1,0 +1,120 @@
+{
+  "requests": [
+    {
+      "capture": "layer.body",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3?f=pjson",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:17:38.915685+00:00",
+      "sha256": "fadf9c0309e28e10b38f5e2988de4d7fcae9f70e7e6d80dc862243e8070f8f34",
+      "bytes": 7531,
+      "encoding": "identity"
+    },
+    {
+      "capture": "service.body",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer?f=pjson",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:18:16.037983+00:00",
+      "sha256": "97809f0a68927620fcf9a797dbea3b5cf89193c263897c0802cb707a996bb493",
+      "bytes": 5035,
+      "encoding": "identity"
+    },
+    {
+      "capture": "landing.body.gz",
+      "url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:17:39.788494+00:00",
+      "sha256": "c1f1aaffd19098be2d57e22160f45325d467ea153d2f2fa8b2b21de34390b492",
+      "bytes": 15789,
+      "encoding": "gzip mtime=0"
+    },
+    {
+      "capture": "prior.body",
+      "url": "https://api.github.com/repos/fulton-ring/agent-content-demos/issues/40",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:17:40.283157+00:00",
+      "sha256": "47df89b2cb912c3ee1826afe3b1547f42dfd421a0219e24673e9c6b2e34cdf64",
+      "bytes": 7066,
+      "encoding": "identity"
+    },
+    {
+      "capture": "count.json",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&returnCountOnly=true&f=json",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:18:07.880375+00:00",
+      "sha256": "f0fcfac5df83c5dd87531d6712a9ae25d70400545047a1a84b587e36859a5f28",
+      "bytes": 12,
+      "encoding": "identity"
+    },
+    {
+      "capture": "ids.json",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&returnIdsOnly=true&f=json",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:18:07.967711+00:00",
+      "sha256": "cd15275394fcfe973cf60ad97b3298589164b62326c2a7693e400fc06f49ef72",
+      "bytes": 155,
+      "encoding": "identity"
+    },
+    {
+      "capture": "ids-pjson.json",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&returnIdsOnly=true&f=pjson",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:18:22.911796+00:00",
+      "sha256": "a0adda6785a012bcfa2129f8d3b497d0bd219db83ca5270d9ee7e55d90a1557f",
+      "bytes": 173,
+      "encoding": "identity"
+    },
+    {
+      "capture": "all.json.gz",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=pjson",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:19:08.090476+00:00",
+      "sha256": "d669ce5669a07e123c6916096ee9251ec230d1e8a531348b271a2abb5e324251",
+      "bytes": 432716,
+      "encoding": "gzip mtime=0"
+    },
+    {
+      "capture": "geojson.json.gz",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&outFields=*&f=geojson",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:19:08.363779+00:00",
+      "sha256": "124f8d24797428270411d93a55cc8e123eecad4edfabf7c51131b9d695c10675",
+      "bytes": 401107,
+      "encoding": "gzip mtime=0"
+    },
+    {
+      "capture": "id-page.json",
+      "url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&outFields=OBJECTID&returnGeometry=false&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=1000&f=pjson",
+      "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
+      "http_status": 200,
+      "captured_at": "2026-10-19T04:18:36.214452+00:00",
+      "sha256": "9e33c23d32fb8b4b40e77b0d4a5e4b95ff23a8e800df5a1e26ed1f31f0d7a919",
+      "bytes": 5369,
+      "encoding": "identity"
+    }
+  ],
+  "failures": [
+    {
+      "url": "https://doi.org/10.3886/E241367V1",
+      "error": "Tunnel connection failed: 403 Forbidden"
+    },
+    {
+      "url": "https://www.datalumos.org/datalumos/project/238491/version/V1/view",
+      "error": "Tunnel connection failed: 403 Forbidden"
+    },
+    {
+      "url": "https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NOS/OCS/iso19115/xml/39963.xml",
+      "error": "HTTP Error 503: Service Unavailable"
+    }
+  ],
+  "failure_date_utc": "2026-10-19",
+  "note": "Compressed body capture timestamp follows compression; requests occurred earlier in same research session. No atomic snapshot assumed."
+}

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 import fiona
 import pyarrow as pa
@@ -242,7 +243,7 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
     return table, quality
 
 
-def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, file_slug: str, captures: dict[str, bytes], receipts: list[dict], expected_fields: dict[str, str], expected_fingerprints: dict[str, str], expected_count: int | None = None) -> dict:
+def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, file_slug: str, captures: dict[str, bytes], receipts: list[dict], expected_fields: dict[str, str], expected_fingerprints: dict[str, str], expected_count: int | None = None, code_commit: str | None = None) -> dict:
     """Persist immutable raw evidence, quarantine drift, and stage a local-only draft.
 
     A typed GeoPackage processing source is staged for the existing catalog graph.
@@ -284,6 +285,37 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
             connection.commit()
             connection.execute("VACUUM")
         source_key = _write_draft_staging(staging, f"{prefix}/geopackage/{file_slug}.gpkg", path.read_bytes())
+    receipt_by_name = {r["capture"]: r for r in receipts}
+    maximum_lengths = {field.name: max((len(value.encode("utf-8")) for value in table[field.name].to_pylist() if value is not None), default=0) for field in table.schema if pa.types.is_string(field.type)}
+    trailing_whitespace = {field.name: sum(value is not None and value != value.rstrip() for value in table[field.name].to_pylist()) for field in table.schema if pa.types.is_string(field.type)}
+    unsupported = {"shapefile_zip": "Exact NOAA source preservation exceeds DBF capabilities: string max UTF8 bytes=" + json.dumps(maximum_lengths, sort_keys=True) + "; trailing whitespace counts=" + json.dumps(trailing_whitespace, sort_keys=True) + "; nullable epoch-ms int64 and float64 values require exact physical type/precision. DBF trimming/rounding is incompatible with exact preservation; no lossy mapping approved."}
+    source_manifest = {
+        "schema_version": 1, "processor": "HIFLD Next", "title": dataset_slug,
+        "producer": "NOAA / NOS / Office of Coast Survey", "publisher": "NOAA / NOS / Office of Coast Survey",
+        "source_url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+        "code_commit": code_commit, "baseline_accepted": False, "contract_approved": False,
+        "unsupported_output_formats": unsupported,
+        "inputs": [{"input_id": name, "producer": "NOAA / NOS / Office of Coast Survey",
+                    "host": urlsplit(receipt_by_name.get(name, {}).get("url", "")).hostname,
+                    "canonical_url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+                    "retrieval_url": receipt_by_name.get(name, {}).get("url"),
+                    "retrieved_at": receipt_by_name.get(name, {}).get("fetched_at"),
+                    "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw), "raw_key": f"{prefix}/raw/{name}.json",
+                    "role": "producer_publication", "license": "Producer use/distribution terms apply; NOT FOR LEGAL USE; final license acceptance pending",
+                    "attribution": "NOAA / NOS / Office of Coast Survey; US Baseline Committee",
+                    "release_date": None, "release_date_unknown_reason": "Producer publication/revision year2013 and service4.1 revision2013-09-13 do not independently pin a current downloadable release;2026 metadata edit is not source release"}
+                   for name, raw in sorted(captures.items())],
+        "transformations": [{"operation": "source-native draft candidate", "description": quality["mapping"]},
+                            {"operation": "typed GeoPackage catalog bridge", "description": "All source attributes and SHAPE vertices retained; SQLite internal feature key is not a replacement identifier"}],
+    }
+    manifest_key = f"{prefix}/metadata/source_manifest.json"
+    if not staging.object_exists(manifest_key):
+        _write_draft_staging(staging, manifest_key, _json_bytes(source_manifest))
+    else:
+        previous = json.loads(staging.read_key(manifest_key))
+        # Keep original extraction attribution immutable; refresh receipts append.
+        if {i["input_id"]: i["sha256"] for i in previous["inputs"]} != {i["input_id"]: i["sha256"] for i in source_manifest["inputs"]}:
+            raise ValueError("NOAA existing provenance input identity changed")
     report = {**quality, "catalog_source_key": source_key, "dataset_slug": dataset_slug, "file_slug": file_slug, "version": version, "candidate_key": key,
               "candidate_sha256": hashlib.sha256(candidate).hexdigest(), "raw_identity": identity,
               "status": "draft_candidate_unapproved", "receipt_directory": "raw/receipts",

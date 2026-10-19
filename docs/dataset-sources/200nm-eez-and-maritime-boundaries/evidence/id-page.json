@@ -1,0 +1,495 @@
+{
+ "displayFieldName": "REGION",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeOID",
+   "alias": "OBJECTID"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 962
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 963
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 967
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 968
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 971
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 972
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 973
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 974
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 976
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 977
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 978
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 985
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 993
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 995
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 996
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 997
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1000
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1001
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1003
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1011
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1012
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1014
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1015
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1030
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1032
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1033
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1035
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1036
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1041
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1042
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1043
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1044
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1046
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1055
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1061
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1067
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1068
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1071
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1072
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1073
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1074
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1076
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1086
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1089
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1090
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1092
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1093
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1096
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1097
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1098
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1100
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1101
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1105
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1107
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1109
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1110
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1111
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1114
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1119
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1121
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1123
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1125
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1128
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1130
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1133
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1134
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1135
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1136
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1139
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1140
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1141
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1142
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1143
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1148
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1162
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1163
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1164
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1165
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1166
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1167
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1169
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1170
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1173
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1174
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1178
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1195
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1199
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1200
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1201
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1202
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1205
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1206
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1211
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1212
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1214
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 1217
+   }
+  }
+ ]
+}
