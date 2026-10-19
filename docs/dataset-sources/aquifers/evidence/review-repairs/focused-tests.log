@@ -1,0 +1,16 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+test_bounded_partial_failures_are_all_durable (tests.test_aquifers_source.AquifersTests.test_bounded_partial_failures_are_all_durable) ... ok
+test_immutable_reuse_and_changed_dependency_namespace (tests.test_aquifers_source.AquifersTests.test_immutable_reuse_and_changed_dependency_namespace) ... ok
+test_interrupted_source_never_exposes_discoverable_partial_version (tests.test_aquifers_source.AquifersTests.test_interrupted_source_never_exposes_discoverable_partial_version) ... ok
+test_missing_duplicate_lossy_types_columns_and_geometry_reject (tests.test_aquifers_source.AquifersTests.test_missing_duplicate_lossy_types_columns_and_geometry_reject) ... ok
+test_real_archive_native_fidelity_no_repair (tests.test_aquifers_source.AquifersTests.test_real_archive_native_fidelity_no_repair) ... ok
+test_receipt_strict_json_and_official_identity (tests.test_aquifers_source.AquifersTests.test_receipt_strict_json_and_official_identity) ... ok
+test_registry_and_stopped_local_schedule (tests.test_aquifers_source.AquifersTests.test_registry_and_stopped_local_schedule) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 449.187s
+
+OK
+{"real_cache_negative_cases": [{"case": "parquet-value", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "parquet-integer-width", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "parquet-native-geometry", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "parquet-nullability", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "parquet-malformed-geometry", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "geopackage-value", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "provenance", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "extra-output", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "missing-output", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}, {"case": "nonobject-roster", "corrupt_version_discoverable": false, "original_raw_and_prior_fixture_preserved": true, "quarantined": true}]}
+{"real_write_interruption": {"canonical_partial_discoverable": false, "prior_and_original_raw_preserved": true, "quarantined": true}}

@@ -1,0 +1,24 @@
+{
+  "repair_source_code": "4e7a9dbc261c67bbf0b5f5b822fa7207a68fd164",
+  "old_source_code": "7a2f603c553bab56da2f463f1d521c4ee00d5a89",
+  "payload_writer_source_sha256": "7044c1bd9f9cb24390c3665aeca76dca6e9b6f01758f7650fe20692761ec56e0",
+  "all_identical": true,
+  "objects": {
+    "raw/aquifers_us.zip": {
+      "old_sha256": "3c597778c51325012aa5ff593751a6e4e662f43906e690fc3eb125c7073b1ebc",
+      "repair_sha256": "3c597778c51325012aa5ff593751a6e4e662f43906e690fc3eb125c7073b1ebc"
+    },
+    "geopackage/aquifers.gpkg": {
+      "old_sha256": "24489e35d6a19ef440595141851cb1b1e57a48974baa1a7c0d3b900c092fbadc",
+      "repair_sha256": "24489e35d6a19ef440595141851cb1b1e57a48974baa1a7c0d3b900c092fbadc"
+    },
+    "candidate/typed-source.parquet": {
+      "old_sha256": "68b5820a1785873520912f812b9fffb063d03d194ce65c4e9205708f98084ef5",
+      "repair_sha256": "68b5820a1785873520912f812b9fffb063d03d194ce65c4e9205708f98084ef5"
+    },
+    "metadata/candidate.records.jsonl": {
+      "old_sha256": "9a389ae4a241e08996ff903c65bc3dfc3aa6d403a8363e22d6c880381afdc778",
+      "repair_sha256": "9a389ae4a241e08996ff903c65bc3dfc3aa6d403a8363e22d6c880381afdc778"
+    }
+  }
+}

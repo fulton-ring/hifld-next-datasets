@@ -111,5 +111,11 @@
     ]
   },
   "validation": "evidence/validation.json",
-  "independent_review": "pending native exact finalhead review"
+  "independent_review": "Initial ac8a6a review requested two P2 repairs; implementation and final targeted/actual-graph verification complete, pending narrow final-head re-review",
+  "review_repairs": {
+    "source_head": "4e7a9dbc261c67bbf0b5f5b822fa7207a68fd164",
+    "report": "evidence/review-repairs/validation.json",
+    "description": "review-repairs.md",
+    "status": "author_verified_pending_independent_recheck"
+  }
 }

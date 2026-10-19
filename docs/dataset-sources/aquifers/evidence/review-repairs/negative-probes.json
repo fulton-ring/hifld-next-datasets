@@ -1,0 +1,69 @@
+{
+  "real_cache_negative_cases": [
+    {
+      "case": "parquet-value",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "parquet-integer-width",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "parquet-native-geometry",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "parquet-nullability",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "parquet-malformed-geometry",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "geopackage-value",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "provenance",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "extra-output",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "missing-output",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    },
+    {
+      "case": "nonobject-roster",
+      "corrupt_version_discoverable": false,
+      "original_raw_and_prior_fixture_preserved": true,
+      "quarantined": true
+    }
+  ],
+  "real_write_interruption": {
+    "canonical_partial_discoverable": false,
+    "prior_and_original_raw_preserved": true,
+    "quarantined": true
+  }
+}

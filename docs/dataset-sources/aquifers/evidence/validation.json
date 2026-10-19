@@ -52,5 +52,6 @@
     "actual_input": "real-iac-test-input.json",
     "historical_missing_input_failure_preserved": true,
     "scope": "Complete repositorysuite with actualunmodifiedpinnedsiblingIaC source; no fixturefabrication or suppressions; noCIorrealreleaseacceptanceinferred"
-  }
+  },
+  "latest_review_repair_validation": "review-repairs/validation.json"
 }
