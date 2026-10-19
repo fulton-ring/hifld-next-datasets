@@ -5,6 +5,9 @@ All original identifiers, declared physical types and native points survive unch
 """
 from __future__ import annotations
 import hashlib
+import importlib.metadata
+import platform
+import sys
 import datetime
 import json
 import math
@@ -20,6 +23,9 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
+import fiona
+import pyproj
+import shapely
 from pyproj import CRS
 from shapely import Point, to_wkb
 from dagster_hifld.partitions import SEMVER_VERSION_RE
@@ -65,17 +71,39 @@ def _require_review_staging(staging):
 
 
 def processing_identity():
-    pipeline = verifier_implementation_sha256()
-    versions = {'pyarrow': pa.__version__, 'pyogrio': pyogrio.__version__,
-                'gdal': str(pyogrio.__gdal_version__)}
-    fingerprint = hashlib.sha256(json.dumps({'installed_pipeline_sha256': pipeline,
-        'versions': versions}, sort_keys=True).encode()).hexdigest()
     root = Path(__file__).resolve().parents[2]
+    pipeline = verifier_implementation_sha256()
+    # Bind effective execution dependencies as well as repository source. Native
+    # GEOS/PROJ and either GDAL build can differ from their Python wheel version.
+    versions = {
+        'python': platform.python_version(),
+        'python_implementation': platform.python_implementation(),
+        'python_cache_tag': sys.implementation.cache_tag,
+        'machine': platform.machine(), 'byteorder': sys.byteorder,
+        'pyarrow': pa.__version__, 'pyogrio': pyogrio.__version__,
+        'fiona': fiona.__version__, 'pyproj': pyproj.__version__,
+        'shapely': shapely.__version__,
+        'gdal_pyogrio': str(pyogrio.__gdal_version__),
+        'gdal_fiona': str(fiona.__gdal_version__),
+        'geos': shapely.geos_version_string, 'proj': pyproj.proj_version_str,
+    }
+    distributions = sorted(
+        [{'name': d.metadata.get('Name', ''), 'version': d.version}
+         for d in importlib.metadata.distributions()],
+        key=lambda d: (d['name'].casefold(), d['version']))
+    manifests = {}
+    for name in ('pyproject.toml', 'uv.lock', '.python-version'):
+        path = root / name
+        manifests[name] = ({'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                            'bytes': path.stat().st_size} if path.is_file() else None)
+    identity = {'installed_pipeline_sha256': pipeline, 'versions': versions,
+                'installed_distributions': distributions, 'dependency_manifests': manifests}
+    fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     result = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True)
     commit = result.stdout.strip() if result.returncode == 0 else None
     dirty = subprocess.run(['git', '-C', str(root), 'diff', '--quiet', '--', 'src/dagster_hifld'], capture_output=True).returncode
-    return {'builder_fingerprint': fingerprint, 'installed_pipeline_sha256': pipeline,
-        'code_commit': commit, 'working_tree_modified': dirty != 0, 'versions': versions,
+    return {**identity, 'builder_fingerprint': fingerprint,
+        'code_commit': commit, 'working_tree_modified': dirty != 0,
         'meaning': 'Original processing identity; replay does not invent a new upstream retrieval.'}
 
 

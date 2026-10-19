@@ -80,6 +80,21 @@ with DagsterInstance.from_config(str(state)) as instance:
     inventory=lambda storage:{k:hashlib.sha256(storage.read_key(k)).hexdigest() for k in storage.list_prefix()}
     accepted_before=inventory(published)
     key=build_publish_partition_key(a.SLUG,a.SLUG,out['version']);instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[key])
+    if '--source-catalog-only' in sys.argv[3:]:
+        catalog_defs=Definitions(assets=hifld_dataset_assets,asset_checks=hifld_asset_checks,
+            resources=resources,jobs=[define_asset_job('aviation_identity_catalog',selection=AssetSelection.keys(['publish','catalog']))])
+        catalog_run=catalog_defs.resolve_job_def('aviation_identity_catalog').execute_in_process(instance=instance,partition_key=key)
+        assert catalog_run.success
+        quality=json.loads(stage.read_key(prefix+'/metadata/quality_manifest.json'))
+        assert quality['feature_count']==19427 and quality['quality_check_passed'] is True
+        a.validate_release_provenance(json.loads(stage.read_key(prefix+'/metadata/source_manifest.json')))
+        assert accepted_before==inventory(published)
+        assert not (root/'geoparquet').exists() and not (root/'pmtiles').exists()
+        result['identity_catalog']={'run_id':catalog_run.run_id,'success':True,'quality_manifest':quality,
+            'terminal_conversions_rerun':False,'accepted_fixture_unchanged':True,
+            'source_manifest_still_valid':True}
+        (runtime/'execution.json').write_text(json.dumps(result,indent=2)+'\n')
+        print(json.dumps(result,indent=2));sys.exit(0)
     downstream=AssetSelection.keys(['publish','formats','geopackage'],['publish','formats','geoparquet'],['publish','formats','pmtiles'],['publish','formats','shapefile_zip'],['publish','verify'],['publish','promote'])
     graph=define_asset_job('aviation_real_graph',selection=downstream|AssetSelection.keys(['publish','catalog']))
     quality_job=define_asset_job('aviation_quality_failure',selection=downstream|AssetSelection.checks(publish_catalog_quality_manifest))

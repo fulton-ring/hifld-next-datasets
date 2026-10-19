@@ -54,6 +54,44 @@ class AviationTests(unittest.TestCase):
         self.assertEqual(identity['code_commit'],expected)
         self.assertEqual(len(identity['installed_pipeline_sha256']),64)
 
+    def test_native_dependency_change_separates_versions_without_retrieval_misattribution(self):
+        original = _stage_aviation(self.capture,self.storage)
+        root = self.root/'stage'/a.SLUG/a.SLUG/original['version']
+        previous = {str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in root.rglob('*') if p.is_file()}
+        old_provenance=json.loads((root/'draft_candidate/provenance.json').read_bytes())
+        old_fingerprint=a.processing_identity()['builder_fingerprint']
+        for module,name in ((a.shapely,'geos_version_string'),(a.pyproj,'proj_version_str')):
+            with self.subTest(dependency=name),mock.patch.object(module,name,'synthetic-changed-native-version'):
+                self.assertNotEqual(a.processing_identity()['builder_fingerprint'],old_fingerprint)
+        with mock.patch.object(a.shapely,'geos_version_string','synthetic-changed-native-version'):
+            with self.assertRaisesRegex(FileExistsError,'Immutable candidate'):
+                a.build_candidate(self.capture,root/'draft_candidate')
+            changed=_stage_aviation(self.capture,self.storage)
+        self.assertNotEqual(changed['version'],original['version'])
+        newer=self.root/'stage'/a.SLUG/a.SLUG/changed['version']
+        provenance=json.loads((newer/'draft_candidate/provenance.json').read_bytes())
+        self.assertEqual(provenance['original_retrieval_receipts'],old_provenance['original_retrieval_receipts'])
+        self.assertNotEqual(provenance['processing']['builder_fingerprint'],old_provenance['processing']['builder_fingerprint'])
+        self.assertEqual(previous,{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest()
+                                  for p in root.rglob('*') if p.is_file()})
+        self.assertEqual(_stage_aviation(self.capture,self.storage),original)
+
+    def test_installed_distributions_and_manifest_hashes_are_in_processing_identity(self):
+        identity=a.processing_identity()
+        self.assertTrue(identity['installed_distributions'])
+        self.assertTrue(identity['versions']['python'])
+        for name in ('geos','proj','gdal_pyogrio','gdal_fiona'):
+            self.assertTrue(identity['versions'][name])
+        for name in ('uv.lock','pyproject.toml'):
+            expected=hashlib.sha256((Path(__file__).parents[1]/name).read_bytes()).hexdigest()
+            self.assertEqual(identity['dependency_manifests'][name]['sha256'],expected)
+        class ChangedDistribution:
+            metadata={'Name':'synthetic-version-change'}
+            version='999'
+        with mock.patch.object(a.importlib.metadata,'distributions',return_value=[ChangedDistribution()]):
+            self.assertNotEqual(a.processing_identity()['builder_fingerprint'],identity['builder_fingerprint'])
+
     def test_full_native_types_ids_duplicates_and_idempotency(self):
         result=_stage_aviation(self.capture,self.storage); again=_stage_aviation(self.capture,self.storage)
         self.assertEqual(result,again)
