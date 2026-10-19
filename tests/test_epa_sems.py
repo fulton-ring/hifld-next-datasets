@@ -128,6 +128,14 @@ class SEMSTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError,'READY write fault'):f.stage_epa_sems(StagingStorageResource(local_dir=d))
                 self.assertFalse((Path(d)/'_construction-state').exists());self.assertFalse((Path(d)/f.SLUG).exists())
 
+    def test_original_manifest_input_order_survives_canonical_CAS_roundtrip(self):
+        captures={}
+        for name,url in f.URLS.items():
+            body=('explicit synthetic input '+name).encode();captures[name]=(body,{'url':url,'final_url':url,'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,'observed_at':'2026-10-19T00:00:00+00:00'})
+        pin={'bytes':12,'sha256':'1'*64};identity={'explicit':'synthetic canonical-order regression'}
+        original=f.manifest_for(captures,identity,pin);reversed_inputs=f.manifest_for(dict(reversed(list(captures.items()))),identity,pin)
+        self.assertEqual(f.encode(original),f.encode(reversed_inputs));self.assertEqual([r['input_id'].split(':')[0]for r in original['inputs']],sorted(captures))
+
     def test_exact_ready_and_authored_source_wrappers_required(self):
         with tempfile.TemporaryDirectory()as d:
             base=Path(d);version='v0.0.0-draft-explicit-synthetic';root=base/f.SLUG/f.SLUG/version;(root/'geoparquet').mkdir(parents=True);table=decode(page());path=root/'geoparquet'/f'{f.SLUG}.parquet';pq.write_table(f.parquet_table(table),path,compression='zstd');identity={'fixture':'explicit synthetic two-row candidate'};audit={};captures={}

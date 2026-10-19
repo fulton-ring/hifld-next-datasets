@@ -405,7 +405,7 @@ def acquire(storage,capture_dir=None):
 def manifest_for(captures,identity,output_pin):
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
         'title':'EPA Facility Registry Service SEMS interests — complete official draft, including non-NPL sites','publisher':'United States Environmental Protection Agency','agency':'Environmental Protection Agency','source_url':LANDING,'license':LICENSE,
-        'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(n,*item)for n,item in captures.items()],
+        'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(n,*captures[n])for n in sorted(captures)],
         'transformations':[{'operation':'complete_official_ID_targeted_feature_extraction','parameters':{
             'grain':'All FRS interests in the SEMS program view, including non-NPL sites. Not NPL-only; not a claim of every underlying SEMS master record. No filtering or deduplication.',
             'source_ids':'Producer says hosted OBJECTID is temporary across refreshes. Preserve it, REGISTRY_ID, PGM_SYS_ID, KEY_FIELD and every other original column separately. No historical ID continuity or join approved.',
