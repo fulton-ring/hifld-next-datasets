@@ -356,6 +356,8 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     if not storage.object_exists(key):
         if storage.object_exists(started):
             raise FerryQuarantineError('missing_original_construction_bundle_after_first_construction')
+        if storage.list_prefix(key+'.evidence/'):
+            raise FerryQuarantineError('partial_original_construction_evidence_requires_trusted_restore')
         if not create:
             raise FerryQuarantineError('missing_original_construction_provenance_bundle')
         validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
@@ -410,6 +412,9 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
         'original_bundle_evidence_key':key+'.evidence/'+sha(bundle_body)+'.json'}
     if not storage.object_exists(started) or strict_json(storage.read_key(started))!=expected_marker:
         raise FerryQuarantineError('missing_or_invalid_first_construction_marker')
+    evidence=expected_marker['original_bundle_evidence_key']
+    if not storage.object_exists(evidence) or storage.read_key(evidence)!=bundle_body:
+        raise FerryQuarantineError('original_construction_evidence_missing_or_changed')
     return original,actual
 
 
@@ -573,7 +578,7 @@ def stage_ferry_terminals_candidate(storage: StagingStorageResource, *, capture_
                         retained=quarantine_cached_candidate(storage,prefix,str(exc),already_locked=True)
                         raise FerryQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc
                 binding_key=f'_candidate-construction/{SLUG}/{version}.json'
-                if storage.object_exists(binding_key) or storage.object_exists(binding_key+'.first-construction.json'):
+                if storage.object_exists(binding_key) or storage.object_exists(binding_key+'.first-construction.json') or storage.list_prefix(binding_key+'.evidence/'):
                     captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
                     body,receipt=captures['features']
             geopackage = directory / f'{SLUG}.gpkg'

@@ -122,6 +122,43 @@ class FerryTerminalsTests(TestCase):
         self.assertFalse(list((Path(self.tmp.name)/'_candidate-construction').rglob('*.json')))
         self.assertFalse(list((Path(self.tmp.name)/s.SLUG).glob('*/*/metadata/ferry_terminals_candidate_ready.json')))
 
+    def test_partial_first_marker_write_retains_original_and_blocks_new_context(self):
+        original_write=s.immutable
+        def interrupt(storage,key,body):
+            if key.startswith('_candidate-construction/') and key.endswith('.first-construction.json'):
+                raise OSError('injected first marker write interruption')
+            return original_write(storage,key,body)
+        with mock.patch.object(s,'immutable',side_effect=interrupt):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'first marker write interruption'):self.stage()
+        base=Path(self.tmp.name)/'_candidate-construction'/s.SLUG
+        evidence=list(base.glob('*.json.evidence/*.json'));self.assertEqual(len(evidence),1)
+        body=evidence[0].read_bytes();bundle=json.loads(body);version=bundle['version']
+        anchor=base/(version+'.json');marker=base/(version+'.json.first-construction.json')
+        self.assertFalse(anchor.exists());self.assertFalse(marker.exists())
+        for _ in range(2):
+            with self.assertRaisesRegex(s.FerryQuarantineError,'partial_original_construction_evidence_requires_trusted_restore'):self.stage()
+            self.assertEqual(evidence[0].read_bytes(),body);self.assertFalse(anchor.exists());self.assertFalse(marker.exists())
+        # Explicit fixture/operator restoration from the preserved exact original.
+        marker.write_bytes(s.encode({'schema_version':1,'version':version,
+            'processing_fingerprint':bundle['manifest']['processing_fingerprint'],
+            'original_bundle_sha256':s.sha(body),
+            'original_bundle_evidence_key':str(evidence[0].relative_to(Path(self.tmp.name)))}))
+        anchor.write_bytes(body);out=self.stage();self.assertEqual(out['version'],version)
+        self.assertEqual((self.root(out)/'metadata/source_manifest.json').read_bytes(),s.encode(bundle['manifest']))
+
+    def test_missing_or_corrupt_referenced_original_evidence_is_not_complete(self):
+        out=self.stage();root=self.root(out);before=self.snap(root)
+        anchor=Path(self.tmp.name)/'_candidate-construction'/s.SLUG/(out['version']+'.json')
+        marker=json.loads(anchor.with_name(anchor.name+'.first-construction.json').read_bytes())
+        evidence=Path(self.tmp.name)/marker['original_bundle_evidence_key'];original=evidence.read_bytes()
+        for case in ('missing','corrupt'):
+            if case=='missing':evidence.unlink()
+            else:evidence.write_bytes(b'corrupted original evidence')
+            for _ in range(2):
+                with self.assertRaisesRegex(s.FerryQuarantineError,'original_construction_evidence_missing_or_changed'):self.stage()
+                self.assertFalse(root.exists())
+            evidence.write_bytes(original);self.assertEqual(self.stage(),out);self.assertEqual(self.snap(root),before)
+
     def test_private_install_and_cache_share_common_lock_and_preserve_winner(self):
         out=self.stage();root=self.root(out);original=s.reconcile_cached_candidate;observed=[]
         def validate(*args,**kwargs):
