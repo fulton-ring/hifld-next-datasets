@@ -107,6 +107,10 @@ with DagsterInstance.get() as instance:
    elif mode=='marker_missing':marker.unlink();reason='missing_or_invalid_first_construction_marker'
    else:marker.write_bytes(b'{');reason='Expecting property name'
    bad_primary=key.read_bytes() if key.exists() else None;bad_marker=marker.read_bytes() if marker.exists() else None
+   forensic=r/'forged-history';forensic.mkdir(exist_ok=True)
+   for name,body in [('primary',bad_primary),('marker',bad_marker)]:
+    if body is not None:(forensic/(mode+'.'+name+'.body')).write_bytes(body)
+   (forensic/(mode+'.json')).write_bytes(s.encode({'mode':mode,'primary_missing':bad_primary is None,'marker_missing':bad_marker is None,'simulated_test_corruption_only':True}))
    qroot=r/'staging/_quarantine'/s.SLUG/'rejected-cache';before={p for p in qroot.glob('*') if p.is_dir()}
    for retry in [1,2]:
     execute(mode+'_retry_'+str(retry),False,reason)
