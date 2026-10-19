@@ -1,0 +1,449 @@
+{
+  "agency": "U.S. Fish and Wildlife Service",
+  "code_commit": "b0b1de8aec3a14026a9e0f8bfdec023e74281cb1",
+  "columns": [
+    {
+      "name": "geometry",
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "859",
+        "477",
+        "925",
+        "873",
+        "1015"
+      ],
+      "max": 1024,
+      "min": 21,
+      "name": "OBJECTID",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "10-004B",
+        "12-092A",
+        "36-035A",
+        "24-019B",
+        "13-013B"
+      ],
+      "length": 7,
+      "name": "Panel_No",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "DE",
+        "FL",
+        "NY",
+        "MD",
+        "GA"
+      ],
+      "length": 2,
+      "name": "State",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1732492800000",
+        "1452470400000",
+        "1732492800000",
+        "1732492800000",
+        "1703808000000"
+      ],
+      "max": 1732492800000,
+      "min": 1386288000000,
+      "name": "Map_Date",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "Broadkill Beach Unit H00/H00P (4 of 4)",
+        "The Reefs Unit P24/P24P (2 of 2)",
+        "Fire Island Unit NY-59P (1 of 6)",
+        "Biscoe Pond Unit MD-61P, Carroll Pond Unit MD-62",
+        "Jekyll Island Unit GA-06P"
+      ],
+      "length": 60,
+      "name": "Title",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Old Black Point Unit CT-03, Hatchett Point Unit CT-04",
+        " ",
+        "",
+        "Cape Florida Unit FL-23P",
+        "Altamaha/Wolf Islands Unit GA-05P (1 of 4)"
+      ],
+      "length": 63,
+      "name": "Title_2",
+      "nullable": true,
+      "numNullValues": 114,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Grand Isle Unit LA-04P",
+        "",
+        "",
+        "",
+        "Cabo San Juan Unit PR-08P, La Cordillera Unit PR-08AP (1 of 2)"
+      ],
+      "length": 62,
+      "name": "Title_3",
+      "nullable": true,
+      "numNullValues": 170,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "length": 63,
+      "name": "Title_4",
+      "nullable": true,
+      "numNullValues": 243,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "https://www.fws.gov/media/broadkill-beach-unit-h00h00p-4-4-beach-plum-island-unit-de-02p",
+        "https://www.fws.gov/media/reefs-unit-p24p24p-2-2",
+        "https://www.fws.gov/media/fire-island-unit-ny-59p-1-6",
+        "https://www.fws.gov/media/biscoe-pond-unit-md-61p-carroll-pond-unit-md-62-st-clarence-creek-unit-md-44-deep-point-unit",
+        "https://www.fws.gov/media/Jekyll-Island-Unit-GA-06P"
+      ],
+      "length": 119,
+      "name": "Map_Link",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1732492800000",
+        "1457913600000",
+        "1732492800000",
+        "1732492800000",
+        "1734566400000"
+      ],
+      "max": 1734566400000,
+      "min": 1397692800000,
+      "name": "Effective_Date",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "https://www.fws.gov/node/267335",
+        "https://www.fws.gov/project/digital-conversion-and-5-year-review",
+        "https://www.fws.gov/node/267335",
+        "https://www.fws.gov/node/267335",
+        "https://www.fws.gov/project/cbrs-5-year-review"
+      ],
+      "length": 64,
+      "name": "Historical_Link",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "possibleValues": [
+        "https://www.fws.gov/node/263840",
+        "https://www.fws.gov/node/263870",
+        "https://www.fws.gov/node/263871",
+        "https://www.fws.gov/node/263873",
+        "https://www.fws.gov/node/263874",
+        "https://www.fws.gov/node/267335",
+        "https://www.fws.gov/project/cbrs-5-year-review",
+        "https://www.fws.gov/project/digital-conversion-and-5-year-review"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0.5095363173279144",
+        "0.5244666109476893",
+        "0.5618683057341642",
+        "0.5535256257869767",
+        "0.5421025473501893"
+      ],
+      "max": 0.5843955032670228,
+      "min": 0.40294452337313336,
+      "name": "Shape_Length",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "0.01621942089536027",
+        "0.017186303048531977",
+        "0.01963173029306601",
+        "0.019049627525310718",
+        "0.018362833103414807"
+      ],
+      "max": 0.021135646101409222,
+      "min": 0.010122016692830029,
+      "name": "Shape_Area",
+      "nullable": false,
+      "numNullValues": 0,
+      "numUniqueValues": null,
+      "type": "float"
+    }
+  ],
+  "inputs": [
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 101644,
+      "canonical_url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "www.fws.gov",
+      "input_id": "fws_data:b32f65711aad0feca629d51d586dbe92004a93765371d3ea1072ba7542c21627",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "retrieved_at": "2026-10-19T07:40:36.186508+00:00",
+      "role": "producer_publication",
+      "sha256": "b32f65711aad0feca629d51d586dbe92004a93765371d3ea1072ba7542c21627"
+    },
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 5971,
+      "canonical_url": "https://www.arcgis.com/sharing/rest/content/items/a60c25b4b2e44969b3164742901058a2?f=pjson",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "www.arcgis.com",
+      "input_id": "official_item:aed7606ee7361acffbaf7820d85eba4c2593126da7a87719dbb3a187caa3f999",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://www.arcgis.com/sharing/rest/content/items/a60c25b4b2e44969b3164742901058a2?f=pjson",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://www.arcgis.com/sharing/rest/content/items/a60c25b4b2e44969b3164742901058a2?f=pjson",
+      "retrieved_at": "2026-10-19T07:40:36.677315+00:00",
+      "role": "official_distributor",
+      "sha256": "aed7606ee7361acffbaf7820d85eba4c2593126da7a87719dbb3a187caa3f999"
+    },
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 5952,
+      "canonical_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5?f=pjson",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "gis1.wim.usgs.gov",
+      "input_id": "layer:f2138bdcb57f394e668694d07ea1744a28485ab8bcda042edf85bf1810d5d0ef",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5?f=pjson",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5?f=pjson",
+      "retrieved_at": "2026-10-19T07:40:35.180382+00:00",
+      "role": "official_distributor",
+      "sha256": "f2138bdcb57f394e668694d07ea1744a28485ab8bcda042edf85bf1810d5d0ef"
+    },
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 13,
+      "canonical_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnCountOnly=true&f=json",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "gis1.wim.usgs.gov",
+      "input_id": "count:e1908cd8b94ba2c3ad25f2f7c01035ba0c2536cd241c068e830e22f97c7910d1",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnCountOnly=true&f=json",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnCountOnly=true&f=json",
+      "retrieved_at": "2026-10-19T07:40:35.582572+00:00",
+      "role": "official_distributor",
+      "sha256": "e1908cd8b94ba2c3ad25f2f7c01035ba0c2536cd241c068e830e22f97c7910d1"
+    },
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 2343,
+      "canonical_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "gis1.wim.usgs.gov",
+      "input_id": "ids:bab9586c82c65b09eced3e640329778aed9b3acd3674e2f46dfa996c3f1e7305",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+      "retrieved_at": "2026-10-19T07:40:35.784777+00:00",
+      "role": "official_distributor",
+      "sha256": "bab9586c82c65b09eced3e640329778aed9b3acd3674e2f46dfa996c3f1e7305"
+    },
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 427676,
+      "canonical_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=1000&f=json",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "gis1.wim.usgs.gov",
+      "input_id": "page0000:9c4162886e09b2d10152cf83c059fb26dc7825836c4f3ac5ed8b1e5fda074787",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=1000&f=json",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=1000&f=json",
+      "retrieved_at": "2026-10-19T07:41:05.023269+00:00",
+      "role": "official_distributor",
+      "sha256": "9c4162886e09b2d10152cf83c059fb26dc7825836c4f3ac5ed8b1e5fda074787"
+    },
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 13,
+      "canonical_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnCountOnly=true&f=json",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "gis1.wim.usgs.gov",
+      "input_id": "count_after:e1908cd8b94ba2c3ad25f2f7c01035ba0c2536cd241c068e830e22f97c7910d1",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnCountOnly=true&f=json",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnCountOnly=true&f=json",
+      "retrieved_at": "2026-10-19T07:41:05.235620+00:00",
+      "role": "official_distributor",
+      "sha256": "e1908cd8b94ba2c3ad25f2f7c01035ba0c2536cd241c068e830e22f97c7910d1"
+    },
+    {
+      "attribution": "U.S. Fish and Wildlife Service; delegated USGS CBRS Mapper distribution.",
+      "authority_evidence": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "bytes": 2343,
+      "canonical_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+      "delegation_evidence": {
+        "scope": "Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2",
+        "url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data"
+      },
+      "host": "gis1.wim.usgs.gov",
+      "input_id": "ids_after:bab9586c82c65b09eced3e640329778aed9b3acd3674e2f46dfa996c3f1e7305",
+      "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+      "license_scope": "FWS CBRS mapper official maps control; digital representations are not definitive property determinations. Item accessInformation/licenseInfo retained verbatim in raw official_item; release acceptance pending.",
+      "lineage": "FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.",
+      "observed_final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+      "producer": "U.S. Fish and Wildlife Service",
+      "release_date": null,
+      "release_date_unknown_reason": "Map panel dates are per-record dates, not a documented feed publication date; portal modification and fetch timestamps are not release dates.",
+      "retrieval_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+      "retrieved_at": "2026-10-19T07:41:05.453877+00:00",
+      "role": "official_distributor",
+      "sha256": "bab9586c82c65b09eced3e640329778aed9b3acd3674e2f46dfa996c3f1e7305"
+    }
+  ],
+  "license": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+  "manifest_keys": [
+    "cbrs-map-panels-1/cbrs-map-panels-1/v0.0.0-draft-cbrspanels-cfba62011d76e143-b346625eed2b1704/metadata/source_manifest.json"
+  ],
+  "metadata_resolved_from": {
+    "agency": "version",
+    "approved": "version",
+    "code_commit": "version",
+    "inputs": "version",
+    "license": "version",
+    "license_review_required": "version",
+    "processing_fingerprint": "version",
+    "processor": "version",
+    "publisher": "version",
+    "schema_version": "version",
+    "source_url": "version",
+    "title": "version",
+    "transformations": "version",
+    "unsupported_output_formats": "version"
+  },
+  "metadata_sources": [
+    "version"
+  ],
+  "name": "cbrs-map-panels-1",
+  "processor": "HIFLD Next",
+  "publisher": "U.S. Fish and Wildlife Service via delegated USGS CBRS Mapper",
+  "schema_version": 1,
+  "source_url": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+  "title": "CBRS Map Panels \u2014 faithful complete API working draft",
+  "transformations": [
+    {
+      "mapping_approval": "not established; baseline truncated names/string dates/null-empty representations require explicit decisions",
+      "operation": "decode_native_Esri_JSON",
+      "preserved": "All13 source attributes, original OBJECTID JSON integers under proposed int64 proxy (native OID width not supplied), date millisecond int64 representations, all native EPSG4269 coordinate rings; no field renames, ID generation, date conversion or geometry repair.",
+      "repair_or_projection": false
+    }
+  ],
+  "unsupported_output_formats": {
+    "pmtiles": "Reprojection/quantization changes geometry; no visualization contract approved.",
+    "shapefile_zip": "Long field names truncate and native millisecond dates lose types; no destructive mapping approved."
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "implementation_head": "b0b1de8aec3a14026a9e0f8bfdec023e74281cb1",
+  "source_module": "src/dagster_hifld/sources/cbrs_map_panels.py",
+  "normal_registration_head": "6516cd249d1db1ad0fe6dea4c6829bd5aaafa1d3",
+  "approved": false,
+  "focused_tests": {
+    "total": 9,
+    "passed": 9,
+    "seconds": 6.142,
+    "covers": [
+      "All574 complete real source records and actual source/cache derivation",
+      "strict timestamp/URL/status/hash/length preflight for all8 original receipts before canonical writes",
+      "failed provenance validation before canonical writes",
+      "count/ID consistency before and after extraction, exact field set/types, invalid/missing geometry, native CRS and transfer-limit drift",
+      "atomic OSError and KeyboardInterrupt no discoverable partial candidate",
+      "prior draft byte preservation on install conflict",
+      "self-repinned GPKG contents/geometry_columns SRS, bounds, SRS WKT/authority, date values and per-geometry headerSRS rejected",
+      "self-repinned Arrow CRS and source fidelity sidecar rejected",
+      "invalid full cache atomically moved outside discoverable staging; original bytes retained",
+      "malformed original receipt/body retained; three interrupted fetch attempts all retained"
+    ]
+  },
+  "full_suite": {
+    "total": 508,
+    "passed": 507,
+    "skipped": 1,
+    "seconds": 114.906,
+    "skip_reason": "Actual production GCS write E2E not enabled.",
+    "real_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "CI_pass_inferred": false
+  },
+  "actual_dagster": {
+    "runs": [
+      {
+        "kind": "real_complete_source",
+        "run_id": "9b278290-886c-4f8a-bce3-a6f5a911739e",
+        "success": true
+      },
+      {
+        "kind": "real_complete_refresh",
+        "run_id": "50d588b3-4354-40a8-8a8d-a4534b7db7e4",
+        "success": true
+      },
+      {
+        "kind": "normal_formats_missing_approval",
+        "run_id": "09f948f7-06b2-4d83-b3bb-98c41f457749",
+        "success": false
+      },
+      {
+        "kind": "real_complete_post_formats_refresh",
+        "run_id": "a51d917f-a0ef-4ff1-99cf-db9acb5a4ab3",
+        "success": true
+      },
+      {
+        "kind": "second_normal_catalog_missing_approval",
+        "run_id": "7202adfd-d3e6-4b54-a078-132ea6987cf6",
+        "success": false
+      },
+      {
+        "kind": "source_refresh_after_second_catalog",
+        "run_id": "5be3154f-77dd-4c92-8b81-75d53a0b098f",
+        "success": true
+      },
+      {
+        "kind": "synthetic_failed_geometry_quality_gate",
+        "run_id": "2f06a9e3-c4e6-4430-9953-6277a15e8ff5",
+        "success": false
+      }
+    ],
+    "terminal_parquet": {
+      "rows": 574,
+      "all_source_values_types_wkb_exact": true,
+      "extra_columns": [
+        "bbox"
+      ],
+      "nullable_inference_requires_review": true
+    },
+    "all_574_ids_values_types_wkb_preserved": true,
+    "source_discoverable_without_manual_copy": true,
+    "refresh_byte_idempotent": true,
+    "source_refresh_after_second_normal_catalog_success": true,
+    "missing_approval_blocks_promotion": true,
+    "synthetic_missing_geometry_blocks_quality": true,
+    "prior_published_fixture_preserved": true,
+    "fixture_is_not_real_accepted_data": true,
+    "complete_raw_inputs_preserved": true,
+    "complete_provenance_inputs": 8
+  },
+  "published_candidate_comparison": {
+    "rows": 574,
+    "source_rows": 574,
+    "all574source_OBJECTID_equal_published_OBJECTID_and_id": true,
+    "all574native_geometry_WKB_equal": true,
+    "accepted_baseline": false
+  },
+  "compatibility_decisions": [
+    "source Date declaration versus numeric JSON / proposed int64storage",
+    "source OID declaration unknownphysicalwidth versus int64proxy",
+    "three truncated published field names",
+    "empty strings versus published nulls",
+    "two Title changes",
+    "Shape_Length/Shape_Area precision differences",
+    "additional terminal bbox column/nullability",
+    "unsupported lossy shapefile/tiles formats"
+  ]
+}
