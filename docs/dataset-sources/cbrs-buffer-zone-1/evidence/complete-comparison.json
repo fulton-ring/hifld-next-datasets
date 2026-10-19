@@ -1,0 +1,121 @@
+{
+  "approved": false,
+  "baseline": {
+    "rows": 1206,
+    "schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nOBJECTID: int64\nUnit: string\nCBRS_Type: string\nFI_Date: string\nSU_Date: string\nSHAPE_Leng: double\nSHAPE_Area: double\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1117\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 766",
+    "sha256": "af46c933076a29c2ac5144bb5b80d50e62e4b8309b8121265637a82b49291241",
+    "generation": "1791506354443919",
+    "bounds": [
+      -97.63883118799998,
+      17.661853320000034,
+      -64.62320069099997,
+      47.43561465400006
+    ],
+    "invalid": 0,
+    "id_unique": {
+      "id": 1206,
+      "OBJECTID": 1206
+    }
+  },
+  "Buffer_Zone": {
+    "rows": 1145,
+    "schema": {
+      "properties": {
+        "BUFF_DIST": "float:19.11",
+        "Shape_Leng": "float:19.11",
+        "Shape_Area": "float:19.11"
+      },
+      "geometry": "Polygon"
+    },
+    "crs": "EPSG:4269",
+    "bounds": [
+      -97.63889276399999,
+      17.661798240000053,
+      -64.62314321899999,
+      47.43566948400007
+    ],
+    "invalid": 0,
+    "published_exact_wkb_matches": 0,
+    "published_normalized_wkb_matches": 0,
+    "properties_first": {
+      "BUFF_DIST": 20.0,
+      "Shape_Leng": 0.045322910548,
+      "Shape_Area": 2.54872737707e-06
+    },
+    "api_source_rows": 1145,
+    "api_source_id_count": 1145,
+    "all_native_rings_equal_api_in_order": true
+  },
+  "Polygons": {
+    "rows": 942,
+    "schema": {
+      "properties": {
+        "Unit": "str:8",
+        "Name": "str:254",
+        "Unit_Type": "str:25",
+        "Fast_Acres": "float:13.11",
+        "Wet_Acres": "float:13.11",
+        "Shore_Mile": "float:13.11",
+        "Shape_Leng": "float:19.11",
+        "Shape_Area": "float:19.11"
+      },
+      "geometry": "Polygon"
+    },
+    "crs": "EPSG:4269",
+    "bounds": [
+      -97.63883118799998,
+      17.661853320000034,
+      -64.62320069099997,
+      47.43561465400006
+    ],
+    "invalid": 0,
+    "published_exact_wkb_matches": 18,
+    "published_normalized_wkb_matches": 22,
+    "properties_first": {
+      "Unit": "VI-10",
+      "Name": "Long Point",
+      "Unit_Type": "System Unit",
+      "Fast_Acres": 5.0,
+      "Wet_Acres": 1.0,
+      "Shore_Mile": 0.3,
+      "Shape_Leng": 0.0281865963229,
+      "Shape_Area": 4.98248473505e-05
+    }
+  },
+  "Prohibitions": {
+    "rows": 1693,
+    "schema": {
+      "properties": {
+        "Unit": "str:10",
+        "CBRS_Type": "str:30",
+        "FI_Date": "date",
+        "SU_Date": "date",
+        "SHAPE_Leng": "float:19.11",
+        "SHAPE_Area": "float:19.11"
+      },
+      "geometry": "Polygon"
+    },
+    "crs": "EPSG:4269",
+    "bounds": [
+      -97.63883118799998,
+      17.661853320000034,
+      -64.62320069099997,
+      47.43561465400006
+    ],
+    "invalid": 0,
+    "published_exact_wkb_matches": 76,
+    "published_normalized_wkb_matches": 76,
+    "properties_first": {
+      "Unit": "A01",
+      "CBRS_Type": "System Unit",
+      "FI_Date": "1983-10-01",
+      "SU_Date": "1982-10-18",
+      "SHAPE_Leng": 0.0579792484019,
+      "SHAPE_Area": 0.000119437393395
+    }
+  },
+  "decision": {
+    "release_blocked": true,
+    "reason": "Published candidate schema contains prohibition-area fields and no BUFF_DIST. Faithful buffer source has different feature grain, columns, IDs and geometry. No automatic replacement or ID crosswalk accepted."
+  }
+}

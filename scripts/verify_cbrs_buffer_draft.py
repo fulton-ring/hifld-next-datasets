@@ -66,7 +66,10 @@ with DagsterInstance.get() as instance:
   expected=gp[row['__source_fid']];assert dict(expected['properties'])=={key:row[key] for key in source.SCHEMA}
   assert shapely.geometry.shape(expected.geometry).wkb==row['geometry']
  terminal=pq.read_table(root/'geoparquet'/f'{source.SLUG}.parquet')
- assert len(terminal)==1145 and str(terminal.schema.field('__source_fid').type)=='string'
+ assert len(terminal)==1145
+ for name,kind in source.SCHEMA.items():
+  assert str(terminal.schema.field(name).type)==('double' if kind.startswith('float') else 'string')
+ assert set(terminal.column_names)-set(source.SCHEMA)-{'geometry'}=={'bbox'}
  bysection={row['__source_fid']:row for row in rows}
  for row in terminal.to_pylist():
   expected=bysection[row['__source_fid']]

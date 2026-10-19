@@ -1,0 +1,32 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/cbrs-buffer-zone-1/cbrs-buffer-zone-1/catalog.json",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/cbrs-buffer-zone-1/cbrs-buffer-zone-1/catalog.json",
+  "observed_at": "2026-10-19T07:12:06.454317+00:00",
+  "status": 200,
+  "byte_length": 4437,
+  "sha256": "1db167131f21d4042217e3f970f203282518ac3f8e24f4e3ee63ae54e8739cfb",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU83OdTbzxyVMVS4o91imEZ3yIj7j6l2NAsmYKpE1MDW0PqqdXYFZnrV6gd2WrWFMHXwV",
+    "date": "Mon, 19 Oct 2026 07:12:06 GMT",
+    "cache-control": "no-cache",
+    "expires": "Tue, 19 Oct 2027 07:12:06 GMT",
+    "last-modified": "Sat, 10 Oct 2026 00:20:29 GMT",
+    "etag": "\"2f43ea9ef3818b04386f96bb91c38109\"",
+    "x-goog-generation": "1791591629982018",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "4437",
+    "x-goog-meta-sha256": "1db167131f21d4042217e3f970f203282518ac3f8e24f4e3ee63ae54e8739cfb",
+    "x-goog-hash": "crc32c=qQ2S/A==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "4437",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "295",
+    "connection": "close"
+  }
+}

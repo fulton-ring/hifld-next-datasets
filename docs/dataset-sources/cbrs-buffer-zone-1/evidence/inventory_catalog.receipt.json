@@ -1,0 +1,9 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/cbrs-buffer-zone-1/catalog.json",
+  "observed_at": "2026-10-19T06:59:30.650605+00:00",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/cbrs-buffer-zone-1/catalog.json",
+  "bytes": 4102,
+  "sha256": "de3d84370edb98b126d827af6b6356c6276ed0e7689e9cc2daf3cae987db0c6a",
+  "complete_body": true
+}

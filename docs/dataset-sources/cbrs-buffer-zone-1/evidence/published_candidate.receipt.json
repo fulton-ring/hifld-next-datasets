@@ -1,0 +1,31 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/cbrs-buffer-zone-1/cbrs-buffer-zone-1/v1.0.0/geoparquet/cbrs-buffer-zone-1.parquet",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/cbrs-buffer-zone-1/cbrs-buffer-zone-1/v1.0.0/geoparquet/cbrs-buffer-zone-1.parquet",
+  "observed_at": "2026-10-19T07:12:47.200735+00:00",
+  "status": 200,
+  "byte_length": 4368115,
+  "sha256": "af46c933076a29c2ac5144bb5b80d50e62e4b8309b8121265637a82b49291241",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU81p_miP_muFaaxEaNYVHSVcG__XA4WXyDuTYXRBkt5AnJ1Uc6nqVpm7gf9diHmzw6-X",
+    "expires": "Mon, 19 Oct 2026 08:12:46 GMT",
+    "date": "Mon, 19 Oct 2026 07:12:46 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:14 GMT",
+    "etag": "\"26ed4ef2bbd3961c6a1854c9ced21c1a\"",
+    "x-goog-generation": "1791506354443919",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "4368115",
+    "x-goog-hash": "crc32c=r+fL2w==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "4368115",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "359",
+    "connection": "close"
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "issue": 28,
+  "status": "locally_verified_working_draft_independent_review_pending",
+  "approval": {
+    "source": false,
+    "baseline": false,
+    "contract": false,
+    "release": false
+  },
+  "dataset_slug": "cbrs-buffer-zone-1",
+  "source": {
+    "producer": "U.S. Fish and Wildlife Service",
+    "distribution": "producer-hosted original full ZIP, not archive refresh",
+    "landing": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+    "download": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip",
+    "publication_date": "2024-12-19",
+    "fetch_date": "2026-10-19",
+    "feature_count": 1145,
+    "crs": "EPSG:4269",
+    "identifier": "original shapefile FID, proposed __source_fid string; no producer DBF OBJECTID present",
+    "schema": {
+      "BUFF_DIST": "DBFfloat19.11 \u2192 float64",
+      "Shape_Leng": "DBFfloat19.11 \u2192 float64",
+      "Shape_Area": "DBFfloat19.11 \u2192 float64"
+    },
+    "geometry": "1145Polygon, all valid, native vertices preserved",
+    "anomalies": {
+      "zero_buffer_width": 7,
+      "twenty_foot_buffer_width": 1138
+    },
+    "rights": "Read complete preserved official metadata: acknowledge FWS, share derivative products, no survey/definitive in/out use."
+  },
+  "published_candidate": {
+    "accepted": false,
+    "rows": 1206,
+    "sha256": "af46c933076a29c2ac5144bb5b80d50e62e4b8309b8121265637a82b49291241",
+    "generation": "1791506354443919",
+    "identity": "Different prohibition-area schema/grain, not a verified CBRS Buffer Zone baseline",
+    "identifier_columns": [
+      "OBJECTID",
+      "id"
+    ],
+    "all_values_preserved_in": "evidence/published_candidate.body"
+  },
+  "historical_crosswalk": {
+    "status": "unmatched",
+    "reason": "DOI crosswalk and DataLumos origin403; retained complete responses and actual finalURLs. No inferred archive mapping."
+  },
+  "external_release_decisions": [
+    "Resolve published prohibition-area grain under buffer title; choose intended baseline/dataset identity without destructive replacement.",
+    "Approve raw/published field and original-FID mapping, retaining published OBJECTID/id separately.",
+    "Resolve seven source zero-width attributes contradicting metadata; no guessed repairs.",
+    "Accept distribution use constraints and complete real-source quality/compatibility contract."
+  ],
+  "pipeline": {
+    "extractor": "src/dagster_hifld/sources/cbrs_buffer.py",
+    "asset": "src/dagster_hifld/assets/fws.py",
+    "refresh": "monthly source-only STOPPED integrity poll; source releases follow CBRS map revisions",
+    "raw_preservation": "completeZIP/all25members/four input bodies and original fetch receipts",
+    "canonical_staging": "complete hidden localbuild atomically renamed into deterministic SEMVER namespace",
+    "reuse": "fresh source to cached GPKG and typedParquet values/types/nulls/IDs/native geometry plus exact source roster",
+    "gates": "shared exact independent release registry required; baseline/contract absent blocks release",
+    "provenance": "four complete original inputs validated directly before any canonical write",
+    "runner": "scripts/verify_cbrs_buffer_draft.py"
+  },
+  "runtime_evidence": {
+    "native_api_complete_capture": "/workspace/work/hifld-coordinator/28/native_page0000.body",
+    "sha256": "2dbe268219286cb44160f41d3ef4f84994f812314ecc880db627f74518dc5dd0",
+    "bytes": 77132731,
+    "source_API_OBJECTIDs": "evidence/source_ids.body",
+    "API_capture_not_transform_input": true,
+    "all_1145_native_coordinate_ring_arrays_equal_source_API_in_order": true,
+    "source_API_OBJECTID_range": [
+      3817,
+      4961
+    ]
+  },
+  "prior_findings_review": {
+    "issue": "https://github.com/fulton-ring/agent-content-demos/issues/40",
+    "comments_total": 3,
+    "comments_read": 3,
+    "CBRS_specific_mentions_found": false,
+    "classification": "Background only, not a fresh endpoint audit."
+  },
+  "implementation_head": "3aad05bb5c953b230251dbc43a363cb6b8045d8e",
+  "verification": {
+    "execution": "evidence/execution.json",
+    "full_suite": {
+      "total": 508,
+      "passed": 507,
+      "skipped": 1,
+      "skip": "Real GCS production-write E2E intentionally not enabled.",
+      "seconds": 116.958,
+      "real_sibling_iac_snapshot": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "no_CI_inferred": true
+    },
+    "all_1145_rows_identifiers_values_and_native_WKB": "PASS",
+    "all_three_source_float64_and_original_FID_string_physical_types": "PASS",
+    "refresh_before_and_after_normal_formats": "byte-idempotent with full fresh-source cache reconciliation",
+    "normal_graph_release": "blocked exactly missing_independent_release_approval_registry; preexisting local published fixture preserved",
+    "failed_quality": "separate synthetic null-geometry partition failed catalog quality before promotion; fixture preserved",
+    "domain_exception_accepted": false
+  }
+}

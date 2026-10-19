@@ -1,0 +1,15 @@
+{
+  "scope": "Exploratory precommit source success and deliberate refresh interruption; final exact-head pipeline verified separately.",
+  "source_success_run": "4fa87919-6293-405b-a697-32c92350efce",
+  "interrupted_refresh_run": "f94e3dd8-0cd2-4710-88ab-5c2bef156ee7",
+  "interruption": "SIGINT while source/Definitions changed during exploratory development; do not infer idempotency from this run.",
+  "preserved_candidates": [
+    {
+      "version": "v0.0.0-draft-cbrs20241219-4079524bf98da1fb-3babd70c184280aa",
+      "all_ready_source_object_pins_still_match": true,
+      "objects": 45
+    }
+  ],
+  "hidden_candidate_builds_remaining": 0,
+  "preexisting_local_published_fixture": "local-fixture-only-not-an-accepted-real-release"
+}
