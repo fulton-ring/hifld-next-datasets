@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/v1.0.0/metadata/geoparquet_layout.json",
+  "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/v1.0.0/metadata/geoparquet_layout.json",
+  "started_at": "2026-10-19T12:24:36.479720+00:00",
+  "observed_at": "2026-10-19T12:24:36.904924+00:00",
+  "status": 200,
+  "bytes": 1711,
+  "wire_bytes": 1711,
+  "sha256": "021a1c03298b5615417438cfc140288b01eb705600509134bfa92b7826407d42",
+  "md5_matches_complete_object_listing": true,
+  "complete": true,
+  "headers": {
+    "content-type": "application/json",
+    "date": "Mon, 19 Oct 2026 12:24:36 GMT",
+    "last-modified": "Fri, 09 Oct 2026 00:39:29 GMT",
+    "etag": "\"a4af65dca5604b53e54ae9050650345d\"",
+    "content-length": "1711"
+  },
+  "generation": "1791506369853677"
+}

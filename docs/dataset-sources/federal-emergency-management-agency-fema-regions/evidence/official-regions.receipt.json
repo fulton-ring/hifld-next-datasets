@@ -1,0 +1,17 @@
+{
+  "requested_url": "https://www.fema.gov/about/organization/regions",
+  "observed_final_url": "https://www.fema.gov/about/organization/regions",
+  "started_at": "2026-10-19T12:21:59.350339+00:00",
+  "observed_at": "2026-10-19T12:21:59.853348+00:00",
+  "status": 403,
+  "headers": {
+    "content-type": "text/html",
+    "content-length": "400",
+    "date": "Mon, 19 Oct 2026 12:21:59 GMT"
+  },
+  "wire_bytes": 400,
+  "bytes": 400,
+  "sha256": "bc151b5d2f850a6c2920d3f8b1c940c99d30f46c85413b0ea61cd62145b80167",
+  "complete": true,
+  "redirects": []
+}

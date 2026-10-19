@@ -1,0 +1,48 @@
+{
+  "footer_metadata_bytes": 8259,
+  "layers": [
+    {
+      "chosen_s2_level": null,
+      "feature_count": 10,
+      "footer_size_bytes": 8259,
+      "hive_partition_columns": {},
+      "layer": "federal-emergency-management-agency-fema-regions",
+      "outputs": [
+        {
+          "file_size_bytes": 34351126,
+          "footer_size_bytes": 8259,
+          "path": "federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/v1.0.0/geoparquet/federal-emergency-management-agency-fema-regions.parquet",
+          "relative_path": "geoparquet/federal-emergency-management-agency-fema-regions.parquet",
+          "row_counts": [
+            10
+          ],
+          "row_group_uncompressed_sizes": [
+            42281881
+          ],
+          "sha256": "40bb27b4e603bc55eb92cb7d66706d7e0cef414e37d6ec549e02f97f3033247c"
+        }
+      ],
+      "partition_columns": [],
+      "partition_strategy": "single_file",
+      "source_format": "geopackage",
+      "thresholds": {
+        "aggregate_buffer_bytes": 536870912,
+        "compression_estimation_method": "sampled_zstd",
+        "compression_ratio": 0.7296115630920641,
+        "effective_file_buffer_bytes": 134217728,
+        "estimated_compressed_bytes": 30848497,
+        "footer_size_bytes": 8259,
+        "large_dataset_bytes": 2147483648,
+        "max_dataset_footer_bytes": 134217728,
+        "max_row_group_bytes": 167772160,
+        "row_group_target_bytes": 134217728,
+        "target_file_bytes": 2147483648,
+        "write_buffer_bytes": 134217728
+      },
+      "validation_status": "valid"
+    }
+  ],
+  "max_dataset_footer_bytes": 134217728,
+  "schema_version": 1,
+  "validation_status": "valid"
+}

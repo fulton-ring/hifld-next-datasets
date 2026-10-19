@@ -1,0 +1,26 @@
+{
+  "description": "Regional Offices manage, operate and maintain all delegated programs, functions and activities not managed, operated or maintained by headquarters organizational units. The FEMA Regional Offices serve as the primary organizational unit for liaison to states and local governments within each region, and non-governmental and private sector entities within each Regional Office's geographical area",
+  "manifest_keys": [
+    "federal-emergency-management-agency-fema-regions/metadata/source_manifest.json",
+    "federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/metadata/source_manifest.json"
+  ],
+  "manifest_role": "resolved_version",
+  "metadata_resolved_from": {
+    "description": "file",
+    "tags": "file",
+    "title": "file"
+  },
+  "metadata_sources": [
+    "dataset",
+    "file"
+  ],
+  "schema_version": "v1",
+  "tags": {
+    "categories": [
+      "Emergency Services",
+      "Government"
+    ],
+    "inventory_name": "federal-emergency-management-agency-fema-regions"
+  },
+  "title": "federal-emergency-management-agency-fema-regions"
+}

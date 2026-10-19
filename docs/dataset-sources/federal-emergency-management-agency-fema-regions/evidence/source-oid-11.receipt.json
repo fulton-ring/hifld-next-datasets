@@ -1,0 +1,17 @@
+{
+  "requested_url": "https://gis.fema.gov/arcgis/rest/services/FEMA/RegHQs/FeatureServer/2/query?f=json&objectIds=11&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true",
+  "observed_final_url": "https://gis.fema.gov/arcgis/rest/services/FEMA/RegHQs/FeatureServer/2/query?f=json&objectIds=11&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true",
+  "started_at": "2026-10-19T12:24:20.267050+00:00",
+  "observed_at": "2026-10-19T12:24:25.479644+00:00",
+  "status": 200,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 12:24:21 GMT",
+    "content-type": "application/json;charset=UTF-8",
+    "etag": "W/\"bf40a297aae44b1124fd3ce254a2b71667c6415d82ed52a29be86dc8080b32d0\""
+  },
+  "wire_bytes": 14860893,
+  "bytes": 14860893,
+  "sha256": "bf40a297aae44b1124fd3ce254a2b71667c6415d82ed52a29be86dc8080b32d0",
+  "complete": true,
+  "redirects": []
+}

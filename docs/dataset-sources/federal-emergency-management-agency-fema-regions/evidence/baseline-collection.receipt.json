@@ -1,0 +1,16 @@
+{
+  "requested_url": "https://hifld.publicenvirodata.org/hifld/federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/collection.json",
+  "observed_final_url": "https://hifld.publicenvirodata.org/hifld/federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/collection.json",
+  "started_at": "2026-10-19T12:23:04.627911+00:00",
+  "observed_at": "2026-10-19T12:23:05.560768+00:00",
+  "status": 404,
+  "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "date": "Mon, 19 Oct 2026 12:23:05 GMT"
+  },
+  "wire_bytes": 6295,
+  "bytes": 6295,
+  "sha256": "b134568acfc6715a275ed0afabee7093e0607e46b03c0a3c83758b6cd949c18c",
+  "complete": true,
+  "redirects": []
+}

@@ -15,6 +15,9 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.fema_regions import (
+    fema_regions_draft_job, fema_regions_draft_schedule, fema_regions_full_quality,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
@@ -391,7 +394,9 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=hifld_asset_checks,
+    asset_checks=[*hifld_asset_checks, fema_regions_full_quality],
+    jobs=[fema_regions_draft_job],
+    schedules=[fema_regions_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={

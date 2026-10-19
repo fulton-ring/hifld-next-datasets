@@ -1,0 +1,32 @@
+# FEMA Regions — working draft, release blocked
+
+Issue #84 implements the ten **polygon** records published directly by FEMA at `gis.fema.gov/arcgis/rest/services/FEMA/RegHQs/FeatureServer/2`. The official service root, FEMA folder, service metadata and credit establish the producer chain. Regional-office points belong to #83 and are not substituted here. The service does not expose a record release date: the XML creation date 2020-10-16 is metadata creation only.
+
+Complete native ESRI JSON extractions preserve source `objectid`11–20, all six original attribute names and physical types, EPSG:4326, all 2,640,166 vertices and their original ordered rings. All ten geometries are valid: eight MultiPolygons and two Polygons. Full metadata, counts, ID census and all attributes match before/after the extraction. This is observed coherence, not a transactional snapshot guarantee. No projection, rounding, simplification, ring reversal, Polygon wrapping, buffer or geometry repair occurs.
+
+The explicit source asset, blocking full-population quality check and STOPPED monthly schedule are implemented in `src/dagster_hifld/assets/fema_regions.py`. The source module preserves complete original inputs and receipts outside candidate versions, validates actual Git/source identity before late construction sealing, checks immutable first-construction state and observed-loss incidents, writes complete hidden native candidates before atomic exposure, and revalidates every source-owned object and native GeoPackage/Parquet on reuse. Invalid or interrupted candidates remain preserved outside normal discovery. Live refresh is explicit and anonymous; any new source bytes, IDs, schema, count or coverage drift remain quarantined for review. Stream failures preserve every already consumed bounded chunk with incomplete/untrusted diagnostics.
+
+The native working outputs are GeoPackage and Parquet. Native `Shape__Area` and `Shape__Length` names cannot be preserved in Shapefile; that output is explicitly unsupported until a mapping is accepted. PMTiles likewise requires an approved cartographic field/type/ID contract. Skipped unsupported outputs are not successful output artifacts.
+
+## Complete historical comparison and decisions
+
+All five complete published v1.0.0 format files are preserved and pinned locally. All six native attribute values match Parquet under a diagnostic, **unapproved** full-to-truncated field-name join. Eight native WKBs equal published Parquet/GPKG exactly; source objectids18/19 are original Polygons whereas those published formats wrap them in MultiPolygons. Shapefile retains the native geometry types and exact WKB for all ten. The native integer types are int32; historical Parquet uses int64. These differences remain quarantined compatibility decisions, with no destructive mapping or exception approved.
+
+Original identifiers remain separate: source objectid11–20; published Parquet/GPKG/Shapefile attribute `id`1–10; GeoPackage storage FID1–10; actual persisted PMTiles feature ID0–9. GeoJSON has no persisted feature ID or `id` property; Fiona's record ordinal is not an original identifier. Every PMTiles directory and all 12,818 unique tile payloads were decoded (80,925 addressed tiles, 15,094 feature occurrences). Its attributes, including numeric-looking IDs, are strings; clipped/quantized tile geometry is not a lossless polygon row baseline. No new main-table identifier columns are invented.
+
+Human acceptance is still required for source release selection, exact baseline, physical schema/geometry/ID compatibility, rights/attribution and exact release promotion. Provider-side403 crosswalks are unverified/inaccessible, not evidence of an unmatched dataset. The pipeline never approves these decisions.
+
+## Reproduce locally
+
+Large geometry inputs are deliberately external to Git. Preserve every original file enumerated by `evidence/complete-original-capture-inventory.json`; replay needs the exact complete capture directory, not a live refetch. Git contains bounded receipts, producer metadata, full comparisons and audit drivers. Provider error/challenge HTML remains locally preserved; public evidence contains status receipts and exact hashes instead of challenge/session material. The coordinator retains complete original bytes for acceptance and independent review; operators supply their preserved capture directory explicitly.
+
+```sh
+PYTHONPATH=src python scripts/audit_fema_regions_complete.py --capture-dir /path/to/preserved-captures --output /path/to/full-comparison.json
+PYTHONPATH=src python scripts/audit_fema_regions_pmtiles.py --capture-dir /path/to/preserved-captures --output /path/to/pmtiles-audit.json
+HIFLD_FEMA_REGIONS_TEST_CAPTURE_DIR=/path/to/preserved-captures PYTHONPATH=src python -m unittest discover -s tests -p 'test_fema_regions*.py'
+PYTHONPATH=src python scripts/verify_fema_regions_draft.py --capture-dir /path/to/preserved-captures --runtime-dir /path/to/empty-isolated-runtime
+```
+
+The isolated replay registers real partitions and executes the source/full-quality asset, reuse, two normal catalog/format cycles, real missing-approval rejection, a clearly labeled synthetic failed-quality gate, persistent outside-witness-loss retries and explicit original-state recovery. Original raw, first-construction provenance and a synthetic prior accepted local release must remain unchanged. An optional `--live-refresh` adds a complete official observation without rewriting original provenance. Sufficient free disk is required because raw originals and invalid candidates are preserved.
+
+Validation pending: focused tests currently14PASS/1explicit real-input opt-in skip; a complete pure native extraction/Parquet comparison passed all ten records and all2.64Mvertices. This is not yet an actual Dagster materialization or full-suite claim. Actual run receipts and exact public source identity will be added after execution. No CI pass, source/baseline/contract approval, merge, issue closure or production publication is claimed.

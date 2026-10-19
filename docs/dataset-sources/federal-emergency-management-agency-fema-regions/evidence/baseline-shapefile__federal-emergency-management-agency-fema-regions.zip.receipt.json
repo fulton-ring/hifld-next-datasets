@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/v1.0.0/shapefile/federal-emergency-management-agency-fema-regions.zip",
+  "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions/v1.0.0/shapefile/federal-emergency-management-agency-fema-regions.zip",
+  "started_at": "2026-10-19T12:24:39.412614+00:00",
+  "observed_at": "2026-10-19T12:24:42.567651+00:00",
+  "status": 200,
+  "bytes": 30623090,
+  "wire_bytes": 30623090,
+  "sha256": "b8433d375444bc7f7bea9246106f8c4917293fd83a0f143de6b7232fb5ba6682",
+  "md5_matches_complete_object_listing": true,
+  "complete": true,
+  "headers": {
+    "content-type": "application/zip",
+    "date": "Mon, 19 Oct 2026 12:24:39 GMT",
+    "last-modified": "Fri, 09 Oct 2026 00:39:29 GMT",
+    "etag": "\"7f40457d73081a5e36e181cf669e45fa\"",
+    "content-length": "30623090"
+  },
+  "generation": "1791506369884269"
+}

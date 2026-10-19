@@ -1,0 +1,16 @@
+{
+  "requested_url": "https://www.arcgis.com/sharing/rest/search?q=title%3A%22FEMA+Regions%22&f=json&num=100",
+  "observed_final_url": "https://www.arcgis.com/sharing/rest/search?q=title%3A%22FEMA+Regions%22&f=json&num=100",
+  "started_at": "2026-10-19T12:21:59.855411+00:00",
+  "observed_at": "2026-10-19T12:22:00.577531+00:00",
+  "status": 200,
+  "headers": {
+    "content-type": "application/json;charset=utf-8",
+    "date": "Mon, 19 Oct 2026 12:22:00 GMT"
+  },
+  "wire_bytes": 236384,
+  "bytes": 236384,
+  "sha256": "e2be514dc2e98897f53669344488db3233d564cf9ef4c882cc5f76b102428cfb",
+  "complete": true,
+  "redirects": []
+}

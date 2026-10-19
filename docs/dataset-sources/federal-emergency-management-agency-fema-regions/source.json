@@ -1,0 +1,105 @@
+{
+  "issue": 84,
+  "status": "draft_implementation_validation_pending",
+  "classification": "Direct official FEMA GIS polygon publication; exact source release/baseline/contract/rights acceptance pending",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "dataset_slug": "federal-emergency-management-agency-fema-regions",
+  "source": {
+    "service_url": "https://gis.fema.gov/arcgis/rest/services/FEMA/RegHQs/FeatureServer",
+    "layer": 2,
+    "grain": "10 FEMA Region polygon records, distinct from regional-office point records",
+    "native_crs": "EPSG:4326",
+    "geometry_types": {
+      "MultiPolygon": 8,
+      "Polygon": 2
+    },
+    "original_objectids": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "vertices": 2640166,
+    "invalid_geometries": 0,
+    "authority": "Direct FEMA producer-domain service linked from official GIS root/folder; credits FEMA",
+    "release_date": "not_exposed",
+    "coherence": "Full metadata/count/ID/attribute observations before and after all ten complete native pages identical; not a transactional or atomic snapshot guarantee."
+  },
+  "published_baseline": {
+    "version": "v1.0.0",
+    "acceptance": "not_established",
+    "complete_formats": [
+      "geoparquet",
+      "geopackage",
+      "geojson",
+      "shapefile_zip",
+      "pmtiles"
+    ],
+    "parquet_rows": 10,
+    "parquet_source_objectid_values": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "published_id_values": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "actual_MVT_feature_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "geojson_feature_ids": "No persisted feature id; reader ordinals are not identifiers."
+  },
+  "decision_requirements": [
+    "Select/accept observed official source release when service exposes no record release timestamp.",
+    "Accept exact full captured published baseline; storage presence is not acceptance.",
+    "Review source int32 versus historical Parquet int64 and original full Shape__Area/Shape__Length names versus truncated historical names.",
+    "Review source shape/API geometry to native WKB geometry column and preservation of Polygon versus historical MultiPolygon wrapping for objectids18/19.",
+    "Approve explicit source objectid / published id / native storage FID / MVT ID contracts independently, retaining all originals.",
+    "Approve attribution/rights and exact release candidate; none approved here."
+  ],
+  "inaccessible_crosswalks": [
+    {
+      "url": "https://www.fema.gov/about/organization/regions",
+      "status": "unverified_inaccessible",
+      "HTTP": 403
+    },
+    {
+      "url": "https://www.datalumos.org/datalumos/project/239130",
+      "status": "unverified_inaccessible",
+      "HTTP": 403
+    }
+  ],
+  "approved": false,
+  "validation": "Focused and complete pure extraction results only until actual Dagster execution evidence is added."
+}

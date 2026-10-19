@@ -1,0 +1,352 @@
+{
+  "scope": "Every complete PMTiles directory, unique tile-content payload and MVT property/ID decoded; quantized cartographic tile geometry is NOT a lossless raw polygon baseline",
+  "sha256": "985b42de510eef4e74740cda92b0759ba428b66eb61ab0e6a1e865aa085fb3ff",
+  "bytes": 10774078,
+  "header": {
+    "root_offset": 127,
+    "root_length": 85,
+    "metadata_offset": 212,
+    "metadata_length": 1178,
+    "leaf_offset": 1390,
+    "leaf_length": 48636,
+    "tile_offset": 50026,
+    "tile_length": 10724052,
+    "addressed_tiles": 80925,
+    "tile_entries": 47452,
+    "tile_contents": 12818,
+    "internal_compression": 2,
+    "tile_compression": 2,
+    "tile_type": 1,
+    "min_zoom": 0,
+    "max_zoom": 11
+  },
+  "metadata": {
+    "name": "/tmp/tmp4utyncj8/pmtiles/federal-emergency-management-agency-fema-regions.pmtiles",
+    "format": "pbf",
+    "type": "overlay",
+    "description": "/tmp/tmp4utyncj8/pmtiles/federal-emergency-management-agency-fema-regions.pmtiles",
+    "version": "2",
+    "strategies": [
+      {
+        "tiny_polygons": 8
+      },
+      {
+        "tiny_polygons": 12
+      },
+      {
+        "tiny_polygons": 16
+      },
+      {
+        "tiny_polygons": 21
+      },
+      {
+        "tiny_polygons": 32
+      },
+      {
+        "tiny_polygons": 33
+      },
+      {
+        "tiny_polygons": 34
+      },
+      {
+        "tiny_polygons": 34
+      },
+      {
+        "tiny_polygons": 23
+      },
+      {
+        "tiny_polygons": 12
+      },
+      {
+        "tiny_polygons": 1
+      },
+      {
+        "tiny_polygons": 5
+      }
+    ],
+    "generator": "tippecanoe v2.49.0",
+    "generator_options": "tippecanoe -zg --drop-densest-as-needed --extend-zooms-if-still-dropping --force '--maximum-zoom=14' -o /tmp/tmp4utyncj8/pmtiles/federal-emergency-management-agency-fema-regions.pmtiles /tmp/tmp4utyncj8/pmtiles/federal-emergency-management-agency-fema-regions-chunk-0.fgb",
+    "antimeridian_adjusted_bounds": "125.479698,-14.382478,295.433838,71.390482",
+    "vector_layers": [
+      {
+        "id": "federalemergencymanagementagencyfemaregionschunk0fgb",
+        "description": "",
+        "minzoom": 0,
+        "maxzoom": 11,
+        "fields": {
+          "Shape__Are": "Number",
+          "Shape__Len": "Number",
+          "cnt_region": "Mixed",
+          "id": "Mixed",
+          "objectid": "Mixed",
+          "region": "String",
+          "website": "String"
+        }
+      }
+    ],
+    "tilestats": {
+      "layerCount": 1,
+      "layers": [
+        {
+          "layer": "federalemergencymanagementagencyfemaregionschunk0fgb",
+          "count": 10,
+          "geometry": "Polygon",
+          "attributeCount": 7,
+          "attributes": [
+            {
+              "attribute": "Shape__Are",
+              "count": 10,
+              "type": "number",
+              "values": [
+                102.15629122466696,
+                139.0538601139593,
+                16.75411459658383,
+                168.48277396434236,
+                19.140056052641743,
+                33.047807233421146,
+                354.69851361044044,
+                78.09132090265047,
+                95.03215483585885,
+                95.59662496180556
+              ],
+              "min": 16.75411459658383,
+              "max": 354.69851361044044
+            },
+            {
+              "attribute": "Shape__Len",
+              "count": 10,
+              "type": "number",
+              "values": [
+                113.04373684210564,
+                113.27112605313027,
+                137.57406735758775,
+                152.27620699746015,
+                220.06771874557614,
+                51.310070111154644,
+                772.9535268864348,
+                83.58163059798095,
+                85.89092364230191,
+                96.76668003033828
+              ],
+              "min": 51.310070111154644,
+              "max": 772.9535268864348
+            },
+            {
+              "attribute": "cnt_region",
+              "count": 10,
+              "type": "mixed",
+              "values": [
+                "1",
+                "10",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9"
+              ]
+            },
+            {
+              "attribute": "id",
+              "count": 10,
+              "type": "mixed",
+              "values": [
+                "1",
+                "10",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9"
+              ]
+            },
+            {
+              "attribute": "objectid",
+              "count": 10,
+              "type": "mixed",
+              "values": [
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20"
+              ]
+            },
+            {
+              "attribute": "region",
+              "count": 10,
+              "type": "string",
+              "values": [
+                "REGION I",
+                "REGION II",
+                "REGION III",
+                "REGION IV",
+                "REGION IX",
+                "REGION V",
+                "REGION VI",
+                "REGION VII",
+                "REGION VIII",
+                "REGION X"
+              ]
+            },
+            {
+              "attribute": "website",
+              "count": 10,
+              "type": "string",
+              "values": [
+                "https://www.fema.gov/fema-region-ix-arizona-california-hawaii-nevada-pacific-islands",
+                "https://www.fema.gov/region-i-ct-me-ma-nh-ri-vt",
+                "https://www.fema.gov/region-ii-nj-ny-pr-vi-0",
+                "https://www.fema.gov/region-iii-dc-de-md-pa-va-wv",
+                "https://www.fema.gov/region-iv-al-fl-ga-ky-ms-nc-sc-tn",
+                "https://www.fema.gov/region-v-il-mi-mn-oh-wi",
+                "https://www.fema.gov/region-vi-arkansas-louisiana-new-mexico-oklahoma-texas",
+                "https://www.fema.gov/region-vii-ia-ks-mo-ne",
+                "https://www.fema.gov/region-viii-co-mt-nd-sd-ut-wy",
+                "https://www.fema.gov/region-x-ak-id-or-wa"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "leaf_directories": 12,
+  "all_contents_decoded": 12818,
+  "layers": {
+    "federalemergencymanagementagencyfemaregionschunk0fgb": {
+      "feature_occurrences": 15094,
+      "feature_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "properties": {
+        "objectid": [
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "20"
+        ],
+        "region": [
+          "REGION I",
+          "REGION II",
+          "REGION III",
+          "REGION IV",
+          "REGION IX",
+          "REGION V",
+          "REGION VI",
+          "REGION VII",
+          "REGION VIII",
+          "REGION X"
+        ],
+        "Shape__Are": [
+          102.15629122466696,
+          139.0538601139593,
+          16.75411459658383,
+          168.48277396434236,
+          19.140056052641743,
+          33.047807233421146,
+          354.69851361044044,
+          78.09132090265047,
+          95.03215483585885,
+          95.59662496180556
+        ],
+        "Shape__Len": [
+          113.04373684210564,
+          113.27112605313027,
+          137.57406735758775,
+          152.27620699746015,
+          220.06771874557614,
+          51.310070111154644,
+          772.9535268864348,
+          83.58163059798095,
+          85.89092364230191,
+          96.76668003033828
+        ],
+        "cnt_region": [
+          "1",
+          "10",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "website": [
+          "https://www.fema.gov/fema-region-ix-arizona-california-hawaii-nevada-pacific-islands",
+          "https://www.fema.gov/region-i-ct-me-ma-nh-ri-vt",
+          "https://www.fema.gov/region-ii-nj-ny-pr-vi-0",
+          "https://www.fema.gov/region-iii-dc-de-md-pa-va-wv",
+          "https://www.fema.gov/region-iv-al-fl-ga-ky-ms-nc-sc-tn",
+          "https://www.fema.gov/region-v-il-mi-mn-oh-wi",
+          "https://www.fema.gov/region-vi-arkansas-louisiana-new-mexico-oklahoma-texas",
+          "https://www.fema.gov/region-vii-ia-ks-mo-ne",
+          "https://www.fema.gov/region-viii-co-mt-nd-sd-ut-wy",
+          "https://www.fema.gov/region-x-ak-id-or-wa"
+        ],
+        "id": [
+          "1",
+          "10",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ]
+      },
+      "property_types": {
+        "objectid": [
+          "str"
+        ],
+        "region": [
+          "str"
+        ],
+        "Shape__Are": [
+          "float"
+        ],
+        "Shape__Len": [
+          "float"
+        ],
+        "cnt_region": [
+          "str"
+        ],
+        "website": [
+          "str"
+        ],
+        "id": [
+          "str"
+        ]
+      }
+    }
+  }
+}

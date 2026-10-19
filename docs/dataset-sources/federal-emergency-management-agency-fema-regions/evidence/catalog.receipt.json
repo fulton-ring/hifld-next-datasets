@@ -1,0 +1,23 @@
+{
+  "requested_url": "https://catalog.data.gov/dataset/?q=FEMA+Regions",
+  "observed_final_url": "https://catalog.data.gov/",
+  "started_at": "2026-10-19T12:21:59.777386+00:00",
+  "observed_at": "2026-10-19T12:22:00.479001+00:00",
+  "status": 200,
+  "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "content-length": "215837",
+    "date": "Mon, 19 Oct 2026 11:24:25 GMT"
+  },
+  "wire_bytes": 215837,
+  "bytes": 215837,
+  "sha256": "c387ef0f651055a3d9fbd484fbcab0a179a84990d64f7dd14a798e81747f0f05",
+  "complete": true,
+  "redirects": [
+    {
+      "status": 301,
+      "url": "https://catalog.data.gov/dataset/?q=FEMA+Regions",
+      "location": "/"
+    }
+  ]
+}
