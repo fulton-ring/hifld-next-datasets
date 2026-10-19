@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.ibc import (
+    ibc_boundary_draft_refresh_job,
+    ibc_boundary_draft_refresh_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
@@ -391,6 +395,8 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
+    jobs=[ibc_boundary_draft_refresh_job],
+    schedules=[ibc_boundary_draft_refresh_schedule],
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
     executor=_default_executor(),
