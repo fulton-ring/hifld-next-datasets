@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.bts_ferry_routes import ferry_routes_source_integrity_job, ferry_routes_source_integrity_schedule
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
@@ -390,6 +391,8 @@ def _configured_sensors():
 
 
 defs = Definitions(
+    jobs=[ferry_routes_source_integrity_job],
+    schedules=[ferry_routes_source_integrity_schedule],
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
