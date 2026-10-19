@@ -18,7 +18,6 @@ from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.colleges_universities import (
     colleges_source_integrity_job,
     colleges_source_integrity_schedule,
-    nces_colleges_universities,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
@@ -395,7 +394,7 @@ def _configured_sensors():
 
 
 defs = Definitions(
-    assets=[*hifld_dataset_assets, nces_colleges_universities],
+    assets=hifld_dataset_assets,
     jobs=[colleges_source_integrity_job],
     schedules=[colleges_source_integrity_schedule],
     asset_checks=hifld_asset_checks,
