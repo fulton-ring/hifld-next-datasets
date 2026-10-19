@@ -49,9 +49,7 @@ def epa_emergency_response_rmp_facilities_complete(candidate: dict) -> AssetChec
         and candidate.get("source_null_geometry_count") == 0
         and candidate.get("source_invalid_geometry_count") == 0
         and candidate.get("unique_object_id_count") == SOURCE_COUNT
-        and candidate.get("unique_registry_id_count") == SOURCE_COUNT
         and candidate.get("null_registry_id_count") == 0
-        and candidate.get("duplicate_registry_id_count") == 0
     )
     return AssetCheckResult(
         passed=passed,
@@ -62,6 +60,8 @@ def epa_emergency_response_rmp_facilities_complete(candidate: dict) -> AssetChec
             "unique_registry_id_count": candidate.get("unique_registry_id_count", 0),
             "null_registry_id_count": candidate.get("null_registry_id_count", 0),
             "duplicate_registry_id_count": candidate.get("duplicate_registry_id_count", 0),
+            "duplicate_registry_id_rows": candidate.get("duplicate_registry_id_rows", 0),
+            "extent_disagreement_count": candidate.get("extent_disagreement_count", 0),
             "source_release_accepted": False,
             "source_freshness_accepted": False,
             "schema_contract_accepted": False,

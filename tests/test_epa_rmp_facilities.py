@@ -81,6 +81,23 @@ class EpaRmpSourceTests(unittest.TestCase):
         self.assertEqual(table.column("geometry").to_pylist()[1], None)
         self.assertTrue(table.schema.metadata[b"geo"].startswith(b'{"columns":{"geometry'))
 
+    def test_duplicate_registry_and_extent_disagreement_are_diagnostics(self):
+        captures, _, features = _capture_fixture(expected_count=3)
+        features[1]["attributes"]["REGISTRY_ID"] = features[0]["attributes"]["REGISTRY_ID"]
+        features[2]["geometry"] = {"x": 145.7412350699426, "y": 15.228676262399688}
+        captures["features_000"] = (json.dumps({"features": features, "spatialReference": {"latestWkid": 4269},
+                                                 "exceededTransferLimit": False}, separators=(",", ":")).encode(), {})
+        result = validate_source_captures(captures, expected_count=3, expected_field_count=3,
+                                          expected_schema_sha256=None)
+        audit = result["audit"]
+        self.assertEqual(audit["unique_object_id_count"], 3)
+        self.assertEqual(audit["duplicate_registry_id_rows"], 1)
+        self.assertEqual(audit["duplicate_registry_ids"][0]["object_ids"], [1, 2])
+        self.assertEqual(audit["invalid_geometry_count"], 0)
+        self.assertEqual(audit["extent_disagreement_count"], 1)
+        self.assertEqual(audit["extent_disagreement_features"][0]["OBJECTID"], 3)
+        self.assertEqual(audit["observed_geometry_bbox"][2], 145.7412350699426)
+
     def test_full_intermediate_transfer_limit_page_requires_exact_union(self):
         captures, _, _ = _capture_fixture(expected_count=3, page_size=2, transfer=True)
         result = validate_source_captures(captures, expected_count=3, expected_field_count=3,
@@ -128,12 +145,13 @@ class EpaRmpSourceTests(unittest.TestCase):
                 if name not in {"ids_seed"}]
         urls.insert(0, ("ids_seed", "https://services.arcgis.com/ids_seed"))
 
+        observation_time = ["2026-10-19T00:00:00Z"]
         def fake_get(_client, url, capture_root, name, *, max_bytes):
             body = captures[name][0]
             wire = body
             (capture_root / f"{name}.body").write_bytes(body)
             (capture_root / f"{name}.wire").write_bytes(wire)
-            receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": "2026-10-19T00:00:00Z",
+            receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": observation_time[0],
                        "status": 200, "complete_body": True, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
                        "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
                        "content_encoding": "identity", "content_length": len(body), "error_code": None}
@@ -161,6 +179,8 @@ class EpaRmpSourceTests(unittest.TestCase):
                   patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_FIELD_COUNT", 3),
                   patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_SCHEMA_SHA256", schema_sha),
                   patch("dagster_hifld.sources.epa_rmp_facilities._source_urls", return_value=urls),
+                  patch("dagster_hifld.sources.epa_rmp_facilities.validate_construction_code_identity"),
+                  patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"),
                   patch("dagster_hifld.sources.epa_rmp_facilities.capture_get", side_effect=fake_get)):
                 first = capture_epa_rmp_facilities(storage, **args)
                 self.assertFalse(first["release_accepted"])
@@ -189,9 +209,12 @@ class EpaRmpSourceTests(unittest.TestCase):
                            "blocking": ["synthetic_baseline_pending"]}
                 write_immutable(storage, prefix + "/metadata/quality_manifest.json",
                                 _canonical(quality) + b"\n")
+                observation_time[0] = "2026-10-20T00:00:00Z"
                 second = capture_epa_rmp_facilities(storage, **args)
                 self.assertTrue(second["reused"])
                 self.assertEqual(first["version"], second["version"])
+                self.assertEqual(second["duplicate_registry_id_rows"], 0)
+                self.assertEqual(second["extent_disagreement_count"], 0)
 
 
 if __name__ == "__main__":

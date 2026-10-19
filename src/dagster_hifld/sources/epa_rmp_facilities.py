@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -192,6 +193,13 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
     if len(features) != expected_count:
         raise ValueError("source_feature_population_incomplete")
     registry_ids = [row["attributes"].get("REGISTRY_ID") for row in features]
+    registry_counts = Counter(registry_ids)
+    duplicate_registry_ids = [
+        {"registry_id": value, "occurrences": count,
+         "object_ids": sorted(row["attributes"]["OBJECTID"] for row in features
+                              if row["attributes"].get("REGISTRY_ID") == value)}
+        for value, count in sorted(registry_counts.items(), key=lambda pair: str(pair[0])) if count > 1
+    ]
     unique_registry_id_count = len(set(registry_ids))
     object_ids = [row["attributes"].get("OBJECTID") for row in features]
     unique_object_id_count = len(set(object_ids))
@@ -204,6 +212,7 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
     geometries: list[list[object]] = []
     null_geometry_count = 0
     invalid_geometry_count = 0
+    extent_disagreement_features: list[dict[str, object]] = []
     for feature in features:
         attrs = feature.get("attributes"); geometry = feature.get("geometry")
         if not isinstance(attrs, dict) or list(attrs) != expected_fields:
@@ -226,12 +235,11 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
             invalid_geometry_count += 1
             geometries.append([attrs["OBJECTID"], geometry])
             continue
+        minx = min(minx, x); maxx = max(maxx, x); miny = min(miny, y); maxy = max(maxy, y)
         xmin, ymin, xmax, ymax = extent_bounds
         if x < xmin - 1e-6 or x > xmax + 1e-6 or y < ymin - 1e-6 or y > ymax + 1e-6:
-            invalid_geometry_count += 1
-            geometries.append([attrs["OBJECTID"], geometry])
-            continue
-        minx = min(minx, x); maxx = max(maxx, x); miny = min(miny, y); maxy = max(maxy, y)
+            extent_disagreement_features.append({"OBJECTID": attrs["OBJECTID"],
+                "REGISTRY_ID": attrs.get("REGISTRY_ID"), "x": x, "y": y})
         geometries.append([attrs["OBJECTID"], x, y])
     values_sha = _sha(b"".join(captures[f"features_{i:03d}"][0] for i in range(expected_pages)))
     geometry_fingerprint_rows = []
@@ -253,9 +261,13 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
             "unique_object_id_count": unique_object_id_count,
             "source_id_sha256": _sha(_canonical(ordered_ids)), "source_record_sha256": values_sha,
             "source_registry_id_sha256": _sha(_canonical(sorted(registry_ids))),
+            "duplicate_registry_ids": duplicate_registry_ids,
+            "duplicate_registry_id_rows": len(registry_ids) - unique_registry_id_count,
             "source_geometry_sha256": geometry_sha, "source_schema_sha256": schema_sha,
             "source_crs_epsg": 4269, "geometry_type": "Point",
             "invalid_geometry_count": invalid_geometry_count,
+            "extent_disagreement_count": len(extent_disagreement_features),
+            "extent_disagreement_features": extent_disagreement_features,
             "observed_geometry_bbox": [minx, miny, maxx, maxy] if minx != float("inf") else None,
             "null_geometry_count": null_geometry_count,
             "service_extent": layer_extent, "arcgis_item_id": ITEM_ID, "portal_owner": item0["owner"],
@@ -266,6 +278,8 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
             "schema_last_edit_epoch_ms": layer0.get("editingInfo", {}).get("schemaLastEditDate"),
             "source_max_record_count": layer0.get("maxRecordCount"), "first_page_count": len(docs["features_000"]["features"]),
             "count_snapshot_before": count_before.get("count"),
+            "source_metadata_sha256": _sha(_canonical({"portal_item": _stable_item(item0),
+                "service": service0, "layer": layer0})),
         },
     }
 
@@ -472,6 +486,16 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
         payload = prior.get("payload", {})
         if not isinstance(payload, dict) or payload.get("processing_identity") != identity:
             raise ValueError("cached_candidate_source_or_code_changed")
+        sealed_audit_key = f"{prefix}/metadata/source_audit.json"
+        sealed_audit_snapshot = storage.object_snapshot(sealed_audit_key)
+        if sealed_audit_snapshot is None:
+            raise ValueError("cached_source_audit_missing")
+        sealed_audit = json.loads(storage.read_key(sealed_audit_key))
+        if (sealed_audit.get("source_metadata_sha256") != audit["source_metadata_sha256"]
+                or sealed_audit.get("source_record_sha256") != audit["source_record_sha256"]
+                or sealed_audit.get("source_schema_sha256") != audit["source_schema_sha256"]
+                or storage.object_snapshot(sealed_audit_key) != sealed_audit_snapshot):
+            raise ValueError("cached_candidate_native_source_identity_changed")
         verify_cached_candidate(storage, root, state_key, prefix, version_id, fingerprint, identity,
                                 audit["source_record_sha256"], audit["source_schema_sha256"],
                                 payload.get("objects", {}), payload.get("capture_receipts", {}))
@@ -482,6 +506,8 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
                 "unique_registry_id_count": audit["unique_registry_id_count"],
                 "null_registry_id_count": audit["null_registry_id_count"],
                 "duplicate_registry_id_count": audit["duplicate_registry_id_count"],
+                "duplicate_registry_id_rows": audit["duplicate_registry_id_rows"],
+                "extent_disagreement_count": audit["extent_disagreement_count"],
                 "unique_object_id_count": audit["unique_object_id_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json",
                 "reused": True, "release_accepted": False}
@@ -523,6 +549,8 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
             "unique_registry_id_count": audit["unique_registry_id_count"],
             "null_registry_id_count": audit["null_registry_id_count"],
             "duplicate_registry_id_count": audit["duplicate_registry_id_count"],
+            "duplicate_registry_id_rows": audit["duplicate_registry_id_rows"],
+            "extent_disagreement_count": audit["extent_disagreement_count"],
             "unique_object_id_count": audit["unique_object_id_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "capture_directory": str(capture_root),
             "source_release_accepted": False, "schema_contract_accepted": False, "id_contract_accepted": False,
