@@ -1,0 +1,22 @@
+{
+  "source_data_writer_checkpoint": "13fd9a7106212568bb26ed4491bd5217e224d426",
+  "previous_actual_full_replay": "6049b26200959e440e4a2f73c7a105c9130190d8",
+  "writer_changes_in_integrity_repair": false,
+  "objects": {
+    "geopackage/cbrs-units-2.gpkg": {
+      "bytes": 8257536,
+      "sha256": "bdb9d6836b4a1081a2dc83f8a4057ff21042ba8616f9788e9d367ccfacffc344",
+      "byte_identical_to_previous_full_replay": true
+    },
+    "candidate/typed-source.parquet": {
+      "bytes": 6555616,
+      "sha256": "5f5155eb565c4b566948d4e11e2a946ced98ef48ea0b9682c880315566e93b5b",
+      "byte_identical_to_previous_full_replay": true
+    },
+    "metadata/candidate.records.jsonl": {
+      "bytes": 18507250,
+      "sha256": "1bdda7471edda798577f6a87f83d65e16d92f3e65b27814d469119f36c65b677",
+      "byte_identical_to_previous_full_replay": true
+    }
+  }
+}

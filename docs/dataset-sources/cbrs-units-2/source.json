@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 31,
   "dataset_slug": "cbrs-units-2",
-  "status": "draft_implementation_actual_verification_in_progress",
+  "status": "working_draft_locally_verified_independent_review_and_shared_policy_integration_pending",
   "approvals": {
     "source": false,
     "baseline": false,
@@ -106,12 +106,64 @@
       "observed_run": "f782ab46-52c1-4ba7-b1c2-c77e21dd43c8",
       "evidence": "evidence/normal-format-schema-probe.json",
       "behavior": "Actual normal conversion added bbox and changed field/nullability/extension metadata relative to source typed schema; adapter supplies faithful complete typed GeoParquet rather than silently accept additional columns."
-    }
+    },
+    "geopackage_last_change": "Canonical container representation uses fixed producer publication timestamp2024-12-19 only for deterministic serialization; not a claim about original file modification or extraction time."
   },
   "release_decisions": [
     "Accept exact source/edition/rights and reconcile one native geometry/two Name differences between ZIP and delegated API.",
     "Accept complete published baseline only after reviewing941/942 topological agreement and numeric field value changes.",
     "Approve lossless published output schema and all source physical declaration/float/int/geometry wrapper differences.",
     "Approve explicit nondestructive originalFID/Unit/API_OBJECTID/publishedOBJECTID/id mapping, retaining all identifiers and historical releases."
+  ],
+  "implementation": {
+    "source_checkpoint": "13fd9a7106212568bb26ed4491bd5217e224d426",
+    "shared_base": "abde85be4879feee01e7583b23869617d71a69f6",
+    "actual_execution": "evidence/verification/execution.json",
+    "tests": {
+      "total": 519,
+      "passed": 518,
+      "skipped": 1,
+      "skip": "production-write E2E",
+      "seconds": 122.063,
+      "log": "evidence/verification/full-suite-complete.log",
+      "actual_iac_source": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "tippecanoe": "actual binary available"
+    },
+    "source_rows": 942,
+    "byte_idempotent_refresh": true,
+    "actual_registered_job": "fws_cbrs_units_draft_refresh",
+    "two_normal_catalogs_missing_approval_only": true,
+    "native_typed_geoparquet_exact": true,
+    "original_fids_values_types_wkb_all_verified": true,
+    "failed_quality_and_missing_approval_preserved_local_published_fixture": true,
+    "real_dataset_accepted_release_exists": false,
+    "source_verification_claims": "Fresh full original942row verification report/complete sidecars and exact blocked/unapproved baseline placeholder are rederived; self-pinned cached claim changes reject.",
+    "quarantine": "Missing-ready, invalid cached data/metadata and false approval/population report versions atomically retained outside discovery, all remaining files inventoried. Cooperating local writers use advisory locks/inode checks.",
+    "negative_actual_attacks": [
+      "gpkg_contents_srs",
+      "gpkg_spatial_ref_definition",
+      "gpkg_geometry_envelope",
+      "gpkg_rtree",
+      "parquet_geo_crs",
+      "fidelity_population",
+      "baseline_approval",
+      "missing_ready"
+    ],
+    "harness_continuation": {
+      "reason": "Previous assertion incorrectly rejected a valid zero-byte differences sidecar after all eight attacks completed. SHA validation supports empty files.",
+      "source_or_data_writer_change": false,
+      "prior_runs_preserved": true,
+      "terminal_formats_rebuilt": false
+    },
+    "independent_review": "pending on final exact head",
+    "CI": "no pass inferred"
+  },
+  "implementation_dependencies": [
+    {
+      "issue": 417,
+      "status": "shared implementation underway; source integration not yet complete",
+      "reason": "Current unsupported_output_formats.geoparquet prevents all promotion of even the faithful prebuilt native artifact. Need reviewed shared prebuilt_output_policy separating generic regeneration from a fully pinned immutable prebuilt roster, then source-specific manifest update and actual local verification. This is an implementation dependency, not a fabricated source-acceptance decision.",
+      "current_gate": "whole-format ban remains intact until reviewed shared integration; no bypass"
+    }
   ]
 }

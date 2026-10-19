@@ -1,0 +1,23 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+2026-10-19 07:56:14 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - RUN_START - Started execution of run for "cbrs_source".
+2026-10-19 07:56:14 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - ENGINE_EVENT - Executing steps in process (pid: 72425)
+2026-10-19 07:56:14 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - ingest__cbrs_units_2__cbrs_units_2 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 07:56:14 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - ingest__cbrs_units_2__cbrs_units_2 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 07:56:15 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - LOGS_CAPTURED - Started capturing logs in process (pid: 72425).
+2026-10-19 07:56:15 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - ingest__cbrs_units_2__cbrs_units_2 - STEP_START - Started execution of step "ingest__cbrs_units_2__cbrs_units_2".
+2026-10-19 07:56:49 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - ENGINE_EVENT - Finished steps in process (pid: 72425) in 34.95s
+2026-10-19 07:56:49 +0000 - dagster - DEBUG - cbrs_source - 23714155-c196-496c-a50d-18b7501989f0 - 72425 - RUN_SUCCESS - Finished execution of run for "cbrs_source".
+2026-10-19 07:56:50 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - RUN_START - Started execution of run for "cbrs_source".
+2026-10-19 07:56:50 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - ENGINE_EVENT - Executing steps in process (pid: 72425)
+2026-10-19 07:56:50 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - ingest__cbrs_units_2__cbrs_units_2 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 07:56:50 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - ingest__cbrs_units_2__cbrs_units_2 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 07:56:50 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - LOGS_CAPTURED - Started capturing logs in process (pid: 72425).
+2026-10-19 07:56:50 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - ingest__cbrs_units_2__cbrs_units_2 - STEP_START - Started execution of step "ingest__cbrs_units_2__cbrs_units_2".
+2026-10-19 07:57:27 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - ENGINE_EVENT - Finished steps in process (pid: 72425) in 36.91s
+2026-10-19 07:57:27 +0000 - dagster - DEBUG - cbrs_source - 1993b3c7-00b6-4148-ae98-0a67daf87cac - 72425 - RUN_SUCCESS - Finished execution of run for "cbrs_source".
+Traceback (most recent call last):
+  File "/workspace/hifld-worker-worktrees/31/scripts/verify_cbrs_units_draft.py", line 55, in <module>
+    record('real_complete_refresh',again);assert again.success and output==again.output_for_node(fws_cbrs_units.op.name)
+                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
