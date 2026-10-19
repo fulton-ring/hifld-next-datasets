@@ -116,6 +116,17 @@ class FerryTerminalsTests(TestCase):
                 self.assertFalse(root.exists())
             marker.write_bytes(original);self.assertEqual(self.stage(),out);self.assertEqual(self.snap(root),before)
 
+    def test_first_marker_schema_version_requires_exact_json_integer(self):
+        out=self.stage();root=self.root(out);before=self.snap(root)
+        anchor=Path(self.tmp.name)/'_candidate-construction'/s.SLUG/(out['version']+'.json')
+        marker=anchor.with_name(anchor.name+'.first-construction.json');original=marker.read_bytes()
+        for value in (True,1.0):
+            changed=json.loads(original);changed['schema_version']=value;marker.write_bytes(s.encode(changed))
+            for _ in range(2):
+                with self.assertRaisesRegex(s.FerryQuarantineError,'missing_or_invalid_first_construction_marker'):self.stage()
+                self.assertFalse(root.exists())
+            marker.write_bytes(original);self.assertEqual(self.stage(),out);self.assertEqual(self.snap(root),before)
+
     def test_interrupted_private_native_write_has_no_construction_records(self):
         with mock.patch.object(s,'write_canonical_geopackage',side_effect=OSError('test private native interruption')):
             with self.assertRaisesRegex(s.FerryQuarantineError,'private native interruption'):self.stage()
