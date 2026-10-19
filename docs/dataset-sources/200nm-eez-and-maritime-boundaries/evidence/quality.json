@@ -1,0 +1,16 @@
+{
+  "null_bound_ids": 0,
+  "duplicate_bound_ids": {},
+  "empty_geometry": 0,
+  "invalid_geometry": 0,
+  "geometry_types": {
+    "MultiLineString": 96
+  },
+  "bounds": [
+    -180.0,
+    -17.555000001999986,
+    180.0,
+    74.70884000400002
+  ],
+  "out_of_range_vertices": 0
+}

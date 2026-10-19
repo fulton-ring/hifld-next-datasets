@@ -1,0 +1,232 @@
+{
+  "dataset_id": "200nm-eez-and-maritime-boundaries",
+  "outcome": "blocked",
+  "source_role": "producer_publication",
+  "producer": "NOAA / NOS / Office of Coast Survey; US Baseline Committee approval",
+  "publisher": {
+    "host": "maritimeboundaries.noaa.gov",
+    "portal_account": null,
+    "account_note": "Agency-operated ArcGIS Server, no serviceItemId/account exposed; no portal owner invented"
+  },
+  "landing_url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+  "download_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&outFields=*&f=geojson",
+  "lineage_evidence": [
+    {
+      "capture": "evidence/landing.body",
+      "finding": "Official OCS landing hyperlinks exact MapServer and NOAA downloads; dynamic service updated with data."
+    },
+    {
+      "capture": "evidence/service.body",
+      "finding": "NOAA/NOS/OCS author; version 4.1; Baseline Committee subject; not for legal use."
+    },
+    {
+      "capture": "evidence/layer.body",
+      "finding": "Exact named layer 3; NOAA/NOS/OCS copyright."
+    }
+  ],
+  "release_date": null,
+  "release_date_note": "No independently verified dataset release date; PUB_DATE values are per-feature publication dates, not service release or retrieval dates.",
+  "checked_at": "2026-10-19T04:19:08.462985+00:00",
+  "relationship_to_archive": "unresolved; plausible producer continuation but exact crosswalk and accepted archived/published baseline unavailable",
+  "crosswalk": {
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "status": "unmatched_due_to_access_blocker",
+    "error": "urllib anonymous DOI request: Tunnel connection failed: 403 Forbidden",
+    "hyperlinks_parsed": false,
+    "title_match_is_not_accepted": true
+  },
+  "archive": {
+    "url": "https://www.datalumos.org/datalumos/project/238491/version/V1/view",
+    "source_role": "archive",
+    "access": "Tunnel connection failed: 403 Forbidden"
+  },
+  "accepted_baseline": null,
+  "blockers": [
+    "Original XLSX/crosswalk hyperlink exact match unavailable",
+    "Accepted HIFLD Next file/version/checksums and full baseline comparison unavailable",
+    "Maintainer approved published schema/ID contract unavailable",
+    "Shared comparison and provenance prerequisite #417 must be accepted before implementation",
+    "InPort metadata request HTTP503; real release date unknown"
+  ],
+  "extraction": {
+    "summary": "evidence/extraction-summary.json",
+    "replay": "python docs/dataset-sources/200nm-eez-and-maritime-boundaries/audit.py",
+    "complete_snapshot_observation": "96 full rows and unique OBJECTIDs reconcile count, ordered independent ID projection and GeoJSON count; returnIdsOnly error retained; sequential snapshot only"
+  },
+  "published_contract": {
+    "status": "proposed_unapproved",
+    "approved": false,
+    "scope": "Complete candidate source column proposal; accepted historical output contract unknown. Research grants no ingestion approval.",
+    "columns": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "OBJECTID",
+        "id_role": "service_object_identifier_not_proven_stable",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "BOUND_ID",
+        "type": "esriFieldTypeString",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Boundary ID",
+        "id_role": "producer_boundary_identifier_not_proven_unique",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "REGION",
+        "type": "esriFieldTypeString",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Region Name",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "FEAT_TYPE",
+        "type": "esriFieldTypeString",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Type of Feature",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "PUB_DATE",
+        "type": "esriFieldTypeDate",
+        "nullable": null,
+        "observed_null_count": 4,
+        "meaning": "Publication Date",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "APPRV_DATE",
+        "type": "esriFieldTypeDate",
+        "nullable": null,
+        "observed_null_count": 1,
+        "meaning": "Date of Baseline Committee Approval",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "LEGAL_AUTH",
+        "type": "esriFieldTypeString",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Legal Authority",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "AOR",
+        "type": "esriFieldTypeString",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Agency of Responsibility",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "NOTE",
+        "type": "esriFieldTypeString",
+        "nullable": null,
+        "observed_null_count": 6,
+        "meaning": "Note",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "SUPP_INFO",
+        "type": "esriFieldTypeString",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Supplemental Information Document",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "UNILATERAL",
+        "type": "esriFieldTypeDouble",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Unilateral Claim",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "RULEID",
+        "type": "esriFieldTypeInteger",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "Description",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "SHAPE",
+        "type": "esriFieldTypeGeometry",
+        "nullable": null,
+        "observed_null_count": null,
+        "meaning": "Shape",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      },
+      {
+        "name": "SHAPE.LEN",
+        "type": "esriFieldTypeDouble",
+        "nullable": null,
+        "observed_null_count": 0,
+        "meaning": "SHAPE.LEN",
+        "id_role": "none",
+        "mapping": "retain exact name/type/value; SHAPE geometry representation requires approval"
+      }
+    ],
+    "geometry": {
+      "source": "esriGeometryPolyline",
+      "source_column": "SHAPE",
+      "output_representation": "unapproved; GeoJSON uses geometry member",
+      "crs": "EPSG:4326"
+    },
+    "coverage": {
+      "description": "US 200nm EEZ limit and adjacent international maritime boundary lines, not EEZ polygon areas",
+      "observed_regions": {
+        "Puerto Rico and U.S. Virgin Islands": 14,
+        "Pacific Coast": 10,
+        "Johnston Atoll": 1,
+        "Alaska": 30,
+        "Atlantic Coast and Gulf of Mexico": 20,
+        "Palmyra Atoll and Kingman Reef": 2,
+        "Wake Island": 2,
+        "American Samoa": 6,
+        "US-Canada": 1,
+        "Hawaiian Islands": 1,
+        "Howland Island, Baker Island and Jarvis Island": 4,
+        "Commonwealth of the Northern Mariana Islands and Territory of Guam": 5
+      },
+      "observed_categories": {
+        "Maritime Boundary": 74,
+        "Maritime Limit": 22
+      },
+      "extent": {
+        "xmin": -180,
+        "ymin": -17.555000002,
+        "xmax": 180,
+        "ymax": 74.70884000400001,
+        "spatialReference": {
+          "wkid": 4326,
+          "latestWkid": 4326
+        }
+      }
+    },
+    "identifier_policy": "Preserve OBJECTID and BOUND_ID verbatim including strings/whitespace/precision; neither proven persistent across releases. No substitute IDs. Unknown/unmapped columns quarantine."
+  },
+  "refresh_policy": {
+    "proposal": "Event-driven NOAA updates; periodic metadata checks with release/checksum detection, bounded retries; fail closed on drift",
+    "approved": false
+  },
+  "implementation": "none; existing noaa asset unchanged; no materialization or production writes"
+}
