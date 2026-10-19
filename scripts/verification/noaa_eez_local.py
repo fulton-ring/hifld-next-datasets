@@ -16,7 +16,7 @@ from pathlib import Path
 import fiona
 import pyarrow.parquet as pq
 import dagster_hifld
-from dagster import AssetSelection, DagsterInstance, Definitions, define_asset_job
+from dagster import AssetSelection, DefaultScheduleStatus, DagsterInstance, Definitions, define_asset_job
 from dagster_hifld.assets.noaa import noaa_200nm_eez_and_maritime_boundaries as ingest
 from dagster_hifld.definitions import defs as normal_definitions
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
@@ -70,6 +70,15 @@ def main():
                                   resources={"staging_storage": staging, "published_storage": published},
                                   jobs=[define_asset_job("noaa_eez_normal_ingest", selection=AssetSelection.assets(ingest.key)),
                                         define_asset_job("noaa_eez_normal_full_graph", selection=AssetSelection.assets(*publish_keys))])
+        registered_repository = normal_definitions.get_repository_def()
+        refresh = registered_repository.get_job("noaa_eez_draft_refresh")
+        schedule = registered_repository.get_schedule_def("noaa_eez_draft_weekly")
+        assert set(refresh.asset_layer.executable_asset_keys) == {ingest.key}
+        assert schedule.default_status == DefaultScheduleStatus.STOPPED
+        report["refresh_schedule"] = {"name": schedule.name, "default_status": schedule.default_status.value,
+                                      "cron": schedule.cron_schedule, "timezone": schedule.execution_timezone,
+                                      "selected_assets": [key.to_user_string() for key in refresh.asset_layer.executable_asset_keys],
+                                      "activated": False}
         report["normal_definitions_registered_eez"] = True
         report["normal_definitions_asset_count"] = len(registered)
         source = definitions.resolve_job_def("noaa_eez_normal_ingest").execute_in_process(instance=instance,
