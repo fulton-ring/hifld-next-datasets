@@ -34,12 +34,15 @@ class EpaIcisWastewaterTests(unittest.TestCase):
         portal={"id":source.ITEM_ID,"owner":"EPA_GEO","title":"EPA Facility Registry Service - Integrated Compliance Information System (ICIS) Wastewater Treatment Plants","url":source.SERVICE_URL,"access":"public","modified":1779295761000}
         service = {"serviceItemId":source.ITEM_ID, "layers":[{"id":0,"name":source.LAYER_NAME}]}
         layer = {"name":source.LAYER_NAME, "geometryType":"esriGeometryPoint", "hasZ":False, "hasM":False, "extent":{"spatialReference":{"latestWkid":4269}}, "fields":fields}
-        ids = {"objectIds":[901,902]}
-        row = {"attributes":{"OBJECTID":901,"REGISTRY_ID":"0000042007","FAC_LAT":40.1,"FAC_LONG":-72.25}, "geometry":{"x":-72.25,"y":40.1}}
-        null_geometry_row = {"attributes":{"OBJECTID":902,"REGISTRY_ID":"0000042008","FAC_LAT":None,"FAC_LONG":None}, "geometry":None}
+        ids = {"objectIds":list(range(1,252))}
+        rows=[{"attributes":{"OBJECTID":i,"REGISTRY_ID":f"00000{i:05d}","FAC_LAT":40.1+i/1000,"FAC_LONG":-72.25-i/1000},
+               "geometry":{"x":-72.25-i/1000,"y":40.1+i/1000}} for i in range(1,252)]
+        rows[-1]={"attributes":{"OBJECTID":251,"REGISTRY_ID":"0000000251","FAC_LAT":None,"FAC_LONG":None},"geometry":None}
+        row=rows[0]
         bodies = {"portal_item":portal,"service_before":service,"service_after":service,"layer_before":layer,"layer_after":layer,
-                 "count_before":{"count":2},"count_after":{"count":2},"ids_before":ids,"ids_after":ids,
-                 "page_000":{"spatialReference":{"latestWkid":4269},"features":[row,null_geometry_row]}}
+                 "count_before":{"count":251},"count_after":{"count":251},"ids_before":ids,"ids_after":ids,
+                 "page_000":{"spatialReference":{"latestWkid":4269},"features":rows[:250]},
+                 "page_001":{"spatialReference":{"latestWkid":4269},"features":rows[250:]}}
 
         def capture(_client, url, root, name, **_kwargs):
             payload = bodies[name]
@@ -59,16 +62,17 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                  patch.object(source, "capture_get", side_effect=capture), \
                  patch.object(source.httpx, "Client"):
                 result=source.capture_epa_icis_wastewater(storage, version="vfixture", capture_directory=str(Path(tmp)/"captures"))
-            self.assertEqual(result["feature_count"],2)
+            self.assertEqual(result["feature_count"],251)
             self.assertEqual(result["source_null_geometry_count"],1)
             self.assertFalse(result["release_accepted"])
             ready=json.loads(storage.read_key(result["candidate_ready"]))
             self.assertFalse(ready["approved"])
             parquet_path=Path(tmp)/result["candidate_ready"].replace("metadata/candidate_ready.json",f"geoparquet/{source.DATASET_SLUG}.parquet")
             table=pq.read_table(parquet_path)
-            self.assertEqual(table["OBJECTID"].to_pylist(),[901,902])
-            self.assertEqual(table["REGISTRY_ID"].to_pylist(),["0000042007","0000042008"])
-            self.assertEqual(table["geometry"].to_pylist(),[shapely.geometry.Point(-72.25,40.1).wkb,None])
+            self.assertEqual(table["OBJECTID"].to_pylist(),list(range(1,252)))
+            self.assertEqual(table["REGISTRY_ID"].to_pylist()[0],"0000000001")
+            self.assertEqual(table["geometry"].to_pylist()[0],shapely.geometry.Point(-72.251,40.101).wkb)
+            self.assertIsNone(table["geometry"].to_pylist()[-1])
             self.assertIn(b"geo", table.schema.metadata)
 
             partition=build_publish_partition_key(source.DATASET_SLUG,source.FILE_SLUG,result["version"])

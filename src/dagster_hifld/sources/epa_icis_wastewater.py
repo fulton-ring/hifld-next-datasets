@@ -34,7 +34,7 @@ DATASET_SLUG = "icis-wastewater-treatment-plants"
 FILE_SLUG = DATASET_SLUG
 PUBLISHER = "U.S. Environmental Protection Agency (EPA_GEO hosted FeatureServer)"
 SCHEMA_SHA256 = "db38c1a62fdf82b3bd94acc81d88e776fe1b94f533b2fe8a8f28875222bb0b34"
-PAGE_SIZE = 500
+PAGE_SIZE = 250
 
 
 def _canonical(value: object) -> bytes:
