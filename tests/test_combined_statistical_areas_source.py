@@ -59,7 +59,9 @@ class CSASourceTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'fresh_original_native_records'):
                     c.reconcile_cached_native_outputs(root,original)
             c.pq.write_table(original,parquet)
-            with c.sqlite3.connect(gpkg) as db: db.execute(f'UPDATE "{c.LAYER}" SET NAMELSAD=?',('tampered',))
+            gpkg.unlink()
+            changed=original.set_column(3,'NAMELSAD',pa.array(['tampered']))
+            c.pyogrio.write_arrow(changed,gpkg,layer=c.LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_storage_fid','GEOMETRY_NAME':'SHAPE'})
             with self.assertRaisesRegex(ValueError,'fresh_original_native_records'):
                 c.reconcile_cached_native_outputs(root,original)
 
