@@ -765,6 +765,10 @@ def _copy_or_generate_geopackage(
     file_slug: str,
     version: str,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "geopackage")
+    if unsupported:
+        return [_skip_output(file_slug, "geopackage", f"unsupported_output_format:{unsupported}")]
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
     staged_geopackage_keys = [
         key
@@ -843,6 +847,10 @@ def _write_and_publish_geoparquet(
     version: str,
     policy: GeoParquetWritePolicy | None = None,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "geoparquet")
+    if unsupported:
+        return [_skip_output(file_slug, "geoparquet", f"unsupported_output_format:{unsupported}")]
     existing = _prepare_format_publish(
         staging_storage,
         dataset_slug,
@@ -1059,6 +1067,10 @@ def _write_and_publish_pmtiles(
     file_slug: str,
     version: str,
 ) -> list[PublishedFormatOutput]:
+    manifest = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version)
+    unsupported = unsupported_output_reason(manifest.metadata, "pmtiles")
+    if unsupported:
+        return [_skip_output(file_slug, "pmtiles", f"unsupported_output_format:{unsupported}")]
     existing = _prepare_format_publish(staging_storage, dataset_slug, file_slug, version, "pmtiles")
     if existing:
         return _existing_format_outputs(dataset_slug, file_slug, version, existing)
