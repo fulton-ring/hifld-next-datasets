@@ -14,7 +14,7 @@ Normal GeoPackage-to-GeoParquet conversion currently changes native date columns
 
 The official landing page directly delegates the USGS MapServer/1 service and links the producer ZIP/metadata. A separately captured complete service population has 1,693 unique OBJECTIDs. Exactly 1,691 original-order native coordinate-ring arrays match the ZIP; 2 differ, and the API numeric fields retain additional precision relative to the original DBF F field payloads. `evidence/native-api-comparison.json` identifies the differences. **The pipeline explicitly chooses the pinned producer ZIP and does not assert ZIP/service geometry equivalence or a new 2026 release.** The full original API response is preserved as audit evidence, not silently substituted into the pipeline.
 
-The DOI crosswalk and DataLumos returned origin 403 at the recorded final URLs. The archive crosswalk is therefore explicitly unmatched; those failures do not block the reachable producer ZIP pipeline. Complete original responses and receipts are retained. Historical issue 40 background was read separately and contains no CBRS-specific findings.
+The DOI crosswalk and DataLumos returned origin 403 at the recorded final URLs. The archive crosswalk remains unverified because it was inaccessible; neither a matched nor unmatched conclusion is established; those failures do not block the reachable producer ZIP pipeline. Complete original responses and receipts are retained. Historical issue 40 background was read separately and contains no CBRS-specific findings.
 
 Reproduce with the repository's locked environment and Tippecanoe available on PATH:
 

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 30,
   "dataset_slug": "cbrs-prohibitions-1",
-  "status": "locally_verified_working_draft_independent_review_pending",
+  "status": "independent_review_repairs_in_progress",
   "approvals": {
     "source": false,
     "baseline": false,
@@ -53,8 +53,8 @@
   "complete_comparison": "evidence/complete-comparison.json",
   "delegated_service_comparison": "evidence/native-api-comparison.json",
   "crosswalk": {
-    "status": "explicitly_unmatched",
-    "reason": "DOI crosswalk and DataLumos origin403 at recorded exact final URLs; complete response bodies/receipts retained. No archive mapping inferred."
+    "status": "unverified_inaccessible",
+    "reason": "DOI and DataLumos returned recorded origin403. The crosswalk could not be inspected; neither matched nor unmatched status is established."
   },
   "proposed_contract": "Generated metadata/proposed_source_contract.json normalizes dates to ISO strings only in comparison JSONL while preserving physical DATE/date32 in staged native datasets. Neither output mapping nor original-FID/OBJECTID/id crosswalk is approved.",
   "pipeline": {

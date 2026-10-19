@@ -1,9 +1,11 @@
 """Faithful draft mechanics and failure isolation; fixtures do not grant acceptance."""
 import copy
+import gzip
 import json
 import tempfile
 import sqlite3
 import struct
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -133,11 +135,10 @@ class CBRSTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);rows,audit,_=s.inspect_archive((CAPTURE/'official_zip.body').read_bytes(),root)
             gp=root/'source.gpkg'
-            with fiona.open(gp,'w',driver='GPKG',layer=s.SLUG,crs='EPSG:4269',schema={'properties':s.SCHEMA,'geometry':'Unknown'}) as stream:
-                stream.writerecords(rows)
+            s.write_geopackage(gp,rows)
             s.validate_geopackage_metadata(gp,rows)
             original=gp.read_bytes()
-            changes=["UPDATE gpkg_contents SET srs_id=4326", "UPDATE gpkg_geometry_columns SET srs_id=4326", "UPDATE gpkg_contents SET min_x=0", "UPDATE gpkg_spatial_ref_sys SET definition='undefined' WHERE srs_id=4269", "UPDATE gpkg_spatial_ref_sys SET organization_coordsys_id=4326 WHERE srs_id=4269", "UPDATE gpkg_geometry_columns SET z=1"]
+            changes=["UPDATE gpkg_contents SET srs_id=4326", "UPDATE gpkg_geometry_columns SET srs_id=4326", "UPDATE gpkg_contents SET min_x=0", "UPDATE gpkg_spatial_ref_sys SET definition='undefined' WHERE srs_id=4269", "UPDATE gpkg_spatial_ref_sys SET organization_coordsys_id=4326 WHERE srs_id=4269", "UPDATE gpkg_geometry_columns SET z=1", "CREATE TABLE unapproved_extra_identifiers (OBJECTID INTEGER)"]
             for sql in changes:
                 gp.write_bytes(original)
                 with sqlite3.connect(gp) as db:db.execute(sql)
@@ -151,9 +152,64 @@ class CBRSTests(unittest.TestCase):
                 db.execute('UPDATE "'+s.SLUG+'" SET geom=? WHERE fid=?',(changed,fid))
             with self.assertRaisesRegex(ValueError,'auxiliary_metadata_or_header_drift'):
                 s.validate_geopackage_metadata(gp,rows)
+            gp.write_bytes(original)
+            with sqlite3.connect(gp) as db:blob=db.execute('SELECT geom FROM "'+s.SLUG+'" ORDER BY fid LIMIT 1').fetchone()[0]
+            self.assertEqual((blob[3]>>1)&7,1)
+            data=bytearray(original);offset=data.find(blob[:64]);self.assertGreaterEqual(offset,0)
+            data[offset+8:offset+16]=struct.pack('<d' if blob[3]&1 else '>d',0.0);gp.write_bytes(data)
+            with self.assertRaisesRegex(ValueError,'complete_container_bytes'):s.validate_geopackage_metadata(gp,rows)
             table=s.typed_table(rows,audit)
             self.assertEqual(str(table.schema.field('FI_Date').type),'date32[day]')
             self.assertEqual(str(table.schema.field('SU_Date').type),'date32[day]')
             self.assertEqual(table.column('SU_Date').null_count,564)
+
+    def test_common_lock_preserves_concurrent_install_winner(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);prefix='a/a/v0.0.0-fixture'
+            started=threading.Event();finished=threading.Event();outcome=[]
+            def installer():
+                started.set()
+                try:s.commit_complete_candidate(storage,prefix,{'geopackage/a.gpkg':b'loser'}, {})
+                except ValueError as exc:outcome.append(str(exc))
+                finally:finished.set()
+            with s.candidate_lock(storage,prefix) as target:
+                thread=threading.Thread(target=installer);thread.start();self.assertTrue(started.wait(1))
+                self.assertFalse(finished.wait(0.1))
+                target.mkdir();(target/'winner').write_bytes(b'valid-concurrent-winner')
+            thread.join(3);self.assertFalse(thread.is_alive())
+            self.assertTrue(outcome and 'concurrent_or_incomplete_existing_candidate' in outcome[0])
+            self.assertEqual((Path(d)/prefix/'winner').read_bytes(),b'valid-concurrent-winner')
+
+    def test_compressed_wire_length_and_decoded_body_limit(self):
+        url='https://www.fws.gov/test-transport-fixture';decoded=b'complete-decoded-body-'*10000;wire=gzip.compress(decoded)
+        def response(request):
+            self.assertEqual(request.headers['accept-encoding'],'identity')
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire))},stream=httpx.ByteStream(wire))
+        factory=httpx.Client
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s.httpx,'Client',side_effect=lambda **kwargs:factory(transport=httpx.MockTransport(response),**kwargs)):
+            captures=s.acquire(StagingStorageResource(local_dir=d),None)
+            body,receipt=captures['fixture'];self.assertEqual(body,decoded)
+            self.assertEqual(receipt['wire_byte_length'],len(wire));self.assertNotEqual(len(body),len(wire))
+        def wrong_length(request):
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire)+1)},stream=httpx.ByteStream(wire))
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s.httpx,'Client',side_effect=lambda **kwargs:factory(transport=httpx.MockTransport(wrong_length),**kwargs)):
+            with self.assertRaisesRegex(ValueError,'incomplete_content_length'):s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
+            self.assertTrue(all(p.read_bytes()==decoded for p in Path(d).rglob('response.body')))
+        class PartialGzip(httpx.SyncByteStream):
+            def __iter__(self):
+                yield wire[:-8]
+                raise httpx.ReadError('interrupted gzip trailer')
+        def partial_response(request):
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(wire))},stream=PartialGzip())
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s.httpx,'Client',side_effect=lambda **kwargs:factory(transport=httpx.MockTransport(partial_response),**kwargs)):
+            with self.assertRaisesRegex(ValueError,'interrupted gzip trailer'):s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
+            self.assertTrue(all(p.read_bytes()==decoded for p in Path(d).rglob('response.body')))
+            receipts=[json.loads(p.read_text()) for p in Path(d).rglob('receipt.json')]
+            self.assertTrue(all(x['partial'] and x['wire_byte_length']==len(wire)-8 for x in receipts))
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s,'MAX_BYTES',100),patch.object(s.httpx,'Client',side_effect=lambda **kwargs:factory(transport=httpx.MockTransport(response),**kwargs)):
+            with self.assertRaisesRegex(ValueError,'response_size_limit'):s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertTrue(all(p.read_bytes()==decoded[:101] for p in Path(d).rglob('response.body')))
 
 if __name__=='__main__':unittest.main()
