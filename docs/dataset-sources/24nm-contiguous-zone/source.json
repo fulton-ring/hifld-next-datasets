@@ -236,8 +236,12 @@
   ],
   "readiness": {
     "dagster": "isolated local Dagster1.12.19 server_info plus RepositoryConnection73 assets on3404, captured2026-10-19",
-    "materialization_performed": false,
-    "ingestion_approved": false
+    "materialization_performed": true,
+    "ingestion_approved": false,
+    "actual_source_run_id": "ae67eb3b-1e8e-4c22-b4de-dd311357feed",
+    "actual_formats_run_id": "b4f98073-aef0-4657-b989-cb1641150066",
+    "blocked_release_run_id": "d79fcdd7-a815-4850-899c-edda8b3c76fb",
+    "release_approved": false
   },
   "published_baseline_candidate": {
     "slug": "24nm-contiguous-zone",
@@ -279,5 +283,15 @@
       "OID/Integer ->int64 and Date epoch-ms ->int64"
     ],
     "approval": false
+  },
+  "implementation": {
+    "status": "WORKING_DRAFT_LOCAL_ONLY",
+    "asset": "src/dagster_hifld/assets/noaa_contiguous.py",
+    "shared_extractor_issue": 3,
+    "shared_promotion_gate_issue": 417,
+    "proposed_source_guard": "evidence/draft-source-guard.json",
+    "production_enabled": false,
+    "contract_approved": false,
+    "format_drift_audit": "evidence/draft-format-audit.json"
   }
 }

@@ -7,8 +7,8 @@ assets are derived automatically from this registry.
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
-    noaa_24nm_contiguous_zone,
 )
+from dagster_hifld.assets.noaa_contiguous import noaa_24nm_contiguous_zone
 from dagster_hifld.assets.census_bureau import census_bureau_aiannh_areas
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
 from dagster_hifld.assets.red_cross import red_cross_american_red_cross_divisions
@@ -22,7 +22,6 @@ hifld_ingest_assets = [
     census_bureau_aiannh_areas,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
-    noaa_24nm_contiguous_zone,
     red_cross_american_red_cross_divisions,
     faa_airspace_boundaries,
     faa_aviation_facilities,
