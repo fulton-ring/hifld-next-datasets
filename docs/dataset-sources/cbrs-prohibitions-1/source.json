@@ -2,7 +2,7 @@
   "schema_version": 1,
   "issue": 30,
   "dataset_slug": "cbrs-prohibitions-1",
-  "status": "cache_repairs_locally_verified_shared_native_policy_pending",
+  "status": "locally_verified_working_draft_independent_exact_head_review_pending",
   "approvals": {
     "source": false,
     "baseline": false,
@@ -63,9 +63,24 @@
     "runner": "scripts/verify_cbrs_prohibitions_draft.py",
     "refresh": "STOPPED monthly1st13:00 America/New_York source-only integrity refresh, pinned original edition; changed edition/schema/coverage quarantined for review.",
     "atomicity": "Complete hidden localbuild renamed into discoverable namespace only after full source and derivative reconciliation.",
-    "cache": "Re-derive source rows, physical Arrow schema+metadata and native GPKG metadata including auxiliary SRS/bounds and every geometry-header SRS; self-repinned cache receipt cannot establish fidelity.",
+    "cache": "Fresh complete source-derived GPKG/Parquet byte equality; every source-owned report, sidecar and exact unapproved placeholder recomputed; complete invalid version moved outside discovery under the same lookup/validation/quarantine/install lock, including missing-ready cases. Exact hash-bound source snapshot and resolved provenance checked separately.",
     "raw": "Full producer ZIP/all25members, all4transform input bodies and original capture receipts preserved, plus independently pinned complete published candidate and delegated service audit inputs.",
-    "promotion": "Shared exact independent source/baseline/contract/release registry remains mandatory; no real dataset acceptance invented."
+    "promotion": "Shared exact independent source/baseline/contract/release registry remains mandatory; no real dataset acceptance invented.",
+    "native_prebuilt_policy": {
+      "formats": {
+        "geoparquet": {
+          "objects": [
+            {
+              "bytes": 8142268,
+              "path": "geoparquet/cbrs-prohibitions-1.parquet",
+              "sha256": "fd8f9660eafb4138178baf8d2abd4672d3e9dfbf6b7d3e6550c427e25b3368df"
+            }
+          ],
+          "reason": "Native DBF DATE fields must retain Arrow date32 and source identifiers, physical types and WKB. Generic GeoPackage conversion currently casts dates to strings; only this exact complete native artifact may be reused without regeneration. Source/baseline/output mapping acceptance remains pending."
+        }
+      },
+      "schema_version": 1
+    }
   },
   "release_decisions": [
     "Accept exact intended source edition/rights and two ZIP-versus-service geometry differences.",
@@ -78,8 +93,30 @@
     "classification": "Historical background only, not fresh endpoint audit; preserved issue and all3comments contain no CBRS-specific findings."
   },
   "physical_dbf_audit": "evidence/physical-dbf-audit.json",
-  "implementation_head": "a4116a0079ee33bd9c96316493fa7b69f0161ba8",
-  "verification": {
+  "implementation_head": "a5bb99654cd66148341a615b4d2826b3b498d42f",
+  "review_repair_checkpoint": {
+    "head": "c84febb6bc6c6d047d2b0e6cc85f82c131e64e80",
+    "focused_tests": 13,
+    "cold_source_run": "b911f177-ec47-41d7-86d4-38350618bd6b",
+    "restored_complete_source_run": "0503d75a-48eb-4e0a-b65c-54fecc453031",
+    "exact_reason_cache_negatives": 9,
+    "all_bad_cache_bytes_and_prior_publication_preserved": true,
+    "whole_native_container_byte_parity": "evidence/review-repairs/determinism.json",
+    "live_anonymous_official_inputs": 4,
+    "live_statuses": [
+      200,
+      200,
+      200,
+      200
+    ],
+    "shared_prebuilt_native_date_policy": "Pending coordinator integration of independently reviewed shared machinery; no handoff-ready or release approval claim.",
+    "evidence": "evidence/review-repairs/cache-repair.json"
+  },
+  "shared_integration": {
+    "reviewed_shared_head": "4800e4f5df550bfadd3631585268ce68a0fa25d9",
+    "root_deliberate_merge": "fa50853a8c2aa30a96d95f35dbf8d12fb2443d2f"
+  },
+  "historical_verification": {
     "execution": "evidence/execution.json",
     "code_head": "a4116a0079ee33bd9c96316493fa7b69f0161ba8",
     "real_rows": 1693,
@@ -104,22 +141,27 @@
     "CI": "No CI success inferred",
     "review": "Native independent exact final-head review pending"
   },
-  "review_repair_checkpoint": {
-    "head": "c84febb6bc6c6d047d2b0e6cc85f82c131e64e80",
-    "focused_tests": 13,
-    "cold_source_run": "b911f177-ec47-41d7-86d4-38350618bd6b",
-    "restored_complete_source_run": "0503d75a-48eb-4e0a-b65c-54fecc453031",
-    "exact_reason_cache_negatives": 9,
-    "all_bad_cache_bytes_and_prior_publication_preserved": true,
-    "whole_native_container_byte_parity": "evidence/review-repairs/determinism.json",
-    "live_anonymous_official_inputs": 4,
-    "live_statuses": [
-      200,
-      200,
-      200,
-      200
-    ],
-    "shared_prebuilt_native_date_policy": "Pending coordinator integration of independently reviewed shared machinery; no handoff-ready or release approval claim.",
-    "evidence": "evidence/review-repairs/cache-repair.json"
+  "verification": {
+    "execution": "evidence/policy-integration/execution.json",
+    "code_head": "a5bb99654cd66148341a615b4d2826b3b498d42f",
+    "actual_runs": 15,
+    "real_rows": 1693,
+    "two_normal_catalog_refresh_cycles": "PASS",
+    "native_DATE_date32_all_values_IDs_WKB_schema_coverage": "PASS",
+    "SU_Date_nulls": 564,
+    "generic_converter_calls": 0,
+    "exact_reason_original_cache_negatives": 6,
+    "whole_bad_cache_raw_and_prior_publication_preserved": true,
+    "full_suite": {
+      "total": 526,
+      "passed": 525,
+      "skipped": 1,
+      "seconds": 221.8,
+      "skip": "Real production GCS write E2E intentionally not enabled",
+      "real_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f"
+    },
+    "independent_exact_final_head_review": "pending",
+    "release_approval": false,
+    "CI": "No CI/full-suite success inferred from build-only workflow"
   }
 }
