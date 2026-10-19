@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "scope": "Complete real HTTP200 historical package and complete baseline replay captures, artifact-only; Git contains synthetic structural fixture plus opt-in real replay tests.",
+  "artifact_bytes": 1490104,
+  "artifact_sha256": "4ed1451fb98c24fcd710236b8550157ceccc09597cbd0d733b157ae6b5d7d343",
+  "verified_members": 33,
+  "original_fixture_bytes": 752146,
+  "original_fixture_sha256": "99404e55ae5256ecf590decbefad864bb619cf021e69c9e324e422b8602da93a",
+  "complete_source_records": 2324,
+  "approved": false,
+  "replay": "HIFLD_CRUSHED_STONE_REAL_CAPTURE_DIR=/path/to/explicit-package PYTHONPATH=.:src:tests python -m unittest test_crushed_stone -v",
+  "artifact_locator": "coordinator48:crushed-stone-complete-real-fixture-artifact.tar.gz",
+  "capture_pin_manifest": "coordinator48:complete-real-fixture-artifact.json"
+}
