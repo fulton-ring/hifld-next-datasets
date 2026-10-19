@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import sqlite3
+import stat
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -85,11 +86,14 @@ def local_only(storage):
     if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise FerryRouteQuarantineError('local_space_guard')
     if isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise FerryRouteQuarantineError('draft_requires_explicit_isolated_local_staging')
-    root=Path(storage.local_dir)
+    root=Path(storage.local_dir).absolute()
     if any(path.is_symlink() for path in [root,*root.parents]):
         raise FerryRouteQuarantineError('staging_path_symlink_refused')
-    if root.exists() and any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):
-        raise FerryRouteQuarantineError('staging_alias_refused')
+    if root.exists():
+        for path in root.rglob('*'):
+            info=path.lstat()
+            if stat.S_ISDIR(info.st_mode):continue
+            if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise FerryRouteQuarantineError('staging_alias_or_special_file_refused')
 
 
 def immutable(storage,key,body):
@@ -154,12 +158,40 @@ def manifest_for(captures,identity):
     validate_release_provenance(manifest);return manifest
 
 
+def bounded_input(path,limit):
+    if '..'in path.parts or any(p.is_symlink()for p in[path.parent,*path.parent.parents]):raise FerryRouteQuarantineError('input_parent_alias_refused')
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(descriptor,'rb')as stream:
+        before=os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode)or before.st_nlink!=1 or before.st_size>limit:raise FerryRouteQuarantineError('unsafe_or_oversized_regular_input')
+        body=stream.read(limit+1);after=os.fstat(stream.fileno())
+    identity=lambda v:(v.st_dev,v.st_ino,v.st_size,v.st_mtime_ns,v.st_ctime_ns,v.st_nlink)
+    if len(body)!=before.st_size or len(body)>limit or identity(before)!=identity(after):raise FerryRouteQuarantineError('changed_or_incomplete_bounded_input')
+    return body
+
+
+def candidate_bytes(root,name):
+    limit=32_000_000 if name.endswith(('.gpkg','.parquet'))else(15_000_000 if Path(name).name.startswith('source_page_')and name.endswith('.body')else 2_000_000)
+    if Path(name).is_absolute()or '..'in Path(name).parts:raise FerryRouteQuarantineError('unsafe_candidate_key')
+    return bounded_input(root/name,limit)
+
+
+def candidate_roster(root):
+    names=set()
+    for path in root.rglob('*'):
+        info=path.lstat()
+        if stat.S_ISDIR(info.st_mode):continue
+        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise FerryRouteQuarantineError('candidate_alias_or_special_file_refused')
+        names.add(str(path.relative_to(root)))
+    return names
+
+
 def acquire(storage,capture_dir=None):
     local_only(storage);captures={}
     try:
         for name in URLS:
             if capture_dir is not None:
-                with (Path(capture_dir)/(name+'.body')).open('rb') as stream: body=stream.read(15_000_001)
+                body=bounded_input(Path(capture_dir)/(name+'.body'),15_000_000)
                 # Retain attempted bytes before any receipt decoding. A malformed
                 # local receipt is evidence, not permission to lose its body.
                 key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'
@@ -168,8 +200,7 @@ def acquire(storage,capture_dir=None):
                     'sha256':digest(body),'complete_body':False,'receipt_validated':False}
                 captures[name]=(body,diagnostic)
                 if len(body)>15_000_000: raise FerryRouteQuarantineError('capture_body_limit')
-                with (Path(capture_dir)/(name+'.receipt.json')).open('rb') as stream:
-                    raw_receipt=stream.read(65_537)
+                raw_receipt=bounded_input(Path(capture_dir)/(name+'.receipt.json'),65_536)
                 receipt_key=key+'.receipt-original-'+digest(raw_receipt)+'.bin'
                 immutable(storage,receipt_key,raw_receipt)
                 diagnostic['original_receipt_key']=receipt_key
@@ -314,11 +345,11 @@ def source_payloads(captures,identity,table,audit,manifest):
 
 
 def reconcile_cache(storage,prefix,table,audit,captures,identity):
-    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())
-    cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
+    root=Path(storage.local_dir)/prefix;actual=candidate_roster(root);ready=strict_json(candidate_bytes(root,READY))
+    cached={name:(candidate_bytes(root,f'raw/captures/{name}.body'),strict_json(candidate_bytes(root,f'raw/captures/{name}.receipt.json'))) for name in URLS}
     if digest(encode([strict_json(cached[name][0])['features']for name in URLS if name.startswith('source_page_')]))!=digest(encode([strict_json(captures[name][0])['features']for name in URLS if name.startswith('source_page_')])): raise FerryRouteQuarantineError('cached_original_publication_changed')
     manifest=manifest_for(cached,identity)
-    actual_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
+    actual_manifest=strict_json(candidate_bytes(root,'metadata/source_manifest.json'))
     validate_release_provenance(actual_manifest)
     for key,value in manifest.items():
         if key!='code_commit' and actual_manifest.get(key)!=value: raise FerryRouteQuarantineError('cached_provenance_disagrees_with_original')
@@ -331,19 +362,19 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
     if (ready.get('version')!=prefix.rsplit('/',1)[1] or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready['objects'])!=expected_names):
         raise FerryRouteQuarantineError('cached_ready_identity_or_roster_drift')
     for name,value in expected.items():
-        if (root/name).read_bytes()!=value: raise FerryRouteQuarantineError('cached_source_owned_bytes_drift:'+name)
-    actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
-    snapshot='metadata/source/version_'+digest((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'
+        if candidate_bytes(root,name)!=value: raise FerryRouteQuarantineError('cached_source_owned_bytes_drift:'+name)
+    snapshot='metadata/source/version_'+digest(candidate_bytes(root,'metadata/source_manifest.json'))+'_source_manifest.json'
     derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
     if actual-(expected_names|{READY}|derivatives) or not (expected_names|{READY}).issubset(actual):
         raise FerryRouteQuarantineError('cached_unknown_or_missing_object')
     for name,pin in ready['objects'].items():
-        if sha256_file(root/name)!=pin: raise FerryRouteQuarantineError('cached_source_object_changed:'+name)
+        if digest(candidate_bytes(root,name))!=pin: raise FerryRouteQuarantineError('cached_source_object_changed:'+name)
     for name in ['metadata/source/source_manifest.json',snapshot]:
-        if (root/name).exists() and (root/name).read_bytes()!=(root/'metadata/source_manifest.json').read_bytes(): raise FerryRouteQuarantineError('cached_source_snapshot_drift')
+        if (root/name).exists() and candidate_bytes(root,name)!=candidate_bytes(root,'metadata/source_manifest.json'): raise FerryRouteQuarantineError('cached_source_snapshot_drift')
+    for name in actual-expected_names-{READY}:candidate_bytes(root,name)
     if (root/'metadata/resolved_provenance.json').exists():
         resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
-        if resolved.get('inputs')!=manifest['inputs'] or strict_json((root/'metadata/resolved_provenance.json').read_bytes())!=resolved:
+        if resolved.get('inputs')!=manifest['inputs'] or strict_json(candidate_bytes(root,'metadata/resolved_provenance.json'))!=resolved:
             raise FerryRouteQuarantineError('cached_resolved_provenance_drift')
     reconcile_outputs(root,table)
 

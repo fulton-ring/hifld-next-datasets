@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +15,9 @@ from unittest.mock import patch
 
 import httpx
 import pyarrow as pa
+import pyarrow.parquet as pq
+import pyogrio
+import shapely
 
 from dagster_hifld.sources import ferry_routes as f
 
@@ -58,6 +63,48 @@ class FerryTransportTests(unittest.TestCase):
                 self.assertEqual(receipt['sha256'],f.digest(body.read_bytes()))
     def test_remote_published_or_alias_staging_refused(self):
         with self.assertRaises(f.FerryRouteQuarantineError):f.local_only(f.PublishedStorageResource(local_dir='/tmp'))
+
+
+class FerryStructuralTests(unittest.TestCase):
+    def test_small_synthetic_rows_keep_native_types_strings_nulls_and_literal_path_WKB(self):
+        # Two structural examples only, never a substitute for the964-row feed.
+        paths=[[[(-71.12500000000003,42.12500000000003),(-71.12499999999997,42.12500000000007)]],[[(-70.25,41.25),(-70.5,41.5)],[(-69.25,40.25),(-69.5,40.5)]]]
+        rows=[];literal=[]
+        for index,parts in enumerate(paths):
+            row={field['name']:None for field in f.FIELD_DECLARATIONS};row.update(OBJECTID=7+index,operator_id='007'if index==0 else'',segment_id='0009',average_trip_time=0 if index==0 else None,vessel4_id=''if index==0 else None,operator_name='  Synthetic ferry '+str(index)+' ',census_year=2020,data_year=2019,Shape__Length=0.00000000000003)
+            body=struct.pack('<BII',1,5,len(parts))
+            for part in parts:body+=struct.pack('<BII',1,2,len(part))+b''.join(struct.pack('<dd',*point)for point in part)
+            row['wkb_geometry']=body;rows.append(row);literal.append(body)
+        schema=pa.schema([pa.field(field['name'],f.TYPE_MAP[field['type']],nullable=field['nullable'],metadata={b'original_esri_field':f.encode(field)})for field in f.FIELD_DECLARATIONS]+[pa.field('wkb_geometry',pa.binary(),nullable=False)]);table=pa.Table.from_pylist(rows,schema=schema)
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);gp=root/'synthetic.gpkg';parquet=root/'synthetic.parquet';f.write_native_gpkg(table,gp);pq.write_table(f.expected_parquet_table(table),parquet,compression='zstd');meta,actual=pyogrio.read_arrow(gp,layer=f.LAYER);pqtable=pq.read_table(parquet)
+            self.assertEqual(meta['crs'],'EPSG:4326');self.assertEqual(actual.to_pylist(),rows);self.assertEqual(pqtable.to_pylist(),rows);self.assertEqual(pqtable['wkb_geometry'].to_pylist(),literal);self.assertEqual(pqtable['average_trip_time'].type,pa.int32());self.assertEqual(pqtable['OBJECTID'].type,pa.int64());self.assertEqual(pqtable['Shape__Length'].type,pa.float64());self.assertEqual(pqtable.schema.field('operator_id').metadata,schema.field('operator_id').metadata);self.assertFalse(pqtable.schema.field('OBJECTID').nullable)
+            self.assertEqual(pqtable['operator_id'].to_pylist(),['007','']);self.assertEqual(pqtable['vessel4_id'].to_pylist(),['',None]);self.assertEqual(pqtable['operator_name'].to_pylist(),[r['operator_name']for r in rows])
+            with sqlite3.connect(gp)as db:fields={r[1]:r for r in db.execute('pragma table_info(BTS_NCFO_Ferry_Routes)')};self.assertEqual(fields['average_trip_time'][2],'MEDIUMINT');self.assertEqual(fields['operator_name'][2],'TEXT')
+    def test_staging_fifo_refused_before_any_acquisition(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);fifo=root/'existing-ready.json';os.mkfifo(fifo)
+            with patch.object(f,'acquire',side_effect=AssertionError('must not acquire')),self.assertRaisesRegex(f.FerryRouteQuarantineError,'special_file'):f.stage_ferry_routes(f.StagingStorageResource(local_dir=tmp))
+            self.assertTrue(stat.S_ISFIFO(fifo.lstat().st_mode))
+    def test_cached_and_capture_fifo_reads_are_bounded_nonblocking(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);fifo=root/'ready.json';os.mkfifo(fifo)
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'regular_input'):f.candidate_bytes(root,'ready.json')
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'special_file'):f.candidate_roster(root)
+            inputs=root/'inputs';inputs.mkdir();os.mkfifo(inputs/'bts_ntad.body')
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'regular_input'):f.acquire(f.StagingStorageResource(local_dir=str(root/'staging')),inputs)
+    def test_metadata_size_symlink_and_hardlink_refused_before_parse(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);target=root/'ready.json'
+            with target.open('wb')as stream:stream.truncate(2_000_001)
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'oversized'):f.candidate_bytes(root,'ready.json')
+            target.unlink();body=root/'original.json';body.write_bytes(b'{}');target.symlink_to(body)
+            with self.assertRaises(OSError):f.candidate_bytes(root,'ready.json')
+            target.unlink();os.link(body,target)
+            with self.assertRaisesRegex(f.FerryRouteQuarantineError,'regular_input'):f.candidate_bytes(root,'ready.json')
+    def test_duplicate_and_nonfinite_small_metadata_rejected(self):
+        for body in [b'{"count":1,"count":2}',b'{"value":NaN}',b'[]',b'{"error":{}}']:
+            with self.subTest(body=body),self.assertRaises(ValueError):f.strict_json(body)
 
 
 @unittest.skipUnless(CAPTURE,'Set FERRY_ROUTES_TEST_CAPTURE_DIR to complete unchanged19-slot official capture')
