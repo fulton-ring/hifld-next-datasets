@@ -54,3 +54,15 @@ Shared prerequisite work, implemented once:
 This document and the worker/reviewer instructions define the required acceptance plan. **The full row-level comparison and blocking publish integration are not implemented yet.** Existing catalog checks provide useful metrics but currently use a legacy `v20260214` baseline, allow added columns, tolerate ±10% count changes and pass when that baseline is absent. They must not be presented as adequate end-to-end validation.
 
 Complete the shared prerequisite before enabling automatic implementation acceptance. A worker must not claim success from source availability, a copied contract JSON, tests alone, or schema/count similarity without this data comparison.
+
+## Flexible dataset construction
+
+The download helper is optional. Pipelines can assemble many source files, page services, combine state/county releases, select layers, join agency reference tables, derive geometries, parse tables, normalize values or perform other source-specific transformations. Use ordinary Python plus Dagster assets/ops/graphs; the shared contract concerns verifiable final dataset outputs and provenance, not identical ingestion implementations.
+
+Separate supporting raw/intermediate assets from publishable terminal dataset/file outputs. Include supporting assets in Definitions, but do not automatically turn every source file or intermediate table into a published dataset. A graph-backed asset can expose one terminal ingest output. If using a multi-output asset definition, update/test the current one-key-per-definition support derivation in assets/supported_assets.py; do not silently use only its first key.
+
+Define approved source schemas/mappings per input. They can differ from the historic HIFLD format. The accepted published schema/ID contract is the output reference; source differences must be explained and mapped, not hidden or blindly copied as new published columns.
+
+Make verification transformation-aware. Concatenation accounts for every expected partition and record; joins check cardinality, unmatched keys and accidental multiplication; filters/deduplication/aggregation record their rules and count/identity effects; reprojection/geometry construction checks spatial validity and coverage. Retain raw inputs and source IDs plus appropriate output-to-input lineage. An intentional change in row grain or published identity is a compatibility decision, not permission to discard IDs.
+
+Do not require raw and final counts to be identical when the documented transformation legitimately changes them. Require complete accounting, tested transformation semantics and comparison of the final constructed dataset to its pinned accepted HIFLD Next version.
