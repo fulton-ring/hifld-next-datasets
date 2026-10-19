@@ -1,0 +1,13 @@
+{
+  "classification": "Original exact summaries restored; complete generated tree preserved losslessly in archive. Full byte replay requires restoring archive. Original upstream captures elsewhere untouched.",
+  "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs28-closed-prelatebinding-git-graph-long.tar.zst",
+  "manifest": "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs28-closed-prelatebinding-git-graph-long.manifest.json",
+  "restore": [
+    "tar",
+    "--use-compress-program=zstd -d --long=29",
+    "-xf",
+    "/workspace/work/hifld-coordinator/closed-generated-archives/cbrs28-closed-prelatebinding-git-graph-long.tar.zst",
+    "-C",
+    "/workspace/work/hifld-coordinator/28"
+  ]
+}

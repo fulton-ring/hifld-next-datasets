@@ -2,8 +2,8 @@
   "schema_version": 1,
   "files": {
     "README.md": {
-      "bytes": 14537,
-      "sha256": "838d3e52dd69871edb453cce9f4365ac5faab698941070d261afbb74267f29b8"
+      "bytes": 16415,
+      "sha256": "69e11dc1c6b73cfe61acec0882b0510dbc6e4855affcbec9b13487410cf3b6e6"
     },
     "evidence/baseline_comparison.json": {
       "bytes": 202,
@@ -161,6 +161,18 @@
       "bytes": 2383,
       "sha256": "aa9e901daee1f951f52e8416cef9feb57703defb357a75b2bafceb15de8aeb40"
     },
+    "evidence/review-repairs/coforged-external-binding-counterexample.json": {
+      "bytes": 658,
+      "sha256": "c77d1619bdb305c0b0a4d6799617162f6b745a1358d542cc5863fe955eee0f74"
+    },
+    "evidence/review-repairs/coforged-external-binding-counterexample.log": {
+      "bytes": 2667,
+      "sha256": "b4a025412a568e037f73892a273e8269bab5432de080df8bfb21849b0b94ede1"
+    },
+    "evidence/review-repairs/coforged-external-binding-scope.json": {
+      "bytes": 946,
+      "sha256": "a316448e8094aa02e50d5d25761f644ef32b19a912c30ae0ed26300ce19a7a95"
+    },
     "evidence/review-repairs/complete-evidence-and-missing-ready-execution.json": {
       "bytes": 18983,
       "sha256": "3384aba08bc1e5b4b5d750968efe78bb9032356b711b4ed1aacd840fa07ac45e"
@@ -168,6 +180,30 @@
     "evidence/review-repairs/complete-evidence-and-missing-ready.log": {
       "bytes": 14890,
       "sha256": "03c4618cbd973808a152cc256b5aafa19dc25925c940be6fdf03c993199b8319"
+    },
+    "evidence/review-repairs/construction-binding-focused-execution.json": {
+      "bytes": 17765,
+      "sha256": "b6fd6bf6770a69b5403a939472867f1aa22471f93e5c82969137fe6cd4faaeb0"
+    },
+    "evidence/review-repairs/construction-binding-focused.log": {
+      "bytes": 16955,
+      "sha256": "50fe7d671b0c588ab1462da8c9d92126a94a9f3c844c7f9f22cdb5cf874714e6"
+    },
+    "evidence/review-repairs/construction-binding-normal-graph-execution.json": {
+      "bytes": 7782,
+      "sha256": "e31fd72fe7c3915f677596d4a2cb1a272c881fae713fc8dcc7b6dc434accf8fd"
+    },
+    "evidence/review-repairs/construction-binding-normal-graph.log": {
+      "bytes": 14727,
+      "sha256": "aafa776c889950cfa55b8bf9a82a105b5dd595384e8b279ad0e9c351053518c7"
+    },
+    "evidence/review-repairs/construction-full-suite-514.log": {
+      "bytes": 18063,
+      "sha256": "64029294a3ce27d422edd18dedf1456fe719a2cefe783881ceb2f71b46b07ef5"
+    },
+    "evidence/review-repairs/construction-unit-16.log": {
+      "bytes": 349,
+      "sha256": "7fd8f91ecf1c3a09812a54b6644dbedb81833a90ad9d5aacfb1a8d890c9f2f2c"
     },
     "evidence/review-repairs/container-and-repeat-catalog-execution.json": {
       "bytes": 24645,
@@ -241,6 +277,46 @@
       "bytes": 18586,
       "sha256": "522afc6f23486762aa11f30b5a77c3ac95ae599bbcf4fb4b862e4266dff02fd8"
     },
+    "evidence/review-repairs/git-identity-closed-original-archive.json": {
+      "bytes": 736,
+      "sha256": "4276758606efc8c747b42d3536eadb88e67a1793d41eebdd461a3f80fb7ea020"
+    },
+    "evidence/review-repairs/git-identity-native-writer-and-data-parity.json": {
+      "bytes": 1761,
+      "sha256": "3c930e440ecd3926e54ab59b1f17751e180156a3515b4a19f1eab8e2a035309f"
+    },
+    "evidence/review-repairs/git-identity-normal-graph-execution.json": {
+      "bytes": 7774,
+      "sha256": "e62f272f893faf415fa29f8945fe72728e548d602e761555765a8742c41552e2"
+    },
+    "evidence/review-repairs/git-identity-normal-graph.log": {
+      "bytes": 12160,
+      "sha256": "bcc47009e77a97113c8162c2cd8589ad97e421c047c5c955de23dca130b36240"
+    },
+    "evidence/review-repairs/git-identity-partial-eight-run-and-harness-error.json": {
+      "bytes": 18333,
+      "sha256": "0346bd0c1c37624ee5df16f581d29b7006ec2d3e83ca0e6544a063a7efde006f"
+    },
+    "evidence/review-repairs/git-identity-unit-16.log": {
+      "bytes": 349,
+      "sha256": "ef41e7eefac2a6d4bd9e665ef954b7f2cffa35614f04201d6a2296f10c841fc6"
+    },
+    "evidence/review-repairs/late-binding-failed-first-build.json": {
+      "bytes": 5606,
+      "sha256": "854af77c7c88d571c4df202ba7e2dfdd982f74b84263dcef70225ed9c54b097f"
+    },
+    "evidence/review-repairs/late-binding-failed-first-build.log": {
+      "bytes": 2622,
+      "sha256": "309662e24c34303a2c13889ba2f4471633b9631e13f9b99b422362518388e834"
+    },
+    "evidence/review-repairs/late-binding-native-writer-and-data-parity.json": {
+      "bytes": 1037,
+      "sha256": "e766af6220a6e6ca45a5399643e90bda3467397936343566d0ebbbff004077e5"
+    },
+    "evidence/review-repairs/late-binding-unit-18.log": {
+      "bytes": 351,
+      "sha256": "4edccc7dd381e7f5ed9be40a64f8e3187578dbab084617df9457fe9c9ca6a187"
+    },
     "evidence/review-repairs/live-encoding-proof.json": {
       "bytes": 414,
       "sha256": "9f4b8e4ec1b366349fd56fb28e6db77ae5c0eade94ec34b72d5f584188137929"
@@ -252,6 +328,10 @@
     "evidence/review-repairs/repair-verification-archive-pointer.json": {
       "bytes": 250,
       "sha256": "c85fa65b9f572fe788e28bb89881c3bf04e376371407750aa54306f8ef073d1d"
+    },
+    "evidence/review-repairs/shared-git-identity-tests-11.log": {
+      "bytes": 110,
+      "sha256": "09567ee1aa00c39c853f67d263840a820de6ab70b54bccbc68c1ba0515cdc82d"
     },
     "evidence/review-repairs/transport-and-lock-tests.log": {
       "bytes": 333,
@@ -320,62 +400,6 @@
     "source.json": {
       "bytes": 10120,
       "sha256": "2b0714271a495718ed553d9b558e33e3c0aaeadae29984bfecf8212611ee178b"
-    },
-    "evidence/review-repairs/construction-unit-16.log": {
-      "bytes": 349,
-      "sha256": "7fd8f91ecf1c3a09812a54b6644dbedb81833a90ad9d5aacfb1a8d890c9f2f2c"
-    },
-    "evidence/review-repairs/construction-binding-focused-execution.json": {
-      "bytes": 17765,
-      "sha256": "b6fd6bf6770a69b5403a939472867f1aa22471f93e5c82969137fe6cd4faaeb0"
-    },
-    "evidence/review-repairs/construction-binding-normal-graph-execution.json": {
-      "bytes": 7782,
-      "sha256": "e31fd72fe7c3915f677596d4a2cb1a272c881fae713fc8dcc7b6dc434accf8fd"
-    },
-    "evidence/review-repairs/construction-binding-normal-graph.log": {
-      "bytes": 14727,
-      "sha256": "aafa776c889950cfa55b8bf9a82a105b5dd595384e8b279ad0e9c351053518c7"
-    },
-    "evidence/review-repairs/construction-full-suite-514.log": {
-      "bytes": 18063,
-      "sha256": "64029294a3ce27d422edd18dedf1456fe719a2cefe783881ceb2f71b46b07ef5"
-    },
-    "evidence/review-repairs/construction-binding-focused.log": {
-      "bytes": 16955,
-      "sha256": "50fe7d671b0c588ab1462da8c9d92126a94a9f3c844c7f9f22cdb5cf874714e6"
-    },
-    "evidence/review-repairs/coforged-external-binding-counterexample.log": {
-      "bytes": 2667,
-      "sha256": "b4a025412a568e037f73892a273e8269bab5432de080df8bfb21849b0b94ede1"
-    },
-    "evidence/review-repairs/coforged-external-binding-scope.json": {
-      "bytes": 946,
-      "sha256": "a316448e8094aa02e50d5d25761f644ef32b19a912c30ae0ed26300ce19a7a95"
-    },
-    "evidence/review-repairs/coforged-external-binding-counterexample.json": {
-      "bytes": 658,
-      "sha256": "c77d1619bdb305c0b0a4d6799617162f6b745a1358d542cc5863fe955eee0f74"
-    },
-    "evidence/review-repairs/git-identity-unit-16.log": {
-      "bytes": 349,
-      "sha256": "ef41e7eefac2a6d4bd9e665ef954b7f2cffa35614f04201d6a2296f10c841fc6"
-    },
-    "evidence/review-repairs/git-identity-normal-graph.log": {
-      "bytes": 12160,
-      "sha256": "bcc47009e77a97113c8162c2cd8589ad97e421c047c5c955de23dca130b36240"
-    },
-    "evidence/review-repairs/git-identity-native-writer-and-data-parity.json": {
-      "bytes": 1761,
-      "sha256": "3c930e440ecd3926e54ab59b1f17751e180156a3515b4a19f1eab8e2a035309f"
-    },
-    "evidence/review-repairs/git-identity-normal-graph-execution.json": {
-      "bytes": 7774,
-      "sha256": "e62f272f893faf415fa29f8945fe72728e548d602e761555765a8742c41552e2"
-    },
-    "evidence/review-repairs/shared-git-identity-tests-11.log": {
-      "bytes": 110,
-      "sha256": "09567ee1aa00c39c853f67d263840a820de6ab70b54bccbc68c1ba0515cdc82d"
     }
   }
 }

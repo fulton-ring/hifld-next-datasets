@@ -1,0 +1,16 @@
+{
+  "before_source_checkpoint": "5ad3cfa229b4fd7236902b13b4c7c63e373b3400",
+  "after_source_checkpoint": "76b418e69bcc805ddcec6160577343f31b012cd6",
+  "unchanged_function_AST_SHA256": {
+    "inspect_archive": "653137d7bbc97d05e88752d25c252e13c61b8b155e28f230a6692cf9b2bc023e",
+    "compare_derivative": "ff7b658bf7a0c370ec59f3a696c0d702667500d4f29d809106a788017babe9ea",
+    "fidelity_payloads": "9056f31e42e487217f7c755f6857e8fd01bde5af4d2332daf8e0fc77ec4746b1",
+    "typed_table": "3e28d464300f9d8fcad97ae2e3b1e7bb78fae008a220851376ca4f94e1a55875",
+    "write_native_geopackage": "904653fd586ec2d1625d17d5366cd84fdef315ec0979e4b55c62d718319ab11d"
+  },
+  "all_five_native_decode_writer_table_comparator_report_bodies_unchanged": true,
+  "prior_full1145_data_and_physical_WKB_evidence_retained": true,
+  "expected_geopackage_sha256": "29edab0b125fc438930422b0f5ff395869d25fa4854077222632515423c79a56",
+  "expected_typed_parquet_sha256": "54b294ce12e616ade4b8fa8b00bd27cab9ce320a7ef4af7ce24807a7d4e1480e",
+  "acceptance_granted": false
+}
