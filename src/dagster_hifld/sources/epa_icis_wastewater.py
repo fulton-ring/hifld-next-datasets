@@ -114,7 +114,9 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
             for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
                 page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {"where":"1=1","outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4269","orderByFields":"OBJECTID ASC","resultOffset":offset,"resultRecordCount":PAGE_SIZE,"f":"json"})
                 rows=page.get("features"); expected=min(PAGE_SIZE,count-offset)
-                if not isinstance(rows,list) or len(rows)!=expected or page.get("exceededTransferLimit") is True: raise ValueError("source_page_incomplete")
+                if not isinstance(rows,list) or len(rows)!=expected: raise ValueError("source_page_incomplete")
+                if page.get("exceededTransferLimit") is True and offset+expected>=count:
+                    raise ValueError("source_final_page_exceeded_transfer_limit")
                 page_sr=page.get("spatialReference",{})
                 if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4269: raise ValueError("source_page_crs_drift")
                 page_ids=[row.get("attributes",{}).get("OBJECTID") if isinstance(row,dict) else None for row in rows]

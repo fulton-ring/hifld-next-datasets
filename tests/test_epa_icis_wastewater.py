@@ -42,8 +42,8 @@ class EpaIcisWastewaterTests(unittest.TestCase):
         row=rows[0]
         bodies = {"portal_item":portal,"service_before":service,"service_after":service,"layer_before":layer,"layer_after":layer,
                  "count_before":{"count":251},"count_after":{"count":251},"ids_before":ids,"ids_after":ids,
-                 "page_000":{"spatialReference":{"latestWkid":4269},"features":rows[:250]},
-                 "page_001":{"spatialReference":{"latestWkid":4269},"features":rows[250:]}}
+                 "page_000":{"spatialReference":{"latestWkid":4269},"exceededTransferLimit":True,"features":rows[:250]},
+                 "page_001":{"spatialReference":{"latestWkid":4269},"exceededTransferLimit":False,"features":rows[250:]}}
 
         request_urls={}
         def capture(_client, url, root, name, **_kwargs):
@@ -102,6 +102,13 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                  patch.object(source.httpx, "Client"):
                 with self.assertRaisesRegex(ValueError,"source_page_incomplete"):
                     source.capture_epa_icis_wastewater(storage,version="vbad",capture_directory=str(Path(tmp)/"bad-captures"))
+            bodies["page_000"]={"spatialReference":{"latestWkid":4269},"exceededTransferLimit":True,"features":rows[:250]}
+            bodies["page_001"]={"spatialReference":{"latestWkid":4269},"exceededTransferLimit":True,"features":rows[250:]}
+            with patch.object(source, "SCHEMA_SHA256", schema_sha), \
+                 patch.object(source, "capture_get", side_effect=capture), \
+                 patch.object(source.httpx, "Client"):
+                with self.assertRaisesRegex(ValueError,"source_final_page_exceeded_transfer_limit"):
+                    source.capture_epa_icis_wastewater(storage,version="vbadfinal",capture_directory=str(Path(tmp)/"bad-final-captures"))
 
 
 if __name__ == "__main__":
