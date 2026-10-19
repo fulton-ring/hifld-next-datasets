@@ -113,3 +113,30 @@ real graph; namespace changes reflect processing identity, not a new retrieval.
 Unchanged terminal conversions were not rerun solely for this identity delta.
 See `evidence/dependency-identity.json`; earlier full gate-preservation evidence
 remains separately scoped to its recorded code head.
+
+Independent native review of `359054f` fully verified the real19,427-row no-copy
+graph, all91 fields/physical types/points and failed-gate preservation. Two
+concrete validation findings are repaired: contradictory returned CRS authority
+metadata and invalid original retrieval timestamps.19 focused source/registration
+tests pass, including raw quarantine before candidate construction for unknown,
+missing, contradictory, WKT/vertical CRS witnesses and invalid/date-only/naive/
+bool/null/missing timestamps. Real aware offsets are retained exactly. Every
+original attempt receipt time is also checked; no HTTPDate or release-date value
+is substituted for missing observed retrieval evidence.
+
+Returned API pages and `layer.extent.spatialReference` explicitly declare
+ArcGIS102100/EPSG3857. The differing authentic top-level
+`layer.spatialReference={wkid:4326,latestWkid:4326}` is preserved under that exact
+key in provenance and pinned stable before/after. Its service/source/display
+meaning is not established. It is an unresolved metadata discrepancy requiring
+release review, not evidence that4326 equals3857. The draft interprets the
+returned source API points according to their own page/extent declarations and
+performs no client reprojection; original producer storage CRS is not asserted.
+A future change to this observed interpretation requires review. Full extent,
+geometry, CRS, dimensions and objectID identity reconcile before/after capture.
+
+The repaired source-only+catalog run again verifies every19,427-row value/type/
+point, shared17-input provenance, original timestamps, normal discovery and
+idempotency without rerunning unchanged terminal conversions. Exact run IDs,
+preserved CRS witness keys and scope: `evidence/crs-time-repair.json`. Final
+incremental independent review is pending; acceptance remains blocked.

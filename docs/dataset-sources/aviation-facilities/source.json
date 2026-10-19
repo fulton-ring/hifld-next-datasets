@@ -53,7 +53,8 @@
     "exact_request_and_observed_final_URL_binding": true,
     "raw_originals": "evidence/capture-inventory.json; replay_capture.py restores69originalfiles including exact attempt bodies and receipts",
     "runtime_capture": "/workspace/work/hifld-coordinator/20/capture-bound",
-    "all_rows_fields_types_nullability_points_preserved": true
+    "all_rows_fields_types_nullability_points_preserved": true,
+    "crs_description": "Returned source API page CRS, reconciled with captured extent; original producer storage CRS not established"
   },
   "baseline_comparison": {
     "evidence": "evidence/baseline-comparison.json",
@@ -134,7 +135,8 @@
     "Approve publishedbaselinecandidate, versionedallcolumnID/type/null/coveragecontract andcompatibilitymigration",
     "Decide changed population426additions951removals,901pointchanges and9int32vsint64migrations",
     "No approvedShapefile name/type/nullmapping orPMTilesgeometry/ID/coverageprojection; these derivatives explicitlyexcluded andrelease remainsblocked",
-    "Independent review required on final exactPRhead; noCI/fullsuitepassinferred"
+    "Independent review required on final exactPRhead; noCI/fullsuitepassinferred",
+    "Resolve/accept observed layer.spatialReference4326/4326 versus returned-page and extent102100/3857 metadata discrepancy without equatingCRSs or inventing a meaning; no client reprojection occurs"
   ],
   "promotion_allowed": false,
   "merge_allowed": false,
@@ -172,6 +174,33 @@
       "native_and_python_dependencies_bound": true,
       "original_receipts_preserved": true,
       "terminal_conversions_rerun": false
+    },
+    "independent_review_359054f": {
+      "reviewer": "/root/review_verifier",
+      "outcome": "Full real19427data/typedoutputs/no-copygraph/gatepreservation passed; two guard fixes requested",
+      "evidence": "/workspace/work/hifld-coordinator/reviews/aviation-20-359054f/review.json"
+    },
+    "crs_time_guard_repairs": {
+      "source_head": "107701f49116857968face6c4c7b90352d47dc52",
+      "focused_tests": 19,
+      "actual_source_catalog": "evidence/crs-time-repair.json",
+      "terminal_conversions_rerun": false,
+      "native_review": "pending_incremental_exact_head"
+    }
+  },
+  "unresolved_crs_metadata_discrepancy": {
+    "interpretation": "Returned source API coordinates are3857 per every page and the extent; no client reprojection. Differing top-level layer.spatialReference4326 is preserved as an unresolved metadata discrepancy; its service/source/display meaning is not established. Requires independent release review; original producer storage CRS is not asserted.",
+    "layer.extent.spatialReference": {
+      "latestWkid": 3857,
+      "wkid": 102100
+    },
+    "layer.spatialReference": {
+      "latestWkid": 4326,
+      "wkid": 4326
+    },
+    "query_page_spatialReference": {
+      "latestWkid": 3857,
+      "wkid": 102100
     }
   }
 }
