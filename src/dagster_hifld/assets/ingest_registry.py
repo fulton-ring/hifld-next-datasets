@@ -14,6 +14,7 @@ from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_as
 from dagster_hifld.assets.red_cross import red_cross_american_red_cross_divisions
 from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facilities
 from dagster_hifld.assets.bts import bts_amtrak_stations
+from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 
@@ -27,6 +28,7 @@ hifld_ingest_assets = [
     faa_airspace_boundaries,
     faa_aviation_facilities,
     bts_amtrak_stations,
+    bts_alternative_fueling_stations,
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
 ]

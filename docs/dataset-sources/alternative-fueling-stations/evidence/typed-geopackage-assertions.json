@@ -1,0 +1,8 @@
+{
+  "rows": 103502,
+  "all_source_fields_types_nullability_values_equal": true,
+  "all_native_geometry_wkb_equal": true,
+  "source_ids_substituted": false,
+  "internal_driver_fid": "GeoPackage format machinery only; original OBJECTID/id retained as independent named integer columns",
+  "sha256": "5d1a3dc40bdfb7b380f4b90a1795d6a0d10fd664c77c76af5e490c8de1e8f0ee"
+}

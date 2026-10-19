@@ -1,0 +1,22 @@
+{
+  "module": "/workspace/hifld-worker-worktrees/11/src/dagster_hifld/assets/fuel_stations.py",
+  "version": "v0.0.0-research-20261019-3",
+  "local_only": true,
+  "accepted_fixture_before": {
+    "existing-accepted/version/keep.bin": "e823601758450da1c103d773d56bb98b268dd1d1bb0f702044a737bc1dd56924"
+  },
+  "ingest": {
+    "run_id": "cab3f800-825d-426c-b21a-78ae2df9c47e",
+    "success": true
+  },
+  "catalog": {
+    "run_id": "8a7fadee-89df-49d8-9496-3d8f3fa71f89",
+    "success": true,
+    "errors": []
+  },
+  "direct_promotion_rejection": "missing_independent_release_approval_registry",
+  "published_after": {
+    "existing-accepted/version/keep.bin": "e823601758450da1c103d773d56bb98b268dd1d1bb0f702044a737bc1dd56924"
+  },
+  "accepted_preserved": true
+}

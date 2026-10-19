@@ -1,0 +1,24 @@
+{
+  "focused_tests": {
+    "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_dynamic_partitions tests.test_checks tests.test_full_verification -q",
+    "passed": 53,
+    "log_sha256": "7108e7a73a7e03d11c5f26d8734c01a016182fc54ed5b27b0b90e0d37f31f8f9"
+  },
+  "raw_and_candidate_graph": "evidence/draft-materialization.json",
+  "normal_ingest_and_catalog": "evidence/standard-materialization.json",
+  "full_candidate_assertions": "evidence/full-candidate-assertions.json",
+  "full_suite": "Not claimed; missing sibling IaC explicit limitation",
+  "CI": "Not observed or inferred",
+  "promotion_approval": "none",
+  "shared_dependency": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
+  "format_graph": "Final typed input graph running; old generic diagnostic succeeded but had known unacceptable type/value coercions, now replaced by typed bridge.",
+  "discrete_shared_integer_fix": "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
+  "integer_conversion_tests": {
+    "passed": 110,
+    "skipped": 1,
+    "total": 111,
+    "log_sha256": "efb29659b8a06cc2afa41c79e152c3e1f25708ea692f036f41b83442b8aedf79",
+    "scope": "Actual typedGPKG\u2192terminalParquet int32min/max/null and int64min/max,2^53+1/null; originalrecords before DataFrame rounding; invalid values/overflow reject."
+  },
+  "typed_geopackage_assertions": "evidence/typed-geopackage-assertions.json"
+}

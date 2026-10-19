@@ -1,0 +1,1603 @@
+{
+  "approval": "none",
+  "compatibility": {
+    "added_station_ids": 21474,
+    "classification": "Potential breaking change; ID-set turnover,3newsourcefields, physical types and very large location drift need decisions.",
+    "comparison": "evidence/full-comparison.json",
+    "concrete_anomaly": {
+      "id": 390105,
+      "published_location": {
+        "city": "Durham",
+        "country": "US",
+        "latitude": 35.916153,
+        "longitude": -78.844272,
+        "state": "NC",
+        "station_name": "NOT A PUBLIC SITE - IONNA Customer Experience Center"
+      },
+      "published_xy": [
+        -8776904.211,
+        4289090.278999999
+      ],
+      "source_location": {
+        "city": "Adak",
+        "country": "US",
+        "latitude": 51.899819,
+        "longitude": -176.636362,
+        "state": "AK",
+        "station_name": "NOT A PUBLIC SITE - IONNA Customer Experience Center (@East)"
+      },
+      "source_xy": [
+        -19663069.8734,
+        6782031.674599998
+      ]
+    },
+    "geometry_anomaly_diagnostic": "evidence/geometry-anomaly.json",
+    "geometry_changed": 9137,
+    "matched_station_ids": 82028,
+    "removed_station_ids": 13010
+  },
+  "crosswalk": {
+    "reason": "Provider-side HTTP403 Cloudflare challenge after normal public request. No bypass. Matching catalog/inventory descriptions support candidate identity but do not establish crosswalk acceptance.",
+    "status": "explicit_unmatched",
+    "url": "https://doi.org/10.3886/E241367V1"
+  },
+  "external_decisions": [
+    "Accept exact source/distributor lineage and crosswalk unmatched result or supply accepted crosswalk evidence.",
+    "Accept a pinned historical baseline and versioned raw/published schema/ID mapping preserving all identifiers.",
+    "Decide migration for21474added/13010removedstationIDs and source geometry anomaly id390105 (NC\u2192AK). Do not silently accept it.",
+    "Choose daily snapshot version/freshness policy and approved column/date/numeric mapping before release."
+  ],
+  "inventory": {
+    "archive_inventory_modified": "2025-07-28",
+    "archive_url": "https://www.datalumos.org/datalumos/project/238569/version/V1/view",
+    "exact_row": 11,
+    "modified_is_current_release_date": false,
+    "producer_as_listed": "National Renewable Energy Laboratory",
+    "publisher_as_listed": "National Renewable Energy Laboratory (NREL)"
+  },
+  "issue": 11,
+  "pipeline": {
+    "dependency_commit": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
+    "integer_conversion_fix": "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
+    "module": "src/dagster_hifld/assets/fuel_stations.py",
+    "previous_generic_format_diagnostic": "evidence/generated-gpkg-audit.json retains full audit of old experimental GeoJSON\u2192GeoPackage coercions; those artifacts are quarantined and not the typed bridge.",
+    "promotion": "Independent exact-release approval required by shared #417; missing registry rejects. No registry/approval authored here.",
+    "registry": "src/dagster_hifld/assets/ingest_registry.py",
+    "scope": "Working draft raw+typedcandidate graph and normal explicit ingest+catalog graph; local staging only. No API-funded agent/worker. Shared verifier dependency PR421.",
+    "typed_geopackage": "Streaming pyogrio Arrow bridge verified every raw source field/name/physical type/nullability/value and native WKB for103502rows; avoids generic GeoPandas coercion. Internal format fid never replaces OBJECTID/id."
+  },
+  "proposed_contract": {
+    "additional_identifier_bearing_columns": "All80fields preserved, including zip/plus4/agency and network-ID text; lists embedded as strings remain strings. No substitute row IDs. OBJECTID is distributor row ID and is not assumed stable across refreshes.",
+    "candidate_mapping": "Preserve all80raw source fields, names, declared physical types/nullability, raw OBJECTID and producer id. Epoch-ms dates remain integers. GeoParquet geometry retains exact native3857 XY. Original HTTP pages retained losslessly.",
+    "drift_policy": "Pinned unapproved draft source schema signature rejects metadata type/name/nullability changes; failed capture/candidate evidence retained and publication remains behind independent #417 gate.",
+    "identifier_columns": {
+      "canonical_join": "id integer exact; source OBJECTID retained separately, not silently dropped",
+      "published": [
+        "id",
+        "federal_agency_id",
+        "ev_network_ids_station",
+        "ev_network_ids_posts"
+      ],
+      "source": [
+        "OBJECTID",
+        "id",
+        "federal_agency_id",
+        "ev_network_ids_station",
+        "ev_network_ids_posts"
+      ]
+    },
+    "published_candidate_schema": [
+      {
+        "name": "geometry",
+        "nullable": true,
+        "type": "binary"
+      },
+      {
+        "name": "access_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "access_days_time",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "access_detail_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "cards_accepted",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "date_last_confirmed",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "expected_date",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "fuel_type_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "groups_with_access_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "id",
+        "nullable": true,
+        "type": "int64"
+      },
+      {
+        "name": "maximum_vehicle_class",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "open_date",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "owner_type_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "restricted_access",
+        "nullable": true,
+        "type": "double"
+      },
+      {
+        "name": "status_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "funding_sources",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "facility_type",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "station_name",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "station_phone",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "updated_at",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "geocode_status",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "latitude",
+        "nullable": true,
+        "type": "double"
+      },
+      {
+        "name": "longitude",
+        "nullable": true,
+        "type": "double"
+      },
+      {
+        "name": "city",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "country",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "intersection_directions",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "plus4",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "state",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "street_address",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "zip",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "bd_blends",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "cng_dispenser_num",
+        "nullable": true,
+        "type": "double"
+      },
+      {
+        "name": "cng_fill_type_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "cng_has_rng",
+        "nullable": true,
+        "type": "double"
+      },
+      {
+        "name": "cng_psi",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "cng_renewable_source",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "cng_total_compression",
+        "nullable": true,
+        "type": "double"
+      },
+      {
+        "name": "cng_total_storage",
+        "nullable": true,
+        "type": "double"
+      },
+      {
+        "name": "cng_vehicle_class",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "e85_blender_pump",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "e85_other_ethanol_blends",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_connector_types",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_dc_fast_num",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_level1_evse_num",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_level2_evse_num",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_network",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_network_web",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_other_evse",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_pricing",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_renewable_source",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_workplace_charging",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "hy_is_retail",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "hy_pressures",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "hy_standards",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "hy_status_link",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "lng_has_rng",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "lng_renewable_source",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "lng_vehicle_class",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "lpg_nozzle_types",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "lpg_primary",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ng_fill_type_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ng_psi",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ng_vehicle_class",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "rd_blended_with_biodiesel",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "rd_blends",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "rd_blends_fr",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "rd_max_biodiesel_level",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "nps_unit_name",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "access_days_time_fr",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "intersection_directions_fr",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "bd_blends_fr",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "groups_with_access_code_fr",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_pricing_fr",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "federal_agency_id",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "federal_agency_code",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "federal_agency_name",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_network_ids_station",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "ev_network_ids_posts",
+        "nullable": true,
+        "type": "string"
+      },
+      {
+        "name": "bbox",
+        "nullable": true,
+        "type": "struct<xmin: double, ymin: double, xmax: double, ymax: double>"
+      }
+    ],
+    "published_mapping": "Not established. No conversion back to historical strings/doubles or omission of3new fields is authorized.",
+    "raw_schema": [
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "OBJECTID",
+        "null_count": 0,
+        "observed_json_types": {
+          "int": 103502
+        },
+        "proposed_candidate_type": "int64",
+        "published_type": null,
+        "raw_declared_type": "esriFieldTypeOID",
+        "raw_nullable": false
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "access_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "access_days_time",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "access_detail_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cards_accepted",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "date_last_confirmed",
+        "null_count": 318,
+        "observed_json_types": {
+          "NoneType": 318,
+          "int": 103184
+        },
+        "proposed_candidate_type": "int64",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeDate",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "expected_date",
+        "null_count": 101019,
+        "observed_json_types": {
+          "NoneType": 101019,
+          "int": 2483
+        },
+        "proposed_candidate_type": "int64",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeDate",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "fuel_type_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "groups_with_access_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "id",
+        "null_count": 0,
+        "observed_json_types": {
+          "int": 103502
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "int64",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "maximum_vehicle_class",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "open_date",
+        "null_count": 367,
+        "observed_json_types": {
+          "NoneType": 367,
+          "int": 103135
+        },
+        "proposed_candidate_type": "int64",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeDate",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "owner_type_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "related_stations",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": null,
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "restricted_access",
+        "null_count": 7106,
+        "observed_json_types": {
+          "NoneType": 7106,
+          "int": 96396
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "double",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "status_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "funding_sources",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "facility_type",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "station_name",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "station_phone",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "updated_at",
+        "null_count": 0,
+        "observed_json_types": {
+          "int": 103502
+        },
+        "proposed_candidate_type": "int64",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeDate",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "geocode_status",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "latitude",
+        "null_count": 0,
+        "observed_json_types": {
+          "float": 103502
+        },
+        "proposed_candidate_type": "double",
+        "published_type": "double",
+        "raw_declared_type": "esriFieldTypeDouble",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "longitude",
+        "null_count": 0,
+        "observed_json_types": {
+          "float": 103496,
+          "int": 6
+        },
+        "proposed_candidate_type": "double",
+        "published_type": "double",
+        "raw_declared_type": "esriFieldTypeDouble",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "city",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "country",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "intersection_directions",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "plus4",
+        "null_count": 103502,
+        "observed_json_types": {
+          "NoneType": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "state",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "street_address",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "zip",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "bd_blends",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_dispenser_num",
+        "null_count": 102197,
+        "observed_json_types": {
+          "NoneType": 102197,
+          "int": 1305
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "double",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_fill_type_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_has_rng",
+        "null_count": 102339,
+        "observed_json_types": {
+          "NoneType": 102339,
+          "int": 1163
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "double",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_psi",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_renewable_source",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_total_compression",
+        "null_count": 102966,
+        "observed_json_types": {
+          "NoneType": 102966,
+          "int": 536
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "double",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_total_storage",
+        "null_count": 103282,
+        "observed_json_types": {
+          "NoneType": 103282,
+          "int": 220
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "double",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "cng_vehicle_class",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "e85_blender_pump",
+        "null_count": 98446,
+        "observed_json_types": {
+          "NoneType": 98446,
+          "int": 5056
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "e85_other_ethanol_blends",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_connector_types",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_dc_fast_num",
+        "null_count": 86787,
+        "observed_json_types": {
+          "NoneType": 86787,
+          "int": 16715
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_level1_evse_num",
+        "null_count": 102868,
+        "observed_json_types": {
+          "NoneType": 102868,
+          "int": 634
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_level2_evse_num",
+        "null_count": 28550,
+        "observed_json_types": {
+          "NoneType": 28550,
+          "int": 74952
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_network",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_network_web",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_other_evse",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_pricing",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_renewable_source",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_workplace_charging",
+        "null_count": 13075,
+        "observed_json_types": {
+          "NoneType": 13075,
+          "int": 90427
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "hy_is_retail",
+        "null_count": 103428,
+        "observed_json_types": {
+          "NoneType": 103428,
+          "int": 74
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "hy_pressures",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "hy_standards",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "hy_status_link",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "lng_has_rng",
+        "null_count": 103444,
+        "observed_json_types": {
+          "NoneType": 103444,
+          "int": 58
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "lng_renewable_source",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "lng_vehicle_class",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "lpg_nozzle_types",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "lpg_primary",
+        "null_count": 100904,
+        "observed_json_types": {
+          "NoneType": 100904,
+          "int": 2598
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ng_fill_type_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ng_psi",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ng_vehicle_class",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "rd_blended_with_biodiesel",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "rd_blends",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "rd_blends_fr",
+        "null_count": 103502,
+        "observed_json_types": {
+          "NoneType": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "rd_max_biodiesel_level",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "nps_unit_name",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "access_days_time_fr",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "intersection_directions_fr",
+        "null_count": 103502,
+        "observed_json_types": {
+          "NoneType": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "bd_blends_fr",
+        "null_count": 103502,
+        "observed_json_types": {
+          "NoneType": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "groups_with_access_code_fr",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_pricing_fr",
+        "null_count": 103502,
+        "observed_json_types": {
+          "NoneType": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_charging_units",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": null,
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "federal_agency_id",
+        "null_count": 101265,
+        "observed_json_types": {
+          "NoneType": 101265,
+          "int": 2237
+        },
+        "proposed_candidate_type": "int32",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeInteger",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "federal_agency_code",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "federal_agency_name",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_network_ids_station",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      },
+      {
+        "approval": "unapproved",
+        "mapping": "identity; no cast/rename/drop",
+        "name": "ev_network_ids_posts",
+        "null_count": 0,
+        "observed_json_types": {
+          "str": 103502
+        },
+        "proposed_candidate_type": "string",
+        "published_type": "string",
+        "raw_declared_type": "esriFieldTypeString",
+        "raw_nullable": true
+      }
+    ],
+    "status": "UNAPPROVED; reviewable only"
+  },
+  "published_baseline_candidate": {
+    "acceptance": "unapproved_candidate_only",
+    "bytes": 10134712,
+    "catalog_captures": [
+      "evidence/baseline.json",
+      "evidence/baseline_file.json",
+      "evidence/baseline_version.json"
+    ],
+    "catalog_generation": "1704edb3-322d-469c-91da-92902fe76a2d",
+    "gcs_generation": "1791506347426060",
+    "note": "Generation-pinned full object reread matches initial full object and catalog byte size; no acceptance decision recorded.",
+    "rows": 95038,
+    "sha256": "e61fb6e9c0afedd0c8ead2369fefb957b6abb8af096f3dc956d8f7ab7e6eb907",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/geoparquet/alternative-fueling-stations.parquet?generation=1791506347426060",
+    "version": "v1.0.0"
+  },
+  "slug": "alternative-fueling-stations",
+  "source": {
+    "actual_publisher_account": "USDOT_BTS",
+    "anonymous_extraction": {
+      "complete": "Pre/post source counts, full OBJECTID sets, fields, editingInfo agree; all52pages raw receipts verified; no exceededTransferLimit/errors. Full row/geometry assertions persisted separately.",
+      "geometry": "Point, native EPSG:3857, XY",
+      "pages": 52,
+      "preserved_runtime_dir": "/workspace/work/hifld-coordinator/11",
+      "raw_page_bytes": 360428893,
+      "rows": 103502
+    },
+    "authority_evidence": [
+      "evidence/bts_item.json",
+      "evidence/bts_account.json",
+      "evidence/bts_organization.json",
+      "evidence/bts_metadata.xml"
+    ],
+    "cadence": "Daily distribution claimed; anonymous snapshot guards prove only this extraction, not future refresh SLA.",
+    "classification": "official_agency_distribution",
+    "item_id": "9010c04bcdf84c36abb74e98778af579",
+    "landing_url": "https://geodata.bts.gov/datasets/usdot::alternative-fueling-stations/about",
+    "lineage": "BTS NTAD explicitly credits DOE/NLR as producer and BTS as distributor; current page says daily updates, all statuses/access types. This is the inventory-linked delegated distribution, not an Esri livefeeds mirror.",
+    "machine_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0",
+    "organization_id": "xOi1kZaI0eWDREZv",
+    "organization_name": "U.S. Department of Transportation: ArcGIS Online",
+    "producer": "U.S. Department of Energy / National Laboratory of the Rockies (NLR), AFDC",
+    "producer_access": {
+      "afdc_form": "HTTP200 but requires name/email/terms registration; not submitted",
+      "api": "developer.nlr.gov responds API_KEY_MISSING HTTP403 without key; no key invented",
+      "legacy_docs_host": "developer.nrel.gov CONNECT403 persists, while new developer.nlr.gov docs200 and AFDC/BTS200. Do not generalize host-specific failure."
+    },
+    "producer_name_difference": "Inventory retains NREL; current official documentation and BTS identify NLR; do not silently erase historical names.",
+    "publication_date_in_metadata": "2026-10-07",
+    "publication_date_scope": "Metadata collection publication date; not an immutable official vintage for continuously edited feed.",
+    "release_date": "No separate immutable source release identifier established",
+    "source_data_last_edit_utc": "2026-10-18T10:54:01.494000+00:00"
+  },
+  "status": "working_local_draft_pipeline_needs_maintainer_decision"
+}

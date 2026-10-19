@@ -1,0 +1,1653 @@
+{
+  "assets": {
+    "file_geodatabase-578fe12e2bdb": {
+      "file:checksum": "d501105f2200b7ea8d6203954cbd2f42d6b69d",
+      "file:size": 10375249,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/file_geodatabase/alternative-fueling-stations-file_geodatabase.zip",
+      "roles": [
+        "data"
+      ],
+      "title": "alternative-fueling-stations-file_geodatabase.zip",
+      "type": "application/zip"
+    },
+    "geojson-a6ed05409537": {
+      "file:checksum": "d5011040a7efd34e7bb5ab68c0ee02b3de86fc",
+      "file:size": 200347231,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/geojson/alternative-fueling-stations-geojson.geojson",
+      "roles": [
+        "data"
+      ],
+      "title": "alternative-fueling-stations-geojson.geojson",
+      "type": "application/geo+json"
+    },
+    "geopackage-4e54d1dd1e49": {
+      "file:checksum": "d50110f1987fc0ac7dab02f4b9d1cc08696305",
+      "file:size": 50638848,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/geopackage/alternative-fueling-stations-Alternative_Fueling_Stations.gpkg",
+      "roles": [
+        "data"
+      ],
+      "title": "alternative-fueling-stations-Alternative_Fueling_Stations.gpkg",
+      "type": "application/geopackage+sqlite3"
+    },
+    "geoparquet-c06294353b6f": {
+      "file:checksum": "d50110fa2c6bc1dbad355bc364ebb923a43865",
+      "file:size": 10134712,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/geoparquet/alternative-fueling-stations.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "alternative-fueling-stations.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "pmtiles-a0d6bfc05d67": {
+      "file:checksum": "d50110fc6361691629efd893aa23f6887f4f09",
+      "file:size": 38982163,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/pmtiles/alternative-fueling-stations.pmtiles",
+      "roles": [
+        "data"
+      ],
+      "title": "alternative-fueling-stations.pmtiles",
+      "type": "application/vnd.pmtiles"
+    }
+  },
+  "description": "The Alternative Fueling Stations dataset is updated daily from the National Renewable Energy Laboratory (NREL) and is part of the U.S. Department of Transportation (USDOT)/Bureau of Transportation Statistics (BTS) National Transportation Atlas Database (NTAD). For more information about the update cycle and data collection methods, please refer to https://afdc.energy.gov/stations/#/find/nearest?show_about=true. This dataset shows all station access types (public and private) and statuses (available, planned, and temporarily unavailable) by default. To view only publicly available stations, use the access and status filters. The U.S. Department of Energy collects these data in partnership with Clean Cities coalitions and their stakeholders to help fleets and consumers find alternative fueling stations. Clean Cities coalitions foster the nation's economic, environmental, and energy security by working locally to advance affordable, efficient, and clean transportation fuels and technologies. This data can be found on the Alternative Fuels Data Center: https://doi.org/10.21949/1519144. For more information about the data schema and data dictionary, please see https://developer.nrel.gov/docs/transportation/alt-fuel-stations-v1/all/#response-fields",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -162.28634834441414,
+          17.992342639990163,
+          -65.65084245014886,
+          64.85566999995167
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "hifld:agency": "National Renewable Energy Laboratory",
+  "hifld:feature_count": 95038,
+  "hifld:feature_id_column": null,
+  "hifld:geometry_column": "geometry",
+  "hifld:geometry_type": "Point",
+  "hifld:inventory_match_type": null,
+  "hifld:manifest_keys": [
+    "alternative-fueling-stations/metadata/source_manifest.json",
+    "alternative-fueling-stations/alternative-fueling-stations/metadata/source_manifest.json"
+  ],
+  "hifld:manifest_role": "resolved_version",
+  "hifld:metadata_resolved_from": {},
+  "hifld:metadata_sources": [],
+  "hifld:native_bbox": [
+    -18065633.6604,
+    2036652.2837000005,
+    -7308218.3517,
+    9570456.637000002
+  ],
+  "hifld:native_crs": "{\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\", \"base_crs\": {\"coordinate_system\": {\"axis\": [{\"abbreviation\": \"lat\", \"direction\": \"north\", \"name\": \"Latitude\", \"unit\": \"degree\"}, {\"abbreviation\": \"lon\", \"direction\": \"east\", \"name\": \"Longitude\", \"unit\": \"degree\"}], \"subtype\": \"ellipsoidal\"}, \"datum\": {\"ellipsoid\": {\"inverse_flattening\": 298.257223563, \"name\": \"WGS 84\", \"semi_major_axis\": 6378137}, \"name\": \"World Geodetic System 1984\", \"type\": \"GeodeticReferenceFrame\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 4326}, \"name\": \"WGS 84\"}, \"conversion\": {\"method\": {\"id\": {\"authority\": \"EPSG\", \"code\": 1024}, \"name\": \"Popular Visualisation Pseudo Mercator\"}, \"name\": \"unnamed\", \"parameters\": [{\"id\": {\"authority\": \"EPSG\", \"code\": 8801}, \"name\": \"Latitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8802}, \"name\": \"Longitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8806}, \"name\": \"False easting\", \"unit\": \"metre\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8807}, \"name\": \"False northing\", \"unit\": \"metre\", \"value\": 0}]}, \"coordinate_system\": {\"axis\": [{\"abbreviation\": \"\", \"direction\": \"east\", \"name\": \"Easting\", \"unit\": \"metre\"}, {\"abbreviation\": \"\", \"direction\": \"north\", \"name\": \"Northing\", \"unit\": \"metre\"}], \"subtype\": \"Cartesian\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 3857}, \"name\": \"WGS 84 / Pseudo-Mercator\", \"type\": \"ProjectedCRS\"}",
+  "hifld:office": null,
+  "hifld:quality": {
+    "columns_hash": "a9fd409f44a1e07ad39081840ec7a57e326690f27eb7ddc2fcd25d5908c326ba",
+    "invalid_geometry_count": 0,
+    "manifest_href": "metadata/quality_manifest.json",
+    "null_geometry_count": 0,
+    "passed": true,
+    "provenance": "production_metadata_and_parquet_footer_spike",
+    "sampled_feature_count": null,
+    "sampled_invalid_geometry_count": null,
+    "sampled_null_geometry_count": null
+  },
+  "hifld:source_dates": {
+    "issued": "2024-02-23",
+    "modified": "2025-07-28",
+    "provenance": {
+      "issued": "inventory",
+      "modified": "inventory"
+    }
+  },
+  "hifld:spatial_status": "spatial",
+  "id": "hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0",
+  "keywords": [
+    "Energy",
+    "Transportation Ground"
+  ],
+  "license": "other",
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/alternative-fueling-stations/alternative-fueling-stations/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/collection.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://www.datalumos.org/datalumos/project/238569/version/V1/view",
+      "rel": "derived_from"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/alternative-fueling-stations/alternative-fueling-stations/v1.0.0/pmtiles/alternative-fueling-stations.pmtiles",
+      "rel": "pmtiles",
+      "title": "alternative-fueling-stations.pmtiles",
+      "type": "application/vnd.pmtiles"
+    }
+  ],
+  "providers": [
+    {
+      "name": "National Renewable Energy Laboratory (NREL)",
+      "roles": [
+        "producer"
+      ]
+    },
+    {
+      "name": "HIFLD Next",
+      "roles": [
+        "host"
+      ],
+      "url": "https://hifld.publicenvirodata.org"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/table/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/web-map-links/v1.3.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "table:columns": [
+    {
+      "is_geometry": true,
+      "name": "geometry",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "public",
+        "public",
+        "private",
+        "private",
+        "public"
+      ],
+      "is_geometry": false,
+      "length": 7,
+      "name": "access_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "private",
+        "public"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "8:30am-8pm daily",
+        "24 hours daily",
+        "",
+        "",
+        "7am-7pm M-Th and Sat, 7am-8pm F, 9am-5pm Sun"
+      ],
+      "is_geometry": false,
+      "length": 196,
+      "name": "access_days_time",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        "CALL"
+      ],
+      "is_geometry": false,
+      "length": 23,
+      "name": "access_detail_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "CALL",
+        "CREDIT_CARD_AFTER_HOURS",
+        "CREDIT_CARD_ALWAYS",
+        "FLEET",
+        "GOVERNMENT",
+        "KEY_AFTER_HOURS",
+        "KEY_ALWAYS",
+        "LIMITED_HOURS"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "A Cash D M V",
+        "",
+        "",
+        "",
+        "A Cash D M V"
+      ],
+      "is_geometry": false,
+      "length": 106,
+      "name": "cards_accepted",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2024-08-15T00:00:00+00:00",
+        "2024-06-13T00:00:00+00:00",
+        "2025-01-13T00:00:00+00:00",
+        "2024-02-12T00:00:00+00:00",
+        "2025-05-12T00:00:00+00:00"
+      ],
+      "is_geometry": false,
+      "length": 25,
+      "name": "date_last_confirmed",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2025-10-22T00:00:00+00:00",
+        "2025-10-22T00:00:00+00:00",
+        "2024-01-01T00:00:00+00:00",
+        "2025-03-01T00:00:00+00:00",
+        "2025-10-22T00:00:00+00:00"
+      ],
+      "is_geometry": false,
+      "length": 25,
+      "name": "expected_date",
+      "null_count": 4925,
+      "nullable": true,
+      "numNullValues": 4925,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "LPG",
+        "ELEC",
+        "E85",
+        "ELEC",
+        "LPG"
+      ],
+      "is_geometry": false,
+      "length": 4,
+      "name": "fuel_type_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "BD",
+        "CNG",
+        "E85",
+        "ELEC",
+        "HY",
+        "LNG",
+        "LPG"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Public",
+        "Public",
+        "Private",
+        "Private",
+        "Public - Call ahead"
+      ],
+      "is_geometry": false,
+      "length": 64,
+      "name": "groups_with_access_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "15811",
+        "45774",
+        "48555",
+        "47791",
+        "19734"
+      ],
+      "is_geometry": false,
+      "max": "49521.0",
+      "min": "17.0",
+      "name": "id",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "HD",
+        "LD",
+        "",
+        "LD",
+        "HD"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "maximum_vehicle_class",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "HD",
+        "LD",
+        "MD"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2009-06-19T00:00:00+00:00",
+        "2009-01-01T00:00:00+00:00",
+        "2009-01-01T00:00:00+00:00",
+        "2010-01-31T00:00:00+00:00",
+        "2006-12-15T00:00:00+00:00"
+      ],
+      "is_geometry": false,
+      "length": 25,
+      "name": "open_date",
+      "null_count": 23,
+      "nullable": true,
+      "numNullValues": 23,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "P",
+        "LG",
+        "FG",
+        "P",
+        "P"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "owner_type_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "FG",
+        "J",
+        "LG",
+        "P",
+        "SG",
+        "T"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0.0",
+        "0.0",
+        "0.0",
+        "1.0",
+        "0.0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "0.0",
+      "name": "restricted_access",
+      "null_count": 1373,
+      "nullable": true,
+      "numNullValues": 1373,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "E",
+        "E",
+        "E",
+        "E",
+        "E"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "status_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "E",
+        "P",
+        "T"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 0,
+      "name": "funding_sources",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        ""
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "CAMPGROUND",
+        "LIBRARY",
+        "FED_GOV",
+        "CAR_DEALER",
+        "RENTAL_CAR_RETURN"
+      ],
+      "is_geometry": false,
+      "length": 25,
+      "name": "facility_type",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Grants KOA",
+        "Horry County Library",
+        "Forest Service - Land Between the Lakes",
+        "O'Neil Nissan",
+        "U-Haul"
+      ],
+      "is_geometry": false,
+      "length": 88,
+      "name": "station_name",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "505-287-4376  888-562-5608",
+        "843-915-7323",
+        "",
+        "215-674-9300",
+        "6144786620"
+      ],
+      "is_geometry": false,
+      "length": 26,
+      "name": "station_phone",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2025-02-12T00:16:32+00:00",
+        "2025-02-12T00:16:32+00:00",
+        "2025-02-12T00:16:32+00:00",
+        "2025-02-12T00:16:32+00:00",
+        "2025-05-12T16:14:03+00:00"
+      ],
+      "is_geometry": false,
+      "length": 25,
+      "name": "updated_at",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "200-9",
+        "200-9",
+        "GPS",
+        "200-8",
+        "200-9"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "geocode_status",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "200-6",
+        "200-8",
+        "200-9",
+        "GPS"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "35.144611",
+        "33.841727",
+        "36.777731",
+        "40.2108",
+        "39.956715"
+      ],
+      "is_geometry": false,
+      "max": "55.47712271190559",
+      "min": "19.65101",
+      "name": "latitude",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "-107.872896",
+        "-79.051177",
+        "-88.062933",
+        "-75.10535",
+        "-82.905265"
+      ],
+      "is_geometry": false,
+      "max": "-68.009825",
+      "min": "-159.476393",
+      "name": "longitude",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "Grants",
+        "Conway",
+        "Golden Pond",
+        "Warminster",
+        "Columbus"
+      ],
+      "is_geometry": false,
+      "length": 30,
+      "name": "city",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "US",
+        "US",
+        "US",
+        "US",
+        "US"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "country",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "US"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "From I-40, exit 81, south 0.5 mile on NM-53, station on left, look for red/yellow 'RV' sign",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 364,
+      "name": "intersection_directions",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "plus4",
+      "null_count": 5000,
+      "nullable": true,
+      "numNullValues": 5000,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "NM",
+        "SC",
+        "KY",
+        "PA",
+        "OH"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "state",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "26 Cibola Sands Loop",
+        "801 Main St",
+        "238 Visitor Center Dr",
+        "849 W Street Rd",
+        "3500 E Main St"
+      ],
+      "is_geometry": false,
+      "length": 50,
+      "name": "street_address",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "87020",
+        "29526",
+        "42211",
+        "18974",
+        "43213"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "zip",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 34,
+      "name": "bd_blends",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "B20",
+        "B20 in summer",
+        "B20 in summer, B10 in winter",
+        "B20 in summer, B5 in winter",
+        "B20, B10",
+        "B20, B5",
+        "B20, any blend up to B20 available",
+        "B30, any blend up to B30 available",
+        "B99",
+        "B99 in summer, B20",
+        "B99 in summer, B50 in winter",
+        "B99, B20",
+        "B99, B20, B5"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1.0",
+        "1.0",
+        "2.0",
+        "3.0",
+        "1.0"
+      ],
+      "is_geometry": false,
+      "max": "65.0",
+      "min": "-8.0",
+      "name": "cng_dispenser_num",
+      "null_count": 4550,
+      "nullable": true,
+      "numNullValues": 4550,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "cng_fill_type_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "B",
+        "Q",
+        "T"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0.0",
+        "1.0",
+        "0.0",
+        "1.0",
+        "1.0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "0.0",
+      "name": "cng_has_rng",
+      "null_count": 4648,
+      "nullable": true,
+      "numNullValues": 4648,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 9,
+      "name": "cng_psi",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "2400",
+        "3000",
+        "3000 3600",
+        "3600"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 10,
+      "name": "cng_renewable_source",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "LANDFILL",
+        "LIVESTOCK",
+        "NONE",
+        "WASTEWATER"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "116.0",
+        "5700.0",
+        "760.0",
+        "400.0",
+        "18.0"
+      ],
+      "is_geometry": false,
+      "max": "8250.0",
+      "min": "2.0",
+      "name": "cng_total_compression",
+      "null_count": 4725,
+      "nullable": true,
+      "numNullValues": 4725,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "57855.0",
+        "33000.0",
+        "66000.0",
+        "7380.0",
+        "36000.0"
+      ],
+      "is_geometry": false,
+      "max": "593136.0",
+      "min": "0.0",
+      "name": "cng_total_storage",
+      "null_count": 4888,
+      "nullable": true,
+      "numNullValues": 4888,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "cng_vehicle_class",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "HD",
+        "LD",
+        "MD"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0.0",
+        "0.0",
+        "0.0",
+        "1.0",
+        "0.0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "0.0",
+      "name": "e85_blender_pump",
+      "null_count": 3835,
+      "nullable": true,
+      "numNullValues": 3835,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 38,
+      "name": "e85_other_ethanol_blends",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "[\"E15\",\"E20-E25\",\"E30-E35\",\"E40-Plus\"]",
+        "[\"E15\",\"E20-E25\",\"E30-E35\"]",
+        "[\"E15\",\"E20-E25\",\"E40-Plus\"]",
+        "[\"E15\",\"E20-E25\"]",
+        "[\"E15\",\"E30-E35\",\"E40-Plus\"]",
+        "[\"E15\",\"E30-E35\"]",
+        "[\"E15\",\"E40-Plus\"]",
+        "[\"E15\"]",
+        "[\"E20-E25\",\"E30-E35\",\"E40-Plus\"]",
+        "[\"E20-E25\",\"E30-E35\"]",
+        "[\"E20-E25\"]",
+        "[\"E30-E35\",\"E40-Plus\"]",
+        "[\"E30-E35\"]",
+        "[\"E40-Plus\"]"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "[\"J1772\"]",
+        "",
+        "[\"J1772\"]",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 32,
+      "name": "ev_connector_types",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "[\"CHADEMO\",\"J1772\",\"J1772COMBO\"]",
+        "[\"CHADEMO\",\"J1772\",\"NEMA515\"]",
+        "[\"CHADEMO\",\"J1772\"]",
+        "[\"CHADEMO\",\"J1772COMBO\"]",
+        "[\"CHADEMO\"]",
+        "[\"J1772\",\"J1772COMBO\"]",
+        "[\"J1772\",\"NEMA1450\"]",
+        "[\"J1772\",\"NEMA515\"]",
+        "[\"J1772\",\"NEMA520\"]",
+        "[\"J1772\",\"TESLA\"]",
+        "[\"J1772\"]",
+        "[\"NEMA520\"]"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1.0",
+        "1.0",
+        "1.0",
+        "1.0",
+        "2.0"
+      ],
+      "is_geometry": false,
+      "max": "12.0",
+      "min": "1.0",
+      "name": "ev_dc_fast_num",
+      "null_count": 4657,
+      "nullable": true,
+      "numNullValues": 4657,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "2.0",
+        "1.0",
+        "2.0",
+        "1.0",
+        "3.0"
+      ],
+      "is_geometry": false,
+      "max": "42.0",
+      "min": "1.0",
+      "name": "ev_level1_evse_num",
+      "null_count": 4956,
+      "nullable": true,
+      "numNullValues": 4956,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "2.0",
+        "1.0",
+        "1.0",
+        "7.0",
+        "1.0"
+      ],
+      "is_geometry": false,
+      "max": "338.0",
+      "min": "1.0",
+      "name": "ev_level2_evse_num",
+      "null_count": 3117,
+      "nullable": true,
+      "numNullValues": 3117,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "Non-Networked",
+        "",
+        "Non-Networked",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 19,
+      "name": "ev_network",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "ChargePoint Network",
+        "Non-Networked",
+        "OpConnect",
+        "POWERFLEX",
+        "SHELL_RECHARGE"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 60,
+      "name": "ev_network_web",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "https://opconnect-ev.com",
+        "https://www.chargepoint.com",
+        "https://www.powerflex.com",
+        "https://www.shell.us/motorist/electric-vehicle-charging.html"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 54,
+      "name": "ev_other_evse",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "1 Conductive 120V",
+        "1 LP Inductive",
+        "1 SP Inductive",
+        "1 SP Inductive  1 Tesla Conductive",
+        "2 SP Inductive",
+        "2 SP Inductive  1 Avcon Conductive  1 Tesla Conductive",
+        "2 Tesla Conductive",
+        "7 Conductive 120V"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "Free",
+        "",
+        "Free",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 85,
+      "name": "ev_pricing",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "ev_renewable_source",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "HYDRO",
+        "NONE",
+        "SOLAR",
+        "WIND"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0.0",
+        "0.0",
+        "0.0",
+        "1.0",
+        "0.0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "0.0",
+      "name": "ev_workplace_charging",
+      "null_count": 3102,
+      "nullable": true,
+      "numNullValues": 3102,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "1.0",
+        "1.0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "1.0",
+      "name": "hy_is_retail",
+      "null_count": 4998,
+      "nullable": true,
+      "numNullValues": 4998,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 13,
+      "name": "hy_pressures",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "[\"350\",\"700\"]",
+        "[\"350\"]"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 9,
+      "name": "hy_standards",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "[\"J2601\"]"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 45,
+      "name": "hy_status_link",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "http://m.cafcp.org/content/emeryville-upgrade",
+        "https://cafcp.org/stationmap",
+        "https://m.cafcp.org/content/torrance-0"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1.0",
+        "1.0",
+        "1.0",
+        "0.0",
+        "1.0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "0.0",
+      "name": "lng_has_rng",
+      "null_count": 4968,
+      "nullable": true,
+      "numNullValues": 4968,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 9,
+      "name": "lng_renewable_source",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "LIVESTOCK",
+        "NONE"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "lng_vehicle_class",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "HD"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "[\"ACME\"]",
+        "",
+        "",
+        "",
+        "[\"ACME\",\"QUICK_CONNECT\"]"
+      ],
+      "is_geometry": false,
+      "length": 24,
+      "name": "lpg_nozzle_types",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "[\"ACME\",\"QUICK_CONNECT\"]",
+        "[\"ACME\"]",
+        "[\"QUICK_CONNECT\"]"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0.0",
+        "0.0",
+        "1.0",
+        "1.0",
+        "0.0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "0.0",
+      "name": "lpg_primary",
+      "null_count": 3887,
+      "nullable": true,
+      "numNullValues": 3887,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "ng_fill_type_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "B",
+        "Q",
+        "T"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 9,
+      "name": "ng_psi",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "2400",
+        "3000",
+        "3000 3600",
+        "3600"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "ng_vehicle_class",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "HD",
+        "LD",
+        "MD"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 0,
+      "name": "rd_blended_with_biodiesel",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        ""
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 0,
+      "name": "rd_blends",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        ""
+      ],
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "rd_blends_fr",
+      "null_count": 5000,
+      "nullable": true,
+      "numNullValues": 5000,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 0,
+      "name": "rd_max_biodiesel_level",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        ""
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 47,
+      "name": "nps_unit_name",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "Santa Monica Mountains National Recreation Area"
+      ],
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "access_days_time_fr",
+      "null_count": 5000,
+      "nullable": true,
+      "numNullValues": 5000,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "intersection_directions_fr",
+      "null_count": 5000,
+      "nullable": true,
+      "numNullValues": 5000,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "bd_blends_fr",
+      "null_count": 5000,
+      "nullable": true,
+      "numNullValues": 5000,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Public",
+        "Public",
+        "Priv\u00e9",
+        "Priv\u00e9",
+        "Public - Appeler \u00e0 l'avance"
+      ],
+      "is_geometry": false,
+      "length": 79,
+      "name": "groups_with_access_code_fr",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "ev_pricing_fr",
+      "null_count": 5000,
+      "nullable": true,
+      "numNullValues": 5000,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "22.0",
+        "26.0",
+        "26.0",
+        "5.0",
+        "26.0"
+      ],
+      "is_geometry": false,
+      "max": "26.0",
+      "min": "4.0",
+      "name": "federal_agency_id",
+      "null_count": 4876,
+      "nullable": true,
+      "numNullValues": 4876,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "USDA",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 4,
+      "name": "federal_agency_code",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "DA",
+        "DAF",
+        "DHS",
+        "DOC",
+        "DOE",
+        "DOI",
+        "DOJ",
+        "DON",
+        "HHS",
+        "NASA",
+        "SI",
+        "SSA",
+        "USDA",
+        "USMC",
+        "VA"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "U.S. Department of Agriculture",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 45,
+      "name": "federal_agency_name",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "",
+        "Department of Air Force",
+        "Department of Army",
+        "Department of Commerce",
+        "Department of Health and Human Services",
+        "Department of Homeland Security",
+        "Department of Justice",
+        "Department of Navy",
+        "Department of Veterans Affairs",
+        "Department of the Interior",
+        "National Aeronautics and Space Administration",
+        "Smithsonian Institution",
+        "Social Security Administration",
+        "U.S. Department of Agriculture",
+        "U.S. Department of Energy",
+        "United States Marine Corps"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 17,
+      "name": "ev_network_ids_station",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "is_geometry": false,
+      "length": 81,
+      "name": "ev_network_ids_posts",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    }
+  ],
+  "title": "Alternative Fueling Stations",
+  "type": "Collection"
+}
