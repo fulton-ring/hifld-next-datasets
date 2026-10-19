@@ -1,6 +1,8 @@
 """Draft source fidelity/denial behavior; fixtures confer no release approval."""
 import copy
 import json
+import sqlite3
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -158,7 +160,18 @@ class AquifersTests(unittest.TestCase):
                     source.inspect_archive(CAPTURES.joinpath('zip.body').read_bytes(),Path(tmp))
 
 
-    def assert_cached_self_repin_rejected(self, storage, prefix, kwargs, root):
+    @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
+    def test_real_cached_geopackage_metadata_self_repin_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp)
+            kwargs=dict(archive_path=CAPTURES/'zip.body',receipt_path=CAPTURES/'zip.json')
+            first=source.stage_aquifers_candidate(storage,**kwargs)
+            prefix=Path(tmp,'aquifers','aquifers',first['version'])
+            self.assert_cached_self_repin_rejected(storage,prefix,kwargs,Path(tmp),cases=[
+                'geopackage-contents-crs','geopackage-contents-bounds','geopackage-column-crs',
+                'geopackage-srs-definition','geopackage-srs-authority','geopackage-rtree-bounds','geopackage-header-crs','geopackage-header-bounds'])
+
+    def assert_cached_self_repin_rejected(self, storage, prefix, kwargs, root, cases=None):
         marker=prefix/'metadata/aquifers_candidate_ready.json'
         original_marker=marker.read_bytes()
         parquet=prefix/'candidate/typed-source.parquet'
@@ -172,7 +185,7 @@ class AquifersTests(unittest.TestCase):
         sentinel=root/'published/prior-local-accepted-fixture'
         sentinel.parent.mkdir();sentinel.write_bytes(b'prior local fixture; no dataset acceptance')
         extra='candidate/unapproved-extra.parquet'
-        cases=['parquet-value','parquet-integer-width','parquet-native-geometry',
+        cases=cases or ['parquet-value','parquet-integer-width','parquet-native-geometry',
                'parquet-nullability','parquet-malformed-geometry','geopackage-value','provenance',
                'extra-output','missing-output','nonobject-roster']
         observed=[]
@@ -194,6 +207,27 @@ class AquifersTests(unittest.TestCase):
                     table=table.set_column(table.schema.get_field_index('geometry'),table.schema.field('geometry'),pa.array(values,pa.binary()))
                 pq.write_table(table,parquet)
                 ready['objects']['candidate/typed-source.parquet']=source.sha(parquet.read_bytes())
+            elif case.startswith('geopackage-') and case!='geopackage-value':
+                with sqlite3.connect(geopackage) as database:
+                    statements={
+                        'geopackage-contents-crs': 'UPDATE gpkg_contents SET srs_id=4326',
+                        'geopackage-contents-bounds': 'UPDATE gpkg_contents SET min_x=min_x+1',
+                        'geopackage-column-crs': 'UPDATE gpkg_geometry_columns SET srs_id=4326',
+                        'geopackage-srs-definition': "UPDATE gpkg_spatial_ref_sys SET definition=(SELECT definition FROM gpkg_spatial_ref_sys WHERE srs_id=4326) WHERE srs_id=4269",
+                        'geopackage-srs-authority': 'UPDATE gpkg_spatial_ref_sys SET organization_coordsys_id=4326 WHERE srs_id=4269',
+                        'geopackage-rtree-bounds': 'UPDATE rtree_aquifers_geom SET minx=minx+1 WHERE id=1'}
+                    if case in statements:database.execute(statements[case])
+                    else:
+                        fid,body=database.execute('SELECT fid,geom FROM aquifers ORDER BY fid LIMIT 1').fetchone()
+                        changed=bytearray(body);endian='<' if body[3]&1 else '>'
+                        if case=='geopackage-header-crs':struct.pack_into(endian+'i',changed,4,4326)
+                        else:struct.pack_into(endian+'d',changed,8,struct.unpack_from(endian+'d',body,8)[0]+1)
+                        # Keep unrelated RTree rows intact when SQL triggers execute.
+                        database.create_function('ST_IsEmpty',1,lambda value:False)
+                        for name,index in [('ST_MinX',0),('ST_MaxX',1),('ST_MinY',2),('ST_MaxY',3)]:
+                            database.create_function(name,1,lambda value,index=index:struct.unpack_from(endian+'dddd',body,8)[index])
+                        database.execute('UPDATE aquifers SET geom=? WHERE fid=?',(bytes(changed),fid))
+                ready['objects']['geopackage/aquifers.gpkg']=source.sha(geopackage.read_bytes())
             elif case=='geopackage-value':
                 with fiona.open(geopackage) as dataset:
                     physical,crs=dict(dataset.schema),dataset.crs
@@ -226,7 +260,9 @@ class AquifersTests(unittest.TestCase):
                 'extra-output':'existing_candidate_inventory_conflict',
                 'missing-output':'existing_candidate_inventory_conflict',
                 'nonobject-roster':'existing_candidate_inventory_must_be_object'}
-            if case=='parquet-malformed-geometry':
+            if case.startswith('geopackage-') and case!='geopackage-value':
+                self.assertIn('cached_geopackage_native_crs_bounds_or_header_drift',str(caught.exception))
+            elif case=='parquet-malformed-geometry':
                 self.assertIsInstance(caught.exception.__cause__,shapely.errors.ShapelyError)
             else:
                 self.assertIn(expected_reasons[case],str(caught.exception))

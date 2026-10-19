@@ -296,6 +296,43 @@ def candidate_arrow_schema(audit: dict) -> pa.Schema:
     return schema.with_metadata({b'geo': encode(geo)})
 
 
+def geopackage_native_metadata(path: Path) -> tuple:
+    """Exact declarations and per-row native headers, independently of GDAL CRS selection."""
+    with sqlite3.connect(f'file:{path}?mode=ro', uri=True) as database:
+        declarations = tuple(database.execute(query).fetchall() for query in (
+            'SELECT * FROM gpkg_spatial_ref_sys ORDER BY srs_id',
+            'SELECT * FROM gpkg_contents ORDER BY table_name',
+            'SELECT * FROM gpkg_geometry_columns ORDER BY table_name',
+            'SELECT * FROM rtree_aquifers_geom ORDER BY id'))
+        headers = []
+        for fid, geometry in database.execute('SELECT fid,geom FROM aquifers ORDER BY fid'):
+            if not isinstance(geometry, bytes) or len(geometry) < 8 or geometry[:3] != b'GP\x00':
+                raise AquifersQuarantineError('cached_geopackage_invalid_native_header')
+            envelope = (geometry[3] >> 1) & 7
+            if envelope > 4:
+                raise AquifersQuarantineError('cached_geopackage_invalid_native_envelope')
+            size = 8 + (0, 32, 48, 48, 64)[envelope]
+            if len(geometry) <= size:
+                raise AquifersQuarantineError('cached_geopackage_truncated_native_header')
+            headers.append((fid, geometry[:size]))
+    return declarations, headers
+
+
+def validate_cached_geopackage_metadata(path: Path, records: bytes) -> None:
+    # Reproduce GDAL's exact declarations/envelopes from original native rows.
+    # Its stored extrema can differ in their final bit from coordinate extrema;
+    # no invented tolerance or geometry repair is used to reconcile the cache.
+    with tempfile.TemporaryDirectory(prefix='aquifers-native-metadata-') as temporary:
+        fresh = Path(temporary) / 'original.gpkg'
+        with fiona.open(fresh, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
+                        schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
+            destination.writerecords(json.loads(line) for line in records.splitlines())
+        with sqlite3.connect(fresh) as database:
+            database.execute("UPDATE gpkg_contents SET last_change='2003-10-01T00:00:00.000Z'")
+        if geopackage_native_metadata(path) != geopackage_native_metadata(fresh):
+            raise AquifersQuarantineError('cached_geopackage_native_crs_bounds_or_header_drift')
+
+
 def validate_cached_payloads(path: Path, records: bytes, audit: dict) -> None:
     """Fresh physical/semantic checks against the decoded pinned producer rows.
 
@@ -303,6 +340,7 @@ def validate_cached_payloads(path: Path, records: bytes, audit: dict) -> None:
     Known native invalid geometries are preserved, not repaired to pass a check.
     """
     geopackage = path / 'geopackage' / f'{SLUG}.gpkg'
+    validate_cached_geopackage_metadata(geopackage, records)
     if fiona.listlayers(geopackage) != [SLUG]:
         raise AquifersQuarantineError('cached_geopackage_unexpected_layers')
     expected_schema = {'properties': {

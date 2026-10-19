@@ -7,6 +7,7 @@ import argparse
 import importlib
 import json
 import os
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -32,13 +33,15 @@ def main():
     parser.add_argument('--archive',type=Path,required=True)
     parser.add_argument('--receipt',type=Path,required=True)
     parser.add_argument('--workdir',type=Path,required=True)
+    parser.add_argument('--cache-metadata-probes',action='store_true')
     args=parser.parse_args();root=args.workdir.resolve();root.mkdir(parents=True,exist_ok=True)
     home=root/'dagster';home.mkdir(exist_ok=True);(home/'dagster.yaml').write_text('telemetry:\n  enabled: false\n')
     stage=root/'staging';destination=root/'published'
     for key in ['HIFLD_STAGING_BUCKET','HIFLD_DATASETS_BUCKET','HIFLD_RELEASE_APPROVALS']:
         os.environ.pop(key,None)
     os.environ.update(DAGSTER_HOME=str(home),HIFLD_STAGING_DIR=str(stage),HIFLD_DATASETS_DIR=str(destination))
-    defs=importlib.import_module('dagster_hifld.definitions').defs
+    definitions=importlib.import_module('dagster_hifld.definitions')
+    defs=definitions.defs
     staging=defs.resources['staging_storage'];published=defs.resources['published_storage']
     assert staging.use_local and not staging.bucket and staging.local_dir==str(stage)
     assert published.use_local and not published.bucket and published.local_dir==str(destination)
@@ -87,6 +90,50 @@ def main():
         repeated=job.execute_in_process(instance=instance,run_config=config)
         assert repeated.success and before==snapshot(prefix)
         report['runs'].append({'step':'real_source_idempotent_rerun','run_id':repeated.run_id,'success':True})
+        if args.cache_metadata_probes:
+            # Mutate only disposable isolated test storage. Runtime quarantines the
+            # entire rejected version; the harness restores original bytes only
+            # after verifying failure and preservation, then exercises real reuse.
+            gpkg=prefix/'geopackage/aquifers.gpkg';marker=prefix/'metadata/aquifers_candidate_ready.json'
+            original_gpkg=gpkg.read_bytes();original_marker=marker.read_bytes()
+            raw_before=snapshot(stage/'_raw-captures')
+            prior=destination/'retained/metadata-probe-prior-local-fixture.bin'
+            prior.parent.mkdir(parents=True,exist_ok=True);prior.write_bytes(b'prior fixture; no dataset approval')
+            prior_before=snapshot(destination)
+            report['cache_metadata_probes']=[]
+            for name,statement in [
+                ('contents-crs', 'UPDATE gpkg_contents SET srs_id=4326'),
+                ('srs-definition', "UPDATE gpkg_spatial_ref_sys SET definition=(SELECT definition FROM gpkg_spatial_ref_sys WHERE srs_id=4326) WHERE srs_id=4269")]:
+                with sqlite3.connect(gpkg) as database:database.execute(statement)
+                changed_hash=sha256_file(gpkg)
+                ready=json.loads(original_marker);ready['objects']['geopackage/aquifers.gpkg']=changed_hash
+                marker.write_bytes(source.encode(ready))
+                result=job.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+                assert not result.success
+                failures=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
+                assert any('cached_geopackage_native_crs_bounds_or_header_drift' in error for error in failures)
+                assert not prefix.exists()
+                assert ('aquifers','aquifers',candidate['version']) not in list(definitions._iter_staged_version_paths(staging))
+                assert raw_before==snapshot(stage/'_raw-captures') and prior_before==snapshot(destination)
+                quarantined=[p for p in stage.glob('_quarantine/aquifers/*/*/candidate')
+                             if p.joinpath('geopackage/aquifers.gpkg').is_file()
+                             and sha256_file(p/'geopackage/aquifers.gpkg')==changed_hash]
+                assert len(quarantined)==1
+                retained=quarantined[0]
+                assert all(sha256_file(retained/key)==digest for key,digest in before.items()
+                           if key not in {'geopackage/aquifers.gpkg','metadata/aquifers_candidate_ready.json'})
+                report['runs'].append({'step':'real_cached_metadata_'+name+'_denied','run_id':result.run_id,'success':False})
+                report['cache_metadata_probes'].append({'case':name,'only_GPKG_and_ready_hash_mutated':True,
+                    'changed_geopackage_sha256':changed_hash,'original_geopackage_sha256':source.sha(original_gpkg),
+                    'canonical_version_absent_after_failure':True,'quarantine':str(retained.relative_to(stage)),
+                    'other_candidate_raw_and_prior_fixture_preserved':True})
+                retained.joinpath('geopackage/aquifers.gpkg').write_bytes(original_gpkg)
+                retained.joinpath('metadata/aquifers_candidate_ready.json').write_bytes(original_marker)
+                retained.rename(prefix)
+                restored=job.execute_in_process(instance=instance,run_config=config)
+                assert restored.success and snapshot(prefix)==before
+                report['runs'].append({'step':'restored_original_fixture_'+name+'_reuse','run_id':restored.run_id,'success':True})
+                save()
         partition=build_publish_partition_key('aquifers','aquifers',candidate['version'])
         instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[partition])
         sentinel=destination/'retained/accepted-local-fixture.bin';sentinel.parent.mkdir(parents=True,exist_ok=True)
