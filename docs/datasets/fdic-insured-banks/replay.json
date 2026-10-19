@@ -1,0 +1,316 @@
+{
+  "approvals": {
+    "CRS_interpretation": false,
+    "baseline": false,
+    "contract": false,
+    "release": false,
+    "source_selection": false
+  },
+  "artifact_bytes": null,
+  "artifact_name": "fdic-82-original-captures.tar.gz",
+  "artifact_sha256": null,
+  "body_pins_authority": "src/dagster_hifld/sources/fdic_locations_spec.py:PINS",
+  "classification": "Complete original unapproved FDIC and HIFLD inputs; external artifact required, not a live-refetch recipe.",
+  "complete_bodies": 37,
+  "complete_body_bytes": 219724037,
+  "files": {
+    "baseline-collection.json.body": {
+      "bytes": 15688,
+      "sha256": "89c63a13a395740cd2968e94869c164a0da977b00d88d2653a8237153760ab82"
+    },
+    "baseline-collection.json.receipt.json": {
+      "bytes": 860,
+      "sha256": "8bb14a56667f82ebba909ff47317225a7bd0bf68c43f2073e938064b1db02f47"
+    },
+    "baseline-geojson__fdic-insured-banks-geojson.geojson.body": {
+      "bytes": 79085627,
+      "sha256": "6b5977fa404a179d3b7b50dfd8b0541332211248cc5ac4926f2ecf895b832e86"
+    },
+    "baseline-geojson__fdic-insured-banks-geojson.geojson.receipt.json": {
+      "bytes": 924,
+      "sha256": "ba01c5f42cfa6c1e08d9a8321c1e968a6569b4e5c39c291380fe3920f6d82f5e"
+    },
+    "baseline-geopackage__fdic-insured-banks.gpkg.body": {
+      "bytes": 30941184,
+      "sha256": "75f5401d8818f206e6f252ad30598108c4d31ab4900bee3e60ec7ef65bf9905f"
+    },
+    "baseline-geopackage__fdic-insured-banks.gpkg.receipt.json": {
+      "bytes": 918,
+      "sha256": "c804366cff7562c853a4548f9f669129c45d629c2762df9c0648ff63b1aa415d"
+    },
+    "baseline-metadata__data_dictionary.json.body": {
+      "bytes": 15991,
+      "sha256": "e1907977d6c5a19d48b2fa554be1ebeaf7ed9921cb1207cec23be5e0a53687e6"
+    },
+    "baseline-metadata__data_dictionary.json.receipt.json": {
+      "bytes": 896,
+      "sha256": "7d73b6b426f1f184987377469dc29ca740768da7d583a0e02b9a202c98577d0a"
+    },
+    "baseline-metadata__geoparquet_layout.json.body": {
+      "bytes": 1569,
+      "sha256": "9e299278b5ac88908cb142bb6d7253d5d38bdf6083098abdbd8af8846621c6b8"
+    },
+    "baseline-metadata__geoparquet_layout.json.receipt.json": {
+      "bytes": 890,
+      "sha256": "b1b9ff2d1918eef36d38eca63320acdb8af6c3a90833345c6b0698bba4ea7f2a"
+    },
+    "baseline-metadata__quality_manifest.json.body": {
+      "bytes": 486,
+      "sha256": "4533e86b73148efc003057ecc64644ce0685bb8c0decfbcd2f9589f12c1e5080"
+    },
+    "baseline-metadata__quality_manifest.json.receipt.json": {
+      "bytes": 894,
+      "sha256": "bcdea1ca8c6c192a04c6e3ea8525cefcb6b4a97db53c12267f4985cbb3452794"
+    },
+    "baseline-metadata__source_manifest.json.body": {
+      "bytes": 1827,
+      "sha256": "ab9d8a7fa21fd3ac7470343ce194ea2ea25a6e82b067192c5c97d8f53d4ecc3f"
+    },
+    "baseline-metadata__source_manifest.json.receipt.json": {
+      "bytes": 886,
+      "sha256": "467fcb7e9a05f93a175acb5a32970e5b251efaaa3e224c88c91dc5b9484a561f"
+    },
+    "baseline-parquet.body": {
+      "bytes": 8633895,
+      "sha256": "3db3cf41f5122c62507643cadff05017337f2002af4ddbee490ced22965c1fbc"
+    },
+    "baseline-parquet.receipt.json": {
+      "bytes": 916,
+      "sha256": "f201da9bcd3f12e8474807f81ddc576e34c67330ef470f5c5695c6662b0ec873"
+    },
+    "baseline-pmtiles__fdic-insured-banks.pmtiles.body": {
+      "bytes": 16812844,
+      "sha256": "8c0cc13bdfded7feec9c4366a42c4f94ddd8d36c683a5afe83f98094c34bcfb1"
+    },
+    "baseline-pmtiles__fdic-insured-banks.pmtiles.receipt.json": {
+      "bytes": 912,
+      "sha256": "78246835bf505ee7e0ddf88fa9d33cf1af73102922359382e229b3bbadd902cf"
+    },
+    "baseline-shapefile__fdic-insured-banks.zip.body": {
+      "bytes": 11154778,
+      "sha256": "5f23f4caf97bcd238f44c6b8927cbaf95e0407141f906cf01100b6689f181916"
+    },
+    "baseline-shapefile__fdic-insured-banks.zip.receipt.json": {
+      "bytes": 899,
+      "sha256": "8b5b0439df9a99aca35cd004ad436db1ce1465283b8e2a83b32c1f1a11891afa"
+    },
+    "gcs-objects.body": {
+      "bytes": 24548,
+      "sha256": "6a0cbbb2893124a560e7a11271b8525c16fa377eeac008fcb7ce8a988751eca5"
+    },
+    "gcs-objects.receipt.json": {
+      "bytes": 771,
+      "sha256": "1c5404a8bbc4e9efc7f52dc4e6f59fc289bdb491066c9ad7fd88e254c00a6bc9"
+    },
+    "official-location-fields.body": {
+      "bytes": 17450,
+      "sha256": "361ccb4c562ca2ac5febc2abcf19977128bffffe2e540e1c5d620915441b8799"
+    },
+    "official-location-fields.receipt.json": {
+      "bytes": 722,
+      "sha256": "c313e9cc0f9b7f6334dabedc6ce5704eaef45a294b15cad3fa5274c3b72cb0c2"
+    },
+    "official-swagger.body": {
+      "bytes": 34749,
+      "sha256": "854500ae68d77185a12fc9260e0bbc0194e3848df0e54086f828656ea508852b"
+    },
+    "official-swagger.receipt.json": {
+      "bytes": 698,
+      "sha256": "27c3b08788152ca54adaa260bcd39df2120ce2b3f06ccb825b7993bbef0ea34b"
+    },
+    "source-census-after-000000.body": {
+      "bytes": 476209,
+      "sha256": "788ee349640bef78e1e85a6f9c2c95c63b98d7a06cb6464a92a01bdcee8836f1"
+    },
+    "source-census-after-000000.receipt.json": {
+      "bytes": 818,
+      "sha256": "ca0b07479f7cb49339b3d8e55f258622bdb5c715f4572978dad152c25fbe0d57"
+    },
+    "source-census-after-010000.body": {
+      "bytes": 502613,
+      "sha256": "ba84a80af9b51dedf810ccdcd0eeb5c2a125bdcd2ff6fdb64200275ef1e7f767"
+    },
+    "source-census-after-010000.receipt.json": {
+      "bytes": 826,
+      "sha256": "aca1abb5f65434b4b72793e2710d7bf2a5480578e085d3346111fcce836253ef"
+    },
+    "source-census-after-020000.body": {
+      "bytes": 510225,
+      "sha256": "7f01ab1c3768a5e4b30de2ffec3f9153a32876b8a420e7893d2d6e5229716130"
+    },
+    "source-census-after-020000.receipt.json": {
+      "bytes": 826,
+      "sha256": "3827e6061e8cf8ea40716c6d5842b62835b1d01a8afd614d91149f0fa9c86f6f"
+    },
+    "source-census-after-030000.body": {
+      "bytes": 510225,
+      "sha256": "f4260edda318f0e63effa7d08c243ebd31b08d26c29a909520f72e409aa6334d"
+    },
+    "source-census-after-030000.receipt.json": {
+      "bytes": 826,
+      "sha256": "9e6b29ae210552cd812987f1bbcac89b068ff9bd8a6e91c9e8139aeaebc34aed"
+    },
+    "source-census-after-040000.body": {
+      "bytes": 510225,
+      "sha256": "712d6d43ce3b7c9e5b5a52adbd8f7c9943f2349353133dc156425e070965c64f"
+    },
+    "source-census-after-040000.receipt.json": {
+      "bytes": 826,
+      "sha256": "c72e00fd5f4526c59ef31dd23806318da2ca6ecc85f0e1e6c3321a55e9e4a523"
+    },
+    "source-census-after-050000.body": {
+      "bytes": 510225,
+      "sha256": "05b18e1346796e5305f5c598e24863227081c2611f60c59cab2766e16c7f53a5"
+    },
+    "source-census-after-050000.receipt.json": {
+      "bytes": 826,
+      "sha256": "1350b9c3f12e61d727e964ac551dffd2b3b3be195dc75c418d672681bf06b8bc"
+    },
+    "source-census-after-060000.body": {
+      "bytes": 510225,
+      "sha256": "c81da05c5695fb1dcc75a1281ae9b356c9b0b168e73b491784d39f4e8eb641c3"
+    },
+    "source-census-after-060000.receipt.json": {
+      "bytes": 826,
+      "sha256": "4a028c842f07147067d066d4da95635900baa946085e637e546c684101e17d27"
+    },
+    "source-census-after-070000.body": {
+      "bytes": 409653,
+      "sha256": "e5af1553ae15bdd41a3e77acf7da7e482a58e8208a9244508f0cf45d35426e41"
+    },
+    "source-census-after-070000.receipt.json": {
+      "bytes": 826,
+      "sha256": "fe5364cc43969d9376b0a8c2bc6303af59e22dd852f566f78f94c9046b5a65e8"
+    },
+    "source-census-before-000000.body": {
+      "bytes": 476209,
+      "sha256": "788ee349640bef78e1e85a6f9c2c95c63b98d7a06cb6464a92a01bdcee8836f1"
+    },
+    "source-census-before-000000.receipt.json": {
+      "bytes": 818,
+      "sha256": "12da19025c49af6ac9ccf207955026a126004dfa6808bd954911131c3b28bf40"
+    },
+    "source-census-before-010000.body": {
+      "bytes": 502613,
+      "sha256": "ba84a80af9b51dedf810ccdcd0eeb5c2a125bdcd2ff6fdb64200275ef1e7f767"
+    },
+    "source-census-before-010000.receipt.json": {
+      "bytes": 826,
+      "sha256": "3261707f0d172861d8e6b35cf9d106d91cb285f7b891546d276f3a2e16c8c903"
+    },
+    "source-census-before-020000.body": {
+      "bytes": 510225,
+      "sha256": "7f01ab1c3768a5e4b30de2ffec3f9153a32876b8a420e7893d2d6e5229716130"
+    },
+    "source-census-before-020000.receipt.json": {
+      "bytes": 826,
+      "sha256": "753b43a546541c9acabea1b88be4930689a670d2c04eefc4c064e674e399f319"
+    },
+    "source-census-before-030000.body": {
+      "bytes": 510225,
+      "sha256": "f4260edda318f0e63effa7d08c243ebd31b08d26c29a909520f72e409aa6334d"
+    },
+    "source-census-before-030000.receipt.json": {
+      "bytes": 826,
+      "sha256": "79ef2cc91f9a1b6766336c1cd1df331861dad85f39735f2237a7a5c3e2ea67b5"
+    },
+    "source-census-before-040000.body": {
+      "bytes": 510225,
+      "sha256": "712d6d43ce3b7c9e5b5a52adbd8f7c9943f2349353133dc156425e070965c64f"
+    },
+    "source-census-before-040000.receipt.json": {
+      "bytes": 826,
+      "sha256": "49c734f100673b36b13d7a73b25c462af4cb457f5dd62b45554d097921260a90"
+    },
+    "source-census-before-050000.body": {
+      "bytes": 510225,
+      "sha256": "05b18e1346796e5305f5c598e24863227081c2611f60c59cab2766e16c7f53a5"
+    },
+    "source-census-before-050000.receipt.json": {
+      "bytes": 826,
+      "sha256": "64d5e034cd08c4a65ad941706d360722fbc0c3880261aded219e9c584ae82a2d"
+    },
+    "source-census-before-060000.body": {
+      "bytes": 510225,
+      "sha256": "c81da05c5695fb1dcc75a1281ae9b356c9b0b168e73b491784d39f4e8eb641c3"
+    },
+    "source-census-before-060000.receipt.json": {
+      "bytes": 826,
+      "sha256": "032f64bde116f6fa96b065a3931fadc9ac5e6321d4c55ab4f41254d5d37ad565"
+    },
+    "source-census-before-070000.body": {
+      "bytes": 409653,
+      "sha256": "e5af1553ae15bdd41a3e77acf7da7e482a58e8208a9244508f0cf45d35426e41"
+    },
+    "source-census-before-070000.receipt.json": {
+      "bytes": 826,
+      "sha256": "c6feaac319030672fb1e98a174ff9d5eed4face3159c14380c60c59e68dfec96"
+    },
+    "source-page-000000.body": {
+      "bytes": 7906449,
+      "sha256": "cab5fd6230d0b4512323daec24de1f96096faff003caa6234bc1de0292e73ba0"
+    },
+    "source-page-000000.receipt.json": {
+      "bytes": 783,
+      "sha256": "d997ffeb4ddd81716bae1b91dc9d84d02963cb811a8401178741ac68413fe9b0"
+    },
+    "source-page-010000.body": {
+      "bytes": 8348243,
+      "sha256": "229cb7ee85064d6bb6ca50703a1f556f7884e965b41dda38b7c43cc50fd1e8cc"
+    },
+    "source-page-010000.receipt.json": {
+      "bytes": 791,
+      "sha256": "136aa729d7ffd143405508db7683bc1f34451ff031eb29bbcc7575019d1b6ad2"
+    },
+    "source-page-020000.body": {
+      "bytes": 8229418,
+      "sha256": "6da466edf0a0d8723eb1612fb1f20a56e3051929b8cc4e49533245f06cdfe983"
+    },
+    "source-page-020000.receipt.json": {
+      "bytes": 791,
+      "sha256": "c861d08e6b6a10448c3efc059dced9bac0c75c251955ff3432fa2845bb507fc1"
+    },
+    "source-page-030000.body": {
+      "bytes": 8422288,
+      "sha256": "9a4d2fa0cb8e8c092e100f2ac714e4a8ff8f87ddd7d40447751b3141824d766a"
+    },
+    "source-page-030000.receipt.json": {
+      "bytes": 791,
+      "sha256": "59629c68abba7d6b0f647eb8e0f12b5bd97a7f0574f8b6d4cdd6e0ca696dd8d7"
+    },
+    "source-page-040000.body": {
+      "bytes": 8458329,
+      "sha256": "f2c857350488cb8c3f230a471d78a33c46477a497d3c48a4125955a10b160621"
+    },
+    "source-page-040000.receipt.json": {
+      "bytes": 791,
+      "sha256": "e62c646e4c363b543be4f9941785f2168fcf72eaeb422cb05b7ef5bfb065842f"
+    },
+    "source-page-050000.body": {
+      "bytes": 8461941,
+      "sha256": "33668bad1661b370e8cf094f70bbc532690255cb6ce7a4c1909bea878d6df8f9"
+    },
+    "source-page-050000.receipt.json": {
+      "bytes": 791,
+      "sha256": "1cf81f0dfde3ea7b39cad5012dd6bd3ca3948353153ec65e7b76619c23822ffd"
+    },
+    "source-page-060000.body": {
+      "bytes": 8486176,
+      "sha256": "b51e07a60bc11a4af7bc6cf4b99001d5f30e2966ef4fdf273518b0f279f1ad18"
+    },
+    "source-page-060000.receipt.json": {
+      "bytes": 791,
+      "sha256": "12ae3ee13d6992f43bde64fe2b15686506d6f4dd9a01649b43f6578e432dde1b"
+    },
+    "source-page-070000.body": {
+      "bytes": 6791357,
+      "sha256": "fdf663098496b317b5c6adb3646c06840b1d5d1dccbd16db5fb28985ebe56e34"
+    },
+    "source-page-070000.receipt.json": {
+      "bytes": 791,
+      "sha256": "148cdebad20bdf9870d1522a32181a27883a334ecbd01b42d0752ea9ac00f18f"
+    }
+  },
+  "replay": "PYTHONPATH=src python scripts/verify_fdic_locations_draft.py --capture-dir CAPTURE_DIR --runtime-dir EMPTY_RUNTIME_DIR",
+  "schema_version": 1
+}
