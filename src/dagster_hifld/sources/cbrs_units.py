@@ -34,6 +34,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest, prebuilt_output_keys
@@ -427,7 +428,7 @@ def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
 
 
 def original_construction_bundle(storage: StagingStorageResource, version: str, captures: dict,
-                                 manifest: dict, *, create: bool=False) -> tuple[dict,dict]:
+                                 manifest: dict, processing_files: dict, *, create: bool=False) -> tuple[dict,dict]:
     """Bind full first-construction provenance outside the mutable candidate.
 
     Caller holds the stable version lock for creation/cache lookup. Identical
@@ -438,6 +439,7 @@ def original_construction_bundle(storage: StagingStorageResource, version: str, 
     if not storage.object_exists(key):
         if not create:
             raise CBRSQuarantineError('missing_original_construction_provenance_bundle')
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
         bundle={'manifest':manifest,'captures':{name:{
             'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
             'receipt':receipt} for name,(body,receipt) in captures.items()}}
@@ -462,6 +464,7 @@ def original_construction_bundle(storage: StagingStorageResource, version: str, 
     expected['prebuilt_output_policy']=manifest['prebuilt_output_policy']
     actual=bundle['manifest']
     validate_output_policy(actual);validate_release_provenance(actual)
+    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)
     if set(actual)!=set(expected) or any(actual[k]!=v for k,v in expected.items() if k!='code_commit'):
         raise CBRSQuarantineError('original_construction_manifest_drift')
     return original,actual
@@ -491,7 +494,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_output_policy(manifest)
     validate_release_provenance(manifest)
-    original,anchored=original_construction_bundle(storage,ready['version'],captures,expected_manifest)
+    original,anchored=original_construction_bundle(storage,ready['version'],captures,expected_manifest,identity['files'])
     if manifest!=anchored or cached!=original:
         raise CBRSQuarantineError('cached_original_construction_manifest_or_receipts_changed')
     prebuilt_output_keys(manifest,storage,prefix,'geoparquet')
@@ -597,7 +600,7 @@ def reuse_existing_candidate(storage: StagingStorageResource,prefix: str,version
         if not target.exists():
             manifest=provenance(captures,prebuilt_body=derive_native_parquet_bytes(rows,audit))
             manifest['processing_fingerprint']=fingerprint
-            original_construction_bundle(storage,version,captures,manifest,create=True)
+            original_construction_bundle(storage,version,captures,manifest,identity['files'],create=True)
             return None
         info=target.lstat();inode=(info.st_dev,info.st_ino)
         ready_key=f'{prefix}/metadata/cbrs_units_candidate_ready.json'
@@ -644,7 +647,7 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
             cached=reuse_existing_candidate(storage,prefix,version,records,fingerprint,rows,audit,captures,identity,members)
             if cached is not None:return cached
             manifest['processing_fingerprint']=fingerprint
-            captures,manifest=original_construction_bundle(storage,version,captures,manifest)
+            captures,manifest=original_construction_bundle(storage,version,captures,manifest,identity['files'])
             body,receipt=captures['official_zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_geopackage(geopackage,rows)

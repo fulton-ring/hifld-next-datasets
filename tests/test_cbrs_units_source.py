@@ -59,21 +59,44 @@ class CBRSTests(unittest.TestCase):
             storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)
             manifest=s.provenance(captures,prebuilt_body=b'clearly synthetic policy fixture')
             manifest['processing_fingerprint']='fixture'
-            version='v0.0.0-draft-original-fixture'
+            version='v0.0.0-draft-original-fixture';files=s.processing_identity()['files']
             with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
-                original,bound=s.original_construction_bundle(storage,version,captures,manifest,create=True)
+                original,bound=s.original_construction_bundle(storage,version,captures,manifest,files,create=True)
                 self.assertEqual(bound,manifest);self.assertEqual(original,captures)
                 later={name:(body,dict(receipt,observed_at='2026-10-20T12:00:00+00:00')) for name,(body,receipt) in captures.items()}
                 with patch.object(s.subprocess,'check_output',return_value='f'*40+'\n'):
                     latest=s.provenance(later,prebuilt_body=b'clearly synthetic policy fixture');latest['processing_fingerprint']='fixture'
-                    restored,bound=s.original_construction_bundle(storage,version,later,latest)
+                    restored,bound=s.original_construction_bundle(storage,version,later,latest,files)
                 self.assertEqual(restored,captures);self.assertEqual(bound,manifest)
                 key=f'_source-provenance/{s.SLUG}/{version}/bundle.json';bundle=storage.read_key(key)
                 self.assertEqual(json.loads(bundle)['manifest']['code_commit'],manifest['code_commit'])
                 Path(d,key).unlink()
                 with self.assertRaisesRegex(ValueError,'missing_original_construction'):
-                    s.original_construction_bundle(storage,version,later,latest)
+                    s.original_construction_bundle(storage,version,later,latest,files)
                 self.assertFalse(storage.object_exists(key))
+
+    def test_original_bundle_git_authenticity_rejects_forgery_and_wrong_real_commit(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)
+            manifest=s.provenance(captures,prebuilt_body=b'synthetic-authenticity-fixture')
+            manifest['processing_fingerprint']='fixture';files=s.processing_identity()['files']
+            version='v0.0.0-draft-code-authenticity-fixture';key=f'_source-provenance/{s.SLUG}/{version}/bundle.json'
+            for commit,reason in [('0'*40,'construction_invalid_commit'),('4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19','construction_processing_blob')]:
+                changed=copy.deepcopy(manifest);changed['code_commit']=commit
+                with self.subTest(commit=commit),s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
+                    with self.assertRaisesRegex(ValueError,reason):
+                        s.original_construction_bundle(storage,version,captures,changed,files,create=True)
+                    self.assertFalse(storage.object_exists(key))
+            with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
+                s.original_construction_bundle(storage,version,captures,manifest,files,create=True)
+                original=storage.read_key(key)
+                for value in ['0'*40,'4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19']:
+                    bundle=json.loads(original);bundle['manifest']['code_commit']=value;Path(d,key).write_bytes(s.encode(bundle))
+                    with self.assertRaisesRegex(ValueError,'construction_'):
+                        s.original_construction_bundle(storage,version,captures,manifest,files)
+                Path(d,key).write_bytes(b'{}')
+                with self.assertRaisesRegex(ValueError,'bundle_roster_drift'):
+                    s.original_construction_bundle(storage,version,captures,manifest,files)
 
     def test_registry_schedule_and_published_rejected_before_acquisition(self):
         self.assertEqual(sum(a is fws_cbrs_units for a in hifld_ingest_assets),1)
