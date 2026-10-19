@@ -86,6 +86,22 @@ class FuelReceiptInventoryTests(unittest.TestCase):
             self.assertTrue(any(p.read_bytes()==(self.capture/'bts_item.body').read_bytes()
                 for p in (self.root/'staging/quarantine').rglob('bts_item.body')))
 
+    def test_invalid_offset_minutes_cannot_normalize_into_an_accepted_observation(self):
+        previous=self.root/'prior';build_candidate(self.capture,previous)
+        saved=(previous/'candidate.parquet').read_bytes()
+        for index,offset in enumerate(('+00:99','-00:99','+24:00','+00:60','+99:00')):
+            fixture(self.capture)
+            path=self.capture/'page-000.receipt.json';receipt=json.loads(path.read_text())
+            receipt['observed_at']='2026-10-19T00:00:00'+offset;path.write_text(json.dumps(receipt))
+            with self.subTest(offset=offset),self.assertRaises(ValueError):
+                build_candidate(self.capture,self.root/f'bad-offset-{index}')
+            self.assertFalse((self.root/f'bad-offset-{index}').exists())
+            with self.assertRaises(ValueError):stage_fuel_capture(self.capture,self.staging,f'v0.0.0-offset-{index}')
+            self.assertFalse((self.root/'staging'/SLUG).exists())
+            self.assertEqual((previous/'candidate.parquet').read_bytes(),saved)
+            self.assertTrue(any(p.read_bytes()==path.read_bytes()
+                for p in (self.root/'staging/quarantine').rglob('page-000.receipt.json')))
+
     def test_shared_standard_input_rights_preflight_runs_before_any_canonical_write(self):
         audit=inspect_capture(self.capture);inputs=_release_inputs(self.capture,audit)
         for field in ('license','attribution'):

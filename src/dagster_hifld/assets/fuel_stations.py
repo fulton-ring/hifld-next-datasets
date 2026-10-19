@@ -120,6 +120,9 @@ def _distribution_evidence(root):
 def _observed_retrieval_time(receipt):
     observed = receipt.get('observed_at')
     try:
+        if not isinstance(observed, str) or not re.fullmatch(
+                r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)', observed):
+            raise ValueError('Original retrieval timestamp requires a valid explicit UTC offset')
         timestamp = datetime.datetime.fromisoformat(observed)
         if timestamp.utcoffset() is None: raise ValueError('Naive retrieval timestamp')
     except (TypeError, ValueError) as error:
