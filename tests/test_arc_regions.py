@@ -30,7 +30,7 @@ def fixture():
         'count_before': {'count': 47}, 'count_after': {'count': 47},
         'ids_before': {'objectIdFieldName': 'OBJECTID', 'objectIds': list(s.EXPECTED_IDS)},
         'ids_after': {'objectIdFieldName': 'OBJECTID', 'objectIds': list(reversed(s.EXPECTED_IDS))},
-        'features': {'geometryType': 'esriGeometryPolygon', 'spatialReference': layer['spatialReference'],
+        'features': {'objectIdFieldName': 'OBJECTID', 'geometryType': 'esriGeometryPolygon', 'spatialReference': layer['spatialReference'],
             'fields': [{k: v for k, v in field.items() if k not in {'nullable', 'editable'}} for field in fields], 'features': rows},
         'tail': {'features': []}}
     captures = {}

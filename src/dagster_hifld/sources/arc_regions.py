@@ -280,7 +280,8 @@ def inspect_captures(captures):
     features = values['features']; tail = values['tail']
     if features.get('exceededTransferLimit') is True or tail.get('exceededTransferLimit') is True or tail.get('features') != []:
         raise ArcRegionsError('incomplete_pagination')
-    if features.get('spatialReference') != layer['spatialReference'] or features.get('geometryType') != 'esriGeometryPolygon':
+    if (features.get('spatialReference') != layer['spatialReference'] or features.get('geometryType') != 'esriGeometryPolygon'
+            or features.get('objectIdFieldName') != 'OBJECTID'):
         raise ArcRegionsError('response_geometry_profile_drift')
     # Query responses omit layer-only editable/nullable declarations. Retain both
     # complete raw schemas and compare the actual query declaration projection.
@@ -309,7 +310,12 @@ def inspect_captures(captures):
                 raise ArcRegionsError('nonfinite_or_nonXY_coordinate')
             raw_rings.append(tuple(tuple(float(v) for v in point) for point in ring))
     if tuple(ids) != EXPECTED_IDS: raise ArcRegionsError('ordered_identifier_census_drift')
-    with MemoryFile(captures['features'][0]) as memory, memory.open(driver='ESRIJSON') as stream:
+    # GDAL identifies ESRIJSON from the leading metadata; valid JSON member order
+    # must not affect decoding. Rewrap only for that parser, retain original raw
+    # wire bytes and verify every resulting attribute and ordered ring below.
+    decoder_input = {'objectIdFieldName': 'OBJECTID', 'geometryType': features['geometryType'],
+        'spatialReference': features['spatialReference'], 'fields': features['fields'], 'features': rows}
+    with MemoryFile(json.dumps(decoder_input, allow_nan=False).encode()) as memory, memory.open(driver='ESRIJSON') as stream:
         converted = [(dict(row['properties']), shape(row['geometry'])) for row in stream]
     if len(converted) != len(rows) or any(props != row['attributes'] for (props, geom), row in zip(converted, rows)):
         raise ArcRegionsError('native_decoder_attribute_loss')
