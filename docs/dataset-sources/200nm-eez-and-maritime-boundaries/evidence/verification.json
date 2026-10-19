@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "scope": "Working unapproved NOAA EEZ pipeline after artifact cleanup and shared implementation integration",
+  "source_commit": "e681fb7d9af2ddf0f096094fb64f68b34979909e",
+  "shared_base": "230ead9f8607017bd6b2323518e7d8879dc18e69",
+  "source_adapter_changed": false,
+  "source_rows": 96,
+  "source_attributes": 13,
+  "raw_preservation": "All seven fresh official HTTP200 complete responses and original receipts preserved,3073567 body bytes",
+  "outputs": "Native candidate,GeoPackage and terminalGeoParquet retain every source attribute value/physical type/ID/ordered vertex; full96row audit passed",
+  "shapefile_zip_files": 0,
+  "shapefile_reason": "DBF truncation/rounding/date-type loss; unsupported format asset records skip",
+  "full_suite": {
+    "total": 564,
+    "passed": 562,
+    "skipped": 2,
+    "seconds": 78.852,
+    "skip_scope": [
+      "Complete external-artifact test intentionally opt-in",
+      "Existing production GCS test"
+    ],
+    "bytes": 27646,
+    "sha256": "7240926622a0e2bb0e279c4f011a49e8424ccc7f9499a6d84f72c004a717a95e"
+  },
+  "complete_real_artifact_replay": {
+    "total": 3,
+    "passed": 3,
+    "seconds": 3.436,
+    "bytes": 21773,
+    "sha256": "c6557c95c07333c315d97114ea3a0872b1ef7325628f1d4635751bd9027ba19a"
+  },
+  "runs": [
+    {
+      "case": "fresh_complete_live_source",
+      "run_id": "2a863468-a886-4305-a5e5-fcd31c9136d6",
+      "success": true
+    },
+    {
+      "case": "normal_catalog_formats_then_missing_approval",
+      "run_id": "87088199-dcea-485a-8c6d-37f380dc5bf7",
+      "success": false,
+      "expected_error": "missing_independent_release_approval_registry"
+    },
+    {
+      "case": "complete_reuse",
+      "run_id": "e21696cf-89fb-4892-8848-a2844c2c17d7",
+      "success": true,
+      "expected_success": true,
+      "healthy_candidate_all_bytes_preserved": true,
+      "previous_published_fixture_all_bytes_preserved": true
+    },
+    {
+      "case": "synthetic_bad_geometry",
+      "run_id": "fe0ca2cf-af4d-44c7-81ef-0a095681b912",
+      "success": false,
+      "expected_success": false,
+      "healthy_candidate_all_bytes_preserved": true,
+      "previous_published_fixture_all_bytes_preserved": true
+    },
+    {
+      "case": "complete_after_fault",
+      "run_id": "1507511b-e174-4223-9368-7e65239a04b8",
+      "success": true,
+      "expected_success": true,
+      "healthy_candidate_all_bytes_preserved": true,
+      "previous_published_fixture_all_bytes_preserved": true
+    }
+  ],
+  "bad_input_creates_no_candidate": true,
+  "previous_output_fixture_preserved": true,
+  "previous_fixture_is_accepted_baseline": false,
+  "historical_evidence_artifact": {
+    "name": "issue-3-full-evidence-06a989e0ace3.tar.zst",
+    "bytes": 916735,
+    "sha256": "e7391f8d8d2a0836ad316a8efc291557435f957b1bbef8346a2b1e61577605ae",
+    "members": 43
+  },
+  "current_verification_artifact": {
+    "name": "noaa3-cleanup-public-e681-complete-proof-long.tar.zst",
+    "bytes": 3953321,
+    "sha256": "3f500da76f864377086c7544eaf310f292c236f568ad4139c97e897cbfa8fc6a",
+    "members": 131,
+    "format": "tar+zstd --long=29",
+    "all_member_bytes_verified": true,
+    "originals_retained": true
+  },
+  "independent_review": "Final changed commit must be reviewed; exact review is recorded on the issue/PR",
+  "ci_or_production_success_claimed": false,
+  "release_approved": false,
+  "acceptance_prerequisites": "Maintainer source/release/baseline/raw-to-published schema-ID/types/geometry/coverage/format/rights decisions in DECISION.md; agent tests grant none"
+}

@@ -16,4 +16,6 @@ After setting that variable, repeat the command for complete real-input material
 
 Default tests retain small synthetic extraction, completeness, physical-type, receipt-origin, error, drift and refresh-registration checks. Complete real-input replay is explicitly opt-in; synthetic fixtures grant no real acceptance. scripts/verification/noaa_eez_local.py runs the actual registered graph with isolated storage and records its run IDs, output checksums and previous-release preservation. Existing historical execution records retain their exact tested commits and limitations, including earlier missing sibling IaC failures. No CI pass is inferred.
 
+Current verification is summarized in [verification.json](evidence/verification.json); its checksummed artifact preserves full logs, captured bodies, native outputs, run databases and audit reports. Historical count/ID fixture slots may reuse captured bodies; fresh live extraction is recorded separately.
+
 This PR targets the shared implementation in PR #421. Shared verification/provenance/catalog changes belong in that PR; dataset-specific behavior and tests belong here.
