@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import csv
+import hashlib
 import json
 import os
 import re
@@ -12,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
 
 CATALOG_METADATA_FIELDS = (
@@ -35,6 +37,7 @@ CATALOG_METADATA_FIELDS = (
     "code_commit",
     "lineage",
     "unsupported_output_formats",
+    "manifest_layers",
 )
 
 SUPPORTED_OUTPUT_EXCLUSIONS = frozenset({"shapefile_zip", "geopackage", "geoparquet", "pmtiles"})
@@ -68,6 +71,7 @@ def load_resolved_source_manifest(
     version: str,
 ) -> ResolvedSourceManifest:
     layers: list[tuple[str, str, dict[str, Any]]] = []
+    layer_receipts = []
     for source_name, key in _manifest_lookup_keys(dataset_slug, file_slug, version):
         raw = _read_optional_key(staging, key)
         if raw is None:
@@ -79,12 +83,18 @@ def load_resolved_source_manifest(
         if not isinstance(parsed, dict):
             raise ValueError(f"Source manifest at {key} must be a JSON object.")
         layers.append((source_name, key, _compact_manifest(parsed)))
+        layer_receipts.append({"layer": source_name, "manifest_key": key, "sha256": hashlib.sha256(raw).hexdigest(),
+                               "snapshot": f"metadata/source/{source_name}_{hashlib.sha256(raw).hexdigest()}_source_manifest.json",
+                               **{field: parsed[field] for field in ("processor", "code_commit", "transformations") if field in parsed},
+                               "input_ids": [item.get("input_id") for item in parsed.get("inputs", []) if isinstance(item, dict)] if isinstance(parsed.get("inputs", []), list) else []})
 
     inventory = _inventory_metadata_for(dataset_slug, file_slug, version)
     if layers:
         resolved = _merge_manifest_layers(layers)
+        if "inputs" in resolved.metadata or "processor" in resolved.metadata:
+            resolved.metadata["manifest_layers"] = layer_receipts
         if inventory is None:
-            return resolved
+            return _checked_manifest(resolved.metadata, resolved.manifest_keys)
         metadata = dict(inventory)
         metadata.update(
             {
@@ -103,10 +113,10 @@ def load_resolved_source_manifest(
             **resolved.metadata["metadata_resolved_from"],
         }
         metadata["manifest_keys"] = resolved.manifest_keys
-        return ResolvedSourceManifest(metadata, resolved.manifest_keys)
+        return _checked_manifest(metadata, resolved.manifest_keys)
 
     if inventory:
-        return ResolvedSourceManifest(inventory, [])
+        return _checked_manifest(inventory, [])
 
     generated = {
         "title": file_slug,
@@ -118,7 +128,12 @@ def load_resolved_source_manifest(
         },
         "manifest_keys": [],
     }
-    return ResolvedSourceManifest(generated, [])
+    return _checked_manifest(generated, [])
+
+
+def _checked_manifest(metadata: dict, keys: list[str]) -> ResolvedSourceManifest:
+    provenance_projection(metadata)
+    return ResolvedSourceManifest(metadata, keys)
 
 
 def _manifest_lookup_keys(
@@ -151,6 +166,13 @@ def snapshot_source_metadata(
         f"{version_root}/metadata/data_dictionary.json",
         f"{version_root}/metadata/quality_manifest.json",
     ]
+    for layer, key in _manifest_lookup_keys(dataset_slug, file_slug, version):
+        if not staging.object_exists(key):
+            continue
+        body = staging.read_key(key)
+        destination = f"{version_root}/metadata/source/{layer}_{hashlib.sha256(body).hexdigest()}_source_manifest.json"
+        if not staging.object_exists(destination):
+            staging.write_key_if_unchanged(destination, body, None)
     for key in keys:
         destination = str(Path(key).parent / "source" / Path(key).name)
         if staging.object_exists(destination) or not staging.object_exists(key):
@@ -178,7 +200,7 @@ def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     # into the same state as an absent optional field.
     unsupported_output_reason(manifest, "shapefile_zip")
     return {
-        key: value for key, value in manifest.items() if value not in (None, "", [], {})
+        key: value for key, value in manifest.items() if key in {"inputs", "transformations"} or value not in (None, "", [], {})
     }
 
 

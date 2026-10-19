@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "classification": "partial local prepared-release integrity repair; no real acceptance or production write",
+  "parent_commit": "b9d6b692b290378887476c18e38511c18ba83a56",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "implementation": {
+    "src/dagster_hifld/portolan/provenance.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/provenance.py",
+      "sha256": "20780351ee1caf9244a98ecf362b61422579b837ca47cde58e35fc6fc69f00fc",
+      "bytes": 15057
+    },
+    "src/dagster_hifld/portolan/catalog.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/catalog.py",
+      "sha256": "faed5a65d493e18e315e2427d86fc61e8987aae2a21998ba6eef3f19bdf9efc3",
+      "bytes": 47226
+    },
+    "src/dagster_hifld/portolan/workflow.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/portolan/workflow.py",
+      "sha256": "de8ac838e5512d611ac7670614bfd59d684a366f0262be855b0a0b8044b56a57",
+      "bytes": 68088
+    },
+    "src/dagster_hifld/resources.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/src/dagster_hifld/resources.py",
+      "sha256": "a87c40dd0470169d5713c1cf82a2d95314d51ed120f1e9a96378e2ca178a22cc",
+      "bytes": 51165
+    },
+    "scripts/verification/provenance_roundtrip_local.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/scripts/verification/provenance_roundtrip_local.py",
+      "sha256": "bd49cfcdaae23f42618ed7707a60a99d6dd4fba1cf2151bc9ff861682cc38002",
+      "bytes": 13060
+    },
+    "tests/test_published_provenance.py": {
+      "path": "/workspace/hifld-worker-worktrees/417/tests/test_published_provenance.py",
+      "sha256": "ad8a591f68b728bd7ba875f1177e8b7b773e09fe5f9c4c0120496fa75db00e75",
+      "bytes": 9721
+    }
+  },
+  "independent_reproductions_at_parent": {
+    "download_url_and_post_plan_data": {
+      "path": "/workspace/work/review-stac417-b9-probes/results.json",
+      "sha256": "ff633cc9054bc3c740384fd22026e70b4052b2bd0c8a8f883c2ec1fb8f0bd933",
+      "bytes": 825
+    },
+    "sqlite_metadata_omission": {
+      "path": "/workspace/work/review-stac417-b9-sqlite-probe/results.json",
+      "sha256": "94f39c2c087edc1ff65a08f137cc4f246069efd88ab170eb98b0c30f0a64c410",
+      "bytes": 218
+    },
+    "interpretation": "Technical consistency defects even when exact synthetic byte decisions are intentionally repinned; not missing-approval bypasses."
+  },
+  "actual_roundtrip": {
+    "classification": "actual isolated synthetic publication; no real acceptance",
+    "source_input_count": 2,
+    "generation": "82d9d475-b6ef-42bd-a9c1-818a2790755b",
+    "release_pointer_key": "_catalog/current.json",
+    "collection_key": "releases/82d9d475-b6ef-42bd-a9c1-818a2790755b/synthetic/synthetic-native/typed/v0.0.0-fixture/collection.json",
+    "metadata_assets_roundtripped": 19,
+    "sqlite_metadata_rows": 19,
+    "missing_approval_blocked": true,
+    "removed_dependency_labels_blocked": true,
+    "repinned_omitted_input_blocked": true,
+    "prior_published_objects_preserved": 40,
+    "native_graph": {
+      "classification": "actual local synthetic full graph; no real baseline acceptance",
+      "unapproved_run_id": "8434beea-97d2-410f-b266-1a6ebadf0d19",
+      "success_run_id": "81ff1c6b-a4bc-48ea-ad0d-60cf41b5ed30",
+      "failed_drift_run_id": "bfa18cbf-76f3-48f1-aaa6-46527505e9a8",
+      "published_objects": 22,
+      "accepted_objects_unchanged": true,
+      "candidate_evidence_preserved": true,
+      "repinned_false_derivation_blocked": true,
+      "invalid_provenance_blocked": true,
+      "source_input_count": 2,
+      "dagster_home": "/workspace/hifld-worker-runtime/417/provenance-dependency-verified/native/dagster",
+      "archival_formats": [
+        "geopackage",
+        "geoparquet"
+      ],
+      "evidenced_skips": [
+        "pmtiles",
+        "shapefile_zip"
+      ]
+    },
+    "asset_dependency_negative_probes": {
+      "wrong_metadata_href": {
+        "blocked": true,
+        "reason": "Downloadable asset href does not match pinned published object",
+        "pointer_preserved": true,
+        "prior_object_roster_preserved": 40,
+        "plan_evidence_preserved": true
+      },
+      "changed_data_after_plan": {
+        "blocked": true,
+        "reason": "Published asset dependency changed or differs from rendered pins",
+        "pointer_preserved": true,
+        "prior_object_roster_preserved": 40,
+        "plan_evidence_preserved": true
+      },
+      "sqlite_metadata_omission": {
+        "blocked": true,
+        "reason": "Prepared SQLite asset inventory differs from rendered STAC",
+        "pointer_preserved": true,
+        "prior_object_roster_preserved": 40,
+        "plan_evidence_preserved": true
+      },
+      "commit_boundary_dependency_race": {
+        "blocked": true,
+        "reason": "Published asset dependency changed before pointer commit",
+        "pointer_preserved": true,
+        "prior_object_roster_preserved": 40,
+        "plan_evidence_preserved": true
+      }
+    }
+  },
+  "roundtrip_command": "PYTHONPATH=src:. UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m scripts.verification.provenance_roundtrip_local --work-dir /workspace/hifld-worker-runtime/417/provenance-dependency-verified",
+  "roundtrip_log": {
+    "path": "/workspace/work/hifld-coordinator/417-stac-dependency-roundtrip-verified.log",
+    "sha256": "76d6acdc4796c383e58c81849dd4c0855d90a2261928ac84286a39525e54ae27",
+    "bytes": 33924
+  },
+  "complete_rendered_dependency_count": 21,
+  "metadata_dependency_count": 19,
+  "validation_scope": {
+    "remote_apply": "Explicitly unsupported, fail closed before any writes; no multi-object cloud transaction implemented.",
+    "local_commit": "All rendered asset pins/snapshots verified before writes and again after fsync at pointer commit; pointer expected identity checked again. Own new release objects conditionally removed on failed commit while prior pointer unchanged.",
+    "external_writers": "Immutability and excluding uncoordinated writers are operational prerequisites; this guard cannot prevent arbitrary mutations after publication. Fault injection changes one existing data dependency; apply leaves that external mutation untouched while preserving all other prior object snapshots, entire40-key roster, pointer, and plan evidence. Test restores only its own injected bytes.",
+    "legacy_catalog_and_rollback": "Preexisting separate scope; not upgraded to this local prepared proof.",
+    "acceptance": false,
+    "ci_success_inferred": false
+  },
+  "runtime_metadata": {
+    "observations_current": true,
+    "configured_revision": "9",
+    "observed_revision": "9",
+    "network_policy": "unrestricted/enforced",
+    "environment_changed": false
+  },
+  "implementation_sha256": "c387ba5e10a55e6453248dbf7e4d59a9a57b273bf66c0cd4d8d64229de7bb487",
+  "full_suite": {
+    "command": "PATH=/workspace/.tools/tippecanoe/usr/bin:$PATH PYTHONPATH=src:tests UV_CACHE_DIR=/workspace/work/uv-cache uv run --frozen python -m unittest discover tests",
+    "run": 505,
+    "passed": 504,
+    "skipped": 1,
+    "errors": 0,
+    "failures": 0,
+    "skip": "opt-in production-write integration",
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/417-stac-dependency-full-suite-verified.log",
+      "sha256": "78871e7a0de7ecce09cf1b401d02828e6757da7f9818e1b052ac64b2c0f2fac0",
+      "bytes": 18586
+    },
+    "real_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "ci_success_inferred": false
+  }
+}
