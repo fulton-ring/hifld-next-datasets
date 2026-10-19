@@ -1,4 +1,4 @@
-"""Real complete NOAA fixture replay; no source/baseline/contract acceptance."""
+"""Stopped draft behavior plus opt-in complete external NOAA artifact replay."""
 import gzip
 import hashlib
 import json
@@ -18,7 +18,7 @@ from dagster_hifld.noaa_extract import noaa_reference_fingerprints
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
-EVIDENCE = Path(__file__).parents[1] / 'docs/dataset-sources/200nm-eez-and-maritime-boundaries/evidence'
+EVIDENCE = Path(os.environ.get('HIFLD_NOAA_EEZ_EVIDENCE_DIR', '.'))
 
 
 def replay_directory(root):
@@ -32,6 +32,7 @@ def replay_directory(root):
 
 
 class NoaaEezPipelineTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('HIFLD_NOAA_EEZ_EVIDENCE_DIR'), 'Complete real inputs are checksummed artifacts; set HIFLD_NOAA_EEZ_EVIDENCE_DIR to the verified external evidence directory')
     def test_real96_native_output_provenance_idempotency_and_unapproved_graph_preservation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); replay_directory(root / 'capture')
@@ -50,6 +51,7 @@ class NoaaEezPipelineTests(unittest.TestCase):
                 self.assertEqual(table.num_rows, 96)
                 self.assertEqual(str(table.schema.field('UNILATERAL').type), 'double')
                 self.assertEqual(str(table.schema.field('PUB_DATE').type), 'int64')
+                self.assertEqual(str(table.schema.field('RULEID').type), 'int32')
                 self.assertNotIn('id', table.column_names)
                 self.assertNotIn('bbox', table.column_names)
                 original = json.loads((root / 'capture/features.json').read_text())

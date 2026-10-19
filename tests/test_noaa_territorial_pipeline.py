@@ -18,10 +18,24 @@ from dagster_hifld.noaa_extract import noaa_reference_fingerprints
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
-EVIDENCE = Path(__file__).parents[1] / 'docs/dataset-sources/12nm-territorial-sea/evidence'
+EVIDENCE = Path(os.environ.get('HIFLD_NOAA_TERRITORIAL_CAPTURE_EVIDENCE_DIR', '.'))
 
 
 def replay_directory(root):
+    complete = os.environ.get('HIFLD_NOAA_TERRITORIAL_CAPTURE_DIRECTORY')
+    if complete:
+        source = Path(complete)
+        receipts = json.loads((source / 'receipts.json').read_text())
+        root.mkdir()
+        for receipt in receipts:
+            raw = (source / (receipt['capture'] + '.json')).read_bytes()
+            if len(raw) != receipt['bytes'] or hashlib.sha256(raw).hexdigest() != receipt['sha256']:
+                raise ValueError('External raw capture does not match receipt')
+            (root / (receipt['capture'] + '.json')).write_bytes(raw)
+        (root / 'receipts.json').write_text(json.dumps(receipts))
+        return
+    if not os.environ.get('HIFLD_NOAA_TERRITORIAL_CAPTURE_EVIDENCE_DIR'):
+        raise unittest.SkipTest('Complete real captures are checksummed external artifacts; set HIFLD_NOAA_TERRITORIAL_CAPTURE_DIRECTORY or HIFLD_NOAA_TERRITORIAL_CAPTURE_EVIDENCE_DIR')
     root.mkdir()
     receipts = json.loads(gzip.decompress((EVIDENCE / 'pipeline-receipts.json.gz').read_bytes()))
     for receipt in receipts:
@@ -33,6 +47,7 @@ def replay_directory(root):
 
 
 class NoaaTerritorialPipelineTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('HIFLD_NOAA_TERRITORIAL_CAPTURE_DIRECTORY') or os.environ.get('HIFLD_NOAA_TERRITORIAL_CAPTURE_EVIDENCE_DIR'), 'Complete real capture retained as external artifact')
     def test_real87_native_output_provenance_idempotency_and_unapproved_graph_preservation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); replay_directory(root / 'capture')
@@ -51,6 +66,7 @@ class NoaaTerritorialPipelineTests(unittest.TestCase):
                 self.assertEqual(table.num_rows, 87)
                 self.assertEqual(str(table.schema.field('UNILATERAL').type), 'double')
                 self.assertEqual(str(table.schema.field('PUB_DATE').type), 'int64')
+                self.assertEqual(str(table.schema.field('RULEID').type), 'int32')
                 self.assertNotIn('id', table.column_names)
                 self.assertNotIn('bbox', table.column_names)
                 original = json.loads((root / 'capture/features.json').read_text())
@@ -78,6 +94,7 @@ class NoaaTerritorialPipelineTests(unittest.TestCase):
                 self.assertEqual(candidate.read_bytes(), before)
                 self.assertEqual(published.list_prefix(), ['synthetic-previous-release.bin'])
 
+    @unittest.skipUnless(os.environ.get('HIFLD_NOAA_TERRITORIAL_CAPTURE_DIRECTORY') or os.environ.get('HIFLD_NOAA_TERRITORIAL_CAPTURE_EVIDENCE_DIR'), 'Complete real capture retained as external artifact')
     def test_real_capture_drift_is_quarantined_without_promotion(self):
         mutations = {
             'missing_id': lambda body: body['features'][0]['attributes'].pop('BOUND_ID'),

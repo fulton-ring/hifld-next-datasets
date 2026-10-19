@@ -20,6 +20,7 @@ from pyproj import CRS
 from pyproj.exceptions import CRSError
 from shapely.errors import ShapelyError
 from shapely.geometry import shape
+from dagster_hifld.evidence_io import new_evidence_stream, validate_evidence_directory, write_json_atomic, write_text_atomic
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,8 @@ def _record_errors(record: dict, contract: dict) -> list[str]:
     geometry = record.get("geometry")
     if contract["geometry"]:
         if geometry is None:
-            errors.append("null_geometry")
+            if not contract.get("geometry_nullable", False):
+                errors.append("null_geometry")
         else:
             try:
                 _validate_geometry(geometry)
@@ -166,10 +168,12 @@ def compare_full_rows(
     Differences need a decision; malformed data or comparison errors fail closed.
     Scratch SQLite holds full keys, values, geometries and coverage groups.
     """
+    validate_evidence_directory(output_dir, protected_files=(baseline, candidate))
     output_dir.mkdir(parents=True, exist_ok=True)
     report = {
         "schema_version": 1,
         "adapter": "typed-geojson-feature-jsonl-v1",
+        "verification_scope": "reviewed_jsonl_normalization",
         "status": "blocked",
         "baseline": baseline_reference,
         "baseline_sha256": baseline_sha256,
@@ -182,11 +186,11 @@ def compare_full_rows(
         "comparator_sha256": sha256_file(Path(__file__)),
     }
     # Never leave a previous passing report visible while a rerun is unfinished.
-    (output_dir / "baseline_comparison.json").write_text(json.dumps({
+    write_json_atomic(output_dir / "baseline_comparison.json", {
         **report, "reason_codes": ["comparison_started_not_completed"],
-    }, indent=2) + "\n")
+    })
     sidecar = output_dir / "baseline_differences.jsonl"
-    with sidecar.open("w", encoding="utf-8") as diffs:
+    with new_evidence_stream(sidecar) as diffs:
         def emit(kind: str, **details: Any) -> None:
             diffs.write(json.dumps({"kind": kind, **details}, ensure_ascii=False) + "\n")
 
@@ -224,12 +228,14 @@ def compare_full_rows(
                     db.execute("CREATE INDEX row_keys ON rows(side,key)")
                     db.execute("CREATE TABLE coverage(side TEXT, field TEXT, bucket BLOB)")
                     db.execute("CREATE INDEX coverage_keys ON coverage(field,bucket,side)")
+                    db.execute("CREATE TABLE field_changes (field TEXT PRIMARY KEY, compared INTEGER, changed INTEGER)")
                     page_size = db.execute("PRAGMA page_size").fetchone()[0]
 
                     def quota() -> None:
                         diffs.flush()
                         allocated = db.execute("PRAGMA page_count").fetchone()[0] * page_size
-                        size = sidecar.stat().st_size + max(allocated, sum(p.stat().st_size for p in Path(scratch).iterdir()))
+                        field_sidecar = output_dir / "baseline_field_changes.jsonl"
+                        size = sidecar.stat().st_size + (field_sidecar.stat().st_size if field_sidecar.exists() else 0) + max(allocated, sum(p.stat().st_size for p in Path(scratch).iterdir()))
                         if size > limits.max_scratch_bytes:
                             raise ValueError("Scratch quota exceeded")
 
@@ -278,7 +284,15 @@ def compare_full_rows(
                         WHERE a.side='baseline' AND b.side='candidate'
                         AND (SELECT COUNT(*) FROM rows x WHERE x.side='baseline' AND x.key=a.key)=1
                         AND (SELECT COUNT(*) FROM rows x WHERE x.side='candidate' AND x.key=a.key)=1"""
+                    retained = 0
                     for key, left, right, left_geom, right_geom in db.execute(query):
+                        retained += 1
+                        left_fields, right_fields = dict(json.loads(left)[1]), dict(json.loads(right)[1])
+                        missing = object()
+                        for field in left_fields.keys() | right_fields.keys():
+                            different = left_fields.get(field, missing) != right_fields.get(field, missing)
+                            db.execute("INSERT INTO field_changes VALUES (?,1,?) ON CONFLICT(field) DO UPDATE SET compared=compared+1,changed=changed+excluded.changed",
+                                       (field, int(different)))
                         if left != right:
                             changes["attributes"] += 1
                             emit("attributes", key=json.loads(key), baseline=json.loads(left), candidate=json.loads(right))
@@ -286,6 +300,16 @@ def compare_full_rows(
                             changes["geometry"] += 1
                             emit("geometry", key=json.loads(key), baseline=json.loads(left_geom), candidate=json.loads(right_geom))
                         quota()
+                    field_path = output_dir / "baseline_field_changes.jsonl"
+                    field_rows = 0
+                    with new_evidence_stream(field_path) as fields:
+                        for name, compared, changed in db.execute("SELECT field,compared,changed FROM field_changes ORDER BY field"):
+                            fields.write(json.dumps({"field": name, "retained_rows_compared": compared, "changed": changed}, ensure_ascii=False) + "\n")
+                            fields.flush()
+                            quota()
+                            field_rows += 1
+                    report["retained_rows_compared"] = retained
+                    report["attribute_field_changes"] = {"path": field_path.name, "sha256": sha256_file(field_path), "bytes": field_path.stat().st_size, "fields": field_rows}
                     query = """SELECT field,bucket,SUM(CASE WHEN side='baseline' THEN 1 ELSE 0 END),
                         SUM(CASE WHEN side='candidate' THEN 1 ELSE 0 END) FROM coverage
                         GROUP BY field,bucket HAVING SUM(CASE WHEN side='baseline' THEN 1 ELSE -1 END) != 0"""
@@ -308,8 +332,8 @@ def compare_full_rows(
             report["status"] = "blocked"
             report["reason_codes"].append(f"comparison_incomplete:{type(exc).__name__}:{exc}")
     report["sidecar"] = {"path": sidecar.name, "sha256": sha256_file(sidecar), "bytes": sidecar.stat().st_size}
-    (output_dir / "baseline_comparison.json").write_text(json.dumps(report, indent=2) + "\n")
-    (output_dir / "baseline_comparison.md").write_text(
+    write_json_atomic(output_dir / "baseline_comparison.json", report)
+    write_text_atomic(output_dir / "baseline_comparison.md",
         f"Comparison: **{report['status']}**. Acceptance is separate.\n\n"
         f"Population totals: `{json.dumps(report['populations'])}`\n\n"
         f"Full differences: `{json.dumps(report['differences'])}`\n\n"
