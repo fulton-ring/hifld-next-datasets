@@ -1,0 +1,10 @@
+{
+  "reference_head": "c878e1e043d1daaee228598cb3e87fdc1bc897bc",
+  "all_native_functions_unchanged": {
+    "inspect_archive": true,
+    "typed_table": true,
+    "write_canonical_geopackage": true,
+    "compare_derivative": true,
+    "expected_fidelity_payloads": true
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "reference_source_head": "97f45abb559b28cf43f0859df151ca19a2326ed7",
+  "current_source_head": "d6ff8d5e048b79c853e99c9c262fc1ba6f89fd89",
+  "files": {
+    "candidate/typed-source.parquet": {
+      "byte_identical": true,
+      "bytes": 11833,
+      "sha256": "9d71d3281a2a2f072828b5d894ba681108cf202bfdb2c8809284abf60eddd8a5"
+    },
+    "geoparquet/current-dart-deployments.parquet": {
+      "byte_identical": true,
+      "bytes": 11833,
+      "sha256": "9d71d3281a2a2f072828b5d894ba681108cf202bfdb2c8809284abf60eddd8a5"
+    },
+    "geopackage/current-dart-deployments.gpkg": {
+      "byte_identical": true,
+      "bytes": 110592,
+      "sha256": "6e4a610b802870713ea38e1687164f8c796f28723ede76e6a8e5ace55c1d96dc"
+    },
+    "metadata/candidate.records.jsonl": {
+      "byte_identical": true,
+      "bytes": 18013,
+      "sha256": "0bf7af6abbedee9fb029a5eca4023493d5457e4388b132bcade3bffc379f5df8"
+    },
+    "metadata/current_dart_source_audit.json": {
+      "byte_identical": true,
+      "bytes": 1784,
+      "sha256": "0660c0e63ff9ea121cc2daf4b9729fcbdeb1f488d37d02d2b356d4d8a2781ef3"
+    }
+  }
+}

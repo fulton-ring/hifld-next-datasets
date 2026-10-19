@@ -123,6 +123,30 @@
     "bytes": 1056,
     "sha256": "fa69fc9a9771d9d5a5b492b8f16afb24f6b6d0e94e4690b385b94fbe9c7aa8ec"
   },
+  "construction-dagster-execution.json": {
+    "bytes": 32230,
+    "sha256": "0ffe4cb1c55fd7c834fbbac45cfe3f0e75c398ef063d78a11f866770daf82ad9"
+  },
+  "construction-focused-tests.log": {
+    "bytes": 368,
+    "sha256": "5aedd4071a5d7145b2ac9ac31d9e369cba3ba2da434e86fecc10b5ede7b08906"
+  },
+  "construction-full-suite.log": {
+    "bytes": 18650,
+    "sha256": "ed1dabc47cc345860d22def9f7330a4e7186377fff6cc0b15fcb0f05007f7441"
+  },
+  "construction-processing-identity.json": {
+    "bytes": 10639,
+    "sha256": "6345d8c6e4797bb2d9452bf3bc5e66e259fd83d30ec26bde842b9cac908f1b79"
+  },
+  "construction-recovery.json": {
+    "bytes": 31109,
+    "sha256": "24aea2ad1dfe894f0752507f234f55c49b6167927b631778af728acd761aa3b1"
+  },
+  "construction-verification.json": {
+    "bytes": 7235,
+    "sha256": "c9d3e199eb16ecf5382c66d8b419ad3498197fbcfe7749f9a184c35c6aeacad4"
+  },
   "dagster-execution.json": {
     "bytes": 32230,
     "sha256": "b1b665b49ada64a3aaf8517023f0d7c8fd55474bcec691b4daae0c7f8c1c00fb"
@@ -138,6 +162,26 @@
   "live-acquisition.json": {
     "bytes": 4513,
     "sha256": "7d98a1a7446f1101b012d9ad9a15d3e868c25a9335067ae150e78a3377ef4645"
+  },
+  "native-payloads-unchanged.json": {
+    "bytes": 1104,
+    "sha256": "04eb62aab1834cb54c376920a9c59d110de14148cbba9435907003633d737845"
+  },
+  "native-writer-ast-unchanged.json": {
+    "bytes": 275,
+    "sha256": "cb8b036156f21b41a8cde944e17f0e36a1acfafa2bdec159568404bec26b0376"
+  },
+  "original-construction-bundle.json": {
+    "bytes": 26434,
+    "sha256": "6da82efe96538b6d5bc59d58f95bdc74f73fd7b2ca06eb95c3f664dca6b5ce6a"
+  },
+  "provenance-head-checkpoint.json": {
+    "bytes": 920,
+    "sha256": "946ef3ad0475144524385f37e5aaf0bfb3180a705c584f996feb17c5793e3078"
+  },
+  "provenance_recovery.py": {
+    "bytes": 8600,
+    "sha256": "6e37566de8efd3a6c38783ba27486c28bad3157eb892da3835cc24c9afd264c4"
   },
   "published-candidate/collection.json": {
     "bytes": 12464,

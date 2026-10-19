@@ -89,7 +89,8 @@
     "geometry": "Point",
     "source_physical_ids": "int32",
     "published_parquet_ids": "int64",
-    "migration": "Not accepted; preserve each original source and published file without ID substitution."
+    "migration": "Not accepted; preserve each original source and published file without ID substitution.",
+    "geopackage_nullability_decision": "Unapproved wider GPKG constraint: source/Arrow OBJECTID nonnullable, generated GPKG MEDIUMINT permits null; all62actualrows nonnull."
   },
   "promotion_blockers": [
     "No maintainer-approved source/baseline/contract/ID mapping",
@@ -117,6 +118,14 @@
       "passed": 523,
       "skipped": 1
     },
-    "independent_review": "pending"
+    "independent_review": "Initial review changes requested; full-provenance/Git-identity recovery repair awaiting same-reviewer exact-head recheck",
+    "latest_source_code_head": "d6ff8d5e048b79c853e99c9c262fc1ba6f89fd89",
+    "construction_repair": "evidence/construction-verification.json",
+    "latest_actual_dagster_runs": 24,
+    "latest_full_suite": {
+      "total": 540,
+      "passed": 539,
+      "skipped": 1
+    }
   }
 }
