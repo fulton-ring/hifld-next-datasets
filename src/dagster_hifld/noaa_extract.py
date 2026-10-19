@@ -6,6 +6,7 @@ outside canonical source directories until a versioned mapping is accepted.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -59,7 +60,7 @@ def _body(captures: dict[str, bytes], name: str) -> dict:
     return result
 
 
-def fetch_noaa_layer(layer_url: str, *, timeout: float = 45, attempts: int = 2) -> tuple[dict[str, bytes], list[dict]]:
+def fetch_noaa_layer(layer_url: str, *, timeout: float = 45, attempts: int = 3) -> tuple[dict[str, bytes], list[dict]]:
     """Fetch one full bounded layer plus independent before/after ID/count checks.
 
     Default proxy/TLS and runtime identity are retained. No pagination guess: a
@@ -81,28 +82,40 @@ def fetch_noaa_layer(layer_url: str, *, timeout: float = 45, attempts: int = 2) 
     receipts = []
     for name, url in urls.items():
         started = datetime.now(timezone.utc).isoformat()
+        failures = []
         for attempt in range(attempts):
             try:
                 with urlopen(Request(url, headers={"User-Agent": "HIFLD NOAA draft source adapter"}), timeout=timeout) as response:
                     content = response.read(32 * 1024 * 1024 + 1)
-                    status = response.status
-                    final_url = response.url
-                break
-            except (HTTPError, URLError, TimeoutError) as exc:
+                    status, final_url = response.status, response.url
+            except HTTPError as exc:
+                content, status, final_url = exc.read(32 * 1024 * 1024 + 1), exc.code, exc.url
+            except (URLError, TimeoutError) as exc:
+                failures.append({"attempt": attempt + 1, "transport_error": type(exc).__name__})
                 if attempt + 1 == attempts:
-                    if isinstance(exc, HTTPError):
-                        content = exc.read(32 * 1024 * 1024 + 1)
-                        status, final_url = exc.code, exc.url
-                        break
-                    receipts.append({"capture": name, "url": url, "fetched_at": started, "transport_error": type(exc).__name__, "attempts": attempts})
-                    return captures, receipts  # Partial raw evidence is quarantined by staging.
+                    receipts.append({"capture": name, "url": url, "fetched_at": started, "failed_attempts": failures})
+                    return captures, receipts
                 time.sleep(0.25)
+                continue
+            try:
+                parsed = json.loads(content)
+                valid = status == 200 and isinstance(parsed, dict) and "error" not in parsed
+            except (ValueError, UnicodeError):
+                valid = False
+            if valid or attempt + 1 == attempts:
+                break
+            failures.append({"attempt": attempt + 1, "http_status": status, "bytes": len(content),
+                             "sha256": hashlib.sha256(content).hexdigest(),
+                             "body_base64": base64.b64encode(content).decode()})
+            time.sleep(0.25)
         captures[name] = content
+        receipt = {"capture": name, "url": url, "final_url": final_url, "http_status": status,
+                   "fetched_at": started, "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest(),
+                   "failed_attempts": failures}
+        receipts.append(receipt)
         if len(content) > 32 * 1024 * 1024:
-            receipts.append({"capture": name, "url": url, "fetched_at": started, "error": "response exceeds 32MiB bound; retained bounded prefix", "truncated": True})
+            receipt.update(error="response exceeds32MiB; retained bounded prefix", truncated=True)
             return captures, receipts
-        receipts.append({"capture": name, "url": url, "final_url": final_url, "http_status": status,
-                         "fetched_at": started, "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest()})
     return captures, receipts
 
 
@@ -273,7 +286,7 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
         source_key = _write_draft_staging(staging, f"{prefix}/geopackage/{file_slug}.gpkg", path.read_bytes())
     report = {**quality, "catalog_source_key": source_key, "dataset_slug": dataset_slug, "file_slug": file_slug, "version": version, "candidate_key": key,
               "candidate_sha256": hashlib.sha256(candidate).hexdigest(), "raw_identity": identity,
-              "status": "draft_candidate_unapproved", "source_receipts": [{k: v for k, v in r.items() if k != "fetched_at"} for r in receipts],
+              "status": "draft_candidate_unapproved", "receipt_directory": "raw/receipts",
               "refresh_policy": "Bounded retry on transport failure; content-addressed no-op for identical extraction; any proposed schema/IDs/geometry/coverage drift quarantines; not a release-date assertion"}
     _write_draft_staging(staging, f"{prefix}/metadata/noaa_extraction.json", _json_bytes(report))
     return report
