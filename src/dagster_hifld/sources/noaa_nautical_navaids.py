@@ -413,7 +413,8 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,
                                 record_sha,schema_sha,expected_objects,capture_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["feature_count"],
-                "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_release_accepted":False,
+                "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
+                "published_baseline_compatible":False,"source_release_accepted":False,
                 "schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     if storage.object_snapshot(state_key) is None:
         seal_ready_candidate(storage, state_key, version, fingerprint, payload)

@@ -14,6 +14,7 @@ from dagster_hifld.sources.noaa_nautical_navaids import (
     COUNT_URL, DOWNLOAD_URL, EXPECTED_COUNT, EXPECTED_FIELDS, INPORT_URL,
     CAPTURE_URLS, LAYER_URL, PORTAL_ITEM_ID, SERVICE_URL, _replay_capture_bundle, _validate,
 )
+from dagster_hifld.assets.noaa_nautical_navaids import noaa_nautical_navaids_complete
 
 
 def _fixture(*, aid_name_type: str = "TEXT(96)"):
@@ -76,6 +77,14 @@ def _mutate_archive(archive: bytes, statement: str) -> bytes:
 
 
 class NoaaNauticalNavaidsTests(unittest.TestCase):
+    def test_registered_completeness_check_accepts_the_cached_candidate_metadata_shape(self):
+        candidate={"feature_count":EXPECTED_COUNT,"published_baseline_compatible":False,
+                   "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,
+                   "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,
+                   "release_accepted":False}
+        result=noaa_nautical_navaids_complete.node_def.compute_fn.decorated_fn(candidate)
+        self.assertTrue(result.passed)
+
     def test_retained_replay_requires_complete_receipted_capture_roster(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); refs={}
