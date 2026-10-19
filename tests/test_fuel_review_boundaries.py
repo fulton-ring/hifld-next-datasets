@@ -15,6 +15,7 @@ from dagster import DagsterInstance
 from dagster_hifld.assets.fuel_stations import (
     SLUG, SERVICE, _capture_json, build_candidate, inspect_capture,
     stage_fuel_capture, bts_alternative_fueling_stations, UNSUPPORTED_OUTPUT_FORMATS,
+    _source_manifest, processing_identity,
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.publish import _write_and_publish_pmtiles
@@ -120,9 +121,11 @@ class FuelReviewBoundaryTests(unittest.TestCase):
     def test_pmtiles_policy_skips_before_generation_or_existing_reuse_and_gate_preserves(self):
         version='v0.0.0-policy'
         prefix=f'{SLUG}/{SLUG}/{version}'
-        self.staging.write(SLUG,SLUG,version,'metadata/source_manifest.json',json.dumps({
-            'source_url':SERVICE,'inputs':[{'input_id':SERVICE}],
-            'unsupported_output_formats':UNSUPPORTED_OUTPUT_FORMATS}).encode())
+        # The skip policy is exercised with the same complete provenance shape as
+        # actual staged captures; malformed provenance must remain a hard error.
+        manifest = _source_manifest(self.capture, inspect_capture(self.capture), processing_identity())
+        validate_release_provenance(manifest)
+        self.staging.write(SLUG,SLUG,version,'metadata/source_manifest.json',json.dumps(manifest).encode())
         diagnostic=self.staging.write(SLUG,SLUG,version,'pmtiles/diagnostic.pmtiles',b'diagnostic-only')
         published=PublishedStorageResource(local_dir=str(self.root/'published'),use_local=True)
         old=published.write_key('previous/keep.bin',b'preserve prior release')
