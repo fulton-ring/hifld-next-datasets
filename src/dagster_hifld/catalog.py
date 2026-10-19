@@ -15,6 +15,8 @@ from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dt
 
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.evidence_io import validate_evidence_directory
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
@@ -57,6 +59,8 @@ def summarize_staged_catalog(
     *,
     source_metadata: dict | None = None,
 ) -> CatalogSummary:
+    if source_metadata is not None:
+        provenance_projection(source_metadata)
     with staging.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
         version_path = Path(version_dir)
         reader_errors: list[str] = []
@@ -254,8 +258,10 @@ def generate_data_dictionary(
             "code_commit",
             "lineage",
             "unsupported_output_formats",
+            "prebuilt_output_policy",
+            "manifest_layers",
         ):
-            if key in source_metadata and source_metadata[key] not in (None, "", [], {}):
+            if key in source_metadata and (key == "transformations" or source_metadata[key] not in (None, "", [], {})):
                 dictionary[key] = source_metadata[key]
     return dictionary
 
@@ -268,24 +274,18 @@ def write_catalog_metadata(
     quality_dict: dict,
     dictionary_dict: dict,
 ) -> dict[str, str]:
-    quality_key = staging.write(
-        dataset_slug,
-        file_slug,
-        version,
-        "metadata/quality_manifest.json",
-        json.dumps(quality_dict, sort_keys=True, indent=2).encode("utf-8"),
-    )
-    dictionary_key = staging.write(
-        dataset_slug,
-        file_slug,
-        version,
-        "metadata/data_dictionary.json",
-        json.dumps(dictionary_dict, sort_keys=True, indent=2).encode("utf-8"),
-    )
-    return {
-        "quality_manifest": quality_key,
-        "data_dictionary": dictionary_key,
-    }
+    provenance = provenance_projection(dictionary_dict)
+    if staging.use_local or not staging.bucket:
+        validate_evidence_directory(Path(staging.local_dir).resolve() / staging.build_target_location(dataset_slug, file_slug, version, "metadata"))
+    documents = {"quality_manifest": ("quality_manifest.json", quality_dict), "data_dictionary": ("data_dictionary.json", dictionary_dict)}
+    if provenance is not None:
+        documents["resolved_provenance"] = ("resolved_provenance.json", provenance)
+    result = {}
+    for name, (filename, contents) in documents.items():
+        key = staging.build_target_location(dataset_slug, file_slug, version, "metadata/" + filename)
+        staging.write_key_if_unchanged(key, json.dumps(contents, sort_keys=True, indent=2).encode("utf-8"), staging.object_snapshot(key))
+        result[name] = key
+    return result
 
 
 def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:

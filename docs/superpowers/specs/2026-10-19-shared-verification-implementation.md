@@ -87,8 +87,10 @@ No real accepted-baseline pilot exists. The native-reader follow-up below delive
 pinned GeoPackage, Parquet/GeoParquet and Arrow IPC normalization, homogeneous
 multi-file rosters and full retained-row field summaries. Upstream pagination
 proof, all transformation/lineage reconciliation rules, additional native source
-formats, full domain/quality accounting, all-source STAC attribution/links and
-published metadata roundtrip remain unfinished. The registry still requires manual acceptance of exact changes and terminal
+formats, full domain/quality accounting and general source→terminal transformation rules
+remain unfinished. The direct modern publication path now delivers all-input
+STAC attribution, links and metadata roundtrip below; the inventory-only builder
+explicitly refuses modern inputs without exact metadata byte pins. The registry still requires manual acceptance of exact changes and terminal
 object bytes. The JSONL mode explicitly retains a reviewed-normalization trust
 scope; native mode now also performs original-object re-derivation and comparison
 replay at the release boundary, as described below. Neither mode supplies source
@@ -97,15 +99,17 @@ acceptance or the remaining extraction/transformation rules.
 SQLite cache/record/scratch limits and measured scaling bound this comparator's
 engineering scope; they do not establish an OS-enforced RSS or disk quota. Quota
 checks occur between operations and may overshoot by one record/SQLite allocation.
-Conversion, catalogs and downloads have their own memory behavior. Current
-Portolan random-generation bundles do not yet provide a reusable pre-review
-planning/replay command for exact catalog-byte approval, so they remain blocked
-without an independently prepared exact bundle decision.
+Conversion, catalogs and downloads have their own memory behavior. Persistent immutable Portolan release planning now retains exact UUID, timestamp,
+SQLite, STAC and pointer bytes for an external decision. The one-shot path still
+blocks without exact acceptance; the new public prepare/apply APIs avoid
+regenerating bytes after review. The legacy in-place root-catalog writer and
+unplanned rollback are disabled by the later draft compatibility change below.
 
 Tests labeled mechanics isolate the acceptance boundary explicitly; the new
 boundary and actual Dagster integration tests use no approval mocks. Synthetic
-acceptance is a test fixture, not approval of any HIFLD dataset. The full suite
-still cannot pass without sibling `hifld-next-iac/environments/prod/dagster.tf`.
+acceptance is a test fixture, not approval of any HIFLD dataset. The historical full-suite runs below lacked sibling
+`hifld-next-iac/environments/prod/dagster.tf`. The final provenance run uses the
+restored unmodified real sibling source snapshot and passes as recorded below.
 
 ## Executed validation
 
@@ -346,3 +350,347 @@ captured `http_status` is non-2xx. Separately retained diagnostic attempts remai
 untrusted evidence and do not require fabricated successful-source metadata.
 The `provenance_projection` helper preserves complete selected input/code/lineage
 claims for the upcoming dictionary/STAC integration; it performs no acceptance.
+
+
+## Complete input metadata and reviewable immutable catalog bundles
+
+Modern source resolution validates the complete metadata after dataset/file/
+version input merging. The generated dictionary retains every input and explicit
+empty transformation list. `metadata/resolved_provenance.json` is a complete
+projection of processor, inputs, transformations, code identity and lineage.
+Content-addressed snapshots preserve every authored manifest layer without
+overwriting older receipts; `manifest_layers` records its original hash, source
+key, input identities, processor/code and transformation claims. Raw layer
+metadata is retained as evidence, not upgraded into source authority. Catalog
+metadata writes reject linked local output trees and use conditional atomic
+replacement rather than truncating aliases.
+
+The release boundary checks the resolved manifest and dictionary against current
+complete source metadata, requires all original layer snapshots to be pinned and
+downloadable, and blocks missing/lost/changed input attribution. Diagnostic failed
+attempts remain separate evidence. No producer/license/date/delegation decision
+is inferred. Modern metadata is structurally required before conversion or
+promotion in the direct Portolan workflow.
+
+`portolan.provenance.attach_published_provenance` reads actual published metadata
+and binds its checksummed byte assets to a `CatalogRecord`. STAC retains complete
+input objects with original notices, request/final URL spellings, retrieval dates,
+unknown release explanations, transformations and code identity. Every producer
+appears separately from the HIFLD Next processor/host. Canonical URLs receive
+`derived_from` links; retrieval/request/final URL aliases each receive explicit
+input-scoped links. All metadata files, original layer snapshots, comparison
+receipts and lineage sidecars become checksummed metadata assets and SQLite asset
+rows. Declared roles, input links and complete metadata assets are validated.
+The inventory-only importer explicitly fails modern multi-input records without
+original metadata SHA-256 pins; it never silently projects them into legacy
+single-publisher records. The existing archive-only mode stays distinct.
+
+`prepare_portolan_release_bundle(records, request, published, plan_dir)` writes a
+new local plan containing exact immutable STAC/SQLite/pointer bytes, destination,
+implementation and metadata dependency snapshots. It performs no public write or
+acceptance. `apply_portolan_release_bundle(plan_dir, published)` validates the
+whole file roster and byte hashes, STAC semantics, actual published metadata
+contents and dependency snapshots, current pointer identity and independently
+accepted bytes for every object. It writes a new immutable release and changes
+the pointer last. Missing approval, changed bytes, removed dependency labels,
+conflicting metadata or an omitted input fail before publication. It does not
+regenerate UUIDs/timestamps/SQLite after review. Partial immutable bundles from a
+storage failure are retained; the accepted pointer stays unchanged unless its
+final conditional update succeeds. Arbitrary concurrent filesystem directory
+replacement and hard OS quotas remain outside this local trust/engineering scope.
+
+Reproduce the actual isolated synthetic roundtrip (fixture-only decisions):
+
+```sh
+PYTHONPATH=src:. uv run python -m scripts.verification.provenance_roundtrip_local \
+  --work-dir /workspace/work/new-empty-synthetic-roundtrip
+```
+
+The `b9d6b69` run retained two fixture inputs and roundtripped all 19 metadata assets
+and 19 corresponding SQLite rows. Missing bundle approval, removed dependency
+labels and deliberately repinned omitted-input STAC were blocked while all 40
+published fixture objects remained unchanged. Its native full graph published
+22 fixture objects only after an exact synthetic decision; bad provenance, false
+native derivation and extra-shard attempts preserved them. The pointer selected
+generation `55b31d63-dc3d-49ff-8da1-f1a411bfc3f1`. No real acceptance or production
+write occurred.
+
+Local repository suite at `b9d6b69`: **504 tests, 503 passed, one opt-in production-write
+integration skipped, no errors**. The real sibling IaC snapshot at commit
+`56aa10757129c457c530d707d9a40bae13e0907f` was present; no fixture replacement or
+infrastructure command was used. Historical missing-IaC results remain unchanged
+as historical evidence. This is local validation, not a CI assertion.
+
+Seven current canonical source manifests pass structural compatibility. Both
+provided AIANNH #8 captures retain processor `HIFLD Next draft AIANNH source
+adapter`, which fails the already established exact `HIFLD Next` processor rule.
+A processor-only in-memory diagnostic found no additional structural failure;
+source-owned repair was requested without modifying captures or approving any
+source. This actual blocked case is recorded explicitly, not counted as valid.
+
+The bounded [evidence record](../evidence/2026-10-19-provenance-stac-roundtrip.json)
+pins implementation bytes, commands, logs, exact run IDs, metadata roundtrip and
+compatibility outcomes. Real accepted pilot/source/contract decisions remain
+external. Additional native formats, complete pagination proof, all transformation
+reconciliation and domain/quality policy still require further implementation.
+
+## Prepared-release dependency repairs after independent review
+
+Independent review of `b9d6b69` found three concrete integrity gaps despite exact
+synthetic byte decisions: a metadata URL could name an unrelated host while its
+object-key label named the real object; a prepared plan could outlive changes to
+its referenced data; and SQLite metadata asset rows could be omitted while STAC
+still retained them. These are repairs to technical consistency, not acceptance
+decisions or claims of a missing-approval bypass.
+
+Preparation now derives a complete dependency roster from the final rendered
+STAC, including prior seeded collections, every data file and shard, styles,
+thumbnails and metadata. Each asset requires a SHA-256/byte length, actual object
+identity and exact `public_root/object_key` download URL. Unpinned external asset
+URLs fail explicitly. The public root also matches the rendered catalog self
+URL. SQLite's complete asset, canonical location and object populations and all
+corresponding rendered fields are independently reconciled with STAC; changing
+both the SQLite pointer hash and external exact byte decisions cannot hide
+omitted rows or inconsistent object keys, URLs, roles, types or checksums.
+
+Apply re-derives the complete asset roster and validates actual snapshots and
+byte hashes before any new release write. Its local pointer commit rechecks all
+dependency identities after fsync of the temporary pointer, then checks the
+pointer's expected identity again. A detected late failure conditionally removes
+only this attempt's own unchanged newly-created release objects if the accepted
+pointer remains unchanged; the complete local plan stays available. An
+interruption after pointer commit keeps its selected generation intact. No
+failed verification repairs or overwrites a changed data dependency.
+
+This local guard does not implement a cross-object cloud transaction and cannot
+prevent an arbitrary external writer from altering data after publication. Data
+immutability and excluding uncoordinated writers remain operational
+prerequisites. **Remote prepared apply fails closed**, before any writes, until
+generation-qualified dependency URLs or a transactional remote protocol is
+implemented. At that repair checkpoint the legacy in-place catalog/rollback
+surface retained its separate scope; the later draft change below disables both.
+A future remote or legacy workflow must not be described as this local prepared proof.
+
+The actual synthetic runner now deliberately approves repinned wrong-download
+STAC/SQLite bytes and omitted SQLite rows, mutates a GeoParquet after planning,
+and injects a real dependency replacement after new release-object writes but
+before pointer commit. Each must block, preserve the previous pointer and
+40-object roster, preserve all objects except the deliberately external-mutated
+dependency itself, and retain the plan. The test, not apply, restores that
+fixture's injected mutation before the next isolated probe. No producer source
+capture or accepted real dataset is involved.
+
+The repaired frozen code passed **505 local tests: 504 passed, one production-write
+opt-in skipped, zero errors/failures**, using the same real pinned IaC dependency.
+The durable run selected synthetic generation
+`82d9d475-b6ef-42bd-a9c1-818a2790755b`, verified 21 referenced dependencies
+(19 metadata assets), and blocked all four new negative cases. Its native
+success was `81ff1c6b-a4bc-48ea-ad0d-60cf41b5ed30`; missing approval and extra
+shard runs were `8434beea-97d2-410f-b266-1a6ebadf0d19` and
+`bfa18cbf-76f3-48f1-aaa6-46527505e9a8`. Exact implementation/log pins and the
+original independent reproductions are in the
+[repair evidence](../evidence/2026-10-19-stac-dependency-repair.json). This is local
+validation awaiting a new independent exact-head review, not a CI or real
+acceptance claim.
+
+The independent `20452e2` follow-up identified one omitted projection field:
+SQLite asset-object native and CRS84 bounds could differ from the unchanged
+rendered Collection after deliberate exact DB/pointer repins. Both bounds now
+match `hifld:native_bbox` and the normalized Collection spatial extent, including
+the existing unknown/clamped extent policy. The catalog-only replay rejects all
+five negative cases while retaining its 40-object roster and pointer; no terminal
+data was rebuilt for that replay. Forty-nine focused publication/workflow tests
+passed; the full suite was not repeated for this narrow checkpoint.
+
+The source-owned AIANNH correction at `bac1c53` (final docs `19061d06`) produced
+new canonical metadata under `processor-normal-graph`; its single-input manifest
+now passes pure structural validation with processor `HIFLD Next`. Earlier
+`f066` processor-label failures and captured bytes remain historical and
+unchanged. This is metadata structure compatibility, not dataset acceptance.
+See the [narrow repair evidence](../evidence/2026-10-19-stac-object-bounds-repair.json).
+
+## Actual Dagster persisted-plan integration and proposed compatibility changes
+
+The registered partitioned asset `publish/portolan_catalog` now requires explicit
+run configuration. With `mode: prepare` it reads already promoted modern metadata
+and GeoParquet from the supplied physical storage prefix, validates metadata and
+quality consistency, and creates a new persistent exact release plan. It does not
+convert formats, generate styles/thumbnails, promote source data or write any
+published object. With `mode: apply` it consumes that same persisted directory;
+it never rerenders UUIDs, timestamps, SQLite or STAC. The same dependency,
+provenance, SQLite, byte-approval and guarded local pointer checks still apply.
+
+Example asset configuration (paths must be outside staging/published storage):
+
+```yaml
+ops:
+  publish__portolan_catalog:
+    config:
+      mode: prepare # a separate reviewed run changes this to apply
+      plan_dir: /workspace/work/reviewable-catalog-plan
+```
+
+The selected collection, dataset/file/version partition, staging and published
+backend/location/prefix identities, public root and storage slug are bound into
+the plan. Apply checks those identities against the actual selected run before
+publication. Exact plan approval is additionally required using the logical key
+`_catalog/reviewed-plans/{generation}.json` in the external registry's
+`published_objects` byte-decision map. This key identifies an **approval-only
+artifact**: no public object is written there. Its SHA-256 is computed from
+`prepared_plan_approval(plan)` canonical UTF-8 JSON bytes, so review includes the
+selection, dependencies, previous pointer and generated object roster, not only
+the individual STAC/SQLite bytes. Preparing or parsing that plan cannot approve
+it. Reusing a plan for another partition/storage/root or modifying its labels
+after the decision fails closed.
+
+These are explicit **proposed compatibility changes in this draft PR**, not
+approval to deploy them: enabled deployments must configure prepare/apply and a
+persistent external plan directory; implicit one-shot asset publication is
+disabled; the previous in-place root STAC/SQLite writer is removed and requests
+for it fail before conversion/promotion; unplanned `rollback_portolan_release`
+fails before any storage access. Equivalent persistent rollback planning and
+full dependency verification must be implemented and reviewed before restoring
+that operation. Existing direct one-shot immutable APIs retain all strict
+guards, including the exact plan decision; they cannot substitute an unreviewed
+random bundle for the persisted asset workflow. Archive public-domain status
+is now opt-in via `HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN=1`, rather than inferred
+for a new producer dataset. Maintainers must decide migration/deployment/API
+compatibility; this code grants no baseline, contract, source, license or
+breaking-change acceptance. Remote apply remains explicitly unsupported.
+
+The actual registered asset was executed in a separate durable Dagster instance
+using preserved own synthetic terminal bytes (no data rebuild or approval
+mocks): prepare succeeded without published writes; missing approval, wrong
+partition, wrong public root, changed staging identity and modified plan values
+failed for their expected audited reasons; an exact synthetic decision applied
+the saved plan without changing any prepared file. A second actual prepare and
+post-plan data mutation failed while preserving the selected prior generation,
+all 57 object keys/snapshots present at the start of the failed attempt, and
+review evidence. In-place and rollback entrypoints also failed with that same
+published storage unchanged. Their deliberately injected external data mutation
+was restored only by the fixture. All actual run IDs and failure-reason event
+records are preserved in the evidence described below.
+
+The frozen implementation passed **505 local tests: 504 passed, one opted-out
+production-write integration, zero failures/errors**, with the unmodified pinned
+real IaC dependency. Actual prepare was
+`66b6b7c0-a135-4bda-a311-0d945abc4cff` and apply was
+`53eef9d0-6cb5-4ffd-aeaf-3f0a2a824795`, selecting generation
+`4b94cbad-9c69-4726-a4cd-d4e409abede5`; actual drift failure was
+`8add275c-7ef9-4a14-af40-1f3c677cff8a`. The
+[persisted-asset evidence](../evidence/2026-10-19-dagster-persisted-catalog-plan.json)
+pins all code/log bytes, nine actual runs, expected failure-reason audits and the
+explicit compatibility proposal. The narrow `d28dbaf` bounds repair has its own
+independent PASS; that review does not cover this new Dagster/API slice. No CI,
+production, source/baseline/contract or compatibility acceptance is claimed.
+
+## Preserved native artifacts versus whole-format prohibitions
+
+Source #30 retained faithful native Date32 GeoParquet, while #31 retained a
+source-produced typed GeoParquet without generic derived columns. Both used
+`unsupported_output_formats.geoparquet` to prevent lossy generic regeneration.
+That field correctly prohibited *all* staged GeoParquet at the release boundary,
+so even a future legitimate source/baseline decision could not promote their
+preserved output. No real dataset is accepted by correcting this distinction.
+
+New draft `prebuilt_output_policy` version 1 declares a complete native artifact
+roster and forbids generic regeneration. Initial support is narrowly GeoParquet:
+
+```json
+{
+  "prebuilt_output_policy": {
+    "schema_version": 1,
+    "formats": {
+      "geoparquet": {
+        "reason": "Captured evidence explains why generic regeneration is forbidden",
+        "objects": [
+          {"path": "geoparquet/native.parquet", "sha256": "<actual SHA256>", "bytes": 123}
+        ]
+      }
+    }
+  }
+}
+```
+
+Every path is relative to the dataset/file/version directory. The entire format
+roster, SHA-256, length and stable storage identity are verified before returning
+prebuilt format outputs and again at release. Missing, extra, changed, malformed
+or conflicting declarations raise; they never fall back to the generic converter
+or delete/rebuild the prebuilt artifact, even when overwrite is enabled. Dagster
+format metadata records `generation_mode=preserved_prebuilt`, disabled generic
+regeneration and the original evidence reason. This capability does not validate
+Parquet contents by itself: full native comparison, input derivation, provenance,
+quality, exact code/object pins and independent source/baseline/contract/report
+decisions are still required for promotion. The native receipt supplies the
+physical proof; a generic-converter layout manifest is not fabricated for an
+artifact the generic converter never generated.
+
+`unsupported_output_formats` retains its complete prohibition. A format cannot
+simultaneously be wholly banned and declared prebuilt; ambiguous overlap is
+rejected. Unsupported prebuilt encodings are rejected rather than inferred.
+Both policies are validated before metadata compaction, retained through source
+resolution, dictionary and resolved provenance, and therefore carried into the
+existing full STAC/metadata projection. Release uses the resolved dataset/file/
+version policy, including inherited declarations. Current older resolved metadata
+that omitted these capability declarations requires a newly reviewed canonical
+metadata generation; it is not silently relabelled or rewritten in published
+storage. This is a proposed draft metadata/API compatibility change requiring
+maintainer review, not source/format/contract or deployment acceptance.
+
+The synthetic Date32 fixture executes the actual registered catalog, format,
+comparison, quality/verification and promotion assets with isolated durable
+state. Exact synthetic-only decisions publish two rows with Date32/null dates,
+large and nullable Int64 values, source FIDs and geometry retained. Instrumenting
+the generic GeoParquet converter to raise proves zero calls. Missing approval,
+failed quality (also checked directly after deliberate exact quality-byte repin),
+staged native mutation and a whole-format ban all block and preserve the prior
+21-object fixture release. Policy bytes also match published dictionary and
+resolved provenance. No real source metadata or #30/#31 branch is changed here;
+source owners must deliberately integrate this shared checkpoint before changing
+their declarations and validating their new outputs.
+
+Frozen local suite: **508 tests, 507 passed, one production-write opt-in skipped,
+zero failures/errors**, with the real pinned IaC dependency. Actual Date32 success
+was `e47d1098-2a28-4ab1-bf4a-557c703cbe4e`; missing approval,
+quality failure and staged mutation were respectively
+`efeb555b-7880-4282-bca1-1215b9c3c639`,
+`66a1ab24-7077-454e-8cfe-e66024e8323e` and
+`19edc21e-02da-47b9-a249-7d4fd6349398`. Their durable failure-event reasons were
+audited. The [prebuilt evidence](../evidence/2026-10-19-prebuilt-date32-policy.json)
+pins current code, original source-card observations, published schema/selected
+typed values, complete runner/log hashes and all results. New checkpoint review
+is pending; prior `abde85b` independent PASS covers its earlier catalog slice,
+not this new capability policy. No CI or real acceptance claim is made.
+
+Independent review of `81433b3` reproduced a cross-layer defect with real native
+Date32 bytes and exact synthetic decisions: replacing the entire ban dictionary
+let a version's PMTiles ban erase a dataset's GeoParquet ban and thereby admit
+its prebuilt GeoParquet. The follow-up now unions whole-format bans across every
+authored dataset/file/version layer. Empty or unrelated narrower maps cannot
+clear an inherited ban; explicit null remains invalid. Distinct inherited
+prebuilt declarations are rejected instead of silently replacing the parent's
+roster/reason, and the fully merged policy is validated even for legacy metadata
+without modern provenance. No allow/unban override has been invented. Original
+authored files and their existing snapshots are not modified by resolution.
+
+Three additional regression tests exercise different-format multi-layer bans,
+empty/null/explicit declarations, preserved raw/snapshot bytes, and the actual
+writer and release helper under exact synthetic object decisions. A second
+standalone replay with preserved real typed Date32 fixture bytes confirms both
+entrypoints reject the inherited ban before output/copy, leaving all 24 staged
+objects and its prior published sentinel unchanged. The same registered Date32
+graph still succeeds for a valid prebuilt policy with zero generic converter
+calls and preserves its 21 published objects after missing approval, quality,
+staged mutation and whole-format-ban failures.
+
+Frozen validation: **511 local tests, 510 passed, one production-write opt-in
+skipped, zero errors/failures**; 36 focused tests passed. Actual Date32 success
+was `dc98d9b0-bcb6-402d-ad8b-5c1ed379a8d1`; missing approval,
+quality and mutation runs were `40e47558-2f3b-47af-b4a7-56457ab00d1d`,
+`233d2a0a-d3c9-4433-8b85-68b3495ad0ae` and
+`6d42ab87-3801-4114-9516-bf1b948b5dfa`. The
+[inherited-policy repair evidence](../evidence/2026-10-19-inherited-output-policy-repair.json)
+pins the original independent reproductions, code and logs, new actual runs and
+native replay. This narrower checkpoint awaits independent review; the parent
+`81433b3` finding remains honestly recorded. Source #30/#31 integration and all
+real acceptance/deployment decisions remain external.
