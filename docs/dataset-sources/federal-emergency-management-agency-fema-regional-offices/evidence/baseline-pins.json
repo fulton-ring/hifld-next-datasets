@@ -1,0 +1,51 @@
+{
+  "approved": false,
+  "feature_count": 14,
+  "assets": [
+    {
+      "format": "geojson",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geojson/federal-emergency-management-agency-fema-regional-offices-geojson.geojson",
+      "bytes": 7173,
+      "sha256": "0f8439ffcfc56171c17adb61345835f66d5dc945364e999cac8693397829fac0",
+      "generation": "1791506369538587",
+      "MD5": "VI2hcKWyR/h1VsKAOLnJPQ==",
+      "MD5_matches": true
+    },
+    {
+      "format": "geopackage",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geopackage/federal-emergency-management-agency-fema-regional-offices.gpkg",
+      "bytes": 102400,
+      "sha256": "bc28a5954d466a74ad8920cad8718a59e3b02e79d0ff99324c310e39699f2f44",
+      "generation": "1791506369565707",
+      "MD5": "lQOPuX4HBObvs1vTXExIhw==",
+      "MD5_matches": true
+    },
+    {
+      "format": "geoparquet",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geoparquet/federal-emergency-management-agency-fema-regional-offices.parquet",
+      "bytes": 15912,
+      "sha256": "ef61557aa4c166eeeee527db980f58e1299d28af6c629d48db318f1ee1785243",
+      "generation": "1791506369605920",
+      "MD5": "K7Xrx4THIwx0ZVKIVVww7A==",
+      "MD5_matches": true
+    },
+    {
+      "format": "pmtiles",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/pmtiles/federal-emergency-management-agency-fema-regional-offices.pmtiles",
+      "bytes": 3850,
+      "sha256": "bbcc30135a87bc89d628554adde5cc37f9e9fdf6cadc36ca9b6d34ef6b37b8b1",
+      "generation": "1791506369652347",
+      "MD5": "O2UgV/Z1tTklAJh9WMpruA==",
+      "MD5_matches": true
+    },
+    {
+      "format": "shapefile",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/shapefile/federal-emergency-management-agency-fema-regional-offices.zip",
+      "bytes": 3170,
+      "sha256": "01f422a97621a5fb771808cfeb27d21d4f9dcf41a107d622f08fabb13bea3c16",
+      "generation": "1791506369674644",
+      "MD5": "Dj877tG8FjPr8Po4ZM1rrQ==",
+      "MD5_matches": true
+    }
+  ]
+}
