@@ -1,12 +1,12 @@
 /workspace/hifld-worker-worktrees/10/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
   warnings.warn(
-2026-10-19 05:59:45 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - RUN_START - Started execution of run for "__ephemeral_asset_job__".
-2026-10-19 05:59:45 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - ENGINE_EVENT - Executing steps in process (pid: 36454)
-2026-10-19 05:59:45 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
-2026-10-19 05:59:45 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
-2026-10-19 05:59:45 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - LOGS_CAPTURED - Started capturing logs in process (pid: 36454).
-2026-10-19 05:59:45 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
-2026-10-19 05:59:45 +0000 - dagster - ERROR - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - ingest__aviation_facilities__aviation_facilities - STEP_FAILURE - Execution of step "ingest__aviation_facilities__aviation_facilities" failed.
+2026-10-19 06:08:47 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - RUN_START - Started execution of run for "__ephemeral_asset_job__".
+2026-10-19 06:08:47 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - ENGINE_EVENT - Executing steps in process (pid: 39494)
+2026-10-19 06:08:47 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:08:47 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:08:47 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - LOGS_CAPTURED - Started capturing logs in process (pid: 39494).
+2026-10-19 06:08:47 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
+2026-10-19 06:08:47 +0000 - dagster - ERROR - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - ingest__aviation_facilities__aviation_facilities - STEP_FAILURE - Execution of step "ingest__aviation_facilities__aviation_facilities" failed.
 
 dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op "ingest__aviation_facilities__aviation_facilities"::
 
@@ -26,13 +26,13 @@ Stack Trace:
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/workspace/hifld-worker-worktrees/20/src/dagster_hifld/assets/faa.py", line 68, in faa_aviation_facilities
     aviation_extract._require_review_staging(staging_storage)
-  File "/workspace/hifld-worker-worktrees/20/src/dagster_hifld/aviation_extract.py", line 56, in _require_review_staging
+  File "/workspace/hifld-worker-worktrees/20/src/dagster_hifld/aviation_extract.py", line 59, in _require_review_staging
     raise ValueError('Review draft refuses published storage before any capture or write')
 
-2026-10-19 05:59:45 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - ENGINE_EVENT - Finished steps in process (pid: 36454) in 131ms
-2026-10-19 05:59:45 +0000 - dagster - ERROR - __ephemeral_asset_job__ - 6a4c1dac-77e1-4fd8-a1c5-dcdaa8fbf052 - 36454 - RUN_FAILURE - Execution of run for "__ephemeral_asset_job__" failed. Steps failed: ['ingest__aviation_facilities__aviation_facilities'].
-............
+2026-10-19 06:08:47 +0000 - dagster - DEBUG - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - ENGINE_EVENT - Finished steps in process (pid: 39494) in 68ms
+2026-10-19 06:08:47 +0000 - dagster - ERROR - __ephemeral_asset_job__ - fee109a8-c24e-4887-b22c-16f62a52e129 - 39494 - RUN_FAILURE - Execution of run for "__ephemeral_asset_job__" failed. Steps failed: ['ingest__aviation_facilities__aviation_facilities'].
+..............
 ----------------------------------------------------------------------
-Ran 12 tests in 3.387s
+Ran 14 tests in 2.017s
 
 OK

@@ -1,21 +1,28 @@
 {
   "adapter_module": "/workspace/hifld-worker-worktrees/20/src/dagster_hifld/aviation_extract.py",
   "capture": "/workspace/work/hifld-coordinator/20/capture-bound",
-  "runtime": "/workspace/work/hifld-coordinator/20/materialization-final",
+  "runtime": "/workspace/work/hifld-coordinator/20/materialization-structural",
   "approval_registry_present": false,
   "ingest": {
-    "run_id": "07a98eb3-23a7-4d8d-9226-fb9123e2edaf",
+    "run_id": "a5b068a3-f3bf-4365-92a7-538fad548005",
     "success": true,
     "output": {
-      "version": "v0.0.0-draft-3774273f41d7f8cb297a63fd",
+      "version": "v0.0.0-draft-a09e261edf5cfad703591495",
       "rows": 19427,
       "source": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Aviation_Facilities/FeatureServer/0",
       "candidate_sha256": "df3f63f78041ddc55246b21bfbe790eddb68180e54add70daaebf7064bf6a139",
       "promotion_allowed": false
     }
   },
+  "normal_discovery": {
+    "ingest_alone_discoverable": true,
+    "sensor_partition_requests": [
+      "aviation-facilities/aviation-facilities/v0.0.0-draft-a09e261edf5cfad703591495"
+    ],
+    "manual_data_or_manifest_copies": false
+  },
   "idempotent_replay": {
-    "run_id": "eb725b7d-3465-467d-86d8-1aaa6fc6a206",
+    "run_id": "60b0bd6c-0b2f-483b-a35b-489c42a4d3e4",
     "success": true,
     "output_identical": true
   },
@@ -26,6 +33,19 @@
     "source_ids_substituted": false,
     "internal_driver_fid": "GeoPackage format machinery only; original OBJECTID/SITE_NO/ARPT_ID retained as independent named columns",
     "sha256": "92be1940f074081ec90c8795f3f3712f368f9acb5748787cfea15a73965448b0"
+  },
+  "source_manifest_structurally_valid_without_approval": true,
+  "processing_provenance": {
+    "builder_fingerprint": "27497a7e526c376fb4b408ddbdd979f508cd8f6aa748cfaadccaf0a69fea9b06",
+    "code_commit": "dc09e00852fb2ff636ac9e1069eb2db9d6fac415",
+    "installed_pipeline_sha256": "c60508a45cbf632919662889003c3252f1be4f207b8a8cc022d236054baf1c2d",
+    "meaning": "Original processing identity; replay does not invent a new upstream retrieval.",
+    "versions": {
+      "gdal": "(3, 11, 4)",
+      "pyarrow": "23.0.1",
+      "pyogrio": "0.12.1"
+    },
+    "working_tree_modified": false
   },
   "source_assertions": {
     "rows": 19427,
@@ -47,7 +67,7 @@
     "all_raw_receipts_and_bytes_verified": true
   },
   "normal_graph": {
-    "run_id": "9ff3cc02-716f-4b86-b1af-03ef193e05d2",
+    "run_id": "5ed39fc1-eb61-455f-b58a-30335f8b0f6f",
     "success": false,
     "failures": [
       {
@@ -101,7 +121,7 @@
     ]
   },
   "failed_quality_gate": {
-    "run_id": "cf8ebba3-4e0c-4b44-93cf-12a9b6663bb0",
+    "run_id": "20d45740-473b-4914-8542-a137ccb271f3",
     "success": false,
     "promotion_materialized": false,
     "synthetic_invalid_manifest_for_behavior_only": true
@@ -112,6 +132,6 @@
     "all_raw_and_candidate_bytes_unchanged": true,
     "fixture_is_not_real_acceptance": true
   },
-  "tested_source_commit": "9e3b312ca5831580384b38240af39efc671804c4",
-  "validation_scope": "Final source implementation and normal registry; following changes add evidence/docs only"
+  "tested_source_commit": "dc09e00852fb2ff636ac9e1069eb2db9d6fac415",
+  "validation_scope": "Source20 and normal repository with structurally valid17-inputprovenance; later source20 docs/evidence-only changes do not alter installed pipeline code"
 }

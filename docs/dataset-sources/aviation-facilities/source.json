@@ -139,10 +139,10 @@
   "promotion_allowed": false,
   "merge_allowed": false,
   "validation": {
-    "source_commit": "9e3b312ca5831580384b38240af39efc671804c4",
+    "source_commit": "dc09e00852fb2ff636ac9e1069eb2db9d6fac415",
     "local_execution": "evidence/local-materialization.json",
     "focused_tests": {
-      "passed": 12,
+      "passed": 14,
       "log": "evidence/focused.log"
     },
     "full_suite": {
@@ -154,6 +154,8 @@
       "known_error": "Missing sibling hifld-next-iac/environments/prod/dagster.tf",
       "log": "evidence/full-suite-be93.log"
     },
-    "native_review": "pending_exact_final_head"
+    "native_review": "pending_exact_final_head_and_parent_FAA10_integration",
+    "shared_release_provenance_structurally_valid_without_approval": true,
+    "normal_ingest_discoverable_without_manual_copies": true
   }
 }

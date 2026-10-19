@@ -75,6 +75,15 @@ The preservation sentinel and deliberately failed quality witness establish
 implementation behavior only; neither approves a real dataset.
 
 Validation details and exact run IDs are in `evidence/local-materialization.json`.
+The14 focused tests include every replayed metadata/count/ID/page HTTP200
+application-error marker with valid repinned receipts; all are quarantined before
+candidate construction. The real normal ingest alone is discoverable by the
+normal version sensor with no manual data/manifest copies. Its17 actual input
+records pass shared `validate_release_provenance` independently of an approval
+registry, with original URLs/observed final URLs, retrieval times, raw hashes and
+lengths, producer/distributor attribution and original license text. This
+structural validation does not approve source authority or a release. The actual
+clean code commit and installed pipeline fingerprint are asserted in the run.
 The full suite at registration code `be93f22512056f29b1c31383f0b71061c36e84b6`
 ran505tests:503passed,1production-write test skipped,1error for missing sibling
 `hifld-next-iac/environments/prod/dagster.tf`. Subsequent precision/format changes
