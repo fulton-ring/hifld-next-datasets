@@ -1,0 +1,491 @@
+{
+  "after-count": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnCountOnly=true",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnCountOnly=true",
+    "started_at": "2026-10-19T11:07:14.933929+00:00",
+    "observed_at": "2026-10-19T11:07:15.579025+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:07:15 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "sd174253_-987822836"
+    },
+    "wire_bytes": 11,
+    "bytes": 11,
+    "sha256": "1fb6f6be8607ab15c04198cba240a52c2ae4524e5d0d79068813f1972f29054c",
+    "redirects": []
+  },
+  "after-ids": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnIdsOnly=true",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnIdsOnly=true",
+    "started_at": "2026-10-19T11:07:14.935994+00:00",
+    "observed_at": "2026-10-19T11:07:15.802142+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:07:15 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "sd174253_-987822836"
+    },
+    "wire_bytes": 58,
+    "bytes": 58,
+    "sha256": "a3576c3aad6da780828a2d407f3c6b39c40169bed5e688f95a42c2dccc209fa4",
+    "redirects": []
+  },
+  "after-layer1": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1?f=pjson",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1?f=pjson",
+    "started_at": "2026-10-19T11:07:14.936656+00:00",
+    "observed_at": "2026-10-19T11:07:15.619240+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:07:15 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "12824",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "904543489"
+    },
+    "wire_bytes": 12824,
+    "bytes": 12824,
+    "sha256": "452d7f4638f7c86cc46590d5fc316c76ad3279b1bc2b42387a817e346cded76c",
+    "redirects": []
+  },
+  "arc-org": {
+    "requested_url": "https://arc-nhq-gis.maps.arcgis.com/",
+    "observed_final_url": "https://arc-nhq-gis.maps.arcgis.com/home/index.html",
+    "started_at": "2026-10-19T11:07:57.943432+00:00",
+    "observed_at": "2026-10-19T11:07:59.139877+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html",
+      "content-length": "1345",
+      "date": "Mon, 19 Oct 2026 11:07:59 GMT",
+      "last-modified": "Thu, 01 Oct 2026 15:50:50 GMT",
+      "etag": "\"27603e463f90970f1d6d98fb82d5df12\""
+    },
+    "wire_bytes": 1345,
+    "bytes": 1345,
+    "sha256": "8b9d55655e8507fac141749269a221a2a6b60341b399ee798b95ab73f874f15b",
+    "redirects": [
+      {
+        "status": 302,
+        "url": "https://arc-nhq-gis.maps.arcgis.com/",
+        "location": "https://arc-nhq-gis.maps.arcgis.com/home/index.html"
+      }
+    ]
+  },
+  "baseline-collection": {
+    "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/collection.json",
+    "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/collection.json",
+    "started_at": "2026-10-19T11:07:14.528190+00:00",
+    "observed_at": "2026-10-19T11:07:14.927620+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "application/octet-stream",
+      "date": "Mon, 19 Oct 2026 11:07:14 GMT",
+      "last-modified": "Sat, 10 Oct 2026 00:20:17 GMT",
+      "etag": "\"6f088c213e149ec93ac2f567ddb746b7\"",
+      "content-length": "12935"
+    },
+    "wire_bytes": 12935,
+    "bytes": 12935,
+    "sha256": "9ba2fd65404ced36d99331c5b318623bc7513f8523f545a74f11459cd3cb4bff",
+    "redirects": []
+  },
+  "baseline-file-catalog": {
+    "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/catalog.json",
+    "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/catalog.json",
+    "started_at": "2026-10-19T11:06:48.757417+00:00",
+    "observed_at": "2026-10-19T11:06:49.197292+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "application/octet-stream",
+      "date": "Mon, 19 Oct 2026 11:06:49 GMT",
+      "last-modified": "Sat, 10 Oct 2026 00:20:17 GMT",
+      "etag": "\"6eb26aecbba5c5af3b079889f76a58d1\"",
+      "content-length": "3222"
+    },
+    "wire_bytes": 3222,
+    "bytes": 3222,
+    "sha256": "6920ef3aac76ff51d2b8e30bee0f8d05aa961e2aff1f5b348b4931f179ebbaa4",
+    "redirects": []
+  },
+  "baseline": {
+    "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/geoparquet/american-red-cross-divisions.parquet",
+    "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/geoparquet/american-red-cross-divisions.parquet",
+    "started_at": "2026-10-19T11:07:57.467326+00:00",
+    "observed_at": "2026-10-19T11:07:58.226096+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "application/octet-stream",
+      "date": "Mon, 19 Oct 2026 11:07:57 GMT",
+      "last-modified": "Fri, 09 Oct 2026 00:39:08 GMT",
+      "etag": "\"7d6c1243cd875c348d2dba149e5e3ac5\"",
+      "content-length": "4765923"
+    },
+    "wire_bytes": 4765923,
+    "bytes": 4765923,
+    "sha256": "0ce6c04474bb2ba493ba717caeac0c16afe0083c24ec339494d20a3a8c371073",
+    "redirects": []
+  },
+  "catalog": {
+    "requested_url": "https://hifld.publicenvirodata.org/api/collections/hifld/datasets/american-red-cross-divisions",
+    "observed_final_url": "https://hifld.publicenvirodata.org/api/collections/hifld/datasets/american-red-cross-divisions",
+    "started_at": "2026-10-19T11:06:17.166405+00:00",
+    "observed_at": "2026-10-19T11:06:18.346732+00:00",
+    "status": 200,
+    "headers": {
+      "content-length": "2853",
+      "content-type": "application/json",
+      "etag": "\"83b391896800eda35f77aaf5cd392f98\"",
+      "last-modified": "Sat, 10 Oct 2026 00:20:17 GMT",
+      "date": "Mon, 19 Oct 2026 11:06:18 GMT"
+    },
+    "wire_bytes": 2853,
+    "bytes": 2853,
+    "sha256": "8b3f80082e80d26c460d0bbb62807608fa90aeeae523cac96097ec30d0ba4a97",
+    "redirects": []
+  },
+  "count": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnCountOnly=true",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnCountOnly=true",
+    "started_at": "2026-10-19T11:06:17.172235+00:00",
+    "observed_at": "2026-10-19T11:06:17.777636+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:06:17 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "sd174253_-987822836"
+    },
+    "wire_bytes": 11,
+    "bytes": 11,
+    "sha256": "1fb6f6be8607ab15c04198cba240a52c2ae4524e5d0d79068813f1972f29054c",
+    "redirects": []
+  },
+  "crosswalk": {
+    "requested_url": "https://doi.org/10.3886/E241367V1",
+    "observed_final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "started_at": "2026-10-19T11:06:18.121714+00:00",
+    "observed_at": "2026-10-19T11:06:19.595462+00:00",
+    "status": 403,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:06:19 GMT",
+      "content-type": "text/html; charset=UTF-8",
+      "content-length": "6199"
+    },
+    "wire_bytes": 6199,
+    "bytes": 6199,
+    "sha256": "56bb1f024c871ebfe0ecdc69a62d427e6af7e59ce0c661a24396be959a37d46b",
+    "redirects": [
+      {
+        "status": 302,
+        "url": "https://doi.org/10.3886/E241367V1",
+        "location": "https://www.datalumos.org/datalumos/project/241367/version/V1/view"
+      }
+    ]
+  },
+  "datalumos": {
+    "requested_url": "https://www.datalumos.org/datalumos/project/238573/version/V1/view",
+    "observed_final_url": "https://www.datalumos.org/datalumos/project/238573/version/V1/view",
+    "started_at": "2026-10-19T11:06:17.843729+00:00",
+    "observed_at": "2026-10-19T11:06:18.118319+00:00",
+    "status": 403,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:06:18 GMT",
+      "content-type": "text/html; charset=UTF-8",
+      "content-length": "6199"
+    },
+    "wire_bytes": 6199,
+    "bytes": 6199,
+    "sha256": "81e6d1345c9fda64070a6aa803630ec21fed60c2dff0cd689cf0cd562d0d6e6f",
+    "redirects": []
+  },
+  "end": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultRecordCount=6&resultOffset=6&returnTrueCurves=true",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultRecordCount=6&resultOffset=6&returnTrueCurves=true",
+    "started_at": "2026-10-19T11:07:14.938178+00:00",
+    "observed_at": "2026-10-19T11:07:15.577047+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:07:15 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "249",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "sd174253_-987822836"
+    },
+    "wire_bytes": 249,
+    "bytes": 249,
+    "sha256": "d4c55ec3f7eb63f18cc24133fe664a027e07721fc7d050682096000a7c576c59",
+    "redirects": []
+  },
+  "ids": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnIdsOnly=true",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&returnIdsOnly=true",
+    "started_at": "2026-10-19T11:06:17.780481+00:00",
+    "observed_at": "2026-10-19T11:06:18.352993+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:06:18 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "60",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "sd174253_-987822836"
+    },
+    "wire_bytes": 60,
+    "bytes": 60,
+    "sha256": "283930c5c22dfbf052fcb62865f827ba31369a3d77f4905111884f3b3f2cb254",
+    "redirects": []
+  },
+  "item": {
+    "requested_url": "https://www.arcgis.com/sharing/rest/content/items/8c6753c3c5814d05be65723cd4615d7c?f=json",
+    "observed_final_url": "https://www.arcgis.com/sharing/rest/content/items/8c6753c3c5814d05be65723cd4615d7c?f=json",
+    "started_at": "2026-10-19T11:06:17.784962+00:00",
+    "observed_at": "2026-10-19T11:06:18.393873+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json;charset=utf-8",
+      "date": "Mon, 19 Oct 2026 11:06:18 GMT"
+    },
+    "wire_bytes": 2830,
+    "bytes": 2830,
+    "sha256": "ab077493dac84c793eee36ba68df715e9bfe2b4388806c1d3da258c64fa745a3",
+    "redirects": []
+  },
+  "layer1": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1?f=pjson",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1?f=pjson",
+    "started_at": "2026-10-19T11:06:17.169132+00:00",
+    "observed_at": "2026-10-19T11:06:17.779193+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:06:17 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "12824",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "904543489"
+    },
+    "wire_bytes": 12824,
+    "bytes": 12824,
+    "sha256": "452d7f4638f7c86cc46590d5fc316c76ad3279b1bc2b42387a817e346cded76c",
+    "redirects": []
+  },
+  "native-full": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultRecordCount=6&resultOffset=0&returnTrueCurves=true",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1/query?f=json&where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultRecordCount=6&resultOffset=0&returnTrueCurves=true",
+    "started_at": "2026-10-19T11:06:49.205300+00:00",
+    "observed_at": "2026-10-19T11:06:53.607960+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:06:50 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "13870710",
+      "last-modified": "Fri, 11 Sep 2026 12:04:16 GMT",
+      "etag": "sd174253_-987822836"
+    },
+    "wire_bytes": 13870710,
+    "bytes": 13870710,
+    "sha256": "76b574d3bc0bc2d86180118695916cee57fa26d109304f921a5eb7291e1bc4c8",
+    "redirects": []
+  },
+  "official-homefire": {
+    "requested_url": "https://www.redcross.org/lp/home-fire-risk-map.html",
+    "observed_final_url": "https://www.redcross.org/lp/home-fire-risk-map.html",
+    "started_at": "2026-10-19T11:07:57.491280+00:00",
+    "observed_at": "2026-10-19T11:07:58.238501+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html;charset=utf-8",
+      "last-modified": "Mon, 19 Oct 2026 03:45:02 GMT",
+      "date": "Mon, 19 Oct 2026 11:07:58 GMT"
+    },
+    "wire_bytes": 103953,
+    "bytes": 103953,
+    "sha256": "2a30ffa1e3e3718bdf3714562c2f776c90cb1cba85a79c8222cacfd68388ced6",
+    "redirects": []
+  },
+  "official-mapping": {
+    "requested_url": "https://www.redcross.org/about-us/our-work/international-services/humanitarian-mapping.html",
+    "observed_final_url": "https://www.redcross.org/about-us/our-work/international-services/humanitarian-mapping.html",
+    "started_at": "2026-10-19T11:06:49.207052+00:00",
+    "observed_at": "2026-10-19T11:06:49.809698+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html;charset=utf-8",
+      "last-modified": "Mon, 19 Oct 2026 00:37:49 GMT",
+      "date": "Mon, 19 Oct 2026 11:06:49 GMT"
+    },
+    "wire_bytes": 122196,
+    "bytes": 122196,
+    "sha256": "aa045dbcd63f2451296afe897a0f983b36cf37e7929e67486c763e1dc73daf24",
+    "redirects": []
+  },
+  "official-search-master": {
+    "requested_url": "https://www.redcross.org/search.html?q=Master%20Geography",
+    "observed_final_url": "https://www.redcross.org/search.html?q=Master%20Geography",
+    "started_at": "2026-10-19T11:07:57.469263+00:00",
+    "observed_at": "2026-10-19T11:07:57.941190+00:00",
+    "status": 404,
+    "headers": {
+      "content-type": "text/html;charset=utf-8",
+      "last-modified": "Mon, 19 Oct 2026 00:18:29 GMT",
+      "date": "Mon, 19 Oct 2026 11:07:57 GMT"
+    },
+    "wire_bytes": 101544,
+    "bytes": 101544,
+    "sha256": "84bc4f191a46d0f0480884ec2dbfc0c1ddd8e62023ff64fcb89598bb7a0c4fc0",
+    "redirects": []
+  },
+  "official-search-rcview": {
+    "requested_url": "https://www.redcross.org/search.html?q=RC%20View",
+    "observed_final_url": "https://www.redcross.org/search.html?q=RC%20View",
+    "started_at": "2026-10-19T11:07:57.468379+00:00",
+    "observed_at": "2026-10-19T11:07:58.196255+00:00",
+    "status": 404,
+    "headers": {
+      "content-type": "text/html;charset=utf-8",
+      "last-modified": "Mon, 19 Oct 2026 00:18:29 GMT",
+      "date": "Mon, 19 Oct 2026 11:07:58 GMT"
+    },
+    "wire_bytes": 101544,
+    "bytes": 101544,
+    "sha256": "84bc4f191a46d0f0480884ec2dbfc0c1ddd8e62023ff64fcb89598bb7a0c4fc0",
+    "redirects": []
+  },
+  "official-sso": {
+    "requested_url": "https://www.redcross.org/sso/success.html",
+    "observed_final_url": "https://www.redcross.org/sso/success.html",
+    "started_at": "2026-10-19T11:06:49.208469+00:00",
+    "observed_at": "2026-10-19T11:06:49.861320+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html;charset=utf-8",
+      "last-modified": "Mon, 19 Oct 2026 08:43:32 GMT",
+      "date": "Mon, 19 Oct 2026 11:06:49 GMT",
+      "content-length": "21044"
+    },
+    "wire_bytes": 21044,
+    "bytes": 21044,
+    "sha256": "3a9fe158a8301dcaae9e1cc56838172f67e2373bd9875732002887da426c6eb5",
+    "redirects": []
+  },
+  "org": {
+    "requested_url": "https://www.arcgis.com/sharing/rest/portals/pGfbNJoYypmNq86F?f=pjson",
+    "observed_final_url": "https://www.arcgis.com/sharing/rest/portals/pGfbNJoYypmNq86F?f=pjson",
+    "started_at": "2026-10-19T11:06:49.812401+00:00",
+    "observed_at": "2026-10-19T11:06:50.402170+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain;charset=utf-8",
+      "date": "Mon, 19 Oct 2026 11:06:50 GMT"
+    },
+    "wire_bytes": 21124,
+    "bytes": 21124,
+    "sha256": "1ec64e55b92b0faf5f798c330adaa82c1c43f6d70d723915eff1fd3260732020",
+    "redirects": []
+  },
+  "owner": {
+    "requested_url": "https://www.arcgis.com/sharing/rest/community/users/NHQRedCrossGIS?f=pjson",
+    "observed_final_url": "https://www.arcgis.com/sharing/rest/community/users/NHQRedCrossGIS?f=pjson",
+    "started_at": "2026-10-19T11:06:49.863423+00:00",
+    "observed_at": "2026-10-19T11:06:50.379697+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain;charset=utf-8",
+      "date": "Mon, 19 Oct 2026 11:06:50 GMT"
+    },
+    "wire_bytes": 421,
+    "bytes": 421,
+    "sha256": "20db61a4234a7c187b3a4cd0a601e9855cd52bcba4ebf7e13c6d597501f67efb",
+    "redirects": []
+  },
+  "rcview": {
+    "requested_url": "https://rcview.redcross.org/",
+    "observed_final_url": "https://volunteerconnection.redcross.org/?nd=vms_page&page_id=8233",
+    "started_at": "2026-10-19T11:06:49.210235+00:00",
+    "observed_at": "2026-10-19T11:06:50.498849+00:00",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Mon, 19 Oct 2026 11:06:50 GMT",
+      "content-length": "8001"
+    },
+    "wire_bytes": 8001,
+    "bytes": 8001,
+    "sha256": "21148a3cfcd6688406c6fe2c3e9edd827bd236c380ec4bc1d32d82556068a0f4",
+    "redirects": [
+      {
+        "status": 301,
+        "url": "https://rcview.redcross.org/",
+        "location": "https://volunteerconnection.redcross.org/?nd=vms_page&page_id=8233"
+      }
+    ]
+  },
+  "redcross-gis": {
+    "requested_url": "https://www.redcross.org/about-us/news-and-events/news/2024/red-cross-maps-data-help-people-prepare-for-disasters.html",
+    "observed_final_url": "https://www.redcross.org/about-us/news-and-events/news/2024/red-cross-maps-data-help-people-prepare-for-disasters.html",
+    "started_at": "2026-10-19T11:06:18.355096+00:00",
+    "observed_at": "2026-10-19T11:06:19.118758+00:00",
+    "status": 404,
+    "headers": {
+      "content-type": "text/html;charset=utf-8",
+      "last-modified": "Mon, 19 Oct 2026 00:18:29 GMT",
+      "date": "Mon, 19 Oct 2026 11:06:18 GMT"
+    },
+    "wire_bytes": 101544,
+    "bytes": 101544,
+    "sha256": "84bc4f191a46d0f0480884ec2dbfc0c1ddd8e62023ff64fcb89598bb7a0c4fc0",
+    "redirects": []
+  },
+  "search-official-division": {
+    "requested_url": "https://www.bing.com/search?format=rss&q=site%3Aredcross.org%20%22division%22%20%22arcgis%22",
+    "observed_final_url": "https://www.bing.com/search?format=rss&q=site%3Aredcross.org%20%22division%22%20%22arcgis%22",
+    "started_at": "2026-10-19T11:06:50.385482+00:00",
+    "observed_at": "2026-10-19T11:06:50.833530+00:00",
+    "status": 200,
+    "headers": {
+      "content-length": "4936",
+      "content-type": "text/xml; charset=utf-8",
+      "date": "Mon, 19 Oct 2026 11:06:50 GMT"
+    },
+    "wire_bytes": 4936,
+    "bytes": 4936,
+    "sha256": "effd71a245efd7a3906b0c5fb6a0c151777e988f6d6f7788d4e6508cd3a1056a",
+    "redirects": []
+  },
+  "search-official-master": {
+    "requested_url": "https://www.bing.com/search?format=rss&q=site%3Aredcross.org%20%22Master%22%20%22Geography%22",
+    "observed_final_url": "https://www.bing.com/search?format=rss&q=site%3Aredcross.org%20%22Master%22%20%22Geography%22",
+    "started_at": "2026-10-19T11:06:50.404064+00:00",
+    "observed_at": "2026-10-19T11:06:50.942748+00:00",
+    "status": 200,
+    "headers": {
+      "content-length": "5137",
+      "content-type": "text/xml; charset=utf-8",
+      "date": "Mon, 19 Oct 2026 11:06:50 GMT"
+    },
+    "wire_bytes": 5137,
+    "bytes": 5137,
+    "sha256": "20fc87efd9392efd24932eded8ad6aeadc26dcee6cb1e42e95dc2ec63ae54d63",
+    "redirects": []
+  },
+  "service": {
+    "requested_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer?f=pjson",
+    "observed_final_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer?f=pjson",
+    "started_at": "2026-10-19T11:06:17.167355+00:00",
+    "observed_at": "2026-10-19T11:06:17.841524+00:00",
+    "status": 200,
+    "headers": {
+      "date": "Mon, 19 Oct 2026 11:06:17 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "7626",
+      "last-modified": "Mon, 12 Oct 2026 10:35:23 GMT",
+      "etag": "sds_-1925429556"
+    },
+    "wire_bytes": 7626,
+    "bytes": 7626,
+    "sha256": "4488707b0d6a947761a76e7ea50e6e71bbcd373c195960efed6a41670788e63e",
+    "redirects": []
+  }
+}

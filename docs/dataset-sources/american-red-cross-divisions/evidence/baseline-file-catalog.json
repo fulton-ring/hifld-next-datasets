@@ -1,0 +1,68 @@
+{
+  "description": "This dataset represents Red Cross division, which are a corporate structure with a Division Vice President (DVP), Division Disaster Executive (DDE) and Division Disaster Directors (DDD). Red Cross Geography Model: Counties make up chapters, chapters make up regions and regions make up divisions. There are five exceptions to the Red Cross Geography model: Middlesex County, MA, Los Angeles, Kern, Riverside and San Bernardino Counties in California which are covered by more than one Chapter. (Many to One). In the case of these five counties, the geometry was dissolved from Zip Codes.",
+  "hifld:tags": {
+    "categories": [
+      "Emergency Services",
+      "Public Health",
+      "Geonames"
+    ],
+    "inventory_name": "american-red-cross-divisions"
+  },
+  "id": "hifld/american-red-cross-divisions/american-red-cross-divisions",
+  "keywords": [
+    "Emergency Services",
+    "Public Health",
+    "Geonames"
+  ],
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/catalog.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-divisions/american-red-cross-divisions/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-divisions/american-red-cross-divisions/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/collection.json",
+      "rel": "child",
+      "title": "American Red Cross Divisions",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/collection.json",
+      "rel": "child",
+      "title": "American Red Cross Divisions",
+      "type": "application/json"
+    },
+    {
+      "rel": "latest-version",
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/collection.json",
+      "type": "application/json",
+      "title": "v1.0.0"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "title": "American Red Cross Divisions",
+  "type": "Catalog"
+}

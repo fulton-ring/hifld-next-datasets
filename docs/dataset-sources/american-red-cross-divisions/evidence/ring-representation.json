@@ -1,0 +1,53 @@
+{
+  "scope": "Diagnostic ring rotation/orientation/order only; no coordinate tolerance, geometry repair, or approved topology substitution",
+  "rows": [
+    {
+      "OBJECTID": 1,
+      "same_complete_original_ring_coordinate_multiset": true,
+      "baseline_invalid_reason": "Valid Geometry",
+      "source_ring_count": 297,
+      "baseline_ring_count": 297,
+      "raw_coordinate_multiset_equal": true
+    },
+    {
+      "OBJECTID": 2,
+      "same_complete_original_ring_coordinate_multiset": true,
+      "baseline_invalid_reason": "Valid Geometry",
+      "source_ring_count": 258,
+      "baseline_ring_count": 258,
+      "raw_coordinate_multiset_equal": true
+    },
+    {
+      "OBJECTID": 3,
+      "same_complete_original_ring_coordinate_multiset": true,
+      "baseline_invalid_reason": "Valid Geometry",
+      "source_ring_count": 64,
+      "baseline_ring_count": 64,
+      "raw_coordinate_multiset_equal": true
+    },
+    {
+      "OBJECTID": 4,
+      "same_complete_original_ring_coordinate_multiset": true,
+      "baseline_invalid_reason": "Valid Geometry",
+      "source_ring_count": 139,
+      "baseline_ring_count": 139,
+      "raw_coordinate_multiset_equal": true
+    },
+    {
+      "OBJECTID": 5,
+      "same_complete_original_ring_coordinate_multiset": true,
+      "baseline_invalid_reason": "Nested shells[-7210434.7176 2002823.0606]",
+      "source_ring_count": 535,
+      "baseline_ring_count": 535,
+      "raw_coordinate_multiset_equal": true
+    },
+    {
+      "OBJECTID": 6,
+      "same_complete_original_ring_coordinate_multiset": true,
+      "baseline_invalid_reason": "Ring Self-intersection[-8251892.6983 4870388.3154]",
+      "source_ring_count": 382,
+      "baseline_ring_count": 382,
+      "raw_coordinate_multiset_equal": true
+    }
+  ]
+}

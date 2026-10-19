@@ -1,0 +1,503 @@
+{
+  "scope": "Complete candidate comparison only; no source/baseline/contract approval or pipeline claimed",
+  "baseline": {
+    "rows": 6,
+    "bytes": 4765923,
+    "sha256": "0ce6c04474bb2ba493ba717caeac0c16afe0083c24ec339494d20a3a8c371073",
+    "arrow_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 1416\nOBJECTID: int64\nDCODE: string\nDivision: string\nStates: string\nAcres: int64\nSQ_MI: int64\nShape__Are: double\nShape__Len: double\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1215\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 1554",
+    "geo_metadata": {
+      "primary_column": "geometry",
+      "columns": {
+        "geometry": {
+          "encoding": "WKB",
+          "crs": {
+            "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+            "type": "ProjectedCRS",
+            "name": "WGS 84 / Pseudo-Mercator",
+            "base_crs": {
+              "name": "WGS 84",
+              "datum": {
+                "type": "GeodeticReferenceFrame",
+                "name": "World Geodetic System 1984",
+                "ellipsoid": {
+                  "name": "WGS 84",
+                  "semi_major_axis": 6378137,
+                  "inverse_flattening": 298.257223563
+                }
+              },
+              "coordinate_system": {
+                "subtype": "ellipsoidal",
+                "axis": [
+                  {
+                    "name": "Latitude",
+                    "abbreviation": "lat",
+                    "direction": "north",
+                    "unit": "degree"
+                  },
+                  {
+                    "name": "Longitude",
+                    "abbreviation": "lon",
+                    "direction": "east",
+                    "unit": "degree"
+                  }
+                ]
+              },
+              "id": {
+                "authority": "EPSG",
+                "code": 4326
+              }
+            },
+            "conversion": {
+              "name": "unnamed",
+              "method": {
+                "name": "Popular Visualisation Pseudo Mercator",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1024
+                }
+              },
+              "parameters": [
+                {
+                  "name": "Latitude of natural origin",
+                  "value": 0,
+                  "unit": "degree",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 8801
+                  }
+                },
+                {
+                  "name": "Longitude of natural origin",
+                  "value": 0,
+                  "unit": "degree",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 8802
+                  }
+                },
+                {
+                  "name": "False easting",
+                  "value": 0,
+                  "unit": "metre",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 8806
+                  }
+                },
+                {
+                  "name": "False northing",
+                  "value": 0,
+                  "unit": "metre",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 8807
+                  }
+                }
+              ]
+            },
+            "coordinate_system": {
+              "subtype": "Cartesian",
+              "axis": [
+                {
+                  "name": "Easting",
+                  "abbreviation": "",
+                  "direction": "east",
+                  "unit": "metre"
+                },
+                {
+                  "name": "Northing",
+                  "abbreviation": "",
+                  "direction": "north",
+                  "unit": "metre"
+                }
+              ]
+            },
+            "id": {
+              "authority": "EPSG",
+              "code": 3857
+            }
+          },
+          "geometry_types": [
+            "MultiPolygon"
+          ],
+          "covering": {
+            "bbox": {
+              "xmin": [
+                "bbox",
+                "xmin"
+              ],
+              "ymin": [
+                "bbox",
+                "ymin"
+              ],
+              "xmax": [
+                "bbox",
+                "xmax"
+              ],
+              "ymax": [
+                "bbox",
+                "ymax"
+              ]
+            }
+          }
+        }
+      },
+      "version": "1.1.0",
+      "creator": {
+        "library": "geopandas",
+        "version": "1.1.3"
+      }
+    },
+    "all_id_equals_OBJECTID": true
+  },
+  "source": {
+    "rows": 6,
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "alias": "OBJECTID",
+        "sqlType": "sqlTypeOther",
+        "nullable": false,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DCODE",
+        "type": "esriFieldTypeString",
+        "alias": "DCODE",
+        "sqlType": "sqlTypeOther",
+        "length": 255,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Division",
+        "type": "esriFieldTypeString",
+        "alias": "Division",
+        "sqlType": "sqlTypeOther",
+        "length": 255,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "States",
+        "type": "esriFieldTypeString",
+        "alias": "States",
+        "sqlType": "sqlTypeOther",
+        "length": 255,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Acres",
+        "type": "esriFieldTypeDouble",
+        "alias": "Area Acres",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "SQ_MI",
+        "type": "esriFieldTypeDouble",
+        "alias": "Sq Miles",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Division_DCODE",
+        "type": "esriFieldTypeString",
+        "alias": "Division DCODE",
+        "sqlType": "sqlTypeOther",
+        "length": 60,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Shape__Area",
+        "type": "esriFieldTypeDouble",
+        "alias": "Shape__Area",
+        "sqlType": "sqlTypeDouble",
+        "nullable": true,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Shape__Length",
+        "type": "esriFieldTypeDouble",
+        "alias": "Shape__Length",
+        "sqlType": "sqlTypeDouble",
+        "nullable": true,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      }
+    ],
+    "geometry_crs": {
+      "wkid": 102100,
+      "latestWkid": 3857
+    },
+    "stable_before_after_count_ids_schema_edit": true,
+    "all_original_identifiers_retained": true,
+    "complete_terminal_empty_page": true,
+    "no_transfer_limit_or_error": true,
+    "release_claim_conflict": {
+      "item_title": "Master_ARC_Geography_FY27_July_2026",
+      "service_description": "<p><span style=\"color:#ff0000;\"><strong>TEMPORARILY REVERTED TO FY26 JANUARY &nbsp;2026 MASTER GEOGRAPHY. &nbsp;WILL BE UPDATED TO FY27 JULY 2026 ON OR ABOUT &nbsp;JULY 14.</strong></span></p><p>This feature layer replaces the Master_RC_Geo_July_2022 feature layer. The original name does not change to allow future data updates without generating a new feature layer. This feature layer represents the changes to the Red Cross corporate geography for Fiscal Year 2027.&nbsp;</p><p>The data was updated in July 2026 based on the July 2026 update from the original source files from Humanitarian Services, Operations. This Feature Layer supersedes all previous versions of the Red Cross Master Geography and should be used to update any Web Maps using a previous version.&nbsp;</p><p>This feature layer includes: American Red Cross FY'27 Chapter HQ and Region HQ locations; American Red Cross FY'27 Chapter Boundaries; American Red Cross FY'27 Region Boundaries; American Red Cross FY'27 Division Boundaries; American Red Cross FY'27 States Boundaries; American Red Cross FY'27 County Boundaries (with Demographics) and American Red Cross Municipality Boundaries for Puerto Rico.</p>"
+    },
+    "row_states": {
+      "1": "AK, AS, CA, HI, ID, MT, OR, WA, MP, GU",
+      "2": "AZ, AR, CO, KS, LA, MO, NV, NM, OK, TX, UT, WY",
+      "3": "IL, IN, IA, NE, MN, MI, ND, SD, WI",
+      "4": "DC, DE, KY, MD, OH, VA, WV",
+      "5": "AL, GA, FL, MS, NC, SC, TN, PR, VI",
+      "6": "CT, ME, MA, NH, NJ, NY, PA, RI, VT"
+    }
+  },
+  "diagnostic_only_attribute_mapping": {
+    "OBJECTID": "OBJECTID",
+    "DCODE": "DCODE",
+    "Division": "Division",
+    "States": "States",
+    "Acres": "Acres",
+    "SQ_MI": "SQ_MI",
+    "Shape__Are": "Shape__Area",
+    "Shape__Len": "Shape__Length"
+  },
+  "all_row_attribute_comparisons": [
+    {
+      "OBJECTID": 1,
+      "published_id": 1,
+      "source_DCODE": "D21",
+      "attribute_differences": {},
+      "source_extra_Division_DCODE": "D21 - Pacific Division"
+    },
+    {
+      "OBJECTID": 2,
+      "published_id": 2,
+      "source_DCODE": "D22",
+      "attribute_differences": {},
+      "source_extra_Division_DCODE": "D22 - Southwest and Rocky Mountain Division"
+    },
+    {
+      "OBJECTID": 3,
+      "published_id": 3,
+      "source_DCODE": "D23",
+      "attribute_differences": {},
+      "source_extra_Division_DCODE": "D23 - North Central Division"
+    },
+    {
+      "OBJECTID": 4,
+      "published_id": 4,
+      "source_DCODE": "D24",
+      "attribute_differences": {},
+      "source_extra_Division_DCODE": "D24 - Central Atlantic Division"
+    },
+    {
+      "OBJECTID": 5,
+      "published_id": 5,
+      "source_DCODE": "D25",
+      "attribute_differences": {},
+      "source_extra_Division_DCODE": "D25 - Southeast and Caribbean Division"
+    },
+    {
+      "OBJECTID": 6,
+      "published_id": 6,
+      "source_DCODE": "D27",
+      "attribute_differences": {},
+      "source_extra_Division_DCODE": "D27 - Northeast Division"
+    }
+  ],
+  "all_row_geometry_comparisons": [
+    {
+      "OBJECTID": 1,
+      "baseline_type": "MultiPolygon",
+      "source_type": "MultiPolygon",
+      "baseline_valid": true,
+      "source_valid": true,
+      "source_validity": "Valid Geometry",
+      "baseline_vertices": 160091,
+      "source_raw_vertices": 160091,
+      "source_raw_rings": 297,
+      "all_raw_vertices_preserved_by_ESRIJSON_decode": true,
+      "ordered_exact": true,
+      "normalized_exact": true,
+      "topological_exact": true,
+      "baseline_bounds": [
+        -19864249.9081,
+        -1617191.0593,
+        16261848.2155,
+        11537127.3104
+      ],
+      "source_bounds": [
+        -19864249.9081,
+        -1617191.0593,
+        16261848.2155,
+        11537127.3104
+      ]
+    },
+    {
+      "OBJECTID": 2,
+      "baseline_type": "MultiPolygon",
+      "source_type": "MultiPolygon",
+      "baseline_valid": true,
+      "source_valid": true,
+      "source_validity": "Valid Geometry",
+      "baseline_vertices": 59858,
+      "source_raw_vertices": 59858,
+      "source_raw_rings": 258,
+      "all_raw_vertices_preserved_by_ESRIJSON_decode": true,
+      "ordered_exact": true,
+      "normalized_exact": true,
+      "topological_exact": true,
+      "baseline_bounds": [
+        -13359059.465,
+        2978953.2886,
+        -9887009.3386,
+        5622448.1613
+      ],
+      "source_bounds": [
+        -13359059.465,
+        2978953.2886,
+        -9887009.3386,
+        5622448.1613
+      ]
+    },
+    {
+      "OBJECTID": 3,
+      "baseline_type": "MultiPolygon",
+      "source_type": "MultiPolygon",
+      "baseline_valid": true,
+      "source_valid": true,
+      "source_validity": "Valid Geometry",
+      "baseline_vertices": 41085,
+      "source_raw_vertices": 41085,
+      "source_raw_rings": 64,
+      "all_raw_vertices_preserved_by_ESRIJSON_decode": true,
+      "ordered_exact": true,
+      "normalized_exact": true,
+      "topological_exact": true,
+      "baseline_bounds": [
+        -11583654.5174,
+        4488095.5331,
+        -9174773.8738,
+        6340332.3429
+      ],
+      "source_bounds": [
+        -11583654.5174,
+        4488095.5331,
+        -9174773.8738,
+        6340332.3429
+      ]
+    },
+    {
+      "OBJECTID": 4,
+      "baseline_type": "MultiPolygon",
+      "source_type": "MultiPolygon",
+      "baseline_valid": true,
+      "source_valid": true,
+      "source_validity": "Valid Geometry",
+      "baseline_vertices": 48683,
+      "source_raw_vertices": 48683,
+      "source_raw_rings": 139,
+      "all_raw_vertices_preserved_by_ESRIJSON_decode": true,
+      "ordered_exact": true,
+      "normalized_exact": true,
+      "topological_exact": true,
+      "baseline_bounds": [
+        -9971020.4828,
+        4369233.1054,
+        -8354432.0535,
+        5175113.5094
+      ],
+      "source_bounds": [
+        -9971020.4828,
+        4369233.1054,
+        -8354432.0535,
+        5175113.5094
+      ]
+    },
+    {
+      "OBJECTID": 5,
+      "baseline_type": "MultiPolygon",
+      "source_type": "MultiPolygon",
+      "baseline_valid": false,
+      "source_valid": true,
+      "source_validity": "Valid Geometry",
+      "baseline_vertices": 86111,
+      "source_raw_vertices": 86111,
+      "source_raw_rings": 535,
+      "all_raw_vertices_preserved_by_ESRIJSON_decode": true,
+      "ordered_exact": false,
+      "normalized_exact": false,
+      "topological_exact": false,
+      "baseline_bounds": [
+        -10202988.9318,
+        1999457.9626,
+        -7187480.6386,
+        4394354.0704
+      ],
+      "source_bounds": [
+        -10202988.9318,
+        1999457.9626,
+        -7187480.6386,
+        4394354.0704
+      ]
+    },
+    {
+      "OBJECTID": 6,
+      "baseline_type": "MultiPolygon",
+      "source_type": "MultiPolygon",
+      "baseline_valid": false,
+      "source_valid": false,
+      "source_validity": "Ring Self-intersection[-8251892.6983 4870388.3154]",
+      "baseline_vertices": 77993,
+      "source_raw_vertices": 77993,
+      "source_raw_rings": 382,
+      "all_raw_vertices_preserved_by_ESRIJSON_decode": true,
+      "ordered_exact": true,
+      "normalized_exact": true,
+      "topological_exact": true,
+      "baseline_bounds": [
+        -8963389.4027,
+        4711537.8713,
+        -7452840.4652,
+        6017432.1413
+      ],
+      "source_bounds": [
+        -8963389.4027,
+        4711537.8713,
+        -7452840.4652,
+        6017432.1413
+      ]
+    }
+  ],
+  "physical_type_migrations_requiring_review": {
+    "Acres": "source esriFieldTypeDouble, published int64",
+    "SQ_MI": "source esriFieldTypeDouble, published int64",
+    "OBJECTID": "source esriFieldTypeOID, published int64",
+    "Shape__Area/Length": "source full names versus published truncated Shape__Are/Shape__Len",
+    "Division_DCODE": "source extra string absent published; no silent drop",
+    "id/bbox": "published extra fields absent source; no invented substitutions"
+  },
+  "tools": {
+    "fiona": "1.10.1",
+    "gdal": "3.9.2",
+    "shapely": "2.1.2"
+  }
+}

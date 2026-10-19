@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "issue": 14,
+  "inventory_id": "american-red-cross-divisions",
+  "status": "external_source_authority_and_effective_release_decision_required",
+  "pipeline_implemented": false,
+  "promotion_allowed": false,
+  "approval": {
+    "source": false,
+    "baseline": false,
+    "contract": false,
+    "release": false
+  },
+  "actual_worker": "/root/cbrs_28",
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "user_scope": "Reviewable draft implementation/local tests authorized pending acceptance; not a blanket contract prerequisite. This card stops on unresolved producer distribution/effective release, not missing approval alone.",
+  "source_candidate": {
+    "claimed_producer": "American Red Cross Humanitarian Services Operations / Disaster Data and Systems Operations",
+    "publisher_account": "NHQRedCrossGIS",
+    "organization": "pGfbNJoYypmNq86F / arc-nhq-gis",
+    "item": "8c6753c3c5814d05be65723cd4615d7c",
+    "layer_url": "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/1",
+    "layer_name": "Master_RC_Geo_Division_2027",
+    "distribution_classification": "Unverified producer/delegation; same-portal organization and account claims are not independent delegation",
+    "observed_count": 6,
+    "complete_original_objectids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "source_DCODES": [
+      "D21",
+      "D22",
+      "D23",
+      "D24",
+      "D25",
+      "D27"
+    ],
+    "original_native_geometry": "6 complete MultiPolygons, raw rings in EPSG:3857 retained in 13,870,710-byte original ESRIJSON; native decode conserves every coordinate/multiplicity; no repair",
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "alias": "OBJECTID",
+        "sqlType": "sqlTypeOther",
+        "nullable": false,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "DCODE",
+        "type": "esriFieldTypeString",
+        "alias": "DCODE",
+        "sqlType": "sqlTypeOther",
+        "length": 255,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Division",
+        "type": "esriFieldTypeString",
+        "alias": "Division",
+        "sqlType": "sqlTypeOther",
+        "length": 255,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "States",
+        "type": "esriFieldTypeString",
+        "alias": "States",
+        "sqlType": "sqlTypeOther",
+        "length": 255,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Acres",
+        "type": "esriFieldTypeDouble",
+        "alias": "Area Acres",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "SQ_MI",
+        "type": "esriFieldTypeDouble",
+        "alias": "Sq Miles",
+        "sqlType": "sqlTypeOther",
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Division_DCODE",
+        "type": "esriFieldTypeString",
+        "alias": "Division DCODE",
+        "sqlType": "sqlTypeOther",
+        "length": 60,
+        "nullable": true,
+        "editable": true,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Shape__Area",
+        "type": "esriFieldTypeDouble",
+        "alias": "Shape__Area",
+        "sqlType": "sqlTypeDouble",
+        "nullable": true,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      },
+      {
+        "name": "Shape__Length",
+        "type": "esriFieldTypeDouble",
+        "alias": "Shape__Length",
+        "sqlType": "sqlTypeDouble",
+        "nullable": true,
+        "editable": false,
+        "domain": null,
+        "defaultValue": null
+      }
+    ],
+    "edit_metadata": {
+      "lastEditDate": 1789128256799,
+      "schemaLastEditDate": 1789128256799,
+      "dataLastEditDate": 1784148827539
+    },
+    "actual_effective_release": null,
+    "release_conflict": {
+      "item_title": "Master_ARC_Geography_FY27_July_2026",
+      "service_description": "<p><span style=\"color:#ff0000;\"><strong>TEMPORARILY REVERTED TO FY26 JANUARY &nbsp;2026 MASTER GEOGRAPHY. &nbsp;WILL BE UPDATED TO FY27 JULY 2026 ON OR ABOUT &nbsp;JULY 14.</strong></span></p><p>This feature layer replaces the Master_RC_Geo_July_2022 feature layer. The original name does not change to allow future data updates without generating a new feature layer. This feature layer represents the changes to the Red Cross corporate geography for Fiscal Year 2027.&nbsp;</p><p>The data was updated in July 2026 based on the July 2026 update from the original source files from Humanitarian Services, Operations. This Feature Layer supersedes all previous versions of the Red Cross Master Geography and should be used to update any Web Maps using a previous version.&nbsp;</p><p>This feature layer includes: American Red Cross FY'27 Chapter HQ and Region HQ locations; American Red Cross FY'27 Chapter Boundaries; American Red Cross FY'27 Region Boundaries; American Red Cross FY'27 Division Boundaries; American Red Cross FY'27 States Boundaries; American Red Cross FY'27 County Boundaries (with Demographics) and American Red Cross Municipality Boundaries for Puerto Rico.</p>"
+    },
+    "rights_attribution": {
+      "service_copyright": "American Red Cross Disaster Data and Systems Operations, American Red Cross Humanitarian Services Operations",
+      "item_licenseInfo": "No constraints, public",
+      "status": "Retained producer-claimed rights; no independent source or publication approval"
+    }
+  },
+  "published_candidate": {
+    "approved": false,
+    "requested_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/geoparquet/american-red-cross-divisions.parquet",
+    "observed_final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/american-red-cross-divisions/american-red-cross-divisions/v1.0.0/geoparquet/american-red-cross-divisions.parquet",
+    "observed_at": "2026-10-19T11:07:58.226096+00:00",
+    "bytes": 4765923,
+    "sha256": "0ce6c04474bb2ba493ba717caeac0c16afe0083c24ec339494d20a3a8c371073",
+    "rows": 6,
+    "schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 1416\nOBJECTID: int64\nDCODE: string\nDivision: string\nStates: string\nAcres: int64\nSQ_MI: int64\nShape__Are: double\nShape__Len: double\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1215\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 1554",
+    "id_preservation": "All published id values equal original OBJECTID; both remain unapproved output fields, not substitute identifiers"
+  },
+  "comparison": {
+    "all8_diagnostic_attribute_pairs_equal": true,
+    "exact_ordered_geometries": 5,
+    "all6_original_ring_coordinate_multisets_identical": true,
+    "source_OBJECTID5": "Baseline invalid nested shells versus valid ESRIJSON grouping, with identical 535 rings/86111 coordinates. No topology repair or mapping accepted.",
+    "source_OBJECTID6": "Ring self-intersection remains in both baseline and source; retained, not repaired.",
+    "physical_type_and_schema_migrations": {
+      "Acres": "source esriFieldTypeDouble, published int64",
+      "SQ_MI": "source esriFieldTypeDouble, published int64",
+      "OBJECTID": "source esriFieldTypeOID, published int64",
+      "Shape__Area/Length": "source full names versus published truncated Shape__Are/Shape__Len",
+      "Division_DCODE": "source extra string absent published; no silent drop",
+      "id/bbox": "published extra fields absent source; no invented substitutions"
+    },
+    "full_evidence": "evidence/full-comparison.json",
+    "ring_evidence": "evidence/ring-representation.json"
+  },
+  "historical_crosswalk": {
+    "status": "unverified_inaccessible",
+    "DHS_DOI": "https://doi.org/10.3886/E241367V1",
+    "DOI_result": "Provider HTTP403 after DOI redirect; response body preserved, not unmatched",
+    "DataLumos_project": "https://www.datalumos.org/datalumos/project/238573/version/V1/view",
+    "DataLumos_result": "Provider HTTP403; archive contents unverified",
+    "prior_issue40": "Read only discovery/research on 2026-10-18; not an exact divisions content audit"
+  },
+  "official_link_audit": {
+    "redcross_humanitarian_mapping": "Fresh anonymous200 describes MissingMaps/MapSwipe/OpenStreetMap; does not connect this divisions layer/account",
+    "redcross_home_fire_risk": "Fresh anonymous200 links ARC GitLab fire-risk product; not this divisions layer",
+    "redcross_sso": "Fresh anonymous200 links rcview.redcross.org, which redirects to Volunteer Connection login; no observed connection to ArcGIS organization/item/layer1",
+    "maps_redcross_org": "Attempted additional official-domain lead failed CONNECT403. Separate from working catalog/GCS/ArcGIS and provider-side DataLumos403; no global network blocker inferred.",
+    "official_search_paths": "Two guessed redcross.org search paths return404; not evidence that official delegation does not exist",
+    "search_engine_leads": "Bing RSS responses ignored requested site/terms, returned dictionary results; not authority evidence",
+    "bounded_conclusion": "No independent delegation located in these observed paths. This is not proof no official source exists."
+  },
+  "external_decisions": [
+    {
+      "key": "producer_delegation",
+      "request": "Provide official Red Cross publication/delegation link or producer confirmation tying NHQRedCrossGIS / pGfbNJoYypmNq86F / item8c6753c3c5814d05be65723cd4615d7c / divisionlayer1 to the maintained corporate-division feed."
+    },
+    {
+      "key": "effective_release",
+      "request": "Producer must resolve FY27 July2026 item/service claims versus active temporary-reversion-to-FY26 January2026 notice, identifying actual effective release of all six division rows."
+    },
+    {
+      "key": "compatibility_quality_contract",
+      "request": "Once source lineage/release is settled, review complete baseline/ID mapping, double-to-int64 output history, extra Division_DCODE, full field names and source/published invalid geometry/representation. No silent dropping, type migration or geometry repair."
+    },
+    {
+      "key": "historical_crosswalk_access",
+      "request": "Supply accessible exact DHS/238573 archive crosswalk evidence; observed403 means unverified, not unmatched."
+    },
+    {
+      "key": "explicit_historical_scope_alternative",
+      "request": "If a current maintained feed cannot be established, a maintainer may explicitly authorize one specifically named preserved historical snapshot candidate with unresolved lineage/vintage stated. No such authorization is established here and it must not become an archive-refresh current-feed substitute."
+    }
+  ],
+  "capture_preservation": {
+    "runtime_directory": "/workspace/work/hifld-coordinator/14",
+    "complete_originals": [
+      "native-full.body",
+      "baseline.body"
+    ],
+    "all_body_receipt_pins": "evidence/capture-manifest.json",
+    "bounded_git_evidence": "Metadata, full-row comparisons, receipts and reproducible audits; historical full geometry replay depends on matching preserved originals, not live refetch",
+    "native_body_bytes": 13870710
+  },
+  "workflow_paths": {
+    "AGENTS": "Read current branch AGENTS.md",
+    "requested_READMEs": "Both paths absent in reviewedbase and PR418head GitHub contents404; exact reads recorded in evidence/workflow-proposal-reads.json",
+    "user_scope_overrides": "No source/baseline/contract approval, merge, closure or production publication; root owns sharedfiles/Definitions"
+  },
+  "validation": {
+    "complete_capture_comparison": "6 source/6 baseline rows, count/IDs/schema/edit stable before-after; all9 source fields; no response error/transferlimit; terminalpageempty; all raw coordinates conserved",
+    "actual_Dagster_materialization": "Not claimed: sourceauthority/currentvintage unresolved, no archive-refresh replacement implemented",
+    "full_suite_or_CI": "Not run for documentation/audit-only change; no CI or pipeline success inferred"
+  },
+  "independent_review": "Exact committed head review required"
+}
