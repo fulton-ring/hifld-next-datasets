@@ -1,0 +1,504 @@
+{
+  "assets": {
+    "geojson-324f025ea5ce": {
+      "file:checksum": "d50110814b0115f2ab532d91042898343413c1",
+      "file:size": 1117958,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/geojson/200nm-eez-and-maritime-boundaries.geojson",
+      "roles": [
+        "data"
+      ],
+      "title": "200nm-eez-and-maritime-boundaries.geojson",
+      "type": "application/geo+json"
+    },
+    "geopackage-017b9cec411c": {
+      "file:checksum": "d501109cc26394c00c9f6f716f7b622df9e47f",
+      "file:size": 610304,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/geopackage/200nm-eez-and-maritime-boundaries.gpkg",
+      "roles": [
+        "data"
+      ],
+      "title": "200nm-eez-and-maritime-boundaries.gpkg",
+      "type": "application/geopackage+sqlite3"
+    },
+    "geoparquet-a7834ae6c1d9": {
+      "file:checksum": "d501104f75e26a80543e296d35f6450ba1cef3",
+      "file:size": 416471,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/geoparquet/200nm-eez-and-maritime-boundaries.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "200nm-eez-and-maritime-boundaries.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "pmtiles-a118d508b902": {
+      "file:checksum": "d50110739c8d67d79e53a2c8c792592cb6cc94",
+      "file:size": 109067,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/pmtiles/200nm-eez-and-maritime-boundaries.pmtiles",
+      "roles": [
+        "data"
+      ],
+      "title": "200nm-eez-and-maritime-boundaries.pmtiles",
+      "type": "application/vnd.pmtiles"
+    },
+    "shapefile-ce4936b8b2ba": {
+      "file:checksum": "d50110766db60a329cd0fe4855cb94bf47e113",
+      "file:size": 377762,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/shapefile/200nm-eez-and-maritime-boundaries.zip",
+      "roles": [
+        "data"
+      ],
+      "title": "200nm-eez-and-maritime-boundaries.zip",
+      "type": "application/zip"
+    }
+  },
+  "description": "NOAA is responsible for depicting on its nautical charts the limits of the 12 nautical mile Territorial Sea, 24 nautical mile Contiguous Zone, and 200 nautical mile Exclusive Economic Zone (EEZ). The outer limit of each of these zones is measured from the U.S. normal baseline, which coincides with the low water line depicted on NOAA charts and includes closing lines across the entrances of legal bays and rivers, consistent with international law. The U.S. baseline and associated maritime limits are reviewed and approved through the interagency U.S. Baseline Committee, which is chaired by the U.S. Department of State. The Committee serves the function of gaining interagency consensus on the proper location of the baseline using the provisions of the 1958 Convention on the Territorial Sea and the Contiguous Zone, to ensure that the seaward extent of U.S. maritime zones do not exceed the breadth that is permitted by international law. In 2002 and in response to mounting requests for digital maritime zones, NOAA launched a project to re-evaluate the U.S. baseline in partnership with other federal agencies via the U.S. Baseline Committee. The focus of the baseline evaluation was NOAA's largest scale, most recent edition nautical charts as well as supplemental source materials for verification of certain charted features. This dataset is a result of the 2002-present initiative and reflects a multi-year iterative project whereby the baseline and associated maritime limits were re-evaluated on a state or regional basis. In addition to the U.S. maritime limits, the U.S. maritime boundaries with opposite or adjacent countries as well as the US/Canada International Boundary (on land and through the Great Lakes) are also included in this dataset.\u00a0Direct data download\u00a0|\u00a0Metadata\u00a0NOAA OCS U.S. Maritime Limits & Boundaries",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -180.0,
+          -17.555000001999986,
+          180.0,
+          74.70884000400002
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "hifld:agency": "National Oceanic and Atmospheric Administration",
+  "hifld:feature_count": 96,
+  "hifld:feature_id_column": null,
+  "hifld:geometry_column": "geometry",
+  "hifld:geometry_type": null,
+  "hifld:inventory_match_type": null,
+  "hifld:manifest_keys": [
+    "200nm-eez-and-maritime-boundaries/metadata/source_manifest.json",
+    "200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/metadata/source_manifest.json"
+  ],
+  "hifld:manifest_role": "resolved_version",
+  "hifld:metadata_resolved_from": {},
+  "hifld:metadata_sources": [],
+  "hifld:native_bbox": [
+    -180.0,
+    -17.555000001999986,
+    180.0,
+    74.70884000400002
+  ],
+  "hifld:native_crs": "{\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\", \"coordinate_system\": {\"axis\": [{\"abbreviation\": \"Lat\", \"direction\": \"north\", \"name\": \"Geodetic latitude\", \"unit\": \"degree\"}, {\"abbreviation\": \"Lon\", \"direction\": \"east\", \"name\": \"Geodetic longitude\", \"unit\": \"degree\"}], \"subtype\": \"ellipsoidal\"}, \"datum\": {\"ellipsoid\": {\"inverse_flattening\": 298.257223563, \"name\": \"WGS 84\", \"semi_major_axis\": 6378137}, \"name\": \"World Geodetic System 1984\", \"type\": \"GeodeticReferenceFrame\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 4326}, \"name\": \"WGS 84\", \"type\": \"GeographicCRS\"}",
+  "hifld:office": null,
+  "hifld:quality": {
+    "columns_hash": "3d83eb91baed687f7a6a02bc25b54681777cc9a5e47504ad63787b33c7158d76",
+    "invalid_geometry_count": 0,
+    "manifest_href": "metadata/quality_manifest.json",
+    "null_geometry_count": 0,
+    "passed": true,
+    "provenance": "production_metadata_and_parquet_footer_spike",
+    "sampled_feature_count": null,
+    "sampled_invalid_geometry_count": null,
+    "sampled_null_geometry_count": null
+  },
+  "hifld:source_dates": {
+    "issued": "2024-04-30",
+    "modified": "2025-04-08",
+    "provenance": {
+      "issued": "inventory",
+      "modified": "inventory"
+    }
+  },
+  "hifld:spatial_status": "spatial",
+  "id": "hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0",
+  "keywords": [
+    "Borders",
+    "Boundaries",
+    "Water Supply"
+  ],
+  "license": "other",
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/collection.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://www.datalumos.org/datalumos/project/238491/version/V1/view",
+      "rel": "derived_from"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries/v1.0.0/pmtiles/200nm-eez-and-maritime-boundaries.pmtiles",
+      "rel": "pmtiles",
+      "title": "200nm-eez-and-maritime-boundaries.pmtiles",
+      "type": "application/vnd.pmtiles"
+    }
+  ],
+  "providers": [
+    {
+      "name": "National Oceanic and Atmospheric Administration",
+      "roles": [
+        "producer"
+      ]
+    },
+    {
+      "name": "HIFLD Next",
+      "roles": [
+        "host"
+      ],
+      "url": "https://hifld.publicenvirodata.org"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/table/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/web-map-links/v1.3.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "table:columns": [
+    {
+      "is_geometry": true,
+      "name": "geometry",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "1163",
+        "1162",
+        "1076",
+        "993",
+        "962"
+      ],
+      "is_geometry": false,
+      "max": "1217.0",
+      "min": "962.0",
+      "name": "OBJECTID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "B0071",
+        "B0042",
+        "B0050",
+        "B0471",
+        "B0018"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "BOUND_ID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Atlantic Coast and Gulf of Mexico",
+        "Commonwealth of the Northern Mariana Islands and Territory of Guam",
+        "Johnston Atoll",
+        "Alaska",
+        "Alaska"
+      ],
+      "is_geometry": false,
+      "length": 66,
+      "name": "REGION",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "Alaska",
+        "American Samoa",
+        "Atlantic Coast and Gulf of Mexico",
+        "Commonwealth of the Northern Mariana Islands and Territory of Guam",
+        "Hawaiian Islands",
+        "Howland Island, Baker Island and Jarvis Island",
+        "Johnston Atoll",
+        "Pacific Coast",
+        "Palmyra Atoll and Kingman Reef",
+        "Puerto Rico and U.S. Virgin Islands",
+        "US-Canada",
+        "Wake Island"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Maritime Boundary",
+        "Maritime Boundary",
+        "Maritime Limit",
+        "Maritime Limit",
+        "Maritime Boundary"
+      ],
+      "is_geometry": false,
+      "length": 17,
+      "name": "FEAT_TYPE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "Maritime Boundary",
+        "Maritime Limit"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "1168560000000.0",
+        "1195171200000.0",
+        "1167609600000.0",
+        "1167609600000.0",
+        "1136073600000.0"
+      ],
+      "is_geometry": false,
+      "max": "1342742400000.0",
+      "min": "1136073600000.0",
+      "name": "PUB_DATE",
+      "null_count": 4,
+      "nullable": true,
+      "numNullValues": 4,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "1168560000000.0",
+        "1162512000000.0",
+        "1162512000000.0",
+        "1108425600000.0",
+        "1070409600000.0"
+      ],
+      "is_geometry": false,
+      "max": "1362441600000.0",
+      "min": "1062547200000.0",
+      "name": "APPRV_DATE",
+      "null_count": 1,
+      "nullable": true,
+      "numNullValues": 1,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "US/Mexico Maritime Boundary Treaty, 1978",
+        "US/Japan Exchange of Notes, 1994",
+        "Presidential Proclamation No. 5030, March 1983",
+        "Presidential Proclamation No. 5030, March 1983",
+        "US/Russia Maritime Boundary Agreement, 1990"
+      ],
+      "is_geometry": false,
+      "length": 61,
+      "name": "LEGAL_AUTH",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "Federal Register, Vol. 60, No. 163, August 23, 1995",
+        "International Boundary Commission",
+        "Presidential Proclamation No. 5030, March 1983",
+        "US/Cook Islands Maritime Boundary Treaty, 1980",
+        "US/Cuba Maritime Boundary Agreement, 1977",
+        "US/Japan Exchange of Notes, 1994",
+        "US/Mexico Maritime Boundary Treaty, 1970",
+        "US/Mexico Maritime Boundary Treaty, 1978",
+        "US/New Zealand (Tokelau) Maritime Boundary Treaty, 1980",
+        "US/Niue Maritime Boundary Treaty, 1997",
+        "US/Russia Maritime Boundary Agreement, 1990",
+        "US/UK (Anguilla) Maritime Boundary Treaty, 1993",
+        "US/UK (British Virgin Islands) Maritime Boundary Treaty, 1993",
+        "US/Venezuela Maritime Boundary Treaty, 1978"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "NOAA/OCS",
+        "NOAA/OCS",
+        "NOAA/OCS",
+        "NOAA/OCS",
+        "NOAA/OCS"
+      ],
+      "is_geometry": false,
+      "length": 8,
+      "name": "AOR",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "NOAA/OCS"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        " ",
+        "Unilateral US maritime boundary claim",
+        "Senate Treaty Document 101-22",
+        "UNTS Vol. 1913, I-32637",
+        "TIAS 10774"
+      ],
+      "is_geometry": false,
+      "length": 92,
+      "name": "NOTE",
+      "null_count": 6,
+      "nullable": true,
+      "numNullValues": 6,
+      "possibleValues": [
+        " ",
+        "Senate Treaty Document 101-22",
+        "Senate Treaty Document EX. F, 96-1",
+        "Senate Treaty Document EX. G, 96-1",
+        "Senate Treaty Document EX. H, 96-1, provisionally applied through an exchange of notes",
+        "TIAS 10774",
+        "TIAS 10775",
+        "UNTS Vol. 1913, I-32636",
+        "UNTS Vol. 1913, I-32637",
+        "US/Canada boundary - Gulf of Maine",
+        "US/Canada boundary - Gulf of Maine; International Court of Justice Award of October 14, 1984",
+        "US/Canada boundary - Passamaquoddy Bay",
+        "US/Canada boundary - St. Croix River",
+        "US/Canada boundary - Straits of Georgia",
+        "US/Japan Maritime Boundary",
+        "US/Niue maritime boundary",
+        "Unilateral US maritime boundary claim"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI025.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI029.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI028.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI040.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI021.docx"
+      ],
+      "is_geometry": false,
+      "length": 500,
+      "name": "SUPP_INFO",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI021.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI023.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI024.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI025.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI026.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI027.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI028.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI029.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI029.docx                                                                                                                                                                                                                                                                                                                                                                                                                                                      ",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI030.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI031.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI032.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI033.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI034.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI036.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI037.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI040.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI041.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI042.docx",
+        "http://www.nauticalcharts.noaa.gov/csdl/mb_suppinfo/SI043.docx"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "is_geometry": false,
+      "max": "1.0",
+      "min": "0.0",
+      "name": "UNILATERAL",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "4",
+        "4",
+        "2",
+        "2",
+        "4"
+      ],
+      "is_geometry": false,
+      "max": "8.0",
+      "min": "2.0",
+      "name": "RULEID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "0.224064728043816",
+        "4.8088911973165605",
+        "21.718577473081698",
+        "0.43676600564560597",
+        "0.154238543"
+      ],
+      "is_geometry": false,
+      "max": "75.40883736889609",
+      "min": "0.0111924424210992",
+      "name": "SHAPE.LEN",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "float"
+    },
+    {
+      "exampleValues": [
+        "1163",
+        "1162",
+        "1076",
+        "993",
+        "962"
+      ],
+      "is_geometry": false,
+      "max": "1217.0",
+      "min": "962.0",
+      "name": "id",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    }
+  ],
+  "title": "200NM EEZ and Maritime Boundaries",
+  "type": "Collection"
+}

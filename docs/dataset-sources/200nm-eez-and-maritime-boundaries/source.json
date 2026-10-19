@@ -22,37 +22,43 @@
     {
       "capture": "evidence/layer.body",
       "finding": "Exact named layer 3; NOAA/NOS/OCS copyright."
+    },
+    {
+      "capture": "evidence/inport-item.body.gz",
+      "finding": "NOAA InPort39963 identifies Office of Coast Survey producer/distributor, exact MapServer; publication/revision year2013, continually maintained, source update forthcoming. HTML accessible200; XML503 retained."
     }
   ],
   "release_date": null,
-  "release_date_note": "Service metadata explicitly states version 4.1 dated/revised 9/13/2013. Current downloadable release date remains independently unverified. PUB_DATE values are per-feature publication dates, not service release or retrieval dates.",
-  "checked_at": "2026-10-19T04:19:08.462985+00:00",
-  "relationship_to_archive": "unresolved; plausible producer continuation but exact crosswalk and accepted archived/published baseline unavailable",
+  "release_date_note": "Producer InPort39963 visible publication and revision are year2013; its schema.org emits2013-01-01 but does not establish day precision. Service version4.1 states2013-09-13. These are producer-stated dates, not independently pinned current downloadable release. InPort record modified2026-08-20 and says Update to dataset forthcoming; neither proves a2026 source release.",
+  "checked_at": "2026-10-19T04:51:22.598249+00:00",
+  "relationship_to_archive": "Exact crosswalk remains unverified; complete current NOAA source matches pinned published v1.0.0 candidate IDs, attribute values and ordered vertex parts, with schema/geometry-representation differences requiring approval.",
   "crosswalk": {
     "doi": "https://doi.org/10.3886/E241367V1",
-    "status": "unverified_due_to_access_blocker",
-    "error": "urllib anonymous DOI request: Tunnel connection failed: 403 Forbidden",
+    "status": "unverified_provider_access_blocker",
+    "error": "2026-10-19 retry follows DOI to DataLumos project241367: provider HTTP403 challenge; no CONNECT denial",
     "hyperlinks_parsed": false,
-    "title_match_is_not_accepted": true
+    "title_match_is_not_accepted": true,
+    "evidence": "evidence/network-retry.json"
   },
   "archive": {
     "url": "https://www.datalumos.org/datalumos/project/238491/version/V1/view",
     "source_role": "archive",
-    "access": "Tunnel connection failed: 403 Forbidden"
+    "access": "2026-10-19 provider HTTP403 challenge; no CONNECT denial"
   },
   "accepted_baseline": null,
   "blockers": [
-    "Original XLSX/crosswalk hyperlink exact match unavailable",
-    "Accepted HIFLD Next file/version/checksums and full baseline comparison unavailable",
-    "Maintainer approved published schema/ID contract unavailable",
-    "Shared comparison and provenance prerequisite #417 must be accepted before implementation",
-    "InPort metadata request HTTP503; real release date unknown"
+    "Exact original DHS XLSX/crosswalk hyperlink match unavailable: provider challenge403",
+    "Maintainer acceptance of pinned published v1.0.0 candidate SHA2563de5e54cbdcf80a70b0c085fef69598b0e24f2ef9aa17dfa43f641113fdbfd33 generation1791506335103859",
+    "Maintainer approved raw/published schema and ID mapping: source SHAPE representation, float UNILATERAL vs baseline int64, additional id/bbox and80 geometry wrapper changes",
+    "Current download release currency unresolved: producer publication/revision year2013, service version4.1 dated2013-09-13; record edit2026 is metadata only",
+    "Shared #417 verifier/provenance machinery and dataset ingestion are not implemented on this research branch"
   ],
   "extraction": {
     "summary": "evidence/extraction-summary.json",
     "replay": "python docs/dataset-sources/200nm-eez-and-maritime-boundaries/audit.py",
     "complete_snapshot_observation": "96 full rows and unique OBJECTIDs reconcile count, ordered independent ID projection and GeoJSON count; returnIdsOnly error retained; sequential snapshot only",
-    "serialization_note": "UNILATERAL is a float in retained Esri JSON and an integer in retained GeoJSON; numeric values compare equal. No generated output or published type/value preservation is claimed."
+    "serialization_note": "UNILATERAL is a float in retained Esri JSON and an integer in retained GeoJSON; numeric values compare equal. No generated output or published type/value preservation is claimed.",
+    "current_retry": "evidence/current-requests.json: count96/layer unchanged; full pjson and GeoJSON bytes exactly equal existing captures; f=json full variant returns ArcGIS500 and rejected"
   },
   "published_contract": {
     "status": "proposed_unapproved",
@@ -235,5 +241,19 @@
     "version": "4.1",
     "evidence": "evidence/service.body serviceDescription and description",
     "meaning": "Producer-stated service dataset revision; does not independently verify current downloadable release date."
-  }
+  },
+  "baseline_candidate": {
+    "manifest": "evidence/published-candidate.json",
+    "comparison": "evidence/published-candidate-comparison.json",
+    "accepted": false,
+    "complete_comparison": true,
+    "decision": "DECISION.md"
+  },
+  "network_retry": {
+    "policy": "observations current, unrestricted enforced revision6",
+    "evidence": "evidence/network-retry.json",
+    "crosswalk_archive": "provider403 challenge, not CONNECT403",
+    "inport": "HTML200, XML503"
+  },
+  "readiness": "evidence/readiness-20261019.json: actual Definitions.validate_loadable and repository assets load on isolated durable DagsterInstance; no materialization on research branch"
 }
