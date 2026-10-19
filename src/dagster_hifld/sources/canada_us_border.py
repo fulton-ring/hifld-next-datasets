@@ -342,6 +342,45 @@ def write_canonical_geopackage(destination: Path, rows: list[dict]) -> None:
         db.execute("UPDATE gpkg_contents SET last_change='2018-04-20T00:00:00.000Z'")
 
 
+def original_provenance_bundle(storage: StagingStorageResource, version: str,
+                               captures: dict, manifest: dict, *, create: bool=False) -> tuple[dict,dict]:
+    """Bind the first construction and original receipts outside self-pinned caches.
+
+    The caller holds the stable version lock. Fresh observations stay in the raw
+    depot; identical-content refreshes retain the actual original construction.
+    """
+    key=f'_source-provenance/{SLUG}/{version}/bundle.json'
+    if not storage.object_exists(key):
+        if not create:
+            raise BoundaryQuarantineError('missing_original_construction_provenance_bundle')
+        bundle={'manifest':manifest,'captures':{name:{
+            'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
+            'receipt':receipt} for name,(body,receipt) in captures.items()}}
+        immutable(storage,key,encode(bundle))
+    bundle=strict_json(storage.read_key(key))
+    if set(bundle)!= {'manifest','captures'} or set(bundle['captures'])!=set(URLS):
+        raise BoundaryQuarantineError('original_construction_bundle_roster_drift')
+    original={}
+    for name in URLS:
+        item=bundle['captures'][name]
+        if set(item)!= {'body_key','receipt'}:
+            raise BoundaryQuarantineError('original_construction_capture_roster_drift')
+        expected=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{name}.body"
+        if item['body_key']!=expected:
+            raise BoundaryQuarantineError('original_construction_capture_key_drift')
+        body=storage.read_key(expected)
+        if body!=captures[name][0]:
+            raise BoundaryQuarantineError('original_construction_capture_bytes_changed')
+        original[name]=(body,item['receipt'])
+    expected_manifest=provenance(original)
+    expected_manifest['processing_fingerprint']=manifest['processing_fingerprint']
+    actual=bundle['manifest']
+    validate_release_provenance(actual)
+    if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
+        raise BoundaryQuarantineError('original_construction_manifest_drift')
+    return original,actual
+
+
 def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready: dict,
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
@@ -369,7 +408,11 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise BoundaryQuarantineError('cached_capture_differs_from_fresh_source')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(manifest)
-    # code_commit identifies the original immutable construction, including later docs-only commits.
+    bundle_key=f'_source-provenance/{SLUG}/{ready["version"]}/bundle.json'
+    original_bundle=strict_json(storage.read_key(bundle_key))
+    if manifest!=original_bundle['manifest']:
+        raise BoundaryQuarantineError('cached_original_construction_manifest_changed')
+    # code_commit is checked against the immutable original above, not current HEAD.
     for name,value in expected_manifest.items():
         if name!='code_commit' and manifest.get(name)!=value:
             raise BoundaryQuarantineError('cached_provenance_differs_from_original_capture')
@@ -462,9 +505,11 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             version = f'v0.0.0-draft-ibc13-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/canada_us_border_candidate_ready.json'
+            manifest['processing_fingerprint']=fingerprint
             with candidate_version_lock(storage,prefix) as target:
                 if target.exists():
                     try:
+                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest)
                         if not storage.object_exists(ready_key):
                             raise BoundaryQuarantineError('concurrent_or_incomplete_existing_candidate:missing_candidate_ready')
                         ready = strict_json(storage.read_key(ready_key))
@@ -485,6 +530,8 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
                         retained=quarantine_cached_candidate(storage,prefix,str(exc),already_locked=True)
                         raise BoundaryQuarantineError(f'{exc}; cached_candidate_retained:{retained}') from exc
+                captures,manifest=original_provenance_bundle(storage,version,captures,manifest,create=True)
+                body,receipt=captures['ibc-zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_canonical_geopackage(geopackage,rows)
             source_records = directory / 'source.jsonl'
@@ -508,8 +555,6 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             parquet_fidelity = compare_derivative(source_records, decoded, directory / 'parquet-comparison')
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise BoundaryQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
-            commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(),

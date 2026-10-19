@@ -317,6 +317,39 @@ class BoundaryTests(unittest.TestCase):
                 s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
             commit.assert_not_called();self.assertFalse(root.exists())
 
+    def test_original_commit_cannot_self_repin_and_docs_refresh_retains_original(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d)
+            out=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            root=Path(d,s.SLUG,s.SLUG,out['version'])
+            manifest=root/'metadata/source_manifest.json';original=manifest.read_bytes()
+            bundle=Path(d,'_source-provenance',s.SLUG,out['version'],'bundle.json')
+            original_bundle=bundle.read_bytes()
+            # A subsequent docs-only HEAD does not rewrite the real construction.
+            with patch.object(s.subprocess,'check_output',return_value='f'*40+'\n'):
+                self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
+            self.assertEqual(manifest.read_bytes(),original)
+            forged=json.loads(original);forged['code_commit']='0'*40;manifest.write_bytes(s.encode(forged))
+            marker=root/'metadata/canada_us_border_candidate_ready.json';ready=json.loads(marker.read_text())
+            ready['objects']['metadata/source_manifest.json']=s.sha(manifest.read_bytes());marker.write_bytes(s.encode(ready))
+            before={str(p.relative_to(root)):s.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+            published=Path(d,'published');published.mkdir();(published/'prior').write_bytes(b'local-fixture')
+            with self.assertRaisesRegex(ValueError,'cached_original_construction_manifest_changed'):
+                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            self.assertFalse(root.exists());self.assertEqual(list(_iter_staged_version_paths(storage)),[])
+            retained=list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'))
+            self.assertEqual(len(retained),1)
+            self.assertEqual(before,{str(p.relative_to(retained[0])):s.sha(p.read_bytes()) for p in retained[0].rglob('*') if p.is_file()})
+            with patch.object(s.subprocess,'check_output',return_value='f'*40+'\n'):
+                self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
+            self.assertEqual(manifest.read_bytes(),original);self.assertEqual(bundle.read_bytes(),original_bundle)
+            self.assertEqual((published/'prior').read_bytes(),b'local-fixture')
+            # Existing unbound caches cannot bless themselves as original history.
+            bundle.unlink()
+            with self.assertRaisesRegex(ValueError,'missing_original_construction_provenance_bundle'):
+                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            self.assertFalse(root.exists());self.assertFalse(bundle.exists())
+
     def test_encoded_wire_length_and_partial_diagnostics(self):
         actual_client=httpx.Client
         bodies={url:(CAPTURE/(name+'.body')).read_bytes() for name,url in s.URLS.items()}
