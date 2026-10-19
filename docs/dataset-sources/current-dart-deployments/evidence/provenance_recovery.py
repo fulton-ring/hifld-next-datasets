@@ -56,7 +56,7 @@ with DagsterInstance.get() as instance:
  rebuilt,_=run('cold_rebuild_original_provenance_after_docs_head_newer_receipts');assert rebuilt.success
  assert snapshot(root)==original_objects and binding.read_bytes()==original_binding and (root/'metadata/source_manifest.json').read_bytes()==original_manifest
  report['assertions'].append('Healthy refresh and cold reconstruction after whole-cache quarantine retain original manifest and all12original receipts across genuine docs-only HEAD; newer receipts retained separately.')
- wrong_source_commit=subprocess.check_output(['git','rev-parse','4800e4f5df550bfadd3631585268ce68a0fa25d9'],cwd=repo,text=True).strip()
+ wrong_source_commit=subprocess.check_output(['git','rev-parse','d4d8aa5d1fb480c3087bd1a58b0594c8ab4ba713'],cwd=repo,text=True).strip()
  for label,claimed in [('unresolvable_all_zero_commit','0'*40),('authentic_commit_with_wrong_processing_source',wrong_source_commit)]:
   manifest=json.loads(original_manifest);manifest['code_commit']=claimed;(root/'metadata/source_manifest.json').write_bytes(source.encode(manifest))
   # Coforge ALL authored snapshots if present, the outside bundle and ready digest.
@@ -65,6 +65,8 @@ with DagsterInstance.get() as instance:
   bundle=json.loads(original_binding);bundle['manifest']=manifest;binding.write_bytes(source.encode(bundle))
   ready=json.loads(marker.read_bytes());ready['objects']['metadata/source_manifest.json']=source.sha(source.encode(manifest));marker.write_bytes(source.encode(ready));altered=snapshot(root);forged_binding=binding.read_bytes()
   negative,errors=run('coforged_bundle_and_cache_'+label);assert not negative.success and any('construction_' in e for e in errors),errors
+  if label=='authentic_commit_with_wrong_processing_source':
+   assert any('construction_processing_blob_hash_mismatch' in e for e in errors),errors
   assert not root.exists() and binding.read_bytes()==forged_binding
   assert any(snapshot(q)==altered for q in (runtime/'staging/_quarantine'/source.SLUG).glob('invalid-cache-*/candidate'))
   # Explicit operator-fixture restoration of original binding, not adapter healing.
