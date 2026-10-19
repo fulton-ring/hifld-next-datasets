@@ -19,7 +19,11 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
-from dagster import AssetIn, AssetKey, ConfigurableResource, DynamicPartitionsDefinition, asset
+from dagster import (
+    AssetIn, AssetKey, AssetSelection, ConfigurableResource,
+    DefaultScheduleStatus, DynamicPartitionsDefinition, RunRequest,
+    ScheduleDefinition, SkipReason, asset, define_asset_job,
+)
 from pyproj import CRS
 from shapely import Point, to_wkb
 
@@ -46,7 +50,11 @@ def _json(path: Path):
 
 
 def _digest(path: Path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def capture_live(destination: Path) -> None:
@@ -352,6 +360,8 @@ def stage_fuel_capture(capture: Path, staging: StagingStorageResource, version: 
        config_schema={'capture_dir':str, 'version':str},
        description='Draft DOE/NLR AFDC feed via official USDOT_BTS distributor; all raw fields and IDs retained. Local research staging only; publication requires independent exact-release approval.')
 def bts_alternative_fueling_stations(context, staging_storage: StagingStorageResource) -> dict:
+    if not staging_storage.use_local or staging_storage.bucket:
+        raise ValueError('Review draft permits isolated local staging only')
     capture_dir = context.op_config['capture_dir']
     if capture_dir:
         result = stage_fuel_capture(Path(capture_dir), staging_storage, context.op_config['version'])
@@ -362,3 +372,36 @@ def bts_alternative_fueling_stations(context, staging_storage: StagingStorageRes
             result = stage_fuel_capture(capture, staging_storage, context.op_config['version'])
     context.add_output_metadata({'rows':result['rows'], 'version':result['version'], 'promotion_allowed':False})
     return result
+
+
+fuel_stations_draft_refresh_job = define_asset_job(
+    name='fuel_stations_draft_refresh_job',
+    selection=AssetSelection.assets(bts_alternative_fueling_stations),
+    tags={'hifld_review_draft': 'true', 'hifld_source_only': 'true'},
+    description='Local source-only integrity poll; no catalog/publish selection or release approval.',
+)
+
+
+def _draft_refresh_request(context):
+    scheduled = context.scheduled_execution_time
+    if scheduled is None:
+        return SkipReason('A dated schedule context is required for immutable draft versions')
+    stamp = scheduled.astimezone(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    return RunRequest(
+        run_key=f'{SLUG}-draft-{stamp}',
+        run_config={'ops': {bts_alternative_fueling_stations.op.name: {
+            'config': {'capture_dir': '', 'version': f'v0.0.0-research-{stamp}'}}}},
+        tags={'hifld_review_draft': 'true', 'hifld_source_only': 'true',
+              'hifld_promotion_allowed': 'false'},
+    )
+
+
+fuel_stations_draft_refresh_schedule = ScheduleDefinition(
+    name='fuel_stations_draft_refresh_schedule',
+    job=fuel_stations_draft_refresh_job,
+    cron_schedule='0 9 * * *',
+    execution_timezone='America/New_York',
+    execution_fn=_draft_refresh_request,
+    default_status=DefaultScheduleStatus.STOPPED,
+    description='Proposed daily local integrity poll at 09:00 America/New_York; not an official release cadence. Disabled until separately reviewed.',
+)

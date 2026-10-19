@@ -6,15 +6,17 @@ import pathlib
 import tempfile
 import sqlite3
 import unittest
+import datetime
 from unittest.mock import patch
 
-from dagster import DagsterInstance, materialize
+from dagster import DefaultScheduleStatus, Definitions, DagsterInstance, build_schedule_context, materialize
 from dagster_hifld.resources import StagingStorageResource
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
 from dagster_hifld.assets.fuel_stations import build_candidate, inspect_capture, stage_fuel_capture, bts_alternative_fueling_stations, verify_typed_geopackage, SLUG
+from dagster_hifld.assets.fuel_stations import fuel_stations_draft_refresh_job, fuel_stations_draft_refresh_schedule
 
 
 def write(root, name, value):
@@ -129,6 +131,30 @@ class FuelDraftTest(unittest.TestCase):
         self.assertFalse((self.root/'staging').exists())
         remote=StagingStorageResource(bucket='not-used',use_local=False)
         with self.assertRaisesRegex(ValueError,'local staging'): stage_fuel_capture(self.root,remote,'v0.0.0-test')
+
+    def test_refresh_schedule_is_stopped_and_selects_only_source_with_dated_version(self):
+        definitions = Definitions(assets=[bts_alternative_fueling_stations],
+            jobs=[fuel_stations_draft_refresh_job], schedules=[fuel_stations_draft_refresh_schedule],
+            resources={'staging_storage': StagingStorageResource(local_dir=str(self.root/'staging'), use_local=True)})
+        job = definitions.resolve_job_def('fuel_stations_draft_refresh_job')
+        self.assertEqual(set(job.graph.node_names()), {bts_alternative_fueling_stations.op.name})
+        self.assertEqual(fuel_stations_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)
+        instant = datetime.datetime(2026, 10, 19, 13, tzinfo=datetime.timezone.utc)
+        with build_schedule_context(scheduled_execution_time=instant) as context:
+            requests = fuel_stations_draft_refresh_schedule.evaluate_tick(context).run_requests
+        self.assertEqual(len(requests), 1)
+        config = requests[0].run_config['ops'][bts_alternative_fueling_stations.op.name]['config']
+        self.assertEqual(config, {'capture_dir': '', 'version': 'v0.0.0-research-20261019T130000Z'})
+        self.assertEqual(requests[0].tags['hifld_promotion_allowed'], 'false')
+
+    def test_source_asset_rejects_cloud_before_any_live_capture(self):
+        remote = StagingStorageResource(bucket='not-used', use_local=False)
+        with patch('dagster_hifld.assets.fuel_stations.capture_live') as fetch, DagsterInstance.ephemeral() as instance:
+            result = materialize([bts_alternative_fueling_stations], instance=instance,
+                resources={'staging_storage': remote}, raise_on_error=False,
+                run_config={'ops': {bts_alternative_fueling_stations.op.name: {'config': {'capture_dir': '', 'version': 'v0.0.0-test'}}}})
+        self.assertFalse(result.success)
+        fetch.assert_not_called()
 
     def test_rejects_byte_tampering_and_preserves_candidate(self):
         build_candidate(self.root, self.root / 'candidate')
