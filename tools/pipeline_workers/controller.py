@@ -301,7 +301,15 @@ def finish(github: GitHub, board: Board, task: dict, pr_number: int, head: str) 
         if failed or status['state'] not in ('success', 'pending') or (status['state'] == 'pending' and status['total_count']):
             github.comment(task['issue'], 'External checks pending or failing; left in Review. Dispatcher will recheck this reviewed head without starting another worker.')
             return
-        merged = github.rest('PUT', f'pulls/{pr_number}/merge', {'sha': head, 'merge_method': 'squash'})
+        try:
+            merged = github.rest('PUT', f'pulls/{pr_number}/merge', {'sha': head, 'merge_method': 'squash'})
+        except urllib.error.HTTPError as error:
+            if error.code not in (405, 409, 422):
+                raise
+            # Branch rules/mergeability may settle later. Keep the exact-head
+            # receipt and let another card proceed in this dispatcher batch.
+            print(f'GitHub deferred merge of PR {pr_number}: HTTP {error.code}')
+            return
         if not merged.get('merged'):
             raise RuntimeError('GitHub declined merge')
         # Research PRs do not resolve pipeline implementation issues.

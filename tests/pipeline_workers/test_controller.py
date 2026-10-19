@@ -4,7 +4,9 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -141,6 +143,28 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(board.moves,['Changes requested'])
             self.assertFalse(any(p.endswith('/merge') for _,p,_ in github.calls))
 
+    def test_pending_external_checks_hold_review_without_merging(self):
+        original = GitHub.rest
+        def rest(github, method, path, data=None):
+            if 'check-runs' in path:
+                return {'total_count':1,'check_runs':[{'name':'integration','status':'in_progress','conclusion':None}]}
+            return original(github, method, path, data)
+        with patch.object(GitHub,'rest',rest):
+            github, board = self.finish()
+        self.assertEqual(board.moves,[])
+        self.assertFalse(any(p.endswith('/merge') for _,p,_ in github.calls))
+        self.assertTrue(any(body.startswith(c.REVIEW_MARKER) for body in github.comments))
+
+    def test_branch_rule_refusal_does_not_abort_other_cards(self):
+        original = GitHub.rest
+        def rest(github, method, path, data=None):
+            if path.endswith('/merge'):
+                raise urllib.error.HTTPError('https://api.github.com',405,'blocked',{},None)
+            return original(github, method, path, data)
+        with patch.object(GitHub,'rest',rest):
+            _, board = self.finish()
+        self.assertEqual(board.moves,[])
+
     def test_success_merges_exact_head_and_research_stays_open(self):
         github, board = self.finish()
         self.assertIn(('PUT','pulls/8/merge',{'sha':'abc','merge_method':'squash'}),github.calls)
@@ -263,7 +287,6 @@ class ReconcileTests(unittest.TestCase):
 
 class ProfileTests(unittest.TestCase):
     def test_public_source_access_uses_distinct_filesystem_permissions(self):
-        import tomllib
         config=tomllib.loads((ROOT/'tools/pipeline_workers/codex/config.toml').read_text())
         self.assertTrue(config['features']['network_proxy'])
         self.assertEqual(config['permissions']['worker-public']['extends'], ':workspace')
