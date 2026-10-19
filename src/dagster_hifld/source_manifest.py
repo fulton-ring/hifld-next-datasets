@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.output_policy import SUPPORTED_OUTPUT_EXCLUSIONS, prebuilt_output_spec, validate_output_policy
 from dagster_hifld.resources import StagingStorageResource
 
 CATALOG_METADATA_FIELDS = (
@@ -37,11 +38,9 @@ CATALOG_METADATA_FIELDS = (
     "code_commit",
     "lineage",
     "unsupported_output_formats",
+    "prebuilt_output_policy",
     "manifest_layers",
 )
-
-SUPPORTED_OUTPUT_EXCLUSIONS = frozenset({"shapefile_zip", "geopackage", "geoparquet", "pmtiles"})
-
 
 @dataclass(frozen=True)
 class ResolvedSourceManifest:
@@ -51,17 +50,32 @@ class ResolvedSourceManifest:
 
 def unsupported_output_reason(metadata: dict[str, Any], format_name: str) -> str | None:
     """Return an evidenced format exclusion; exclusion does not approve others."""
+    validate_output_policy(metadata)
     exclusions = metadata.get("unsupported_output_formats", {})
-    if not isinstance(exclusions, dict):
-        raise ValueError("unsupported_output_formats must map format names to evidence reasons")
-    for excluded_format, reason in exclusions.items():
-        if excluded_format not in SUPPORTED_OUTPUT_EXCLUSIONS:
-            raise ValueError("Unsupported output exclusion format")
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError("Unsupported output format requires a concrete evidence reason")
     if format_name not in SUPPORTED_OUTPUT_EXCLUSIONS:
         raise ValueError("Unsupported output exclusion format")
     return exclusions.get(format_name)
+
+
+def prebuilt_output_keys(metadata: dict, storage: StagingStorageResource, prefix: str, format_name: str) -> list[str] | None:
+    """Validate the full pinned native roster without generation or acceptance."""
+    spec = prebuilt_output_spec(metadata, format_name)
+    if spec is None:
+        return None
+    directory = storage._ensure_prefixed(f"{prefix}/{format_name}/")
+    expected = {storage._ensure_prefixed(f"{prefix}/{obj['path']}"): obj for obj in spec["objects"]}
+    def roster():
+        return {key for key in storage.list_prefix(f"{prefix}/{format_name}") if key.startswith(directory)}
+    if roster() != set(expected):
+        raise ValueError("Prebuilt output complete object roster changed")
+    for key, obj in expected.items():
+        snapshot = storage.object_snapshot(key)
+        if (snapshot is None or snapshot.size != obj["bytes"] or storage.sha256_key(key) != obj["sha256"]
+                or storage.object_snapshot(key) != snapshot):
+            raise ValueError("Prebuilt output bytes changed")
+    if roster() != set(expected):
+        raise ValueError("Prebuilt output complete object roster changed during validation")
+    return sorted(expected)
 
 
 def load_resolved_source_manifest(
