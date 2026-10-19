@@ -3,6 +3,8 @@ import copy
 import json
 import os
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -81,6 +83,24 @@ class SignificantVolcanicTests(unittest.TestCase):
             with mock.patch.object(f.httpx,'Client',return_value=client),mock.patch.object(f,'MAX_BODY_BYTES',36):
                 with self.assertRaises(ValueError):f.acquire(StagingStorageResource(local_dir=d))
             wire=list(Path(d).glob('_acquisition-attempts/*/*/*/wire.body'));self.assertEqual(len(wire),1);self.assertEqual(wire[0].read_bytes(),b'x'*37)
+    def test_canonical_CRS_is_independent_of_real_import_order(self):
+        code="""import sys,json,hashlib,struct
+from pyproj import CRS
+pinned=json.loads(sys.argv[2])
+if sys.argv[1]=='proj-first':assert CRS.from_json_dict(pinned).to_epsg()==3857
+from dagster_hifld.sources import significant_volcanic_events as source
+if sys.argv[1]=='source-first':assert CRS.from_json_dict(pinned).to_epsg()==3857
+import pyarrow as pa,pyarrow.parquet as pq
+table=pa.table({'geometry':pa.array([struct.pack('<BIdd',1,1,0.,0.),struct.pack('<BIdd',1,1,1.,2.)],type=pa.binary())})
+output=source.parquet_table(table);assert json.loads(output.schema.metadata[b'geo'])['columns']['geometry']['crs']==pinned
+sink=pa.BufferOutputStream();pq.write_table(output,sink,compression='zstd')
+print(json.dumps({'metadata_sha256':hashlib.sha256(output.schema.metadata[b'geo']).hexdigest(),'parquet_sha256':hashlib.sha256(sink.getvalue().to_pybytes()).hexdigest()}))"""
+        observations=[]
+        for order in['proj-first','source-first']:
+            completed=subprocess.run([sys.executable,'-c',code,order,json.dumps(f.NATIVE_CRS_JSON)],check=True,capture_output=True,text=True,timeout=30)
+            observations.append(json.loads(completed.stdout))
+        self.assertEqual(observations[0],observations[1])
+
     def test_partial_wire_and_decoded_blocks_retained_before_rejection(self):
         delivered=bytes(range(64));original=Path.open
         class Stream(httpx.SyncByteStream):
