@@ -1,0 +1,25 @@
+{
+  "requested_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-prohibitions-metadata.txt",
+  "final_url": "https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-prohibitions-metadata.txt",
+  "observed_at": "2026-10-19T07:41:12.751883+00:00",
+  "status": 200,
+  "byte_length": 25785,
+  "sha256": "3580dedb2a04974f3af411d51df2fd2703b2d08f4adcc4cb402aed205042010a",
+  "headers": {
+    "content-type": "text/plain",
+    "x-content-type-options": "nosniff",
+    "last-modified": "Thu, 19 Dec 2024 13:23:41 GMT",
+    "x-request-id": "v-0a38ccd2-c8f8-11f1-b040-a3ccc528a8fe",
+    "x-ah-environment": "prod",
+    "x-age": "0",
+    "vary": "Accept-Encoding",
+    "cache-control": "max-age=900",
+    "date": "Mon, 19 Oct 2026 07:41:12 GMT",
+    "content-length": "25785",
+    "server-timing": "cdn-cache; desc=HIT",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains ; preload",
+    "x-envoy-upstream-service-time": "436",
+    "server": "envoy",
+    "connection": "close"
+  }
+}
