@@ -1,8 +1,0 @@
-{
-  "repository": "__repository__",
-  "assets": 73,
-  "existing_aiannh_ingest_loaded": true,
-  "isolated_local_storage": true,
-  "materialized": false,
-  "limitation": "Research comparator only; conversion/catalog/publish and failed-promotion integration require shared verifier implementation, no full-suite pass claimed."
-}

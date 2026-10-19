@@ -1,20 +1,12 @@
-# AIANNH Areas: working draft, release acceptance pending
+# AIANNH Areas draft
 
-The explicit pipeline reconstructs the inventory-linked Census TIGER2023 AIANNH components from the complete official9,086,993-byte ZIP, SHA256 `4155f58dfefcc40cfe61d741f760f882ebe6c6008537c0c7bc58075871af2f40`. It preserves all862 features,16 attributes, source IDs/leading zeros/native integer values, every original ZIP member, native EPSG:4269 and the original561Polygon/301MultiPolygon mix. The producer reference is not an accepted published baseline. Original2023/2025/2026 archives remain preserved for later acceptance review.
+Source: Census TIGER/Line 2023 AIANNH ZIP, https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip.
+The draft job is `aiannh_source_integrity_refresh`; its monthly schedule remains STOPPED.
+Source, baseline, edition/grain, and output acceptance decisions remain open; no release is approved.
+Tracked research and generated evidence are preserved in `/workspace/work/hifld-coordinator/artifacts/issue-8-removed-research-docs-19061d06de01.tar.gz` (SHA-256 `b606dbc4698b167dc207a7c453033414e8d3201e707dc5bb619eb21bc04c4320`).
+Restore the archived `docs/dataset-sources/aiannh-areas-1/` tree from that tarball when needed.
 
-The user authorized draft implementation and isolated tests while source/baseline/contract decisions remain pending. Source code is `sources/aiannh.py`, registered through the explicit Census asset/registry. It rejects remote and published destinations before fetching or writing. Complete byte pins, CRC/member inventory, row/schema/ID/attribute/geometry/coverage checks quarantine errors and changed releases. The stopped monthly source-only job `aiannh_source_integrity_refresh` uses cron `0 3 1 * *`, America/New_York, for the fixed2023 integrity check; it does not select a newer annual edition or activate publication.
-
-Metadata repair `bac1c538d80b4b67a098de1d3e5cd7d2a2603030` corrects an existing integration gap: the shared provenance contract requires processor exactly `HIFLD Next`. The source adapter description is retained separately as `processor_description`. The authored manifest is now validated before canonical writes and on immutable reuse. Actual catalog-generated `data_dictionary.json` and authored `source_manifest.json` both pass that contract with equal input rosters. Dataset extraction, column mappings and geometry writers did not change. The prior incompatible manifests remain historical evidence; they were not silently rewritten.
-
-Actual isolated registered source run `ed4ff6ef-9353-42ef-8800-a6aa9c2c0ab3` and identical reuse `c553c28c-9978-41dd-a71d-2f8be60d6456` succeed. Normal format graph `9ad472d8-08d6-4481-9adb-c7cbc04c4a27` materializes catalog, blocking quality, native GeoPackage and GeoParquet, then fails only on missing independent release approval. Every supported-format feature again has zero source-ID, attribute, geometry or coverage differences. Original raw and prior published fixture bytes are preserved. Regenerated Shapefile and PMTiles remain explicitly unsupported; original producer ZIP/sidecars are retained losslessly. Their earlier physical-loss probes remain in `evidence/implementation`.
-
-At the metadata repair code head,12 focused source tests pass, including complete862-feature reconstruction/reuse, direct manifest validation, and forced provenance rejection before canonical staging with complete raw/prior-fixture preservation. The full local suite runs485 tests:484pass, one production opt-in skip, zero errors. This uses the actual unmodified sibling IaC source snapshot `56aa10757129c457c530d707d9a40bae13e0907f` and installed Tippecanoe. Earlier missing-IaC/tool failures remain historical results in retained evidence; no CI pass is inferred. Bounded current evidence, exact run IDs, actual manifests/dictionary and log checksum pins are in `evidence/provenance-followup`; full local logs remain alongside the preserved runtime captures.
-
-Reproduce with the pinned complete producer ZIP and fresh isolated output directories:
-
-```bash
-AIANNH_TEST_ARCHIVE=/path/to/tl_2023_us_aiannh.zip uv run --frozen python -m unittest discover -s tests -p test_aiannh_source.py
-PYTHONPATH=src uv run --frozen python scripts/verification/aiannh_normal_graph.py --archive /path/to/tl_2023_us_aiannh.zip --workdir /path/to/isolated-replay
-```
-
-Release still requires independent source/crosswalk and baseline acceptance; a versioned all-column/ID/type/geometry/coverage contract; a decision on2023 components versus grouped historical grain or separately versioned annual successors; and output-format/precision acceptance. DataLumos/crosswalk accessibility does not grant that acceptance. `source.json`, full comparison evidence and earlier research artifacts preserve those unresolved relationships. No source, contract, baseline, production write, merge or closure is approved here.
+The 10 synthetic/default source tests run with `python -m unittest tests.test_aiannh_source`.
+The two complete-capture tests are opt-in and retain their original assertions:
+`AIANNH_TEST_ARCHIVE=/workspace/work/hifld-worker-runtime/8/zip2023.body python -m unittest tests.test_aiannh_source`.
+Three standalone investigation scripts are archived at `/workspace/work/hifld-coordinator/artifacts/issue-8-unused-verification-tools-19061d06de01.tar.gz` (SHA-256 `c2d5c7df72dccbf8f01529ae768b8bcb61f7970e78ce5ef2e28af93fb6eb2ebc`).
