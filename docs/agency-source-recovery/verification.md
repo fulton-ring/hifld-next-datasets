@@ -66,3 +66,19 @@ Define approved source schemas/mappings per input. They can differ from the hist
 Make verification transformation-aware. Concatenation accounts for every expected partition and record; joins check cardinality, unmatched keys and accidental multiplication; filters/deduplication/aggregation record their rules and count/identity effects; reprojection/geometry construction checks spatial validity and coverage. Retain raw inputs and source IDs plus appropriate output-to-input lineage. An intentional change in row grain or published identity is a compatibility decision, not permission to discard IDs.
 
 Do not require raw and final counts to be identical when the documented transformation legitimately changes them. Require complete accounting, tested transformation semantics and comparison of the final constructed dataset to its pinned accepted HIFLD Next version.
+
+## Published provenance
+
+Provenance is a user-visible part of each released dataset, not just an issue comment or worker research file.
+
+- Clearly identify the producing agency/agencies, their dataset titles and official landing/download/service identifiers. Identify HIFLD Next as the processor/distributor of the constructed output, not the original producer.
+- For each input, record a stable input ID, producer, actual publisher/host, canonical agency URL, actual retrieval URL, source release/observation date, retrieval timestamp, filename/layer, checksum, geographic/temporal coverage, and applicable license/attribution. Do not invent missing release dates or copy the archive's public-domain assertion onto unrelated sources.
+- Record transformation steps, parameters, joins/filters/mappings, code commit and output version. Multi-source outputs must retain the complete contributing-source list, not collapse it to one convenient source_url.
+- Expose a readable source/provenance summary and official links through the dataset catalog/STAC metadata and downloadable metadata. Publish a versioned machine-readable provenance manifest alongside the comparison report.
+- When different sources contribute different records/partitions, retain reconstructable source-to-record/partition lineage. Where a mapping table is needed, publish a companion sidecar keyed to existing accepted IDs rather than adding arbitrary provenance columns to the main dataset.
+- Distinguish producer, official distributor, mirror and archive. A mirror's download URL can appear as the retrieval location, but must not replace the original agency attribution or be presented as a current authoritative release.
+- Publish stable public URLs and safe request parameters; omit access tokens, credentials and expiring signed URL secrets.
+
+Existing integration points: `source_manifest.py` already resolves dataset/file/version source manifests and snapshots authored metadata. Extend this path rather than creating a parallel provenance system. Its inventory fallback's `source_url` can be a DataLumos archive URL, so that fallback alone is not evidence of current agency provenance. Extend `catalog.py` data-dictionary propagation, `assets/catalog.py` metadata, and `assets/publish.py` metadata copying (currently centered on quality/data-dictionary files) so the complete multi-source manifest survives into the actual published release and catalog. Test that round trip and the readable agency links.
+
+Missing, inconsistent or misleading agency attribution fails acceptance. This propagation is part of the shared prerequisite work; adding a research-only source.json does not implement published provenance.
