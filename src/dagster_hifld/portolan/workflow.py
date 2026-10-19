@@ -44,7 +44,9 @@ from .catalog import (
     version_sort_key,
 )
 from .pmtiles import extract_vector_layer_ids
-from .provenance import attach_published_provenance, verify_prepared_metadata_dependencies
+from .provenance import (attach_published_provenance, prepared_asset_dependencies,
+                         verify_prepared_asset_dependencies, verify_prepared_metadata_dependencies,
+                         verify_sqlite_asset_projection)
 from .release import ReleasePointer
 from .thumbnail import render_geoparquet_thumbnail
 from .validation import normalize_candidate_tree, validate_candidate_tree
@@ -1153,6 +1155,8 @@ def prepare_portolan_release_bundle(
     )
     _sync_corrected_spatial_extents(database, root)
     validate_candidate_tree(root)
+    verify_sqlite_asset_projection(root)
+    asset_dependencies = prepared_asset_dependencies(root, published, request.public_root)
     pending_documents = []
     for path in sorted(root.rglob("*")):
         if not path.is_file():
@@ -1173,20 +1177,15 @@ def prepare_portolan_release_bundle(
     objects = [{"key": key, "path": "tree/" + key.removeprefix(release_prefix + "/"),
                 "sha256": hashlib.sha256(contents).hexdigest(), "bytes": len(contents)} for key, contents in pending_documents]
     objects.append({"key": RELEASE_POINTER_KEY, "path": "pointer.json", "sha256": hashlib.sha256(pointer.to_bytes()).hexdigest(), "bytes": len(pointer.to_bytes())})
-    dependencies = {}
-    for record in records:
-        for asset in record.metadata_assets:
-            if not asset.object_key or not asset.sha256:
-                raise ValueError("Prepared provenance metadata requires actual object byte pins")
-            snapshot = published.object_snapshot(asset.object_key)
-            if (snapshot is None or snapshot.size != asset.size_bytes or published.sha256_key(asset.object_key) != asset.sha256
-                    or published.object_snapshot(asset.object_key) != snapshot):
-                raise ValueError("Published metadata differs from prepared provenance")
-            dependencies[asset.object_key] = {"sha256": asset.sha256, "bytes": asset.size_bytes, "snapshot": snapshot.to_dict()}
+    metadata_keys = {asset.get("hifld:object_key") for path in root.rglob("collection.json")
+                     for asset in json.loads(path.read_text()).get("assets", {}).values()
+                     if "metadata" in asset.get("roles", [])}
+    dependencies = {key: value for key, value in asset_dependencies.items() if key in metadata_keys}
     plan = {"schema_version": 1, "classification": "prepared bytes; no acceptance", "generation": generation,
             "destination": _storage_identity(published), "implementation_sha256": verifier_implementation_sha256(),
             "previous_pointer_snapshot": previous_pointer_snapshot.to_dict() if previous_pointer_snapshot else None,
-            "objects": objects, "metadata_dependencies": dependencies}
+            "objects": objects, "metadata_dependencies": dependencies,
+            "asset_dependencies": asset_dependencies, "public_root": request.public_root.rstrip("/")}
     write_json_atomic(plan_dir / "bundle_plan.json", plan)
     return plan
 
@@ -1199,6 +1198,8 @@ def apply_portolan_release_bundle(plan_dir: Path, published_base: PublishedStora
     if (plan.get("schema_version") != 1 or plan.get("destination") != _storage_identity(published)
             or plan.get("implementation_sha256") != verifier_implementation_sha256()):
         raise ValueError("Catalog plan destination/implementation mismatch")
+    if not (published.use_local or not published.bucket):
+        raise ValueError("Dependency-guarded catalog apply is local-only; remote transactional publication is unsupported")
     objects = plan.get("objects")
     if not isinstance(objects, list) or not objects:
         raise ValueError("Missing exact prepared catalog inventory")
@@ -1233,19 +1234,41 @@ def apply_portolan_release_bundle(plan_dir: Path, published_base: PublishedStora
             or _catalog_generation(bodies[pointer.catalog_key]) != pointer.generation):
         raise ValueError("Prepared pointer does not match the actual catalog")
     validate_candidate_tree(plan_dir / "tree")
+    root_document = json.loads((plan_dir / "tree/catalog.json").read_text())
+    self_links = [link.get("href") for link in root_document.get("links", []) if link.get("rel") == "self"]
+    if self_links != [plan["public_root"] + f"/releases/{plan['generation']}/catalog.json"]:
+        raise ValueError("Prepared public root differs from rendered catalog URL")
+    verify_sqlite_asset_projection(plan_dir / "tree")
     current = published.object_snapshot(RELEASE_POINTER_KEY)
     if (current.to_dict() if current else None) != plan.get("previous_pointer_snapshot"):
         raise ValueError("Release pointer changed since planning")
     verify_prepared_metadata_dependencies(plan_dir / "tree", published, plan.get("metadata_dependencies", {}))
+    verify_prepared_asset_dependencies(plan_dir / "tree", published, plan["public_root"], plan.get("asset_dependencies", {}))
     # Approval is external configuration. A plan can never approve itself.
     for key, contents in selected:
         require_generated_object_approval(published, key, contents)
         if key != RELEASE_POINTER_KEY and published.object_exists(key):
             raise ValueError("Prepared immutable release object already exists")
-    for key, contents in selected:
-        if key != RELEASE_POINTER_KEY:
-            published.write_key_if_unchanged(key, contents, None)
-    published.write_key_if_unchanged(RELEASE_POINTER_KEY, pointer_pairs[0][1], current)
+    written = []
+    try:
+        for key, contents in selected:
+            if key != RELEASE_POINTER_KEY:
+                written.append(published.write_key_if_unchanged(key, contents, None))
+        # Dependencies can change after the first preflight. Check again inside
+        # the pointer commit, after its temporary bytes have been fsynced.
+        published.write_key_with_dependencies_if_unchanged(
+            RELEASE_POINTER_KEY, pointer_pairs[0][1], current, plan["asset_dependencies"]
+        )
+    except BaseException:
+        # These are only this attempt's immutable newly-created objects. Never
+        # delete/replace accepted objects or a changed object owned by another
+        # writer; retain the complete local plan for retry/review.
+        # An interruption may arrive after the conditional pointer write has
+        # committed. In that case keep the selected generation complete.
+        if published.object_snapshot(RELEASE_POINTER_KEY) == current:
+            for snapshot in reversed(written):
+                published.delete_key_if_unchanged(snapshot.key, snapshot)
+        raise
     return pointer.generation
 
 

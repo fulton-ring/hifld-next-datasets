@@ -17,13 +17,18 @@ from dagster_hifld.portolan.provenance import attach_published_provenance
 from dagster_hifld.portolan.validation import PortolanValidationError, normalize_candidate_tree, validate_candidate_tree
 from dagster_hifld.portolan.workflow import PortolanPublishRequest, prepare_portolan_release_bundle
 from dagster_hifld.release_approval import ReleaseApprovalError
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from test_full_verification import accepted_fixture
 from test_provenance import provenance_fixture
 
 
 class PublishedProvenanceTests(unittest.TestCase):
+    def test_remote_dependency_guard_fails_before_any_cloud_operation(self):
+        storage = PublishedStorageResource(use_local=False, bucket="synthetic-never-contacted")
+        with self.assertRaisesRegex(RuntimeError, "local-only"):
+            storage.write_key_with_dependencies_if_unchanged("_catalog/current.json", b"fixture", None, {})
+
     def test_actual_multi_input_catalog_publication_and_failed_provenance_preservation(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / "roundtrip"
@@ -36,6 +41,12 @@ class PublishedProvenanceTests(unittest.TestCase):
             self.assertTrue(outcome["repinned_omitted_input_blocked"])
             self.assertTrue(outcome["removed_dependency_labels_blocked"])
             self.assertTrue(outcome["native_graph"]["invalid_provenance_blocked"])
+            self.assertEqual(set(outcome["asset_dependency_negative_probes"]), {"wrong_metadata_href", "changed_data_after_plan", "sqlite_metadata_omission", "commit_boundary_dependency_race"})
+            for result in outcome["asset_dependency_negative_probes"].values():
+                self.assertTrue(result["blocked"])
+                self.assertTrue(result["pointer_preserved"])
+                self.assertTrue(result["plan_evidence_preserved"])
+                self.assertEqual(result["prior_object_roster_preserved"], outcome["prior_published_objects_preserved"])
 
     def test_resolved_dataset_and_version_inputs_reach_dictionary_and_downloadable_manifest(self):
         with tempfile.TemporaryDirectory() as d:

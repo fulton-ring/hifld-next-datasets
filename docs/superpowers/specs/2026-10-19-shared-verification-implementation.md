@@ -406,7 +406,7 @@ PYTHONPATH=src:. uv run python -m scripts.verification.provenance_roundtrip_loca
   --work-dir /workspace/work/new-empty-synthetic-roundtrip
 ```
 
-The final run retained two fixture inputs and roundtripped all 19 metadata assets
+The `b9d6b69` run retained two fixture inputs and roundtripped all 19 metadata assets
 and 19 corresponding SQLite rows. Missing bundle approval, removed dependency
 labels and deliberately repinned omitted-input STAC were blocked while all 40
 published fixture objects remained unchanged. Its native full graph published
@@ -415,7 +415,7 @@ native derivation and extra-shard attempts preserved them. The pointer selected
 generation `55b31d63-dc3d-49ff-8da1-f1a411bfc3f1`. No real acceptance or production
 write occurred.
 
-Final local repository suite: **504 tests, 503 passed, one opt-in production-write
+Local repository suite at `b9d6b69`: **504 tests, 503 passed, one opt-in production-write
 integration skipped, no errors**. The real sibling IaC snapshot at commit
 `56aa10757129c457c530d707d9a40bae13e0907f` was present; no fixture replacement or
 infrastructure command was used. Historical missing-IaC results remain unchanged
@@ -433,3 +433,62 @@ pins implementation bytes, commands, logs, exact run IDs, metadata roundtrip and
 compatibility outcomes. Real accepted pilot/source/contract decisions remain
 external. Additional native formats, complete pagination proof, all transformation
 reconciliation and domain/quality policy still require further implementation.
+
+## Prepared-release dependency repairs after independent review
+
+Independent review of `b9d6b69` found three concrete integrity gaps despite exact
+synthetic byte decisions: a metadata URL could name an unrelated host while its
+object-key label named the real object; a prepared plan could outlive changes to
+its referenced data; and SQLite metadata asset rows could be omitted while STAC
+still retained them. These are repairs to technical consistency, not acceptance
+decisions or claims of a missing-approval bypass.
+
+Preparation now derives a complete dependency roster from the final rendered
+STAC, including prior seeded collections, every data file and shard, styles,
+thumbnails and metadata. Each asset requires a SHA-256/byte length, actual object
+identity and exact `public_root/object_key` download URL. Unpinned external asset
+URLs fail explicitly. The public root also matches the rendered catalog self
+URL. SQLite's complete asset, canonical location and object populations and all
+corresponding rendered fields are independently reconciled with STAC; changing
+both the SQLite pointer hash and external exact byte decisions cannot hide
+omitted rows or inconsistent object keys, URLs, roles, types or checksums.
+
+Apply re-derives the complete asset roster and validates actual snapshots and
+byte hashes before any new release write. Its local pointer commit rechecks all
+dependency identities after fsync of the temporary pointer, then checks the
+pointer's expected identity again. A detected late failure conditionally removes
+only this attempt's own unchanged newly-created release objects if the accepted
+pointer remains unchanged; the complete local plan stays available. An
+interruption after pointer commit keeps its selected generation intact. No
+failed verification repairs or overwrites a changed data dependency.
+
+This local guard does not implement a cross-object cloud transaction and cannot
+prevent an arbitrary external writer from altering data after publication. Data
+immutability and excluding uncoordinated writers remain operational
+prerequisites. **Remote prepared apply fails closed**, before any writes, until
+generation-qualified dependency URLs or a transactional remote protocol is
+implemented. The legacy in-place catalog/rollback surface retains its previously
+documented separate scope; this checkpoint does not upgrade its proof. A future
+remote or legacy workflow must not be described as this local prepared proof.
+
+The actual synthetic runner now deliberately approves repinned wrong-download
+STAC/SQLite bytes and omitted SQLite rows, mutates a GeoParquet after planning,
+and injects a real dependency replacement after new release-object writes but
+before pointer commit. Each must block, preserve the previous pointer and
+40-object roster, preserve all objects except the deliberately external-mutated
+dependency itself, and retain the plan. The test, not apply, restores that
+fixture's injected mutation before the next isolated probe. No producer source
+capture or accepted real dataset is involved.
+
+The repaired frozen code passed **505 local tests: 504 passed, one production-write
+opt-in skipped, zero errors/failures**, using the same real pinned IaC dependency.
+The durable run selected synthetic generation
+`82d9d475-b6ef-42bd-a9c1-818a2790755b`, verified 21 referenced dependencies
+(19 metadata assets), and blocked all four new negative cases. Its native
+success was `81ff1c6b-a4bc-48ea-ad0d-60cf41b5ed30`; missing approval and extra
+shard runs were `8434beea-97d2-410f-b266-1a6ebadf0d19` and
+`bfa18cbf-76f3-48f1-aaa6-46527505e9a8`. Exact implementation/log pins and the
+original independent reproductions are in the
+[repair evidence](../evidence/2026-10-19-stac-dependency-repair.json). This is local
+validation awaiting a new independent exact-head review, not a CI or real
+acceptance claim.

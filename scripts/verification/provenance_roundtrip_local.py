@@ -31,6 +31,79 @@ def approve_synthetic_plan(registry: Path, plan: dict) -> None:
     registry.write_text(json.dumps(value, indent=2) + "\n")
 
 
+def _repin_synthetic_plan(directory: Path, plan: dict) -> None:
+    """Adversarial fixtures intentionally repin exact bytes, never authority."""
+    pointer_path = directory / "pointer.json"
+    pointer = json.loads(pointer_path.read_text())
+    database = directory / "tree/_catalog/catalog.sqlite"
+    pointer.update(sha256=sha256_file(database), size_bytes=database.stat().st_size)
+    pointer_path.write_text(json.dumps(pointer))
+    for descriptor in plan["objects"]:
+        path = directory / descriptor["path"]
+        descriptor.update(sha256=sha256_file(path), bytes=path.stat().st_size)
+    (directory / "bundle_plan.json").write_text(json.dumps(plan))
+
+
+class CommitRaceStorage(PublishedStorageResource):
+    """Inject a real data replacement after release-object writes, before CAS."""
+
+    def write_key_with_dependencies_if_unchanged(self, key, data, expected_snapshot, dependencies):
+        dependency_key = next(name for name in dependencies if "/geoparquet/" in name)
+        (Path(self.local_dir) / dependency_key).write_bytes(b"injected actual dependency mutation at pointer commit")
+        return super().write_key_with_dependencies_if_unchanged(key, data, expected_snapshot, dependencies)
+
+
+def exercise_dependency_negatives(work, published, record, request, registry):
+    results = {}
+    data_key = next(key for key in published.list_prefix() if "/geoparquet/" in key)
+    original_data = published.read_key(data_key)
+    for mode in ["wrong_metadata_href", "changed_data_after_plan", "sqlite_metadata_omission", "commit_boundary_dependency_race"]:
+        directory = work / mode
+        plan = prepare_portolan_release_bundle((record,), request, published, directory)
+        pointer_before = published.read_key(RELEASE_POINTER_KEY)
+        if mode == "wrong_metadata_href":
+            path = directory / "tree" / record.version_path / "collection.json"
+            doc = json.loads(path.read_text())
+            key, asset = next((key, value) for key, value in doc["assets"].items() if value.get("title") == "metadata/resolved_provenance.json")
+            asset["href"] = "https://unrelated.example.invalid/wrong/metadata/resolved_provenance.json"
+            path.write_text(json.dumps(doc))
+            # Keep SQLite consistent too, so URL→actual object reconciliation
+            # itself (rather than a projection mismatch) must reject this case.
+            with sqlite3.connect(directory / "tree/_catalog/catalog.sqlite") as connection:
+                asset_path = record.version_path + "/" + key
+                connection.execute("UPDATE assets SET href=? WHERE asset_path=?", (asset["href"], asset_path))
+                connection.execute("UPDATE asset_locations SET href=? WHERE asset_path=?", (asset["href"], asset_path))
+            _repin_synthetic_plan(directory, plan)
+        elif mode == "changed_data_after_plan":
+            (Path(published.local_dir) / data_key).write_bytes(b"actual changed data after planning")
+        elif mode == "sqlite_metadata_omission":
+            with sqlite3.connect(directory / "tree/_catalog/catalog.sqlite") as connection:
+                connection.execute("DELETE FROM assets WHERE format_key='metadata'")
+            _repin_synthetic_plan(directory, plan)
+        approve_synthetic_plan(registry, plan)
+        before = {key: published.object_snapshot(key) for key in published.list_prefix()}
+        storage = CommitRaceStorage(use_local=True, local_dir=published.local_dir) if mode == "commit_boundary_dependency_race" else published
+        try:
+            apply_portolan_release_bundle(directory, storage)
+        except (ValueError, RuntimeError) as exc:
+            expected = {"wrong_metadata_href": "href", "changed_data_after_plan": "asset dependency", "sqlite_metadata_omission": "SQLite asset inventory", "commit_boundary_dependency_race": "dependency changed"}[mode]
+            assert expected in str(exc), (mode, str(exc))
+            results[mode] = {"blocked": True, "reason": str(exc)}
+        else:
+            raise AssertionError(mode + " unexpectedly published")
+        after = {key: published.object_snapshot(key) for key in published.list_prefix()}
+        assert set(before) == set(after), mode
+        assert all(snapshot == after[key] for key, snapshot in before.items() if mode != "commit_boundary_dependency_race" or key != data_key), mode
+        assert published.read_key(RELEASE_POINTER_KEY) == pointer_before, mode
+        assert (directory / "bundle_plan.json").exists(), mode
+        results[mode].update(pointer_preserved=True, prior_object_roster_preserved=len(after), plan_evidence_preserved=True)
+        if mode in {"changed_data_after_plan", "commit_boundary_dependency_race"}:
+            # The injected external writer changed this dependency. Apply must
+            # never repair it itself or alter any of the other accepted objects.
+            (Path(published.local_dir) / data_key).write_bytes(original_data)
+    return results
+
+
 def run(work: Path) -> dict:
     if work.exists() and any(work.iterdir()):
         raise ValueError("Use a new empty local fixture directory")
@@ -113,11 +186,13 @@ def run(work: Path) -> dict:
     else:
         raise AssertionError("Repinned omitted-input STAC unexpectedly published")
     assert accepted == {key: published.object_snapshot(key) for key in published.list_prefix()}
+    dependency_negatives = exercise_dependency_negatives(work, published, record, request, registry)
     outcome = {"classification": "actual isolated synthetic publication; no real acceptance", "source_input_count": len(expected["inputs"]),
                "generation": generation, "release_pointer_key": RELEASE_POINTER_KEY, "collection_key": collection_key,
                "metadata_assets_roundtripped": len(metadata_assets), "sqlite_metadata_rows": metadata_rows,
                "missing_approval_blocked": True, "removed_dependency_labels_blocked": True, "repinned_omitted_input_blocked": True,
-               "prior_published_objects_preserved": len(accepted), "native_graph": native}
+               "prior_published_objects_preserved": len(accepted), "native_graph": native,
+               "asset_dependency_negative_probes": dependency_negatives}
     (work / "roundtrip_result.json").write_text(json.dumps(outcome, indent=2) + "\n")
     return outcome
 

@@ -950,6 +950,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
             "type": asset.media_type,
             "title": asset.title,
             "roles": list(asset.roles),
+            "hifld:format_key": asset.format_key,
             "file:size": asset.size_bytes,
             **({"hifld:object_key": asset.object_key} if asset.object_key else {}),
             **(
