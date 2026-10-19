@@ -1,0 +1,33 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/elementary-school-districts/elementary-school-districts/v1.0.0/collection.json",
+  "fetched_at": "2026-10-19T11:35:58.757231+00:00",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/elementary-school-districts/elementary-school-districts/v1.0.0/collection.json",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU80x3gOyxaIXeoxBucBfiTXSn_J3g0ZwzrynFKSogUOUMO1_d1wlKQ0DuZ3CCEOrCr_D2F4Abs4",
+    "date": "Mon, 19 Oct 2026 11:35:59 GMT",
+    "cache-control": "no-cache",
+    "expires": "Tue, 19 Oct 2027 11:35:59 GMT",
+    "last-modified": "Sat, 10 Oct 2026 00:20:54 GMT",
+    "etag": "\"ad295dce588e79fefbaeacc562981b96\"",
+    "x-goog-generation": "1791591654478203",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "17969",
+    "x-goog-meta-sha256": "de10f6e2f2265736e7bb039ab6054b0c6d17ab72a1fcedc0a770ee9872f5e8b6",
+    "x-goog-hash": "crc32c=vwSa7A==, md5=rSldzliOef77rqzFYpgblg==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "17969",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "301"
+  },
+  "wire_bytes": 17969,
+  "complete_body": true,
+  "bytes": 17969,
+  "sha256": "de10f6e2f2265736e7bb039ab6054b0c6d17ab72a1fcedc0a770ee9872f5e8b6"
+}

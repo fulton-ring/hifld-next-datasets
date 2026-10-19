@@ -1,0 +1,32 @@
+{
+  "url": "https://www2.census.gov/geo/tiger/TIGER2026/ELSD/tl_2026_26_elsd.zip",
+  "observed_at": "2026-10-19T11:36:59.347141+00:00",
+  "status": 200,
+  "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/ELSD/tl_2026_26_elsd.zip",
+  "headers": {
+    "date": "Mon, 19 Oct 2026 11:36:59 GMT",
+    "content-type": "application/zip",
+    "content-length": "79550",
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' census.gov *.census.gov http://www.census.gov assets.adobedtm.com www.googletagmanager.com https://dpm.demdex.net https://cm.everesttech.net https://uscensusbureau.demdex.net dap.digitalgov.gov www.google-analytics.com https://static.cloudflareinsights.com; frame-ancestors 'self';",
+    "x-frame-options": "SAMEORIGIN",
+    "x-content-type-options": "nosniff",
+    "cache-control": "public, max-age=14400",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "last-modified": "Tue, 06 Oct 2026 23:32:48 GMT",
+    "accept-ranges": "bytes",
+    "vary": "Accept-Encoding",
+    "x-xss-protection": "1; mode=block",
+    "strict-transport-security": "max-age=31536000",
+    "age": "299853",
+    "expires": "Mon, 19 Oct 2026 15:36:59 GMT",
+    "cf-cache-status": "HIT",
+    "server": "envoy",
+    "cf-ray": "a4cf7cfb7bcd75f1-SEA",
+    "x-envoy-upstream-service-time": "228"
+  },
+  "wire_bytes_downloaded": 79550,
+  "complete_body": true,
+  "bytes": 79550,
+  "sha256": "45b194b46d5ad3092521ee5c572a23147f241689aaf0c419de8eae582146f31f",
+  "md5": "27b64e1141e2355feee41fbbbcfeb6c6"
+}

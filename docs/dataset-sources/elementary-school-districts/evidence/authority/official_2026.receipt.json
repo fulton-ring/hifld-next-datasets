@@ -1,0 +1,29 @@
+{
+  "url": "https://www.census.gov/geographies/mapping-files/2026/geo/tiger-line-file.html",
+  "final_url": "https://www.census.gov/geographies/mapping-files/2026/geo/tiger-line-file.html",
+  "status": 200,
+  "bytes": 324654,
+  "sha256": "185f89793cdeea5f08bb67f1b1624b132b5c0eee0f89a7a92b3533507c3d5e46",
+  "observed_at": "2026-10-19T11:42:51.802531+00:00",
+  "complete_body": true,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 11:42:50 GMT",
+    "content-type": "text/html; charset=UTF-8",
+    "accept-ranges": "bytes",
+    "speculation-rules": "\"/cdn-cgi/speculation\"",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' mailto: data: census.gov *.census.gov http://www.census.gov house.gov *.house.gov senate.gov *.senate.gov *.ssa.gov *.shorthand.com *.ytimg.com *.youtube.com *.twitter.com *.facebook.net *.facebook.com touchpoints.app.cloud.gov *.google-analytics.com *.google.com *.gstatic.com *.googleapis.com *.googlecode.com *.googletagmanager.com *.doubleclick.net *.jquery.com *.govdelivery.com *.highcharts.com *.adobe.com *.adobedtm.com *.amsadobe.com *.demdex.net *.omtrdc.net *.everesttech.net *.arcgisonline.com *.digitalgov.gov *.tableau.com *.instagram.com *.static.cloudflareinsights.com https://static.cloudflareinsights.com *.go-mpulse.net *.askstat.io *.c-span.org sitecatalyst.omniture.com authorize.omniture.com;",
+    "x-xss-protection": "1; mode=block",
+    "cache-control": "no-store",
+    "x-frame-options": "SAMEORIGIN",
+    "vary": "Origin",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+    "cf-cache-status": "DYNAMIC",
+    "expect-ct": "max-age=86400, enforce",
+    "server": "envoy",
+    "cf-ray": "a4cf858e0c65c96d-SEA",
+    "x-envoy-upstream-service-time": "179",
+    "transfer-encoding": "chunked"
+  }
+}

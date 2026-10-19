@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "issue": 64,
+  "inventory_id": "elementary-school-districts",
+  "status": "working_local_draft_implementation_in_progress",
+  "pipeline_implemented": true,
+  "local_materialization_verified": false,
+  "source": "U.S. Census Bureau TIGER/Line2026 Elementary School Districts",
+  "source_relationship": "Changed2026successor to historical published TIGERweb-style1971row candidate; exact baseline edition and compatibility unapproved",
+  "directory": "https://www2.census.gov/geo/tiger/TIGER2026/ELSD/",
+  "scope": "All25producerstateZIPpublications,2030elementarydistricts,1930Polygon+100MultiPolygon,1455682nativecoords,EPSG4269; no unified/secondary substitutes",
+  "original_inputs": "evidence/inputs, all complete original25ZIPs plus directory and receipts",
+  "source_ids": "OriginalSTATEFP/ELSDLEA/GEOID/GEOIDFQ and file-localOGC_FID retained; source_archive is literal ZIP stem provenance, not replacement rowID",
+  "raw_physical_types": "All15originalDBFfields/declarations/widths retained; ALAND/AWATERN14,0\u2192int64, allCstrings retained including leadingzeroIDs; SDTYP1988blank/null source-driver values preserved; originalbytes retain completephysicalrepresentation",
+  "release": "ProducerISO says boundaries in operation January1,2026; publicationyear2026/creation2026-09/update2026-10, exactpublicationdayunknown. Fetch/edit/HTTPpackaging dates not release decisions.",
+  "rights": "Each full originalISOresourceConstraints states notcopyrighted, acknowledgementtoCensusrequired. OldCensuspolicyURL404 recorded, not relabeled reachablelicensepage. No rights/contract acceptance inferred.",
+  "implementation": {
+    "source": "src/dagster_hifld/sources/elementary_school_districts.py",
+    "asset": "src/dagster_hifld/assets/census_elementary_districts.py",
+    "test": "tests/test_elementary_districts.py",
+    "shared": "Reviewed41708e5754 construction_state/provenance/quality/promotion/outputpolicy; allsourceandGitsemanticchecks before firstseal and completedprivatecandidate first",
+    "refresh": "Monthly STOPPEDsourceintegrityschedule; exactpinnedreleaseidempotency, changedsource/schema/IDs/coverage/geometry quarantine neverreplacement. Parent-owned registry/Definitions integration pendingfocusedtests."
+  },
+  "baseline_candidates": "All5completepublishedassets collectionMD5/size/SHAverified; preservedruntimepaths in evidence/baseline-pins.json, not accepted. NativeGPKGandParquet1971rows,source2030; completecomparisonpending.",
+  "approvals": {
+    "source": false,
+    "baseline": false,
+    "contract": false,
+    "release": false
+  },
+  "crosswalk": "ExactDOI302\u2192DataLumos241367provider403,archive239092V2provider403; exactrowmatchunverified/notunmatched.",
+  "validation_scope": "Complete real-source physicalDBF/nativegeometry inspection and deterministicnativeGP/PQ prototype only so far; no Dagsterrun/fullsuite/CI claim yet."
+}

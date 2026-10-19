@@ -1,0 +1,30 @@
+{
+  "url": "https://www.census.gov/geographies/mapping-files/2025/geo/tiger-line-file.html",
+  "fetched_at": "2026-10-19T11:35:56.727792+00:00",
+  "status": 200,
+  "final_url": "https://www.census.gov/geographies/mapping-files/2025/geo/tiger-line-file.html",
+  "headers": {
+    "date": "Mon, 19 Oct 2026 11:35:57 GMT",
+    "content-type": "text/html; charset=UTF-8",
+    "accept-ranges": "bytes",
+    "speculation-rules": "\"/cdn-cgi/speculation\"",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' mailto: data: census.gov *.census.gov http://www.census.gov house.gov *.house.gov senate.gov *.senate.gov *.ssa.gov *.shorthand.com *.ytimg.com *.youtube.com *.twitter.com *.facebook.net *.facebook.com touchpoints.app.cloud.gov *.google-analytics.com *.google.com *.gstatic.com *.googleapis.com *.googlecode.com *.googletagmanager.com *.doubleclick.net *.jquery.com *.govdelivery.com *.highcharts.com *.adobe.com *.adobedtm.com *.amsadobe.com *.demdex.net *.omtrdc.net *.everesttech.net *.arcgisonline.com *.digitalgov.gov *.tableau.com *.instagram.com *.go-mpulse.net *.static.cloudflareinsights.com https://static.cloudflareinsights.com *.askstat.io *.c-span.org sitecatalyst.omniture.com authorize.omniture.com;",
+    "x-xss-protection": "1; mode=block",
+    "cache-control": "no-store",
+    "x-frame-options": "SAMEORIGIN",
+    "vary": "Origin",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+    "cf-cache-status": "DYNAMIC",
+    "expect-ct": "max-age=86400, enforce",
+    "server": "envoy",
+    "cf-ray": "a4cf7b77085375f2-SEA",
+    "x-envoy-upstream-service-time": "159",
+    "transfer-encoding": "chunked"
+  },
+  "wire_bytes": 325362,
+  "complete_body": true,
+  "bytes": 325362,
+  "sha256": "a991c095f7440843219ee621a17365f57970e30a7a85d53c27b0bdff94969b4c"
+}
