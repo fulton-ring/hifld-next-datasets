@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from dagster import AssetSelection, DagsterInstance, Definitions, define_asset_job
+from dagster import AssetSelection, DagsterInstance, DefaultScheduleStatus, Definitions, define_asset_job
 from shapely import from_wkb
 from shapely.geometry import MultiLineString
 
@@ -78,6 +78,16 @@ class ContiguousDraftTests(unittest.TestCase):
         self.assertEqual(len(registered), 1)
         self.assertIs(registered[0], source_module.noaa_24nm_contiguous_zone)
         self.assertIn(key, registered_defs.resolve_asset_graph().get_all_asset_keys())
+
+    def test_weekly_cadence_is_stopped_and_selects_only_the_local_guarded_source(self):
+        schedule = source_module.noaa_contiguous_draft_refresh_schedule
+        job = source_module.noaa_contiguous_draft_refresh_job
+        self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
+        self.assertEqual(schedule.cron_schedule, '0 9 * * 1')
+        self.assertEqual(schedule.execution_timezone, 'America/New_York')
+        self.assertEqual(job.selection.resolve(registered_defs.resolve_asset_graph()),
+                         {source_module.noaa_24nm_contiguous_zone.key})
+        self.assertEqual(job.tags['hifld/draft_only'], 'true')
 
     def test_receipt_rejects_wrong_identity_and_mutation(self):
         with tempfile.TemporaryDirectory() as d:

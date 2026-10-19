@@ -9,7 +9,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from dagster import AssetKey, Config, Output, asset
+from dagster import (AssetKey, AssetSelection, Config, DefaultScheduleStatus, Output,
+                     ScheduleDefinition, asset, define_asset_job)
 
 from dagster_hifld.noaa_extract import fetch_noaa_layer, stage_noaa_candidate
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
@@ -99,5 +100,22 @@ def noaa_24nm_contiguous_zone(context, config: ContiguousDraftConfig,
     return Output(report, metadata={
         'version': report['version'], 'candidate_sha256': report['candidate_sha256'],
         'feature_count': report['feature_count'], 'promotion_approved': False,
-        'draft_partition': partition, 'refresh_cadence': 'monthly proposal; manual draft runs only',
+        'draft_partition': partition, 'refresh_cadence': 'weekly stopped schedule; manual local draft runs only',
     })
+
+
+# Declared cadence only. The schedule is stopped; local-only ingestion and the
+# independent release boundary remain enforced when a human runs this job.
+noaa_contiguous_draft_refresh_job = define_asset_job(
+    name='noaa_contiguous_draft_refresh',
+    selection=AssetSelection.assets(noaa_24nm_contiguous_zone),
+    tags={'hifld/draft_only': 'true'},
+    description='Source-only local NOAA contiguous-zone draft refresh; never selects publication.',
+)
+noaa_contiguous_draft_refresh_schedule = ScheduleDefinition(
+    name='noaa_contiguous_draft_weekly',
+    job=noaa_contiguous_draft_refresh_job,
+    cron_schedule='0 9 * * 1',
+    execution_timezone='America/New_York',
+    default_status=DefaultScheduleStatus.STOPPED,
+)
