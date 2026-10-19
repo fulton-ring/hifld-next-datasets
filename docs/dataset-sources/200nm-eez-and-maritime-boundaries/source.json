@@ -1,6 +1,6 @@
 {
   "dataset_id": "200nm-eez-and-maritime-boundaries",
-  "outcome": "blocked",
+  "outcome": "working_local_draft_needs_acceptance_decisions",
   "source_role": "producer_publication",
   "producer": "NOAA / NOS / Office of Coast Survey; US Baseline Committee approval",
   "publisher": {
@@ -30,7 +30,7 @@
   ],
   "release_date": null,
   "release_date_note": "Producer InPort39963 visible publication and revision are year2013; its schema.org emits2013-01-01 but does not establish day precision. Service version4.1 states2013-09-13. These are producer-stated dates, not independently pinned current downloadable release. InPort record modified2026-08-20 and says Update to dataset forthcoming; neither proves a2026 source release.",
-  "checked_at": "2026-10-19T04:51:22.598249+00:00",
+  "checked_at": "2026-10-19T05:20:04.268960+00:00",
   "relationship_to_archive": "Exact crosswalk remains unverified; complete current NOAA source matches pinned published v1.0.0 candidate IDs, attribute values and ordered vertex parts, with schema/geometry-representation differences requiring approval.",
   "crosswalk": {
     "doi": "https://doi.org/10.3886/E241367V1",
@@ -51,7 +51,8 @@
     "Maintainer acceptance of pinned published v1.0.0 candidate SHA2563de5e54cbdcf80a70b0c085fef69598b0e24f2ef9aa17dfa43f641113fdbfd33 generation1791506335103859",
     "Maintainer approved raw/published schema and ID mapping: source SHAPE representation, float UNILATERAL vs baseline int64, additional id/bbox and80 geometry wrapper changes",
     "Current download release currency unresolved: producer publication/revision year2013, service version4.1 dated2013-09-13; record edit2026 is metadata only",
-    "Shared #417 verifier/provenance machinery and dataset ingestion are not implemented on this research branch"
+    "Real publication requires independent exact release approval, reviewed baseline normalization/contract and full accepted pilot; no real registry authored",
+    "Shapefile derivative excluded: exact string whitespace/length and numericphysicaltype/precision cannot be preserved by DBF; no lossy migration approved"
   ],
   "extraction": {
     "summary": "evidence/extraction-summary.json",
@@ -235,7 +236,24 @@
     "proposal": "Event-driven NOAA updates; periodic metadata checks with release/checksum detection, bounded retries; fail closed on drift",
     "approved": false
   },
-  "implementation": "none; existing noaa asset unchanged; no materialization or production writes",
+  "implementation": {
+    "status": "working_local_draft",
+    "asset": "ingest/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries",
+    "adapter": "src/dagster_hifld/noaa_extract.py",
+    "asset_module": "src/dagster_hifld/assets/noaa.py",
+    "dependency_417": "62977c91ebaf2740f654f3be7cc98490b607b224",
+    "source_accepted": false,
+    "baseline_accepted": false,
+    "contract_approved": false,
+    "remote_staging_enabled": false,
+    "materialization_evidence": "evidence/draft-integration-result.json",
+    "terminal_audit": "evidence/draft-terminal-audit.json",
+    "tests": [
+      "tests/test_noaa_extraction.py",
+      "tests/test_noaa_eez_pipeline.py"
+    ],
+    "reproduce": "scripts/verification/noaa_eez_local.py"
+  },
   "service_revision_statement": {
     "date": "2013-09-13",
     "version": "4.1",
@@ -255,5 +273,5 @@
     "crosswalk_archive": "provider403 challenge, not CONNECT403",
     "inport": "HTML200, XML503"
   },
-  "readiness": "evidence/readiness-20261019.json: actual Definitions.validate_loadable and repository assets load on isolated durable DagsterInstance; no materialization on research branch"
+  "readiness": "Actual isolated ingest96rows, catalog and formats, full native/GPKG/GeoParquet row/type/vertex audit, Shapefile explicitloss skip and missing-registry verification failure preserve raw/candidate/previousfixture. See draft-integration-result.json."
 }
