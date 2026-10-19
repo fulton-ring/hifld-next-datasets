@@ -406,7 +406,11 @@ def _configured_sensors():
     return [version_discovery_sensor]
 
 
+from dagster_hifld.assets.natural_gas_border_crossings import natural_gas_crossings_draft_job, natural_gas_crossings_draft_schedule
+
 defs = Definitions(
+    jobs=[natural_gas_crossings_draft_job],
+    schedules=[natural_gas_crossings_draft_schedule],
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
