@@ -12,7 +12,7 @@
   "download_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/3/query?where=1%3D1&outFields=*&f=geojson",
   "lineage_evidence": [
     {
-      "capture": "evidence/landing.body",
+      "capture": "evidence/landing.body.gz",
       "finding": "Official OCS landing hyperlinks exact MapServer and NOAA downloads; dynamic service updated with data."
     },
     {

@@ -21,14 +21,14 @@
       "encoding": "identity"
     },
     {
-      "capture": "landing.body",
+      "capture": "landing.body.gz",
       "url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
       "method": "anonymous urllib.request.urlopen inherited proxy and TLS, timeout 30-60s",
       "http_status": 200,
       "captured_at": "2026-10-19T04:17:39.788494+00:00",
-      "sha256": "b089d259c5fc98f575bca762b1d752f463579bf42ca95c4e22dad991865d338f",
-      "bytes": 67687,
-      "encoding": "identity"
+      "sha256": "c1f1aaffd19098be2d57e22160f45325d467ea153d2f2fa8b2b21de34390b492",
+      "bytes": 15789,
+      "encoding": "gzip mtime=0"
     },
     {
       "capture": "prior.body",
