@@ -1,0 +1,11 @@
+{
+  "url": "https://www.datalumos.org/datalumos/project/239025/version/V1/view",
+  "observed_at": "2026-10-19T09:39:04.693728+00:00",
+  "status": 403,
+  "final_url": "https://www.datalumos.org/datalumos/project/239025/version/V1/view",
+  "bytes": 6157,
+  "sha256": "31a166b1fc08feaff1b24181d876ced9440c055388dc48d4085df0e5c3e899be",
+  "content_length": "6157",
+  "wire_bytes": 6157,
+  "complete_body": true
+}

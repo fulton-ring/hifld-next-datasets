@@ -1,0 +1,658 @@
+{
+  "classification": "Actual complete local draft, NOT real source/baseline/contract acceptance",
+  "code_commit": "c508bf453726a42f2e4dba558eec09bd1bdd5796",
+  "module": "/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py",
+  "runs": [
+    {
+      "label": "source",
+      "run_id": "1d86ce61-7d39-4930-af49-12737d42a8a7",
+      "success": true,
+      "errors": [],
+      "output": {
+        "dataset_slug": "ferry-routes-1",
+        "file_slug": "ferry-routes-1",
+        "version": "v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874",
+        "feature_count": 964,
+        "reused": false
+      }
+    },
+    {
+      "label": "refresh",
+      "run_id": "21f4b250-79ba-4a5b-88a5-082029d28d24",
+      "success": true,
+      "errors": [],
+      "output": {
+        "dataset_slug": "ferry-routes-1",
+        "file_slug": "ferry-routes-1",
+        "version": "v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874",
+        "feature_count": 964,
+        "reused": true
+      }
+    },
+    {
+      "label": "normal_catalog_formats_cycle_1_unapproved_promotion",
+      "run_id": "934fb460-9ea9-4f91-9888-ca0afe707047",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ]
+    },
+    {
+      "label": "post_catalog_cycle_1_source_refresh",
+      "run_id": "6a21dc80-4771-4875-891f-da20af4c2bda",
+      "success": true,
+      "errors": []
+    },
+    {
+      "label": "normal_catalog_formats_cycle_2_unapproved_promotion",
+      "run_id": "653a4f3b-29ce-4fe8-9a84-86f26b6bed48",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ]
+    },
+    {
+      "label": "post_catalog_cycle_2_source_refresh",
+      "run_id": "3f4ec95e-8d9b-4d53-87ac-b70e112e3c3d",
+      "success": true,
+      "errors": []
+    },
+    {
+      "label": "synthetic_failed_quality_blocks_promote",
+      "run_id": "930815bd-45ca-4ce4-bc28-5282da4ad493",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ]
+    },
+    {
+      "label": "post_gate_source_refresh",
+      "run_id": "d4d9fe40-6cc0-4b8c-a708-8088297fad97",
+      "success": true,
+      "errors": []
+    },
+    {
+      "label": "missing_ready_marker_cache_rejected_and_wholly_quarantined",
+      "run_id": "f819c9b8-948c-4367-a8e5-7bc75bb24123",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__ferry_routes_1__ferry_routes_1\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-actual/staging/_quarantine/ferry-routes-1/invalid-candidate-ad75cf01bf93488f9ca167f0f7bf6c33:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-actual/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874/metadata/ferry_routes_candidate_ready.json'; retained:_quarantine/ferry-routes-1/cce914eb3a4e4a589866d24580832b5c\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/assets/bts_ferry_routes.py\", line 13, in bts_ferry_routes\n    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 429, in stage_ferry_routes\n    raise FerryRouteQuarantineError(f'{exc}; retained:{where}') from exc\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.ferry_routes.FerryRouteQuarantineError: invalid_cache_moved_intact_out_of_discovery:/workspace/work/hifld-coordinator/88/registered-actual/staging/_quarantine/ferry-routes-1/invalid-candidate-ad75cf01bf93488f9ca167f0f7bf6c33:[Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-actual/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874/metadata/ferry_routes_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 400, in stage_ferry_routes\n    raise FerryRouteQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc)) from exc\n\nThe above exception was caused by the following exception:\nFileNotFoundError: [Errno 2] No such file or directory: '/workspace/work/hifld-coordinator/88/registered-actual/staging/ferry-routes-1/ferry-routes-1/v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874/metadata/ferry_routes_candidate_ready.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 390, in stage_ferry_routes\n    reconcile_cache(storage,prefix,table,audit,captures,identity)\n  File \"/workspace/hifld-worker-worktrees/88/src/dagster_hifld/sources/ferry_routes.py\", line 301, in reconcile_cache\n    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1019, in read_bytes\n    with self.open(mode='rb') as f:\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+      ]
+    },
+    {
+      "label": "original_source_rebuild_after_quarantine",
+      "run_id": "39b07671-6000-465a-9525-8f9ce5bc52ea",
+      "success": true,
+      "errors": []
+    },
+    {
+      "label": "rebuilt_cache_refresh",
+      "run_id": "da326c0b-cde0-48bd-94fc-bc04edc906dc",
+      "success": true,
+      "errors": []
+    }
+  ],
+  "version": "v0.0.0-draft-bts-ncfo2020-f63760c3ce91b874",
+  "discoverable_without_runner_copies": true,
+  "original_capture_objects_unchanged": true,
+  "source_owned_objects_unchanged": true,
+  "prior_accepted_fixture_unchanged": true,
+  "full_964_rows_ids_attrs_types_native_wkb_and_coverage_exact": true,
+  "native_paths_preserved": true,
+  "all_nineteen_input_provenance_records_retained": true,
+  "generic_converter_calls": 0,
+  "terminal_extra_columns_unapproved": [],
+  "source_objects": {
+    "geopackage/ferry-routes-1.gpkg": "deb5e0bacde9055f0d73c5e747c86f27584892ba1631a40f7c535e7d7e076b51",
+    "geoparquet/ferry-routes-1.parquet": "75c492a658c2ffdc9f7b47d0cb3104b59b1443d473e294110ca870305ee1ef8c",
+    "metadata/baseline_comparison.json": "3006bbcfedf6f1f4b9a5411eafbcaa3b57872e58d975e47b86cbbae5eeb167e5",
+    "metadata/ferry_routes_source_audit.json": "f1e3e17fcc835b5bbeaf6f306d413742be43da6c886ad4af7d36e84f978c2722",
+    "metadata/processing_identity.json": "f63760c3ce91b87439c3a5254a56ab328b15c3a1672fbd4cb2ba5c3902d62e73",
+    "metadata/source_manifest.json": "4fe81a433318761bc1f48f4d28f615408a73269cff4a9e193ffb4c6535c9e442",
+    "raw/captures/bts_ntad.body": "1a1329a7cc0a89fa9b8d7afb2e3ad19f56a375b85ec74f9a156a80040201204a",
+    "raw/captures/bts_ntad.receipt.json": "dc0d3687b88667d0ee8029ef1d82579108035c595db0b2ead65ba45149f839ed",
+    "raw/captures/official_landing.body": "c5833ea32e75b6c585c3bfa382b4c2c0d9047a0175ab9c13e1ecf463dcf9833b",
+    "raw/captures/official_landing.receipt.json": "c01afa71a2eeb9e08633d20c8892e0411fc12aaa3123980a666cc8dc267e47d0",
+    "raw/captures/source_count_after.body": "331fe4663bdbaf5a2eb5d5bd7aa2c98e502c08c4e594416c55a2efcff3de2707",
+    "raw/captures/source_count_after.receipt.json": "33698d32c843aa1a47768967676972079840f0f4ac14b5a48c418efe428dd911",
+    "raw/captures/source_count_before.body": "331fe4663bdbaf5a2eb5d5bd7aa2c98e502c08c4e594416c55a2efcff3de2707",
+    "raw/captures/source_count_before.receipt.json": "465256ca19920e4e5aafa3379024ff0a34ce0f07be74f51009cfd5546f319c8b",
+    "raw/captures/source_ids_after.body": "aaa9cc590aa15736e5d125388459d07f665cd976d2d333540a8b81bd3296d0b8",
+    "raw/captures/source_ids_after.receipt.json": "a817c0111cc43e16fb5c482cb1aa3753784228d23dbbda384c771b7fb88a86ec",
+    "raw/captures/source_ids_before.body": "aaa9cc590aa15736e5d125388459d07f665cd976d2d333540a8b81bd3296d0b8",
+    "raw/captures/source_ids_before.receipt.json": "aec7467cc75105f220f522cff084e2500ed167d88ef0d96ed81c9bf81db7092a",
+    "raw/captures/source_item.body": "325303f734478777f7f6ecb2bb68832051d1ed0bd4eb9380ca77714aeb2dda85",
+    "raw/captures/source_item.receipt.json": "1fd9536a3cbb2db65f402e3810bbbe397ffc90b309d69ba475f5b0abe6f9c9cd",
+    "raw/captures/source_layer_after.body": "6004cc431e405642ecbcd8439f7906af4099f8badd4a653d50c5a8f87b67a018",
+    "raw/captures/source_layer_after.receipt.json": "fde1d7a60374cfa84fcf09b3393630b49dace53073202efb53022e28c04cca91",
+    "raw/captures/source_layer_before.body": "6004cc431e405642ecbcd8439f7906af4099f8badd4a653d50c5a8f87b67a018",
+    "raw/captures/source_layer_before.receipt.json": "8de994321c97a0f6b3e5d3e12d035ed6a1cdec1e3835523e40285d4aa8cb7a15",
+    "raw/captures/source_page_0001.body": "43248b00aa3edb7cb6a2d7cd006076b6e0db9f0baeffd9f8fe964f3ebce455bf",
+    "raw/captures/source_page_0001.receipt.json": "9360478244a1d5dc1ccec61ff3bbb9e170adc2c3e3093f512cb4374d6352f024",
+    "raw/captures/source_page_0101.body": "4a9561f0938fa4a8dca5399a15d6013c1b68c53b8df3bd26e8e623b2a183c4d2",
+    "raw/captures/source_page_0101.receipt.json": "2db056b5407777b59868f5a028f71ee31aa5bfd10143049cf2f33ee1436bf83a",
+    "raw/captures/source_page_0201.body": "b337bca3036093790752878c32668c07809a9a91dace538ac47e3e5f4b3f5501",
+    "raw/captures/source_page_0201.receipt.json": "368ecd001ac058051ecfd730e73b9476cc1d8808cbf61491ece739c2a6873aeb",
+    "raw/captures/source_page_0301.body": "2c83a1a975a38a4705a3908faadec04e82e00a7071a19590d9c2b6ca6e32a0a2",
+    "raw/captures/source_page_0301.receipt.json": "d08cc4c72f04d9a0cdb1ccb6eeb256a901c1eb161ff82dd41be73e38cb2826a5",
+    "raw/captures/source_page_0401.body": "68a2e518509ca68e01e14eb1d135d4a7ea78c2147c19f69942552e7407fc0130",
+    "raw/captures/source_page_0401.receipt.json": "46b4bb124261a147a4d81b54a9cf9b4ca2eed6e13b4de6448f7d698cbbd54cd3",
+    "raw/captures/source_page_0501.body": "fa2f5af5dec90a054754f682bc9bf0c43942c0f7812c93eb47f3e8dd5b0af7cd",
+    "raw/captures/source_page_0501.receipt.json": "291ad77ae1b102f5430fa2f1ebdc2c8335f5af6ea73d4c7f64c012a8dcac31fc",
+    "raw/captures/source_page_0601.body": "3e14914966220d2be903b70562383ae4eeddca884404a8bed642f218d18e2ef1",
+    "raw/captures/source_page_0601.receipt.json": "51ce18264e2be0bf9d030342ce61ccd19a67bdfa252737bbce091f243a289b67",
+    "raw/captures/source_page_0701.body": "6bcb2e0e853071f1292d5d9a58ab0a3ea1c9462f516ce7a759c21c2af5625c71",
+    "raw/captures/source_page_0701.receipt.json": "e24c3f82e389a3bc1cb8122aeeb858c7d51e692c7fb6439043067da681b8e2c9",
+    "raw/captures/source_page_0801.body": "60f1fb58b7b109edafec6d5f59224a7a13c9b68b9f792e6d1bfc468dc95c34d5",
+    "raw/captures/source_page_0801.receipt.json": "216767242bb41715bdd45fa849c4553c8236b5349ee7228444cab4443a9aa8cf",
+    "raw/captures/source_page_0901.body": "03e0c16adbea7f24a17f1633f84c49086307269f7472278b46ae4397372e916d",
+    "raw/captures/source_page_0901.receipt.json": "0c5290719529b01fc6c94c24a17f9f54fb24ed20c87ffbafdc90d531671a1d4c"
+  },
+  "quality_manifest": {
+    "bounds": [
+      -170.6819,
+      -14.311173,
+      -64.608326,
+      61.123855
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "85475432aaff8c2785258efe2ff54468a10b299f3a8da374eafe57e4a136e029",
+    "feature_count": 964,
+    "geometry_type": "MultiLineString",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 964,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "source_manifest": {
+    "agency": "U.S. Department of Transportation",
+    "approved": false,
+    "code_commit": "c508bf453726a42f2e4dba558eec09bd1bdd5796",
+    "inputs": [
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 88635,
+        "canonical_url": "https://www.bts.gov/ntad",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "www.bts.gov",
+        "http_status": 200,
+        "input_id": "bts_ntad:1a1329a7cc0a89fa9b8d7afb2e3ad19f56a375b85ec74f9a156a80040201204a",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://www.bts.gov/ntad",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://www.bts.gov/ntad",
+        "retrieved_at": "2026-10-19T09:47:28.688322+00:00",
+        "role": "producer_publication",
+        "sha256": "1a1329a7cc0a89fa9b8d7afb2e3ad19f56a375b85ec74f9a156a80040201204a"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 51648,
+        "canonical_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "geodata.bts.gov",
+        "http_status": 200,
+        "input_id": "official_landing:c5833ea32e75b6c585c3bfa382b4c2c0d9047a0175ab9c13e1ecf463dcf9833b",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+        "retrieved_at": "2026-10-19T09:41:35.625809+00:00",
+        "role": "official_distributor",
+        "sha256": "c5833ea32e75b6c585c3bfa382b4c2c0d9047a0175ab9c13e1ecf463dcf9833b"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 3657,
+        "canonical_url": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "www.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_item:325303f734478777f7f6ecb2bb68832051d1ed0bd4eb9380ca77714aeb2dda85",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "retrieved_at": "2026-10-19T09:41:36.412367+00:00",
+        "role": "official_distributor",
+        "sha256": "325303f734478777f7f6ecb2bb68832051d1ed0bd4eb9380ca77714aeb2dda85"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 28544,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0?f=pjson",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_layer_before:6004cc431e405642ecbcd8439f7906af4099f8badd4a653d50c5a8f87b67a018",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0?f=pjson",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0?f=pjson",
+        "retrieved_at": "2026-10-19T09:41:37.002534+00:00",
+        "role": "official_distributor",
+        "sha256": "6004cc431e405642ecbcd8439f7906af4099f8badd4a653d50c5a8f87b67a018"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 181,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_count_before:331fe4663bdbaf5a2eb5d5bd7aa2c98e502c08c4e594416c55a2efcff3de2707",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+        "retrieved_at": "2026-10-19T09:41:37.663060+00:00",
+        "role": "official_distributor",
+        "sha256": "331fe4663bdbaf5a2eb5d5bd7aa2c98e502c08c4e594416c55a2efcff3de2707"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 3794,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_ids_before:aaa9cc590aa15736e5d125388459d07f665cd976d2d333540a8b81bd3296d0b8",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "retrieved_at": "2026-10-19T09:41:37.993217+00:00",
+        "role": "official_distributor",
+        "sha256": "aaa9cc590aa15736e5d125388459d07f665cd976d2d333540a8b81bd3296d0b8"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 2086849,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%2C10%2C11%2C12%2C13%2C14%2C15%2C16%2C17%2C18%2C19%2C20%2C21%2C22%2C23%2C24%2C25%2C26%2C27%2C28%2C29%2C30%2C31%2C32%2C33%2C34%2C35%2C36%2C37%2C38%2C39%2C40%2C41%2C42%2C43%2C44%2C45%2C46%2C47%2C48%2C49%2C50%2C51%2C52%2C53%2C54%2C55%2C56%2C57%2C58%2C59%2C60%2C61%2C62%2C63%2C64%2C65%2C66%2C67%2C68%2C69%2C70%2C71%2C72%2C73%2C74%2C75%2C76%2C77%2C78%2C79%2C80%2C81%2C82%2C83%2C84%2C85%2C86%2C87%2C88%2C89%2C90%2C91%2C92%2C93%2C94%2C95%2C96%2C97%2C98%2C99%2C100&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0001:43248b00aa3edb7cb6a2d7cd006076b6e0db9f0baeffd9f8fe964f3ebce455bf",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%2C10%2C11%2C12%2C13%2C14%2C15%2C16%2C17%2C18%2C19%2C20%2C21%2C22%2C23%2C24%2C25%2C26%2C27%2C28%2C29%2C30%2C31%2C32%2C33%2C34%2C35%2C36%2C37%2C38%2C39%2C40%2C41%2C42%2C43%2C44%2C45%2C46%2C47%2C48%2C49%2C50%2C51%2C52%2C53%2C54%2C55%2C56%2C57%2C58%2C59%2C60%2C61%2C62%2C63%2C64%2C65%2C66%2C67%2C68%2C69%2C70%2C71%2C72%2C73%2C74%2C75%2C76%2C77%2C78%2C79%2C80%2C81%2C82%2C83%2C84%2C85%2C86%2C87%2C88%2C89%2C90%2C91%2C92%2C93%2C94%2C95%2C96%2C97%2C98%2C99%2C100&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%2C10%2C11%2C12%2C13%2C14%2C15%2C16%2C17%2C18%2C19%2C20%2C21%2C22%2C23%2C24%2C25%2C26%2C27%2C28%2C29%2C30%2C31%2C32%2C33%2C34%2C35%2C36%2C37%2C38%2C39%2C40%2C41%2C42%2C43%2C44%2C45%2C46%2C47%2C48%2C49%2C50%2C51%2C52%2C53%2C54%2C55%2C56%2C57%2C58%2C59%2C60%2C61%2C62%2C63%2C64%2C65%2C66%2C67%2C68%2C69%2C70%2C71%2C72%2C73%2C74%2C75%2C76%2C77%2C78%2C79%2C80%2C81%2C82%2C83%2C84%2C85%2C86%2C87%2C88%2C89%2C90%2C91%2C92%2C93%2C94%2C95%2C96%2C97%2C98%2C99%2C100&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:42:54.548035+00:00",
+        "role": "official_distributor",
+        "sha256": "43248b00aa3edb7cb6a2d7cd006076b6e0db9f0baeffd9f8fe964f3ebce455bf"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 11084168,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=101%2C102%2C103%2C104%2C105%2C106%2C107%2C108%2C109%2C110%2C111%2C112%2C113%2C114%2C115%2C116%2C117%2C118%2C119%2C120%2C121%2C122%2C123%2C124%2C125%2C126%2C127%2C128%2C129%2C130%2C131%2C132%2C133%2C134%2C135%2C136%2C137%2C138%2C139%2C140%2C141%2C142%2C143%2C144%2C145%2C146%2C147%2C148%2C149%2C150%2C151%2C152%2C153%2C154%2C155%2C156%2C157%2C158%2C159%2C160%2C161%2C162%2C163%2C164%2C165%2C166%2C167%2C168%2C169%2C170%2C171%2C172%2C173%2C174%2C175%2C176%2C177%2C178%2C179%2C180%2C181%2C182%2C183%2C184%2C185%2C186%2C187%2C188%2C189%2C190%2C191%2C192%2C193%2C194%2C195%2C196%2C197%2C198%2C199%2C200&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0101:4a9561f0938fa4a8dca5399a15d6013c1b68c53b8df3bd26e8e623b2a183c4d2",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=101%2C102%2C103%2C104%2C105%2C106%2C107%2C108%2C109%2C110%2C111%2C112%2C113%2C114%2C115%2C116%2C117%2C118%2C119%2C120%2C121%2C122%2C123%2C124%2C125%2C126%2C127%2C128%2C129%2C130%2C131%2C132%2C133%2C134%2C135%2C136%2C137%2C138%2C139%2C140%2C141%2C142%2C143%2C144%2C145%2C146%2C147%2C148%2C149%2C150%2C151%2C152%2C153%2C154%2C155%2C156%2C157%2C158%2C159%2C160%2C161%2C162%2C163%2C164%2C165%2C166%2C167%2C168%2C169%2C170%2C171%2C172%2C173%2C174%2C175%2C176%2C177%2C178%2C179%2C180%2C181%2C182%2C183%2C184%2C185%2C186%2C187%2C188%2C189%2C190%2C191%2C192%2C193%2C194%2C195%2C196%2C197%2C198%2C199%2C200&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=101%2C102%2C103%2C104%2C105%2C106%2C107%2C108%2C109%2C110%2C111%2C112%2C113%2C114%2C115%2C116%2C117%2C118%2C119%2C120%2C121%2C122%2C123%2C124%2C125%2C126%2C127%2C128%2C129%2C130%2C131%2C132%2C133%2C134%2C135%2C136%2C137%2C138%2C139%2C140%2C141%2C142%2C143%2C144%2C145%2C146%2C147%2C148%2C149%2C150%2C151%2C152%2C153%2C154%2C155%2C156%2C157%2C158%2C159%2C160%2C161%2C162%2C163%2C164%2C165%2C166%2C167%2C168%2C169%2C170%2C171%2C172%2C173%2C174%2C175%2C176%2C177%2C178%2C179%2C180%2C181%2C182%2C183%2C184%2C185%2C186%2C187%2C188%2C189%2C190%2C191%2C192%2C193%2C194%2C195%2C196%2C197%2C198%2C199%2C200&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:43:15.077352+00:00",
+        "role": "official_distributor",
+        "sha256": "4a9561f0938fa4a8dca5399a15d6013c1b68c53b8df3bd26e8e623b2a183c4d2"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 4454006,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=201%2C202%2C203%2C204%2C205%2C206%2C207%2C208%2C209%2C210%2C211%2C212%2C213%2C214%2C215%2C216%2C217%2C218%2C219%2C220%2C221%2C222%2C223%2C224%2C225%2C226%2C227%2C228%2C229%2C230%2C231%2C232%2C233%2C234%2C235%2C236%2C237%2C238%2C239%2C240%2C241%2C242%2C243%2C244%2C245%2C246%2C247%2C248%2C249%2C250%2C251%2C252%2C253%2C254%2C255%2C256%2C257%2C258%2C259%2C260%2C261%2C262%2C263%2C264%2C265%2C266%2C267%2C268%2C269%2C270%2C271%2C272%2C273%2C274%2C275%2C276%2C277%2C278%2C279%2C280%2C281%2C282%2C283%2C284%2C285%2C286%2C287%2C288%2C289%2C290%2C291%2C292%2C293%2C294%2C295%2C296%2C297%2C298%2C299%2C300&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0201:b337bca3036093790752878c32668c07809a9a91dace538ac47e3e5f4b3f5501",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=201%2C202%2C203%2C204%2C205%2C206%2C207%2C208%2C209%2C210%2C211%2C212%2C213%2C214%2C215%2C216%2C217%2C218%2C219%2C220%2C221%2C222%2C223%2C224%2C225%2C226%2C227%2C228%2C229%2C230%2C231%2C232%2C233%2C234%2C235%2C236%2C237%2C238%2C239%2C240%2C241%2C242%2C243%2C244%2C245%2C246%2C247%2C248%2C249%2C250%2C251%2C252%2C253%2C254%2C255%2C256%2C257%2C258%2C259%2C260%2C261%2C262%2C263%2C264%2C265%2C266%2C267%2C268%2C269%2C270%2C271%2C272%2C273%2C274%2C275%2C276%2C277%2C278%2C279%2C280%2C281%2C282%2C283%2C284%2C285%2C286%2C287%2C288%2C289%2C290%2C291%2C292%2C293%2C294%2C295%2C296%2C297%2C298%2C299%2C300&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=201%2C202%2C203%2C204%2C205%2C206%2C207%2C208%2C209%2C210%2C211%2C212%2C213%2C214%2C215%2C216%2C217%2C218%2C219%2C220%2C221%2C222%2C223%2C224%2C225%2C226%2C227%2C228%2C229%2C230%2C231%2C232%2C233%2C234%2C235%2C236%2C237%2C238%2C239%2C240%2C241%2C242%2C243%2C244%2C245%2C246%2C247%2C248%2C249%2C250%2C251%2C252%2C253%2C254%2C255%2C256%2C257%2C258%2C259%2C260%2C261%2C262%2C263%2C264%2C265%2C266%2C267%2C268%2C269%2C270%2C271%2C272%2C273%2C274%2C275%2C276%2C277%2C278%2C279%2C280%2C281%2C282%2C283%2C284%2C285%2C286%2C287%2C288%2C289%2C290%2C291%2C292%2C293%2C294%2C295%2C296%2C297%2C298%2C299%2C300&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:01.411244+00:00",
+        "role": "official_distributor",
+        "sha256": "b337bca3036093790752878c32668c07809a9a91dace538ac47e3e5f4b3f5501"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 1345892,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=301%2C302%2C303%2C304%2C305%2C306%2C307%2C308%2C309%2C310%2C311%2C312%2C313%2C314%2C315%2C316%2C317%2C318%2C319%2C320%2C321%2C322%2C323%2C324%2C325%2C326%2C327%2C328%2C329%2C330%2C331%2C332%2C333%2C334%2C335%2C336%2C337%2C338%2C339%2C340%2C341%2C342%2C343%2C344%2C345%2C346%2C347%2C348%2C349%2C350%2C351%2C352%2C353%2C354%2C355%2C356%2C357%2C358%2C359%2C360%2C361%2C362%2C363%2C364%2C365%2C366%2C367%2C368%2C369%2C370%2C371%2C372%2C373%2C374%2C375%2C376%2C377%2C378%2C379%2C380%2C381%2C382%2C383%2C384%2C385%2C386%2C387%2C388%2C389%2C390%2C391%2C392%2C393%2C394%2C395%2C396%2C397%2C398%2C399%2C400&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0301:2c83a1a975a38a4705a3908faadec04e82e00a7071a19590d9c2b6ca6e32a0a2",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=301%2C302%2C303%2C304%2C305%2C306%2C307%2C308%2C309%2C310%2C311%2C312%2C313%2C314%2C315%2C316%2C317%2C318%2C319%2C320%2C321%2C322%2C323%2C324%2C325%2C326%2C327%2C328%2C329%2C330%2C331%2C332%2C333%2C334%2C335%2C336%2C337%2C338%2C339%2C340%2C341%2C342%2C343%2C344%2C345%2C346%2C347%2C348%2C349%2C350%2C351%2C352%2C353%2C354%2C355%2C356%2C357%2C358%2C359%2C360%2C361%2C362%2C363%2C364%2C365%2C366%2C367%2C368%2C369%2C370%2C371%2C372%2C373%2C374%2C375%2C376%2C377%2C378%2C379%2C380%2C381%2C382%2C383%2C384%2C385%2C386%2C387%2C388%2C389%2C390%2C391%2C392%2C393%2C394%2C395%2C396%2C397%2C398%2C399%2C400&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=301%2C302%2C303%2C304%2C305%2C306%2C307%2C308%2C309%2C310%2C311%2C312%2C313%2C314%2C315%2C316%2C317%2C318%2C319%2C320%2C321%2C322%2C323%2C324%2C325%2C326%2C327%2C328%2C329%2C330%2C331%2C332%2C333%2C334%2C335%2C336%2C337%2C338%2C339%2C340%2C341%2C342%2C343%2C344%2C345%2C346%2C347%2C348%2C349%2C350%2C351%2C352%2C353%2C354%2C355%2C356%2C357%2C358%2C359%2C360%2C361%2C362%2C363%2C364%2C365%2C366%2C367%2C368%2C369%2C370%2C371%2C372%2C373%2C374%2C375%2C376%2C377%2C378%2C379%2C380%2C381%2C382%2C383%2C384%2C385%2C386%2C387%2C388%2C389%2C390%2C391%2C392%2C393%2C394%2C395%2C396%2C397%2C398%2C399%2C400&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:04.850488+00:00",
+        "role": "official_distributor",
+        "sha256": "2c83a1a975a38a4705a3908faadec04e82e00a7071a19590d9c2b6ca6e32a0a2"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 1191698,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=401%2C402%2C403%2C404%2C405%2C406%2C407%2C408%2C409%2C410%2C411%2C412%2C413%2C414%2C415%2C416%2C417%2C418%2C419%2C420%2C421%2C422%2C423%2C424%2C425%2C426%2C427%2C428%2C429%2C430%2C431%2C432%2C433%2C434%2C435%2C436%2C437%2C438%2C439%2C440%2C441%2C442%2C443%2C444%2C445%2C446%2C447%2C448%2C449%2C450%2C451%2C452%2C453%2C454%2C455%2C456%2C457%2C458%2C459%2C460%2C461%2C462%2C463%2C464%2C465%2C466%2C467%2C468%2C469%2C470%2C471%2C472%2C473%2C474%2C475%2C476%2C477%2C478%2C479%2C480%2C481%2C482%2C483%2C484%2C485%2C486%2C487%2C488%2C489%2C490%2C491%2C492%2C493%2C494%2C495%2C496%2C497%2C498%2C499%2C500&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0401:68a2e518509ca68e01e14eb1d135d4a7ea78c2147c19f69942552e7407fc0130",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=401%2C402%2C403%2C404%2C405%2C406%2C407%2C408%2C409%2C410%2C411%2C412%2C413%2C414%2C415%2C416%2C417%2C418%2C419%2C420%2C421%2C422%2C423%2C424%2C425%2C426%2C427%2C428%2C429%2C430%2C431%2C432%2C433%2C434%2C435%2C436%2C437%2C438%2C439%2C440%2C441%2C442%2C443%2C444%2C445%2C446%2C447%2C448%2C449%2C450%2C451%2C452%2C453%2C454%2C455%2C456%2C457%2C458%2C459%2C460%2C461%2C462%2C463%2C464%2C465%2C466%2C467%2C468%2C469%2C470%2C471%2C472%2C473%2C474%2C475%2C476%2C477%2C478%2C479%2C480%2C481%2C482%2C483%2C484%2C485%2C486%2C487%2C488%2C489%2C490%2C491%2C492%2C493%2C494%2C495%2C496%2C497%2C498%2C499%2C500&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=401%2C402%2C403%2C404%2C405%2C406%2C407%2C408%2C409%2C410%2C411%2C412%2C413%2C414%2C415%2C416%2C417%2C418%2C419%2C420%2C421%2C422%2C423%2C424%2C425%2C426%2C427%2C428%2C429%2C430%2C431%2C432%2C433%2C434%2C435%2C436%2C437%2C438%2C439%2C440%2C441%2C442%2C443%2C444%2C445%2C446%2C447%2C448%2C449%2C450%2C451%2C452%2C453%2C454%2C455%2C456%2C457%2C458%2C459%2C460%2C461%2C462%2C463%2C464%2C465%2C466%2C467%2C468%2C469%2C470%2C471%2C472%2C473%2C474%2C475%2C476%2C477%2C478%2C479%2C480%2C481%2C482%2C483%2C484%2C485%2C486%2C487%2C488%2C489%2C490%2C491%2C492%2C493%2C494%2C495%2C496%2C497%2C498%2C499%2C500&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:06.788746+00:00",
+        "role": "official_distributor",
+        "sha256": "68a2e518509ca68e01e14eb1d135d4a7ea78c2147c19f69942552e7407fc0130"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 575572,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=501%2C502%2C503%2C504%2C505%2C506%2C507%2C508%2C509%2C510%2C511%2C512%2C513%2C514%2C515%2C516%2C517%2C518%2C519%2C520%2C521%2C522%2C523%2C524%2C525%2C526%2C527%2C528%2C529%2C530%2C531%2C532%2C533%2C534%2C535%2C536%2C537%2C538%2C539%2C540%2C541%2C542%2C543%2C544%2C545%2C546%2C547%2C548%2C549%2C550%2C551%2C552%2C553%2C554%2C555%2C556%2C557%2C558%2C559%2C560%2C561%2C562%2C563%2C564%2C565%2C566%2C567%2C568%2C569%2C570%2C571%2C572%2C573%2C574%2C575%2C576%2C577%2C578%2C579%2C580%2C581%2C582%2C583%2C584%2C585%2C586%2C587%2C588%2C589%2C590%2C591%2C592%2C593%2C594%2C595%2C596%2C597%2C598%2C599%2C600&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0501:fa2f5af5dec90a054754f682bc9bf0c43942c0f7812c93eb47f3e8dd5b0af7cd",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=501%2C502%2C503%2C504%2C505%2C506%2C507%2C508%2C509%2C510%2C511%2C512%2C513%2C514%2C515%2C516%2C517%2C518%2C519%2C520%2C521%2C522%2C523%2C524%2C525%2C526%2C527%2C528%2C529%2C530%2C531%2C532%2C533%2C534%2C535%2C536%2C537%2C538%2C539%2C540%2C541%2C542%2C543%2C544%2C545%2C546%2C547%2C548%2C549%2C550%2C551%2C552%2C553%2C554%2C555%2C556%2C557%2C558%2C559%2C560%2C561%2C562%2C563%2C564%2C565%2C566%2C567%2C568%2C569%2C570%2C571%2C572%2C573%2C574%2C575%2C576%2C577%2C578%2C579%2C580%2C581%2C582%2C583%2C584%2C585%2C586%2C587%2C588%2C589%2C590%2C591%2C592%2C593%2C594%2C595%2C596%2C597%2C598%2C599%2C600&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=501%2C502%2C503%2C504%2C505%2C506%2C507%2C508%2C509%2C510%2C511%2C512%2C513%2C514%2C515%2C516%2C517%2C518%2C519%2C520%2C521%2C522%2C523%2C524%2C525%2C526%2C527%2C528%2C529%2C530%2C531%2C532%2C533%2C534%2C535%2C536%2C537%2C538%2C539%2C540%2C541%2C542%2C543%2C544%2C545%2C546%2C547%2C548%2C549%2C550%2C551%2C552%2C553%2C554%2C555%2C556%2C557%2C558%2C559%2C560%2C561%2C562%2C563%2C564%2C565%2C566%2C567%2C568%2C569%2C570%2C571%2C572%2C573%2C574%2C575%2C576%2C577%2C578%2C579%2C580%2C581%2C582%2C583%2C584%2C585%2C586%2C587%2C588%2C589%2C590%2C591%2C592%2C593%2C594%2C595%2C596%2C597%2C598%2C599%2C600&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:14.204646+00:00",
+        "role": "official_distributor",
+        "sha256": "fa2f5af5dec90a054754f682bc9bf0c43942c0f7812c93eb47f3e8dd5b0af7cd"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 2343692,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=601%2C602%2C603%2C604%2C605%2C606%2C607%2C608%2C609%2C610%2C611%2C612%2C613%2C614%2C615%2C616%2C617%2C618%2C619%2C620%2C621%2C622%2C623%2C624%2C625%2C626%2C627%2C628%2C629%2C630%2C631%2C632%2C633%2C634%2C635%2C636%2C637%2C638%2C639%2C640%2C641%2C642%2C643%2C644%2C645%2C646%2C647%2C648%2C649%2C650%2C651%2C652%2C653%2C654%2C655%2C656%2C657%2C658%2C659%2C660%2C661%2C662%2C663%2C664%2C665%2C666%2C667%2C668%2C669%2C670%2C671%2C672%2C673%2C674%2C675%2C676%2C677%2C678%2C679%2C680%2C681%2C682%2C683%2C684%2C685%2C686%2C687%2C688%2C689%2C690%2C691%2C692%2C693%2C694%2C695%2C696%2C697%2C698%2C699%2C700&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0601:3e14914966220d2be903b70562383ae4eeddca884404a8bed642f218d18e2ef1",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=601%2C602%2C603%2C604%2C605%2C606%2C607%2C608%2C609%2C610%2C611%2C612%2C613%2C614%2C615%2C616%2C617%2C618%2C619%2C620%2C621%2C622%2C623%2C624%2C625%2C626%2C627%2C628%2C629%2C630%2C631%2C632%2C633%2C634%2C635%2C636%2C637%2C638%2C639%2C640%2C641%2C642%2C643%2C644%2C645%2C646%2C647%2C648%2C649%2C650%2C651%2C652%2C653%2C654%2C655%2C656%2C657%2C658%2C659%2C660%2C661%2C662%2C663%2C664%2C665%2C666%2C667%2C668%2C669%2C670%2C671%2C672%2C673%2C674%2C675%2C676%2C677%2C678%2C679%2C680%2C681%2C682%2C683%2C684%2C685%2C686%2C687%2C688%2C689%2C690%2C691%2C692%2C693%2C694%2C695%2C696%2C697%2C698%2C699%2C700&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=601%2C602%2C603%2C604%2C605%2C606%2C607%2C608%2C609%2C610%2C611%2C612%2C613%2C614%2C615%2C616%2C617%2C618%2C619%2C620%2C621%2C622%2C623%2C624%2C625%2C626%2C627%2C628%2C629%2C630%2C631%2C632%2C633%2C634%2C635%2C636%2C637%2C638%2C639%2C640%2C641%2C642%2C643%2C644%2C645%2C646%2C647%2C648%2C649%2C650%2C651%2C652%2C653%2C654%2C655%2C656%2C657%2C658%2C659%2C660%2C661%2C662%2C663%2C664%2C665%2C666%2C667%2C668%2C669%2C670%2C671%2C672%2C673%2C674%2C675%2C676%2C677%2C678%2C679%2C680%2C681%2C682%2C683%2C684%2C685%2C686%2C687%2C688%2C689%2C690%2C691%2C692%2C693%2C694%2C695%2C696%2C697%2C698%2C699%2C700&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:25.256173+00:00",
+        "role": "official_distributor",
+        "sha256": "3e14914966220d2be903b70562383ae4eeddca884404a8bed642f218d18e2ef1"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 2462665,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=701%2C702%2C703%2C704%2C705%2C706%2C707%2C708%2C709%2C710%2C711%2C712%2C713%2C714%2C715%2C716%2C717%2C718%2C719%2C720%2C721%2C722%2C723%2C724%2C725%2C726%2C727%2C728%2C729%2C730%2C731%2C732%2C733%2C734%2C735%2C736%2C737%2C738%2C739%2C740%2C741%2C742%2C743%2C744%2C745%2C746%2C747%2C748%2C749%2C750%2C751%2C752%2C753%2C754%2C755%2C756%2C757%2C758%2C759%2C760%2C761%2C762%2C763%2C764%2C765%2C766%2C767%2C768%2C769%2C770%2C771%2C772%2C773%2C774%2C775%2C776%2C777%2C778%2C779%2C780%2C781%2C782%2C783%2C784%2C785%2C786%2C787%2C788%2C789%2C790%2C791%2C792%2C793%2C794%2C795%2C796%2C797%2C798%2C799%2C800&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0701:6bcb2e0e853071f1292d5d9a58ab0a3ea1c9462f516ce7a759c21c2af5625c71",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=701%2C702%2C703%2C704%2C705%2C706%2C707%2C708%2C709%2C710%2C711%2C712%2C713%2C714%2C715%2C716%2C717%2C718%2C719%2C720%2C721%2C722%2C723%2C724%2C725%2C726%2C727%2C728%2C729%2C730%2C731%2C732%2C733%2C734%2C735%2C736%2C737%2C738%2C739%2C740%2C741%2C742%2C743%2C744%2C745%2C746%2C747%2C748%2C749%2C750%2C751%2C752%2C753%2C754%2C755%2C756%2C757%2C758%2C759%2C760%2C761%2C762%2C763%2C764%2C765%2C766%2C767%2C768%2C769%2C770%2C771%2C772%2C773%2C774%2C775%2C776%2C777%2C778%2C779%2C780%2C781%2C782%2C783%2C784%2C785%2C786%2C787%2C788%2C789%2C790%2C791%2C792%2C793%2C794%2C795%2C796%2C797%2C798%2C799%2C800&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=701%2C702%2C703%2C704%2C705%2C706%2C707%2C708%2C709%2C710%2C711%2C712%2C713%2C714%2C715%2C716%2C717%2C718%2C719%2C720%2C721%2C722%2C723%2C724%2C725%2C726%2C727%2C728%2C729%2C730%2C731%2C732%2C733%2C734%2C735%2C736%2C737%2C738%2C739%2C740%2C741%2C742%2C743%2C744%2C745%2C746%2C747%2C748%2C749%2C750%2C751%2C752%2C753%2C754%2C755%2C756%2C757%2C758%2C759%2C760%2C761%2C762%2C763%2C764%2C765%2C766%2C767%2C768%2C769%2C770%2C771%2C772%2C773%2C774%2C775%2C776%2C777%2C778%2C779%2C780%2C781%2C782%2C783%2C784%2C785%2C786%2C787%2C788%2C789%2C790%2C791%2C792%2C793%2C794%2C795%2C796%2C797%2C798%2C799%2C800&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:27.825822+00:00",
+        "role": "official_distributor",
+        "sha256": "6bcb2e0e853071f1292d5d9a58ab0a3ea1c9462f516ce7a759c21c2af5625c71"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 1705811,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=801%2C802%2C803%2C804%2C805%2C806%2C807%2C808%2C809%2C810%2C811%2C812%2C813%2C814%2C815%2C816%2C817%2C818%2C819%2C820%2C821%2C822%2C823%2C824%2C825%2C826%2C827%2C828%2C829%2C830%2C831%2C832%2C833%2C834%2C835%2C836%2C837%2C838%2C839%2C840%2C841%2C842%2C843%2C844%2C845%2C846%2C847%2C848%2C849%2C850%2C851%2C852%2C853%2C854%2C855%2C856%2C857%2C858%2C859%2C860%2C861%2C862%2C863%2C864%2C865%2C866%2C867%2C868%2C869%2C870%2C871%2C872%2C873%2C874%2C875%2C876%2C877%2C878%2C879%2C880%2C881%2C882%2C883%2C884%2C885%2C886%2C887%2C888%2C889%2C890%2C891%2C892%2C893%2C894%2C895%2C896%2C897%2C898%2C899%2C900&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0801:60f1fb58b7b109edafec6d5f59224a7a13c9b68b9f792e6d1bfc468dc95c34d5",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=801%2C802%2C803%2C804%2C805%2C806%2C807%2C808%2C809%2C810%2C811%2C812%2C813%2C814%2C815%2C816%2C817%2C818%2C819%2C820%2C821%2C822%2C823%2C824%2C825%2C826%2C827%2C828%2C829%2C830%2C831%2C832%2C833%2C834%2C835%2C836%2C837%2C838%2C839%2C840%2C841%2C842%2C843%2C844%2C845%2C846%2C847%2C848%2C849%2C850%2C851%2C852%2C853%2C854%2C855%2C856%2C857%2C858%2C859%2C860%2C861%2C862%2C863%2C864%2C865%2C866%2C867%2C868%2C869%2C870%2C871%2C872%2C873%2C874%2C875%2C876%2C877%2C878%2C879%2C880%2C881%2C882%2C883%2C884%2C885%2C886%2C887%2C888%2C889%2C890%2C891%2C892%2C893%2C894%2C895%2C896%2C897%2C898%2C899%2C900&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=801%2C802%2C803%2C804%2C805%2C806%2C807%2C808%2C809%2C810%2C811%2C812%2C813%2C814%2C815%2C816%2C817%2C818%2C819%2C820%2C821%2C822%2C823%2C824%2C825%2C826%2C827%2C828%2C829%2C830%2C831%2C832%2C833%2C834%2C835%2C836%2C837%2C838%2C839%2C840%2C841%2C842%2C843%2C844%2C845%2C846%2C847%2C848%2C849%2C850%2C851%2C852%2C853%2C854%2C855%2C856%2C857%2C858%2C859%2C860%2C861%2C862%2C863%2C864%2C865%2C866%2C867%2C868%2C869%2C870%2C871%2C872%2C873%2C874%2C875%2C876%2C877%2C878%2C879%2C880%2C881%2C882%2C883%2C884%2C885%2C886%2C887%2C888%2C889%2C890%2C891%2C892%2C893%2C894%2C895%2C896%2C897%2C898%2C899%2C900&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:30.589757+00:00",
+        "role": "official_distributor",
+        "sha256": "60f1fb58b7b109edafec6d5f59224a7a13c9b68b9f792e6d1bfc468dc95c34d5"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 326331,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=901%2C902%2C903%2C904%2C905%2C906%2C907%2C908%2C909%2C910%2C911%2C912%2C913%2C914%2C915%2C916%2C917%2C918%2C919%2C920%2C921%2C922%2C923%2C924%2C925%2C926%2C927%2C928%2C929%2C930%2C931%2C932%2C933%2C934%2C935%2C936%2C937%2C938%2C939%2C940%2C941%2C942%2C943%2C944%2C945%2C946%2C947%2C948%2C949%2C950%2C951%2C952%2C953%2C954%2C955%2C956%2C957%2C958%2C959%2C960%2C961%2C962%2C963%2C964&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_page_0901:03e0c16adbea7f24a17f1633f84c49086307269f7472278b46ae4397372e916d",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=901%2C902%2C903%2C904%2C905%2C906%2C907%2C908%2C909%2C910%2C911%2C912%2C913%2C914%2C915%2C916%2C917%2C918%2C919%2C920%2C921%2C922%2C923%2C924%2C925%2C926%2C927%2C928%2C929%2C930%2C931%2C932%2C933%2C934%2C935%2C936%2C937%2C938%2C939%2C940%2C941%2C942%2C943%2C944%2C945%2C946%2C947%2C948%2C949%2C950%2C951%2C952%2C953%2C954%2C955%2C956%2C957%2C958%2C959%2C960%2C961%2C962%2C963%2C964&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?objectIds=901%2C902%2C903%2C904%2C905%2C906%2C907%2C908%2C909%2C910%2C911%2C912%2C913%2C914%2C915%2C916%2C917%2C918%2C919%2C920%2C921%2C922%2C923%2C924%2C925%2C926%2C927%2C928%2C929%2C930%2C931%2C932%2C933%2C934%2C935%2C936%2C937%2C938%2C939%2C940%2C941%2C942%2C943%2C944%2C945%2C946%2C947%2C948%2C949%2C950%2C951%2C952%2C953%2C954%2C955%2C956%2C957%2C958%2C959%2C960%2C961%2C962%2C963%2C964&outFields=%2A&returnGeometry=true&returnTrueCurves=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC&f=json",
+        "retrieved_at": "2026-10-19T09:44:31.670416+00:00",
+        "role": "official_distributor",
+        "sha256": "03e0c16adbea7f24a17f1633f84c49086307269f7472278b46ae4397372e916d"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 28544,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0?f=pjson",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_layer_after:6004cc431e405642ecbcd8439f7906af4099f8badd4a653d50c5a8f87b67a018",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0?f=pjson",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0?f=pjson",
+        "retrieved_at": "2026-10-19T09:44:32.582026+00:00",
+        "role": "official_distributor",
+        "sha256": "6004cc431e405642ecbcd8439f7906af4099f8badd4a653d50c5a8f87b67a018"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 181,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_count_after:331fe4663bdbaf5a2eb5d5bd7aa2c98e502c08c4e594416c55a2efcff3de2707",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+        "retrieved_at": "2026-10-19T09:44:33.173424+00:00",
+        "role": "official_distributor",
+        "sha256": "331fe4663bdbaf5a2eb5d5bd7aa2c98e502c08c4e594416c55a2efcff3de2707"
+      },
+      {
+        "attribution": "BTS National Transportation Atlas Database / National Census of Ferry Operators; acknowledges Census Bureau, USGS, NOAA and USACE.",
+        "bytes": 3794,
+        "canonical_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "delegation_evidence": {
+          "bts_page_url": "https://www.bts.gov/ntad",
+          "portal_dataset_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+          "publisher_account": "USDOT_BTS",
+          "service_item": "bc0f7dffb12d4ce9a47bf890d6c09804"
+        },
+        "distributor": "BTS (USDOT_BTS) through Esri ArcGIS Online",
+        "host": "services.arcgis.com",
+        "http_status": 200,
+        "input_id": "source_ids_after:aaa9cc590aa15736e5d125388459d07f665cd976d2d333540a8b81bd3296d0b8",
+        "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+        "observed_final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "producer": "Bureau of Transportation Statistics, U.S. Department of Transportation",
+        "release_date_unknown_reason": "Producer item/Hub description claims NCFO2022 compilation2025-10-27, but layer description names NCFO2020 compilation2024-10-16 and all actual rows are census2020/data2019. Exact release and current-vintage reconciliation require producer/maintainer decision.",
+        "retrieval_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "retrieved_at": "2026-10-19T09:44:33.420208+00:00",
+        "role": "official_distributor",
+        "sha256": "aaa9cc590aa15736e5d125388459d07f665cd976d2d333540a8b81bd3296d0b8"
+      }
+    ],
+    "license": "https://www.arcgis.com/sharing/rest/content/items/bc0f7dffb12d4ce9a47bf890d6c09804?f=pjson",
+    "prebuilt_output_policy": {
+      "formats": {
+        "geoparquet": {
+          "objects": [
+            {
+              "bytes": 10140624,
+              "path": "geoparquet/ferry-routes-1.parquet",
+              "sha256": "75c492a658c2ffdc9f7b47d0cb3104b59b1443d473e294110ca870305ee1ef8c"
+            }
+          ],
+          "reason": "Retain all source attributes, native integer widths, original IDs and exact native path coordinates; no generic bbox/schema expansion accepted."
+        }
+      },
+      "schema_version": 1
+    },
+    "processing_fingerprint": "f63760c3ce91b87439c3a5254a56ab328b15c3a1672fbd4cb2ba5c3902d62e73",
+    "processor": "HIFLD Next",
+    "publisher": "Bureau of Transportation Statistics",
+    "schema_version": 1,
+    "source_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+    "title": "Ferry Routes \u2014 complete actual official NCFO2020 service draft, unresolved item-vintage conflict",
+    "transformations": [
+      {
+        "operation": "complete_native_Esri_polyline_extraction",
+        "parameters": {
+          "geometry": "Every original path and binary64 coordinate retained in WKB MultiLineString, including one-part path structure. No snapping, reprojection, repair or ID mapping.",
+          "physical_types": "Esri Integer retained int32, Double float64, String exact/null distinct. OID original declaration retained; Arrow int64 is an explicit storage representation, not approval of physical-width mapping.",
+          "roster": "Before/after964 original OBJECTIDs and55 exact original attribute declarations; ten explicit ID-bounded pages; no outSR, quantization or geometry precision request.",
+          "vintage": "Actual census_year2020/data_year2019, NOT claimed2022 contents. Producer item/layer conflict retained and unapproved."
+        }
+      },
+      {
+        "operation": "native_geopackage_and_geoparquet",
+        "parameters": {
+          "gpkg_storage_fid": "Separate internal storage index; original OBJECTID and all business IDs preserved, no substitute published ID."
+        }
+      }
+    ],
+    "unsupported_output_formats": {
+      "pmtiles": "Quantized visualization and ID/type mapping remain unapproved.",
+      "shapefile_zip": "55 exact original field names and null/string/type distinctions have no approved destructive shapefile mapping."
+    }
+  },
+  "actual_source_OBJECTID_count": 964
+}

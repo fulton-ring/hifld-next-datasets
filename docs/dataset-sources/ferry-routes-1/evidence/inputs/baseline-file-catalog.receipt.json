@@ -1,0 +1,11 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferry-routes-1/ferry-routes-1/catalog.json",
+  "observed_at": "2026-10-19T09:39:20.898324+00:00",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/ferry-routes-1/ferry-routes-1/catalog.json",
+  "bytes": 2687,
+  "sha256": "bb2bc895d0c7e7966bd4734c96a014bb30e850d611ab9b6467cac6e2580032ac",
+  "content_length": "2687",
+  "wire_bytes": 2687,
+  "complete_body": true
+}

@@ -1,0 +1,11 @@
+{
+  "url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+  "observed_at": "2026-10-19T09:44:33.173424+00:00",
+  "status": 200,
+  "final_url": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Ferry_Routes/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json",
+  "bytes": 181,
+  "sha256": "331fe4663bdbaf5a2eb5d5bd7aa2c98e502c08c4e594416c55a2efcff3de2707",
+  "content_length": null,
+  "wire_bytes": 181,
+  "complete_body": true
+}

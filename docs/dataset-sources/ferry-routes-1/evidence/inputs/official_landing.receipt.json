@@ -1,0 +1,11 @@
+{
+  "url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+  "observed_at": "2026-10-19T09:41:35.625809+00:00",
+  "status": 200,
+  "final_url": "https://geodata.bts.gov/datasets/usdot::ferry-routes/about",
+  "bytes": 51648,
+  "sha256": "c5833ea32e75b6c585c3bfa382b4c2c0d9047a0175ab9c13e1ecf463dcf9833b",
+  "content_length": "51648",
+  "wire_bytes": 51648,
+  "complete_body": true
+}

@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" prefix="og: https://ogp.me/ns#" class="is-ultimenu is-ultimobile">
+  <head>
+    <meta charset="utf-8" />
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-18660041-1"></script>
+<script>window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments)};gtag("js", new Date());gtag("set", "developer_id.dMDhkMT", true);gtag("config", "UA-18660041-1", {"groups":"default","anonymize_ip":true,"page_placeholder":"PLACEHOLDER_page_path"});gtag("config", "G-TS9639848Y", {"groups":"default","page_placeholder":"PLACEHOLDER_page_location"});//gtag('config', 'G-G4Y2DGXG7K');</script>
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&amp;l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-NX5ZB78W');
+</script>
+<meta name="description" content="" />
+<link rel="canonical" href="https://www.bts.gov/ntad" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="National Transportation Atlas Database" />
+<meta name="twitter:description" content="" />
+<meta name="twitter:site" content="@USDOT" />
+<meta name="twitter:creator" content="@USDOT" />
+<meta name="twitter:image" content="https://www.bts.gov/themes/custom/dot_cms/images/seal_dot.png" />
+<meta name="Generator" content="Drupal 10 (https://www.drupal.org)" />
+<meta name="MobileOptimized" content="width" />
+<meta name="HandheldFriendly" content="true" />
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+<meta http-equiv="x-ua-compatible" content="ie=edge" />
+<link rel="icon" href="/themes/custom/dot_cms/favicon_dot.png" type="image/png" />
+
+    <meta name="format-detection" content="telephone=no">
+    <title>National Transportation Atlas Database | Bureau of Transportation Statistics</title>
+    <link rel="stylesheet" media="all" href="/sites/bts.dot.gov/files/css/css_9BtO9dc4ZsFD61xgJvU6iYVZ8r7AE6b8u8D9yjE0lco.css?delta=0&amp;language=en&amp;theme=bts&amp;include=eJx1kFFuxDAIRC_kxj9Vr2Nhm6QoBCIgu93bN02qdhupP4h5SMxAVQ0Pg7VUMCPN1RB6s22pqV5noh1TDc-jSsAdXRcsbweZWCvwi8eDSaYD6YpSHMRL65LajJ1CrZB0lKisbc5PfWrKDKvTOWlqmLpGacvVDj9i95hzt20FHr7lFzYoIyH30tGb0Rqkkv_hpbmnRTvwZf3JLvec8O9FKxhM-3fevUxGPV_08PO-1-QPD1xyBce0cdCCsuUGhjGEEcjET_wI7L9ax7GB3MAHb8BIkm6Ed89HHfZkG-Mnk6Gy7Q" />
+<link rel="stylesheet" media="all" href="/sites/bts.dot.gov/files/css/css_pgPwtW6eweXcxEtCJgc8tr9paPpIC1HE3fMXvUyPfEM.css?delta=1&amp;language=en&amp;theme=bts&amp;include=eJx1kFFuxDAIRC_kxj9Vr2Nhm6QoBCIgu93bN02qdhupP4h5SMxAVQ0Pg7VUMCPN1RB6s22pqV5noh1TDc-jSsAdXRcsbweZWCvwi8eDSaYD6YpSHMRL65LajJ1CrZB0lKisbc5PfWrKDKvTOWlqmLpGacvVDj9i95hzt20FHr7lFzYoIyH30tGb0Rqkkv_hpbmnRTvwZf3JLvec8O9FKxhM-3fevUxGPV_08PO-1-QPD1xyBce0cdCCsuUGhjGEEcjET_wI7L9ax7GB3MAHb8BIkm6Ed89HHfZkG-Mnk6Gy7Q" />
+<link rel="stylesheet" media="all" href="//fonts.googleapis.com/css?family=Open+Sans:300,400,600,700,800" />
+<link rel="stylesheet" media="all" href="https://use.fontawesome.com/releases/v6.5.1/css/all.css" crossorigin="anonymous" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" />
+<link rel="stylesheet" media="all" href="/sites/bts.dot.gov/files/css/css_zkHH_7h6o1SqCGrILpakQ1qYty_hzX4AjJiNWfJuPes.css?delta=4&amp;language=en&amp;theme=bts&amp;include=eJx1kFFuxDAIRC_kxj9Vr2Nhm6QoBCIgu93bN02qdhupP4h5SMxAVQ0Pg7VUMCPN1RB6s22pqV5noh1TDc-jSsAdXRcsbweZWCvwi8eDSaYD6YpSHMRL65LajJ1CrZB0lKisbc5PfWrKDKvTOWlqmLpGacvVDj9i95hzt20FHr7lFzYoIyH30tGb0Rqkkv_hpbmnRTvwZf3JLvec8O9FKxhM-3fevUxGPV_08PO-1-QPD1xyBce0cdCCsuUGhjGEEcjET_wI7L9ax7GB3MAHb8BIkm6Ed89HHfZkG-Mnk6Gy7Q" />
+<link rel="stylesheet" media="all" href="//fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&amp;display=swap" />
+<link rel="stylesheet" media="all" href="//fonts.googleapis.com/css2?family=Raleway:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&amp;display=swap" />
+<link rel="stylesheet" media="all" href="//fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,200..900;1,200..900&amp;display=swap" />
+<link rel="stylesheet" media="all" href="//fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&amp;display=swap" />
+
+    <script type="application/json" data-drupal-selector="drupal-settings-json">{"path":{"baseUrl":"\/","pathPrefix":"","currentPath":"node\/183481","currentPathIsAdmin":false,"isFront":false,"currentLanguage":"en"},"pluralDelimiter":"\u0003","suppressDeprecationErrors":true,"google_analytics":{"account":"UA-18660041-1","trackOutbound":true,"trackMailto":true,"trackDownload":true,"trackDownloadExtensions":"7z|aac|arc|arj|asf|asx|avi|bin|csv|doc(x|m)?|dot(x|m)?|exe|flv|gif|gz|gzip|hqx|jar|jpe?g|js|mp(2|3|4|e?g)|mov(ie)?|msi|msp|pdf|phps|png|ppt(x|m)?|pot(x|m)?|pps(x|m)?|ppam|sld(x|m)?|thmx|qtm?|ra(m|r)?|sea|sit|tar|tgz|torrent|txt|wav|wma|wmv|wpd|xls(x|m|b)?|xlt(x|m)|xlam|xml|z|zip"},"data":{"extlink":{"extTarget":true,"extTargetAppendNewWindowDisplay":true,"extTargetAppendNewWindowLabel":"(opens in a new window)","extTargetNoOverride":false,"extNofollow":false,"extTitleNoOverride":false,"extNoreferrer":false,"extFollowNoOverride":false,"extClass":"ext","extLabel":"(link is external)","extImgClass":false,"extSubdomains":true,"extExclude":"(.\\gov)|(.\\mil)|(addthis.com)|(usmma.edu)|(medium.com)|(facebook.com)|(twitter.com)|(flickr.com)|(linkedin.com)|(youtube.com)|(instagram.com)|(medium.com)|(greatlakes-seaway.com)|(afloatjobs.vet)","extInclude":"","extCssExclude":"","extCssInclude":"","extCssExplicit":"","extAlert":false,"extAlertText":"This link will take you to an external web site. We are not responsible for their content.","extHideIcons":false,"mailtoClass":"mailto","telClass":"","mailtoLabel":"(link sends email)","telLabel":"(link is a phone number)","extUseFontAwesome":false,"extIconPlacement":"append","extPreventOrphan":false,"extFaLinkClasses":"fa fa-external-link","extFaMailtoClasses":"fa fa-envelope-o","extAdditionalLinkClasses":"","extAdditionalMailtoClasses":"","extAdditionalTelClasses":"","extFaTelClasses":"fa fa-phone","allowedDomains":[],"extExcludeNoreferrer":""}},"collapsiblock":{"active_pages":false,"slide_speed":200,"cookie_lifetime":null,"switcher_enabled":null,"switcher_class":null},"user":{"uid":0,"permissionsHash":"4292a785f6ddb0cd7363e78286c90545c3b9083d3f8bf6d7cd6a9ac4bc34d003"}}</script>
+<script src="/sites/bts.dot.gov/files/js/js_TNtYxKuENTgJF_DqJGV08scsNe3V9ZcFUAGvQGoEJC8.js?scope=header&amp;delta=0&amp;language=en&amp;theme=bts&amp;include=eJxdjlEOwyAMQy9Ex5FQgAixugSRILW3H9q6n_4lz7bsaOoLJBI2tQu1FZcEoK41QtLukwx2fHZqOdwKBwL8j21_tjy24rvPY3bC635dESlYiUa4rKbV9gDukEx4juhzlGV60xn6kMSqMryNWgqP8BWd2uonSONgfHSQsfoo-doSSNVNWD24Tf8_Pg9TXYg"></script>
+
+    <!-- DAP Implementation -->
+    <script async type="text/javascript" id="_fed_an_ua_tag" src="https://dap.digitalgov.gov/Universal-Federated-Analytics-Min.js?agency=DOT&subagency=BTS&yt=true"></script>
+  </head>
+  <body class="layout-no-sidebars page-node-183481 path-ntad path-node node--type-article">
+  <noscript>Please enable JavaScript to use this site.</noscript>
+    <a href="#main" class="visually-hidden focusable skip-link">
+      Skip to main content
+    </a>
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NX5ZB78W" height="0" width="0" style="display:none;visibility:hidden;"></iframe>
+</noscript>
+      <div class="dialog-off-canvas-main-canvas" data-off-canvas-main-canvas>
+    <div id="page-wrapper" class="page-wrapper">
+  <div id="page" class="page">
+
+     <section class="usa-banner">
+  <h1 class="sr-only">USA Banner</h1>
+  <div class="usa-banner-inner container">
+    <div class="row">
+      <div class="usa-accordion col" id="accordion">
+        <header class="usa-banner-header" id="headingOne">
+          <div aria-controls="collapseOne" aria-expanded="false" class="collapsed small row" data-target="#collapseOne" data-toggle="collapse" role="complementary">
+            <div class="usa-banner-guidance-gov usa-width-one-full col-sm d-flex">
+              <div class="usa-media_block-icon">
+                <img class="usa-banner-flag" src="/themes/custom/dot_cms/images/assets/us_flag_small.svg" alt="U.S. flag">
+              </div>
+              <div class="usa-media_block-body">
+                <p>An official website of the United States government <button class="usa-accordion-button usa-banner-button"><span class="usa-banner-button-text">Here's how you know</span></button></p>
+              </div>
+            </div>
+          </div>
+        </header>
+        <div class="usa-banner-content container">
+          <div aria-labelledby="headingOne" class="collapse row" data-parent="#accordion" id="collapseOne">
+            <div class="usa-banner-guidance-gov usa-width-one-half col-sm d-flex">
+              <div class="usa-media_block-icon">
+                <img class="usa-banner-icon" src="/themes/custom/dot_cms/images/assets/icon-dot-gov.svg" alt="Official US Government Icon">
+              </div>
+              <div class="usa-media_block-body">
+                <p><small><strong>Official websites use .gov</strong><br>A <strong>.gov</strong> website belongs to an official government organization in the United States.</small></p>
+              </div>
+            </div>
+            <div class="usa-banner-guidance-ssl usa-width-one-half col-sm d-flex">
+              <div class="usa-media_block-icon">
+                <img class="usa-banner-icon" src="/themes/custom/dot_cms/images/assets/icon-https.svg" alt="Secure Site Icon">
+              </div>
+              <div class="usa-media_block-body">
+                <p><small><strong>Secure .gov websites use HTTPS</strong><br>
+                  A <strong>lock</strong> ( <span class="icon-lock"><svg xmlns="http://www.w3.org/2000/svg" width="52" height="64" viewBox="0 0 52 64" class="usa-banner__lock-image" role="img" aria-labelledby="banner-lock-title banner-lock-description"><title id="banner-lock-title">Lock</title><desc id="banner-lock-description">A locked padlock</desc><path fill="#000000" fill-rule="evenodd" d="M26 0c10.493 0 19 8.507 19 19v9h3a4 4 0 0 1 4 4v28a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V32a4 4 0 0 1 4-4h3v-9C7 8.507 15.507 0 26 0zm0 8c-5.979 0-10.843 4.77-10.996 10.712L15 19v9h22v-9c0-6.075-4.925-11-11-11z"></path></svg></span> ) or <strong>https://</strong> means you’ve safely connected to the .gov website. Share sensitive information only on official, secure websites.
+                </small></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+ 
+    <div class="region region-site-notification">
+    
+    <div class="block block--site-notification block--emergency block-views block-views-blocksite-notification-block-notification-emergency w-100 clearfix">
+    
+
+
+  </div>
+  
+          <div class="block block--site-notification block--warning block-views block-views-blocksite-notification-block-notification-warning w-100 clearfix">
+      
+
+
+    </div>
+  
+  </div>
+
+ <style>
+.dot-ribbon {
+	background: #15396c;
+	color: white;
+	height: 1.75rem;
+	display: flex;
+	align-items: center;
+	font-size: .8rem;
+	position: relative;
+	z-index: 100;
+}
+.dot-ribbon svg {
+	width: 17px;
+	opacity: .5;
+	margin-right: 6px;
+}
+.dot-ribbon a:link,
+.dot-ribbon a:hover,
+.dot-ribbon a:visited,
+.dot-ribbon a:active {
+	color: white;
+}
+</style>
+<div class="dot-ribbon">
+	<div class="container">
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 35.82 37.1" role="img" >
+			<title>U.S. Department of Transportation</title>
+			<desc>U.S. Department of Transportation Icon</desc>
+			<defs><style>.cls-1{fill:#FFFFFF !important;}</style></defs><title>United States Department of Transportation</title><g id="Layer_2" data-name="Layer 2"><g id="Layer_1-2" data-name="Layer 1"><path class="cls-1" d="M4.46,6.35a8.38,8.38,0,0,1,8.15-2.94c2.71.55,4.26,2.77,4.78,5.43a6.31,6.31,0,0,1-2.75,6.79c-3.68,2.1-8,3.74-8.86,8.5A13.42,13.42,0,0,0,8.47,34.4C3.81,31.8,1.13,26.6.25,21.23A18,18,0,0,1,4.46,6.35"/><path class="cls-1" d="M14.41,36.71A8.65,8.65,0,0,1,7.85,30.9a6.51,6.51,0,0,1,2.13-7,5.85,5.85,0,0,1,7.05-1c3.61,2.23,7.17,5.31,11.56,3.64A12.82,12.82,0,0,0,35.81,19C36,24.49,33,29.5,29,33a16.57,16.57,0,0,1-14.55,3.72"/><path class="cls-1" d="M34.73,12.39a9.12,9.12,0,0,1-1.53,8.8c-1.79,2.17-4.42,2.47-6.91,1.63A6.18,6.18,0,0,1,21.92,17c0-4.35.81-9.1-2.8-12.17A12.51,12.51,0,0,0,9.05,2.33c4.47-2.92,10.27-2.89,15.22-1A17.36,17.36,0,0,1,34.73,12.39"/></g></g>
+		</svg>
+		<a href="https://www.transportation.gov">United States Department of Transportation</a>
+</div>
+</div>
+
+ <header id="header" class="header site-header site-masthead bg-primary" role="banner" aria-label="Site header">
+  <div class="container">
+    <div class="row">
+              <nav class="navbar navbar-dark navbar-expand-xl" id="navbar-main">
+                <a href="/" title="Home" rel="home" class="navbar-brand bts-brand mx-0 mt-lg-5">
+              <img src="/themes/custom/bts/logo_bts.svg" alt="Home" class="img-fluid" />
+            
+    </a>
+    
+
+                  <button class="navbar-toggler navbar-toggler-right" type="button" data-toggle="collapse" data-target="#CollapsingNavbar" aria-controls="CollapsingNavbar" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+                      <div class="form-inline navbar-form">
+                <section class="region region-header-form">
+      <nav aria-labelledby="block-header-utility-menu" id="block-header-utility" class="block block-menu navigation menu--utility">
+            
+  <h2  class="sr-only" id="block-header-utility-menu">Header - Utility</h2>
+  
+
+        
+              <ul id="block-header-utility" block="block-header-utility" class="clearfix nav justify-content-end">
+                    <li class="nav-item ml-3 my-2">
+                <a href="http://transportation.libanswers.com/">Ask-A-Librarian</a>
+              </li>
+                <li class="nav-item ml-3 my-2">
+                <a href="/A-Z-Index" data-drupal-link-system-path="node/224996">A-Z Index</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+<div id="block-custombtsheadersearch" class="block block-fixed-block-content block-fixed-block-contentcustom-bts-header-search">
+  
+    
+      <div class="content">
+      
+            <div class="clearfix text-formatted field field--name-body field--type-text-with-summary field--label-hidden field__item"><div class="usasearch-search-block-form block block-usasearch block-usasearch-search-form-block" data-drupal-selector="usasearch-search-block-form" id="block-usasearch-form">
+   <div class="search__wrapper">
+      <form block="block-usasearch-form" action="https://search.usa.gov/search" method="GET" id="usasearch-search-block-form" accept-charset="UTF-8">
+         <fieldset class="js-form-item js-form-type-search form-type-search js-form-item-query form-item-query form-no-label form-group" aria-labelledby="headerquery">
+            <legend class="d-none">Search DOT</legend>
+            <label for="query" class="sr-only">Search</label>
+            <input id="query" title="Enter the terms you wish to search for." placeholder="Search" class="usagov-search-autocomplete form-search form-control ui-autocomplete-input" autocomplete="off" aria-autocomplete="list" aria-haspopup data-drupal-selector="edit-query" type="search" name="query" value size="60" maxlength="128">
+         </fieldset>
+         <input data-drupal-selector="edit-affiliate" type="hidden" name="affiliate" value="dot-bts" class="form-control">
+         <input data-drupal-selector="edit-submit" type="submit" id="edit-submit" value="Search" class="button js-form-submit form-submit btn btn-primary form-control">
+      </form>
+   </div>
+</div></div>
+      
+    </div>
+  </div>
+
+  </section>
+
+            </div>
+                    <div class="collapse navbar-collapse" id="CollapsingNavbar">
+              <div id="block-ultimenu-main-navigation" class="block block-ultimenu block-ultimenu-blockultimenu-main">
+  
+    
+      <div class="content">
+      <ul id="ultimenu-main" data-ultimenu="main" class="ultimenu ultimenu--offcanvas is-ultihover is-ulticaret--triangle ultimenu--main ultimenu--htb ultimenu--horizontal"><li class="ultimenu__item uitem has-ultimenu"><a href="/explore-topics-and-geography" data-drupal-link-system-path="node/224296" class="ultimenu__link">Topics and Geography<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-3 row region-ultimenu-main-topics-and-geography">
+      <nav aria-labelledby="block-main-topics-1-menu" id="block-main-topics-1" class="block block-menu navigation menu--main--topics-1">
+      
+  <h2  id="block-main-topics-1-menu">Topics</h2>
+  
+
+        
+              <ul block="block-main-topics-1" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/explore-topics-and-geography/introduction-transportation-statistics" class="nav-link nav-link--explore-topics-and-geography-introduction-transportation-statistics" data-drupal-link-system-path="node/229016">Introduction to Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/airlines-airports-and-aviation" class="nav-link nav-link--topics-airlines-airports-and-aviation" data-drupal-link-system-path="node/186">Airlines, Airports, and Aviation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/energy-and-environment" class="nav-link nav-link--topics-energy-and-environment" data-drupal-link-system-path="node/266">Energy and Environment</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/freight-transportation" class="nav-link nav-link--topics-freight-transportation" data-drupal-link-system-path="node/316">Freight Transportation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/infrastructure" class="nav-link nav-link--topics-infrastructure" data-drupal-link-system-path="node/261">Infrastructure</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/passenger-travel" class="nav-link nav-link--topics-passenger-travel" data-drupal-link-system-path="node/231">Passenger Travel</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transportation-safety" class="nav-link nav-link--topics-transportation-safety">Safety</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/statistical-policy" class="nav-link nav-link--statistical-policy" data-drupal-link-system-path="node/169991">Statistical Policies and Methods</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transportation-system-performance" class="nav-link nav-link--topics-transportation-system-performance" data-drupal-link-system-path="node/276">System Performance</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transportation-and-economy" class="nav-link nav-link--topics-transportation-and-economy" data-drupal-link-system-path="node/311">Transportation and the Economy</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-topics-2-menu" id="block-main-topics-2" class="block block-menu navigation menu--main--topics-2">
+      
+  <h2  id="block-main-topics-2-menu">Geography</h2>
+  
+
+        
+              <ul block="block-main-topics-2" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/maps" class="nav-link nav-link--maps" data-drupal-link-system-path="node/224311">Transportation Maps and Geospatial Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/product/geospatial-application-and-map-gallery" class="nav-link nav-link--product-geospatial-application-and-map-gallery" data-drupal-link-system-path="node/224276">Map Gallery</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/international" class="nav-link nav-link--topics-international" data-drupal-link-system-path="node/241">International</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/national" class="nav-link nav-link--topics-national" data-drupal-link-system-path="node/281">National</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/content/state-transportation-numbers" class="nav-link nav-link--content-state-transportation-numbers">By State</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ctp" class="nav-link nav-link--ctp" data-drupal-link-system-path="node/199386">By County</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/congressionaldistricts" class="nav-link nav-link--congressionaldistricts" data-drupal-link-system-path="node/235416">Congressional District Transportation Profiles</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-topics-3-menu" id="block-main-topics-3" class="block block-menu navigation menu--main--topics-3">
+      
+  <h2  id="block-main-topics-3-menu">Modes</h2>
+  
+
+        
+              <ul block="block-main-topics-3" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/topics/airlines-and-airports" class="nav-link nav-link--topics-airlines-and-airports">Aviation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/highway" class="nav-link nav-link--topics-highway">Highway</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/rail" class="nav-link nav-link--topics-rail">Rail</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/maritime-and-inland-waterways" class="nav-link nav-link--topics-maritime-and-inland-waterways">Maritime and Inland Waterways</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/pipelines" class="nav-link nav-link--topics-pipelines">Pipelines</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transit" class="nav-link nav-link--topics-transit" data-drupal-link-system-path="node/301">Transit</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/bicycle-and-pedestrian" class="nav-link nav-link--topics-bicycle-and-pedestrian">Bicycles and Pedestrian</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/browse-statistical-products-and-data" data-drupal-link-system-path="node/224301" class="ultimenu__link">Statistical Products and Data<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-3 row region-ultimenu-main-statistical-products-and">
+      <nav aria-labelledby="block-main-statistical-1-menu" id="block-main-statistical-1" class="block block-menu navigation menu--main--statistical-1">
+            
+  <h2  class="sr-only" id="block-main-statistical-1-menu">Main - Statistical 1</h2>
+  
+
+        
+              <ul block="block-main-statistical-1" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/information-gallery" class="nav-link nav-link--information-gallery" data-drupal-link-system-path="node/6">Information Gallery</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/bts-publications/z-index" class="nav-link nav-link--browse-statistical-products-and-data-bts-publications-z-index">A-Z Index</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/airline-data-downloads" class="nav-link nav-link--airline-data-downloads" data-drupal-link-system-path="node/117081">Airline Information for Download</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/national-transportation-atlas-of-the-united-states" class="nav-link nav-link--national-transportation-atlas-of-the-united-states" data-drupal-link-system-path="node/243036">Atlas</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/jswi-2e7b" class="nav-link nav-link-https--databtsgov-stories-s-jswi-2e7b">Border Crossing Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/cfs" class="nav-link nav-link--cfs" data-drupal-link-system-path="node/238591">Commodity Flow Survey</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/congressionaldistricts" class="nav-link nav-link--congressionaldistricts" data-drupal-link-system-path="node/235416">Congressional District Transportation Profiles</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ctp" class="nav-link nav-link--ctp" data-drupal-link-system-path="node/199386">County Transportation Profiles</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/" class="nav-link nav-link-https--databtsgov-">Data Inventory</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/data-spotlights" class="nav-link nav-link--data-spotlights" data-drupal-link-system-path="node/121801">Data Spotlights</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/faf" class="nav-link nav-link--faf" data-drupal-link-system-path="node/244431">Freight Analysis Framework</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/product/freight-facts-and-figures" class="nav-link nav-link--product-freight-facts-and-figures" data-drupal-link-system-path="node/76">Freight Facts and Figures</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/flow" class="nav-link nav-link--flow" data-drupal-link-system-path="node/234506">Freight Logistics Optimization Works (FLOW)</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-statistical-2-menu" id="block-main-statistical-2" class="block block-menu navigation menu--main--statistical-2">
+            
+  <h2  class="sr-only" id="block-main-statistical-2-menu">Main - Statistical 2</h2>
+  
+
+        
+              <ul block="block-main-statistical-2" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/product/geospatial-application-and-map-gallery" class="nav-link nav-link--product-geospatial-application-and-map-gallery" data-drupal-link-system-path="node/224276">GIS Applications</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/statistical-products/intermodal-transportation-database" class="nav-link nav-link--browse-statistical-products-and-data-statistical-products-intermodal-transportation-database" data-drupal-link-system-path="node/22096">Intermodal Transportation Database</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/latch" class="nav-link nav-link--latch" data-drupal-link-system-path="node/10026">Local Area Transportation Characteristics (LATCH dataset)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/m9eb-yevh" class="nav-link nav-link-https--databtsgov-stories-s-m9eb-yevh">Monthly Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/NCFO" class="nav-link nav-link--ncfo" data-drupal-link-system-path="node/117646">National Census of Ferry Operators</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/national-transportation-statistics" class="nav-link nav-link--topics-national-transportation-statistics" data-drupal-link-system-path="node/326">National Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/geospatial/national-transportation-atlas-database" class="nav-link nav-link--geospatial-national-transportation-atlas-database">National Transportation Atlas Database</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/statistical-products/national-transportation-data-archive" class="nav-link nav-link--browse-statistical-products-and-data-statistical-products-national-transportation-data-archive" data-drupal-link-system-path="node/117291">National Transportation Data Archives</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/osra" class="nav-link nav-link--osra" data-drupal-link-system-path="node/233951">Ocean Shipping Reform Act (OSRA)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/pocketguide" class="nav-link nav-link--pocketguide" data-drupal-link-system-path="node/118881">Pocket Guide</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ports" class="nav-link nav-link--ports" data-drupal-link-system-path="node/239846">Port Performance Freight Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/precursor-data" class="nav-link nav-link--precursor-data" data-drupal-link-system-path="node/238376">Precursor Safety Data Program</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/preliminary-estimates/preliminary-estimates" class="nav-link nav-link--browse-statistical-products-and-data-preliminary-estimates-preliminary-estimates" data-drupal-link-system-path="node/238811">Preliminary Estimates</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-statistical-3-menu" id="block-main-statistical-3" class="block block-menu navigation menu--main--statistical-3">
+            
+  <h2  class="sr-only" id="block-main-statistical-3-menu">Main - Statistical 3</h2>
+  
+
+        
+              <ul block="block-main-statistical-3" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="https://safeocs.gov/index.htm" class="nav-link nav-link-https--safeocsgov-indexhtm">SafeOCS</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/product/state-transportation-statistics" class="nav-link nav-link--product-state-transportation-statistics" data-drupal-link-system-path="node/91">State Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/freight-indicators" class="nav-link nav-link--freight-indicators" data-drupal-link-system-path="node/231491">Supply Chain Indicators</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/surveys/annual-tank-car-facility-survey/annual-tank-car-facility-survey-program" class="nav-link nav-link--surveys-annual-tank-car-facility-survey-annual-tank-car-facility-survey-program" data-drupal-link-system-path="node/120171">Tank Car Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/covid-19/week-in-transportation" class="nav-link nav-link--covid-19-week-in-transportation" data-drupal-link-system-path="node/229296">The Week in Transportation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/kijm-95mr" class="nav-link nav-link-https--databtsgov-stories-s-kijm-95mr">TransBorder Freight Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/28tb-cpjy" class="nav-link nav-link-https--databtsgov-stories-s-28tb-cpjy">Transportation Economic Trends</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/tpfs" class="nav-link nav-link--tpfs" data-drupal-link-system-path="node/237426">Transportation Public Finance Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/Transportation-as-an-Economic-Indicator/9czv-tjte" class="nav-link nav-link-https--databtsgov-stories-s-transportation-as-an-economic-indicator-9czv-tjte">Transportation Services Index</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/tsar" class="nav-link nav-link--tsar" data-drupal-link-system-path="node/120771">Transportation Statistics Annual Reports</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/tvar" class="nav-link nav-link--tvar" data-drupal-link-system-path="node/238531">Transportation Vulnerability and Resilience (TVAR)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/vius" class="nav-link nav-link--vius" data-drupal-link-system-path="node/226021">Vehicle Inventory and Use Survey (VIUS)</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/ntl" data-drupal-link-system-path="node/229051" class="ultimenu__link">National Transportation Library<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-1 row region-ultimenu-main-national-transportation">
+      <nav aria-labelledby="block-main-library-menu" id="block-main-library" class="block block-menu navigation menu--main--library">
+            
+  <h2  class="sr-only" id="block-main-library-menu">Main - Library</h2>
+  
+
+        
+              <ul block="block-main-library" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="https://rosap.ntl.bts.gov" class="nav-link nav-link-https--rosapntlbtsgov">Digital Repository (ROSA P)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://rosap.ntl.bts.gov/cbrowse?pid=dot%3A35533&amp;parentId=dot%3A35533" class="nav-link nav-link-https--rosapntlbtsgov-cbrowsepiddot3a35533parentiddot3a35533">BTS Products in the NTL</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/national-transportation-library-ntl-archives" class="nav-link nav-link--national-transportation-library-ntl-archives" data-drupal-link-system-path="node/238176">Archives and U.S. DOT History</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/submitting-content" class="nav-link nav-link--ntl-submitting-content" data-drupal-link-system-path="node/118441">Submitting Content to the NTL</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://transportation.libguides.com/NTLsubjects" class="nav-link nav-link-https--transportationlibguidescom-ntlsubjects">Research Tools</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://transportation.libguides.com/ntkn" class="nav-link nav-link-https--transportationlibguidescom-ntkn">National Transportation Knowledge Network</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/public-access" class="nav-link nav-link--ntl-public-access" data-drupal-link-system-path="node/118861">Public Access</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://fdd.bts.gov/freight-data-dictionary/" class="nav-link nav-link-https--fddbtsgov-freight-data-dictionary-">Freight Data Dictionary</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/policies" class="nav-link nav-link--ntl-policies" data-drupal-link-system-path="node/118466">NTL Policies</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/about" class="nav-link nav-link--ntl-about" data-drupal-link-system-path="node/118461">About the NTL</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/newsroom" data-drupal-link-system-path="node/230276" class="ultimenu__link">Newsroom<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-1 row region-ultimenu-main-newsroom">
+      <nav aria-labelledby="block-main-newsroom-menu" id="block-main-newsroom" class="block block-menu navigation menu--main--newsroom">
+            
+  <h2  class="sr-only" id="block-main-newsroom-menu">Main - Newsroom</h2>
+  
+
+        
+              <ul block="block-main-newsroom" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/statistical-releases" class="nav-link nav-link--statistical-releases" data-drupal-link-system-path="statistical-releases">News and Statistical Releases</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/events" class="nav-link nav-link--events" data-drupal-link-system-path="events">Release Schedule</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/learn-about-bts-and-our-work" data-drupal-link-system-path="node/224306" class="ultimenu__link">About BTS<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-1 row region-ultimenu-main-about-bts">
+      <nav aria-labelledby="block-main-about-menu" id="block-main-about" class="block block-menu navigation menu--main--about">
+            
+  <h2  class="sr-only" id="block-main-about-menu">Main - About</h2>
+  
+
+        
+              <ul block="block-main-about" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/about-BTS" class="nav-link nav-link--about-bts" data-drupal-link-system-path="node/239971">Overview</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/outreach" class="nav-link nav-link--outreach" data-drupal-link-system-path="node/243696">Outreach</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/jobs" class="nav-link nav-link--jobs" data-drupal-link-system-path="node/233181">Jobs and Internships</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/about-bts/legislative-mandates" class="nav-link nav-link--learn-about-bts-and-our-work-about-bts-legislative-mandates" data-drupal-link-system-path="node/29861">Legislative Mandates </a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/bts-strategic-plan-0" class="nav-link nav-link--learn-about-bts-and-our-work-bts-strategic-plan-0" data-drupal-link-system-path="node/225096">BTS Strategic Plan</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/staff-directory" class="nav-link nav-link--staff-directory">Staff Directory</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/acts" class="nav-link nav-link--acts" data-drupal-link-system-path="node/28751">Advisory Council on Transportation Statistics </a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/about-bts/port-performance-working-group" class="nav-link nav-link--learn-about-bts-and-our-work-about-bts-port-performance-working-group" data-drupal-link-system-path="node/29306">Port Performance Working Group </a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/history-bts" class="nav-link nav-link--learn-about-bts-and-our-work-history-bts" data-drupal-link-system-path="node/30416">History of BTS</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/acronyms-and-terms-guide" class="nav-link nav-link--learn-about-bts-and-our-work-acronyms-and-terms-guide" data-drupal-link-system-path="node/238291">Acronyms and Terms Guide</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://www.youtube.com/@bureauoftransportationstat1034/videos" class="nav-link nav-link-https--wwwyoutubecom-bureauoftransportationstat1034-videos">BTS Videos</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li></ul><button data-ultimenu-button="#ultimenu-main" class="button button--ultimenu button--ultiburger" aria-label="Menu Main navigation (Desktop)"><span class="bars">Menu Main navigation (Desktop)</span></button>
+    </div>
+  </div>
+<div id="block-ultimenu-mobile-navigation" class="block block-ultimenu block-ultimenu-blockultimenu-main">
+  
+    
+      <div class="content">
+      <ul id="ultimenu-main" data-ultimenu="main" class="ultimenu ultimenu--offcanvas is-ulticaret--triangle ultimenu--main ultimenu--htb ultimenu--horizontal"><li class="ultimenu__item uitem has-ultimenu"><a href="/explore-topics-and-geography" data-drupal-link-system-path="node/224296" class="ultimenu__link">Topics and Geography<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-3 row region-ultimenu-main-topics-and-geography">
+      <nav aria-labelledby="block-main-topics-1-menu" id="block-main-topics-1" class="block block-menu navigation menu--main--topics-1">
+      
+  <h2  id="block-main-topics-1-menu">Topics</h2>
+  
+
+        
+              <ul block="block-main-topics-1" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/explore-topics-and-geography/introduction-transportation-statistics" class="nav-link nav-link--explore-topics-and-geography-introduction-transportation-statistics" data-drupal-link-system-path="node/229016">Introduction to Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/airlines-airports-and-aviation" class="nav-link nav-link--topics-airlines-airports-and-aviation" data-drupal-link-system-path="node/186">Airlines, Airports, and Aviation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/energy-and-environment" class="nav-link nav-link--topics-energy-and-environment" data-drupal-link-system-path="node/266">Energy and Environment</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/freight-transportation" class="nav-link nav-link--topics-freight-transportation" data-drupal-link-system-path="node/316">Freight Transportation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/infrastructure" class="nav-link nav-link--topics-infrastructure" data-drupal-link-system-path="node/261">Infrastructure</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/passenger-travel" class="nav-link nav-link--topics-passenger-travel" data-drupal-link-system-path="node/231">Passenger Travel</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transportation-safety" class="nav-link nav-link--topics-transportation-safety">Safety</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/statistical-policy" class="nav-link nav-link--statistical-policy" data-drupal-link-system-path="node/169991">Statistical Policies and Methods</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transportation-system-performance" class="nav-link nav-link--topics-transportation-system-performance" data-drupal-link-system-path="node/276">System Performance</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transportation-and-economy" class="nav-link nav-link--topics-transportation-and-economy" data-drupal-link-system-path="node/311">Transportation and the Economy</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-topics-2-menu" id="block-main-topics-2" class="block block-menu navigation menu--main--topics-2">
+      
+  <h2  id="block-main-topics-2-menu">Geography</h2>
+  
+
+        
+              <ul block="block-main-topics-2" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/maps" class="nav-link nav-link--maps" data-drupal-link-system-path="node/224311">Transportation Maps and Geospatial Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/product/geospatial-application-and-map-gallery" class="nav-link nav-link--product-geospatial-application-and-map-gallery" data-drupal-link-system-path="node/224276">Map Gallery</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/international" class="nav-link nav-link--topics-international" data-drupal-link-system-path="node/241">International</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/national" class="nav-link nav-link--topics-national" data-drupal-link-system-path="node/281">National</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/content/state-transportation-numbers" class="nav-link nav-link--content-state-transportation-numbers">By State</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ctp" class="nav-link nav-link--ctp" data-drupal-link-system-path="node/199386">By County</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/congressionaldistricts" class="nav-link nav-link--congressionaldistricts" data-drupal-link-system-path="node/235416">Congressional District Transportation Profiles</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-topics-3-menu" id="block-main-topics-3" class="block block-menu navigation menu--main--topics-3">
+      
+  <h2  id="block-main-topics-3-menu">Modes</h2>
+  
+
+        
+              <ul block="block-main-topics-3" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/topics/airlines-and-airports" class="nav-link nav-link--topics-airlines-and-airports">Aviation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/highway" class="nav-link nav-link--topics-highway">Highway</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/rail" class="nav-link nav-link--topics-rail">Rail</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/maritime-and-inland-waterways" class="nav-link nav-link--topics-maritime-and-inland-waterways">Maritime and Inland Waterways</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/pipelines" class="nav-link nav-link--topics-pipelines">Pipelines</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/transit" class="nav-link nav-link--topics-transit" data-drupal-link-system-path="node/301">Transit</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/bicycle-and-pedestrian" class="nav-link nav-link--topics-bicycle-and-pedestrian">Bicycles and Pedestrian</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/browse-statistical-products-and-data" data-drupal-link-system-path="node/224301" class="ultimenu__link">Statistical Products and Data<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-3 row region-ultimenu-main-statistical-products-and">
+      <nav aria-labelledby="block-main-statistical-1-menu" id="block-main-statistical-1" class="block block-menu navigation menu--main--statistical-1">
+            
+  <h2  class="sr-only" id="block-main-statistical-1-menu">Main - Statistical 1</h2>
+  
+
+        
+              <ul block="block-main-statistical-1" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/information-gallery" class="nav-link nav-link--information-gallery" data-drupal-link-system-path="node/6">Information Gallery</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/bts-publications/z-index" class="nav-link nav-link--browse-statistical-products-and-data-bts-publications-z-index">A-Z Index</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/airline-data-downloads" class="nav-link nav-link--airline-data-downloads" data-drupal-link-system-path="node/117081">Airline Information for Download</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/national-transportation-atlas-of-the-united-states" class="nav-link nav-link--national-transportation-atlas-of-the-united-states" data-drupal-link-system-path="node/243036">Atlas</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/jswi-2e7b" class="nav-link nav-link-https--databtsgov-stories-s-jswi-2e7b">Border Crossing Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/cfs" class="nav-link nav-link--cfs" data-drupal-link-system-path="node/238591">Commodity Flow Survey</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/congressionaldistricts" class="nav-link nav-link--congressionaldistricts" data-drupal-link-system-path="node/235416">Congressional District Transportation Profiles</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ctp" class="nav-link nav-link--ctp" data-drupal-link-system-path="node/199386">County Transportation Profiles</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/" class="nav-link nav-link-https--databtsgov-">Data Inventory</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/data-spotlights" class="nav-link nav-link--data-spotlights" data-drupal-link-system-path="node/121801">Data Spotlights</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/faf" class="nav-link nav-link--faf" data-drupal-link-system-path="node/244431">Freight Analysis Framework</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/product/freight-facts-and-figures" class="nav-link nav-link--product-freight-facts-and-figures" data-drupal-link-system-path="node/76">Freight Facts and Figures</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/flow" class="nav-link nav-link--flow" data-drupal-link-system-path="node/234506">Freight Logistics Optimization Works (FLOW)</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-statistical-2-menu" id="block-main-statistical-2" class="block block-menu navigation menu--main--statistical-2">
+            
+  <h2  class="sr-only" id="block-main-statistical-2-menu">Main - Statistical 2</h2>
+  
+
+        
+              <ul block="block-main-statistical-2" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/product/geospatial-application-and-map-gallery" class="nav-link nav-link--product-geospatial-application-and-map-gallery" data-drupal-link-system-path="node/224276">GIS Applications</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/statistical-products/intermodal-transportation-database" class="nav-link nav-link--browse-statistical-products-and-data-statistical-products-intermodal-transportation-database" data-drupal-link-system-path="node/22096">Intermodal Transportation Database</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/latch" class="nav-link nav-link--latch" data-drupal-link-system-path="node/10026">Local Area Transportation Characteristics (LATCH dataset)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/m9eb-yevh" class="nav-link nav-link-https--databtsgov-stories-s-m9eb-yevh">Monthly Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/NCFO" class="nav-link nav-link--ncfo" data-drupal-link-system-path="node/117646">National Census of Ferry Operators</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/topics/national-transportation-statistics" class="nav-link nav-link--topics-national-transportation-statistics" data-drupal-link-system-path="node/326">National Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/geospatial/national-transportation-atlas-database" class="nav-link nav-link--geospatial-national-transportation-atlas-database">National Transportation Atlas Database</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/statistical-products/national-transportation-data-archive" class="nav-link nav-link--browse-statistical-products-and-data-statistical-products-national-transportation-data-archive" data-drupal-link-system-path="node/117291">National Transportation Data Archives</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/osra" class="nav-link nav-link--osra" data-drupal-link-system-path="node/233951">Ocean Shipping Reform Act (OSRA)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/pocketguide" class="nav-link nav-link--pocketguide" data-drupal-link-system-path="node/118881">Pocket Guide</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ports" class="nav-link nav-link--ports" data-drupal-link-system-path="node/239846">Port Performance Freight Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/precursor-data" class="nav-link nav-link--precursor-data" data-drupal-link-system-path="node/238376">Precursor Safety Data Program</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/browse-statistical-products-and-data/preliminary-estimates/preliminary-estimates" class="nav-link nav-link--browse-statistical-products-and-data-preliminary-estimates-preliminary-estimates" data-drupal-link-system-path="node/238811">Preliminary Estimates</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+  <nav aria-labelledby="block-main-statistical-3-menu" id="block-main-statistical-3" class="block block-menu navigation menu--main--statistical-3">
+            
+  <h2  class="sr-only" id="block-main-statistical-3-menu">Main - Statistical 3</h2>
+  
+
+        
+              <ul block="block-main-statistical-3" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="https://safeocs.gov/index.htm" class="nav-link nav-link-https--safeocsgov-indexhtm">SafeOCS</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/product/state-transportation-statistics" class="nav-link nav-link--product-state-transportation-statistics" data-drupal-link-system-path="node/91">State Transportation Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/freight-indicators" class="nav-link nav-link--freight-indicators" data-drupal-link-system-path="node/231491">Supply Chain Indicators</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/surveys/annual-tank-car-facility-survey/annual-tank-car-facility-survey-program" class="nav-link nav-link--surveys-annual-tank-car-facility-survey-annual-tank-car-facility-survey-program" data-drupal-link-system-path="node/120171">Tank Car Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/covid-19/week-in-transportation" class="nav-link nav-link--covid-19-week-in-transportation" data-drupal-link-system-path="node/229296">The Week in Transportation</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/kijm-95mr" class="nav-link nav-link-https--databtsgov-stories-s-kijm-95mr">TransBorder Freight Data</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/28tb-cpjy" class="nav-link nav-link-https--databtsgov-stories-s-28tb-cpjy">Transportation Economic Trends</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/tpfs" class="nav-link nav-link--tpfs" data-drupal-link-system-path="node/237426">Transportation Public Finance Statistics</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://data.bts.gov/stories/s/Transportation-as-an-Economic-Indicator/9czv-tjte" class="nav-link nav-link-https--databtsgov-stories-s-transportation-as-an-economic-indicator-9czv-tjte">Transportation Services Index</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/tsar" class="nav-link nav-link--tsar" data-drupal-link-system-path="node/120771">Transportation Statistics Annual Reports</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/tvar" class="nav-link nav-link--tvar" data-drupal-link-system-path="node/238531">Transportation Vulnerability and Resilience (TVAR)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/vius" class="nav-link nav-link--vius" data-drupal-link-system-path="node/226021">Vehicle Inventory and Use Survey (VIUS)</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/ntl" data-drupal-link-system-path="node/229051" class="ultimenu__link">National Transportation Library<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-1 row region-ultimenu-main-national-transportation">
+      <nav aria-labelledby="block-main-library-menu" id="block-main-library" class="block block-menu navigation menu--main--library">
+            
+  <h2  class="sr-only" id="block-main-library-menu">Main - Library</h2>
+  
+
+        
+              <ul block="block-main-library" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="https://rosap.ntl.bts.gov" class="nav-link nav-link-https--rosapntlbtsgov">Digital Repository (ROSA P)</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://rosap.ntl.bts.gov/cbrowse?pid=dot%3A35533&amp;parentId=dot%3A35533" class="nav-link nav-link-https--rosapntlbtsgov-cbrowsepiddot3a35533parentiddot3a35533">BTS Products in the NTL</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/national-transportation-library-ntl-archives" class="nav-link nav-link--national-transportation-library-ntl-archives" data-drupal-link-system-path="node/238176">Archives and U.S. DOT History</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/submitting-content" class="nav-link nav-link--ntl-submitting-content" data-drupal-link-system-path="node/118441">Submitting Content to the NTL</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://transportation.libguides.com/NTLsubjects" class="nav-link nav-link-https--transportationlibguidescom-ntlsubjects">Research Tools</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://transportation.libguides.com/ntkn" class="nav-link nav-link-https--transportationlibguidescom-ntkn">National Transportation Knowledge Network</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/public-access" class="nav-link nav-link--ntl-public-access" data-drupal-link-system-path="node/118861">Public Access</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://fdd.bts.gov/freight-data-dictionary/" class="nav-link nav-link-https--fddbtsgov-freight-data-dictionary-">Freight Data Dictionary</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/policies" class="nav-link nav-link--ntl-policies" data-drupal-link-system-path="node/118466">NTL Policies</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/ntl/about" class="nav-link nav-link--ntl-about" data-drupal-link-system-path="node/118461">About the NTL</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/newsroom" data-drupal-link-system-path="node/230276" class="ultimenu__link">Newsroom<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-1 row region-ultimenu-main-newsroom">
+      <nav aria-labelledby="block-main-newsroom-menu" id="block-main-newsroom" class="block block-menu navigation menu--main--newsroom">
+            
+  <h2  class="sr-only" id="block-main-newsroom-menu">Main - Newsroom</h2>
+  
+
+        
+              <ul block="block-main-newsroom" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/statistical-releases" class="nav-link nav-link--statistical-releases" data-drupal-link-system-path="statistical-releases">News and Statistical Releases</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/events" class="nav-link nav-link--events" data-drupal-link-system-path="events">Release Schedule</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li><li class="ultimenu__item uitem has-ultimenu"><a href="/learn-about-bts-and-our-work" data-drupal-link-system-path="node/224306" class="ultimenu__link">About BTS<span class="ultimenu__caret caret" aria-hidden="true"><i></i></span></a><section class="ultimenu__flyout is-htb d-lg-flex p-0">
+              <section class="ultimenu__region region region--count-1 row region-ultimenu-main-about-bts">
+      <nav aria-labelledby="block-main-about-menu" id="block-main-about" class="block block-menu navigation menu--main--about">
+            
+  <h2  class="sr-only" id="block-main-about-menu">Main - About</h2>
+  
+
+        
+              <ul block="block-main-about" class="clearfix nav navbar-nav">
+                    <li class="nav-item">
+                          <a href="/about-BTS" class="nav-link nav-link--about-bts" data-drupal-link-system-path="node/239971">Overview</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/outreach" class="nav-link nav-link--outreach" data-drupal-link-system-path="node/243696">Outreach</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/jobs" class="nav-link nav-link--jobs" data-drupal-link-system-path="node/233181">Jobs and Internships</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/about-bts/legislative-mandates" class="nav-link nav-link--learn-about-bts-and-our-work-about-bts-legislative-mandates" data-drupal-link-system-path="node/29861">Legislative Mandates </a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/bts-strategic-plan-0" class="nav-link nav-link--learn-about-bts-and-our-work-bts-strategic-plan-0" data-drupal-link-system-path="node/225096">BTS Strategic Plan</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/staff-directory" class="nav-link nav-link--staff-directory">Staff Directory</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/acts" class="nav-link nav-link--acts" data-drupal-link-system-path="node/28751">Advisory Council on Transportation Statistics </a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/about-bts/port-performance-working-group" class="nav-link nav-link--learn-about-bts-and-our-work-about-bts-port-performance-working-group" data-drupal-link-system-path="node/29306">Port Performance Working Group </a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/history-bts" class="nav-link nav-link--learn-about-bts-and-our-work-history-bts" data-drupal-link-system-path="node/30416">History of BTS</a>
+              </li>
+                <li class="nav-item">
+                          <a href="/learn-about-bts-and-our-work/acronyms-and-terms-guide" class="nav-link nav-link--learn-about-bts-and-our-work-acronyms-and-terms-guide" data-drupal-link-system-path="node/238291">Acronyms and Terms Guide</a>
+              </li>
+                <li class="nav-item">
+                          <a href="https://www.youtube.com/@bureauoftransportationstat1034/videos" class="nav-link nav-link-https--wwwyoutubecom-bureauoftransportationstat1034-videos">BTS Videos</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          </section></li></ul><button data-ultimenu-button="#ultimenu-main" class="button button--ultimenu button--ultiburger" aria-label="Menu Main navigation (Mobile)"><span class="bars">Menu Main navigation (Mobile)</span></button>
+    </div>
+  </div>
+
+
+          </div>
+                      </nav>
+          </div><!-- row -->
+  </div><!-- container -->
+  <!--BEGIN QUALTRICS WEBSITE FEEDBACK SNIPPET-->
+  <script type='text/javascript'>
+    (function(){var g=function(e,h,f,g){
+    this.get=function(a){for(var a=a+"=",c=document.cookie.split(";"),b=0,e=c.length;b<e;b++){for(var d=c[b];" "==d.charAt(0);)d=d.substring(1,d.length);if(0==d.indexOf(a))return d.substring(a.length,d.length)}return null};
+    this.set=function(a,c){var b="",b=new Date;b.setTime(b.getTime()+6048E5);b="; expires="+b.toGMTString();document.cookie=a+"="+c+b+"; path=/; "};
+    this.check=function(){var a=this.get(f);if(a)a=a.split(":");else if(100!=e)"v"==h&&(e=Math.random()>=e/100?0:100),a=[h,e,0],this.set(f,a.join(":"));else return!0;var c=a[1];if(100==c)return!0;switch(a[0]){case "v":return!1;case "r":return c=a[2]%Math.floor(100/c),a[2]++,this.set(f,a.join(":")),!c}return!0};
+    this.go=function(){if(this.check()){var a=document.createElement("script");a.type="text/javascript";a.src=g;document.body&&document.body.appendChild(a)}};
+    this.start=function(){var t=this;"complete"!==document.readyState?window.addEventListener?window.addEventListener("load",function(){t.go()},!1):window.attachEvent&&window.attachEvent("onload",function(){t.go()}):t.go()};};
+  try{(new g(100,"r","QSI_S_ZN_5zoA3vXq9g9IftP","https://zn5zoa3vxq9g9iftp-dotocio.gov1.siteintercept.qualtrics.com/SIE/?Q_ZID=ZN_5zoA3vXq9g9IftP")).start()}catch(i){}})();
+  </script><div id='ZN_5zoA3vXq9g9IftP'><!--DO NOT REMOVE-CONTENTS PLACED HERE--></div>
+  <!--END WEBSITE FEEDBACK SNIPPET-->
+
+</header>
+
+    <main id="main" class="main" role="main" aria-label="Site main">
+
+              <div class="container">
+            <div id="block-breadcrumbs" class="block block-system block-system-breadcrumb-block">
+  
+    
+      <div class="content">
+      
+
+  <nav role="navigation" aria-label="breadcrumb">
+    <ol class="breadcrumb">
+                  <li class="breadcrumb-item">
+          <a href="/">Home</a>
+        </li>
+                        <li class="breadcrumb-item">
+          <a href="/explore-topics-and-geography">Explore Topics and Geography</a>
+        </li>
+                        <li class="breadcrumb-item">
+          <a href="/explore-topics-and-geography/geography/geography">Geography</a>
+        </li>
+                        <li class="breadcrumb-item">
+          <a href="/geospatial/about">Geospatial Portal</a>
+        </li>
+              </ol>
+  </nav>
+
+    </div>
+  </div>
+
+
+        </div>
+      
+      
+      
+      
+      <div id="main-wrapper" class="layout-main-wrapper clearfix">
+                  <div id="main" class="container">
+
+            <div class="row row-offcanvas row-offcanvas-left clearfix">
+
+                              <!-- Sidebar First Region -->
+                <div class="sidebar col-xs-12 col-sm-12 col-md-3 col-lg-3 col-xl-3 order-first">
+                  <aside class="sidebar_first section" role="complementary">
+                    
+  <aside id="dot-region-view-mode--article" class="dot-region-view-mode dot-region-view-mode--article sidebar_first section" role="complementary">
+    <!-- Editorial Category Menu Starts -->
+          <div id="sidenav" class="sidenav">
+        <h1 class="sidenav-header text-white" id="nav-header">In This Section</h1>
+        <nav class="wrapper__sidenav dot_left_nav" role="navigation" aria-labelledby="nav-header">
+          
+            <div class="field field--name-field-editorial-category field--type-entity-reference field--label-hidden field__item">
+
+            <div class="field field--name-field-left-nav-menu field--type-entity-reference field--label-hidden field__item">
+              <ul class="clearfix nav">
+                    <li class="nav-item">
+                <a href="/maps" class="nav-link" data-drupal-link-system-path="node/224311">Geospatial Portal</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://geodata.bts.gov/" class="nav-link">Data</a>
+              </li>
+                <li class="nav-item">
+                <a href="/product/geospatial-application-and-map-gallery" class="nav-link" data-drupal-link-system-path="node/224276">Maps</a>
+              </li>
+                <li class="nav-item">
+                <a href="/product/geospatial-application-and-map-gallery" class="nav-link" data-drupal-link-system-path="node/224276">Applications</a>
+              </li>
+                <li class="nav-item">
+                <a href="/geospatial/about" class="nav-link">About</a>
+              </li>
+        </ul>
+  
+
+</div>
+      
+</div>
+      
+        </nav>
+      </div>
+      <!-- Editorial Category Menu Ends -->
+   <div id="sidecontent" class="sidecontent">
+     <!-- Related Content Starts -->
+     <div class="wrapper__related_links">
+     
+        
+                  <h2 class="sidebar__title">Related Links</h2>
+          <ul class="list_related_links">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                <li>
+                  <a href="https://rosap.ntl.bts.gov/cbrowse?pid=dot%3A53565&amp;parentId=dot%3A53565" class="" >
+                                        NTAD Archive
+                  </a>
+                </li>
+                                                        <li>
+                  <a href="/geospatial/national-transportation-noise-map" class="" >
+                                        National Transportation Noise Map
+                  </a>
+                </li>
+                                                                                        </ul>
+        
+        
+        
+        
+              </div>
+      <!-- Related Content Ends -->
+      <!-- Contact Info Block Starts -->
+            <!-- Contact Info Block Ends -->
+    </div>
+  </aside>
+
+
+                  </aside>
+                </div>
+                <!-- Main Content Region -->
+                <div class="col-xs-12 col-sm-12 col-md-9 col-lg-9 col-xl-9"  class="main-content col order-last" id="content" role="main">
+                  <section class="section pb-5">
+                    <a id="main-content" tabindex="-1"></a>
+                      <div data-drupal-messages-fallback class="hidden"></div><div id="block-mainpagecontent" class="block block-system block-system-main-block">
+  
+    
+      <div class="content">
+      
+
+<article data-history-node-id="183481" class="node node--type-article node--view-mode-full content__core clearfix">
+  <div class="node__content mt-0 clearfix">
+        
+    
+
+    
+      <h1 class="page__title node__title mt-0"><span class="field field--name-title field--type-string field--label-hidden">National Transportation Atlas Database</span>
+</h1>
+    
+
+    
+          <div class='mb-4'> Monday, December 5, 2022</div>
+    
+          <div class="mb-4 clearfix">
+        
+        <p><img alt src="/sites/bts.dot.gov/files/u126/Background-Strip_modes-and-categories-page-1024x25_0.png" style="width: 1024px; height: 25px;"></p>
+
+<p>The <a href="https://geodata.bts.gov/">National Transportation Atlas Database (NTAD)</a>, published by BTS, is a set of nationwide geographic databases of transportation facilities, transportation networks, and associated infrastructure.&nbsp; These datasets include spatial information for transportation modal networks and intermodal terminals, as well as the related attribute information for these features.&nbsp; There are around 90 total datasets that make up NTAD.&nbsp; Metadata documentation, as prescribed by the Federal Geographic Data Committee (FGDC), is also provided for each database. These data support research, analysis, and decision-making across all modes of transportation.&nbsp; They are most useful at the national level, but have major applications at regional, state, and local scales throughout the transportation community.&nbsp; The current NTAD databases are designed for use within a geographic information system (GIS); however, the attribute data for each dataset can be accessed in any database, spreadsheet, or other software package.&nbsp; In 2016, NTAD switched from an annual update to updates on a continuous basis.&nbsp; The BTS is interested in providing different distribution approaches and developing additional datasets.&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;</p>
+<img alt="&quot;NTAD Logo&quot;" data-entity-type="file" data-entity-uuid="84740b6d-af89-48dc-94ba-6ee5efce2c05" height="197" src="/sites/bts.dot.gov/files/inline-images/NTAD%20Logo.png" width="150" loading="lazy" class="align-center">
+      </div>
+      
+    
+    
+    <aside class="subcontent section w-100 clearfix" role="complementary">
+      <!-- This block where the sidecontent is located @media (max-width:800px) -->
+    </aside>
+
+  </div>
+</article>
+
+    </div>
+  </div>
+
+
+                  </section>
+                </div>
+              
+              
+              
+              <!-- Sub Content Region -->
+                          </div>
+          </div>
+              </div>
+
+      
+          </main>
+
+     <footer class="site-footer">
+      <div class="container">
+              <div class="site-footer__top">
+            <section class="region region-footer-left">
+    <div id="block-footer-contact-info" class="block block-fixed-block-content block-fixed-block-contentfooter-contact-info">
+  
+    
+      <div class="content">
+      
+            <div class="clearfix text-formatted field field--name-body field--type-text-with-summary field--label-hidden field__item"><p>U.S. DEPARTMENT OF TRANSPORTATION</p>
+
+<p><strong>Bureau of Transportation Statistics</strong></p>
+
+<p>1200 NEW JERSEY AVENUE, SE</p>
+
+<p>WASHINGTON, DC 20590</p>
+
+<p>800-853-1351</p>
+</div>
+      
+    </div>
+  </div>
+
+  </section>
+
+            <section class="region region-footer-right">
+    <div id="block-bts-footer-social" class="block block-fixed-block-content block-fixed-block-contentbts-footer-social">
+  
+    
+      <div class="content">
+      
+            <div class="clearfix text-formatted field field--name-body field--type-text-with-summary field--label-hidden field__item"><p><a class="subscribe-button" href="https://public.govdelivery.com/accounts/USDOT/subscriber/new?category_id=USDOT_C17">Subscribe to email updates</a></p>
+
+<ul class="footer-social">
+	<li><a href="https://twitter.com/bts_usdot"><span class="fontawesome-icon-inline"><i class="fa-brands fa-x-twitter"></i></span></a></li>
+	<li><a href="https://www.linkedin.com/company/bureau-of-transportation-statistics-bts"><span class="fontawesome-icon-inline"><i class="fa-brands fa-linkedin-in"></i></span></a></li>
+	<li><a href="https://www.instagram.com/bts_usdot"><span class="fontawesome-icon-inline"><i class="fa-brands fa-instagram"></i></span></a></li>
+	<li><a href="https://www.youtube.com/@bureauoftransportationstat1034/videos"><span class="fontawesome-icon-inline"><i class="fa-brands fa-youtube"></i></span></a></li>
+	<li><a href="https://public.govdelivery.com/accounts/USDOT/subscriber/new?category_id=USDOT_C17"><span class="fontawesome-icon-inline"><i class="fa-solid fa-envelope"></i></span></a></li>
+</ul>
+</div>
+      
+    </div>
+  </div>
+
+  </section>
+
+        </div>
+                    <div class="site-footer__bottom">
+            <section class="region region-footer-first">
+      <nav aria-labelledby="block-newfooternav1-menu" id="block-newfooternav1" class="block block-menu navigation menu--new-footer-nav-1">
+      
+  <h2  id="block-newfooternav1-menu">About</h2>
+  
+
+        
+              <ul block="block-newfooternav1" class="clearfix nav">
+                    <li class="nav-item">
+                <a href="/about-BTS" class="nav-link nav-link--about-bts" data-drupal-link-system-path="node/239971">About BTS</a>
+              </li>
+                <li class="nav-item">
+                <a href="/learn-about-bts-and-our-work/contact-us" class="nav-link nav-link--learn-about-bts-and-our-work-contact-us" data-drupal-link-system-path="node/117496">Contact Us</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://transportation.libanswers.com/" class="nav-link nav-link-https--transportationlibanswerscom-">FAQs</a>
+              </li>
+                <li class="nav-item">
+                <a href="/jobs" class="nav-link nav-link--jobs" data-drupal-link-system-path="node/233181">Jobs and Internships</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/administrations/research-and-technology" class="nav-link nav-link-https--wwwtransportationgov-administrations-research-and-technology">DOT Research and Technology (OST-R)</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+            <section class="region region-footer-second">
+      <nav aria-labelledby="block-newfooternav2-menu" id="block-newfooternav2" class="block block-menu navigation menu--new-footer-nav-2">
+      
+  <h2  id="block-newfooternav2-menu">Resources</h2>
+  
+
+        
+              <ul block="block-newfooternav2" class="clearfix nav">
+                    <li class="nav-item">
+                <a href="https://transportation.libanswers.com/form.php?queue_id=1810" class="nav-link nav-link-https--transportationlibanswerscom-formphpqueue-id1810">Ask a Librarian</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://data.bts.gov/" class="nav-link nav-link-https--databtsgov-">BTS Open Data Catalog</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://ntl.bts.gov/" class="nav-link nav-link-https--ntlbtsgov-">National Transportation Library</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transtats.bts.gov/ONTIME/" class="nav-link nav-link-https--wwwtranstatsbtsgov-ontime-">Search for On-Time Flight Data</a>
+              </li>
+                <li class="nav-item">
+                <a href="/learn-about-bts-and-our-work/acronyms-and-terms-guide" class="nav-link nav-link--learn-about-bts-and-our-work-acronyms-and-terms-guide" data-drupal-link-system-path="node/238291">Acronyms and Terms Guide</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+            <section class="region region-footer-third">
+      <nav aria-labelledby="block-newfooternav3-menu" id="block-newfooternav3" class="block block-menu navigation menu--new-footer-nav-3">
+      
+  <h2  id="block-newfooternav3-menu">Policies, Rights and Legal</h2>
+  
+
+        
+              <ul block="block-newfooternav3" class="clearfix nav">
+                    <li class="nav-item">
+                <a href="https://www.transportation.gov/about" class="nav-link nav-link-https--wwwtransportationgov-about">About DOT</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/budget/dot-budget-and-performance" class="nav-link nav-link-https--wwwtransportationgov-budget-dot-budget-and-performance">Budget and Performance</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.civilrights.dot.gov/" class="nav-link nav-link-https--wwwcivilrightsdotgov-">Civil Rights</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/mission/office-secretary/office-chief-information-officer/digital-accessibility-statement" class="nav-link nav-link-https--wwwtransportationgov-mission-office-secretary-office-chief-information-officer-digital-accessibility-statement">Digital Accessibility</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/ethics" class="nav-link nav-link-https--wwwtransportationgov-ethics">Ethics</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/foia" class="nav-link nav-link-https--wwwtransportationgov-foia">FOIA</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/dot-information-dissemination-quality-guidelines" class="nav-link nav-link-https--wwwtransportationgov-dot-information-dissemination-quality-guidelines">Information Quality</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.civilrights.dot.gov/civil-rights-awareness-enforcement/employment-related/affirmative-employment/no-fear-act" class="nav-link nav-link-https--wwwcivilrightsdotgov-civil-rights-awareness-enforcement-employment-related-affirmative-employment-no-fear-act">No FEAR Act</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.oig.dot.gov/" class="nav-link nav-link-https--wwwoigdotgov-">Office of Inspector General</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/dot-website-privacy-policy" class="nav-link nav-link-https--wwwtransportationgov-dot-website-privacy-policy">Privacy Policy</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.usa.gov/" class="nav-link nav-link-https--wwwusagov-">USA.gov</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/web-policies" class="nav-link nav-link-https--wwwtransportationgov-web-policies">Web Policies and Notices</a>
+              </li>
+                <li class="nav-item">
+                <a href="https://www.transportation.gov/web-standards" class="nav-link nav-link-https--wwwtransportationgov-web-standards">Web Standards</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>
+
+  </section>
+
+          
+          
+        </div>
+          </div>
+  </footer>
+
+  </div>
+</div>
+
+  </div>
+
+    
+  <script src="/sites/bts.dot.gov/files/js/js_exfkTsaUKOF8owEqSWAKAPdkuFLtjKuSjIj3NyfyCHI.js?scope=footer&amp;delta=0&amp;language=en&amp;theme=bts&amp;include=eJxdjlEOwyAMQy9Ex5FQgAixugSRILW3H9q6n_4lz7bsaOoLJBI2tQu1FZcEoK41QtLukwx2fHZqOdwKBwL8j21_tjy24rvPY3bC635dESlYiUa4rKbV9gDukEx4juhzlGV60xn6kMSqMryNWgqP8BWd2uonSONgfHSQsfoo-doSSNVNWD24Tf8_Pg9TXYg"></script>
+<script src="/modules/contrib/collapsiblock/theme/dist/collapsiblock.js?tmyw7n" type="module"></script>
+<script src="/sites/bts.dot.gov/files/js/js_LouO71NwVeS99kOaxe909-LabffagnHYsb6VgG_qV24.js?scope=footer&amp;delta=2&amp;language=en&amp;theme=bts&amp;include=eJxdjlEOwyAMQy9Ex5FQgAixugSRILW3H9q6n_4lz7bsaOoLJBI2tQu1FZcEoK41QtLukwx2fHZqOdwKBwL8j21_tjy24rvPY3bC635dESlYiUa4rKbV9gDukEx4juhzlGV60xn6kMSqMryNWgqP8BWd2uonSONgfHSQsfoo-doSSNVNWD24Tf8_Pg9TXYg"></script>
+<script src="/modules/contrib/purge_ajax_processor/js/trigger_purge.js?tmyw7n" defer async></script>
+<script src="/sites/bts.dot.gov/files/js/js_Kr40oPueGx9ojwhsCy95OcQ4fJH0o8tkrDaSzP5hC1k.js?scope=footer&amp;delta=4&amp;language=en&amp;theme=bts&amp;include=eJxdjlEOwyAMQy9Ex5FQgAixugSRILW3H9q6n_4lz7bsaOoLJBI2tQu1FZcEoK41QtLukwx2fHZqOdwKBwL8j21_tjy24rvPY3bC635dESlYiUa4rKbV9gDukEx4juhzlGV60xn6kMSqMryNWgqP8BWd2uonSONgfHSQsfoo-doSSNVNWD24Tf8_Pg9TXYg"></script>
+</js-bottom-placeholder>
+  </body>
+</html>
