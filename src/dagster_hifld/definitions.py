@@ -29,6 +29,12 @@ from dagster_hifld.assets.epa_frs_sic_powerplants import (
     epa_frs_sic_draft_schedule,
     epa_frs_sic_published_membership_compatible,
 )
+from dagster_hifld.assets.epa_icis_wastewater_naics import (
+    epa_icis_wastewater_naics_complete,
+    epa_icis_wastewater_naics_draft_schedule,
+    epa_icis_wastewater_naics_published_membership_compatible,
+    epa_icis_wastewater_naics_release_approved,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -424,9 +430,12 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete,
                   epa_frs_naics_complete, epa_frs_naics_published_membership_compatible,
-                  epa_frs_sic_complete, epa_frs_sic_published_membership_compatible],
+                  epa_frs_sic_complete, epa_frs_sic_published_membership_compatible,
+                  epa_icis_wastewater_naics_complete,
+                  epa_icis_wastewater_naics_published_membership_compatible,
+                  epa_icis_wastewater_naics_release_approved],
     schedules=[epa_power_generation_draft_schedule, epa_frs_naics_draft_schedule,
-               epa_frs_sic_draft_schedule],
+               epa_frs_sic_draft_schedule, epa_icis_wastewater_naics_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
