@@ -743,3 +743,66 @@ Frozen full-suite validation of code checkpoint `0223a2c`: **522 local tests,
 success is inferred. The focused module has eleven passing tests. This additive
 content validator does not require rerunning large source-data builds; existing
 registered synthetic Dagster integration tests ran as part of the full suite.
+
+The Git/content helper `0223a2c` and replay/evidence followup `b2fd862` received
+separate independent PASS (all 50 actual processing blobs, historical/current
+commits, dirty-worktree/env/graft/ref adversarial probes and all five false-code
+claims). That content proof does not establish execution time or acceptance.
+
+`construction_state.py` now supplies an additive **local** durable first-construction
+protocol. `canonical_construction_bundle(version, fingerprint, payload)` creates
+a bounded canonical JSON envelope. `seal_first_construction(storage, record_key,
+version, fingerprint, body)` stores complete original bytes under a SHA-256 CAS
+key, then a write-once marker binding version/fingerprint/digest/evidence key,
+then the primary alias. `load_first_construction` requires all three, with exact
+CAS bytes equal to the alias. Returned original bytes never become newer refresh
+receipts. Record keys live under reserved `_construction-state/`, outside normal
+dataset/file/version discovery and whole-candidate quarantine. The storage
+prefix, key components, version, fingerprint, JSON types, nesting and size are
+validated. `ConstructionStateError(ValueError).code` exposes stable reasons.
+
+ANY incomplete state blocks creation, including marker-only, CAS-only, retained
+pending writes and alias-without-marker. Repeated refresh after quarantine cannot
+rebind the same version even with new receipts. Marker-write failure after CAS
+preserves the original complete bytes; a missing/corrupt referenced CAS blocks
+both load and seal despite valid marker/alias labels. There is no bootstrap or
+automatic trust repair. An operator may restore **exact independently trusted
+original bytes**; the synthetic harness demonstrates this external action and
+the API never performs it. If an actor removes **all** outside witnesses,
+first-use and deleted history are indistinguishable without a separately
+protected inventory: this helper does not invent that guarantee.
+
+Writes use descriptor-relative no-follow directory/file access, bounded regular
+single-link reads, durable temporary writes, atomic no-replace links and fsync.
+Conflicting writes preserve the concurrent winner and the complete losing bundle
+as evidence. Interrupted temporary evidence remains retained. Remote storage is
+explicitly unsupported/fail-closed; no cross-object cloud transaction or global
+lock is claimed. Callers must retain their common version lock, finish and
+validate a private candidate first, and independently validate original capture
+semantics, immutable processing identity and Git content. Payload semantics,
+complete source receipts and provenance remain source-owned. This change does
+not wire or rewrite any existing dataset adapter, change release gates, approve
+a source/baseline/contract or authorize production.
+
+Ten new real-filesystem lifecycle/fault tests and eleven prior Git tests passed.
+The new `scripts/verification/construction_state_local.py` registers actual
+isolated Dagster construction/preparation/promotion assets and durable jobs.
+It verifies initial construction, newer-receipt refresh, source failure, missing
+alias preparation, **two** failed refreshes, exact external restoration and the
+real missing-registry release gate. The prior raw source, outside witnesses and
+published sentinel remain unchanged. The initial harness attempt failed before
+any construction on Dagster telemetry's unwritable default home; the isolated
+home/telemetry configuration was corrected and that historical failed run is
+retained. The [state evidence](../evidence/2026-10-19-first-construction-state.json)
+records frozen code, full validation, actual run IDs and this limitation.
+
+Frozen state checkpoint `a86e831` validation: **532 local tests, 531 passed,
+one production-write opt-in skipped, zero errors/failures** in 111.075 seconds,
+with real Tippecanoe and the pinned sibling IaC checkout. The frozen registered
+fixture succeeded at `23521301-614d-4547-9e35-3fcdd67a0904`, preserved original
+receipts at `05b75545-3477-4a3d-8271-360a035b3619`, and blocked five intended
+failure runs; its second missing-alias refresh was
+`06a9c69e-4b62-4666-97af-402b8f249585`. All four staged objects and the published
+sentinel remained byte-identical. Exact code/test/harness and log pins are in
+the state evidence; independent review is pending for this new slice. No CI or
+real release success is inferred.
