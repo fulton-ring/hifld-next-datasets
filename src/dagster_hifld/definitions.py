@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.census_bureau import (
+    aiannh_source_integrity_refresh_job,
+    aiannh_source_integrity_refresh_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
@@ -393,6 +397,8 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
+    jobs=[aiannh_source_integrity_refresh_job],
+    schedules=[aiannh_source_integrity_refresh_schedule],
     executor=_default_executor(),
     resources={
         "staging_storage": StagingStorageResource.from_env(),

@@ -24,7 +24,7 @@ import httpx
 from pyproj import CRS
 from shapely.geometry import mapping, shape
 
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import verifier_implementation_sha256
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
@@ -166,10 +166,12 @@ def inspect_archive(body: bytes, directory: Path) -> tuple[list[dict], dict, dic
     return sorted(rows, key=lambda r: r['properties']['GEOID']), audit, members
 
 
-def _quarantine(storage: StagingStorageResource, body: bytes, report: dict) -> str:
+def _quarantine(storage: StagingStorageResource, body: bytes, report: dict, artifacts: dict[str, bytes] | None = None) -> str:
     prefix = f'_quarantine/{SLUG}/{_sha(body)}/{uuid4().hex}'
     _immutable_stage(storage, f'{prefix}/response.body', body)
     _immutable_stage(storage, f'{prefix}/report.json', _json(report))
+    for name, data in (artifacts or {}).items():
+        _immutable_stage(storage, f'{prefix}/derivatives/{name}', data)
     return prefix
 
 
@@ -181,8 +183,13 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
     request. Default fetch is anonymous, bounded, timeout-limited, full HTTP200.
     A stable content+builder version preserves the first provenance on reruns.
     """
+    if isinstance(storage, PublishedStorageResource) or not (storage.use_local or not storage.bucket):
+        # This implementation is an explicitly local working draft. Operator
+        # activation and a separately reviewed deployment are not implied.
+        raise AiannhQuarantineError('aiannh_draft_requires_isolated_local_staging_storage')
     received_at = datetime.now(timezone.utc).isoformat()
     body = b''
+    quarantine_artifacts = {}
     retrieval = {'mode': 'preserved_capture' if archive_path else 'anonymous_http',
                  'url': f'https://www2.census.gov/geo/tiger/TIGER{vintage}/AIANNH/tl_{vintage}_us_aiannh.zip'}
     try:
@@ -287,6 +294,9 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
                     'geometry': mapping(shape(f['geometry'])) if f['geometry'] else None}) for f in src))
             fidelity = compare_derivative(source_records, derivative_records, directory / 'fidelity')
             if fidelity['status'] != 'pass':
+                quarantine_artifacts = {'source_native.gpkg': geopackage.read_bytes(),
+                                        'source_fidelity.json': _json(fidelity),
+                                        'full_differences.jsonl': (directory / 'fidelity/baseline_differences.jsonl').read_bytes()}
                 raise AiannhQuarantineError('geopackage_derivative_fidelity_failed')
             gpkg_bytes = geopackage.read_bytes()
             gpkg_report = (directory / 'fidelity/baseline_comparison.json').read_bytes()
@@ -313,10 +323,11 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
         return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
                 'candidate_sha256': _sha(records), 'source_sha256': PIN, 'status': ready['status'],
                 'written_keys': sorted(f'{prefix}/{name}' for name in payloads)}
-    except (ValueError, TypeError, KeyError, OverflowError, struct.error, OSError, RuntimeError, zipfile.BadZipFile, fiona.errors.FionaError, httpx.HTTPError) as exc:
+    except (ValueError, TypeError, KeyError, OverflowError, struct.error, OSError, RuntimeError, sqlite3.Error, zipfile.BadZipFile, fiona.errors.FionaError, httpx.HTTPError) as exc:
         report = {'status': 'quarantined', 'approved': False, 'reason': str(exc), 'vintage': vintage,
-                  'received_at': received_at, 'retrieval': retrieval, 'sha256': _sha(body), 'bytes': len(body)}
-        key = _quarantine(storage, body, report)
+                  'received_at': received_at, 'retrieval': retrieval, 'sha256': _sha(body), 'bytes': len(body),
+                  'bounded_capture_may_be_partial': len(body) > MAX_ARCHIVE_BYTES}
+        key = _quarantine(storage, body, report, quarantine_artifacts)
         raise AiannhQuarantineError(f'{exc}; retained:{key}') from exc
 
 

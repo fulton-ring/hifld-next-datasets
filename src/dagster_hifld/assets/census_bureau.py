@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
-from dagster import AssetKey, Config, asset
+from dagster import (
+    AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job,
+)
 
 from dagster_hifld.sources.aiannh import stage_aiannh_candidate
 from dagster_hifld.resources import StagingStorageResource
@@ -42,3 +44,20 @@ def census_bureau_aiannh_areas(context, staging_storage: StagingStorageResource,
     context.add_output_metadata({key: result[key] for key in
                                  ('version', 'feature_count', 'source_sha256', 'candidate_sha256', 'status')})
     return result
+
+
+# An explicit inactive schedule for fixed-vintage integrity refreshes. It selects
+# only the local draft ingest; neither conversion nor publication is scheduled.
+aiannh_source_integrity_refresh_job = define_asset_job(
+    "aiannh_source_integrity_refresh",
+    selection=AssetSelection.assets(census_bureau_aiannh_areas),
+)
+aiannh_source_integrity_refresh_schedule = ScheduleDefinition(
+    name="aiannh_tiger2023_monthly_integrity_refresh",
+    job=aiannh_source_integrity_refresh_job,
+    cron_schedule="0 3 1 * *",
+    execution_timezone="America/New_York",
+    default_status=DefaultScheduleStatus.STOPPED,
+    run_config={"ops": {census_bureau_aiannh_areas.op.name: {"config": {"vintage": 2023}}}},
+    description="Inactive monthly03:00 America/New_York integrity refresh of fixed TIGER2023 into isolated local draft staging; no annual substitution or publication.",
+)

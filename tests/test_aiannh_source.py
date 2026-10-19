@@ -6,11 +6,15 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import httpx
+from dagster import DefaultScheduleStatus, build_schedule_context
 
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.assets.census_bureau import aiannh_source_integrity_refresh_schedule
+from dagster_hifld.definitions import defs
 from dagster_hifld.sources.aiannh import (
     AiannhQuarantineError, ARCHIVE_NAME, PIN, PROPOSAL, SCHEMA, SLUG,
     MEMBERS, _immutable_stage, _population_audit, inspect_archive, stage_aiannh_candidate,
@@ -48,6 +52,27 @@ class AiannhSourceTests(unittest.TestCase):
         result = self.audit([invalid]); self.assertEqual(result['invalid_geometry_count'], 1)
         self.assertIn('geometry_drift_or_invalid', result['reasons'])
         self.assertIn('native_crs_drift', _population_audit([row()], {'properties': SCHEMA, 'geometry': 'Polygon'}, 'EPSG:3857')['reasons'])
+
+    def test_remote_or_published_destinations_are_rejected_before_network_or_write(self):
+        for storage in (StagingStorageResource(bucket='must-never-contact', use_local=False),
+                        PublishedStorageResource(local_dir='/tmp/must-never-write', use_local=True)):
+            with patch('dagster_hifld.sources.aiannh.httpx.Client') as client:
+                with self.assertRaisesRegex(AiannhQuarantineError, 'isolated_local_staging'):
+                    stage_aiannh_candidate(storage)
+                client.assert_not_called()
+
+    def test_monthly_schedule_resolves_stopped_and_selects_only_fixed2023(self):
+        schedule = aiannh_source_integrity_refresh_schedule
+        self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
+        self.assertEqual(schedule.execution_timezone, 'America/New_York')
+        self.assertEqual(schedule.cron_schedule, '0 3 1 * *')
+        job = defs.get_job_def('aiannh_source_integrity_refresh')
+        self.assertEqual(list(job.graph.node_dict), ['ingest__aiannh_areas_1__aiannh_areas_1'])
+        with build_schedule_context(scheduled_execution_time=datetime(2026, 11, 1, 8, tzinfo=timezone.utc)) as context:
+            tick = schedule.evaluate_tick(context)
+        self.assertEqual(len(tick.run_requests), 1)
+        config = tick.run_requests[0].run_config
+        self.assertEqual(config['ops']['ingest__aiannh_areas_1__aiannh_areas_1']['config'], {'vintage': 2023})
 
     def test_changed_bytes_quarantine_preserves_exact_response_and_existing_stage(self):
         with tempfile.TemporaryDirectory() as directory:
