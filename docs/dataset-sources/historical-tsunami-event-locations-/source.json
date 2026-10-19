@@ -1459,8 +1459,9 @@
       "full_passed": 547,
       "full_skipped": 1
     },
-    "actual_registered_runs": 30,
+    "actual_registered_runs": 32,
     "repaired_head_independent_review": "pending",
-    "approved": false
+    "approved": false,
+    "docs_only_historical_code_and_synthetic_receipt_context_verified": true
   }
 }

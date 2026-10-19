@@ -440,5 +440,48 @@
   },
   "production_publication": false,
   "independent_repaired_head_review": "pending",
-  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8"
+  "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
+  "docs_history_and_synthetic_receipt_context": {
+    "result": {
+      "classification": "actual registered refresh after docs-only history + synthetic receipt-only context, no new HTTP observation/acceptance",
+      "head": "e61f01d32a06e2ca219e085cf1288fe46667301b",
+      "source_code_commit": "794445aef8285ad35a7246d775081a1e2edcaf6d",
+      "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-bec17bdffd7cc559",
+      "runs": [
+        {
+          "kind": "docs_only_HEAD_original_code_and_receipts_reused",
+          "run_id": "5a3ede96-3a63-407d-b031-6fc2915a7760",
+          "success": true
+        },
+        {
+          "kind": "synthetic_new_receipts_do_not_rebind_original",
+          "run_id": "0c8635bd-3674-41c5-92c9-4c16df1cbce6",
+          "success": true
+        }
+      ],
+      "candidate_bytes_unchanged": true,
+      "original_state_bytes_unchanged": true,
+      "original_raw_depot_objects_preserved": 70,
+      "new_synthetic_receipt_evidence_retained": 35,
+      "prior_fixture_preserved": true
+    },
+    "result_pin": {
+      "path": "/workspace/work/hifld-coordinator/113/construction-state-runtime/receipt-docs-history.json",
+      "sha256": "56a5a5d8878bc83306c7e33258eb243a1f50a77be052eca6a0ffbaf395297a50",
+      "bytes": 874
+    },
+    "script": {
+      "path": "/workspace/hifld-worker-worktrees/113/docs/dataset-sources/historical-tsunami-event-locations-/evidence/verify_receipt_docs_history.py",
+      "sha256": "136f5a79de7db39af232304f4cbbb5f7ceee4c6c6f7b5dad42b091d3ce0a8dad",
+      "bytes": 3438
+    },
+    "log": {
+      "path": "/workspace/work/hifld-coordinator/113/receipt-docs-history.log",
+      "sha256": "313d1899625eda8433d361a7c7db8aaea3c972d65b78edf58ce426fc4cb8228b",
+      "bytes": 4892
+    },
+    "command": "PYTHONPATH=/workspace/hifld-worker-worktrees/113:/workspace/hifld-worker-worktrees/113/src /workspace/hifld-worker-worktrees/19/.venv/bin/python /workspace/work/hifld-coordinator/113/verify_receipt_docs_history.py",
+    "live_HTTP_claim": false
+  },
+  "actual_registered_total_runs": 32
 }
