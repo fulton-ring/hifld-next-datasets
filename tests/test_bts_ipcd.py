@@ -16,11 +16,17 @@ from dagster_hifld.sources.bts_ipcd import (
     LAYER_ID,
     LAYER_NAME,
     SERVICE_URL,
+    _canonical,
+    _load_retained_capture,
     _arrow_type,
+    _sha,
 )
 import pyarrow as pa
 from dagster import DefaultScheduleStatus
 import unittest
+import tempfile
+import json
+from pathlib import Path
 
 
 class TestBtsIpcd(unittest.TestCase):
@@ -46,3 +52,44 @@ class TestBtsIpcd(unittest.TestCase):
         self.assertEqual(_arrow_type({"type": "esriFieldTypeInteger"}), pa.int32())
         self.assertEqual(_arrow_type({"type": "esriFieldTypeDouble"}), pa.float64())
         self.assertEqual(_arrow_type({"type": "esriFieldTypeDate"}), pa.int64())
+
+    def test_retained_capture_replay_preserves_original_receipt_and_time(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            body, wire = b'{"features":[]}', b'wire-bytes'
+            receipt = {
+                "url": "https://example.invalid/source", "final_url": "https://example.invalid/source",
+                "status": 200, "complete_body": True, "error_code": None,
+                "bytes": len(body), "sha256": _sha(body),
+                "wire_bytes": len(wire), "wire_sha256": _sha(wire),
+                "observed_at": "2026-10-19T22:20:54.063734+00:00",
+            }
+            (root / "page_000.body").write_bytes(body)
+            (root / "page_000.wire").write_bytes(wire)
+            (root / "page_000.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            captured_at = "2026-10-19T22:20:54.063734+00:00"
+            (root / "capture_manifest.json").write_bytes(_canonical({
+                "complete": True, "captured_at": captured_at, "receipts": {"page_000": receipt}
+            }) + b"\n")
+            captures, observed_capture_time = _load_retained_capture(root)
+            self.assertEqual(observed_capture_time, captured_at)
+            self.assertEqual(captures["page_000"], (body, receipt))
+
+    def test_retained_capture_replay_rejects_changed_wire_body(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            body, wire = b'{"features":[]}', b'original-wire'
+            receipt = {
+                "url": "https://example.invalid/source", "final_url": "https://example.invalid/source",
+                "status": 200, "complete_body": True, "error_code": None,
+                "bytes": len(body), "sha256": _sha(body),
+                "wire_bytes": len(wire), "wire_sha256": _sha(wire),
+            }
+            (root / "page_000.body").write_bytes(body)
+            (root / "page_000.wire").write_bytes(b"changed-wire")
+            (root / "page_000.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            (root / "capture_manifest.json").write_bytes(_canonical({
+                "complete": True, "receipts": {"page_000": receipt}
+            }) + b"\n")
+            with self.assertRaisesRegex(ValueError, "retained_capture_integrity_failed"):
+                _load_retained_capture(root)

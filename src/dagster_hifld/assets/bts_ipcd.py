@@ -7,11 +7,17 @@ from dagster_hifld.sources.bts_ipcd import DATASET_SLUG, FILE_SLUG, capture_bts_
 
 class BtsIpcdConfig(Config):
     capture_directory: str = ""
+    reuse_capture_directory: str = ""
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="bts", compute_kind="http",
       description="Official USDOT_BTS IPCD final snapshot. BTS states it is no longer updated and latest information is from 2022; adoption and continuity remain release gates.")
 def bts_intermodal_passenger_connectivity_database_ipcd(context, config: BtsIpcdConfig, staging_storage: StagingStorageResource) -> dict:
-    result = capture_bts_ipcd(staging_storage, version=build_version_id(context), capture_directory=config.capture_directory or None)
+    result = capture_bts_ipcd(
+        staging_storage,
+        version=build_version_id(context),
+        capture_directory=config.reuse_capture_directory or config.capture_directory or None,
+        reuse_retained_capture=bool(config.reuse_capture_directory),
+    )
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])])
     context.add_output_metadata(result)
     return result

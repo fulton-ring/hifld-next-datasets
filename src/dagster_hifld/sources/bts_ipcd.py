@@ -239,7 +239,32 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
-def capture_bts_ipcd(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None) -> dict[str, object]:
+def _load_retained_capture(capture_root: Path) -> tuple[dict[str, tuple[bytes, dict[str, object]]], str]:
+    """Load an exact earlier source capture without changing its receipts or timestamps."""
+    manifest_path = capture_root / "capture_manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    receipts = manifest.get("receipts")
+    if manifest.get("complete") is not True or not isinstance(receipts, dict):
+        raise ValueError("retained_capture_not_complete")
+    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    for name, original in receipts.items():
+        if not isinstance(name, str) or not isinstance(original, dict):
+            raise ValueError("retained_capture_receipt_invalid")
+        body = (capture_root / f"{name}.body").read_bytes()
+        wire = (capture_root / f"{name}.wire").read_bytes()
+        receipt_bytes = (capture_root / f"{name}.receipt.json").read_bytes()
+        receipt = json.loads(receipt_bytes)
+        if (receipt != original or receipt_bytes != _canonical(receipt) + b"\n"
+                or receipt.get("complete_body") is not True or receipt.get("status") != 200
+                or receipt.get("final_url") != receipt.get("url") or receipt.get("error_code") is not None
+                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+            raise ValueError("retained_capture_integrity_failed:" + name)
+        captures[name] = (body, receipt)
+    return captures, str(manifest.get("captured_at") or "")
+
+
+def capture_bts_ipcd(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None, reuse_retained_capture: bool = False) -> dict[str, object]:
     """Capture and stage one complete unapproved source candidate."""
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
@@ -251,33 +276,38 @@ def capture_bts_ipcd(storage: StagingStorageResource, *, version: str, capture_d
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000: raise ValueError("disk_floor_before_acquisition")
     attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/129/captures")
-    capture_root = attempt_root / f"{version}-{uuid4().hex}"
-    capture_root = capture_root.absolute()
+    capture_root = attempt_root.absolute() if reuse_retained_capture else (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
-    capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
-    try:
-        with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/bts-ipcd-frozen-snapshot-draft"}) as client:
-            seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
-                raise ValueError("source_seed_id_count_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _feature_urls(seed):
-                body, receipt = _fetch(client, url, capture_root, name)
-                captures[name] = (body, receipt)
+    captured_at = ""
+    if reuse_retained_capture:
+        captures, captured_at = _load_retained_capture(capture_root)
         layer, fields, extracted = _validate_captures(captures)
-    except Exception as exc:
-        receipts = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
-        (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-        if captures:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          captures, type(exc).__name__)
-        raise
+    else:
+        capture_root.mkdir(parents=True, exist_ok=True)
+        try:
+            with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/bts-ipcd-frozen-snapshot-draft"}) as client:
+                seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
+                    raise ValueError("source_seed_id_count_drift")
+                captures["ids_seed"] = (seed_body, seed_receipt)
+                for name, url in _feature_urls(seed):
+                    body, receipt = _fetch(client, url, capture_root, name)
+                    captures[name] = (body, receipt)
+            layer, fields, extracted = _validate_captures(captures)
+        except Exception as exc:
+            receipts = {}
+            for path in sorted(capture_root.glob("*.receipt.json")):
+                try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+                except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
+            (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
+            if captures:
+                quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
+                                              captures, type(exc).__name__)
+            raise
+        captured_at = datetime.now(timezone.utc).isoformat()
 
     identity = _code_identity()
     parquet_body = _parquet_bytes(fields, extracted["features"])
@@ -299,7 +329,8 @@ def capture_bts_ipcd(storage: StagingStorageResource, *, version: str, capture_d
                                       audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    if not reuse_retained_capture:
+        (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":captured_at,"complete":True,"error_code":None,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
         "geoparquet/intermodal-passenger-connectivity-database-ipcd.parquet":parquet_body,
