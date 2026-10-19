@@ -1,0 +1,11 @@
+{
+  "url": "https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/",
+  "final_url": "https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/",
+  "status": 200,
+  "bytes": 111325,
+  "sha256": "50d76b5254869d84e100deb73a28cd767c7ea220bf51f9236c1bd27748b962c0",
+  "checked_at": "2026-10-19T04:54:40.871025+00:00",
+  "headers": {
+    "content-type": "text/html;charset=UTF-8"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "url": "https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/enroute/",
+  "final_url": "https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/enroute/",
+  "status": 404,
+  "bytes": 1245,
+  "sha256": "dc1d54dab6ec8c00f70137927504e4f222c8395f10760b6beecfcfa94e08249f",
+  "checked_at": "2026-10-19T04:54:25.239236+00:00",
+  "headers": {
+    "content-type": "text/html",
+    "content-length": "1245"
+  }
+}

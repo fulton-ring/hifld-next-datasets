@@ -1,0 +1,11 @@
+{
+  "url": "https://www.arcgis.com/sharing/rest/content/items/67885972e4e940b2aa6d74024901c561?f=pjson",
+  "final_url": "https://www.arcgis.com/sharing/rest/content/items/67885972e4e940b2aa6d74024901c561?f=pjson",
+  "status": 200,
+  "bytes": 3119,
+  "sha256": "99c0a57d6c3d2f3227618435f091bdbe8454a554b6db8c72a2ebf59c24aa4d39",
+  "checked_at": "2026-10-19T04:54:07.365059+00:00",
+  "headers": {
+    "content-type": "text/plain;charset=utf-8"
+  }
+}

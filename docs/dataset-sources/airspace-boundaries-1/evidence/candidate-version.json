@@ -1,0 +1,15 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/airspace-boundaries-1/airspace-boundaries-1/v1.0.0/collection.json",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/airspace-boundaries-1/airspace-boundaries-1/v1.0.0/collection.json",
+  "status": 200,
+  "bytes": 22328,
+  "sha256": "1b6ba37a1195aedbf27fa4edd86b8731fda307a06b1ec3cf10713bf0928ee258",
+  "checked_at": "2026-10-19T04:54:40.599740+00:00",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "last-modified": "Sat, 10 Oct 2026 00:20:14 GMT",
+    "etag": "\"3926d34414e4519493a15c5f8e7c85e2\"",
+    "x-goog-generation": "1791591614563923",
+    "content-length": "22328"
+  }
+}

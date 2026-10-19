@@ -1,0 +1,12 @@
+{
+  "url": "https://www.datalumos.org/datalumos/project/238568/version/V1/view",
+  "final_url": "https://www.datalumos.org/datalumos/project/238568/version/V1/view",
+  "status": 403,
+  "bytes": 6136,
+  "sha256": "3e34b59dc93e3ed4ac4b5db34e63994b4d292e35d4a595e519e211c7b4a43e60",
+  "checked_at": "2026-10-19T04:54:07.264960+00:00",
+  "headers": {
+    "content-type": "text/html; charset=UTF-8",
+    "content-length": "6136"
+  }
+}

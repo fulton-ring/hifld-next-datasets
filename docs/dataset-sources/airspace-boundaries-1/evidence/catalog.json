@@ -1,0 +1,14 @@
+{
+  "url": "https://hifld.publicenvirodata.org/api/collections/hifld/datasets/airspace-boundaries-1",
+  "final_url": "https://hifld.publicenvirodata.org/api/collections/hifld/datasets/airspace-boundaries-1",
+  "status": 200,
+  "bytes": 2445,
+  "sha256": "e34bbd3c8e04466ee39a6e40d9a52ffa79ba4790f747d58f18f870f079cebf13",
+  "checked_at": "2026-10-19T04:54:07.625267+00:00",
+  "headers": {
+    "content-length": "2445",
+    "content-type": "application/json",
+    "etag": "\"f69b24facc24f4863f13d6296dd205aa\"",
+    "last-modified": "Sat, 10 Oct 2026 00:20:14 GMT"
+  }
+}

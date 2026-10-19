@@ -1,0 +1,12 @@
+{
+  "url": "https://doi.org/10.3886/E241367V1",
+  "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+  "status": 403,
+  "bytes": 6136,
+  "sha256": "82094083eb0fedc26281e2b87ba857f64f680f3020908d7bf0389c8e2233514a",
+  "checked_at": "2026-10-19T04:54:07.164981+00:00",
+  "headers": {
+    "content-type": "text/html; charset=UTF-8",
+    "content-length": "6136"
+  }
+}

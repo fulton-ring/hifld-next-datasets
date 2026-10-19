@@ -1,0 +1,14 @@
+{
+  "url": "https://api.github.com/repos/fulton-ring/agent-content-demos/issues/40",
+  "final_url": "https://api.github.com/repos/fulton-ring/agent-content-demos/issues/40",
+  "status": 200,
+  "bytes": 7066,
+  "sha256": "47df89b2cb912c3ee1826afe3b1547f42dfd421a0219e24673e9c6b2e34cdf64",
+  "checked_at": "2026-10-19T04:54:25.222985+00:00",
+  "headers": {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": "7066",
+    "etag": "\"7f9e71d261a1b99f78a2b2a4553bb0237ff6349433a9e54058264021b9f0e012\"",
+    "last-modified": "Sun, 18 Oct 2026 17:38:29 GMT"
+  }
+}

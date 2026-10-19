@@ -1,0 +1,979 @@
+{
+  "source_count": 477,
+  "candidate_count": 375,
+  "source_crs": {
+    "wkid": 4269,
+    "latestWkid": 4269
+  },
+  "comparison_crs": "EPSG:4326 (ArcGIS outSR transformation vs GeoParquet declared CRS)",
+  "max_record_count": 2000,
+  "pagination_supported": true,
+  "complete": true,
+  "completeness_note": "Count, independent returnIdsOnly, native all-column/geometry and GeoJSON rows reconcile; terminal page empty; no exceededTransferLimit. Sequential observations, not atomic snapshot.",
+  "source_ids": {
+    "OBJECTID": {
+      "null_count": 0,
+      "distinct_count": 477,
+      "types": {
+        "int": 477
+      },
+      "duplicate_nonnull_values": {}
+    },
+    "GLOBAL_ID": {
+      "null_count": 0,
+      "distinct_count": 477,
+      "types": {
+        "str": 477
+      },
+      "duplicate_nonnull_values": {}
+    },
+    "GlobalID": {
+      "null_count": 0,
+      "distinct_count": 477,
+      "types": {
+        "str": 477
+      },
+      "duplicate_nonnull_values": {}
+    },
+    "IDENT": {
+      "null_count": 160,
+      "distinct_count": 98,
+      "types": {
+        "NoneType": 160,
+        "str": 317
+      },
+      "duplicate_nonnull_values": {
+        "KLTS": 5,
+        "PGUA": 2,
+        "KAGS": 2,
+        "KBPT": 3,
+        "KBGM": 3,
+        "KTRI": 4,
+        "KELM": 3,
+        "KERI": 3,
+        "PAFA": 4,
+        "KFAR": 3,
+        "KFSM": 4,
+        "KGTF": 4,
+        "KGPT": 3,
+        "KHTS": 3,
+        "KAZO": 5,
+        "KLCH": 4,
+        "KGGG": 4,
+        "KMLU": 3,
+        "KMGM": 3,
+        "KMKG": 2,
+        "KPSP": 3,
+        "KRFD": 2,
+        "KMBS": 2,
+        "KAVP": 3,
+        "KILM": 2,
+        "KYNG": 2,
+        "ZAB": 2,
+        "ZAU": 2,
+        "ZBW": 2,
+        "ZDC": 2,
+        "ZDV": 2,
+        "ZFW": 2,
+        "ZHU": 2,
+        "ZID": 2,
+        "ZJX": 2,
+        "ZKC": 2,
+        "ZLA": 2,
+        "ZLC": 2,
+        "ZMA": 2,
+        "ZME": 2,
+        "ZMP": 2,
+        "ZNY": 3,
+        "ZOA": 2,
+        "ZOB": 2,
+        "ZSE": 2,
+        "ZTL": 2,
+        "ZAP": 6,
+        "KZMA": 4,
+        "KZWY": 2,
+        "ZWY": 2,
+        "TJZS": 2,
+        "KZAK": 10,
+        "RPHI": 3,
+        "MYNA": 2,
+        "UHPP": 3,
+        "MUFH": 11,
+        "WAAF": 3,
+        "NZZO": 2,
+        "MYAT": 2,
+        "UHMM": 9,
+        "RPVM": 2,
+        "NFFF": 2,
+        "MYEH": 2,
+        "MMTY": 10,
+        "MYEM": 2,
+        "MMFR": 2,
+        "AYPM": 2,
+        "MYAM": 2,
+        "ZAN": 4,
+        "KZHU": 2,
+        "MMZT": 9,
+        "MMID": 4,
+        "CZUL": 7,
+        "CZEG": 7,
+        "CZQM": 3,
+        "CZVR": 5,
+        "CZCZ": 6,
+        "CZYZ": 2,
+        "CZ": 8,
+        "CYCY": 2,
+        "CYVR": 8,
+        "CZWG": 25,
+        "RJDG": 4
+      }
+    },
+    "ICAO_ID": {
+      "null_count": 338,
+      "distinct_count": 56,
+      "types": {
+        "NoneType": 338,
+        "str": 139
+      },
+      "duplicate_nonnull_values": {
+        "KLTS": 5,
+        "PGUA": 2,
+        "KAGS": 2,
+        "KBPT": 3,
+        "KBGM": 3,
+        "KTRI": 4,
+        "KELM": 3,
+        "KERI": 3,
+        "PAFA": 4,
+        "KFAR": 3,
+        "KFSM": 4,
+        "KGTF": 4,
+        "KGPT": 3,
+        "KHTS": 3,
+        "KAZO": 5,
+        "KLCH": 4,
+        "KGGG": 4,
+        "KMLU": 3,
+        "KMGM": 3,
+        "KMKG": 2,
+        "KPSP": 3,
+        "KRFD": 2,
+        "KMBS": 2,
+        "KAVP": 3,
+        "KILM": 2,
+        "KYNG": 2,
+        "PAZN": 6,
+        "KZWY": 2,
+        "KZAK": 9,
+        "RPHI": 3,
+        "MYNA": 2,
+        "UHPP": 2,
+        "MUFH": 3,
+        "NZZO": 2,
+        "MYAT": 2,
+        "UHMM": 3,
+        "RPVM": 2,
+        "NFFF": 2,
+        "MYEH": 2,
+        "MYEM": 2,
+        "PAZA": 2
+      }
+    },
+    "ADHP_ID": {
+      "null_count": 350,
+      "distinct_count": 31,
+      "types": {
+        "NoneType": 350,
+        "str": 127
+      },
+      "duplicate_nonnull_values": {
+        "39FC4521-721D-4BF7-A67F-739D45AF57E8": 5,
+        "BACB8378-4F1B-47AA-9F5B-3328B76AF3BD": 2,
+        "D98F23FA-C99D-403A-AC3F-F4927FA8AF5C": 2,
+        "AE4678F5-6F1D-4C30-9853-9A0CFF7D0A14": 3,
+        "25664E48-E56D-4067-9105-FA4EB41CD0CB": 3,
+        "334676A0-1225-41C5-B0F6-345831E7072A": 4,
+        "F930FB2C-D32B-4AFB-AD4E-9A12AFD43EB6": 3,
+        "06A9CA3C-B00C-42EF-9EB3-7FB5D52FBD1E": 3,
+        "9348144C-6301-41D3-98EA-E632E05A8215": 4,
+        "3783FEC6-6DCE-46B9-8DCB-1795EBABFDCE": 3,
+        "7EA52980-DFCF-4142-A82C-3CD64A8B1FA9": 4,
+        "D4C2CCF9-7284-4D08-8746-7A3AF201C16A": 4,
+        "5FFE897B-FF3B-45A7-8F6B-376B1544EEB0": 3,
+        "29685BAA-4AFC-4CC6-AF6D-631E5DE63E14": 3,
+        "FAB7EE32-A0A3-49FD-8070-CB13B77D1D29": 5,
+        "AC4A59E4-C3C1-40E8-A969-DEA8C303C78E": 4,
+        "8C0A415B-29B7-4DB2-A9CF-E94493A448F2": 4,
+        "FA730C24-7316-4C83-8A18-B71FB347B450": 3,
+        "B9FD74DE-6F24-42C0-A703-1D3E6BDCC6B5": 3,
+        "15E6CF7E-61BA-4687-A5D6-6C9627C1612E": 2,
+        "D207DB5C-CC14-49EC-BFC7-9D5BFC1F9979": 3,
+        "C10C1042-F3BA-4256-9ACE-92D1AB50B484": 2,
+        "0F02ADF7-EE8E-40A5-8FE7-6B31740C4B15": 2,
+        "0C89BF21-1076-4434-BB39-DC1226552D1E": 3,
+        "90E70174-E7AD-4DC8-A068-C9FA5A4E6D4B": 2,
+        "B3F2371D-A57C-4CEF-A8B8-129214437CD2": 2,
+        "971CDC84-BD79-416E-8C79-F7FDBAC807D4": 3,
+        "B40147A4-FBEC-40E2-89C4-327C6BA93891": 6,
+        "1E683239-ABF8-491C-BD81-4354529157CB": 31,
+        "208D6127-363C-43EC-8B5F-B35A689A3E97": 6
+      }
+    }
+  },
+  "candidate_ids": {
+    "OBJECTID": {
+      "null_count": 0,
+      "distinct_count": 375,
+      "types": {
+        "int": 375
+      },
+      "duplicate_nonnull_values": {}
+    },
+    "GLOBAL_ID": {
+      "null_count": 0,
+      "distinct_count": 375,
+      "types": {
+        "str": 375
+      },
+      "duplicate_nonnull_values": {}
+    },
+    "IDENT": {
+      "null_count": 159,
+      "distinct_count": 68,
+      "types": {
+        "NoneType": 159,
+        "str": 216
+      },
+      "duplicate_nonnull_values": {
+        "WAAF": 3,
+        "RPVM": 2,
+        "RPHI": 3,
+        "CZQM": 3,
+        "CZEG": 7,
+        "CZUL": 5,
+        "CZWG": 22,
+        "CZ": 8,
+        "ZBW": 2,
+        "CZYZ": 2,
+        "ZAP": 6,
+        "ZAN": 2,
+        "CZCZ": 6,
+        "CZVR": 3,
+        "ZLC": 2,
+        "ZSE": 2,
+        "PAZA": 2,
+        "UHPP": 3,
+        "UHMM": 9,
+        "RJDG": 4,
+        "KZAK": 9,
+        "AYPM": 2,
+        "NFFF": 2,
+        "AGGG": 2,
+        "NZZO": 2,
+        "ZOA": 2,
+        "ZLA": 2,
+        "MMZT": 9,
+        "MMFR": 2,
+        "MMID": 4,
+        "KZHU": 2,
+        "ZHU": 2,
+        "ZFW": 2,
+        "MMTY": 10,
+        "ZAB": 2,
+        "ZDV": 2,
+        "ZKC": 2,
+        "ZME": 2,
+        "ZMP": 2,
+        "ZAU": 2,
+        "ZOB": 2,
+        "ZID": 2,
+        "MUFH": 11,
+        "KZMA": 4,
+        "ZMA": 2,
+        "ZJX": 2,
+        "ZTL": 2,
+        "MYAT": 2,
+        "MYEH": 2,
+        "MYNA": 2,
+        "MYEM": 2,
+        "ZNY": 3,
+        "ZDC": 2,
+        "KZWY": 4,
+        "TJZS": 2
+      }
+    },
+    "ICAO_ID": {
+      "null_count": 326,
+      "distinct_count": 27,
+      "types": {
+        "NoneType": 326,
+        "str": 49
+      },
+      "duplicate_nonnull_values": {
+        "RPVM": 2,
+        "RPHI": 3,
+        "UHMM": 3,
+        "UHPP": 2,
+        "KZAK": 9,
+        "NFFF": 2,
+        "AGGG": 2,
+        "NZZO": 2,
+        "MYAT": 2,
+        "MYEH": 2,
+        "MYNA": 2,
+        "MYEM": 2,
+        "MUFH": 3
+      }
+    },
+    "ADHP_ID": {
+      "null_count": 329,
+      "distinct_count": 5,
+      "types": {
+        "NoneType": 329,
+        "str": 46
+      },
+      "duplicate_nonnull_values": {
+        "1E683239-ABF8-491C-BD81-4354529157CB": 31,
+        "B40147A4-FBEC-40E2-89C4-327C6BA93891": 6,
+        "208D6127-363C-43EC-8B5F-B35A689A3E97": 6,
+        "971CDC84-BD79-416E-8C79-F7FDBAC807D4": 3
+      }
+    },
+    "id": {
+      "null_count": 0,
+      "distinct_count": 375,
+      "types": {
+        "int": 375
+      },
+      "duplicate_nonnull_values": {}
+    }
+  },
+  "source_columns": [
+    "OBJECTID",
+    "GLOBAL_ID",
+    "IDENT",
+    "NAME",
+    "TYPE_CODE",
+    "CLASS",
+    "LOCAL_TYPE",
+    "ICAO_ID",
+    "SECTOR",
+    "LEVEL_",
+    "UPPER_DESC",
+    "UPPER_VAL",
+    "UPPER_UOM",
+    "UPPER_CODE",
+    "LOWER_DESC",
+    "LOWER_VAL",
+    "LOWER_UOM",
+    "LOWER_CODE",
+    "COMM_NAME",
+    "ONSHORE",
+    "EXCLUSION",
+    "WKHR_CODE",
+    "WKHR_RMK",
+    "CITY",
+    "STATE",
+    "COUNTRY",
+    "ADHP_ID",
+    "MIL_CODE",
+    "REMARKS",
+    "AK_LOW",
+    "AK_HIGH",
+    "US_LOW",
+    "US_HIGH",
+    "US_AREA",
+    "PACIFIC",
+    "Shape__Area",
+    "Shape__Length",
+    "GlobalID"
+  ],
+  "candidate_schema": [
+    {
+      "name": "geometry",
+      "type": "binary",
+      "nullable": true
+    },
+    {
+      "name": "OBJECTID",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "GLOBAL_ID",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "IDENT",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "NAME",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "TYPE_CODE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "CLASS",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LOCAL_TYPE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ICAO_ID",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "SECTOR",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LEVEL_",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "UPPER_DESC",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "UPPER_VAL",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "UPPER_UOM",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "UPPER_CODE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LOWER_DESC",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LOWER_VAL",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "LOWER_UOM",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LOWER_CODE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "COMM_NAME",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ONSHORE",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "EXCLUSION",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "WKHR_CODE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "WKHR_RMK",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "CITY",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "STATE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "COUNTRY",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ADHP_ID",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "MIL_CODE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "REMARKS",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "AK_LOW",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "AK_HIGH",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "US_LOW",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "US_HIGH",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "US_AREA",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "PACIFIC",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "Shape__Are",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "Shape__Len",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "id",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "bbox",
+      "type": "struct<xmin: double, ymin: double, xmax: double, ymax: double>",
+      "nullable": true
+    }
+  ],
+  "source_only_columns": [
+    "GlobalID",
+    "Shape__Area",
+    "Shape__Length"
+  ],
+  "candidate_only_columns": [
+    "Shape__Are",
+    "Shape__Len",
+    "bbox",
+    "id"
+  ],
+  "join_key": "GLOBAL_ID (unique in each observed capture; longitudinal stability not established)",
+  "common_GLOBAL_ID_count": 374,
+  "source_only_GLOBAL_IDs": [
+    "008D4772-BFFA-4CD2-ADCF-DAA1843DB5FF",
+    "0179B6F1-8F3E-411B-AFB1-8A98C3BA99DD",
+    "018A097E-3043-4C18-9463-CB43EEF86505",
+    "08A803A3-B41D-4203-86B6-20FD05B08B5E",
+    "0A6EA7FC-0B3D-43B4-9E57-C42367473F3D",
+    "0A85765E-FCE4-4ADE-A4AE-6C3316D01927",
+    "1792034E-CF8C-4880-81CE-997531F44E46",
+    "20FFBF51-8F54-4634-91DA-4E4045EA70BB",
+    "219228F9-29D5-4953-ADF1-71E9629205A9",
+    "21BA7721-19F9-42E8-8897-3135BD9BF0BA",
+    "2DF5AB87-946E-4FF9-916B-D97FA6D32946",
+    "2F9B3F20-6C94-4586-AF64-BE5C1CDF03DE",
+    "2FEEA940-04A4-479D-BC4A-33A1B29D64AF",
+    "2FF4F300-0275-43F8-8B92-C8DE70828963",
+    "30C3FCDC-E03C-472A-863E-F63E3E461B1C",
+    "3C7FC737-6BC5-4110-ABD5-538B149FF26F",
+    "3ECBB79A-13E5-41B0-83A2-8B5D9B991625",
+    "43BE844E-CA5F-43AB-B9FC-8A2F130668CE",
+    "4456776D-0C2B-4057-8BAF-4BEF43B62F5C",
+    "46358F66-612C-4B39-9910-D730A95A66FF",
+    "47E38F5D-8885-4857-828B-53472023C97A",
+    "4A368161-97DD-4BD3-9687-3CFD45E72308",
+    "4B3149DE-4346-4BF4-9A30-DF8D3652DBA3",
+    "4BFC912D-705A-4D70-B1D0-3C3D901CFA09",
+    "520ACE06-EB87-4516-A455-084DF4EDC9F9",
+    "525145CF-20A9-4816-9886-1E09FE62973E",
+    "52A35A37-D45D-43FD-8B86-BEAF1D34698C",
+    "52E31F41-1BDD-48AB-9634-74390CBBEAA7",
+    "5336EBC6-0ACF-4C2C-BFE4-A313D7BA37D1",
+    "592D77DF-5C4B-4F81-9749-A765464E50B2",
+    "5ED6D521-4F02-4750-86F4-B320A4D57FA5",
+    "5FE7BE10-F439-4203-8B68-37C7CC547C1C",
+    "6192C4B8-13C2-4273-A1E5-F379743ED899",
+    "62BF6606-B979-4469-A728-0080E9C238BA",
+    "64EFB733-A9D3-45D8-9296-CC2DB849D264",
+    "67208426-5491-4090-AE5C-7C9F67888CC1",
+    "6976329F-823D-4204-8238-6EF50C877A48",
+    "6A91AB4C-48C6-45F4-A838-6B910F0D10CF",
+    "6CC9F370-85D2-4FA2-A366-BB8261BA73F0",
+    "770364E1-57AF-4052-B9F8-F23CA24FEBE9",
+    "7894B428-3DA0-442B-91ED-CF8F91766747",
+    "7945B34E-A261-401C-842E-474871E0FA9B",
+    "7A32468E-1B34-4534-99C6-DD8C8765DB22",
+    "7A725F99-7848-4525-BF50-0D5B58523104",
+    "7DD451B2-55CD-4823-A534-7280CAFBBD2B",
+    "7F4CB8A1-3D42-40C7-8197-026D4AFD49AD",
+    "8412EC8E-6104-4526-A454-CE91C3699FDA",
+    "88FC1C4D-A312-4585-915F-876B635C3242",
+    "89CE2338-DA3C-4F65-8EC4-FC43D476555D",
+    "8B648659-5DD1-488F-9072-1B355C08B882",
+    "90F98B09-84A5-4E3D-BA30-676BE59B6F10",
+    "934071A1-2258-408E-BAA1-F2C0AA4E7252",
+    "97123C43-B572-456D-9845-C989120A97F9",
+    "972622B8-0456-4281-AB7E-1C60F244F578",
+    "99EFCF9D-2E10-45ED-9204-C10E8DF9E3C1",
+    "9C4F06EE-56E0-4D01-90C9-E539DCC92CF4",
+    "9D792F10-F899-4F44-8E0B-6D6B83A874DB",
+    "9F5706C3-0628-403D-9211-50F9A113775D",
+    "A0BCBDAF-6CCF-44BD-BA2F-0C2CE61B1EDB",
+    "A26CBEC2-C2DB-4E31-8278-75369CB495B5",
+    "A382EDCD-5DB6-414A-8091-AC3EBA73DF67",
+    "A4E98C39-0127-4158-B147-13798F5D9996",
+    "A4EC76C2-D341-4AEF-A11A-010300BEE370",
+    "A55F8513-9ED0-4D4B-8C84-0D1F3628A66A",
+    "A7433AE3-2E88-4F75-BB21-E97C4E9453A9",
+    "A79B4985-1E63-4803-ACDB-4A6F14C74751",
+    "A891A218-F943-4DCF-8262-57019CCBBD25",
+    "A972F451-0CE8-4609-8A0C-270EEC245654",
+    "AA0C2820-B4B8-40CF-B161-D80557C5EBB2",
+    "AE0A6245-42E9-49A9-9668-DB800CE07ED1",
+    "AED0583D-0068-4FA9-9BB8-261340B306EC",
+    "AF8CED60-A1C1-4195-8CB1-24E8AB8D89EE",
+    "B06699F0-C1B6-482F-AA17-AB3F0B132E72",
+    "B164F5E2-FB9E-49B2-A66C-EDA78C5F9E84",
+    "B17DD1AE-DCD3-44D4-BFF4-CDCE7ED8694B",
+    "B703922D-6D11-44FC-9728-AD25008DB851",
+    "B9CDC75F-ADD2-4D35-B114-8D74E6853DD0",
+    "BFD543B2-C113-4D94-AC17-70168FEDDDF0",
+    "C0575C1C-76AE-4D0E-867B-510C80830B49",
+    "C4C54D52-6E94-4BDE-BB63-6D725F0D0612",
+    "CD9BEF7C-8E41-47EA-9FE5-0778074935B9",
+    "CE6BC1E1-ED42-40A2-BA13-C9EED54A10AB",
+    "D052C723-CDD6-46F4-866B-AABCEC550810",
+    "D1108F62-BFA4-40F0-BF68-EF537D7BA895",
+    "D27D6A22-20DB-4289-B499-FADD1A7DF359",
+    "D3A208B3-2E34-48D2-B54B-BCC9A8B70C56",
+    "D5FA5514-F219-4391-80C6-43D4B25757A3",
+    "D73071BB-3CD0-4DF0-A38E-64DD55D388CB",
+    "D89CD8CC-3BF5-4F73-8AB5-B83103EEF4EA",
+    "D94F24BD-93B5-4287-A17E-F3A8D621AF26",
+    "E05FACC8-92FB-4EDE-8FC6-C86F4CBC470B",
+    "E15F3E6C-54D4-4931-B917-31D44469CC7B",
+    "E1BD4899-2051-46FA-93D7-CF4B8E1E34EA",
+    "E43130A4-8CE7-4031-B0D4-E3B204ABA1E2",
+    "EA4A16D1-8164-4CAA-AAD2-126C85AA88BF",
+    "EC658049-1508-46D0-926D-A649FE72D44C",
+    "EEEDB440-31D5-4CFE-B98D-BEF139E3CFDC",
+    "EFB29F9D-52CC-4B8F-AE01-E9F7FE6DE725",
+    "F004EABD-6A57-4C76-B5D3-E8D86FF38300",
+    "F3D2B84C-33C0-4DA9-9D09-F834593C5D1E",
+    "F5511CF8-5670-4D5F-8FF5-D76C623CA4B6",
+    "F5F407EA-8AF3-442B-ACF2-041BC5E27F8E",
+    "F8A09EAB-3EE9-4EE0-BE97-B887CED66683"
+  ],
+  "candidate_only_GLOBAL_IDs": [
+    "84F4BC1D-8973-4D6F-B344-6B37C6A78D0A"
+  ],
+  "shared_column_changed_counts": {
+    "ADHP_ID": 0,
+    "AK_HIGH": 0,
+    "AK_LOW": 0,
+    "CITY": 335,
+    "CLASS": 0,
+    "COMM_NAME": 4,
+    "COUNTRY": 40,
+    "EXCLUSION": 0,
+    "GLOBAL_ID": 0,
+    "ICAO_ID": 10,
+    "IDENT": 4,
+    "LEVEL_": 0,
+    "LOCAL_TYPE": 0,
+    "LOWER_CODE": 0,
+    "LOWER_DESC": 0,
+    "LOWER_UOM": 0,
+    "LOWER_VAL": 0,
+    "MIL_CODE": 4,
+    "NAME": 14,
+    "OBJECTID": 336,
+    "ONSHORE": 3,
+    "PACIFIC": 0,
+    "REMARKS": 9,
+    "SECTOR": 7,
+    "STATE": 335,
+    "TYPE_CODE": 0,
+    "UPPER_CODE": 1,
+    "UPPER_DESC": 0,
+    "UPPER_UOM": 0,
+    "UPPER_VAL": 1,
+    "US_AREA": 0,
+    "US_HIGH": 0,
+    "US_LOW": 0,
+    "WKHR_CODE": 5,
+    "WKHR_RMK": 0
+  },
+  "geometry_exact_normalized_changed_count": 374,
+  "geometry_topologically_equal_count": 0,
+  "geometry_comparison_note": "Exact normalized GEOS coordinates compared for every common GLOBAL_ID; no snapping/tolerance. A difference alone does not isolate source edits from coordinate transformation/serialization.",
+  "source_geometry_types": {
+    "MultiPolygon": 4,
+    "Polygon": 473
+  },
+  "candidate_geometry_types": {
+    "MultiPolygon": 365,
+    "Polygon": 10
+  },
+  "source_invalid_geometry_count": 22,
+  "candidate_invalid_geometry_count": 0,
+  "source_empty_geometry_count": 0,
+  "source_bounds": [
+    -180.0,
+    -30.0000060482776,
+    180.0,
+    90.0
+  ],
+  "candidate_bounds": [
+    -200.992180556,
+    -29.9999999999999,
+    191.02666667,
+    90.0000000000001
+  ],
+  "source_TYPE_CODE_counts": {
+    "ACC": 59,
+    "ADIZ": 13,
+    "ARTCC": 43,
+    "CLASS": 102,
+    "CTA": 47,
+    "CTA-P": 33,
+    "DEF": 8,
+    "FIR": 45,
+    "OCA": 2,
+    "SATA": 40,
+    "TRSA": 81,
+    "UTA": 4
+  },
+  "candidate_TYPE_CODE_counts": {
+    "ACC": 56,
+    "ADIZ": 13,
+    "ARTCC": 43,
+    "CLASS": 102,
+    "CTA": 32,
+    "CTA-P": 30,
+    "DEF": 8,
+    "FIR": 45,
+    "OCA": 3,
+    "SATA": 39,
+    "UTA": 4
+  },
+  "source_attribute_json_types": {
+    "OBJECTID": {
+      "int": 477
+    },
+    "GLOBAL_ID": {
+      "str": 477
+    },
+    "IDENT": {
+      "NoneType": 160,
+      "str": 317
+    },
+    "NAME": {
+      "str": 477
+    },
+    "TYPE_CODE": {
+      "str": 477
+    },
+    "CLASS": {
+      "NoneType": 198,
+      "str": 279
+    },
+    "LOCAL_TYPE": {
+      "NoneType": 163,
+      "str": 314
+    },
+    "ICAO_ID": {
+      "NoneType": 338,
+      "str": 139
+    },
+    "SECTOR": {
+      "NoneType": 325,
+      "str": 152
+    },
+    "LEVEL_": {
+      "str": 477
+    },
+    "UPPER_DESC": {
+      "NoneType": 118,
+      "str": 359
+    },
+    "UPPER_VAL": {
+      "int": 477
+    },
+    "UPPER_UOM": {
+      "NoneType": 196,
+      "str": 281
+    },
+    "UPPER_CODE": {
+      "NoneType": 138,
+      "str": 339
+    },
+    "LOWER_DESC": {
+      "NoneType": 476,
+      "str": 1
+    },
+    "LOWER_VAL": {
+      "int": 477
+    },
+    "LOWER_UOM": {
+      "NoneType": 61,
+      "str": 416
+    },
+    "LOWER_CODE": {
+      "NoneType": 61,
+      "str": 416
+    },
+    "COMM_NAME": {
+      "NoneType": 342,
+      "str": 135
+    },
+    "ONSHORE": {
+      "NoneType": 163,
+      "int": 314
+    },
+    "EXCLUSION": {
+      "NoneType": 163,
+      "int": 314
+    },
+    "WKHR_CODE": {
+      "str": 477
+    },
+    "WKHR_RMK": {
+      "NoneType": 292,
+      "str": 185
+    },
+    "CITY": {
+      "str": 477
+    },
+    "STATE": {
+      "str": 477
+    },
+    "COUNTRY": {
+      "str": 477
+    },
+    "ADHP_ID": {
+      "NoneType": 350,
+      "str": 127
+    },
+    "MIL_CODE": {
+      "str": 477
+    },
+    "REMARKS": {
+      "NoneType": 376,
+      "str": 101
+    },
+    "AK_LOW": {
+      "int": 477
+    },
+    "AK_HIGH": {
+      "int": 477
+    },
+    "US_LOW": {
+      "int": 477
+    },
+    "US_HIGH": {
+      "int": 477
+    },
+    "US_AREA": {
+      "int": 477
+    },
+    "PACIFIC": {
+      "int": 477
+    },
+    "Shape__Area": {
+      "float": 477
+    },
+    "Shape__Length": {
+      "float": 477
+    },
+    "GlobalID": {
+      "str": 477
+    }
+  },
+  "source_null_counts": {
+    "OBJECTID": 0,
+    "GLOBAL_ID": 0,
+    "IDENT": 160,
+    "NAME": 0,
+    "TYPE_CODE": 0,
+    "CLASS": 198,
+    "LOCAL_TYPE": 163,
+    "ICAO_ID": 338,
+    "SECTOR": 325,
+    "LEVEL_": 0,
+    "UPPER_DESC": 118,
+    "UPPER_VAL": 0,
+    "UPPER_UOM": 196,
+    "UPPER_CODE": 138,
+    "LOWER_DESC": 476,
+    "LOWER_VAL": 0,
+    "LOWER_UOM": 61,
+    "LOWER_CODE": 61,
+    "COMM_NAME": 342,
+    "ONSHORE": 163,
+    "EXCLUSION": 163,
+    "WKHR_CODE": 0,
+    "WKHR_RMK": 292,
+    "CITY": 0,
+    "STATE": 0,
+    "COUNTRY": 0,
+    "ADHP_ID": 350,
+    "MIL_CODE": 0,
+    "REMARKS": 376,
+    "AK_LOW": 0,
+    "AK_HIGH": 0,
+    "US_LOW": 0,
+    "US_HIGH": 0,
+    "US_AREA": 0,
+    "PACIFIC": 0,
+    "Shape__Area": 0,
+    "Shape__Length": 0,
+    "GlobalID": 0
+  },
+  "source_to_geojson_attributes_exact": true,
+  "accepted_baseline": null
+}

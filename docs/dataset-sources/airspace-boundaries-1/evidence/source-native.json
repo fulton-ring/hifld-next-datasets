@@ -1,0 +1,14 @@
+{
+  "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Boundary_Airspace/FeatureServer/0/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=0&resultRecordCount=2000&f=pjson",
+  "final_url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Boundary_Airspace/FeatureServer/0/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID+ASC&resultOffset=0&resultRecordCount=2000&f=pjson",
+  "status": 200,
+  "bytes": 19360803,
+  "sha256": "ea527b93a0113d87d8377f306b44f3ce50a2689401e9f83c813d3644e985e82b",
+  "checked_at": "2026-10-19T04:54:58.416645+00:00",
+  "headers": {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": "19360803",
+    "last-modified": "Tue, 13 Oct 2026 15:45:13 GMT",
+    "etag": "sd14423_-257618848"
+  }
+}

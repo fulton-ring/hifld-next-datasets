@@ -1,6 +1,11 @@
 """FAA dataset assets."""
 
-from dagster import AssetKey, asset
+import pathlib
+import tempfile
+
+from dagster import AssetKey, Field, asset
+
+from dagster_hifld.faa_airspace import capture, stage_candidate
 
 from dagster_hifld.download import build_version_id, download_convert_and_stage
 from dagster_hifld.resources import StagingStorageResource
@@ -36,19 +41,17 @@ _AVIATION_BASE = (
     group_name="faa",
     compute_kind="http",
     description=_AIRSPACE_DESCRIPTION,
+    config_schema={"capture_dir": Field(str, default_value="", is_required=False)},
 )
 def faa_airspace_boundaries(context, staging_storage: StagingStorageResource) -> dict:
-    version = build_version_id(context)
-    return download_convert_and_stage(
-        [
-            (f"{_AIRSPACE_BASE}?format=shp&spatialRefId=4326", "Airspace_Boundary.zip"),
-            (f"{_AIRSPACE_BASE}?format=geojson&spatialRefId=4326", "Airspace_Boundary.geojson"),
-        ],
-        _AIRSPACE_DATASET_SLUG,
-        _AIRSPACE_FILE_SLUG,
-        version,
-        staging_storage,
-    )
+    capture_dir = context.op_config.get("capture_dir", "")
+    if capture_dir:
+        return stage_candidate(staging_storage, pathlib.Path(capture_dir))
+    with tempfile.TemporaryDirectory(prefix="faa-airspace-capture-") as tmp:
+        root = pathlib.Path(tmp)
+        capture(root)
+        return stage_candidate(staging_storage, root)
+
 
 
 @asset(
