@@ -8,11 +8,32 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from dagster_hifld.assets.epa_frs_naics_powerplants import _typed_parquet
+from dagster_hifld.assets.epa_frs_naics_powerplants import (
+    EPAFRSNAICSError,
+    PAGE_SIZE,
+    _typed_parquet,
+    _validated_page_features,
+    _validate_complete_id_roster,
+)
 from dagster_hifld.native_verification import normalize_native_input
 
 
 class EPAFRSNAICSSourceTests(unittest.TestCase):
+    def test_full_offset_page_limit_marker_uses_page_count_and_final_id_roster(self):
+        full_page = {"exceededTransferLimit": True, "features": [{"attributes": {"OBJECTID": i}}
+                                                                    for i in range(PAGE_SIZE)]}
+        self.assertEqual(len(_validated_page_features(full_page, PAGE_SIZE)), PAGE_SIZE)
+        with self.assertRaisesRegex(EPAFRSNAICSError, "source_final_page_exceeded_transfer_limit"):
+            _validated_page_features({"exceededTransferLimit": True, "features": [{"attributes": {"OBJECTID": i}}
+                                                                                     for i in range(395)]}, 395)
+        with self.assertRaisesRegex(EPAFRSNAICSError, "source_page_row_count_incomplete"):
+            _validated_page_features({"exceededTransferLimit": True, "features": [{"attributes": {"OBJECTID": i}}
+                                                                                     for i in range(PAGE_SIZE - 1)]}, PAGE_SIZE)
+        _validate_complete_id_roster([1, 2, 3], [1, 2, 3], [1, 2, 3], 3)
+        for captured in ([1, 2], [1, 1, 3]):
+            with self.assertRaisesRegex(EPAFRSNAICSError, "source_capture_incomplete_or_changed_during_read"):
+                _validate_complete_id_roster([1, 2, 3], [1, 2, 3], captured, 3)
+
     def test_nonspatial_table_round_trips_native_fields_and_string_codes(self):
         records = [
             {

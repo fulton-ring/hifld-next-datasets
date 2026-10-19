@@ -106,6 +106,35 @@ def _field_contract(table_info: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(fields)
 
 
+def _validated_page_features(payload: dict[str, Any], expected_rows: int) -> list[dict[str, Any]]:
+    features = payload.get("features")
+    if not isinstance(features, list):
+        raise EPAFRSNAICSError("source_page_features_missing")
+    if len(features) != expected_rows:
+        raise EPAFRSNAICSError("source_page_row_count_incomplete")
+    # ArcGIS can set this marker on a full offset page because additional rows
+    # exist at later offsets. The exact count and final before/after ID roster
+    # determine completeness; a short final page marked limited is incomplete.
+    if payload.get("exceededTransferLimit") is True and expected_rows < PAGE_SIZE:
+        raise EPAFRSNAICSError("source_final_page_exceeded_transfer_limit")
+    return features
+
+
+def _validate_complete_id_roster(
+    ids_before: list[int], ids_after: list[int], captured_ids: list[int], expected_count: int
+) -> None:
+    if (any(type(value) is not int for value in ids_before)
+            or any(type(value) is not int for value in ids_after)
+            or any(type(value) is not int for value in captured_ids)):
+        raise EPAFRSNAICSError("source_object_id_type_changed")
+    before = sorted(ids_before)
+    if (len(before) != expected_count or len(set(before)) != expected_count
+            or sorted(ids_after) != before or len(ids_after) != expected_count
+            or len(captured_ids) != expected_count or len(set(captured_ids)) != expected_count
+            or sorted(captured_ids) != before):
+        raise EPAFRSNAICSError("source_capture_incomplete_or_changed_during_read")
+
+
 def _fetch_complete_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, tuple[bytes, dict[str, Any]]]]:
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     receipts: dict[str, dict[str, Any]] = {}
@@ -153,11 +182,8 @@ def _fetch_complete_table(client: httpx.Client, capture_root: Path) -> tuple[lis
                 "f": "json",
             },
         )
-        if payload.get("exceededTransferLimit") is True:
-            raise EPAFRSNAICSError("source_page_exceeded_transfer_limit")
-        features = payload.get("features")
-        if not isinstance(features, list):
-            raise EPAFRSNAICSError("source_page_features_missing")
+        expected_page_rows = min(PAGE_SIZE, count_before - offset)
+        features = _validated_page_features(payload, expected_page_rows)
         for feature in features:
             if not isinstance(feature, dict) or feature.get("geometry") is not None:
                 raise EPAFRSNAICSError("source_table_returned_unexpected_geometry")
@@ -179,17 +205,12 @@ def _fetch_complete_table(client: httpx.Client, capture_root: Path) -> tuple[lis
         raise EPAFRSNAICSError("source_table_metadata_changed_during_capture")
     count_after = request("count_after", f"{TABLE_URL}/query", count_params).get("count")
     ids_after = request("ids_after", f"{TABLE_URL}/query", id_params).get("objectIds")
-    before_ids = sorted(ids_before)
-    after_ids = sorted(ids_after) if isinstance(ids_after, list) else []
+    after_ids = ids_after if isinstance(ids_after, list) else []
     captured_ids = [record["OBJECTID"] for record in records]
-    if (
-        count_after != count_before
-        or after_ids != before_ids
-        or len(records) != count_before
-        or len(set(captured_ids)) != count_before
-        or sorted(captured_ids) != before_ids
-    ):
+    if count_after != count_before:
         raise EPAFRSNAICSError("source_capture_incomplete_or_changed_during_read")
+    _validate_complete_id_roster(ids_before, after_ids, captured_ids, count_before)
+    before_ids = sorted(ids_before)
 
     manifest = {
         "schema_version": 1,
