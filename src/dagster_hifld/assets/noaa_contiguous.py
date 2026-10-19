@@ -89,7 +89,7 @@ def noaa_24nm_contiguous_zone(context, config: ContiguousDraftConfig,
         bodies, receipt = read_contiguous_receipt(Path(config.capture_dir))
         receipts = receipt['receipts']
     else:
-        bodies, receipts = fetch_noaa_layer(LAYER_URL, attempts=2)
+        bodies, receipts = fetch_noaa_layer(LAYER_URL, attempts=3)
     report = stage_noaa_candidate(
         staging=staging_storage, dataset_slug=DATASET, file_slug=FILE,
         captures=bodies, receipts=receipts, expected_fields=EXPECTED_FIELDS,
