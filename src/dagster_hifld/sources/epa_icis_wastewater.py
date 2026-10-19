@@ -102,6 +102,7 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
             fields = _field_contract(layer)
             has_z, has_m = layer.get("hasZ", False), layer.get("hasM", False)
             if type(has_z) is not bool or type(has_m) is not bool: raise ValueError("source_geometry_dimensions_unpinned")
+            if has_z or has_m: raise ValueError("source_geometry_dimensions_unsupported")
             query_caps=layer.get("advancedQueryCapabilities",{})
             if not isinstance(query_caps,dict) or query_caps.get("supportsPagination") is not True or query_caps.get("supportsOrderBy") is not True:
                 raise ValueError("source_ordered_pagination_not_supported")

@@ -110,6 +110,16 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"source_final_page_exceeded_transfer_limit"):
                     source.capture_epa_icis_wastewater(storage,version="vbadfinal",capture_directory=str(Path(tmp)/"bad-final-captures"))
 
+            # This adapter writes 2D WKB only; reject future dimensional layers before paging.
+            for dimension in ("hasZ", "hasM"):
+                layer[dimension]=True
+                with patch.object(source, "SCHEMA_SHA256", schema_sha), \
+                     patch.object(source, "capture_get", side_effect=capture), \
+                     patch.object(source.httpx, "Client"):
+                    with self.assertRaisesRegex(ValueError,"source_geometry_dimensions_unsupported"):
+                        source.capture_epa_icis_wastewater(storage,version=f"v{dimension}",capture_directory=str(Path(tmp)/f"{dimension}-captures"))
+                layer[dimension]=False
+
 
 if __name__ == "__main__":
     unittest.main()
