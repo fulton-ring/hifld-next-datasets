@@ -333,7 +333,9 @@ def manifest_for(captures, identity, parquet):
         mirror = name in ARCHIVES
         producer = 'ORNL/HIFLD attribution in preserved original metadata; exact selected release unverified' if mirror or name=='baseline' else 'Oak Ridge National Laboratory' if name=='ornl-geospatial-data-sets' else 'DHS HIFLD federal catalog' if name=='data-gov-raw' else 'HIFLD historical catalog, prior HIFLD Next processing retained'
         inputs.append({'input_id':name+':'+digest(body),'producer':producer,'host':urlsplit(receipt['requested_url']).hostname,
-                       'role':'third_party_historical_mirror' if mirror else 'unapproved_published_candidate' if name=='baseline' else 'provenance_reference',
+                       'role':'mirror' if mirror else 'archive' if name in ['baseline','baseline-collection'] else 'producer_publication',
+                       'input_kind':'third_party_historical_dataset_mirror' if mirror else 'unapproved_published_candidate' if name=='baseline' else 'provenance_reference_only',
+                       'authority_acceptance':False,
                        'canonical_url':receipt['requested_url'],'retrieval_url':receipt['requested_url'],
                        'observed_final_url':receipt['observed_final_url'],'retrieved_at':receipt['observed_at'],
                        'http_status':200,'bytes':len(body),'sha256':digest(body),
