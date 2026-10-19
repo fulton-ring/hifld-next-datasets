@@ -51,6 +51,7 @@ class EpaFrsCandidateLifecycleTests(unittest.TestCase):
             objects = {
                 "geoparquet/native.parquet": b"synthetic parquet candidate",
                 "metadata/candidate_ready.json": json.dumps({"approved": False, "version": version}).encode(),
+                "metadata/source_manifest.json": b'{"approved":false,"fixture":true}',
                 "raw/source.body": raw,
                 "raw/source.wire": wire,
                 "raw/source.receipt.json": json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode() + b"\n",
@@ -73,6 +74,41 @@ class EpaFrsCandidateLifecycleTests(unittest.TestCase):
             )
             self.assertEqual(reused, {"version": version, "reused": True})
             self.assertEqual(set(storage.list_prefix(prefix)), {f"{prefix}/{name}" for name in objects})
+
+            # A completed catalog must not invalidate an intact source cache.
+            manifest = objects["metadata/source_manifest.json"]
+            derived = {
+                "metadata/quality_manifest.json": b'{"quality_check_passed":false}',
+                "metadata/data_dictionary.json": b'{"fixture":true}',
+                "metadata/resolved_provenance.json": b'{"fixture":true}',
+                "metadata/source/source_manifest.json": manifest,
+                "metadata/source/version_" + hashlib.sha256(manifest).hexdigest() + "_source_manifest.json": manifest,
+            }
+            for name, body in derived.items():
+                write_immutable(storage, f"{prefix}/{name}", body)
+            def reuse():
+                return verify_cached_candidate(storage, repo, state_key, prefix, version,
+                    fingerprint, identity, record_sha, schema_sha, descriptors, {"source": receipt})
+            self.assertTrue(reuse()["reused"])
+            rogue = Path(tmp) / prefix / "raw/unsealed.body"
+            rogue.write_bytes(b"unsealed")
+            with self.assertRaisesRegex(ValueError, "storage_roster_changed"):
+                reuse()
+            rogue.unlink()
+            snapshot_path = Path(tmp) / prefix / "metadata/source/source_manifest.json"
+            snapshot_path.write_bytes(b"changed snapshot")
+            with self.assertRaisesRegex(ValueError, "catalog_source_snapshot_changed"):
+                reuse()
+            snapshot_path.write_bytes(manifest)
+            source_path = Path(tmp) / prefix / "raw/source.body"
+            source_path.write_bytes(b"mutated source")
+            with self.assertRaisesRegex(ValueError, "object_integrity_failed"):
+                reuse()
+            source_path.unlink()
+            with self.assertRaisesRegex(ValueError, "storage_roster_changed"):
+                reuse()
+            source_path.write_bytes(raw)
+            self.assertTrue(reuse()["reused"])
 
             instance_dir = Path(tmp) / "dagster"
             instance_dir.mkdir()
