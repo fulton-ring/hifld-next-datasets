@@ -3,6 +3,11 @@ import copy
 import gzip
 import threading
 import json
+import io
+import os
+import struct
+import shutil
+import zipfile
 import sqlite3
 import tempfile
 import unittest
@@ -17,9 +22,37 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import cbrs_buffer as s
 
-CAPTURE=Path(__file__).parents[1]/'docs/dataset-sources/cbrs-buffer-zone-1/evidence/captures'
+CAPTURE=Path(os.environ.get('HIFLD_CBRS_CAPTURE_DIR','/complete-cbrs-capture-directory-not-configured'))
+REAL_INPUTS=unittest.skipUnless(os.environ.get('HIFLD_CBRS_CAPTURE_DIR'),'Full real source requires preserved external capture directory; no live refetch.')
+FIXTURE=Path(__file__).parent/'fixtures/cbrs_buffer/structural_source.json'
 
 class CBRSTests(unittest.TestCase):
+    @staticmethod
+    def structural_captures(storage=None):
+        # Deliberately incomplete bodies: they exercise provenance mechanics only
+        # and cannot pass the real source archive pin or establish acceptance.
+        bodies={'official_zip':b'PK\x03\x04SYNTHETIC-STRUCTURAL-ONLY',
+                'fws_data':b'SYNTHETIC supporting-page fixture',
+                'fws_download':b'SYNTHETIC /sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip',
+                'fws_buffer_metadata':b'SYNTHETIC 20241219 CBRS_Buffer_Zone metadata identity fixture'}
+        captures={name:(body,{'requested_url':s.URLS[name],'final_url':s.URLS[name],
+            'status':200,'byte_length':len(body),'sha256':s.sha(body),
+            'observed_at':'2026-10-19T01:02:03+00:00'}) for name,body in bodies.items()}
+        if storage is not None:
+            for name,(body,receipt) in captures.items():
+                s.immutable(storage,f'_raw-captures/{s.SLUG}/{s.sha(body)}/{name}.body',body)
+        return captures
+
+    @staticmethod
+    def structural_archive():
+        body=io.BytesIO()
+        with zipfile.ZipFile(body,'w',compression=zipfile.ZIP_DEFLATED) as archive:
+            for name in sorted(s.MEMBERS):
+                value=b'SYNTHETIC-STRUCTURAL-MEMBER-ONLY'
+                if name==s.STEM+'.dbf':value=b'\0'*4+struct.pack('<I',1145)+b'\0'*24
+                archive.writestr(name,value)
+        return body.getvalue()
+
     @staticmethod
     def atomic_fixture(name='geopackage/test.gpkg',body=b'fixture'):
         # Only atomic installation mechanics are synthetic in these fixtures.
@@ -30,6 +63,7 @@ class CBRSTests(unittest.TestCase):
         payloads.update({f'raw/captures/{n}.receipt.json':b'{}' for n in s.URLS})
         return payloads,{'version':'v0.0.0-fixture'},manifest
 
+    @REAL_INPUTS
     def test_complete_original_release(self):
         with tempfile.TemporaryDirectory() as d:
             rows,audit,members=s.inspect_archive((CAPTURE/'official_zip.body').read_bytes(),Path(d))
@@ -49,7 +83,7 @@ class CBRSTests(unittest.TestCase):
             acquire.assert_not_called()
 
     def test_all_receipts_preflight_strict_timestamp_url_pins(self):
-        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        captures=self.structural_captures()
         self.assertEqual(len(s.provenance(captures)['inputs']),4)
         for name in s.URLS:
             for field,value in [('requested_url','https://example.org/substitute'),('final_url','https://example.org/redirect'),('observed_at','not-a-date'),('observed_at','2026-10-19T00:00:00'),('observed_at','2026-10-19T00:00:00+00:99'),('observed_at','2026-10-19T00:00:00+99:00'),('observed_at',None),('byte_length',True),('sha256','0'*64),('status',True)]:
@@ -64,7 +98,7 @@ class CBRSTests(unittest.TestCase):
 
     def test_bad_receipt_exact_bytes_retained_and_no_candidate(self):
         with tempfile.TemporaryDirectory() as d:
-            capture=Path(d,'capture');capture.mkdir();body=(CAPTURE/'official_zip.body').read_bytes()
+            capture=Path(d,'capture');capture.mkdir();body=b'SYNTHETIC complete diagnostic response'
             (capture/'official_zip.body').write_bytes(body);bad=b'{"malformed":'
             (capture/'official_zip.receipt.json').write_bytes(bad);stage=Path(d,'stage')
             with self.assertRaises(ValueError):s.acquire(StagingStorageResource(local_dir=str(stage)),capture)
@@ -114,6 +148,7 @@ class CBRSTests(unittest.TestCase):
                     self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
                     self.assertFalse(Path(d,s.SLUG,s.SLUG,'v0.0.0-fixture').exists())
 
+    @REAL_INPUTS
     def test_authentic_complete_source_first_native_writer_failure_has_no_binding(self):
         with tempfile.TemporaryDirectory() as d:
             storage=StagingStorageResource(local_dir=d)
@@ -124,16 +159,22 @@ class CBRSTests(unittest.TestCase):
             self.assertTrue(any(s.sha256_file(p)==s.PIN for p in Path(d,'_raw-captures').rglob('official_zip.body')))
 
     def test_archive_pin_and_zip_roster_changes_fail_before_decode(self):
-        body=(CAPTURE/'official_zip.body').read_bytes()
-        for changed in [body[:-1],body[:1000],b'error']:
+        for changed in [b'PK\x03\x04SYNTHETIC unknown archive',b'error',b'']:
             with tempfile.TemporaryDirectory() as d,patch.object(s.fiona,'open') as opened,self.assertRaisesRegex(ValueError,'changed_truncated'):
                 s.inspect_archive(changed,Path(d))
             opened.assert_not_called()
 
+    def test_synthetic_pin_still_rejects_missing_zip_member_before_native_decode(self):
+        output=io.BytesIO()
+        with zipfile.ZipFile(output,'w') as archive:archive.writestr('unexpected.txt',b'SYNTHETIC only')
+        body=output.getvalue()
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'PIN',s.sha(body)),patch.object(s,'ARCHIVE_BYTES',len(body)),patch.object(s.fiona,'open') as native,self.assertRaisesRegex(ValueError,'unexpected_missing_duplicate_archive_member'):
+            s.inspect_archive(body,Path(d))
+        native.assert_not_called()
+
     def test_missing_extra_type_id_and_geometry_drift(self):
-        body=(CAPTURE/'official_zip.body').read_bytes()
-        with tempfile.TemporaryDirectory() as d:
-            rows,_,_=s.inspect_archive(body,Path(d))
+        body=self.structural_archive();fixture=json.loads(FIXTURE.read_text())
+        rows=[{'properties':{**fixture['properties'],'__source_fid':str(i),'BUFF_DIST':20.0 if i<1138 else 0.0},'geometry':fixture['geometry']} for i in range(1145)]
         class Row(dict):
             def __init__(self,r):
                 super().__init__(properties={k:v for k,v in r['properties'].items() if k!='__source_fid'},geometry={'type':'Polygon','coordinates':[[[-70.0,40.0],[-70.0,41.0],[-69.0,40.0],[-70.0,40.0]]]})
@@ -153,7 +194,7 @@ class CBRSTests(unittest.TestCase):
             if mode=='geometry':mutated[0]['geometry']=None
             if mode=='coverage':mutated[0]['properties']['BUFF_DIST']=10.0
             fake=Stream();fake.rows=mutated
-            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d,patch.object(s.fiona,'open',return_value=fake),self.assertRaises(ValueError):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d,patch.object(s,'PIN',s.sha(body)),patch.object(s,'ARCHIVE_BYTES',len(body)),patch.object(s.fiona,'open',return_value=fake),self.assertRaises(ValueError):
                 s.inspect_archive(body,Path(d))
 
     def test_atomic_target_does_not_replace_existing_release(self):
@@ -240,7 +281,7 @@ class CBRSTests(unittest.TestCase):
     def test_original_provenance_pin_retains_first_commit_and_receipts(self):
         with tempfile.TemporaryDirectory() as d:
             storage=StagingStorageResource(local_dir=d)
-            captures=s.acquire(storage,CAPTURE);manifest=s.provenance(captures)
+            captures=self.structural_captures(storage);manifest=s.provenance(captures)
             manifest['processing_fingerprint']='test-fixture-not-acceptance'
             processing_files=s.processing_identity()['files']
             version='v0.0.0-fixture';prefix=s.SLUG+'/'+s.SLUG+'/'+version
@@ -269,9 +310,9 @@ class CBRSTests(unittest.TestCase):
             self.assertNotEqual(replayed['code_commit'],'a'*40)
             self.assertTrue(all(reused[n][1]['observed_at']!=changed[n][1]['observed_at'] for n in s.URLS))
 
-    def test_real_first_marker_storage_fault_retains_orphan_and_blocks_new_context(self):
+    def test_first_marker_storage_fault_retains_orphan_and_blocks_new_context(self):
         with tempfile.TemporaryDirectory() as d:
-            storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)
+            storage=StagingStorageResource(local_dir=d);captures=self.structural_captures(storage)
             manifest=s.provenance(captures);manifest['processing_fingerprint']='partial-anchor-fixture-not-acceptance'
             files=s.processing_identity()['files'];version='v0.0.0-orphan-fixture';prefix=s.SLUG+'/'+s.SLUG+'/'+version
             original=StagingStorageResource.write_key_if_unchanged
@@ -293,7 +334,7 @@ class CBRSTests(unittest.TestCase):
 
     def test_first_construction_marker_blocks_missing_alias_and_marker_on_repeated_calls(self):
         with tempfile.TemporaryDirectory() as d:
-            storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)
+            storage=StagingStorageResource(local_dir=d);captures=self.structural_captures(storage)
             manifest=s.provenance(captures);manifest['processing_fingerprint']='marker-fixture-not-acceptance'
             files=s.processing_identity()['files'];version='v0.0.0-marker-fixture'
             prefix=s.SLUG+'/'+s.SLUG+'/'+version
@@ -336,9 +377,77 @@ class CBRSTests(unittest.TestCase):
                     self.assertEqual(key.read_bytes(),original);self.assertEqual(marker.read_bytes(),first)
                 evidence.write_bytes(original) # Explicit restoration, never automatic evidence repair.
 
+    def test_relative_root_observed_loss_is_canonical_refusal_not_authority(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as d:
+            storage=StagingStorageResource(local_dir=os.path.relpath(Path(d)/'staging',Path.cwd()))
+            candidate=Path(d)/'candidate';(candidate/'metadata').mkdir(parents=True)
+            manifest={'synthetic_fixture':True};(candidate/'metadata/source_manifest.json').write_bytes(s.encode(manifest))
+            version='v0.0.0-synthetic-loss';fingerprint='a'*64
+            self.assertTrue(s.observed_trust_loss(storage,version,fingerprint,candidate=candidate))
+            path=Path(d)/'staging/_construction-incidents'/s.SLUG/version/'incident.json';original=path.read_bytes()
+            self.assertTrue(s.observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest))
+            with self.assertRaisesRegex(ValueError,'restored_original_manifest_differs'):
+                s.observed_trust_loss(storage,version,fingerprint,restored_manifest={'synthetic_fixture':False})
+            claim=s.strict_json(original)
+            for body in [s.encode({**claim,'schema_version':True}),s.encode({**claim,'schema_version':1.0}),original+b'\n']:
+                path.write_bytes(body)
+                for retry in [1,2]:
+                    with self.subTest(body=body,retry=retry),self.assertRaisesRegex(ValueError,'invalid_observed_trust_loss_journal'):
+                        s.observed_trust_loss(storage,version,fingerprint)
+                    self.assertEqual(path.read_bytes(),body)
+            path.write_bytes(original)
+            self.assertTrue(s.observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest))
+
+    def test_failed_observed_loss_journal_preserves_untrusted_candidate_on_retries(self):
+        captures=self.structural_captures();identity={'synthetic':True,'files':{}}
+        fingerprint=s.sha(s.encode(identity));capture_pin=s.sha(s.encode({n:s.sha(body)for n,(body,_)in captures.items()}))
+        version='v0.0.0-draft-cbrs20241219-'+capture_pin[:16]+'-'+fingerprint[:16]
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);candidate=Path(d)/s.SLUG/s.SLUG/version
+            (candidate/'metadata').mkdir(parents=True);before=b'SYNTHETIC untrusted candidate bytes'
+            (candidate/'metadata/source_manifest.json').write_bytes(before);original=s.immutable
+            def fault(resource,key,body):
+                if key.endswith('/incident.json'):raise OSError('injected journal commit failure')
+                return original(resource,key,body)
+            with patch.object(s,'acquire',return_value=captures),patch.object(s,'inspect_archive',return_value=([],{},{})),patch.object(s,'processing_identity',return_value=identity):
+                with patch.object(s,'immutable',side_effect=fault),self.assertRaisesRegex(ValueError,'trust_loss_journal_failed_candidate_retained_untrusted'):
+                    s.stage_cbrs_buffer_candidate(storage)
+                for retry in [1,2]:
+                    with self.subTest(retry=retry),self.assertRaisesRegex(ValueError,'incomplete_observed_trust_loss_journal'):
+                        s.stage_cbrs_buffer_candidate(storage)
+                    self.assertEqual((candidate/'metadata/source_manifest.json').read_bytes(),before)
+                self.assertFalse(list(Path(d,'_quarantine',s.SLUG,'rejected-cache').rglob(version)))
+                self.assertTrue((Path(d)/'_construction-incidents'/s.SLUG/version).is_dir())
+
+    def test_synthetic_whole_witness_loss_refuses_retry_and_restores_exact_original(self):
+        # Only acquisition/decoding use tiny SYNTHETIC inputs. Native writes,
+        # complete reports, Git/state/locks and atomic installation are real.
+        fixture=json.loads(FIXTURE.read_text());rows=[{'type':'Feature','properties':fixture['properties'],'geometry':fixture['geometry']}]
+        audit={'bounds':[-70.,40.,-69.,41.],'invalid_geometry_count':0}
+        members={name:b'SYNTHETIC structural member' for name in s.MEMBERS}
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);captures=self.structural_captures(storage)
+            with patch.object(s,'acquire',return_value=captures),patch.object(s,'inspect_archive',return_value=(rows,audit,members)):
+                first=s.stage_cbrs_buffer_candidate(storage)
+            version=first['version'];root=Path(d)/s.SLUG/s.SLUG/version
+            manifest=(root/'metadata/source_manifest.json').read_bytes();ready=s.strict_json((root/'metadata/cbrs_buffer_candidate_ready.json').read_bytes())
+            folder=Path(d)/'_source-provenance'/s.SLUG/version;trusted=Path(d)/'trusted-original';shutil.move(str(folder),str(trusted))
+            later={n:(body,{**receipt,'observed_at':'2026-10-20T01:02:03+00:00'})for n,(body,receipt)in captures.items()}
+            with patch.object(s,'acquire',return_value=later),patch.object(s,'inspect_archive',return_value=(rows,audit,members)):
+                for retry in [1,2,3]:
+                    with self.subTest(retry=retry),self.assertRaisesRegex(ValueError,'missing_original_construction'):
+                        s.stage_cbrs_buffer_candidate(storage)
+                    self.assertFalse(root.exists());self.assertFalse(folder.exists())
+                incident=Path(d)/'_construction-incidents'/s.SLUG/version/'incident.json';refusal=incident.read_bytes()
+                shutil.copytree(trusted,folder) # Explicit saved-original restoration, never inferred trust.
+                rebuilt=s.stage_cbrs_buffer_candidate(storage)
+            self.assertEqual(rebuilt['feature_count'],1);self.assertEqual((root/'metadata/source_manifest.json').read_bytes(),manifest)
+            self.assertTrue(all(s.sha256_file(root/name)==pin for name,pin in ready['objects'].items()))
+            self.assertEqual(incident.read_bytes(),refusal)
+
     def test_invalid_lookup_quarantine_and_concurrent_valid_winner_share_lock(self):
         # These are explicitly synthetic implementation fixtures, not dataset approval.
-        captures={'official_zip':(b'synthetic-body',{})};identity={'fixture':True}
+        captures={'official_zip':(b'synthetic-body',{})};identity={'fixture':True,'files':{}}
         fp=s.sha(s.encode(identity));cp=s.sha(s.encode({'official_zip':s.sha(b'synthetic-body')}))
         prefix=s.SLUG+'/'+s.SLUG+'/v0.0.0-draft-cbrs20241219-'+cp[:16]+'-'+fp[:16]
         held=threading.Event();release=threading.Event();started=threading.Event();winner=threading.Event();errors=[]
@@ -364,7 +473,7 @@ class CBRSTests(unittest.TestCase):
                 b=threading.Thread(target=install);b.start();self.assertTrue(started.wait(10))
                 self.assertFalse(winner.wait(.15));release.set();a.join(10);b.join(10)
                 self.assertFalse(a.is_alive());self.assertFalse(b.is_alive())
-            self.assertTrue(winner.is_set());self.assertTrue(any('missing_ready' in x for x in errors))
+            self.assertTrue(winner.is_set());self.assertTrue(any('missing_original_construction' in x for x in errors))
             self.assertEqual((target/'geopackage/winner.gpkg').read_bytes(),b'valid winner fixture')
             moved=list(Path(d,'_quarantine',s.SLUG,'rejected-cache').rglob('incomplete.gpkg'))
             self.assertEqual(len(moved),1);self.assertEqual(moved[0].read_bytes(),b'old incomplete')

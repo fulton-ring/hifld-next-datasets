@@ -407,6 +407,53 @@ def quarantine_rejected_cache_held(storage: StagingStorageResource, prefix: str,
     return relative
 
 
+def observed_trust_loss(storage: StagingStorageResource, version: str, fingerprint: str,
+                        *, candidate: Path | None = None, restored_manifest: dict | None = None) -> bool:
+    """Persist an observed refusal before detach; never recreate trust from it.
+
+    Authentic outside witnesses still authorize restoration. The candidate hash
+    is only an observed claim. Simultaneous unobserved loss of every witness is
+    outside this caller's guarantees.
+    """
+    key=f'_construction-incidents/{SLUG}/{version}/incident.json'
+    path=local_candidate_path(storage,key);folder=path.parent
+    if not folder.exists() and candidate is None:return False
+    if not folder.exists():
+        folder.mkdir(parents=True)
+        descriptor=os.open(folder.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:os.fsync(descriptor)
+        finally:os.close(descriptor)
+        claim=None
+        if not candidate.is_symlink():
+            try:
+                descriptor=os.open(candidate/'metadata/source_manifest.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+                try:
+                    info=os.fstat(descriptor)
+                    if stat.S_ISREG(info.st_mode) and info.st_nlink==1 and info.st_size<=2_000_000:
+                        with os.fdopen(os.dup(descriptor),'rb') as stream:claim=sha(stream.read(2_000_001))
+                finally:os.close(descriptor)
+            except FileNotFoundError:pass
+        immutable(storage,key,encode({'schema_version':1,'version':version,'processing_fingerprint':fingerprint,
+            'status':'observed_original_construction_trust_loss','approved':False,'observed_cached_manifest_sha256':claim}))
+    try:descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    except FileNotFoundError as exc:raise CBRSQuarantineError('incomplete_observed_trust_loss_journal') from exc
+    try:
+        info=os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_size>128_000:
+            raise CBRSQuarantineError('invalid_observed_trust_loss_journal_file')
+        with os.fdopen(os.dup(descriptor),'rb') as stream:body=stream.read(128_001)
+    finally:os.close(descriptor)
+    value=strict_json(body);claim=value.get('observed_cached_manifest_sha256')
+    if claim is not None and (type(claim) is not str or re.fullmatch('[0-9a-f]{64}',claim) is None):
+        raise CBRSQuarantineError('invalid_observed_trust_loss_claim')
+    expected={'schema_version':1,'version':version,'processing_fingerprint':fingerprint,
+        'status':'observed_original_construction_trust_loss','approved':False,'observed_cached_manifest_sha256':claim}
+    if body!=encode(expected):raise CBRSQuarantineError('invalid_observed_trust_loss_journal')
+    if restored_manifest is not None and claim is not None and sha(encode(restored_manifest))!=claim:
+        raise CBRSQuarantineError('restored_original_manifest_differs_from_observed_candidate_claim')
+    return True
+
+
 def original_provenance_bundle(storage: StagingStorageResource, version: str,
                                captures: dict, manifest: dict, processing_files: dict, *, create: bool=False) -> tuple[dict,dict]:
     """Pin first construction outside the candidate, under the stable version lock.
@@ -573,11 +620,20 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
             manifest['processing_fingerprint']=fingerprint
             with candidate_lock(storage,prefix) as target:
                 if target.exists() or target.is_symlink():
+                    can_detach=True
                     try:
+                        try:
+                            captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
+                            observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest)
+                        except (ValueError,TypeError,KeyError,OSError,RuntimeError):
+                            try:observed_trust_loss(storage,version,fingerprint,candidate=target)
+                            except (ValueError,TypeError,KeyError,OSError,RuntimeError):
+                                can_detach=False
+                                raise
+                            raise
                         if target.is_symlink():raise CBRSQuarantineError('linked_candidate_path')
                         if not storage.object_exists(ready_key):
                             raise CBRSQuarantineError('incomplete_existing_candidate_missing_ready_receipt')
-                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
                         ready = strict_json(storage.read_key(ready_key))
                         expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_buffer_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {'metadata/source_fidelity/baseline_comparison.json','metadata/source_fidelity/baseline_comparison.md','metadata/source_fidelity/baseline_differences.jsonl','metadata/source_fidelity/baseline_field_changes.jsonl'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
                         if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
@@ -594,12 +650,15 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                         return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
                                 'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
+                        if not can_detach:
+                            raise CBRSQuarantineError('trust_loss_journal_failed_candidate_retained_untrusted:'+str(exc)) from exc
                         quarantine_rejected_cache_held(storage,prefix,str(exc))
                         raise
                 bundle_key=f'_source-provenance/{SLUG}/{version}/bundle.json'
                 if (storage.object_exists(bundle_key) or storage.object_exists(bundle_key+'.first-construction.json')
-                        or storage.list_prefix(bundle_key+'.evidence/')):
+                        or storage.list_prefix(bundle_key+'.evidence/') or observed_trust_loss(storage,version,fingerprint)):
                     captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
+                    observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest)
                 else:
                     validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
                 body,receipt=captures['official_zip']

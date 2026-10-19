@@ -1,1 +1,0 @@
-{"approved":false,"columns":{"BUFF_DIST":{"nullable":false,"type":"decimal"},"Shape_Area":{"nullable":false,"type":"decimal"},"Shape_Leng":{"nullable":false,"type":"decimal"},"__source_fid":{"nullable":false,"type":"string"}},"coverage_fields":["BUFF_DIST"],"crs":"EPSG:4269","geometry":true,"id_fields":["__source_fid"]}
