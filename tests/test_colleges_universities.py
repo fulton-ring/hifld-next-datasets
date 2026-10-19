@@ -162,16 +162,17 @@ class CollegeOriginalCaptureTests(unittest.TestCase):
             with self.assertRaisesRegex(c.CollegeQuarantineError,'permanent_observed_original_trust_loss'):self.refresh()
             self.assertEqual(before,{str(p.relative_to(self.root)):p.read_bytes()for p in self.root.rglob('*')if p.is_file()})
     def test_short_private_manifest_and_ready_writes_never_expose_bad_candidate(self):
-        real=Path.write_bytes
+        real=os.write
         for name,occurrence,first_sealed in [('source_manifest.json',1,False),('source_manifest.json',2,True),(Path(c.READY).name,1,False)]:
             with self.subTest(name=name,occurrence=occurrence),tempfile.TemporaryDirectory()as tmp:
                 root=Path(tmp);storage=c.StagingStorageResource(local_dir=tmp);seen=[]
-                def short(path,body):
+                def short(fd,body):
+                    path=Path(os.readlink('/proc/self/fd/'+str(fd)))
                     if '_building'in path.parts and path.name==name:
                         seen.append(len(body))
-                        if len(seen)==occurrence:return real(path,body[:17])
-                    return real(path,body)
-                with patch.object(Path,'write_bytes',short),self.assertRaisesRegex(c.CollegeQuarantineError,'incomplete_private_write'):c.stage_colleges(storage,capture_dir=CAPTURE)
+                        if len(seen)==occurrence:return real(fd,body[:17])
+                    return real(fd,body)
+                with patch('os.write',side_effect=short),self.assertRaisesRegex(c.CollegeQuarantineError,'incomplete_private_write'):c.stage_colleges(storage,capture_dir=CAPTURE)
                 self.assertEqual(len(seen),occurrence);self.assertFalse(list(root.glob(f'{c.SLUG}/{c.SLUG}/*')));self.assertTrue((root/'_raw-captures'/c.SLUG).exists())
                 original=[q for q in(root/'_construction-state').rglob('*.first-construction.json')if q.is_file()]if(root/'_construction-state').exists()else[]
                 self.assertEqual(bool(original),first_sealed)
@@ -235,13 +236,13 @@ class CollegeStructuralTests(unittest.TestCase):
                 else:
                     with self.assertRaises(c.CollegeQuarantineError):c.check_zip(z,{name},100)
     def test_private_write_checks_truthful_count_and_false_full_count_with_readback(self):
-        real=Path.write_bytes;body=b'explicit synthetic complete private metadata'
+        real=os.write;body=b'explicit synthetic complete private metadata'
         for truthful in(True,False):
             with self.subTest(truthful=truthful),tempfile.TemporaryDirectory()as tmp:
                 root=Path(tmp)
-                def short(path,value):
-                    count=real(path,value[:5]);return count if truthful else len(value)
-                with patch.object(Path,'write_bytes',short),self.assertRaisesRegex(c.CollegeQuarantineError,'incomplete_private_write'):c.write_private(root,'metadata/example.json',body)
+                def short(fd,value):
+                    count=real(fd,value[:5]);return count if truthful else len(value)
+                with patch('os.write',side_effect=short),self.assertRaisesRegex(c.CollegeQuarantineError,'incomplete_private_write'):c.write_private(root,'metadata/example.json',body)
                 self.assertEqual((root/'metadata/example.json').read_bytes(),body[:5])
     def test_negative_incident_uses_directory_durable_shared_records(self):
         with tempfile.TemporaryDirectory()as tmp:
@@ -266,6 +267,29 @@ class CollegeStructuralTests(unittest.TestCase):
                 # exists; later faults leave a permanent partial incident.
                 if not directory_fault:
                     with self.assertRaisesRegex(c.CollegeQuarantineError,'permanent_observed_original_trust_loss'):c.refuse_observed_loss(storage,'vsynthetic')
+
+    def test_staging_fifo_refused_before_any_acquisition(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);fifo=root/'existing-candidate-ready.json';os.mkfifo(fifo)
+            with patch.object(c,'acquire',side_effect=AssertionError('acquisition must not start')),self.assertRaisesRegex(c.CollegeQuarantineError,'special_file'):c.stage_colleges(c.StagingStorageResource(local_dir=tmp))
+            self.assertTrue(stat.S_ISFIFO(fifo.lstat().st_mode))
+    def test_candidate_fifo_symlink_hardlink_and_oversized_metadata_reads_refused(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);target=root/'ready.json';os.mkfifo(target)
+            with self.assertRaises(ValueError):c.candidate_bytes(root,'ready.json')
+            with self.assertRaisesRegex(c.CollegeQuarantineError,'special_file'):c.candidate_roster(root)
+            target.unlink();original=root/'original.json';original.write_bytes(b'{}');target.symlink_to(original)
+            with self.assertRaises(OSError):c.candidate_bytes(root,'ready.json')
+            target.unlink();os.link(original,target)
+            with self.assertRaises(ValueError):c.candidate_bytes(root,'ready.json')
+            target.unlink()
+            with target.open('wb')as stream:stream.truncate(c.MAX_AUX_BYTES+1)
+            with self.assertRaisesRegex(c.CollegeQuarantineError,'oversized'):c.candidate_bytes(root,'ready.json')
+    def test_private_fifo_write_refuses_without_opening_blocking_stream(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);fifo=root/'ready.json';os.mkfifo(fifo)
+            with self.assertRaises(OSError):c.write_private(root,'ready.json',b'synthetic private body')
+            self.assertTrue(stat.S_ISFIFO(fifo.lstat().st_mode))
 
     def test_permanent_empty_incident_refuses_cold_retry_without_history_repair(self):
         with tempfile.TemporaryDirectory()as tmp:

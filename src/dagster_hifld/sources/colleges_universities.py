@@ -98,7 +98,10 @@ def local_only(storage):
     if '..'in root.parts or any(p.is_symlink()for p in [root,*root.parents]):raise CollegeQuarantineError('staging_path_symlink_refused')
     root.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(root).free<SPACE_FLOOR:raise CollegeQuarantineError('disk_floor_before_acquisition')
-    if any(p.is_symlink()or(p.is_file()and p.stat().st_nlink!=1)for p in root.rglob('*')):raise CollegeQuarantineError('staging_alias_refused')
+    for path in root.rglob('*'):
+        info=path.lstat()
+        if stat.S_ISDIR(info.st_mode):continue
+        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise CollegeQuarantineError('staging_alias_or_special_file_refused')
 
 
 def immutable(storage,key,body):
@@ -338,12 +341,30 @@ def source_payloads(captures,identity,table,audit,manifest):
     return values
 
 
+def candidate_bytes(root,name):
+    path=root/name
+    if '..'in Path(name).parts or Path(name).is_absolute()or any(p.is_symlink()for p in[path.parent,*path.parent.parents]):
+        raise CollegeQuarantineError('candidate_read_path_alias_refused')
+    limit=MAX_ARCHIVE_BYTES if name=='raw/captures/nces_geocode.body'else(8_000_000 if name.endswith(('.gpkg','.parquet'))else MAX_AUX_BYTES)
+    return bounded_input(path,limit)
+
+
+def candidate_roster(root):
+    names=set()
+    for path in root.rglob('*'):
+        info=path.lstat()
+        if stat.S_ISDIR(info.st_mode):continue
+        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise CollegeQuarantineError('candidate_alias_or_special_file_refused')
+        names.add(str(path.relative_to(root)))
+    return names
+
+
 def reconcile_cache(storage,prefix,table,audit,captures,identity,original_context=None):
-    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes())
-    cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
+    root=Path(storage.local_dir)/prefix;actual=candidate_roster(root);ready=strict_json(candidate_bytes(root,READY))
+    cached={name:(candidate_bytes(root,f'raw/captures/{name}.body'),strict_json(candidate_bytes(root,f'raw/captures/{name}.receipt.json'))) for name in URLS}
     if any(cached[name][0]!=captures[name][0] for name in PINS): raise CollegeQuarantineError('cached_original_publication_changed')
     manifest=manifest_for(cached,identity)
-    actual_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
+    actual_manifest=strict_json(candidate_bytes(root,'metadata/source_manifest.json'))
     validate_release_provenance(actual_manifest)
     for key,value in manifest.items():
         if key!='code_commit' and encode(actual_manifest.get(key))!=encode(value): raise CollegeQuarantineError('cached_provenance_disagrees_with_original')
@@ -355,19 +376,19 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity,original_contex
     if (ready.get('version')!=prefix.rsplit('/',1)[1] or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready['objects'])!=expected_names):
         raise CollegeQuarantineError('cached_ready_identity_or_roster_drift')
     for name,value in expected.items():
-        if (root/name).read_bytes()!=value: raise CollegeQuarantineError('cached_source_owned_bytes_drift:'+name)
-    actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
-    snapshot='metadata/source/version_'+digest((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'
+        if candidate_bytes(root,name)!=value: raise CollegeQuarantineError('cached_source_owned_bytes_drift:'+name)
+    snapshot='metadata/source/version_'+digest(candidate_bytes(root,'metadata/source_manifest.json'))+'_source_manifest.json'
     derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
     if actual-(expected_names|{READY}|derivatives) or not (expected_names|{READY}).issubset(actual):
         raise CollegeQuarantineError('cached_unknown_or_missing_object')
     for name,pin in ready['objects'].items():
-        if sha256_file(root/name)!=pin: raise CollegeQuarantineError('cached_source_object_changed:'+name)
+        if digest(candidate_bytes(root,name))!=pin: raise CollegeQuarantineError('cached_source_object_changed:'+name)
     for name in ['metadata/source/source_manifest.json',snapshot]:
-        if (root/name).exists() and (root/name).read_bytes()!=(root/'metadata/source_manifest.json').read_bytes(): raise CollegeQuarantineError('cached_source_snapshot_drift')
+        if (root/name).exists() and candidate_bytes(root,name)!=candidate_bytes(root,'metadata/source_manifest.json'): raise CollegeQuarantineError('cached_source_snapshot_drift')
+    for name in actual-expected_names-{READY}:candidate_bytes(root,name)
     if (root/'metadata/resolved_provenance.json').exists():
         resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
-        if resolved.get('inputs')!=manifest['inputs'] or encode(strict_json((root/'metadata/resolved_provenance.json').read_bytes()))!=encode(resolved):
+        if resolved.get('inputs')!=manifest['inputs'] or encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(resolved):
             raise CollegeQuarantineError('cached_resolved_provenance_drift')
     reconcile_outputs(root,table)
 
@@ -417,8 +438,15 @@ def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,
 
 def write_private(root,name,body):
     path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
-    if path.write_bytes(body)!=len(body) or path.read_bytes()!=body:
-        raise CollegeQuarantineError('incomplete_private_write:'+name)
+    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
+    try:
+        info=os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise CollegeQuarantineError('private_write_alias_or_special_file_refused')
+        os.ftruncate(descriptor,0)
+        if os.write(descriptor,body)!=len(body):raise CollegeQuarantineError('incomplete_private_write:'+name)
+        os.fsync(descriptor)
+    finally:os.close(descriptor)
+    if candidate_bytes(root,name)!=body:raise CollegeQuarantineError('incomplete_private_write:'+name)
 
 
 def reconcile_private(root,table,audit,captures,identity,manifest,version):
@@ -426,15 +454,15 @@ def reconcile_private(root,table,audit,captures,identity,manifest,version):
     # first outside seal and again before exposing a discoverable version.
     expected=source_payloads(captures,identity,table,audit,manifest)
     names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'}
-    actual={str(p.relative_to(root))for p in root.rglob('*')if p.is_file()}
+    actual=candidate_roster(root)
     if actual!=names|{READY}:raise CollegeQuarantineError('private_candidate_closed_roster_drift')
     for name,body in expected.items():
-        if(root/name).read_bytes()!=body:raise CollegeQuarantineError('private_candidate_source_bytes_drift:'+name)
-    actual_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
+        if candidate_bytes(root,name)!=body:raise CollegeQuarantineError('private_candidate_source_bytes_drift:'+name)
+    actual_manifest=strict_json(candidate_bytes(root,'metadata/source_manifest.json'))
     validate_release_provenance(actual_manifest);validate_output_policy(actual_manifest)
     ready={'version':version,'approved':False,'processing_fingerprint':digest(encode(identity)),
         'objects':{name:sha256_file(root/name)for name in names}}
-    if(root/READY).read_bytes()!=encode(ready):raise CollegeQuarantineError('private_candidate_ready_drift')
+    if candidate_bytes(root,READY)!=encode(ready):raise CollegeQuarantineError('private_candidate_ready_drift')
     reconcile_outputs(root,table)
 
 
