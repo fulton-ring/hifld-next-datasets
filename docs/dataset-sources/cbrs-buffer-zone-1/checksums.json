@@ -2,8 +2,8 @@
   "schema_version": 1,
   "files": {
     "README.md": {
-      "bytes": 5571,
-      "sha256": "bad37c07a697bda8b93bdfc39464fb7db9ed21626ba0dbbfc05e751a07387d5d"
+      "bytes": 8939,
+      "sha256": "7a2f99ae5ef1fadb9196151c6f40c6acb2221b350ce8cbe783c95883a99efb95"
     },
     "evidence/baseline_comparison.json": {
       "bytes": 202,
@@ -157,6 +157,106 @@
       "bytes": 735,
       "sha256": "adf6a99f11c3eac3033a6a1b7e0c5be6db9c679921f507da695ffdd4ec84efbf"
     },
+    "evidence/review-repairs/actual-live-acquisition-success.json": {
+      "bytes": 2383,
+      "sha256": "aa9e901daee1f951f52e8416cef9feb57703defb357a75b2bafceb15de8aeb40"
+    },
+    "evidence/review-repairs/complete-evidence-and-missing-ready-execution.json": {
+      "bytes": 18983,
+      "sha256": "3384aba08bc1e5b4b5d750968efe78bb9032356b711b4ed1aacd840fa07ac45e"
+    },
+    "evidence/review-repairs/complete-evidence-and-missing-ready.log": {
+      "bytes": 14890,
+      "sha256": "03c4618cbd973808a152cc256b5aafa19dc25925c940be6fdf03c993199b8319"
+    },
+    "evidence/review-repairs/container-and-repeat-catalog-execution.json": {
+      "bytes": 24645,
+      "sha256": "56ca58a60724935e3d3f969addd7c822c60f1d7d2b4427f391525ad4e631afce"
+    },
+    "evidence/review-repairs/container-and-repeat-catalog.log": {
+      "bytes": 16038,
+      "sha256": "0d5765344ed2674e0cfc522a55f03cafd5df09d3089d97a9f496b1ecf15d881a"
+    },
+    "evidence/review-repairs/deterministic-writer-proof.json": {
+      "bytes": 547,
+      "sha256": "228702f02db20c1ed90c636e331ba387c6cebcb3ea8dfc77256a832c49dbbef4"
+    },
+    "evidence/review-repairs/evidence-integrity-verification-archive-pointer.json": {
+      "bytes": 254,
+      "sha256": "5ffc1eeaa7dbe73b04f321f7012f8e9b700246e3830be1ae03dc5904042d83a6"
+    },
+    "evidence/review-repairs/final-baseline_comparison.json": {
+      "bytes": 202,
+      "sha256": "cb0474685dd078c0c967f297b4fe8e1eedd596469d4b25550441fc0075127aaf"
+    },
+    "evidence/review-repairs/final-geopackage_source_fidelity.json": {
+      "bytes": 1708,
+      "sha256": "5522b7ec7e84ab3bbdd24793cf67d0da57feefddec70b78c46bfad5e2bd1c734"
+    },
+    "evidence/review-repairs/final-parquet_source_fidelity.json": {
+      "bytes": 1955,
+      "sha256": "8b950932f4ae353b2201537d5ad70faacf047c3d6e28a6ad8a2caeabdf438b07"
+    },
+    "evidence/review-repairs/final-processing_identity.json": {
+      "bytes": 10296,
+      "sha256": "da3f313c8b0e3cff27d1183711dfd7ae3e964df6cab73cfc766b7a0580f207a4"
+    },
+    "evidence/review-repairs/final-registered-race-execution.json": {
+      "bytes": 5999,
+      "sha256": "7bfd5139b36d3738a11ad5098ceecdab58d54ffdfa078149a7b5f4ea9341dc2c"
+    },
+    "evidence/review-repairs/final-registered-race.log": {
+      "bytes": 11381,
+      "sha256": "e15bc5ddb7b5c070605247676e6503363d719899e83804cd0bab182a8fbecf1b"
+    },
+    "evidence/review-repairs/final-source-fidelity/baseline_comparison.json": {
+      "bytes": 1525,
+      "sha256": "fe1c347210a3e4c44cd69a5c296c3fc5dbaeaf739af19a73cd8e589fc6f95dd4"
+    },
+    "evidence/review-repairs/final-source-fidelity/baseline_comparison.md": {
+      "bytes": 362,
+      "sha256": "a449c60c0be333537a7d543530935243648d7a486ca9884abe70c872ba7858de"
+    },
+    "evidence/review-repairs/final-source-fidelity/baseline_differences.jsonl": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "evidence/review-repairs/final-source-fidelity/baseline_field_changes.jsonl": {
+      "bytes": 281,
+      "sha256": "bebd7f1abaab07d818e9f1969a305af2607000c6686ee4772ef01acf4241ffd1"
+    },
+    "evidence/review-repairs/final-source_manifest.json": {
+      "bytes": 7174,
+      "sha256": "3c89231d5fbe5c1c2067c6bb047ba44dc68f2b46d1461a7b524e814df7825c53"
+    },
+    "evidence/review-repairs/full-suite-510.log": {
+      "bytes": 18526,
+      "sha256": "e6948049c853003d0d7c8b5e074e35e3ceba76ac28e5fff193b19f14d3588129"
+    },
+    "evidence/review-repairs/full-suite-511.log": {
+      "bytes": 18556,
+      "sha256": "75a28c286d36ab1309ef003af2382aee0d3b91ff6861639080eff9c5bc8505d0"
+    },
+    "evidence/review-repairs/full-suite-513.log": {
+      "bytes": 18586,
+      "sha256": "522afc6f23486762aa11f30b5a77c3ac95ae599bbcf4fb4b862e4266dff02fd8"
+    },
+    "evidence/review-repairs/live-encoding-proof.json": {
+      "bytes": 414,
+      "sha256": "9f4b8e4ec1b366349fd56fb28e6db77ae5c0eade94ec34b72d5f584188137929"
+    },
+    "evidence/review-repairs/original-live-acquisition-failure.json": {
+      "bytes": 280,
+      "sha256": "16c201aa989d0b495411277159ebcb96c98c1a123822a8196522edf20fdec51f"
+    },
+    "evidence/review-repairs/repair-verification-archive-pointer.json": {
+      "bytes": 250,
+      "sha256": "c85fa65b9f572fe788e28bb89881c3bf04e376371407750aa54306f8ef073d1d"
+    },
+    "evidence/review-repairs/transport-and-lock-tests.log": {
+      "bytes": 333,
+      "sha256": "650ae18ee316e11d2165b4664dd61d816ecd780ddc10d63f54e9d77551276c2b"
+    },
     "evidence/source_count.body": {
       "bytes": 14,
       "sha256": "6d8954e5076fe5970d287a4c165e3470ed9dc722b6e16b2a40b4a21557e154ce"
@@ -218,8 +318,8 @@
       "sha256": "0f0afd3e1eaa166270fdc328d2f4191f0710e3f155d85edc2e7f58ac805a3e6b"
     },
     "source.json": {
-      "bytes": 4972,
-      "sha256": "de330ac83bcbbb524d38b406ee77196958d5d0d459b8f5a1f6c806a35e858295"
+      "bytes": 7702,
+      "sha256": "aa0ce82496ba1973dd4bb7df0cf3f475de4889f4aa01cd951ac216982c55f57c"
     }
   }
 }

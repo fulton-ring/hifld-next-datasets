@@ -1,0 +1,5 @@
+{
+  "head": "04e1599f841aecbcbf33f563587df24737da0a8f",
+  "success": false,
+  "error": "bounded_fetch_exhausted:incomplete_content_length; retained:_quarantine/cbrs-buffer-zone-1/fe743f9109f755e475fcaf63dd7c111837f773ed098f58cb281be9f72fe7281e/dab5cca5cc18494b9a18887a8363d24f"
+}

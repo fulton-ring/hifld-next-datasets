@@ -1,0 +1,18 @@
+[
+  {
+    "request_accept_encoding": "gzip, deflate, br",
+    "status": 200,
+    "content_encoding": "gzip",
+    "content_length": "19470",
+    "received_wire_bytes": 19470,
+    "decoded_source_bytes": 101644
+  },
+  {
+    "request_accept_encoding": "identity",
+    "status": 200,
+    "content_encoding": null,
+    "content_length": null,
+    "received_wire_bytes": 101644,
+    "decoded_source_bytes": 101644
+  }
+]
