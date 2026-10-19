@@ -1,0 +1,72 @@
+{
+  "classification": "Working draft receipt-origin repair, no acceptance",
+  "tested_code_head": "921feb956436f5e1b056ba2523cde735dc585532",
+  "expected_layer_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/2",
+  "guards": [
+    "exact observed official HTTPS request and final redirect per capture",
+    "exact official layer path and query parameters; duplicate query parameters rejected",
+    "all seven receipts required",
+    "missing redirect evidence quarantined; no fabricated final_url",
+    "raw bodies and receipts preserved before rejection",
+    "namespace pins expected layer, retrieval URLs and final URLs"
+  ],
+  "real_graph": {
+    "classification": "working local draft; complete real composite observed captures; no dataset acceptance",
+    "source_code_commit": "921feb956436f5e1b056ba2523cde735dc585532",
+    "module": "/workspace/hifld-worker-worktrees/4/src/dagster_hifld/assets/noaa_contiguous.py",
+    "asset_collection": "dagster_hifld.definitions.defs.assets",
+    "normal_registered_asset_count": 74,
+    "source_run_id": "664c0f8d-363d-4ea4-9cf3-95a8fb2bf159",
+    "idempotent_run_id": "0d493761-05f2-413d-85f3-624998ca2243",
+    "formats_run_id": "80329353-ddd8-4e7a-b7d9-24cab269b091",
+    "failed_release_run_id": "9e5a2c88-12fa-46c3-8150-0e5a057928a7",
+    "source_rows": 63,
+    "terminal_rows": 63,
+    "terminal_UNILATERAL_type": "double",
+    "partition": "24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.b2cb1263280ddbee328e",
+    "candidate_sha256": "d92d06b5e2eb2814c24e5927edcddff271420581d08182f69f3e5706b6fa7ddf",
+    "full_attributes_ids_geometries_checked": true,
+    "coverage": {
+      "REGION": {
+        "Alaska": 20,
+        "American Samoa": 4,
+        "Atlantic Coast and Gulf of Mexico": 14,
+        "Commonwealth of the Northern Mariana Islands and Territory of Guam": 3,
+        "Hawaiian Islands": 11,
+        "Howland Island, Baker Island and Jarvis Island": 2,
+        "Johnston Atoll": 1,
+        "Pacific Coast": 3,
+        "Palmyra Atoll and Kingman Reef": 1,
+        "Puerto Rico and U.S. Virgin Islands": 3,
+        "Wake Island": 1
+      },
+      "FEAT_TYPE": {
+        "Maritime Limit": 63
+      }
+    },
+    "quality_check_passed": true,
+    "raw_bodies_preserved": 7,
+    "provenance_inputs": 7,
+    "published_objects_unchanged": true,
+    "release_failure": "missing_independent_release_approval_registry",
+    "promotion_approved": false,
+    "terminal_paths": [
+      "/workspace/work/hifld-coordinator/noaa4-origin-final/staging/24nm-contiguous-zone/24nm-contiguous-zone/v0.0.0-draft.noaa.b2cb1263280ddbee328e/geoparquet/24nm-contiguous-zone.parquet"
+    ],
+    "terminal_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nOBJECTID: int64\nBOUND_ID: string\nREGION: string\nFEAT_TYPE: string\nPUB_DATE: int64\nAPPRV_DATE: int64\nLEGAL_AUTH: string\nAOR: string\nNOTE: string\nSUPP_INFO: string\nUNILATERAL: double\nRULEID: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1578\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 782",
+    "state_storage": "/workspace/work/hifld-coordinator/noaa4-origin-final"
+  },
+  "test_command": "PYTHONPATH=src /workspace/hifld-worker-worktrees/3/.venv/bin/python -m unittest tests.test_noaa_contiguous tests.test_refresh_registration_4",
+  "tests_passed": 6,
+  "test_log": "/workspace/work/hifld-coordinator/noaa-4-origin-tests.log",
+  "test_log_sha256": "67d7ab0e22ab4d8626f45b70c7163f7cdd2dfdd80180835f66861771941bb504",
+  "normal_graph_log": "/workspace/work/hifld-coordinator/noaa4-origin-final.log",
+  "normal_graph_log_sha256": "91249708bf2926809a34c999fe6c96eb06f79556140e2344042fcb961e70f891",
+  "review": "pending exact final head",
+  "limitations": [
+    "No real source/baseline/contract/format acceptance",
+    "No production publication or merge",
+    "Full suite not repeated for targeted origin delta; known missing sibling IaC remains"
+  ],
+  "capture_note": "The retained fixture now consists of the seven full bodies and observed request/final URLs from one actual live extraction. The legacy test result classification string still conservatively calls its default fixture composite; verified-capture-receipt.json pins the real observed batch, without invented redirects."
+}

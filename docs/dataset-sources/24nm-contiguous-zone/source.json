@@ -334,5 +334,11 @@
     "full_suite_code_tested": "bbb913c29e268bcc70c7b0479b03bf830bde333e",
     "later_focused_code_tested": "6b3df39df76e76ab3b17187aa5afb6080d103e86",
     "later_focused_tests_passed": 27
+  },
+  "origin_validation_followup": {
+    "evidence": "evidence/draft-origin-validation.json",
+    "tested_code_head": "921feb956436f5e1b056ba2523cde735dc585532",
+    "status": "implemented locally verified; exact-head independent review pending",
+    "release_approved": false
   }
 }
