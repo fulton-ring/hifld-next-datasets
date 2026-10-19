@@ -186,6 +186,21 @@
       "actual_source_catalog": "evidence/crs-time-repair.json",
       "terminal_conversions_rerun": false,
       "native_review": "pending_incremental_exact_head"
+    },
+    "canonical_provenance_preflight_repair": {
+      "source_head": "cf1bcae8ae4579f81b9b76e47e611953abef7181",
+      "focused_source_registration_tests": 21,
+      "actual_positive": "evidence/provenance-preflight.json",
+      "actual_four_negative_runs": "evidence/negative-provenance.json",
+      "terminal_conversions_rerun": false,
+      "native_review": "pending_incremental_exact_head"
+    },
+    "historical_iac_input_resolution": {
+      "root_supplied_unmodified_snapshot": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "current_targeted_iac_test": "PASS",
+      "evidence": "evidence/iac-targeted-resolved.log",
+      "full_suite_rerun": false,
+      "prior_full_suite_counts_retained": true
     }
   },
   "unresolved_crs_metadata_discrepancy": {

@@ -1,0 +1,76 @@
+/workspace/hifld-worker-worktrees/10/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+2026-10-19 06:50:10 +0000 - dagster - DEBUG - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - RUN_START - Started execution of run for "aviation_negative_provenance".
+2026-10-19 06:50:10 +0000 - dagster - DEBUG - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - ENGINE_EVENT - Executing steps in process (pid: 52136)
+2026-10-19 06:50:10 +0000 - dagster - DEBUG - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:10 +0000 - dagster - DEBUG - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:10 +0000 - dagster - DEBUG - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - LOGS_CAPTURED - Started capturing logs in process (pid: 52136).
+2026-10-19 06:50:10 +0000 - dagster - DEBUG - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
+2026-10-19 06:50:13 +0000 - dagster - DEBUG - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - ENGINE_EVENT - Finished steps in process (pid: 52136) in 3.16s
+2026-10-19 06:50:13 +0000 - dagster - ERROR - aviation_negative_provenance - 4bb78452-489c-4af2-a080-937ae5f4fcf4 - 52136 - RUN_FAILURE - Execution of run for "aviation_negative_provenance" failed. Steps failed: ['ingest__aviation_facilities__aviation_facilities'].
+2026-10-19 06:50:14 +0000 - dagster - DEBUG - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - RUN_START - Started execution of run for "aviation_negative_provenance".
+2026-10-19 06:50:14 +0000 - dagster - DEBUG - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - ENGINE_EVENT - Executing steps in process (pid: 52136)
+2026-10-19 06:50:14 +0000 - dagster - DEBUG - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:14 +0000 - dagster - DEBUG - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:14 +0000 - dagster - DEBUG - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - LOGS_CAPTURED - Started capturing logs in process (pid: 52136).
+2026-10-19 06:50:14 +0000 - dagster - DEBUG - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
+2026-10-19 06:50:17 +0000 - dagster - DEBUG - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - ENGINE_EVENT - Finished steps in process (pid: 52136) in 3.42s
+2026-10-19 06:50:18 +0000 - dagster - ERROR - aviation_negative_provenance - 22ced697-d913-4b57-a623-eb15f43c1084 - 52136 - RUN_FAILURE - Execution of run for "aviation_negative_provenance" failed. Steps failed: ['ingest__aviation_facilities__aviation_facilities'].
+2026-10-19 06:50:18 +0000 - dagster - DEBUG - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - RUN_START - Started execution of run for "aviation_negative_provenance".
+2026-10-19 06:50:18 +0000 - dagster - DEBUG - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - ENGINE_EVENT - Executing steps in process (pid: 52136)
+2026-10-19 06:50:18 +0000 - dagster - DEBUG - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:18 +0000 - dagster - DEBUG - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:18 +0000 - dagster - DEBUG - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - LOGS_CAPTURED - Started capturing logs in process (pid: 52136).
+2026-10-19 06:50:18 +0000 - dagster - DEBUG - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
+2026-10-19 06:50:25 +0000 - dagster - DEBUG - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - ENGINE_EVENT - Finished steps in process (pid: 52136) in 6.4s
+2026-10-19 06:50:25 +0000 - dagster - ERROR - aviation_negative_provenance - 75c27992-cb66-4033-9209-5045400411b6 - 52136 - RUN_FAILURE - Execution of run for "aviation_negative_provenance" failed. Steps failed: ['ingest__aviation_facilities__aviation_facilities'].
+2026-10-19 06:50:25 +0000 - dagster - DEBUG - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - RUN_START - Started execution of run for "aviation_negative_provenance".
+2026-10-19 06:50:25 +0000 - dagster - DEBUG - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - ENGINE_EVENT - Executing steps in process (pid: 52136)
+2026-10-19 06:50:25 +0000 - dagster - DEBUG - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:25 +0000 - dagster - DEBUG - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:50:25 +0000 - dagster - DEBUG - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - LOGS_CAPTURED - Started capturing logs in process (pid: 52136).
+2026-10-19 06:50:25 +0000 - dagster - DEBUG - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
+2026-10-19 06:50:30 +0000 - dagster - DEBUG - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - ENGINE_EVENT - Finished steps in process (pid: 52136) in 4.22s
+2026-10-19 06:50:30 +0000 - dagster - ERROR - aviation_negative_provenance - 8225ad05-3152-4a42-9699-a7e194f485f4 - 52136 - RUN_FAILURE - Execution of run for "aviation_negative_provenance" failed. Steps failed: ['ingest__aviation_facilities__aviation_facilities'].
+{
+  "synthetic_mutated_metadata_on_authentic_complete_19427_input": true,
+  "runs": [
+    {
+      "case": "extra-receipt",
+      "run_id": "4bb78452-489c-4af2-a080-937ae5f4fcf4",
+      "success": false,
+      "reason": "ValueError: Unexpected or missing canonical receipt roster; retained diagnostics require review",
+      "no_new_canonical_output": true,
+      "all_prior_canonical_and_accepted_bytes_unchanged": true,
+      "raw_quarantine_retained": true
+    },
+    {
+      "case": "headers-null",
+      "run_id": "22ced697-d913-4b57-a623-eb15f43c1084",
+      "success": false,
+      "reason": "ValueError: Canonical receipt headers must be a string mapping",
+      "no_new_canonical_output": true,
+      "all_prior_canonical_and_accepted_bytes_unchanged": true,
+      "raw_quarantine_retained": true
+    },
+    {
+      "case": "license",
+      "run_id": "75c27992-cb66-4033-9209-5045400411b6",
+      "success": false,
+      "reason": "ValueError: Missing original distributor license/attribution requires review",
+      "no_new_canonical_output": true,
+      "all_prior_canonical_and_accepted_bytes_unchanged": true,
+      "raw_quarantine_retained": true
+    },
+    {
+      "case": "attribution",
+      "run_id": "8225ad05-3152-4a42-9699-a7e194f485f4",
+      "success": false,
+      "reason": "ValueError: Missing original distributor license/attribution requires review",
+      "no_new_canonical_output": true,
+      "all_prior_canonical_and_accepted_bytes_unchanged": true,
+      "raw_quarantine_retained": true
+    }
+  ],
+  "prior_version": "v0.0.0-draft-b8fadf24dd36dbdc766eae88"
+}

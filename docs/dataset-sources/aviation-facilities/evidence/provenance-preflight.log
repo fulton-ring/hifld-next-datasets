@@ -1,0 +1,992 @@
+/workspace/hifld-worker-worktrees/10/.venv/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+2026-10-19 06:49:03 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - RUN_START - Started execution of run for "aviation_real_ingest".
+2026-10-19 06:49:03 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - ENGINE_EVENT - Executing steps in process (pid: 51738)
+2026-10-19 06:49:03 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:49:03 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:49:03 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - LOGS_CAPTURED - Started capturing logs in process (pid: 51738).
+2026-10-19 06:49:03 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
+2026-10-19 06:49:14 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - ENGINE_EVENT - Finished steps in process (pid: 51738) in 11.02s
+2026-10-19 06:49:14 +0000 - dagster - DEBUG - aviation_real_ingest - 5c3cd794-c5a5-4583-aebb-c05014a15a12 - 51738 - RUN_SUCCESS - Finished execution of run for "aviation_real_ingest".
+2026-10-19 06:49:15 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - RUN_START - Started execution of run for "aviation_real_ingest".
+2026-10-19 06:49:15 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - ENGINE_EVENT - Executing steps in process (pid: 51738)
+2026-10-19 06:49:15 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:49:15 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - ingest__aviation_facilities__aviation_facilities - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:49:15 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - LOGS_CAPTURED - Started capturing logs in process (pid: 51738).
+2026-10-19 06:49:15 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - ingest__aviation_facilities__aviation_facilities - STEP_START - Started execution of step "ingest__aviation_facilities__aviation_facilities".
+2026-10-19 06:49:30 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - ENGINE_EVENT - Finished steps in process (pid: 51738) in 15.37s
+2026-10-19 06:49:30 +0000 - dagster - DEBUG - aviation_real_ingest - db44ed4f-6525-45e0-89f2-dac977a85ba8 - 51738 - RUN_SUCCESS - Finished execution of run for "aviation_real_ingest".
+/workspace/hifld-worker-worktrees/20/docs/dataset-sources/aviation-facilities/run_local.py:85: DeprecationWarning: Function `AssetSelection.keys` is deprecated and will be removed in 2.0. Use AssetSelection.assets instead.
+  resources=resources,jobs=[define_asset_job('aviation_identity_catalog',selection=AssetSelection.keys(['publish','catalog']))])
+2026-10-19 06:49:44 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - RUN_START - Started execution of run for "aviation_identity_catalog".
+2026-10-19 06:49:44 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - ENGINE_EVENT - Executing steps in process (pid: 51738)
+2026-10-19 06:49:44 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - RESOURCE_INIT_STARTED - Starting initialization of resources [io_manager, staging_storage].
+2026-10-19 06:49:44 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - RESOURCE_INIT_SUCCESS - Finished initialization of resources [io_manager, staging_storage].
+2026-10-19 06:49:44 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - LOGS_CAPTURED - Started capturing logs in process (pid: 51738).
+2026-10-19 06:49:44 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - publish__catalog - STEP_START - Started execution of step "publish__catalog".
+2026-10-19 06:49:52 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - publish__catalog - STEP_OUTPUT - Yielded output "result" of type "dict". (Type check passed).
+2026-10-19 06:49:52 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - publish__catalog - Writing file at: /workspace/work/hifld-coordinator/20/provenance-preflight/dagster/storage/publish/catalog/aviation-facilities/aviation-facilities/v0.0.0-draft-b8fadf24dd36dbdc766eae88 using PickledObjectFilesystemIOManager...
+2026-10-19 06:49:52 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - ENGINE_EVENT - Finished steps in process (pid: 51738) in 8.39s
+2026-10-19 06:49:53 +0000 - dagster - DEBUG - aviation_identity_catalog - e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f - 51738 - RUN_SUCCESS - Finished execution of run for "aviation_identity_catalog".
+{
+  "adapter_module": "/workspace/hifld-worker-worktrees/20/src/dagster_hifld/aviation_extract.py",
+  "capture": "/workspace/work/hifld-coordinator/20/capture-bound",
+  "runtime": "/workspace/work/hifld-coordinator/20/provenance-preflight",
+  "approval_registry_present": false,
+  "ingest": {
+    "run_id": "5c3cd794-c5a5-4583-aebb-c05014a15a12",
+    "success": true,
+    "output": {
+      "version": "v0.0.0-draft-b8fadf24dd36dbdc766eae88",
+      "rows": 19427,
+      "source": "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Aviation_Facilities/FeatureServer/0",
+      "candidate_sha256": "df3f63f78041ddc55246b21bfbe790eddb68180e54add70daaebf7064bf6a139",
+      "promotion_allowed": false
+    }
+  },
+  "normal_discovery": {
+    "ingest_alone_discoverable": true,
+    "sensor_partition_requests": [
+      "aviation-facilities/aviation-facilities/v0.0.0-draft-b8fadf24dd36dbdc766eae88"
+    ],
+    "manual_data_or_manifest_copies": false
+  },
+  "idempotent_replay": {
+    "run_id": "db44ed4f-6525-45e0-89f2-dac977a85ba8",
+    "success": true,
+    "output_identical": true
+  },
+  "candidate_audit": {
+    "rows": 19427,
+    "all_source_fields_types_nullability_values_equal": true,
+    "all_native_geometry_wkb_equal": true,
+    "source_ids_substituted": false,
+    "internal_driver_fid": "GeoPackage format machinery only; original OBJECTID/SITE_NO/ARPT_ID retained as independent named columns",
+    "sha256": "92be1940f074081ec90c8795f3f3712f368f9acb5748787cfea15a73965448b0"
+  },
+  "source_manifest_structurally_valid_without_approval": true,
+  "processing_provenance": {
+    "builder_fingerprint": "3516dcfd9b83039630c83ee2c2c713773dd28c500195fb93b843fd95ba87d419",
+    "code_commit": "cf1bcae8ae4579f81b9b76e47e611953abef7181",
+    "dependency_manifests": {
+      ".python-version": {
+        "bytes": 5,
+        "sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d"
+      },
+      "pyproject.toml": {
+        "bytes": 1264,
+        "sha256": "391e683c201d621dcc34ee0f9c900f613d0102b49107b34b9a0f57e0cfbe1a4f"
+      },
+      "uv.lock": {
+        "bytes": 698759,
+        "sha256": "138b5fc34312598341658524a2e61a5962beb4c353bc119368fb3a64bbfe0da7"
+      }
+    },
+    "installed_distributions": [
+      {
+        "name": "affine",
+        "version": "3.0.1"
+      },
+      {
+        "name": "agno",
+        "version": "2.5.8"
+      },
+      {
+        "name": "aiofiles",
+        "version": "25.1.0"
+      },
+      {
+        "name": "aiohappyeyeballs",
+        "version": "2.6.1"
+      },
+      {
+        "name": "aiohttp",
+        "version": "3.13.3"
+      },
+      {
+        "name": "aiosignal",
+        "version": "1.4.0"
+      },
+      {
+        "name": "aiosqlite",
+        "version": "0.22.1"
+      },
+      {
+        "name": "alembic",
+        "version": "1.18.4"
+      },
+      {
+        "name": "alphashape",
+        "version": "1.3.1"
+      },
+      {
+        "name": "altair",
+        "version": "6.0.0"
+      },
+      {
+        "name": "annotated-doc",
+        "version": "0.0.4"
+      },
+      {
+        "name": "annotated-types",
+        "version": "0.7.0"
+      },
+      {
+        "name": "antlr4-python3-runtime",
+        "version": "4.13.2"
+      },
+      {
+        "name": "anyio",
+        "version": "4.12.1"
+      },
+      {
+        "name": "attrs",
+        "version": "25.4.0"
+      },
+      {
+        "name": "backoff",
+        "version": "2.2.1"
+      },
+      {
+        "name": "beautifulsoup4",
+        "version": "4.14.3"
+      },
+      {
+        "name": "boto3",
+        "version": "1.43.89"
+      },
+      {
+        "name": "botocore",
+        "version": "1.43.89"
+      },
+      {
+        "name": "brotli",
+        "version": "1.2.0"
+      },
+      {
+        "name": "certifi",
+        "version": "2026.2.25"
+      },
+      {
+        "name": "cffi",
+        "version": "2.0.0"
+      },
+      {
+        "name": "chardet",
+        "version": "7.0.1"
+      },
+      {
+        "name": "charset-normalizer",
+        "version": "3.4.5"
+      },
+      {
+        "name": "click",
+        "version": "8.5.0"
+      },
+      {
+        "name": "click-log",
+        "version": "0.4.0"
+      },
+      {
+        "name": "click-plugins",
+        "version": "1.1.1.2"
+      },
+      {
+        "name": "cligj",
+        "version": "0.7.2"
+      },
+      {
+        "name": "coloredlogs",
+        "version": "14.0"
+      },
+      {
+        "name": "Crawl4AI",
+        "version": "0.8.0"
+      },
+      {
+        "name": "cryptography",
+        "version": "46.0.5"
+      },
+      {
+        "name": "cssselect",
+        "version": "1.4.0"
+      },
+      {
+        "name": "dagster",
+        "version": "1.12.19"
+      },
+      {
+        "name": "dagster-gcp",
+        "version": "0.28.19"
+      },
+      {
+        "name": "dagster-graphql",
+        "version": "1.12.19"
+      },
+      {
+        "name": "dagster-k8s",
+        "version": "0.28.19"
+      },
+      {
+        "name": "dagster-pandas",
+        "version": "0.28.19"
+      },
+      {
+        "name": "dagster-pipes",
+        "version": "1.12.19"
+      },
+      {
+        "name": "dagster-postgres",
+        "version": "0.28.19"
+      },
+      {
+        "name": "dagster-shared",
+        "version": "1.12.19"
+      },
+      {
+        "name": "dagster-webserver",
+        "version": "1.12.19"
+      },
+      {
+        "name": "db-dtypes",
+        "version": "1.6.0"
+      },
+      {
+        "name": "ddgs",
+        "version": "9.11.3"
+      },
+      {
+        "name": "decorator",
+        "version": "5.2.1"
+      },
+      {
+        "name": "distro",
+        "version": "1.9.0"
+      },
+      {
+        "name": "docstring_parser",
+        "version": "0.17.0"
+      },
+      {
+        "name": "durationpy",
+        "version": "0.10"
+      },
+      {
+        "name": "fake-http-header",
+        "version": "0.3.5"
+      },
+      {
+        "name": "fake-useragent",
+        "version": "2.2.0"
+      },
+      {
+        "name": "fastapi",
+        "version": "0.135.1"
+      },
+      {
+        "name": "fastuuid",
+        "version": "0.14.0"
+      },
+      {
+        "name": "filelock",
+        "version": "3.25.1"
+      },
+      {
+        "name": "fiona",
+        "version": "1.10.1"
+      },
+      {
+        "name": "frozenlist",
+        "version": "1.8.0"
+      },
+      {
+        "name": "fsspec",
+        "version": "2026.2.0"
+      },
+      {
+        "name": "future",
+        "version": "1.0.0"
+      },
+      {
+        "name": "gcsfs",
+        "version": "2026.2.0"
+      },
+      {
+        "name": "geopandas",
+        "version": "1.1.3"
+      },
+      {
+        "name": "gitdb",
+        "version": "4.0.12"
+      },
+      {
+        "name": "GitPython",
+        "version": "3.1.46"
+      },
+      {
+        "name": "google-api-core",
+        "version": "2.30.0"
+      },
+      {
+        "name": "google-api-python-client",
+        "version": "2.196.0"
+      },
+      {
+        "name": "google-auth",
+        "version": "2.49.1"
+      },
+      {
+        "name": "google-auth-httplib2",
+        "version": "0.4.0"
+      },
+      {
+        "name": "google-auth-oauthlib",
+        "version": "1.3.0"
+      },
+      {
+        "name": "google-cloud-bigquery",
+        "version": "3.41.0"
+      },
+      {
+        "name": "google-cloud-core",
+        "version": "2.5.0"
+      },
+      {
+        "name": "google-cloud-storage",
+        "version": "3.9.0"
+      },
+      {
+        "name": "google-cloud-storage-control",
+        "version": "1.10.0"
+      },
+      {
+        "name": "google-crc32c",
+        "version": "1.8.0"
+      },
+      {
+        "name": "google-resumable-media",
+        "version": "2.8.0"
+      },
+      {
+        "name": "googleapis-common-protos",
+        "version": "1.73.0"
+      },
+      {
+        "name": "gql",
+        "version": "4.0.0"
+      },
+      {
+        "name": "graphene",
+        "version": "3.4.3"
+      },
+      {
+        "name": "graphql-core",
+        "version": "3.2.8"
+      },
+      {
+        "name": "graphql-relay",
+        "version": "3.2.0"
+      },
+      {
+        "name": "great_expectations",
+        "version": "1.15.1"
+      },
+      {
+        "name": "greenlet",
+        "version": "3.3.2"
+      },
+      {
+        "name": "grpc-google-iam-v1",
+        "version": "0.14.3"
+      },
+      {
+        "name": "grpcio",
+        "version": "1.78.0"
+      },
+      {
+        "name": "grpcio-health-checking",
+        "version": "1.78.0"
+      },
+      {
+        "name": "grpcio-status",
+        "version": "1.78.0"
+      },
+      {
+        "name": "h11",
+        "version": "0.16.0"
+      },
+      {
+        "name": "h2",
+        "version": "4.3.0"
+      },
+      {
+        "name": "hf-xet",
+        "version": "1.3.2"
+      },
+      {
+        "name": "hifld-next-datasets",
+        "version": "0.1.0"
+      },
+      {
+        "name": "hifld-next-datasets",
+        "version": "0.1.0"
+      },
+      {
+        "name": "hpack",
+        "version": "4.1.0"
+      },
+      {
+        "name": "httpcore",
+        "version": "1.0.9"
+      },
+      {
+        "name": "httplib2",
+        "version": "0.31.2"
+      },
+      {
+        "name": "httptools",
+        "version": "0.7.1"
+      },
+      {
+        "name": "httpx",
+        "version": "0.28.1"
+      },
+      {
+        "name": "huggingface_hub",
+        "version": "0.36.2"
+      },
+      {
+        "name": "humanfriendly",
+        "version": "10.0"
+      },
+      {
+        "name": "humanize",
+        "version": "4.15.0"
+      },
+      {
+        "name": "hyperframe",
+        "version": "6.1.0"
+      },
+      {
+        "name": "idna",
+        "version": "3.11"
+      },
+      {
+        "name": "importlib_metadata",
+        "version": "8.7.1"
+      },
+      {
+        "name": "Jinja2",
+        "version": "3.1.6"
+      },
+      {
+        "name": "jiter",
+        "version": "0.13.0"
+      },
+      {
+        "name": "jmespath",
+        "version": "1.1.0"
+      },
+      {
+        "name": "joblib",
+        "version": "1.5.3"
+      },
+      {
+        "name": "jsonschema",
+        "version": "4.26.0"
+      },
+      {
+        "name": "jsonschema-specifications",
+        "version": "2025.9.1"
+      },
+      {
+        "name": "kubernetes",
+        "version": "35.0.0"
+      },
+      {
+        "name": "lark",
+        "version": "1.3.1"
+      },
+      {
+        "name": "litellm",
+        "version": "1.82.0"
+      },
+      {
+        "name": "lxml",
+        "version": "5.4.0"
+      },
+      {
+        "name": "Mako",
+        "version": "1.3.10"
+      },
+      {
+        "name": "markdown-it-py",
+        "version": "4.0.0"
+      },
+      {
+        "name": "MarkupSafe",
+        "version": "3.0.3"
+      },
+      {
+        "name": "marshmallow",
+        "version": "3.26.2"
+      },
+      {
+        "name": "mdurl",
+        "version": "0.1.2"
+      },
+      {
+        "name": "mistune",
+        "version": "3.2.0"
+      },
+      {
+        "name": "morecantile",
+        "version": "7.1.0"
+      },
+      {
+        "name": "multidict",
+        "version": "6.7.1"
+      },
+      {
+        "name": "narwhals",
+        "version": "2.18.0"
+      },
+      {
+        "name": "networkx",
+        "version": "3.6.1"
+      },
+      {
+        "name": "nltk",
+        "version": "3.9.3"
+      },
+      {
+        "name": "numpy",
+        "version": "2.4.3"
+      },
+      {
+        "name": "oauth2client",
+        "version": "4.1.3"
+      },
+      {
+        "name": "oauthlib",
+        "version": "3.3.1"
+      },
+      {
+        "name": "openai",
+        "version": "2.26.0"
+      },
+      {
+        "name": "packaging",
+        "version": "26.0"
+      },
+      {
+        "name": "pandas",
+        "version": "2.3.3"
+      },
+      {
+        "name": "patchright",
+        "version": "1.58.2"
+      },
+      {
+        "name": "pathlib_abc",
+        "version": "0.5.2"
+      },
+      {
+        "name": "pillow",
+        "version": "12.1.1"
+      },
+      {
+        "name": "platformdirs",
+        "version": "4.9.4"
+      },
+      {
+        "name": "playwright",
+        "version": "1.58.0"
+      },
+      {
+        "name": "polars",
+        "version": "1.38.1"
+      },
+      {
+        "name": "polars-runtime-32",
+        "version": "1.38.1"
+      },
+      {
+        "name": "primp",
+        "version": "1.1.3"
+      },
+      {
+        "name": "propcache",
+        "version": "0.4.1"
+      },
+      {
+        "name": "proto-plus",
+        "version": "1.27.1"
+      },
+      {
+        "name": "protobuf",
+        "version": "6.33.5"
+      },
+      {
+        "name": "psutil",
+        "version": "7.2.2"
+      },
+      {
+        "name": "psycopg2-binary",
+        "version": "2.9.12"
+      },
+      {
+        "name": "pyarrow",
+        "version": "23.0.1"
+      },
+      {
+        "name": "pyasn1",
+        "version": "0.6.2"
+      },
+      {
+        "name": "pyasn1_modules",
+        "version": "0.4.2"
+      },
+      {
+        "name": "pycparser",
+        "version": "3.0"
+      },
+      {
+        "name": "pydantic",
+        "version": "2.12.5"
+      },
+      {
+        "name": "pydantic-settings",
+        "version": "2.13.1"
+      },
+      {
+        "name": "pydantic_core",
+        "version": "2.41.5"
+      },
+      {
+        "name": "pyee",
+        "version": "13.0.1"
+      },
+      {
+        "name": "Pygments",
+        "version": "2.19.2"
+      },
+      {
+        "name": "pyogrio",
+        "version": "0.12.1"
+      },
+      {
+        "name": "pyOpenSSL",
+        "version": "25.3.0"
+      },
+      {
+        "name": "pyparsing",
+        "version": "3.3.2"
+      },
+      {
+        "name": "pyproj",
+        "version": "3.7.2"
+      },
+      {
+        "name": "python-dateutil",
+        "version": "2.9.0.post0"
+      },
+      {
+        "name": "python-dotenv",
+        "version": "1.2.2"
+      },
+      {
+        "name": "python-multipart",
+        "version": "0.0.22"
+      },
+      {
+        "name": "pytz",
+        "version": "2026.1.post1"
+      },
+      {
+        "name": "PyYAML",
+        "version": "6.0.3"
+      },
+      {
+        "name": "rank-bm25",
+        "version": "0.2.2"
+      },
+      {
+        "name": "rashid",
+        "version": "0.1.8"
+      },
+      {
+        "name": "rasterio",
+        "version": "1.5.1"
+      },
+      {
+        "name": "referencing",
+        "version": "0.37.0"
+      },
+      {
+        "name": "regex",
+        "version": "2026.2.28"
+      },
+      {
+        "name": "requests",
+        "version": "2.32.5"
+      },
+      {
+        "name": "requests-oauthlib",
+        "version": "2.0.0"
+      },
+      {
+        "name": "requests-toolbelt",
+        "version": "1.0.0"
+      },
+      {
+        "name": "rich",
+        "version": "14.3.3"
+      },
+      {
+        "name": "rio-cogeo",
+        "version": "7.0.2"
+      },
+      {
+        "name": "rpds-py",
+        "version": "0.30.0"
+      },
+      {
+        "name": "rsa",
+        "version": "4.9.1"
+      },
+      {
+        "name": "rtree",
+        "version": "1.4.1"
+      },
+      {
+        "name": "ruamel.yaml",
+        "version": "0.19.1"
+      },
+      {
+        "name": "s2sphere",
+        "version": "0.2.5"
+      },
+      {
+        "name": "s3transfer",
+        "version": "0.19.2"
+      },
+      {
+        "name": "scipy",
+        "version": "1.17.1"
+      },
+      {
+        "name": "setuptools",
+        "version": "81.0.0"
+      },
+      {
+        "name": "shapely",
+        "version": "2.1.2"
+      },
+      {
+        "name": "shellingham",
+        "version": "1.5.4"
+      },
+      {
+        "name": "six",
+        "version": "1.17.0"
+      },
+      {
+        "name": "smmap",
+        "version": "5.0.3"
+      },
+      {
+        "name": "sniffio",
+        "version": "1.3.1"
+      },
+      {
+        "name": "snowballstemmer",
+        "version": "2.2.0"
+      },
+      {
+        "name": "soupsieve",
+        "version": "2.8.3"
+      },
+      {
+        "name": "SQLAlchemy",
+        "version": "2.0.48"
+      },
+      {
+        "name": "starlette",
+        "version": "0.52.1"
+      },
+      {
+        "name": "structlog",
+        "version": "25.5.0"
+      },
+      {
+        "name": "tabulate",
+        "version": "0.10.0"
+      },
+      {
+        "name": "tf-playwright-stealth",
+        "version": "1.2.0"
+      },
+      {
+        "name": "tiktoken",
+        "version": "0.12.0"
+      },
+      {
+        "name": "tokenizers",
+        "version": "0.22.2"
+      },
+      {
+        "name": "tomli",
+        "version": "2.4.0"
+      },
+      {
+        "name": "tomlkit",
+        "version": "0.14.0"
+      },
+      {
+        "name": "toposort",
+        "version": "1.10"
+      },
+      {
+        "name": "tqdm",
+        "version": "4.67.3"
+      },
+      {
+        "name": "trimesh",
+        "version": "4.11.3"
+      },
+      {
+        "name": "typer",
+        "version": "0.24.1"
+      },
+      {
+        "name": "typing-inspection",
+        "version": "0.4.2"
+      },
+      {
+        "name": "typing_extensions",
+        "version": "4.15.0"
+      },
+      {
+        "name": "tzdata",
+        "version": "2025.3"
+      },
+      {
+        "name": "tzlocal",
+        "version": "5.3.1"
+      },
+      {
+        "name": "universal_pathlib",
+        "version": "0.3.10"
+      },
+      {
+        "name": "uritemplate",
+        "version": "4.2.0"
+      },
+      {
+        "name": "urllib3",
+        "version": "2.6.3"
+      },
+      {
+        "name": "uvicorn",
+        "version": "0.41.0"
+      },
+      {
+        "name": "uvloop",
+        "version": "0.22.1"
+      },
+      {
+        "name": "watchdog",
+        "version": "6.0.0"
+      },
+      {
+        "name": "watchfiles",
+        "version": "1.1.1"
+      },
+      {
+        "name": "websocket-client",
+        "version": "1.9.0"
+      },
+      {
+        "name": "websockets",
+        "version": "16.0"
+      },
+      {
+        "name": "xxhash",
+        "version": "3.6.0"
+      },
+      {
+        "name": "yarl",
+        "version": "1.23.0"
+      },
+      {
+        "name": "zipp",
+        "version": "3.23.0"
+      }
+    ],
+    "installed_pipeline_sha256": "db3ddc783dc791febfe1a9bbfa451210e48b6323bac47098f42d2a36605a9aea",
+    "meaning": "Original processing identity; replay does not invent a new upstream retrieval.",
+    "versions": {
+      "byteorder": "little",
+      "fiona": "1.10.1",
+      "gdal_fiona": "3.9.2",
+      "gdal_pyogrio": "(3, 11, 4)",
+      "geos": "3.13.1",
+      "machine": "x86_64",
+      "proj": "9.5.1",
+      "pyarrow": "23.0.1",
+      "pyogrio": "0.12.1",
+      "pyproj": "3.7.2",
+      "python": "3.12.14",
+      "python_cache_tag": "cpython-312",
+      "python_implementation": "CPython",
+      "shapely": "2.1.2"
+    },
+    "working_tree_modified": false
+  },
+  "source_assertions": {
+    "rows": 19427,
+    "source_columns": 91,
+    "all_original_values_physical_types_nullability_geometry_exact": true,
+    "unique_OBJECTID": 19427,
+    "unique_SITE_NO": 19426,
+    "duplicate_SITE_NO_rows": 1,
+    "effective_dates": [
+      "2026/10/01"
+    ],
+    "native_crs": "EPSG:3857",
+    "bounds": [
+      -19745996.9808,
+      -1612294.985100001,
+      19382236.054300003,
+      13627133.328199998
+    ],
+    "all_raw_receipts_and_bytes_verified": true
+  },
+  "identity_catalog": {
+    "run_id": "e8dcf85a-90e4-4b0a-873b-4a32d4c4dd4f",
+    "success": true,
+    "quality_manifest": {
+      "bounds": [
+        -19745996.9808,
+        -1612294.9851,
+        19382236.0543,
+        13627133.3282
+      ],
+      "catalog_mode": "streaming_geospatial",
+      "columns_hash": "307c91407048b96c9e419513f38185afaa96732b4921f7b7269ffceb43da12b4",
+      "feature_count": 19427,
+      "geometry_type": "Point",
+      "invalid_geometry_count": 0,
+      "quality_check_passed": true,
+      "sampled_feature_count": 5000,
+      "sampled_invalid_geometry_count": 0,
+      "sampled_null_geometry_count": 0,
+      "spatial_status": "spatial",
+      "version": "v1"
+    },
+    "terminal_conversions_rerun": false,
+    "accepted_fixture_unchanged": true,
+    "source_manifest_still_valid": true
+  }
+}

@@ -1,142 +1,97 @@
-# Aviation Facilities — working local draft, release blocked
+# Aviation Facilities — working draft, release blocked
 
-The explicit normal Dagster ingest now reconstructs the official FAA NASR-derived
-BTS NTAD feed. This is draft implementation authorized by the user while source,
-baseline and contract acceptance is pending. It does not grant those approvals.
+The normal Dagster ingest reconstructs the FAA NASR-derived feed explicitly
+attributed to FAA and distributed by official USDOT_BTS. It preserves every
+original source field and ID, exact returned API points, complete raw inputs and
+historical releases. Draft implementation/local tests do not approve the source,
+baseline, contract, schema migration, merge or production release.
 
-The official `USDOT_BTS` item explicitly credits FAA as producer and BTS as
-distributor. The BTS government site links its NTAD portal; the original item
-metadata identifies FAA and the original resource metadata states publication
-2026-10-02. Every complete source row has effective date `2026/10/01`. Fetch time,
-portal modification, publication and effective dates are recorded separately.
-The DHS crosswalk and archive still return provider403; no exact crosswalk match
-is invented.
+Complete source input has **19,427 points and91 original attributes across10
+pages**. Every source EFF_DATE is2026/10/01; original resource metadata separately
+states publication2026-10-02. Fetch time and portal edit dates remain distinct.
+Count/ID/schema/edit witnesses reconcile before/after extraction; this is not a
+transactional snapshot. DataLumos crosswalk/archive provider403 prevents inventing
+an exact DHS crosswalk match. Attribution and original license evidence are in
+[source.json](source.json) and the complete offline capture.
 
-Complete anonymous extraction has **19,427 native EPSG:3857 points and91 original
-attribute columns**, reconciled across10 pages against independent count/ID/schema/
-edit witnesses before and after extraction. It is a bounded consistency check,
-not a transactional upstream snapshot. Every receipt binds the exact official
-request URL and observed final URL; changed redirects require review. Complete,
-failed and partial responses remain durable quarantine. Duplicate JSON members,
-wrong/missing fields, physical-type changes, invalid coordinates, precision loss,
-incomplete IDs/pages and changed witnesses fail closed.
+All source OBJECTID/SITE_NO/ARPT_ID values and physical types remain intact,
+including leading zeros and both rows with SITE_NO23747.31. Only OBJECTID is the
+unique extraction census, not an approved stable key across releases. Typed Arrow
+Parquet and Arrow-stream GeoPackage retain every name, width, nullability, value
+and returned point; generic terminal Parquet is fully compared by original
+OBJECTID correspondence because it spatially reorders rows. Terminal bbox and
+OBJECTID/geometry nullable-metadata changes are explicitly unapproved.
 
-Raw `OBJECTID`, `SITE_NO` and `ARPT_ID` survive unchanged. Source `SITE_NO=23747.31`
-occurs twice, as in the historical candidate; both rows remain intact. Only the
-actual unique OBJECTID census establishes extraction completeness. No substitute
-row ID, field deletion, projection, geometry repair or destructive type mapping
-is introduced. Source-typed Arrow Parquet and the Arrow-stream GeoPackage retain
-all91 column names, widths, nullability and values plus every original point.
-The generic terminal Parquet is spatially reordered, so its full comparison uses
-exact preserved OBJECTID correspondence rather than row position. Any nullable
-metadata differences and derived bbox columns are explicitly unapproved.
+Returned pages and `layer.extent.spatialReference` declare102100/3857. The
+observed differing `layer.spatialReference={wkid:4326,latestWkid:4326}` is preserved
+under its exact key and pinned before/after as an unresolved metadata discrepancy
+requiring release review. Its service/source/display meaning is not established.
+This draft interprets returned API coordinates from their page/extent declarations
+without client reprojection; original producer storage CRS is not asserted and
+4326 is not treated as equivalent to3857. Contradictory, missing or unsupported
+returned authority/WKT/vertical witnesses and changing extent/geometry/CRS/
+dimensions/objectID identity fail closed.
 
-The full generation-pinned historical candidate has19,952 rows. Full diagnostic
-ARPT_ID correspondence finds19,001 matched,426 added and951 removed identifiers;
-18,100 matched points are exactly unchanged and901 changed. The source adds
-OBJECTID, absent from the historical candidate, and9 physical integer columns
-are source int32 versus historical int64. Both contain the same known duplicate
-SITE_NO. Every common attribute, ID, geometry and state coverage is compared in
-[evidence/baseline-comparison.json](evidence/baseline-comparison.json). These are
-migration decisions, not evidence for silently replacing the accepted release.
+Bounded HTTP retries retain complete, failed and partial bytes before validation.
+Only the exact validated official canonical receipt roster supplies successful
+retrieval provenance. Optional headers/HTTPDate types, original aware ISO times
+(including UTC offset component bounds), license/attribution and the complete
+shared release-manifest structure are preflighted **before any canonical output**.
+Unknown top-level receipts are quarantined. Failed attempts remain explicitly
+byte-inventoried diagnostics rather than successful input claims. No missing time
+is replaced by HTTPDate, release date or a fresh retrieval timestamp.
 
-The daily10:00 New York source-only integrity poll is registered but STOPPED.
-Source release cadence remains28days. Asset, schedule and staging entrypoints
-refuse remote or PublishedStorageResource destinations before fetching/writing.
-Candidate versions bind all raw/receipt hashes, installed pipeline fingerprint
-and draft schema policy; refreshes append immutable versions and identical replay
-returns the same candidate. Shared #417 quality and independent release gates
-block promotion. A failed gate must preserve all raw/candidate and accepted data.
+Immutable candidate versions bind all raw/receipt hashes, installed pipeline
+source and draft schema policy, effective Python/ABI/architecture, installed
+package versions, GDAL/GEOS/PROJ and dependency-manifest/lock hashes. Changed
+relevant dependencies prevent reuse/misattribution, while identical replay keeps
+original receipts and earlier bytes. The registered daily10:00 New York local
+source-only integrity poll remains STOPPED; source cadence remains28days. All
+storage entrypoints reject PublishedStorageResource and remote storage before
+fetch/write. Normal version discovery needs no manual data/manifest copies.
 
-Shapefile is excluded because original field names exceed DBF's ten-character
-limit. An actual PMTiles experiment assigned sequence feature IDs and thinned
-dense tiles; its quantized geometry/ID/coverage mapping is unapproved, so this
-rendered derivative is also excluded. Exclusion is not approval to omit published
-formats. Primary typed candidates remain complete and release remains blocked.
+Shared #417 quality and independent exact-release gates block promotion. The
+full historical candidate remains unapproved:19,952 rows versus19,427 current;
+19,001 diagnostic ARPT_ID matches,426 additions,951 removals,901 changed matched
+points and9source-int32 versus published-int64 columns. Source OBJECTID is absent
+from the historical candidate and retained in the draft. Full differences and
+coverage are in [evidence/baseline-comparison.json](evidence/baseline-comparison.json).
+Shapefile field-name/type/null loss and rendered PMTiles ID/quantization/thinning
+lack approved mappings, so those derivatives are excluded. Exclusion does not
+approve omitting published formats. All source/baseline/ID/type/null/coverage/CRS/
+format decisions require independent acceptance before release.
 
-Reproduce offline with the repository environment (no credentials or live input
-needed). The bounded5.3MB evidence bundle includes the full2.4MB generation-pinned
-baseline candidate and every full source page; repeated attempt bodies are stored
-once and reconstructed only after SHA/byte validation:
+Reproduce offline from the bounded5.3MB complete capture/baseline evidence bundle:
 
 ```sh
 uv sync --frozen
 uv run python docs/dataset-sources/aviation-facilities/replay_capture.py /tmp/aviation-capture
-PYTHONPATH=src uv run python docs/dataset-sources/aviation-facilities/run_local.py /tmp/aviation-capture /tmp/aviation-local-run
-PYTHONPATH=src uv run python docs/dataset-sources/aviation-facilities/compare_baseline.py /tmp/aviation-audit /tmp/aviation-capture
+PYTHONPATH=src uv run python docs/dataset-sources/aviation-facilities/run_local.py /tmp/aviation-capture /tmp/aviation-local
 PYTHONPATH=src uv run python -m unittest tests.test_aviation_extract tests.test_refresh_registration_20
 ```
 
-`run_local.py` uses the normal registered asset graph, isolated DAGSTER_HOME,
-local staging/published roots and registered dynamic partitions. It verifies
-all produced rows/IDs/physical types/nullability/native points/provenance, runs
-idempotent replay, then probes missing-approval and failed-quality preservation.
-The preservation sentinel and deliberately failed quality witness establish
-implementation behavior only; neither approves a real dataset.
+For the targeted preflight check, pass `--source-catalog-only` to `run_local.py`,
+then run `run_negative_provenance.py` with the same capture/runtime arguments.
+The scripts use isolated DAGSTER_HOME/storage and required dynamic partitions.
+Negative metadata mutations are fixtures on complete real captures, not a source
+or contract approval. They preserve every previous canonical/raw/accepted-fixture
+byte and create no new canonical output.
 
-Validation details and exact run IDs are in `evidence/local-materialization.json`.
-The14 focused tests include every replayed metadata/count/ID/page HTTP200
-application-error marker with valid repinned receipts; all are quarantined before
-candidate construction. The real normal ingest alone is discoverable by the
-normal version sensor with no manual data/manifest copies. Its17 actual input
-records pass shared `validate_release_provenance` independently of an approval
-registry, with original URLs/observed final URLs, retrieval times, raw hashes and
-lengths, producer/distributor attribution and original license text. This
-structural validation does not approve source authority or a release. The actual
-clean code commit and installed pipeline fingerprint are asserted in the run.
-The full suite at registration code `be93f22512056f29b1c31383f0b71061c36e84b6`
-ran505tests:503passed,1production-write test skipped,1error for missing sibling
-`hifld-next-iac/environments/prod/dagster.tf`. Subsequent precision/format changes
-are covered by the focused source and registration tests and final real graph.
-No CI or full-suite success is inferred.
+Validation scopes remain explicit:
 
-Parent FAA10 canonical-staging repair `ac2ec4c` was deliberately merged at
-`2b44933b045b3c6ce44d76b90b594d58d8a9c93d`, preserving the aviation function,
-helper and both stopped registrations.38 focused FAA/aviation tests pass; both
-normal registration tests also pass. A fresh real19,427-row source20 ingest and
-identical replay on that merge verify all data/physical types/points, actual
-clean commit provenance, shared17-input manifest structure and normal version
-discovery without data/manifest copies. See `evidence/combined-parent-ingest.json`.
-Source20 extraction/schema/output code is unchanged from the full graph recorded
-in `evidence/local-materialization.json`; the changed parent adapter owns source10.
-
-Processing identity additionally binds effective Python/ABI/architecture, every
-installed distribution name/version, PyArrow/Pyogrio/Fiona/Shapely/pyproj and native
-GDAL/GEOS/PROJ versions, plus available dependency manifest/lock hashes. A changed
-GEOS or PROJ identity changes the builder fingerprint; changed GEOS prevents
-reusing an old candidate and appends a new immutable version without changing
-old bytes or original retrieval timestamps.16 focused source/registration tests
-pass after this identity repair. The actual19,427-row source+catalog run checks
-all data/types/native points,17-input provenance, normal discovery and idempotent
-replay. Candidate bytes and original retrieval receipts equal the prior full
-real graph; namespace changes reflect processing identity, not a new retrieval.
-Unchanged terminal conversions were not rerun solely for this identity delta.
-See `evidence/dependency-identity.json`; earlier full gate-preservation evidence
-remains separately scoped to its recorded code head.
-
-Independent native review of `359054f` fully verified the real19,427-row no-copy
-graph, all91 fields/physical types/points and failed-gate preservation. Two
-concrete validation findings are repaired: contradictory returned CRS authority
-metadata and invalid original retrieval timestamps.19 focused source/registration
-tests pass, including raw quarantine before candidate construction for unknown,
-missing, contradictory, WKT/vertical CRS witnesses and invalid/date-only/naive/
-bool/null/missing timestamps. Real aware offsets are retained exactly. Every
-original attempt receipt time is also checked; no HTTPDate or release-date value
-is substituted for missing observed retrieval evidence.
-
-Returned API pages and `layer.extent.spatialReference` explicitly declare
-ArcGIS102100/EPSG3857. The differing authentic top-level
-`layer.spatialReference={wkid:4326,latestWkid:4326}` is preserved under that exact
-key in provenance and pinned stable before/after. Its service/source/display
-meaning is not established. It is an unresolved metadata discrepancy requiring
-release review, not evidence that4326 equals3857. The draft interprets the
-returned source API points according to their own page/extent declarations and
-performs no client reprojection; original producer storage CRS is not asserted.
-A future change to this observed interpretation requires review. Full extent,
-geometry, CRS, dimensions and objectID identity reconcile before/after capture.
-
-The repaired source-only+catalog run again verifies every19,427-row value/type/
-point, shared17-input provenance, original timestamps, normal discovery and
-idempotency without rerunning unchanged terminal conversions. Exact run IDs,
-preserved CRS witness keys and scope: `evidence/crs-time-repair.json`. Final
-incremental independent review is pending; acceptance remains blocked.
+- Independent review at359054f verified every19,427-row/91-field value/type/WKB,
+  normal no-copy graph/discovery, typed GPKG/terminal output and failed-quality/
+  approval preservation. Subsequent changes are validation/provenance only.
+- Current21 source/registration tests and complete real source/replay/catalog/
+  provenance/discovery runs pass. Four actual Dagster negatives cover an extra
+  receipt, null headers, absent license and absent attribution: no canonical
+  output, raw quarantine and prior bytes preserved. See
+  [evidence/provenance-preflight.json](evidence/provenance-preflight.json) and
+  [evidence/negative-provenance.json](evidence/negative-provenance.json).
+- Unchanged terminal conversions were not rerun solely for these guards. Final
+  incremental native review is pending on the exact new head.
+- Historical suite atbe93f225 ran505tests:503pass,1production-write skip and1
+  missing-sibling-IaC error. The coordinator subsequently supplied unmodified
+  sibling snapshot56aa10757129c457c530d707d9a40bae13e0907f; the current targeted
+  IaC test passes. Historical counts are preserved; the full suite has not been
+  rerun after that input resolution. No current full-suite or CI pass is claimed.
