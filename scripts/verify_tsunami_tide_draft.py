@@ -90,7 +90,7 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
     c.reconcile_outputs(root,table)
     terminal=c.pq.read_table(root/'geoparquet'/f'{c.SLUG}.parquet')
     assert terminal.equals(c.expected_parquet_table(table),check_metadata=True)
-    assert terminal.num_rows==374 and terminal['OBJECTID'].to_pylist()==list(range(1,965))
+    assert terminal.num_rows==374 and terminal['STAT_OBJID'].to_pylist()==c.ORIGINAL_IDS
     geo=json.loads(terminal.schema.metadata[b'geo'])
     assert c.pyproj.CRS(geo['columns']['wkb_geometry']['crs']).equals(c.pyproj.CRS(3857))
     assert converter.call_count==0
