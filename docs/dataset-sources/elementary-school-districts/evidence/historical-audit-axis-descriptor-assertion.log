@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/workspace/work/hifld-coordinator/64/audit_actual_binary_native.py", line 29, in <module>
-    assert pyproj.CRS.from_wkt(prj).equals(pyproj.CRS(4269))
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError

@@ -1,9 +1,0 @@
-{
-  "url": "https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html",
-  "final_url": "https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html",
-  "status": 200,
-  "bytes": 532248,
-  "sha256": "1bc37d1ad59e48e0945899afd0d3f1c56b5caaaf81a74389e17640ef50547888",
-  "observed_at": "2026-10-19T11:44:10.615899+00:00",
-  "complete_body": true
-}

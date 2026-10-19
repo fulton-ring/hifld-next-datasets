@@ -1,4 +1,4 @@
-"""Complete real Census fixtures test draft mechanics, not dataset acceptance."""
+"""Small default mechanics; full Census capture tests require an explicit opt-in."""
 import copy
 import fcntl
 import gzip
@@ -15,9 +15,10 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
+import shapely
 from dagster_hifld.sources import elementary_school_districts as f
 
-INPUTS=Path(__file__).parents[1]/'docs/dataset-sources/elementary-school-districts/evidence/inputs'
+INPUTS=Path(os.environ['ELSD_TEST_CAPTURE_DIR']).absolute() if os.environ.get('ELSD_TEST_CAPTURE_DIR') else None
 
 class ElementaryTransportTests(unittest.TestCase):
     def fetch(self,headers):
@@ -64,6 +65,124 @@ class ElementaryTransportTests(unittest.TestCase):
             root=Path(tmp);(root/'real').mkdir();(root/'alias').symlink_to(root/'real')
             with self.assertRaises(ValueError):f.local_only(f.StagingStorageResource(local_dir=str(root/'alias')))
 
+class ElementarySmallFixtureTests(unittest.TestCase):
+    """Synthetic rows exercise physical fidelity without standing in for Census acceptance."""
+    @staticmethod
+    def properties():
+        return {'STATEFP':'04','ELSDLEA':'00001','GEOID':'0400001','GEOIDFQ':'9500000US0400001',
+                'NAME':' Leading test district','LSAD':'00','LOGRADE':'PK','HIGRADE':'08',
+                'MTFCC':'G5400','SDTYP':None,'FUNCSTAT':'E','ALAND':99999999999999,
+                'AWATER':0,'INTPTLAT':'+34.1000000','INTPTLON':'-112.1000000'}
+
+    @classmethod
+    def dbf(cls):
+        header=33+32*len(f.DBF_FIELDS);width=1+sum(v[2]for v in f.DBF_FIELDS)
+        body=bytearray(header+width+1);body[0]=3;body[4:8]=(1).to_bytes(4,'little')
+        body[8:10]=header.to_bytes(2,'little');body[10:12]=width.to_bytes(2,'little')
+        values=cls.properties();cursor=header;body[cursor]=32;cursor+=1
+        for index,(name,kind,size,scale)in enumerate(f.DBF_FIELDS):
+            offset=32+index*32;body[offset:offset+len(name)]=name.encode()
+            body[offset+11]=ord(kind);body[offset+16]=size;body[offset+17]=scale
+            value=values[name];text=''if value is None else str(value)
+            raw=text.encode().rjust(size,b' ')if kind=='N'else text.encode().ljust(size,b' ')
+            assert len(raw)==size
+            body[cursor:cursor+size]=raw;cursor+=size
+        body[header-1]=13;body[-1]=26
+        return bytes(body)
+
+    @classmethod
+    def table(cls):
+        polygon=shapely.Polygon([(0,0),(0,1),(1,1),(1,0),(0,0)])
+        rows=[]
+        for index,geom in enumerate([polygon,shapely.MultiPolygon([polygon])]):
+            row={**cls.properties(),'OGC_FID':index,'source_archive':'tl_2026_04_elsd',
+                 'ELSDLEA':f'{index+1:05}','GEOID':f'04{index+1:05}',
+                 'GEOIDFQ':f'9500000US04{index+1:05}','wkb_geometry':shapely.to_wkb(geom)}
+            rows.append(row)
+        return pa.Table.from_arrays([pa.array([row[name]for row in rows],type=kind)
+                                     for name,kind in zip(f.FIELDS,f.TYPES)],names=f.FIELDS)
+
+    def test_physical_dbf_strings_nulls_and_integer_literals(self):
+        body=self.dbf();self.assertEqual(f.dbf_definition(body)['row_count'],1)
+        self.assertEqual(f.decode_dbf_rows(body),[self.properties()])
+        values=f.decode_dbf_rows(body)[0]
+        self.assertEqual(values['ELSDLEA'],'00001');self.assertIsNone(values['SDTYP'])
+        self.assertIs(type(values['ALAND']),int);self.assertEqual(values['ALAND'],99999999999999)
+        self.assertTrue(values['NAME'].startswith(' '))
+
+    def test_dbf_truncation_deleted_row_renamed_field_and_decimal_are_rejected(self):
+        original=self.dbf();header=int.from_bytes(original[8:10],'little')
+        changes=[original[:-2]]
+        deleted=bytearray(original);deleted[header]=42;changes.append(bytes(deleted))
+        renamed=bytearray(original);renamed[32]=ord('X');changes.append(bytes(renamed))
+        fractional=bytearray(original);offset=header+1+sum(v[2]for v in f.DBF_FIELDS[:11])
+        fractional[offset:offset+14]=b'           1.5';changes.append(bytes(fractional))
+        for body in changes:
+            with self.subTest(body=body[:40]),self.assertRaises(ValueError):f.decode_dbf_rows(body)
+
+    def test_small_native_formats_keep_types_fields_nulls_and_polygon_bytes(self):
+        table=self.table();expected=table.drop(['source_archive'])
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);f.write_native_gpkg(table,root/'tiny.gpkg')
+            metadata,actual=pyogrio.read_arrow(root/'tiny.gpkg',layer=f.LAYER)
+            self.assertEqual(metadata['crs'],'EPSG:4269')
+            self.assertEqual(tuple(actual.column_names),f.SOURCE_FIELDS)
+            self.assertEqual(tuple(v.type for v in actual.schema),f.TYPES[1:])
+            self.assertEqual(actual.to_pylist(),expected.to_pylist())
+            native=f.expected_parquet_table(table);pq.write_table(native,root/'tiny.parquet')
+            self.assertTrue(pq.read_table(root/'tiny.parquet').equals(native,check_metadata=True))
+            self.assertEqual(native['ALAND'].type,pa.int64());self.assertEqual(native['SDTYP'].null_count,2)
+            self.assertNotIn('source_archive',native.column_names)
+            self.assertEqual(shapely.get_type_id(shapely.from_wkb(native['wkb_geometry'].to_pylist())).tolist(),[3,6])
+
+    def test_tiny_fixture_cannot_pass_complete_population_or_changed_schema(self):
+        table=self.table()
+        for changed in [table,table.drop(['GEOID']),table.rename_columns([
+                'RENAMED_GEOID'if name=='GEOID'else name for name in table.column_names]),
+                table.set_column(table.schema.get_field_index('ALAND'),'ALAND',pa.array([1.,2.]))]:
+            with self.assertRaisesRegex(ValueError,'native_schema_physical_types_or_completeness_drift'):
+                f.validate_table(changed)
+
+    def test_lineage_is_separate_from_terminal_schema_and_retains_local_fids(self):
+        table=self.table();records=[json.loads(line)for line in f.lineage_sidecar(table).splitlines()]
+        self.assertEqual([r['original_file_local_OGC_FID']for r in records],[0,1])
+        self.assertEqual([r['original_identifiers']['GEOID']for r in records],['0400001','0400002'])
+        self.assertTrue(all(r['source_archive']=='tl_2026_04_elsd.zip'for r in records))
+        self.assertNotIn('source_archive',f.expected_parquet_table(table).column_names)
+
+    def test_observed_loss_journal_keeps_original_claim_and_rejects_rebinding(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);candidate=root/'synthetic-candidate';(candidate/'metadata').mkdir(parents=True)
+            manifest={'synthetic_test_context':'original'}
+            (candidate/'metadata/source_manifest.json').write_bytes(f.encode(manifest))
+            storage=f.StagingStorageResource(local_dir=tmp);fingerprint='a'*64
+            self.assertTrue(f.observed_trust_loss(storage,'vtest',fingerprint,candidate=candidate))
+            journal=root/f'_construction-incidents/{f.SLUG}/vtest/incident.json';body=journal.read_bytes()
+            for _ in range(2):self.assertTrue(f.observed_trust_loss(storage,'vtest',fingerprint))
+            self.assertEqual(journal.read_bytes(),body)
+            self.assertTrue(f.observed_trust_loss(storage,'vtest',fingerprint,restored_manifest=manifest))
+            with self.assertRaisesRegex(ValueError,'restored_original_manifest_differs'):
+                f.observed_trust_loss(storage,'vtest',fingerprint,restored_manifest={'synthetic_test_context':'new'})
+            for key,value in [('schema_version',True),('schema_version',1.0),('approved',0)]:
+                altered=json.loads(body);altered[key]=value;journal.write_bytes(f.encode(altered))
+                with self.assertRaises(ValueError):f.observed_trust_loss(storage,'vtest',fingerprint)
+            journal.write_bytes(body)
+
+    def test_partial_journal_blocks_repeated_retry_and_preserves_candidate(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);candidate=root/'synthetic-candidate';(candidate/'metadata').mkdir(parents=True)
+            manifest=f.encode({'synthetic_test_context':'original'})
+            path=candidate/'metadata/source_manifest.json';path.write_bytes(manifest)
+            storage=f.StagingStorageResource(local_dir=tmp)
+            with patch.object(f,'immutable',side_effect=OSError('synthetic_partial_write')):
+                with self.assertRaises(OSError):f.observed_trust_loss(storage,'vtest','a'*64,candidate=candidate)
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'incomplete_observed_trust_loss_journal'):
+                    f.observed_trust_loss(storage,'vtest','a'*64)
+                self.assertEqual(path.read_bytes(),manifest)
+
+
+@unittest.skipUnless(INPUTS, 'Set ELSD_TEST_CAPTURE_DIR to the complete external Census capture for real-population tests.')
 class ElementaryOriginalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
