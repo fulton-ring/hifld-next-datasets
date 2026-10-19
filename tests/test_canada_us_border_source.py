@@ -25,9 +25,11 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.source_manifest import snapshot_source_metadata
 from dagster_hifld.sources import canada_us_border as s
 
-CAPTURE=Path(__file__).parents[1]/'docs/dataset-sources/canada-and-us-border/evidence/captures'
+_CAPTURE_ENV = 'HIFLD_CANADA_US_BORDER_TEST_CAPTURE_DIR'
+CAPTURE=Path(os.environ[_CAPTURE_ENV]) if os.environ.get(_CAPTURE_ENV) else None
 
 
+@unittest.skipUnless(os.environ.get(_CAPTURE_ENV), 'complete preserved IBC capture opt-in required; see docs/dataset-sources/canada-and-us-border/README.md')
 class BoundaryTests(unittest.TestCase):
     def test_complete_original_release(self):
         with tempfile.TemporaryDirectory() as d:
@@ -40,14 +42,6 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'changed_truncated'):
                 s.inspect_archive((CAPTURE/'ibc-zip.body').read_bytes()[:-1],Path(d))
 
-    def test_registry_schedule_and_no_published_destination(self):
-        self.assertEqual(sum(a is ibc_canada_us_border for a in hifld_ingest_assets),1)
-        self.assertEqual(ibc_boundary_draft_refresh_schedule.default_status,DefaultScheduleStatus.STOPPED)
-        self.assertEqual(ibc_boundary_draft_refresh_schedule.cron_schedule,'0 11 1 * *')
-        for storage in [PublishedStorageResource(local_dir='/tmp/never'),StagingStorageResource(bucket='never',use_local=False)]:
-            with patch.object(s,'acquire') as acquire,self.assertRaises(ValueError):
-                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
-            acquire.assert_not_called()
 
     def test_all_capture_receipts_preflight_before_candidate(self):
         for name in s.URLS:
@@ -61,24 +55,7 @@ class BoundaryTests(unittest.TestCase):
                     self.assertFalse((stage/s.SLUG).exists())
                     self.assertTrue(list(stage.rglob('report.json')))
 
-    def test_strict_json_rejects_error_array_duplicate_nested(self):
-        for body in [b'[]',b'{"error":{}}',b'{"a":1,"a":2}',b'{"a":{"b":1,"b":2}}',b'{"a":NaN}']:
-            with self.assertRaises(ValueError):s.strict_json(body)
 
-    def test_partial_responses_preserved_every_attempt(self):
-        class Response:
-            status_code=200;url=s.URL;headers={}
-            def __enter__(self):return self
-            def __exit__(self,*a):pass
-            def iter_bytes(self,**kw):yield b'partial';raise httpx.ReadError('reset')
-        class Client:
-            def __enter__(self):return self
-            def __exit__(self,*a):pass
-            def stream(self,*a):return Response()
-        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',return_value=Client()) as c:
-            with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):s.acquire(StagingStorageResource(local_dir=d),None)
-            self.assertEqual(c.call_count,3);self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
-            self.assertFalse(Path(d,s.SLUG).exists())
 
     def test_full_staging_fidelity_idempotency_cache_drift(self):
         identity=s.processing_identity()
@@ -404,3 +381,34 @@ class BoundaryTests(unittest.TestCase):
                 s.acquire(StagingStorageResource(local_dir=d),None)
             self.assertEqual(len(list(Path(d,'_quarantine').rglob('response.body'))),3)
             for path in Path(d,'_quarantine').rglob('response.body'):self.assertEqual(path.read_bytes(),bodies[s.URL])
+
+
+class BoundaryMechanicsTests(unittest.TestCase):
+    def test_registry_schedule_and_no_published_destination(self):
+        self.assertEqual(sum(a is ibc_canada_us_border for a in hifld_ingest_assets),1)
+        self.assertEqual(ibc_boundary_draft_refresh_schedule.default_status,DefaultScheduleStatus.STOPPED)
+        self.assertEqual(ibc_boundary_draft_refresh_schedule.cron_schedule,'0 11 1 * *')
+        for storage in [PublishedStorageResource(local_dir='/tmp/never'),StagingStorageResource(bucket='never',use_local=False)]:
+            with patch.object(s,'acquire') as acquire,self.assertRaises(ValueError):
+                s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+            acquire.assert_not_called()
+
+    def test_strict_json_rejects_error_array_duplicate_nested(self):
+        for body in [b'[]',b'{"error":{}}',b'{"a":1,"a":2}',b'{"a":{"b":1,"b":2}}',b'{"a":NaN}']:
+            with self.assertRaises(ValueError):s.strict_json(body)
+
+    def test_partial_responses_preserved_every_attempt(self):
+        class Response:
+            status_code=200;url=s.URL;headers={}
+            def __enter__(self):return self
+            def __exit__(self,*a):pass
+            def iter_bytes(self,**kw):yield b'partial';raise httpx.ReadError('reset')
+        class Client:
+            def __enter__(self):return self
+            def __exit__(self,*a):pass
+            def stream(self,*a):return Response()
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',return_value=Client()) as c:
+            with self.assertRaisesRegex(ValueError,'bounded_fetch_exhausted'):s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual(c.call_count,3);self.assertEqual(len(list(Path(d).rglob('response.body'))),3)
+            self.assertFalse(Path(d,s.SLUG).exists())
+

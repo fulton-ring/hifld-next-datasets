@@ -1,9 +1,0 @@
-{
-  "actual_second_install_conflict": true,
-  "reason": "concurrent_or_incomplete_existing_candidate; retained:_quarantine/canada-and-us-border/eb327459528b87cbc27e55ccc6bfd6982562c75559823a00b6dc50c04abcaab1/2b3b2c27871740ed8ada18535d6d04e1",
-  "winner_all_bytes_preserved": true,
-  "winner_discoverable": true,
-  "no_winner_invalid_cache_quarantine": true,
-  "source_head": "25fc2342036d21e94ed4191528da2224580c1916",
-  "approved": false
-}
