@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import unsupported_output_reason
+from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, _code_digest, _digest, reader_versions
 
 
 class ReleaseApprovalError(ValueError):
@@ -194,6 +195,11 @@ def require_release_approval(
             evidence_keys.append(sidecar_key)
             if any(name not in entry["published_objects"] or entry["published_objects"][name] != expected.get(name) for name in evidence_keys):
                 raise ReleaseApprovalError("acceptance_evidence_must_be_downloadable")
+            field_sidecar = report.get("attribute_field_changes")
+            if field_sidecar:
+                _require_downloadable_evidence(entry, prefix, field_sidecar)
+            if "native_inputs" in report:
+                _require_native_evidence(report, entry, source, prefix)
             checked.add(entry_id)
         normalized_source = source._ensure_prefixed(source_key)
         if normalized_source not in snapshots:
@@ -202,6 +208,84 @@ def require_release_approval(
         if entry["published_objects"][logical] != entry["staged_objects"][name]:
             raise ReleaseApprovalError(f"copy_bytes_differ_from_accepted_output:{logical}")
     return snapshots
+
+
+def _require_downloadable_evidence(entry: dict, prefix: str, descriptor: dict, *, parent: str = "") -> str:
+    if not isinstance(descriptor, dict):
+        raise ReleaseApprovalError("missing_native_evidence_descriptor")
+    name = descriptor.get("path", "")
+    path = Path(name)
+    if not name or path.is_absolute() or any(part in {".", ".."} for part in path.parts) or path.as_posix() != name:
+        raise ReleaseApprovalError("unsafe_or_missing_native_evidence_path")
+    key = f"{prefix}/metadata/" + (parent.rstrip("/") + "/" if parent else "") + name
+    if (entry["staged_objects"].get(key) != descriptor.get("sha256")
+            or entry["published_objects"].get(key) != descriptor.get("sha256")):
+        raise ReleaseApprovalError("native_evidence_not_pinned_and_downloadable")
+    return key
+
+
+def _require_native_evidence(report: dict, entry: dict, source: StagingStorageResource, prefix: str) -> None:
+    descriptors = report["native_inputs"]
+    if not isinstance(descriptors, dict) or set(descriptors) != {"baseline", "candidate"}:
+        raise ReleaseApprovalError("missing_both_native_receipts")
+    if not report.get("attribute_field_changes"):
+        raise ReleaseApprovalError("missing_native_per_field_comparison")
+    for side, descriptor in descriptors.items():
+        receipt_key = _require_downloadable_evidence(entry, prefix, descriptor)
+        receipt = json.loads(source.read_key(receipt_key))
+        parent = Path(descriptor["path"]).parent.as_posix()
+        if (not isinstance(receipt, dict) or receipt != descriptor.get("receipt") or receipt.get("schema_version") != 1
+                or receipt.get("adapter") != NATIVE_ADAPTER or receipt.get("status") != "complete"
+                or receipt.get("code_sha256") != _code_digest()
+                or receipt.get("reader_versions") != reader_versions()
+                or _digest({key: value for key, value in receipt.items() if key != "receipt_id"}) != receipt.get("receipt_id")):
+            raise ReleaseApprovalError("native_receipt_incomplete_forged_or_stale")
+        policy = receipt.get("policy", {})
+        if (policy.get("status") != "reviewed" or _digest(policy) != receipt.get("policy_sha256")
+                or entry.get("native_policy_sha256") != receipt.get("policy_sha256")):
+            raise ReleaseApprovalError("native_comparison_policy_not_independently_accepted")
+        normalized = receipt.get("normalized", {})
+        normalized_key = _require_downloadable_evidence(entry, prefix, normalized, parent=parent)
+        if (normalized.get("sha256") != report.get(f"{side}_sha256")
+                or normalized.get("bytes") != report.get(f"{side}_input_bytes")
+                or source.key_size(normalized_key) != normalized.get("bytes")):
+            raise ReleaseApprovalError("native_normalized_input_does_not_match_comparison")
+        lineage = receipt.get("lineage", {})
+        lineage_key = _require_downloadable_evidence(entry, prefix, lineage, parent=parent)
+        if (source.key_size(lineage_key) != lineage.get("bytes") or lineage.get("rows") != receipt.get("rows")
+                or receipt.get("rows") != report["populations"][side].get("rows")):
+            raise ReleaseApprovalError("native_lineage_or_population_count_unmatched")
+        objects = receipt.get("objects", [])
+        if not objects or sum(obj["rows_observed"] for obj in objects) != receipt["rows"]:
+            raise ReleaseApprovalError("native_object_population_unmatched")
+        schema_digest = _digest(receipt.get("physical_schema"))
+        if any(obj.get("physical_schema_sha256") != schema_digest for obj in objects):
+            raise ReleaseApprovalError("native_partition_physical_schema_unmatched")
+        if side == "baseline":
+            accepted = sorted((obj["sha256"], obj["bytes"]) for obj in entry["baseline"]["data_objects"])
+            if sorted((obj["sha256"], obj["bytes"]) for obj in objects) != accepted:
+                raise ReleaseApprovalError("native_baseline_original_objects_unmatched")
+            pin = entry["baseline"]["comparison_input"]
+            if pin.get("derivation", {}).get("parameters", {}).get("receipt_sha256") != descriptor["sha256"]:
+                raise ReleaseApprovalError("native_baseline_derivation_receipt_unmatched")
+        else:
+            if normalized_key != entry["candidate_comparison_input"].get("key"):
+                raise ReleaseApprovalError("native_candidate_input_key_unmatched")
+            approved_sources = entry["candidate_comparison_input"]["derivation"]["source_objects"]
+            storage_prefix = receipt.get("parameters", {}).get("storage_prefix", "")
+            native_sources = {f"{prefix}/" + (storage_prefix.rstrip("/") + "/" if storage_prefix else "") + obj["key"]: obj["sha256"] for obj in objects}
+            if (native_sources != approved_sources or any(entry["staged_objects"].get(key) != digest for key, digest in native_sources.items())
+                    or any(source.key_size(f"{prefix}/" + (storage_prefix.rstrip("/") + "/" if storage_prefix else "") + obj["key"]) != obj["bytes"] for obj in objects)):
+                raise ReleaseApprovalError("native_candidate_original_objects_unmatched")
+            derivation = entry["candidate_comparison_input"]["derivation"]
+            if derivation.get("code_sha256") != receipt["code_sha256"] or derivation.get("parameters", {}).get("receipt_sha256") != descriptor["sha256"]:
+                raise ReleaseApprovalError("native_candidate_derivation_receipt_unmatched")
+    physical = report.get("physical_schema", {})
+    baseline_schema, candidate_schema = (descriptors[side]["receipt"]["physical_schema"] for side in ("baseline", "candidate"))
+    equal = baseline_schema == candidate_schema
+    if (physical.get("baseline") != baseline_schema or physical.get("candidate") != candidate_schema
+            or physical.get("equal") is not equal or (not equal and report.get("status") == "pass")):
+        raise ReleaseApprovalError("native_report_physical_schema_unmatched")
 
 
 def validate_release_provenance(manifest: dict) -> None:
