@@ -90,26 +90,56 @@ with DagsterInstance.get() as instance:
  report['terminal_parquet']={'rows':942,'all_source_values_types_wkb_exact':True,'extra_columns':[],'nullable_inference_requires_review':True}
  # Authentic complete-candidate self-repin attacks exercise the actual registered Dagster asset.
  readyfile=root/'metadata/cbrs_units_candidate_ready.json';ready_original=readyfile.read_bytes()
+ evidence_original={n:(root/'metadata'/n).read_bytes() for n in ['geopackage_source_fidelity.json','baseline_comparison.json']}
  gpfile=root/'geopackage'/f'{source.SLUG}.gpkg';gp_original=gpfile.read_bytes()
  parquet=root/'candidate/typed-source.parquet';parquet_original=parquet.read_bytes()
  report['self_repin_probes']=[]
- for attack in ['gpkg_contents_srs','gpkg_spatial_ref_definition','parquet_geo_crs']:
+ for attack in ['gpkg_contents_srs','gpkg_spatial_ref_definition','gpkg_geometry_envelope','gpkg_rtree','parquet_geo_crs','fidelity_population','baseline_approval','missing_ready']:
   try:
-   if attack.startswith('gpkg'):
+   if attack in ['gpkg_contents_srs','gpkg_spatial_ref_definition','gpkg_rtree']:
     with sqlite3.connect(gpfile) as db:
-     db.execute("UPDATE gpkg_contents SET srs_id=4326" if attack=='gpkg_contents_srs' else "UPDATE gpkg_spatial_ref_sys SET definition='undefined' WHERE srs_id=4269")
+     if attack=='gpkg_rtree':db.execute('UPDATE "rtree_'+source.SLUG+'_geom" SET maxx=0 WHERE id=1')
+     else:db.execute("UPDATE gpkg_contents SET srs_id=4326" if attack=='gpkg_contents_srs' else "UPDATE gpkg_spatial_ref_sys SET definition='undefined' WHERE srs_id=4269")
     target=gpfile
-   else:
+   elif attack=='gpkg_geometry_envelope':
+    with sqlite3.connect(gpfile) as db:
+     for name in ['ST_IsEmpty','ST_MinX','ST_MaxX','ST_MinY','ST_MaxY']:db.create_function(name,1,lambda x:0)
+     fid,blob=db.execute('SELECT fid,geom FROM "'+source.SLUG+'" LIMIT 1').fetchone()
+     import struct
+     assert (blob[3]>>1)&7
+     altered=blob[:8]+struct.pack('<d' if blob[3]&1 else '>d',0.0)+blob[16:]
+     db.execute('UPDATE "'+source.SLUG+'" SET geom=? WHERE fid=?',(altered,fid))
+    target=gpfile
+   elif attack=='parquet_geo_crs':
     table=pq.read_table(parquet);metadata=dict(table.schema.metadata);geo=json.loads(metadata[b'geo']);geo['columns']['geometry']['crs']={'type':'name','properties':{'name':'EPSG:3857'}}
     metadata[b'geo']=source.encode(geo);pq.write_table(table.replace_schema_metadata(metadata),parquet,compression='zstd');target=parquet
-   ready=json.loads(ready_original);ready['objects'][str(target.relative_to(root))]=source.sha(target.read_bytes());readyfile.write_bytes(source.encode(ready))
+   elif attack=='fidelity_population':
+    target=root/'metadata/geopackage_source_fidelity.json';value=json.loads(target.read_bytes())
+    value['shared_verifier']['populations']['baseline']['rows']=1;value['shared_verifier']['retained_rows_compared']=1
+    target.write_bytes(source.encode(value))
+   elif attack=='baseline_approval':
+    target=root/'metadata/baseline_comparison.json';target.write_bytes(source.encode({'schema_version':1,'status':'pass','approved':True,'acceptance':'approved'}))
+   else:target=readyfile
+   if attack=='missing_ready':readyfile.unlink()
+   else:
+    ready=json.loads(ready_original);ready['objects'][str(target.relative_to(root))]=source.sha(target.read_bytes());readyfile.write_bytes(source.encode(ready))
+   attacked_inventory=source.candidate_inventory(root)
    negative=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
    errors=record('complete_source_cache_self_repin_'+attack,negative)
    assert not negative.success and errors
+   assert not root.exists() and (source.SLUG,source.SLUG,output['version']) not in list(_iter_staged_version_paths(staging))
+   retained=[p.parent for p in (runtime/'staging/_quarantine'/source.SLUG/'versions').glob('*/report.json') if json.loads(p.read_bytes())['original_prefix']==prefix and (p.parent/'candidate').exists()]
+   assert len(retained)==1
+   assert source.candidate_inventory(retained[0]/'candidate')==attacked_inventory
+   assert json.loads((retained[0]/'report.json').read_bytes())['inventory']==attacked_inventory
    assert snapshot(published)==prior
-   report['self_repin_probes'].append({'attack':attack,'run_id':negative.run_id,'rejected':True,'prior_published_preserved':True})
+   report['self_repin_probes'].append({'attack':attack,'run_id':negative.run_id,'rejected':True,'prior_published_preserved':True,'not_discoverable':True,'whole_remaining_candidate_bytes_preserved':True})
   finally:
+   if not root.exists():
+    retained=[p for p in (runtime/'staging/_quarantine'/source.SLUG/'versions').glob('*/candidate') if p.exists()]
+    assert len(retained)==1;os.rename(retained[0],root)
    gpfile.write_bytes(gp_original);parquet.write_bytes(parquet_original);readyfile.write_bytes(ready_original)
+   for name,body in evidence_original.items():(root/'metadata'/name).write_bytes(body)
  assert all((root/key).read_bytes() and source.sha((root/key).read_bytes())==digest for key,digest in json.loads(ready_original)['objects'].items())
  # Corrupt a separate explicitly synthetic test partition, leaving the real candidate unchanged.
  badprefix=prefix+'-synthetic-invalid-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot)

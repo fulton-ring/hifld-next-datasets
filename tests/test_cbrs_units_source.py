@@ -152,4 +152,53 @@ class CBRSTests(unittest.TestCase):
             self.assertEqual(str(table.schema.field('Shore_Mile').type),'double')
             self.assertEqual(table.column('Unit').null_count,0)
 
+
+    def test_full_source_reports_sidecars_and_unapproved_claims_are_rederived(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);rows,_,_=s.inspect_archive((CAPTURE/'official_zip.body').read_bytes(),root)
+            records=b''.join(s.encode(row) for row in rows)
+            expected=s.source_verification_payloads(records)
+            for name,body in expected.items():
+                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
+            s.validate_source_verification_payloads(root,records)
+            mutations=[('metadata/geopackage_source_fidelity.json',('shared_verifier','populations','baseline','rows'),1),
+                       ('metadata/geopackage_source_fidelity.json',('shared_verifier','populations','candidate','rows'),1),
+                       ('metadata/geopackage_source_fidelity.json',('shared_verifier','retained_rows_compared'),1),
+                       ('metadata/geopackage_source_fidelity.json',('shared_verifier','baseline','approved'),True),
+                       ('metadata/geopackage_source_fidelity.json',('canonical_full_records_byte_identical',),False),
+                       ('metadata/parquet_source_fidelity.json',('shared_verifier','rows'),1),
+                       ('metadata/baseline_comparison.json',('approved',),True),
+                       ('metadata/baseline_comparison.json',('status',),'pass'),
+                       ('metadata/baseline_comparison.json',('acceptance',),'approved')]
+            for name,keys,value in mutations:
+                changed=json.loads(expected[name]);current=changed
+                for key in keys[:-1]:current=current[key]
+                current[keys[-1]]=value;(root/name).write_bytes(s.encode(changed))
+                with self.subTest(name=name,keys=keys),self.assertRaisesRegex(ValueError,'evidence_or_unapproved_baseline_claim_drift'):
+                    s.validate_source_verification_payloads(root,records)
+                (root/name).write_bytes(expected[name])
+            for name in ['metadata/baseline_field_changes.jsonl','metadata/baseline_differences.jsonl']:
+                (root/name).write_bytes(expected[name]+b'altered')
+                with self.subTest(sidecar=name),self.assertRaisesRegex(ValueError,'evidence_or_unapproved_baseline_claim_drift'):
+                    s.validate_source_verification_payloads(root,records)
+                (root/name).write_bytes(expected[name])
+
+    def test_missing_ready_existing_version_is_detached_with_all_bytes_preserved(self):
+        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        identity={'synthetic_test_identity':'missing-ready-regression'}
+        fingerprint=s.sha(s.encode(identity));capture=s.sha(s.encode({n:s.sha(v[0]) for n,v in captures.items()}))
+        version=f'v0.0.0-draft-cbrs20241219-{capture[:16]}-{fingerprint[:16]}'
+        prefix=f'{s.SLUG}/{s.SLUG}/{version}'
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);target=Path(d)/prefix
+            (target/'geopackage').mkdir(parents=True);(target/'geopackage/incomplete.gpkg').write_bytes(b'incomplete synthetic object')
+            (target/'raw').mkdir();(target/'raw/kept.bin').write_bytes(b'preserve all original remaining bytes')
+            before=s.candidate_inventory(target)
+            with patch.object(s,'acquire',return_value=captures),patch.object(s,'processing_identity',return_value=identity),self.assertRaisesRegex(ValueError,'incomplete_existing_candidate_missing_ready'):
+                s.stage_cbrs_units_candidate(storage,capture_dir=CAPTURE)
+            self.assertFalse(target.exists())
+            reports=list(Path(d,'_quarantine',s.SLUG,'versions').glob('*/report.json'));self.assertEqual(len(reports),1)
+            self.assertEqual(s.candidate_inventory(reports[0].parent/'candidate'),before)
+            self.assertEqual(json.loads(reports[0].read_bytes())['inventory'],before)
+
 if __name__=='__main__':unittest.main()

@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 import zipfile
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -280,6 +281,37 @@ def compare_derivative(source: Path, candidate: Path, output: Path) -> dict:
                 'sha256': pin, 'bytes': source.stat().st_size}})
 
 
+
+@lru_cache(maxsize=2)
+def source_verification_payloads(records: bytes) -> dict[str, bytes]:
+    """Recompute full comparison claims and sidecars from the complete original.
+
+    Actual cached derivatives are independently decoded and proven byte-equal to
+    this stream before these reports are trusted. The bounded memo is keyed by
+    the original bytes, never by a ready receipt or cached report's self-pin.
+    """
+    with tempfile.TemporaryDirectory(prefix='cbrs-units-full-evidence-') as tmp:
+        root=Path(tmp);original=root/'original.jsonl';original.write_bytes(records)
+        fidelity=compare_derivative(original,original,root/'comparison')
+        parquet_fidelity={'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
+            'rows':942,'source_records_sha256':sha(records),'shared_schema_geometry_validation_reference':fidelity}
+        wrapper=lambda report: {'canonical_full_records_byte_identical':True,'shared_verifier':report,
+                                'known_invalid_native_geometry_release_blocked':False}
+        result={'metadata/geopackage_source_fidelity.json':encode(wrapper(fidelity)),
+                'metadata/parquet_source_fidelity.json':encode(wrapper(parquet_fidelity)),
+                'metadata/baseline_comparison.json':encode({'schema_version':1,'status':'blocked','approved':False,
+                    'reason_codes':['unapproved_source_numeric_precision_geometry_wrapper_and_original_fid_published_id_contract'],
+                    'acceptance':'not_established'})}
+        for name in ('baseline_differences.jsonl','baseline_field_changes.jsonl'):
+            result['metadata/'+name]=(root/'comparison'/name).read_bytes()
+        return result
+
+
+def validate_source_verification_payloads(root: Path, records: bytes) -> None:
+    for name,body in source_verification_payloads(records).items():
+        if (root/name).read_bytes()!=body:
+            raise CBRSQuarantineError('cached_source_evidence_or_unapproved_baseline_claim_drift:'+name)
+
 def typed_table(rows: list[dict], audit: dict) -> pa.Table:
     schema=pa.schema([pa.field(k,pa.float64() if v.startswith('float') else pa.string(),nullable=False) for k,v in SCHEMA.items()]+[pa.field('geometry',pa.binary(),nullable=False)])
     table=pa.Table.from_pylist([{**r['properties'],'geometry':shape(r['geometry']).wkb} for r in rows],schema=schema)
@@ -376,6 +408,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         if not pq.read_table(candidate).equals(typed_table(rows,audit),check_metadata=True):
             raise CBRSQuarantineError('cached_typed_parquet_source_fidelity_failure')
     validate_geopackage_metadata(root/'geopackage'/f'{SLUG}.gpkg',rows)
+    validate_source_verification_payloads(root,b''.join(encode(r) for r in rows))
 
 
 def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
@@ -399,10 +432,46 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
 
 
 
+
+def candidate_inventory(root: Path) -> dict:
+    inventory={}
+    for path in sorted(root.rglob('*')):
+        info=path.lstat();name=str(path.relative_to(root))
+        if stat.S_ISLNK(info.st_mode):
+            inventory[name]={'kind':'symlink','target':os.readlink(path)}
+        elif stat.S_ISREG(info.st_mode):
+            inventory[name]={'kind':'file','bytes':info.st_size,'sha256':sha256_file(path)}
+        elif not stat.S_ISDIR(info.st_mode):
+            inventory[name]={'kind':'unsupported','mode':info.st_mode}
+    return inventory
+
+
+def quarantine_existing_candidate(storage: StagingStorageResource, prefix: str,
+                                  expected_inode: tuple[int,int], reason: str) -> str:
+    """Atomically retain an invalid existing draft outside discovery, without replacement."""
+    target=local_candidate_path(storage,prefix)
+    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    with os.fdopen(descriptor,'r+b') as held:
+        if os.fstat(held.fileno()).st_nlink!=1:
+            raise CBRSQuarantineError('linked_candidate_lock')
+        fcntl.flock(held,fcntl.LOCK_EX)
+        info=target.lstat()
+        if (info.st_dev,info.st_ino)!=expected_inode:
+            raise CBRSQuarantineError('existing_candidate_changed_concurrently_not_quarantined')
+        inventory=candidate_inventory(target)
+        location=f'_quarantine/{SLUG}/versions/{uuid4().hex}'
+        destination=Path(storage.local_dir)/storage._ensure_prefixed(location)
+        destination.mkdir(parents=True,exist_ok=False)
+        os.rename(target,destination/'candidate')
+        immutable(storage,location+'/report.json',encode({'status':'invalid_draft_candidate_quarantined',
+            'approved':False,'original_prefix':prefix,'reason':reason,'inventory':inventory}))
+        return location
+
 def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
     body,receipt = captures['official_zip']
+    existing_candidate=None
     try:
         manifest=provenance(captures)
         with tempfile.TemporaryDirectory(prefix='cbrs_units-source-') as tmp:
@@ -415,9 +484,14 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
             version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
             prefix = f'{SLUG}/{SLUG}/{version}'
             ready_key = f'{prefix}/metadata/cbrs_units_candidate_ready.json'
+            target=local_candidate_path(storage,prefix)
+            if target.exists():
+                info=target.lstat();existing_candidate=(prefix,(info.st_dev,info.st_ino))
+                if not storage.object_exists(ready_key):
+                    raise CBRSQuarantineError('incomplete_existing_candidate_missing_ready')
             if storage.object_exists(ready_key):
                 ready = strict_json(storage.read_key(ready_key))
-                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', f'geoparquet/{SLUG}.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_units_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
+                expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', f'geoparquet/{SLUG}.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_units_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json','metadata/baseline_differences.jsonl','metadata/baseline_field_changes.jsonl'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
                 if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
                     raise CBRSQuarantineError('existing_candidate_inventory_conflict')
                 if (ready.get('source_sha256') != PIN or ready.get('candidate_records_sha256') != sha(records)
@@ -443,7 +517,6 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
                     raise CBRSQuarantineError('geopackage_native_crs_loss')
                 decoded.write_bytes(b''.join(encode({'type': 'Feature', 'properties': dict(r['properties']),
                     'geometry': mapping(shape(r['geometry']))}) for r in source))
-            fidelity = compare_derivative(source_records, decoded, directory / 'comparison')
             if decoded.read_bytes() != records:
                 raise CBRSQuarantineError('geopackage_complete_fidelity_failure')
             table=typed_table(rows,audit)
@@ -453,11 +526,6 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
                 'geometry': mapping(shapely.from_wkb(r['geometry']))}) for r in pq.read_table(parquet).to_pylist()))
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
-            # Both independently decoded derivatives equal the exact complete source stream.
-            # Repeating the same shared schema/geometry walk adds no independent evidence.
-            parquet_fidelity = {'status':'pass','method':'complete_decoded_source_records_byte_equality_and_exact_arrow_schema',
-                'rows':len(rows),'source_records_sha256':sha(records),
-                'shared_schema_geometry_validation_reference':fidelity}
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
             manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
@@ -466,9 +534,8 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
                 'metadata/candidate.records.jsonl': records, 'metadata/source_manifest.json': encode(manifest),
                 'metadata/processing_identity.json': encode(identity), 'metadata/cbrs_units_source_audit.json': encode(audit),
                 'metadata/proposed_source_contract.json': encode(PROPOSAL),
-                'metadata/geopackage_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': fidelity, 'known_invalid_native_geometry_release_blocked': False}), 'metadata/parquet_source_fidelity.json': encode({'canonical_full_records_byte_identical': True, 'shared_verifier': parquet_fidelity, 'known_invalid_native_geometry_release_blocked': False}),
-                'metadata/baseline_comparison.json': encode({'schema_version':1, 'status':'blocked', 'approved':False,
-                    'reason_codes':['unapproved_source_numeric_precision_geometry_wrapper_and_original_fid_published_id_contract'], 'acceptance':'not_established'})}
+            }
+            payloads.update(source_verification_payloads(records))
             payloads.update({f'raw/members/{name}': value for name,value in members.items()})
             payloads.update({f'raw/captures/{name}.body':value[0] for name,value in captures.items()})
             payloads.update({f'raw/captures/{name}.receipt.json':encode(value[1]) for name,value in captures.items()})
@@ -479,5 +546,8 @@ def stage_cbrs_units_candidate(storage: StagingStorageResource, *, capture_dir: 
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:
+        retained_version=None
+        if existing_candidate is not None:
+            retained_version=quarantine_existing_candidate(storage,*existing_candidate,str(exc))
         location = quarantine(storage, body, receipt, str(exc))
-        raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
+        raise CBRSQuarantineError(f'{exc}; retained:{location}; candidate_quarantined:{retained_version}') from exc
