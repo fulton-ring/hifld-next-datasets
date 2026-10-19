@@ -492,3 +492,19 @@ original independent reproductions are in the
 [repair evidence](../evidence/2026-10-19-stac-dependency-repair.json). This is local
 validation awaiting a new independent exact-head review, not a CI or real
 acceptance claim.
+
+The independent `20452e2` follow-up identified one omitted projection field:
+SQLite asset-object native and CRS84 bounds could differ from the unchanged
+rendered Collection after deliberate exact DB/pointer repins. Both bounds now
+match `hifld:native_bbox` and the normalized Collection spatial extent, including
+the existing unknown/clamped extent policy. The catalog-only replay rejects all
+five negative cases while retaining its 40-object roster and pointer; no terminal
+data was rebuilt for that replay. Forty-nine focused publication/workflow tests
+passed; the full suite was not repeated for this narrow checkpoint.
+
+The source-owned AIANNH correction at `bac1c53` (final docs `19061d06`) produced
+new canonical metadata under `processor-normal-graph`; its single-input manifest
+now passes pure structural validation with processor `HIFLD Next`. Earlier
+`f066` processor-label failures and captured bytes remain historical and
+unchanged. This is metadata structure compatibility, not dataset acceptance.
+See the [narrow repair evidence](../evidence/2026-10-19-stac-object-bounds-repair.json).

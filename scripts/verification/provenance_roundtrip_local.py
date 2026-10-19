@@ -57,7 +57,7 @@ def exercise_dependency_negatives(work, published, record, request, registry):
     results = {}
     data_key = next(key for key in published.list_prefix() if "/geoparquet/" in key)
     original_data = published.read_key(data_key)
-    for mode in ["wrong_metadata_href", "changed_data_after_plan", "sqlite_metadata_omission", "commit_boundary_dependency_race"]:
+    for mode in ["wrong_metadata_href", "changed_data_after_plan", "sqlite_metadata_omission", "sqlite_object_bounds", "commit_boundary_dependency_race"]:
         directory = work / mode
         plan = prepare_portolan_release_bundle((record,), request, published, directory)
         pointer_before = published.read_key(RELEASE_POINTER_KEY)
@@ -80,13 +80,17 @@ def exercise_dependency_negatives(work, published, record, request, registry):
             with sqlite3.connect(directory / "tree/_catalog/catalog.sqlite") as connection:
                 connection.execute("DELETE FROM assets WHERE format_key='metadata'")
             _repin_synthetic_plan(directory, plan)
+        elif mode == "sqlite_object_bounds":
+            with sqlite3.connect(directory / "tree/_catalog/catalog.sqlite") as connection:
+                connection.execute("UPDATE asset_objects SET native_bbox_json='[0,0,0,0]', crs84_bbox_json='[0,0,0,0]'")
+            _repin_synthetic_plan(directory, plan)
         approve_synthetic_plan(registry, plan)
         before = {key: published.object_snapshot(key) for key in published.list_prefix()}
         storage = CommitRaceStorage(use_local=True, local_dir=published.local_dir) if mode == "commit_boundary_dependency_race" else published
         try:
             apply_portolan_release_bundle(directory, storage)
         except (ValueError, RuntimeError) as exc:
-            expected = {"wrong_metadata_href": "href", "changed_data_after_plan": "asset dependency", "sqlite_metadata_omission": "SQLite asset inventory", "commit_boundary_dependency_race": "dependency changed"}[mode]
+            expected = {"wrong_metadata_href": "href", "changed_data_after_plan": "asset dependency", "sqlite_metadata_omission": "SQLite asset inventory", "sqlite_object_bounds": "object bounds", "commit_boundary_dependency_race": "dependency changed"}[mode]
             assert expected in str(exc), (mode, str(exc))
             results[mode] = {"blocked": True, "reason": str(exc)}
         else:

@@ -67,8 +67,9 @@ def verify_sqlite_asset_projection(root: Path) -> None:
     expected = {}
     for path in sorted(root.rglob("collection.json")):
         version = path.parent.relative_to(root).as_posix()
-        for key, asset in json.loads(path.read_text()).get("assets", {}).items():
-            expected[version + "/" + key] = (version, key, asset)
+        document = json.loads(path.read_text())
+        for key, asset in document.get("assets", {}).items():
+            expected[version + "/" + key] = (version, key, asset, document)
     with sqlite3.connect(f"file:{root / '_catalog/catalog.sqlite'}?mode=ro", uri=True) as connection:
         connection.row_factory = sqlite3.Row
         rows = {row["asset_path"]: row for row in connection.execute("SELECT * FROM assets")}
@@ -76,7 +77,7 @@ def verify_sqlite_asset_projection(root: Path) -> None:
             raise ValueError("Prepared SQLite asset inventory differs from rendered STAC")
         if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise ValueError("Prepared SQLite has orphaned asset dependencies")
-        for asset_path, (version, key, asset) in expected.items():
+        for asset_path, (version, key, asset, document) in expected.items():
             row = rows[asset_path]
             checksum = row["checksum_multihash"] or ("1220" + row["sha256"] if row["sha256"] else None)
             if row["sha256"] is not None and "1220" + row["sha256"] != asset.get("file:checksum"):
@@ -103,6 +104,11 @@ def verify_sqlite_asset_projection(root: Path) -> None:
                     or obj["relative_path"] != obj["object_key"].rsplit("/", 1)[-1]
                     or obj["size_bytes"] != asset["file:size"] or object_checksum != asset["file:checksum"]):
                 raise ValueError("Prepared SQLite asset object fields differ from rendered STAC")
+            native_bbox = json.loads(obj["native_bbox_json"]) if obj["native_bbox_json"] is not None else None
+            crs84_bbox = json.loads(obj["crs84_bbox_json"]) if obj["crs84_bbox_json"] is not None else None
+            if (native_bbox != document.get("hifld:native_bbox")
+                    or crs84_bbox != document["extent"]["spatial"]["bbox"][0]):
+                raise ValueError("Prepared SQLite asset object bounds differ from rendered STAC")
 
 
 def attach_published_provenance(record: CatalogRecord, published: PublishedStorageResource,

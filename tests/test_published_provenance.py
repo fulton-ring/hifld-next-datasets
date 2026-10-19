@@ -41,7 +41,7 @@ class PublishedProvenanceTests(unittest.TestCase):
             self.assertTrue(outcome["repinned_omitted_input_blocked"])
             self.assertTrue(outcome["removed_dependency_labels_blocked"])
             self.assertTrue(outcome["native_graph"]["invalid_provenance_blocked"])
-            self.assertEqual(set(outcome["asset_dependency_negative_probes"]), {"wrong_metadata_href", "changed_data_after_plan", "sqlite_metadata_omission", "commit_boundary_dependency_race"})
+            self.assertEqual(set(outcome["asset_dependency_negative_probes"]), {"wrong_metadata_href", "changed_data_after_plan", "sqlite_metadata_omission", "sqlite_object_bounds", "commit_boundary_dependency_race"})
             for result in outcome["asset_dependency_negative_probes"].values():
                 self.assertTrue(result["blocked"])
                 self.assertTrue(result["pointer_preserved"])
