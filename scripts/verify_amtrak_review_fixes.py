@@ -121,10 +121,30 @@ def main():
             record['synthetic_replay_failures'].append({'kind':kind,'body':name,'run_id':result.run_id,
                 'success':result.success,'exact_raw_quarantined':True,'no_canonical_candidate':True,
                 'meaning':'Deliberately corrupted local copies, not observed producer errors'})
+        record['synthetic_attempt_provenance_failures']=[]
+        for kind,timestamp in [('invalid','not-a-date'),('naive','2026-10-19T00:00:00')]:
+            bad=root/f'corrupt-attempt-{kind}';shutil.copytree(args.capture,bad)
+            receipt_path=bad/'attempts/page-000/000.receipt.json'
+            receipt=json.loads(receipt_path.read_bytes());receipt['observed_at']=timestamp
+            receipt_path.write_text(json.dumps(receipt))
+            bad_version=version+'-attempt-'+kind
+            result=source_job.execute_in_process(instance=instance,asset_selection=[source_key],run_config=source_config(bad,bad_version),raise_on_error=False)
+            failures={e.step_key:e.event_specific_data.error.to_string() for e in result.get_step_failure_events()}
+            assert not result.success and any('isoformat' in reason or 'timezone' in reason for reason in failures.values())
+            canonical=root/'staging'/adapter.SLUG/adapter.SLUG/bad_version
+            assert not canonical.exists()
+            statuses=list((root/'staging/quarantine'/adapter.SLUG/bad_version).rglob('status.json'))
+            assert len(statuses)==1
+            status=json.loads(statuses[0].read_bytes());assert status['state']=='blocked' and status['raw_preserved']
+            retained=statuses[0].parent/'raw'
+            assert all((retained/p.relative_to(bad)).read_bytes()==p.read_bytes() for p in bad.rglob('*') if p.is_file())
+            record['synthetic_attempt_provenance_failures'].append({'kind':kind,'run_id':result.run_id,'success':result.success,
+                'exact_raw_and_receipts_quarantined':True,'no_canonical_version':True,
+                'meaning':'Deliberately corrupted retained-attempt timestamp in a local copy; not an observed source defect'})
     record['published_after']=files(published);assert record['published_after']==accepted_before
     assert all((staged/'raw_arcgis'/r['name']).read_bytes()==(args.capture/r['name']).read_bytes() for r in adapter.inspect_capture(args.capture)['raw_files'])
     record['accepted_fixture_and_real_raw_preserved']=True;save()
-    print(json.dumps({k:record[k] for k in ('code_commit','ingest','refresh','catalog','provenance','synthetic_replay_failures','accepted_fixture_and_real_raw_preserved')}))
+    print(json.dumps({k:record[k] for k in ('code_commit','ingest','refresh','catalog','provenance','synthetic_replay_failures','synthetic_attempt_provenance_failures','accepted_fixture_and_real_raw_preserved')}))
 
 
 if __name__=='__main__':main()

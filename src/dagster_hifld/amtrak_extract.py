@@ -523,16 +523,26 @@ def _provenance_inputs(capture: Path, audit: dict) -> tuple[list[dict], list[dic
         path = Path(record['name'])
         receipt_name = str(path.with_suffix('.receipt.json'))
         receipt = _json(capture / receipt_name)
-        if not isinstance(receipt, dict) or receipt.get('sha256') != record['sha256'] or receipt.get('bytes') != record['bytes']:
+        if (not isinstance(receipt, dict) or receipt.get('sha256') != record['sha256']
+                or type(receipt.get('bytes')) is not int or receipt['bytes'] != record['bytes']):
             raise ValueError('Retained response attempt receipt/checksum mismatch')
+        if not isinstance(receipt.get('observed_at'), str):
+            raise ValueError('Retained response retrieval time must be an original ISO timestamp')
+        observed_at = datetime.datetime.fromisoformat(receipt['observed_at'])
+        if observed_at.tzinfo is None:
+            raise ValueError('Retained response retrieval time must include timezone')
+        terminal_name = path.parts[1] if path.parts[0] == 'attempts' else path.stem
+        terminal = _json(capture / (terminal_name + '.receipt.json'))
+        if receipt.get('url') != terminal['url']:
+            raise ValueError('Retained response lacks exact observed official request provenance')
+        if type(receipt.get('status')) is not int:
+            raise ValueError('Retained response lacks an observed HTTP status')
         if receipt.get('status') == 0 and record['bytes'] == 0 and not receipt.get('final_url'):
             unobserved.append({**record, 'receipt': receipt_name,
                                'meaning': 'Transport failed before an observed HTTP response; no retrieval URL invented'})
             continue
         if type(receipt.get('status')) is not int or not 100 <= receipt['status'] <= 599:
             raise ValueError('Retained response lacks an observed HTTP status')
-        terminal_name = path.parts[1] if path.parts[0] == 'attempts' else path.stem
-        terminal = _json(capture / (terminal_name + '.receipt.json'))
         requested = urllib.parse.urlsplit(terminal['url'])
         observed = urllib.parse.urlsplit(receipt.get('final_url', ''))
         if (receipt.get('url') != terminal['url'] or
@@ -541,9 +551,6 @@ def _provenance_inputs(capture: Path, audit: dict) -> tuple[list[dict], list[dic
                 sorted(urllib.parse.parse_qsl(observed.query, keep_blank_values=True)) !=
                 sorted(urllib.parse.parse_qsl(requested.query, keep_blank_values=True))):
             raise ValueError('Retained response lacks exact observed official request provenance')
-        observed_at = datetime.datetime.fromisoformat(receipt.get('observed_at', ''))
-        if observed_at.tzinfo is None:
-            raise ValueError('Retained response retrieval time must include timezone')
         inputs.append({
             'input_id': 'raw_arcgis/' + record['name'],
             'producer': 'National Railroad Passenger Corporation (Amtrak)',
@@ -565,6 +572,25 @@ def _provenance_inputs(capture: Path, audit: dict) -> tuple[list[dict], list[dic
     return inputs, unobserved
 
 
+def _source_manifest(audit: dict, processing: dict, original_receipts: list, inputs: list, unobserved_attempts: list) -> dict:
+    """Construct and validate full provenance before a version can be discovered."""
+    manifest = {'title':'Amtrak Stations', 'agency':'National Railroad Passenger Corporation (Amtrak)',
+        'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
+        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'source_release_statement':audit['official_item']['description'], 'source_attribution':audit['official_item'].get('accessInformation'), 'schema_version':1,
+        'processor':'HIFLD Next', 'processing_identity':processing, 'code_commit':processing['code_commit'],
+        'original_retrieval_receipts':original_receipts,
+        'inputs':inputs,
+        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; original DateModif text and native coordinate values retained', 'acceptance':'unapproved'}],
+        'lineage':{'producer':'Amtrak', 'distributor_item':ITEM_ID,'crosswalk':'unverified; DataLumos403 prevents inspecting the mapping',
+                   'raw_files':audit['raw_files'], 'source_crs':audit['crs'], 'source_fields':audit['fields'],
+                   'unobserved_transport_attempts':unobserved_attempts},
+        'promotion_allowed':False, 'complete_rows':audit['rows'],
+        'unsupported_output_formats':{'shapefile_zip':'Unapproved lossy format: source fields include >10-character names and nullable string/identifier fields; regenerated DBF needs a reviewed mapping; no reviewed lossless name/type/null/value mapping.'}}
+    # Structural correctness is implementation behavior, not an acceptance decision.
+    validate_release_provenance(manifest)
+    return manifest
+
+
 def _stage_capture_payload(capture: Path, staging: StagingStorageResource, version: str) -> dict:
     """Stage native raw proof + lossless typed draft and canonical GeoJSON input.
 
@@ -579,6 +605,13 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     schema_digest = hashlib.sha256(json.dumps(signature, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     if schema_digest != PROPOSED_SCHEMA_SHA256:
         raise ValueError('Source schema drift quarantined; revise the review draft explicitly')
+    # Raw quarantine is already durable. No canonical version directory exists
+    # until every retained attempt and the complete manifest pass validation.
+    inputs, unobserved_attempts = _provenance_inputs(capture, audit)
+    original_receipts = [{'name': p.name, 'url': _json(p).get('url'), 'final_url': _json(p).get('final_url'),
+                         'observed_at': _json(p).get('observed_at'), 'http_date': _json(p).get('date')}
+                        for p in sorted(capture.glob('*.receipt.json')) if p.name.startswith(('bts_', 'page-'))]
+    _source_manifest(audit, processing_identity(), original_receipts, inputs, unobserved_attempts)
     root = Path(staging.local_dir).resolve() / staging.prefix / SLUG / SLUG / version
     root.mkdir(parents=True, exist_ok=True)
     for record in audit['raw_files']:
@@ -607,21 +640,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     if path.exists(): partial.unlink()
     else: partial.replace(path)
     metadata = root / 'metadata'; metadata.mkdir(exist_ok=True)
-    inputs, unobserved_attempts = _provenance_inputs(capture, audit)
-    manifest = {'title':'Amtrak Stations', 'agency':'National Railroad Passenger Corporation (Amtrak)',
-        'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
-        'source_url':SERVICE, 'source_modified':audit['editing_info'], 'source_release_statement':audit['official_item']['description'], 'source_attribution':audit['official_item'].get('accessInformation'), 'schema_version':1,
-        'processor':'HIFLD Next', 'processing_identity':candidate['processing'], 'code_commit':candidate['processing']['code_commit'],
-        'original_retrieval_receipts':candidate['original_retrieval_receipts'],
-        'inputs':inputs,
-        'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; original DateModif text and native coordinate values retained', 'acceptance':'unapproved'}],
-        'lineage':{'producer':'Amtrak', 'distributor_item':ITEM_ID,'crosswalk':'unverified; DataLumos403 prevents inspecting the mapping',
-                   'raw_files':audit['raw_files'], 'source_crs':audit['crs'], 'source_fields':audit['fields'],
-                   'unobserved_transport_attempts':unobserved_attempts},
-        'promotion_allowed':False, 'complete_rows':audit['rows'],
-        'unsupported_output_formats':{'shapefile_zip':'Unapproved lossy format: source fields include >10-character names and nullable string/identifier fields; regenerated DBF needs a reviewed mapping; no reviewed lossless name/type/null/value mapping.'}}
-    # Structural correctness is implementation behavior, not an acceptance decision.
-    validate_release_provenance(manifest)
+    manifest = _source_manifest(audit, candidate['processing'], candidate['original_retrieval_receipts'], inputs, unobserved_attempts)
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:

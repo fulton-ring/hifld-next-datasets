@@ -1,5 +1,6 @@
 """Draft BTS adapter failures must quarantine before any promotion is possible."""
 import copy
+from contextlib import nullcontext
 import hashlib
 import json
 import pathlib
@@ -393,3 +394,58 @@ class AmtrakActualReplayReviewRegression(unittest.TestCase):
                 self.assertTrue(status['raw_preserved'])
                 body.write_bytes(original)
                 receipt_path.write_bytes(original_receipt)
+
+    def test_invalid_attempt_provenance_never_creates_canonical_outputs(self):
+        storage=StagingStorageResource(local_dir=str(self.root/'preflight-staging'),use_local=True)
+        prior_version='v0.0.0-prior-valid'
+        stage_amtrak_capture(self.capture,storage,prior_version)
+        prior=pathlib.Path(storage.local_dir)/SLUG/SLUG/prior_version
+        prior_hashes={str(p.relative_to(prior)):hashlib.sha256(p.read_bytes()).hexdigest() for p in prior.rglob('*') if p.is_file()}
+        published=self.root/'accepted-published';published.mkdir()
+        sentinel=published/'accepted.bin';sentinel.write_bytes(b'local accepted preservation fixture only')
+        original_sentinel=sentinel.read_bytes()
+        attempt=self.capture/'attempts/page-000/000.receipt.json'
+        baseline_attempt=attempt.read_bytes()
+        saved_items={name:(self.capture/name).read_bytes() for name in
+                     ('bts_item.body','bts_item_after.body','bts_item.receipt.json','bts_item_after.receipt.json')}
+        cases=('bad-time','naive-time','missing-time','request-url','response-url','sha-pin','byte-pin',
+               'license','attribution','unobserved-attempt-time','shared-manifest-invalid')
+        for case in cases:
+            attempt.write_bytes(baseline_attempt)
+            for name,content in saved_items.items():(self.capture/name).write_bytes(content)
+            extra_body=self.capture/'attempts/page-000/001.body'
+            extra_receipt=extra_body.with_suffix('.receipt.json')
+            for path in (extra_body,extra_receipt):
+                if path.exists():path.unlink()
+            receipt=json.loads(baseline_attempt)
+            if case=='bad-time':receipt['observed_at']='not-a-date'
+            elif case=='naive-time':receipt['observed_at']='2026-10-19T00:00:00'
+            elif case=='missing-time':receipt.pop('observed_at')
+            elif case=='request-url':receipt['url']='https://mirror.invalid/changed-request'
+            elif case=='response-url':receipt['final_url']='https://mirror.invalid/changed-response'
+            elif case=='sha-pin':receipt['sha256']='0'*64
+            elif case=='byte-pin':receipt['bytes']+=1
+            elif case in ('license','attribution'):
+                for name in ('bts_item','bts_item_after'):
+                    path=self.capture/(name+'.body');value=json.loads(path.read_bytes())
+                    value['licenseInfo' if case=='license' else 'accessInformation']=''
+                    path.write_text(json.dumps(value));rp=self.capture/(name+'.receipt.json');r=json.loads(rp.read_bytes())
+                    r.update(bytes=path.stat().st_size,sha256=hashlib.sha256(path.read_bytes()).hexdigest());rp.write_text(json.dumps(r))
+            elif case=='unobserved-attempt-time':
+                extra_body.write_bytes(b'')
+                extra_receipt.write_text(json.dumps({'url':receipt['url'],'observed_at':'not-a-date','status':0,
+                    'complete_body':False,'bytes':0,'sha256':hashlib.sha256(b'').hexdigest(),'error':'Synthetic transport failure'}))
+            attempt.write_text(json.dumps(receipt))
+            version='v0.0.0-preflight-'+case
+            replacement=patch('dagster_hifld.amtrak_extract.validate_release_provenance',side_effect=ValueError('Injected shared structural provenance failure')) if case=='shared-manifest-invalid' else nullcontext()
+            with self.subTest(case=case),replacement, self.assertRaises(ValueError):
+                stage_amtrak_capture(self.capture,storage,version)
+            self.assertFalse((pathlib.Path(storage.local_dir)/SLUG/SLUG/version).exists(),case)
+            quarantine=pathlib.Path(storage.local_dir)/'quarantine'/SLUG/version
+            statuses=list(quarantine.rglob('status.json'));self.assertEqual(len(statuses),1)
+            status=json.loads(statuses[0].read_bytes());self.assertEqual(status['state'],'blocked');self.assertTrue(status['raw_preserved'])
+            retained=statuses[0].parent/'raw'
+            for path in self.capture.rglob('*'):
+                if path.is_file():self.assertEqual((retained/path.relative_to(self.capture)).read_bytes(),path.read_bytes(),case)
+            self.assertEqual(sentinel.read_bytes(),original_sentinel)
+            self.assertEqual({str(p.relative_to(prior)):hashlib.sha256(p.read_bytes()).hexdigest() for p in prior.rglob('*') if p.is_file()},prior_hashes)
