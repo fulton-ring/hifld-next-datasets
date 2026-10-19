@@ -258,5 +258,49 @@
     "bytes": 3000,
     "sha256": "49daf1cbacba4106e62fefac6779d4b4d3d91b2a108d9c360022e1cceceaf5ec",
     "arcgis_error": null
+  },
+  {
+    "name": "retry-eia-maps",
+    "url": "https://www.eia.gov/maps/",
+    "checked_at": "2026-10-19T04:47:03.755892+00:00",
+    "body_encoding": "gzip; checksum and bytes describe decompressed original",
+    "status": 200,
+    "final_url": "https://www.eia.gov/maps/",
+    "body": "retry-eia-maps.txt.gz",
+    "bytes": 60511,
+    "sha256": "9fcdcdf1d0db80fcfdf7a45fe96886956fa5b6ae1bbbd9a1409fecca2b66e17b"
+  },
+  {
+    "name": "retry-eia-atlas",
+    "url": "https://atlas.eia.gov/",
+    "checked_at": "2026-10-19T04:47:05.642371+00:00",
+    "body_encoding": "gzip; checksum and bytes describe decompressed original",
+    "status": 200,
+    "final_url": "https://atlas.eia.gov/",
+    "body": "retry-eia-atlas.txt.gz",
+    "bytes": 27776,
+    "sha256": "8d5876d8e20bbb98f6d3ef3340db0db4a16f80d75d74681c521702a888b216e2"
+  },
+  {
+    "name": "retry-crosswalk",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "checked_at": "2026-10-19T04:47:06.441213+00:00",
+    "body_encoding": "gzip; checksum and bytes describe decompressed original",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "body": "retry-crosswalk.txt.gz",
+    "bytes": 6136,
+    "sha256": "a86d658eb610ee7a1c4a6380cca0666cbcc8592e6fb106e2852748ff2f04e4f0"
+  },
+  {
+    "name": "retry-archive",
+    "url": "https://www.datalumos.org/datalumos/project/238493/version/V1/view",
+    "checked_at": "2026-10-19T04:47:07.066492+00:00",
+    "body_encoding": "gzip; checksum and bytes describe decompressed original",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/238493/version/V1/view",
+    "body": "retry-archive.txt.gz",
+    "bytes": 6136,
+    "sha256": "8f05b98773b3a6c8672bddb732df46411e8b0aa37fc9b1320169e7fde9735efb"
   }
 ]

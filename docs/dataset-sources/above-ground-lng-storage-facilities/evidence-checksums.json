@@ -25,6 +25,15 @@
   "evidence/official-underground-item.json": "0dff55720038b86ddc28fc7226ce6854aa53f24483c009e3b73f5612c527fe4c",
   "evidence/pasda-metadata.xml.gz": "a4991f8adfc10a7ed3d1143cd8ed657a2118451942cd77cace35fd36a4a9665f",
   "evidence/pasda-zip.zip": "a9aceabbade3fe548a9f7ab7f7e67e6831cf03d9a5fe3ea421732363803af769",
-  "evidence/requests.json": "ed11d84cf66c23ae4edbbf316ef5eb0ad89a2c0a76d3044a06ffcf231d6ccc8c",
+  "evidence/published-candidate-stac.json": "9e3ce7b74fb1305d7b80d0d8022915b40fa4758619d23cbc9c30420a5f0cccbc",
+  "evidence/published-candidate.json": "32ef5711fe0f83946309eecd46ff31a800a776a649ea6e746450dcdbc9138003",
+  "evidence/published-candidate.parquet": "63283d954415c39d7df59e09312f9af717d778c5ebb415950ea4a9847ffeca7e",
+  "evidence/published-comparison.json": "9587480c7310bd6651ae53a889f57f078f3f56df74a1c3f89a79ee45e9993e49",
+  "evidence/requests.json": "675ee9e01fd956ff98a4f12f51d124f79a19fdb60ec1e10c5227997968109e5d",
+  "evidence/retry-archive.txt.gz": "aeca5f7e0d47977e8c8c9a995f9ad54ec095cf08d4bc9775cf908fcf0280ba4b",
+  "evidence/retry-crosswalk.txt.gz": "651dc9ea2c21b9a7c7921ba41db84a1f3827b295c5cd05e61ed8ca9a1dec6de9",
+  "evidence/retry-dagster-readiness.json": "9848ada8b2fc77d5d0e49c88d1ae25cea1a72261f9d5b144f5d3fb00883f1fd7",
+  "evidence/retry-eia-atlas.txt.gz": "56f64580dec73d6ee5e52b7dcf7abb480b79901e39e905a186922107423355b6",
+  "evidence/retry-eia-maps.txt.gz": "d93ddfd619dfff2fa933a7b8cbe1117bd1d7f107bedd72d4ae93bc2662e14ed0",
   "evidence/storage-search.json": "60994a63dd83d27fcf98517ea820ef534f0fa6aba5313547b6b5080c9eabbf67"
 }

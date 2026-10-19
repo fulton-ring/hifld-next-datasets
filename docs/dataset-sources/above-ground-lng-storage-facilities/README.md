@@ -40,3 +40,15 @@ env -u HIFLD_STAGING_BUCKET -u HIFLD_DATASETS_BUCKET \
 ```
 
 `GET /server_info` returned HTTP 200 with Dagster 1.12.19. GraphQL `repositoriesOrError` returned HTTP 200 and `RepositoryConnection`, including asset keys for the existing graph and this dataset. The exact JSON responses are retained. No source was materialized; readiness is not ingestion correctness. Only the worker's own server was stopped afterward. The full repository suite was not rerun for these research-only documents; no fresh suite pass is claimed.
+
+## Network recovery and full published candidate comparison
+
+The resumed coordinator retried official EIA maps/atlas successfully (HTTP 200). The DOI now redirects successfully; the resulting DataLumos page and this dataset archive return provider HTTP 403 HTML challenges, rather than CONNECT denials. The exact crosswalk remains unverified. Fresh responses are recorded as `retry-*` entries in the request manifest.
+
+The public catalog now resolves this exact dataset/file to `v1.0.0`. `published-candidate.json` pins the complete 32,109-byte GeoParquet object, GCS generation and SHA-256; `published-candidate-stac.json` retains the exact catalog Collection and declared size. This is an **unapproved baseline candidate**, separate from `accepted_baseline`, which remains unresolved. The complete candidate is retained because it is bounded and small. No inferred acceptance decision or generated substitute IDs are introduced.
+
+Offline comparison of every row by observed unique `AGLNGID` finds the same 13 identifiers, all shared attribute values equal, and all 13 point coordinates exactly equal with zero tolerance in common EPSG:3857. Both snapshots contain only Pennsylvania. Physical schemas are retained separately: GeoParquet adds `id` and `bbox` and expresses integer widths/dates differently from DBF. These are unapproved output fields/types; value equality does not approve the mapping or establish cross-release ID stability. The existing published release itself therefore preserves the narrow scope, so replacing it with a national feed would require an explicit compatibility/source/coverage decision.
+
+Run `uv run --frozen python docs/dataset-sources/above-ground-lng-storage-facilities/compare_published.py` for complete offline replay against the committed candidate and original ZIP; it verifies both object/catalog hashes first. `--record` is an explicit regeneration option. `published-comparison.json` contains full schemas, identifier differences, attribute differences, geometry differences and coverage. No reprojection, geometry repair or ID rewriting is applied.
+
+Fresh isolated Dagster port 3505 `/server_info` and GraphQL repository/asset loading returned HTTP 200, using this worktree's frozen environment, private durable state and local storage with cloud buckets unset. `retry-dagster-readiness.json` preserves responses; the startup retry error is retained alongside the eventual success. No materialization or full-suite pass is claimed for this research-only update. National source/contract acceptance and #417 remain blocking.

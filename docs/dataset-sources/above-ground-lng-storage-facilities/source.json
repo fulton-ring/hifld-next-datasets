@@ -687,5 +687,23 @@
   ],
   "pipeline_changes": false,
   "materialization_performed": false,
-  "ingestion_approval": false
+  "ingestion_approval": false,
+  "published_baseline_candidate": {
+    "status": "pinned_unapproved",
+    "dataset_slug": "above-ground-lng-storage-facilities",
+    "file_slug": "above-ground-lng-storage-facilities",
+    "version": "v1.0.0",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/above-ground-lng-storage-facilities/above-ground-lng-storage-facilities/v1.0.0/geoparquet/above-ground-lng-storage-facilities.parquet",
+    "sha256": "63283d954415c39d7df59e09312f9af717d778c5ebb415950ea4a9847ffeca7e",
+    "generation": "1791506345726633",
+    "bytes": 32109,
+    "comparison": "evidence/published-comparison.json",
+    "acceptance_decision": null
+  },
+  "crosswalk_retry": {
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "result": "provider HTML challenge after DOI redirect; no CONNECT denial",
+    "capture": "evidence/retry-crosswalk.txt.gz"
+  }
 }

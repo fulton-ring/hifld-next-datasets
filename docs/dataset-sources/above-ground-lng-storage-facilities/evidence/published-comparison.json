@@ -1,0 +1,260 @@
+{
+  "acceptance": "unapproved candidate; observations only",
+  "raw_count": 13,
+  "published_count": 13,
+  "raw_sha256": "a9aceabbade3fe548a9f7ab7f7e67e6831cf03d9a5fe3ea421732363803af769",
+  "published_sha256": "63283d954415c39d7df59e09312f9af717d778c5ebb415950ea4a9847ffeca7e",
+  "raw_schema": {
+    "AGLNGID": "str:12",
+    "NAME": "str:150",
+    "ADDRESS": "str:250",
+    "CITY": "str:75",
+    "STATE": "str:50",
+    "ZIP": "str:15",
+    "ZIP4": "str:15",
+    "TELEPHONE": "str:50",
+    "TYPE": "str:80",
+    "STATUS": "str:50",
+    "POPULATION": "int:10",
+    "COUNTY": "str:50",
+    "COUNTYFIPS": "str:20",
+    "COUNTRY": "str:15",
+    "LATITUDE": "float:19.11",
+    "LONGITUDE": "float:19.11",
+    "NAICS_CODE": "str:50",
+    "NAICS_DESC": "str:150",
+    "SOURCE": "str:254",
+    "SOURCEDATE": "date",
+    "VAL_METHOD": "str:150",
+    "VAL_DATE": "date",
+    "WEBSITE": "str:254",
+    "FAC_GOVID": "str:50",
+    "OWNER": "str:80",
+    "OPERATOR": "str:80",
+    "POSREL": "str:50",
+    "NUMTANKS": "int32:5",
+    "CON_TYPE": "str:50",
+    "LNG_SOURCE": "str:25",
+    "MAXVAPCAP": "float:19.11",
+    "TOTALCAP": "float:19.11",
+    "COLOC_NGUS": "str:2",
+    "NGUS_NAME": "str:75",
+    "COLOC_PEAK": "str:2",
+    "PEAK_NAME": "str:75"
+  },
+  "published_schema": [
+    {
+      "name": "geometry",
+      "type": "binary",
+      "nullable": true
+    },
+    {
+      "name": "AGLNGID",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "NAME",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ADDRESS",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "CITY",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "STATE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ZIP",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ZIP4",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "TELEPHONE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "TYPE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "STATUS",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "POPULATION",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "COUNTY",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "COUNTYFIPS",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "COUNTRY",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LATITUDE",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "LONGITUDE",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "NAICS_CODE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "NAICS_DESC",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "SOURCE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "SOURCEDATE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "VAL_METHOD",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "VAL_DATE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "WEBSITE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "FAC_GOVID",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "OWNER",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "OPERATOR",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "POSREL",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "NUMTANKS",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "CON_TYPE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LNG_SOURCE",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "MAXVAPCAP",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "TOTALCAP",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "COLOC_NGUS",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "NGUS_NAME",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "COLOC_PEAK",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "PEAK_NAME",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "id",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "bbox",
+      "type": "struct<xmin: double, ymin: double, xmax: double, ymax: double>",
+      "nullable": true
+    }
+  ],
+  "raw_crs": "EPSG:3857",
+  "published_crs": "EPSG:3857",
+  "same_crs": true,
+  "raw_only_ids": [],
+  "published_only_ids": [],
+  "unmatched_shared_attributes": [],
+  "geometry_exact_coordinate_mismatch_ids": [],
+  "extra_published_columns": [
+    "bbox",
+    "id"
+  ],
+  "raw_state_counts": {
+    "PA": 13
+  },
+  "published_state_counts": {
+    "PA": 13
+  },
+  "limits": "AGLNGID observed unique only in these snapshots; no cross-release stability or national completeness. Geometry compared at zero tolerance in common CRS, no repair/reprojection. Physical schema drift retained; nullability approval unknown."
+}

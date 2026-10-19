@@ -1,0 +1,25 @@
+{
+  "slug": "above-ground-lng-storage-facilities",
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/above-ground-lng-storage-facilities/above-ground-lng-storage-facilities/v1.0.0/geoparquet/above-ground-lng-storage-facilities.parquet",
+  "expected_bytes": 32109,
+  "catalog_asset": {
+    "file:checksum": "122063283d954415c39d7df59e09312f9af717d778c5ebb415950ea4a9847ffeca7e",
+    "file:size": 32109,
+    "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/above-ground-lng-storage-facilities/above-ground-lng-storage-facilities/v1.0.0/geoparquet/above-ground-lng-storage-facilities.parquet",
+    "roles": [
+      "data"
+    ],
+    "title": "above-ground-lng-storage-facilities.parquet",
+    "type": "application/vnd.apache.parquet"
+  },
+  "catalog_sha256": "9e3ce7b74fb1305d7b80d0d8022915b40fa4758619d23cbc9c30420a5f0cccbc",
+  "version_id": "hifld/above-ground-lng-storage-facilities/above-ground-lng-storage-facilities/v1.0.0",
+  "status": 200,
+  "bytes": 32109,
+  "sha256": "63283d954415c39d7df59e09312f9af717d778c5ebb415950ea4a9847ffeca7e",
+  "generation": "1791506345726633",
+  "etag": "\"da8a583a0411cf15e33f5013d2d72dcc\"",
+  "capture": "evidence/published-candidate.parquet",
+  "size_matches": true,
+  "acceptance": "unapproved candidate; no acceptance decision established"
+}
