@@ -82,11 +82,15 @@ def local_only(storage):
     if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise ElementaryDistrictQuarantineError('local_space_guard')
     if isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ElementaryDistrictQuarantineError('draft_requires_explicit_isolated_local_staging')
-    root=Path(storage.local_dir)
-    if any(path.is_symlink() for path in [root,*root.parents]):
+    root=Path(storage.local_dir).absolute()
+    if '..'in root.parts or any(path.is_symlink() for path in [root,*root.parents]):
         raise ElementaryDistrictQuarantineError('staging_path_symlink_refused')
-    if root.exists() and any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):
-        raise ElementaryDistrictQuarantineError('staging_alias_refused')
+    if root.exists():
+        for path in root.rglob('*'):
+            info=path.lstat()
+            if stat.S_ISDIR(info.st_mode):continue
+            if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:
+                raise ElementaryDistrictQuarantineError('staging_alias_or_special_file_refused')
 
 
 def immutable(storage,key,body):
@@ -114,12 +118,65 @@ def processing_identity():
         'verifier_sha256':verifier_implementation_sha256()}
 
 
+def bounded_input(path,limit):
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(descriptor,'rb')as stream:
+        before=os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode)or before.st_nlink!=1 or before.st_size>limit:
+            raise ElementaryDistrictQuarantineError('unsafe_or_oversized_input')
+        body=stream.read(limit+1);after=os.fstat(stream.fileno())
+    identity=lambda v:(v.st_dev,v.st_ino,v.st_size,v.st_mtime_ns,v.st_ctime_ns,v.st_nlink)
+    if len(body)!=before.st_size or len(body)>limit or identity(before)!=identity(after):
+        raise ElementaryDistrictQuarantineError('changed_or_incomplete_input')
+    return body
+
+
+def candidate_path(root,name):
+    relative=PurePosixPath(name)
+    if relative.is_absolute()or '..'in relative.parts or relative.as_posix()!=name or '\\'in name:
+        raise ElementaryDistrictQuarantineError('unsafe_candidate_key')
+    path=Path(root).absolute()/name
+    if any(parent.is_symlink()for parent in [path.parent,*path.parent.parents]):
+        raise ElementaryDistrictQuarantineError('candidate_path_alias_refused')
+    return path
+
+
+def candidate_bytes(root,name):
+    limit=40_000_000 if name.endswith(('.gpkg','.parquet'))else(15_000_000 if name.startswith('raw/captures/')and name.endswith('.body')else 2_000_000)
+    return bounded_input(candidate_path(root,name),limit)
+
+
+def candidate_roster(root):
+    names=set()
+    for path in Path(root).rglob('*'):
+        info=path.lstat()
+        if stat.S_ISDIR(info.st_mode):continue
+        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:
+            raise ElementaryDistrictQuarantineError('candidate_alias_or_special_file_refused')
+        names.add(str(path.relative_to(root)))
+    return names
+
+
+def write_private(root,name,body):
+    path=candidate_path(root,name);path.parent.mkdir(parents=True,exist_ok=True)
+    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
+    try:
+        info=os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:
+            raise ElementaryDistrictQuarantineError('private_write_alias_or_special_file_refused')
+        os.ftruncate(descriptor,0)
+        if os.write(descriptor,body)!=len(body):raise ElementaryDistrictQuarantineError('incomplete_private_write:'+name)
+        os.fsync(descriptor)
+    finally:os.close(descriptor)
+    if candidate_bytes(root,name)!=body:raise ElementaryDistrictQuarantineError('incomplete_private_write:'+name)
+
+
 def acquire(storage,capture_dir=None):
     local_only(storage);captures={}
     try:
         for name in URLS:
             if capture_dir is not None:
-                with (Path(capture_dir)/(name+'.body')).open('rb') as stream: body=stream.read(15_000_001)
+                body=bounded_input(Path(capture_dir)/(name+'.body'),15_000_000)
                 # Retain attempted bytes before any receipt decoding. A malformed
                 # local receipt is evidence, not permission to lose its body.
                 key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'
@@ -128,8 +185,7 @@ def acquire(storage,capture_dir=None):
                     'sha256':digest(body),'complete_body':False,'receipt_validated':False}
                 captures[name]=(body,diagnostic)
                 if len(body)>15_000_000: raise ElementaryDistrictQuarantineError('capture_body_limit')
-                with (Path(capture_dir)/(name+'.receipt.json')).open('rb') as stream:
-                    raw_receipt=stream.read(65_537)
+                raw_receipt=bounded_input(Path(capture_dir)/(name+'.receipt.json'),65_536)
                 receipt_key=key+'.receipt-original-'+digest(raw_receipt)+'.bin'
                 immutable(storage,receipt_key,raw_receipt)
                 diagnostic['original_receipt_key']=receipt_key
@@ -431,21 +487,35 @@ def observed_trust_loss(storage,version,fingerprint,*,candidate=None,restored_ma
 
 
 def reconcile_cache(storage,prefix,table,audit,captures,identity,manifest):
-    root=Path(storage.local_dir)/prefix;ready=strict_json((root/READY).read_bytes());expected=source_payloads(captures,identity,table,audit,manifest)
+    root=Path(storage.local_dir)/prefix;actual=candidate_roster(root)
+    ready=strict_json(candidate_bytes(root,READY));expected=source_payloads(captures,identity,table,audit,manifest)
     expected_names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'}
-    if (ready.get('version')!=prefix.rsplit('/',1)[1]or ready.get('approved')is not False or ready.get('processing_fingerprint')!=digest(encode(identity))or set(ready['objects'])!=expected_names):raise ElementaryDistrictQuarantineError('cached_ready_identity_or_roster_drift')
+    if (ready.get('version')!=prefix.rsplit('/',1)[1]or ready.get('approved')is not False or ready.get('processing_fingerprint')!=digest(encode(identity))or type(ready.get('objects'))is not dict or set(ready['objects'])!=expected_names):raise ElementaryDistrictQuarantineError('cached_ready_identity_or_roster_drift')
     for name,value in expected.items():
-        if (root/name).read_bytes()!=value:raise ElementaryDistrictQuarantineError('cached_source_owned_bytes_drift:'+name)
-    actual={str(p.relative_to(root))for p in root.rglob('*')if p.is_file()};snapshot='metadata/source/version_'+digest((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'
+        if candidate_bytes(root,name)!=value:raise ElementaryDistrictQuarantineError('cached_source_owned_bytes_drift:'+name)
+    snapshot='metadata/source/version_'+digest(candidate_bytes(root,'metadata/source_manifest.json'))+'_source_manifest.json'
     derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
     if actual-(expected_names|{READY}|derivatives)or not(expected_names|{READY}).issubset(actual):raise ElementaryDistrictQuarantineError('cached_unknown_or_missing_object')
     for name,pin in ready['objects'].items():
-        if sha256_file(root/name)!=pin:raise ElementaryDistrictQuarantineError('cached_source_object_changed:'+name)
+        if digest(candidate_bytes(root,name))!=pin:raise ElementaryDistrictQuarantineError('cached_source_object_changed:'+name)
     for name in ['metadata/source/source_manifest.json',snapshot]:
-        if (root/name).exists()and(root/name).read_bytes()!=(root/'metadata/source_manifest.json').read_bytes():raise ElementaryDistrictQuarantineError('cached_source_snapshot_drift')
+        if (root/name).exists()and candidate_bytes(root,name)!=candidate_bytes(root,'metadata/source_manifest.json'):raise ElementaryDistrictQuarantineError('cached_source_snapshot_drift')
+    for name in actual-expected_names-{READY}:candidate_bytes(root,name)
     if(root/'metadata/resolved_provenance.json').exists():
         resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
-        if resolved.get('inputs')!=manifest['inputs']or strict_json((root/'metadata/resolved_provenance.json').read_bytes())!=resolved:raise ElementaryDistrictQuarantineError('cached_resolved_provenance_drift')
+        if resolved.get('inputs')!=manifest['inputs']or strict_json(candidate_bytes(root,'metadata/resolved_provenance.json'))!=resolved:raise ElementaryDistrictQuarantineError('cached_resolved_provenance_drift')
+    reconcile_outputs(root,table)
+
+
+def reconcile_private(root,table,audit,captures,identity,manifest,version):
+    expected=source_payloads(captures,identity,table,audit,manifest)
+    names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'}
+    if candidate_roster(root)!=names|{READY}:raise ElementaryDistrictQuarantineError('private_candidate_closed_roster_drift')
+    for name,body in expected.items():
+        if candidate_bytes(root,name)!=body:raise ElementaryDistrictQuarantineError('private_candidate_source_bytes_drift:'+name)
+    ready={'version':version,'approved':False,'processing_fingerprint':digest(encode(identity)),
+           'objects':{name:digest(candidate_bytes(root,name))for name in names}}
+    if candidate_bytes(root,READY)!=encode(ready):raise ElementaryDistrictQuarantineError('private_candidate_ready_drift')
     reconcile_outputs(root,table)
 
 
@@ -490,16 +560,17 @@ def stage_elementary_districts(storage,*,capture_dir=None):
             root.parent.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='.private-elsd-',dir=root.parent)as tmp:
                 private=Path(tmp);values=source_payloads(captures,identity,table,audit,manifest)
-                for name,body in values.items():path=private/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
+                for name,body in values.items():write_private(private,name,body)
                 (private/'geopackage').mkdir();(private/'geoparquet').mkdir();write_native_gpkg(table,private/'geopackage'/f'{SLUG}.gpkg');pq.write_table(expected_parquet_table(table),private/'geoparquet'/f'{SLUG}.parquet',compression='zstd',version='2.6')
                 reconcile_outputs(private,table)
-                roster={str(p.relative_to(private)):sha256_file(p)for p in private.rglob('*')if p.is_file()}
-                (private/READY).write_bytes(encode({'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':roster}))
+                roster={name:digest(candidate_bytes(private,name))for name in candidate_roster(private)}
+                write_private(private,READY,encode({'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':roster}))
                 # Complete private file roster and bytes precede the shared
                 # write-once first-state CAS/marker/alias protocol.
-                if not all(sha256_file(private/name)==pin for name,pin in roster.items()):raise ElementaryDistrictQuarantineError('private_candidate_bytes_changed_before_first_state')
+                reconcile_private(private,table,audit,captures,identity,manifest,version)
                 original,original_manifest=original_bundle(storage,record,version,identity,create=(captures,manifest))
                 if encode(original_manifest)!=encode(manifest)or any(original[n][0]!=captures[n][0]or encode(original[n][1])!=encode(captures[n][1])for n in URLS):raise ElementaryDistrictQuarantineError('first_construction_winner_differs')
+                reconcile_private(private,table,audit,captures,identity,manifest,version)
                 if root.exists():raise ElementaryDistrictQuarantineError('concurrent_candidate_winner_preserved')
                 os.rename(private,root)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':COUNT,'approved':False,'reused':False}

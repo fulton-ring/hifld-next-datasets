@@ -181,6 +181,58 @@ class ElementarySmallFixtureTests(unittest.TestCase):
                     f.observed_trust_loss(storage,'vtest','a'*64)
                 self.assertEqual(path.read_bytes(),manifest)
 
+    def test_private_descriptor_short_and_false_counts_are_rejected(self):
+        real=os.write;body=b'{"synthetic_private_metadata":"complete"}\n'
+        for lie in (False,True):
+            with self.subTest(false_count=lie),tempfile.TemporaryDirectory()as tmp:
+                def short(descriptor,value):
+                    count=real(descriptor,value[:17]);return len(value)if lie else count
+                with patch.object(f.os,'write',side_effect=short),self.assertRaisesRegex(ValueError,'incomplete_private_write'):
+                    f.write_private(Path(tmp),'metadata/test.json',body)
+                self.assertEqual((Path(tmp)/'metadata/test.json').read_bytes(),body[:17])
+
+    def test_candidate_fifo_and_oversize_are_rejected_before_bulk_read(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);(root/'metadata').mkdir();path=root/'metadata/test.json'
+            os.mkfifo(path)
+            with self.assertRaises(ValueError):f.candidate_bytes(root,'metadata/test.json')
+            with patch.object(f,'acquire')as acquire:
+                with self.assertRaisesRegex(ValueError,'staging_alias_or_special_file_refused'):
+                    f.stage_elementary_districts(f.StagingStorageResource(local_dir=tmp))
+                acquire.assert_not_called()
+            path.unlink()
+            with path.open('wb')as stream:stream.truncate(2_000_001)
+            real=os.fdopen;reads=[]
+            class Guard:
+                def __init__(self,stream):self.stream=stream
+                def __enter__(self):return self
+                def __exit__(self,*args):self.stream.close()
+                def fileno(self):return self.stream.fileno()
+                def read(self,*args):reads.append(args);raise AssertionError('oversized data read before size rejection')
+            with patch.object(f.os,'fdopen',side_effect=lambda *args,**kwargs:Guard(real(*args,**kwargs))):
+                with self.assertRaisesRegex(ValueError,'unsafe_or_oversized_input'):f.candidate_bytes(root,'metadata/test.json')
+            self.assertEqual(reads,[])
+
+    def test_private_aliases_and_unsafe_keys_preserve_original_outside_bytes(self):
+        for kind in ('symlink','hardlink','ancestor'):
+            with self.subTest(kind=kind),tempfile.TemporaryDirectory()as tmp:
+                root=Path(tmp);private=root/'private';outside=root/'outside';private.mkdir();outside.mkdir()
+                original=outside/'test.json';original.write_bytes(b'original outside fixture')
+                if kind=='ancestor':(private/'metadata').symlink_to(outside,target_is_directory=True)
+                else:
+                    (private/'metadata').mkdir();target=private/'metadata/test.json'
+                    if kind=='symlink':target.symlink_to(original)
+                    else:os.link(original,target)
+                with self.assertRaises((ValueError,OSError)):f.write_private(private,'metadata/test.json',b'changed')
+                self.assertEqual(original.read_bytes(),b'original outside fixture')
+                for key in ('../outside/test.json','/outside/test.json','metadata/../test.json','metadata\\test.json'):
+                    with self.assertRaises(ValueError):f.candidate_bytes(private,key)
+
+    def test_candidate_roster_refuses_special_files_without_opening_them(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);os.mkfifo(root/'fifo')
+            with self.assertRaisesRegex(ValueError,'candidate_alias_or_special_file_refused'):f.candidate_roster(root)
+
 
 @unittest.skipUnless(INPUTS, 'Set ELSD_TEST_CAPTURE_DIR to the complete external Census capture for real-population tests.')
 class ElementaryOriginalTests(unittest.TestCase):
@@ -371,5 +423,63 @@ class ElementaryOriginalTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'construction_invalid_commit|preseal_original_manifest_semantic_drift'):
                     f.original_bundle(storage,'_construction-state/test/first.json','vtest',self.identity,create=(self.caps,bad))
                 self.assertFalse([p for p in Path(tmp).glob('_construction-state/**/*')if p.is_file()])
+
+    def test_real_private_short_and_false_write_counts_cannot_create_first_state(self):
+        real=os.write
+        for lie in (False,True):
+            with self.subTest(false_count=lie),tempfile.TemporaryDirectory()as tmp:
+                def short(descriptor,body):
+                    path=os.readlink('/proc/self/fd/'+str(descriptor))
+                    if '.private-elsd-'in path and path.endswith('/metadata/source_manifest.json'):
+                        count=real(descriptor,body[:17]);return len(body)if lie else count
+                    return real(descriptor,body)
+                with patch.object(f.os,'write',side_effect=short):
+                    with self.assertRaisesRegex(ValueError,'incomplete_private_write'):
+                        f.stage_elementary_districts(f.StagingStorageResource(local_dir=tmp),capture_dir=INPUTS)
+                self.assertFalse(list(Path(tmp).glob('_construction-state/**/*')))
+                self.assertFalse(list(Path(tmp).glob(f'{f.SLUG}/{f.SLUG}/v*')))
+
+    def test_complete_private_metadata_checked_before_and_after_first_seal(self):
+        for after_seal in (False,True):
+            with self.subTest(after_seal=after_seal),tempfile.TemporaryDirectory()as tmp:
+                base=Path(tmp)
+                def corrupt():
+                    private=next(base.glob(f'{f.SLUG}/{f.SLUG}/.private-elsd-*'))
+                    (private/'metadata/source_manifest.json').write_bytes(b'{broken metadata\n')
+                if after_seal:
+                    original=f.original_bundle
+                    def hook(*args,**kwargs):
+                        value=original(*args,**kwargs)
+                        if kwargs.get('create')is not None:corrupt()
+                        return value
+                    target='original_bundle'
+                else:
+                    original=f.write_private
+                    def hook(root,name,body):
+                        original(root,name,body)
+                        if name==f.READY:corrupt()
+                    target='write_private'
+                with patch.object(f,target,side_effect=hook):
+                    with self.assertRaisesRegex(ValueError,'private_candidate_source_bytes_drift'):
+                        f.stage_elementary_districts(f.StagingStorageResource(local_dir=tmp),capture_dir=INPUTS)
+                records=[p for p in base.glob('_construction-state/**/*')if p.is_file()]
+                self.assertEqual(len(records),3 if after_seal else 0)
+                self.assertFalse(list(base.glob(f'{f.SLUG}/{f.SLUG}/v*')))
+
+    def test_real_cached_fifo_is_refused_before_acquisition_without_watchdog(self):
+        ready=self.root/f.READY;body=ready.read_bytes();ready.unlink();os.mkfifo(ready)
+        try:
+            with patch.object(f,'acquire')as acquire:
+                with self.assertRaisesRegex(ValueError,'staging_alias_or_special_file_refused'):self.refresh()
+                acquire.assert_not_called()
+            self.assertTrue(self.root.is_dir());self.assertEqual(self.prior.read_bytes(),b'accepted bytes stay unchanged')
+        finally:ready.unlink();ready.write_bytes(body)
+
+    def test_real_oversized_cached_metadata_is_quarantined_intact(self):
+        path=self.root/'metadata/source_manifest.json'
+        with path.open('wb')as stream:stream.truncate(2_000_001)
+        self.reject('unsafe_or_oversized_input')
+        quarantined=next((self.path/'_quarantine'/f.SLUG).glob('invalid-candidate-*'))
+        self.assertEqual((quarantined/'metadata/source_manifest.json').stat().st_size,2_000_001)
 
 if __name__=='__main__':unittest.main()
