@@ -130,6 +130,13 @@ class NaturalGasCrossingsBehavior(unittest.TestCase):
             storage=StagingStorageResource(use_local=True,local_dir=tmp);source.record_observed_loss(storage,'v0-test','0'*64,'synthetic missing witness')
             with self.assertRaisesRegex(ValueError,'permanent_observed'):source.refuse_observed_loss(storage,'v0-test')
 
+    def test_empty_partial_incident_directory_alone_blocks_reconstruction(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            storage=StagingStorageResource(use_local=True,local_dir=tmp)
+            directory=Path(tmp)/source.incident_directory('v0-test');directory.mkdir(parents=True)
+            self.assertEqual(list(directory.iterdir()),[])
+            with self.assertRaisesRegex(ValueError,'permanent_observed'):source.refuse_observed_loss(storage,'v0-test')
+
     def test_final_ready_truthful_and_lying_short_writes_refused(self):
         original=Path.write_bytes
         for lie in (False,True):

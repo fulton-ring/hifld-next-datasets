@@ -495,7 +495,7 @@ def incident_directory(version):
 
 def refuse_observed_loss(storage,version):
     directory=Path(storage.local_dir).absolute()/incident_directory(version)
-    if directory.exists() and any(directory.rglob('*')):raise NaturalGasCrossingsQuarantineError('permanent_observed_original_trust_loss_requires_reviewed_operator_recovery')
+    if directory.exists() or directory.is_symlink():raise NaturalGasCrossingsQuarantineError('permanent_observed_original_trust_loss_requires_reviewed_operator_recovery')
 
 def record_observed_loss(storage,version,fingerprint,reason):
     # Partial writes/pending files are themselves blocking negative evidence.
