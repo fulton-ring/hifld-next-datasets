@@ -1,0 +1,669 @@
+{
+  "assets": {
+    "geojson-13eed3e50f93": {
+      "file:checksum": "d5011064f128990e1ab5c87ae2214fbd8100d5",
+      "file:size": 1014498,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/geojson/consolidated-cities-geojson.geojson",
+      "roles": [
+        "data"
+      ],
+      "title": "consolidated-cities-geojson.geojson",
+      "type": "application/geo+json"
+    },
+    "geopackage-361e387abac5": {
+      "file:checksum": "d501107bae73be495adc4bbef9b7d8add7aee5",
+      "file:size": 466944,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/geopackage/consolidated-cities.gpkg",
+      "roles": [
+        "data"
+      ],
+      "title": "consolidated-cities.gpkg",
+      "type": "application/geopackage+sqlite3"
+    },
+    "geoparquet-8c152fc63369": {
+      "file:checksum": "d501105699fafd76dc04b64e14129cdd879f61",
+      "file:size": 260757,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/geoparquet/consolidated-cities.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "consolidated-cities.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "pmtiles-faa51a6a5153": {
+      "file:checksum": "d501109f6964df081e6017738dcf87cd0e7c64",
+      "file:size": 132178,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/pmtiles/consolidated-cities.pmtiles",
+      "roles": [
+        "data"
+      ],
+      "title": "consolidated-cities.pmtiles",
+      "type": "application/vnd.pmtiles"
+    },
+    "shapefile-aadaa202b8f9": {
+      "file:checksum": "d501106f6ed9946c323031098a7bfbd6a7dcb1",
+      "file:size": 242637,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/shapefile/consolidated-cities.zip",
+      "roles": [
+        "data"
+      ],
+      "title": "consolidated-cities.zip",
+      "type": "application/zip"
+    }
+  },
+  "description": "A Consolidated City is a unit of local government for which the functions of an incorporated place and its county or minor civil division (MCD) have merged. This action results in both the primary incorporated place and the county or MCD continuing to exist as legal entities, even though the county or MCD performs few or no governmental functions and has few or no elected officials. Where this occurs, and where one or more other incorporated places in the county or MCD continue to function as separate governments, even though they have been included in the consolidated government, the primary incorporated place is referred to as a consolidated city. The Census Bureau classifies the separately incorporated places within the consolidated city as place entities and creates a separate place (balance) record for the portion of the consolidated city not within any other place.Download:\u00a0https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_substategeo.gdb.zip\u00a0Layer: Consolidated_CityMetadata:\u00a0meta.geo.census.gov/data/existing/decennial/GEO/GPMB/TIGERline/Current_19115/series_tl_2023_concity.shp.iso.xml",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -113.08551699969382,
+          33.2271649999014,
+          -72.97904699983489,
+          46.18525199987251
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "hifld:agency": "Census Bureau",
+  "hifld:feature_count": 8,
+  "hifld:feature_id_column": null,
+  "hifld:geometry_column": "geometry",
+  "hifld:geometry_type": "MultiPolygon",
+  "hifld:inventory_match_type": null,
+  "hifld:manifest_keys": [
+    "consolidated-cities/metadata/source_manifest.json",
+    "consolidated-cities/consolidated-cities/metadata/source_manifest.json"
+  ],
+  "hifld:manifest_role": "resolved_version",
+  "hifld:metadata_resolved_from": {},
+  "hifld:metadata_sources": [],
+  "hifld:native_bbox": [
+    -12588622.168499999,
+    3925495.281199999,
+    -8123990.3506000005,
+    5810085.843900003
+  ],
+  "hifld:native_crs": "{\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\", \"base_crs\": {\"coordinate_system\": {\"axis\": [{\"abbreviation\": \"lat\", \"direction\": \"north\", \"name\": \"Latitude\", \"unit\": \"degree\"}, {\"abbreviation\": \"lon\", \"direction\": \"east\", \"name\": \"Longitude\", \"unit\": \"degree\"}], \"subtype\": \"ellipsoidal\"}, \"datum\": {\"ellipsoid\": {\"inverse_flattening\": 298.257223563, \"name\": \"WGS 84\", \"semi_major_axis\": 6378137}, \"name\": \"World Geodetic System 1984\", \"type\": \"GeodeticReferenceFrame\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 4326}, \"name\": \"WGS 84\"}, \"conversion\": {\"method\": {\"id\": {\"authority\": \"EPSG\", \"code\": 1024}, \"name\": \"Popular Visualisation Pseudo Mercator\"}, \"name\": \"unnamed\", \"parameters\": [{\"id\": {\"authority\": \"EPSG\", \"code\": 8801}, \"name\": \"Latitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8802}, \"name\": \"Longitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8806}, \"name\": \"False easting\", \"unit\": \"metre\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8807}, \"name\": \"False northing\", \"unit\": \"metre\", \"value\": 0}]}, \"coordinate_system\": {\"axis\": [{\"abbreviation\": \"\", \"direction\": \"east\", \"name\": \"Easting\", \"unit\": \"metre\"}, {\"abbreviation\": \"\", \"direction\": \"north\", \"name\": \"Northing\", \"unit\": \"metre\"}], \"subtype\": \"Cartesian\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 3857}, \"name\": \"WGS 84 / Pseudo-Mercator\", \"type\": \"ProjectedCRS\"}",
+  "hifld:office": null,
+  "hifld:quality": {
+    "columns_hash": "3db32c93acf30fbe99e43084238ba59b826b6d96455f208cfa254018b3cbff0e",
+    "invalid_geometry_count": 0,
+    "manifest_href": "metadata/quality_manifest.json",
+    "null_geometry_count": 0,
+    "passed": true,
+    "provenance": "production_metadata_and_parquet_footer_spike",
+    "sampled_feature_count": null,
+    "sampled_invalid_geometry_count": null,
+    "sampled_null_geometry_count": null
+  },
+  "hifld:source_dates": {
+    "issued": "2024-08-28",
+    "modified": "2025-04-08",
+    "provenance": {
+      "issued": "inventory",
+      "modified": "inventory"
+    }
+  },
+  "hifld:spatial_status": "spatial",
+  "id": "hifld/consolidated-cities/consolidated-cities/v1.0.0",
+  "keywords": [
+    "Borders",
+    "Boundaries",
+    "Government"
+  ],
+  "license": "other",
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/consolidated-cities/consolidated-cities/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/consolidated-cities/consolidated-cities/v1.0.0/collection.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://www.datalumos.org/datalumos/project/238994/version/V1/view",
+      "rel": "derived_from"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/consolidated-cities/consolidated-cities/v1.0.0/pmtiles/consolidated-cities.pmtiles",
+      "rel": "pmtiles",
+      "title": "consolidated-cities.pmtiles",
+      "type": "application/vnd.pmtiles"
+    }
+  ],
+  "providers": [
+    {
+      "name": "Census Bureau",
+      "roles": [
+        "producer"
+      ]
+    },
+    {
+      "name": "HIFLD Next",
+      "roles": [
+        "host"
+      ],
+      "url": "https://hifld.publicenvirodata.org"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/table/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/web-map-links/v1.3.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "table:columns": [
+    {
+      "is_geometry": true,
+      "name": "geometry",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "7",
+        "3",
+        "2",
+        "8",
+        "4"
+      ],
+      "is_geometry": false,
+      "max": "8.0",
+      "min": "1.0",
+      "name": "OBJECTID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "2015424642",
+        "1859585000",
+        "1304009580",
+        "986345231",
+        "947826342"
+      ],
+      "is_geometry": false,
+      "max": "2015424642.0",
+      "min": "57444044.0",
+      "name": "AREALAND",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "0",
+        "1501437",
+        "56414158",
+        "43436214",
+        "17914056"
+      ],
+      "is_geometry": false,
+      "max": "56414158.0",
+      "min": "0.0",
+      "name": "AREAWATER",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "02664357",
+        "02409651",
+        "02405091",
+        "01967435",
+        "02395423"
+      ],
+      "is_geometry": false,
+      "length": 8,
+      "name": "CONCITNS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "01967435",
+        "02378334",
+        "02395423",
+        "02405077",
+        "02405091",
+        "02407404",
+        "02409651",
+        "02664357"
+      ],
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "CBSA",
+      "null_count": 8,
+      "nullable": true,
+      "numNullValues": 8,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "C3",
+        "C3",
+        "C3",
+        "C3",
+        "C3"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "CONCITCC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "C3"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "28410",
+        "11390",
+        "52004",
+        "48003",
+        "36000"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "CONCITY",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "03436",
+        "04200",
+        "11390",
+        "28410",
+        "36000",
+        "47500",
+        "48003",
+        "52004"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "A",
+        "A",
+        "A",
+        "A",
+        "A"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "FUNCSTAT",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "A"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "2028410",
+        "3011390",
+        "4752004",
+        "2148003",
+        "1836000"
+      ],
+      "is_geometry": false,
+      "length": 7,
+      "name": "GEOID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "0947500",
+        "1303436",
+        "1304200",
+        "1836000",
+        "2028410",
+        "2148003",
+        "3011390",
+        "4752004"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "UG",
+        "00",
+        "MG",
+        "MT",
+        "25"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "LSADC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "00",
+        "25",
+        "CG",
+        "MG",
+        "MT",
+        "UG"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "G4120",
+        "G4120",
+        "G4120",
+        "G4120",
+        "G4120"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "MTFCC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "G4120"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Greeley County",
+        "Butte-Silver Bow",
+        "Nashville-Davidson",
+        "Louisville/Jefferson County",
+        "Indianapolis"
+      ],
+      "is_geometry": false,
+      "length": 27,
+      "name": "BASENAME",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "Athens-Clarke County",
+        "Augusta-Richmond County",
+        "Butte-Silver Bow",
+        "Greeley County",
+        "Indianapolis",
+        "Louisville/Jefferson County",
+        "Milford",
+        "Nashville-Davidson"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Greeley County unified government",
+        "Butte-Silver Bow",
+        "Nashville-Davidson metropolitan government",
+        "Louisville/Jefferson County metro government",
+        "Indianapolis city"
+      ],
+      "is_geometry": false,
+      "length": 47,
+      "name": "NAME",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "Athens-Clarke County unified government",
+        "Augusta-Richmond County consolidated government",
+        "Butte-Silver Bow",
+        "Greeley County unified government",
+        "Indianapolis city",
+        "Louisville/Jefferson County metro government",
+        "Milford city",
+        "Nashville-Davidson metropolitan government"
+      ],
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "NECTA",
+      "null_count": 8,
+      "nullable": true,
+      "numNullValues": 8,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "279904261686185",
+        "27990248063181",
+        "27990134383961",
+        "27990112189439",
+        "2799066961775"
+      ],
+      "is_geometry": false,
+      "length": 15,
+      "name": "OID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "27990112189439",
+        "27990134383961",
+        "27990248063181",
+        "27990338934335",
+        "27990363791591",
+        "27990389333342",
+        "279904261686185",
+        "2799066961775"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "20",
+        "30",
+        "47",
+        "21",
+        "18"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "STATE",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "09",
+        "13",
+        "18",
+        "20",
+        "21",
+        "30",
+        "47"
+      ],
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "UR",
+      "null_count": 8,
+      "nullable": true,
+      "numNullValues": 8,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-101.8059745",
+        "-112.6566772",
+        "-086.7848230",
+        "-085.6591932",
+        "-086.1457541"
+      ],
+      "is_geometry": false,
+      "length": 12,
+      "name": "CENTLON",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-073.0589181",
+        "-082.0735510",
+        "-083.3673179",
+        "-085.6591932",
+        "-086.1457541",
+        "-086.7848230",
+        "-101.8059745",
+        "-112.6566772"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "+38.4804052",
+        "+45.9022498",
+        "+36.1694659",
+        "+38.1871996",
+        "+39.7778397"
+      ],
+      "is_geometry": false,
+      "length": 11,
+      "name": "CENTLAT",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "+33.3596223",
+        "+33.9512432",
+        "+36.1694659",
+        "+38.1871996",
+        "+38.4804052",
+        "+39.7778397",
+        "+41.2237764",
+        "+45.9022498"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-101.8059745",
+        "-112.6600714",
+        "-086.7847898",
+        "-085.6576243",
+        "-086.1458378"
+      ],
+      "is_geometry": false,
+      "length": 12,
+      "name": "INTPTLON",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "-073.0611101",
+        "-082.0749982",
+        "-083.3671522",
+        "-085.6576243",
+        "-086.1458378",
+        "-086.7847898",
+        "-101.8059745",
+        "-112.6600714"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "+38.4804052",
+        "+45.8962319",
+        "+36.1691287",
+        "+38.1895321",
+        "+39.7779954"
+      ],
+      "is_geometry": false,
+      "length": 11,
+      "name": "INTPTLAT",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "+33.3614863",
+        "+33.9521852",
+        "+36.1691287",
+        "+38.1895321",
+        "+38.4804052",
+        "+39.7779954",
+        "+41.2250861",
+        "+45.8962319"
+      ],
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "HU100",
+      "null_count": 8,
+      "nullable": true,
+      "numNullValues": 8,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "POP100",
+      "null_count": 8,
+      "nullable": true,
+      "numNullValues": 8,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "7",
+        "3",
+        "2",
+        "8",
+        "4"
+      ],
+      "is_geometry": false,
+      "max": "8.0",
+      "min": "1.0",
+      "name": "id",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    }
+  ],
+  "title": "Consolidated Cities",
+  "type": "Collection"
+}

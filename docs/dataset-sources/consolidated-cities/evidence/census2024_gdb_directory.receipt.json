@@ -1,0 +1,33 @@
+{
+  "url": "https://www2.census.gov/geo/tiger/TGRGDB24/",
+  "method": "GET",
+  "observed_at": "2026-10-19T08:01:49.251716+00:00",
+  "status": 200,
+  "final_url": "https://www2.census.gov/geo/tiger/TGRGDB24/",
+  "headers": {
+    "date": "Mon, 19 Oct 2026 08:01:49 GMT",
+    "content-type": "text/html;charset=ISO-8859-1",
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' census.gov *.census.gov http://www.census.gov assets.adobedtm.com www.googletagmanager.com https://dpm.demdex.net https://cm.everesttech.net https://uscensusbureau.demdex.net dap.digitalgov.gov www.google-analytics.com https://static.cloudflareinsights.com; frame-ancestors 'self';",
+    "x-frame-options": "SAMEORIGIN",
+    "x-content-type-options": "nosniff",
+    "cache-control": "public, max-age=14400",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "vary": "Accept-Encoding",
+    "x-xss-protection": "1; mode=block",
+    "server-timing": "cfCacheStatus;desc=\"HIT\"",
+    "strict-transport-security": "max-age=31536000",
+    "age": "3495",
+    "last-modified": "Mon, 19 Oct 2026 07:03:33 GMT",
+    "expires": "Mon, 19 Oct 2026 12:01:49 GMT",
+    "cf-cache-status": "HIT",
+    "set-cookie": "__cf_bm=_A8oSk6UbA.s.vzorw_PP2x.LG_S59o8znxd4NPDL5Q-1792396909.469267-1.0.1.1-0Y9PyfgPHxY4eOUkzi3VCYQ5CdlCGPbPp7f3IiICN2mYG9h.5zqFqWwYXU.JMDu_o0MnuEm7Z0I.qi51Dfg3GmGfhgJr1DlY8539poPg6ICwE3oNZEHoUiAmYPIgZJea; HttpOnly; SameSite=None; Secure; Path=/; Domain=www2.census.gov; Expires=Mon, 19 Oct 2026 08:31:49 GMT",
+    "server": "envoy",
+    "cf-ray": "a4ce41cc2d46db8c-SEA",
+    "x-envoy-upstream-service-time": "89",
+    "connection": "close",
+    "transfer-encoding": "chunked"
+  },
+  "bytes": 44258,
+  "sha256": "9a2bcba3fbd62286d2eabe93e621254a27ae8195f6739e048d1cb61094785781",
+  "complete_body": true
+}
