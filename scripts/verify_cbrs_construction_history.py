@@ -64,7 +64,7 @@ def reject_archive(parent):
 if args.later_docs:
  report=json.loads((r/'construction-history-execution.json').read_bytes());assert head()!=report['construction_head']
 else:
- report={'construction_head':head(),'source_checkpoint':'1d8e49b','approved':False,'runs':[],'rejected':[],'scope':'Complete1145 authentic source; missing alias and missing/malformed marker repeated without restoration; synthetic output fixture grants no acceptance.'}
+ report={'construction_head':head(),'source_checkpoint':subprocess.check_output(['git','log','-1','--format=%H','--','src/dagster_hifld/sources/cbrs_buffer.py'],cwd=repo,text=True).strip(),'approved':False,'runs':[],'rejected':[],'scope':'Complete1145 authentic source; missing alias and missing/malformed marker repeated without restoration; synthetic output fixture grants no acceptance.'}
  (r/'published/prior-local-fixture').write_bytes(b'prior local preservation fixture, not accepted real data')
 prior=pins(r/'published');rawbefore=pins(r/'staging/_raw-captures')
 config={'ops':{asset.op.name:{'config':{'capture_dir':str(capture)}}}}

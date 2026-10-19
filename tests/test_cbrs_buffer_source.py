@@ -324,6 +324,14 @@ class CBRSTests(unittest.TestCase):
                 replay,replayed=s.original_provenance_bundle(storage,version,changed,later,files,create=True)
             self.assertEqual(replayed,manifest);self.assertEqual(replay,captures)
             self.assertEqual(evidence.read_bytes(),original);self.assertEqual(marker.read_bytes(),first)
+            for mode,body in [('missing_CAS',None),('changed_CAS',b'forged evidence bytes')]:
+                if body is None:evidence.unlink()
+                else:evidence.write_bytes(body)
+                for retry in [1,2]:
+                    with self.subTest(mode=mode,retry=retry),s.candidate_lock(storage,prefix),self.assertRaisesRegex(ValueError,'missing_or_changed_original_construction_evidence'):
+                        s.original_provenance_bundle(storage,version,changed,later,files,create=True)
+                    self.assertEqual(key.read_bytes(),original);self.assertEqual(marker.read_bytes(),first)
+                evidence.write_bytes(original) # Explicit restoration, never automatic evidence repair.
 
     def test_invalid_lookup_quarantine_and_concurrent_valid_winner_share_lock(self):
         # These are explicitly synthetic implementation fixtures, not dataset approval.
