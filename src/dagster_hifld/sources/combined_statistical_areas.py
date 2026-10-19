@@ -234,6 +234,19 @@ def table_values(table):
 
 
 
+
+def write_native_gpkg(table,path):
+    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE gpkg_contents SET last_change='2024-01-01T00:00:00.000Z'")
+
+
+def gpkg_geometry_declarations(path):
+    with sqlite3.connect(f'file:{path}?mode=ro',uri=True) as db:
+        return (db.execute('SELECT table_name,column_name,geometry_type_name,srs_id,z,m FROM gpkg_geometry_columns ORDER BY table_name').fetchall(),
+            db.execute('SELECT table_name,data_type,srs_id,min_x,min_y,max_x,max_y FROM gpkg_contents ORDER BY table_name').fetchall())
+
+
 def expected_parquet_table(table):
     """Exact schema/geometry declarations generated from fresh native records."""
     geometry=table['SHAPE'].to_pylist()
@@ -246,12 +259,14 @@ def reconcile_cached_native_outputs(root,table):
     gm,gt=pyogrio.read_arrow(root/'geopackage'/f'{SLUG}.gpkg',layer=LAYER)
     pt=pq.read_table(root/'candidate/typed-source.parquet')
     expected=expected_parquet_table(table)
-    bounds=shapely.total_bounds(shapely.from_wkb(table['SHAPE'].to_pylist())).tolist()
-    with sqlite3.connect(f'file:{root/"geopackage"/f"{SLUG}.gpkg"}?mode=ro',uri=True) as db:
-        declarations=db.execute('SELECT table_name,column_name,geometry_type_name,srs_id,z,m FROM gpkg_geometry_columns').fetchall()
-        contents=db.execute('SELECT data_type,srs_id,min_x,min_y,max_x,max_y FROM gpkg_contents WHERE table_name=?',(LAYER,)).fetchall()
-    if declarations!=[(LAYER,'SHAPE','MULTIPOLYGON',4269,0,0)] or contents!=[('features',4269,*bounds)]:
-        raise CSAQuarantineError('cached_geopackage_geometry_declarations_disagree_with_fresh_original')
+    # GDAL's container-envelope serialization can differ by the last binary bit
+    # from the WKB coordinate extremum. Recompute its exact deterministic output;
+    # do not invent a coordinate tolerance or trust the cached envelope.
+    with tempfile.TemporaryDirectory(prefix='csa-gpkg-metadata-') as temporary:
+        fresh=Path(temporary)/'fresh.gpkg'
+        write_native_gpkg(table,fresh)
+        if gpkg_geometry_declarations(root/'geopackage'/f'{SLUG}.gpkg')!=gpkg_geometry_declarations(fresh):
+            raise CSAQuarantineError('cached_geopackage_geometry_declarations_disagree_with_fresh_original')
     if not pt.schema.equals(expected.schema,check_metadata=True):
         raise CSAQuarantineError('cached_parquet_geometry_or_physical_schema_metadata_disagrees_with_fresh_original')
     if (gm['geometry_name']!='SHAPE' or gm['geometry_type']!='MultiPolygon' or gm['crs']!='EPSG:4269' or tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES
@@ -308,9 +323,7 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
             for part in ('geopackage','candidate','metadata','raw'):
                 (temp/part).mkdir()
             gpkg=temp/'geopackage'/f'{SLUG}.gpkg'
-            pyogrio.write_arrow(table,gpkg,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
-            with sqlite3.connect(gpkg) as db:
-                db.execute("UPDATE gpkg_contents SET last_change='2024-01-01T00:00:00.000Z'")
+            write_native_gpkg(table,gpkg)
             gm,gt=pyogrio.read_arrow(gpkg,layer=LAYER)
             if tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES or gm['crs']!='EPSG:4269' or table_values(gt)!=table_values(table):
                 raise CSAQuarantineError('native_geopackage_value_physical_type_or_wkb_loss')
