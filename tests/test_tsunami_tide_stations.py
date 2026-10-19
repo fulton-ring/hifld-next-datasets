@@ -31,13 +31,13 @@ class TideTransportTests(unittest.TestCase):
     def test_malformed_local_receipt_retains_body_and_exact_original_receipt(self):
         with tempfile.TemporaryDirectory()as tmp:
             root=Path(tmp);source=root/'inputs';source.mkdir();body=b'original attempted body';bad=b'{malformed exact original receipt\n'
-            (source/'bts_ntad.body').write_bytes(body);(source/'bts_ntad.receipt.json').write_bytes(bad)
+            (source/'ncei_tsunamis.body').write_bytes(body);(source/'ncei_tsunamis.receipt.json').write_bytes(bad)
             staging=root/'staging';storage=f.StagingStorageResource(use_local=True,local_dir=str(staging))
             with self.assertRaises(f.TideStationQuarantineError):f.acquire(storage,source)
-            retained=list((staging/'_quarantine').rglob('bts_ntad.body'));self.assertEqual(len(retained),1);self.assertEqual(retained[0].read_bytes(),body)
+            retained=list((staging/'_quarantine').rglob('ncei_tsunamis.body'));self.assertEqual(len(retained),1);self.assertEqual(retained[0].read_bytes(),body)
             receipt=json.loads(retained[0].with_suffix('.receipt.json').read_text())
             self.assertIs(receipt['complete_body'],False);self.assertEqual((staging/receipt['original_receipt_key']).read_bytes(),bad)
-            self.assertEqual((source/'bts_ntad.receipt.json').read_bytes(),bad)
+            self.assertEqual((source/'ncei_tsunamis.receipt.json').read_bytes(),bad)
     def test_live_partial_stream_preserved_for_each_bounded_attempt(self):
         class BrokenStream(httpx.SyncByteStream):
             def __iter__(self):
@@ -47,7 +47,7 @@ class TideTransportTests(unittest.TestCase):
         transport=httpx.MockTransport(lambda request:httpx.Response(200,stream=BrokenStream()))
         with tempfile.TemporaryDirectory()as tmp,patch.object(f.httpx,'Client',lambda **kwargs:original(transport=transport,**kwargs)):
             with self.assertRaisesRegex(f.TideStationQuarantineError,'bounded_fetch_exhausted'):f.acquire(f.StagingStorageResource(use_local=True,local_dir=tmp))
-            bodies=list(Path(tmp).glob('_quarantine/**/bts_ntad.body'));self.assertEqual(len(bodies),3)
+            bodies=list(Path(tmp).glob('_quarantine/**/ncei_tsunamis.body'));self.assertEqual(len(bodies),3)
             for body in bodies:
                 self.assertEqual(body.read_bytes(),b'partial original wire body')
                 receipt=json.loads(body.with_suffix('.receipt.json').read_text());self.assertIs(receipt['complete_body'],False)
@@ -69,7 +69,7 @@ class TideOriginalTests(unittest.TestCase):
         caps=dict(self.caps);j=json.loads(caps[name][0]);mutate(j);body=f.encode(j);receipt=dict(caps[name][1]);receipt.update(bytes=len(body),sha256=f.digest(body));caps[name]=(body,receipt);return caps
     def repin(self,name):
         path=self.root/f.READY;j=json.loads(path.read_text());j['objects'][name]=f.sha256_file(self.root/name);path.write_bytes(f.encode(j))
-    def record(self):return next((self.path/'_construction-state'/f.SLUG).glob('*.json'))
+    def record(self):return next(p for p in(self.path/'_construction-state'/f.SLUG).glob('*.json')if not p.name.endswith('.first-construction.json'))
     def marker(self):return Path(str(self.record())+'.first-construction.json')
     def reject(self,reason):
         with self.assertRaisesRegex(f.TideStationQuarantineError,reason):self.refresh()
