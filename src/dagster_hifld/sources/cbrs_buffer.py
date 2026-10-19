@@ -415,15 +415,28 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     construction commit or receipts. An existing candidate must never seed a pin.
     """
     key=f'_source-provenance/{SLUG}/{version}/bundle.json'
+    started=key+'.first-construction.json'
     if not storage.object_exists(key):
+        if storage.object_exists(started):
+            raise CBRSQuarantineError('missing_original_construction_bundle_after_first_construction')
         if not create:
             raise CBRSQuarantineError('missing_original_construction_provenance_bundle')
         validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
         bundle={'manifest':manifest,'captures':{name:{
             'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
             'receipt':receipt} for name,(body,receipt) in captures.items()}}
-        immutable(storage,key,encode(bundle))
-    bundle=strict_json(storage.read_key(key))
+        body=encode(bundle)
+        evidence_key=key+'.evidence/'+sha(body)+'.json'
+        # All private payloads already succeeded. Retain the exact original
+        # before independent construction history and the primary alias, so a
+        # later missing alias cannot reset first construction on another retry.
+        immutable(storage,evidence_key,body)
+        immutable(storage,started,encode({'schema_version':1,'version':version,
+            'processing_fingerprint':manifest['processing_fingerprint'],
+            'original_bundle_sha256':sha(body),'original_bundle_evidence_key':evidence_key}))
+        immutable(storage,key,body)
+    bundle_body=storage.read_key(key)
+    bundle=strict_json(bundle_body)
     if set(bundle)!= {'manifest','captures'} or set(bundle['captures'])!=set(URLS):
         raise CBRSQuarantineError('original_construction_bundle_roster_drift')
     original={}
@@ -445,6 +458,12 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
         raise CBRSQuarantineError('original_construction_manifest_drift')
     validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)
+    expected_marker={'schema_version':1,'version':version,
+        'processing_fingerprint':actual['processing_fingerprint'],
+        'original_bundle_sha256':sha(bundle_body),
+        'original_bundle_evidence_key':key+'.evidence/'+sha(bundle_body)+'.json'}
+    if not storage.object_exists(started) or strict_json(storage.read_key(started))!=expected_marker:
+        raise CBRSQuarantineError('missing_or_invalid_first_construction_marker')
     return original,actual
 
 
@@ -572,7 +591,8 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
                         quarantine_rejected_cache_held(storage,prefix,str(exc))
                         raise
-                if storage.object_exists(f'_source-provenance/{SLUG}/{version}/bundle.json'):
+                bundle_key=f'_source-provenance/{SLUG}/{version}/bundle.json'
+                if storage.object_exists(bundle_key) or storage.object_exists(bundle_key+'.first-construction.json'):
                     captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
                 else:
                     validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])

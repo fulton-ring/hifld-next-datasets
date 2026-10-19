@@ -269,6 +269,40 @@ class CBRSTests(unittest.TestCase):
             self.assertNotEqual(replayed['code_commit'],'a'*40)
             self.assertTrue(all(reused[n][1]['observed_at']!=changed[n][1]['observed_at'] for n in s.URLS))
 
+    def test_first_construction_marker_blocks_missing_alias_and_marker_on_repeated_calls(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);captures=s.acquire(storage,CAPTURE)
+            manifest=s.provenance(captures);manifest['processing_fingerprint']='marker-fixture-not-acceptance'
+            files=s.processing_identity()['files'];version='v0.0.0-marker-fixture'
+            prefix=s.SLUG+'/'+s.SLUG+'/'+version
+            with s.candidate_lock(storage,prefix):
+                s.original_provenance_bundle(storage,version,captures,manifest,files,create=True)
+            key=Path(d,f'_source-provenance/{s.SLUG}/{version}/bundle.json')
+            marker=key.with_name(key.name+'.first-construction.json')
+            original=key.read_bytes();first=marker.read_bytes();claim=s.strict_json(first)
+            evidence=Path(d,claim['original_bundle_evidence_key']);self.assertEqual(evidence.read_bytes(),original)
+            changed={n:(body,{**receipt,'observed_at':'2026-10-20T01:02:03+00:00'}) for n,(body,receipt) in captures.items()}
+            later=s.provenance(changed);later['processing_fingerprint']=manifest['processing_fingerprint']
+            key.unlink()
+            for retry in [1,2]:
+                with self.subTest(mode='missing_alias',retry=retry),s.candidate_lock(storage,prefix),self.assertRaisesRegex(ValueError,'missing_original_construction_bundle_after_first_construction'):
+                    s.original_provenance_bundle(storage,version,changed,later,files,create=True)
+                self.assertFalse(key.exists());self.assertEqual(marker.read_bytes(),first)
+            key.write_bytes(original) # Explicit restoration of saved authentic original, never inferred repair.
+            for mode,body in [('missing',None),('invalid',b'{}'),('malformed',b'{')]:
+                if body is None:marker.unlink()
+                else:marker.write_bytes(body)
+                for retry in [1,2]:
+                    with self.subTest(mode=mode,retry=retry),s.candidate_lock(storage,prefix),self.assertRaises(ValueError):
+                        s.original_provenance_bundle(storage,version,changed,later,files,create=True)
+                    self.assertEqual(key.read_bytes(),original)
+                    self.assertEqual(marker.read_bytes() if marker.exists() else None,body)
+                marker.write_bytes(first)
+            with s.candidate_lock(storage,prefix):
+                replay,replayed=s.original_provenance_bundle(storage,version,changed,later,files,create=True)
+            self.assertEqual(replayed,manifest);self.assertEqual(replay,captures)
+            self.assertEqual(evidence.read_bytes(),original);self.assertEqual(marker.read_bytes(),first)
+
     def test_invalid_lookup_quarantine_and_concurrent_valid_winner_share_lock(self):
         # These are explicitly synthetic implementation fixtures, not dataset approval.
         captures={'official_zip':(b'synthetic-body',{})};identity={'fixture':True}
