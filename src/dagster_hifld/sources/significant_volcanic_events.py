@@ -302,7 +302,9 @@ def stage_significant_volcanic(storage,*,capture_dir=None):
             temp=Path(temporary);(temp/'geoparquet').mkdir();path=temp/'geoparquet'/f'{SLUG}.parquet';pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table)
             manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)})
             if root.exists()or state_present(storage,version):
-                try:captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest)
+                try:
+                    captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest)
+                    table,audit=inspect_captures(captures)
                 except Exception as exc:
                     try:record_observed_loss(storage,version,fingerprint,type(exc).__name__)
                     except Exception as write:raise IncidentWriteError('incident_failure_candidate_preserved')from write
