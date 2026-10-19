@@ -389,7 +389,11 @@ def decode_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]], 
         ) for field in definitions
     ])
     table = pa.Table.from_pylist(rows, schema=schema)
-    geometry_kinds = sorted({shapely.from_wkb(value).geom_type for value in table["Shape"].to_pylist() if value is not None})
+    geometry_kinds = sorted({
+        geometry.geom_type + (" Z" if geometry.has_z else "")
+        for value in table["Shape"].to_pylist() if value is not None
+        for geometry in (shapely.from_wkb(value),)
+    })
     geo = {"version": "1.1.0", "primary_column": "Shape", "columns": {"Shape": {
         "encoding": "WKB", "geometry_types": geometry_kinds,
         "crs": pyproj.CRS.from_epsg(profile.source_crs).to_json_dict(),

@@ -58,6 +58,8 @@ class EpaFacilitiesSourceTests(unittest.TestCase):
         table, audit = decode_captures(captures, profile=profile)
         self.assertEqual(table.column_names, ["OBJECTID", "Shape", "LABEL", "RuleID_1"])
         self.assertEqual(table.schema.field("RuleID_1").type, __import__("pyarrow").int32())
+        geo = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(geo["columns"]["Shape"]["geometry_types"], ["Point Z"])
         self.assertEqual(audit["feature_count"], 1)
         changed = dict(page)
         changed["fields"] = [dict(field) for field in page_fields]
