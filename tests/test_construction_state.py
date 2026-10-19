@@ -5,10 +5,11 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from contextlib import chdir
 from unittest.mock import patch
 
 from dagster_hifld import construction_state as state
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 KEY = '_construction-state/synthetic/v1.json'
 FP = 'a' * 64
@@ -40,6 +41,36 @@ class ConstructionStateTests(unittest.TestCase):
         with self.assertRaises(state.ConstructionStateError) as result:
             call()
         self.assertEqual(result.exception.code, code)
+
+    def test_lexical_root_and_ancestor_symlinks_reject_seal_and_load(self):
+        outside=self.root/'outside'; outside.mkdir()
+        child=outside/'child'; child.mkdir()
+        (outside/'prior-sentinel.body').write_bytes(b'preserve outside source')
+        for destination in (outside,child):
+            state.seal_first_construction(StagingStorageResource(local_dir=str(destination)),KEY,VERSION,FP,bundle())
+        before=inventory(outside)
+        alias=self.root/'root-link'; alias.symlink_to(outside,target_is_directory=True)
+        ancestor=self.root/'ancestor-link'; ancestor.symlink_to(outside,target_is_directory=True)
+        for lexical in (alias,ancestor/'child'):
+            for relative in (False,True):
+                with self.subTest(path=lexical,relative=relative), chdir(self.root):
+                    selected=str(lexical.relative_to(self.root)) if relative else str(lexical)
+                    storage=StagingStorageResource(local_dir=selected)
+                    self.assert_code('construction_invalid_storage_root',lambda:state.seal_first_construction(storage,KEY,VERSION,FP,bundle('new receipt')))
+                    self.assert_code('construction_invalid_storage_root',lambda:state.load_first_construction(storage,KEY,VERSION,FP))
+                    self.assertEqual(before,inventory(outside))
+        # A hard-linked ordinary file is not a directory/root either.
+        os.link(outside/'prior-sentinel.body',self.root/'not-a-directory')
+        invalid=StagingStorageResource(local_dir=str(self.root/'not-a-directory'))
+        self.assert_code('construction_invalid_storage_root',lambda:state.seal_first_construction(invalid,KEY,VERSION,FP,bundle()))
+        self.assertEqual(before,inventory(outside))
+
+    def test_published_or_nonstorage_resource_rejected_before_any_directory_creation(self):
+        for resource in (PublishedStorageResource(local_dir=str(self.root/'must-not-exist')),
+                         PublishedStorageResource(bucket='synthetic',use_local=False),None,object()):
+            self.assert_code('construction_staging_resource_required',lambda:state.seal_first_construction(resource,KEY,VERSION,FP,bundle()))
+            self.assert_code('construction_staging_resource_required',lambda:state.load_first_construction(resource,KEY,VERSION,FP))
+        self.assertEqual(list(self.root.iterdir()),[])
 
     def test_original_receipts_immutable_and_prefix_supported(self):
         original = self.seal(); before = inventory(self.root)

@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 _MAX_BODY = 2 * 1024 * 1024
 
@@ -80,6 +80,8 @@ def _key(value: str) -> str:
 
 
 def _context(storage: StagingStorageResource, key: str, version: str, fingerprint: str) -> tuple[Path, str]:
+    if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
+        raise ConstructionStateError('construction_staging_resource_required')
     _identity(version, fingerprint)
     _key(key)
     if not key.startswith('_construction-state/') or not key.endswith('.json'):
@@ -88,9 +90,13 @@ def _context(storage: StagingStorageResource, key: str, version: str, fingerprin
         raise ConstructionStateError('construction_remote_protocol_unsupported')
     prefix = _key(storage.prefix) + '/' if storage.prefix else ''
     try:
-        root = Path(storage.local_dir).resolve(strict=True)
-        if not root.is_dir():
-            raise OSError()
+        # Preserve the lexical path: resolving here would erase root/ancestor
+        # symlinks before the descriptor walk could reject them.
+        if not storage.local_dir or '..' in Path(storage.local_dir).parts:
+            raise ValueError()
+        root = Path(storage.local_dir).absolute()
+        with _directory(root, []):
+            pass
     except (OSError, ValueError, RuntimeError) as exc:
         raise ConstructionStateError('construction_invalid_storage_root') from exc
     return root, prefix + key
@@ -121,7 +127,12 @@ def _bundle(body: bytes, version: str, fingerprint: str) -> None:
 def _directory(root: Path, parts: list[str], create: bool = False):
     descriptors = []
     try:
-        descriptors.append(os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+        # Start at the filesystem anchor and reject aliases at EVERY root
+        # ancestor, not just the final root basename. All later I/O uses fds.
+        descriptors.append(os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+        for part in root.parts[1:]:
+            descriptors.append(os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                       dir_fd=descriptors[-1]))
         for part in parts:
             if create:
                 try:
