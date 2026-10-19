@@ -29,7 +29,7 @@ with DagsterInstance.get() as instance:
  output=source.output_for_node(asset.op.name);assert output['feature_count']==1145
  prefix=f'{s.SLUG}/{s.SLUG}/{output["version"]}';root=runtime/'staging'/prefix;gp=root/'geopackage'/f'{s.SLUG}.gpkg'
  assert s.sha256_file(gp)=='29edab0b125fc438930422b0f5ff395869d25fa4854077222632515423c79a56'
- assert s.sha256_file(root/'candidate/typed-source.parquet')==s.sha256_file(oldroot/'candidate/typed-source.parquet')
+ assert s.sha256_file(root/'candidate/typed-source.parquet')=='54b294ce12e616ade4b8fa8b00bd27cab9ce320a7ef4af7ce24807a7d4e1480e'
  instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[prefix])
  for n in [1,2]:
   result=catjob.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False);record('actual_catalog_'+str(n),result);assert result.success
