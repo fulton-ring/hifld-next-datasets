@@ -5,7 +5,7 @@
   "actual_worker": "/root/review_units_31",
   "coordinator_url": "https://chatgpt.com/local/01a15273-e90b-7211-b493-3ad4668ed0e8",
   "implementation_scope": "Reviewable explicitly selected historical preservation-candidate reconstruction only; no source/current-feed/contract/baseline/datum/ID-mapping acceptance",
-  "status": "draft_implementation_local_validation_in_progress",
+  "status": "working_locally_verified_unapproved_preservation_reconstruction_release_decisions_blocked",
   "approved": false,
   "official_producer": "U.S. Geological Survey Minerals Information Team, National Atlas",
   "publication_month": "2005-12",
@@ -308,9 +308,36 @@
     "Independent exact-head review and release decision required; no merge/closure/production authorized"
   ],
   "validation": {
-    "focused": "12PASS21.688s sourcecheckpointd2d36f5; sourcefull766 realfixture, no sourceacceptance",
-    "actual_Dagster": "pending parent-owned registry integration; no materialization success claimed yet",
-    "full_suite": "not yet run on this branch",
-    "CI": "not inferred"
+    "source_checkpoint": "169d6f1f546f3843c32d75b7b0488e84e1ed15d3",
+    "source_acquisition_checkpoint": "39b988b",
+    "focused": "17PASS45.984s, complete real766sourcefixture plus malformed/unreadable receipts and bounded-read regressions",
+    "current_actual_Dagster": {
+      "runtime": "/workspace/work/hifld-coordinator/42/runtime-receipt-io",
+      "runs": 7,
+      "report": "evidence/receipt-io-repair-actual.json",
+      "all_expected_assertions_passed": true,
+      "scope": "Actual UID1000 unreadable receipt preserves already-read body/body-only diagnostic refs without inventing unread bytes; no state. Full fresh766native cold reconstruction remains byteexactgold, reuse and2normalcatalogmissingregistry/post-refresh pass",
+      "native_parquet_bytes": 48722,
+      "native_parquet_sha256": "422f2e291993922e37a4008ad03461e631eefc7bc86fe562569ee5e99bd18b7d",
+      "prior_release": "Synthetic local fixture only, no accepted real baseline/release claimed"
+    },
+    "historical_c947_actual_Dagster": {
+      "runs": 21,
+      "report": "evidence/actual-lifecycle.json",
+      "scope": "Complete malformed-receipt/normal2catalog/failedquality/CAS-only/originalreceiptcoforge/missingCAS/nativeParq/unknownmetadata lifecycle assertions passed before final body-before-receipt-I/O ordering repair. Native extractor/writer/schema/IDs/geometry/cache/provenance/state/gates unchanged by AST."
+    },
+    "historical_44758_full_suite": "550tests549PASS1production-GCSskip103.584s; earlier source scope only",
+    "full_suite": {
+      "tests": 553,
+      "passed": 552,
+      "skipped": 1,
+      "seconds": 233.93,
+      "source_checkpoint": "169d6f1f546f3843c32d75b7b0488e84e1ed15d3",
+      "skip": "production-GCS integration is opt-in; no production write executed",
+      "environment": "Managed Python19venv, explicit current checkout PYTHONPATH, Tippecanoe PATH, isolated DAGSTER_HOME; restored real sibling IaC56aa10757129c457c530d707d9a40bae13e0907f available",
+      "log": "evidence/full-suite-final.log.gz"
+    },
+    "CI": "not inferred",
+    "independent_review": "Reviewer /root/review_research records the exact final-head decision separately on issue42/PR453 and durable coordinator review JSON; this evidence commit does not grant independent/source/baseline/contract/release approval."
   }
 }

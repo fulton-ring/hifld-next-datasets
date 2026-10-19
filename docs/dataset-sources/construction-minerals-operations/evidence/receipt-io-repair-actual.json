@@ -1,0 +1,132 @@
+{
+  "code_head": "169d6f1f546f3843c32d75b7b0488e84e1ed15d3",
+  "module": "/workspace/hifld-worker-worktrees/42/src/dagster_hifld/sources/construction_minerals.py",
+  "runtime": "/workspace/work/hifld-coordinator/42/runtime-receipt-io",
+  "package_id": "stanford-ds401wt4784-preservation-as-provided-v1",
+  "source_accepted": false,
+  "release_accepted": false,
+  "prior_release": "synthetic local fixture only, not a real accepted release",
+  "runs": [
+    {
+      "kind": "actual_POSIX_unreadable_first_receipt_body_retained",
+      "run_id": "b5cc5c95-119e-46b5-a75d-712badede373",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__construction_minerals_operations__construction_minerals_operations\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.construction_minerals.MineralsQuarantineError: [Errno 13] Permission denied: '/workspace/work/hifld-coordinator/42/runtime-receipt-io/unreadable-receipt-input/legacy_metadata.receipt.json'; retained:_quarantine/construction-minerals-operations/acquisitions/e02fabdbcde34f84b14a0f96a2cd7be2\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/assets/construction_minerals.py\", line 9, in construction_minerals_preservation_candidate\n    result=stage_construction_minerals(staging_storage,capture_dir=os.environ.get('HIFLD_CONSTRUCTION_MINERALS_CAPTURE_DIR'),package_id=os.environ.get('HIFLD_CONSTRUCTION_MINERALS_PACKAGE_ID'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/sources/construction_minerals.py\", line 354, in stage_construction_minerals\n    local_only(storage);captures=acquire(storage,capture_dir,package_id)\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/sources/construction_minerals.py\", line 187, in acquire\n    retained=retain_failure(storage,captures,str(exc),attempted);raise MineralsQuarantineError(str(exc)+'; retained:'+retained) from exc\n                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\nPermissionError: [Errno 13] Permission denied: '/workspace/work/hifld-coordinator/42/runtime-receipt-io/unreadable-receipt-input/legacy_metadata.receipt.json'\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/sources/construction_minerals.py\", line 177, in acquire\n    raw_receipt=bounded_input(paths[1],65536)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/sources/construction_minerals.py\", line 149, in bounded_input\n    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "fresh_complete766_native_gold_parity",
+      "run_id": "6de46924-e7e8-47b6-aaa3-3975131727a0",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/construction-minerals-operations/construction-minerals-operations"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "idempotent_complete_source_reuse",
+      "run_id": "00086c3e-3960-42e4-95e6-b2d862f1d172",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/construction-minerals-operations/construction-minerals-operations"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_1_real_missing_approval_gate",
+      "run_id": "1b94faa3-b653-4303-8d72-294fac10170a",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "source_refresh_after_catalog_1",
+      "run_id": "6d084eb0-747c-412c-9089-ba3e379c245c",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/construction-minerals-operations/construction-minerals-operations"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_2_real_missing_approval_gate",
+      "run_id": "86f66963-856c-4f59-bf21-e0c54a941297",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/42/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "source_refresh_after_catalog_2",
+      "run_id": "53995d12-5224-4786-a367-6a34e153b45a",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/construction-minerals-operations/construction-minerals-operations"
+      ],
+      "checks": []
+    }
+  ],
+  "output": {
+    "dataset_slug": "construction-minerals-operations",
+    "file_slug": "construction-minerals-operations",
+    "version": "v0.0.0-draft-stanford-preservation-f96902cd7c45e9b1-94707b663d5162f5",
+    "feature_count": 766,
+    "reused": false,
+    "package_id": "stanford-ds401wt4784-preservation-as-provided-v1",
+    "accepted": false
+  },
+  "source_rows": 766,
+  "source_schema": "source_fid: int64 not null\n  -- field metadata --\n  identity: 'Original zero-based SHP physical record index, not a publish' + 28\nsource_shp_record_number: int32 not null\n  -- field metadata --\n  identity: 'Original SHP record-header number'\nMINOP2X020: decimal128(3, 0) not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":0,\"type\":\"N\",\"width\":3}' + 1\nCOMMODITY: string not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":0,\"type\":\"C\",\"width\":21' + 2\nSITE_NAME: string not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":0,\"type\":\"C\",\"width\":46' + 2\nCOMPANY_NA: string not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":0,\"type\":\"C\",\"width\":51' + 2\nSTATE_LOCA: string not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":0,\"type\":\"C\",\"width\":14' + 2\nCOUNTY: string not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":0,\"type\":\"C\",\"width\":16' + 2\nLATITUDE: decimal128(9, 3) not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":3,\"type\":\"N\",\"width\":9}' + 1\nLONGITUDE: decimal128(11, 3) not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":3,\"type\":\"N\",\"width\":11' + 2\nPLANT_MIN: string not null\n  -- field metadata --\n  original_DBF_physical_declaration: '{\"decimals\":0,\"type\":\"C\",\"width\":10' + 2\ngeometry: binary not null",
+  "native_parquet_bytes": 48722,
+  "native_parquet_sha256": "422f2e291993922e37a4008ad03461e631eefc7bc86fe562569ee5e99bd18b7d",
+  "native_gold_parity": true,
+  "complete_published_ID_columns": [
+    "published_MINOP2X020",
+    "published_OBJECTID",
+    "published_geojson_FID",
+    "published_geojson_feature_id",
+    "published_geopackage_storage_fid",
+    "published_shapefile_fid"
+  ],
+  "unreadable_receipt_body_retained": true,
+  "unread_receipt_bytes_not_invented": true,
+  "external_input_unchanged_after_permission_restore": true,
+  "all_raw_objects_and_prior_fixture_preserved": true,
+  "normal_catalog_cycles": 2,
+  "release_approved": false,
+  "historical_unchanged_gate_scope": "21 registered c947 runs retained separately; no current repeated quality/state/cache negatives claimed here"
+}

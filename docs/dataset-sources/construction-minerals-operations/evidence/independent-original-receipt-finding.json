@@ -1,0 +1,15 @@
+{
+  "head": "44758b9c94281fdb75225c0d2b5cee0537bd6088",
+  "scope": "Explicit synthetic malformed first local receipt with all authentic original14input bodies retained externally; no source/release bypass claim",
+  "name": "legacy_metadata",
+  "reason": "Expecting property name enclosed in double quotes: line 1 column 3 (char 2); retained:_quarantine/construction-minerals-operations/acquisitions/f42026b0bf7445ca8149a22a39a841fd",
+  "runtime_preserves_attempted_body_byteexact": false,
+  "runtime_preserves_original_bad_receipt_byteexact": false,
+  "retained_files": [
+    "_quarantine/construction-minerals-operations/acquisitions/f42026b0bf7445ca8149a22a39a841fd/reason.json"
+  ],
+  "external_original_body_unchanged": true,
+  "external_malformed_receipt_unchanged": true,
+  "body_sha256": "d68776d0c1c487d7b131c4abc0643c7e0ac9fbeac656144b585ca3c6044c3e94",
+  "malformed_receipt_sha256": "edffc5ac5253a0c86c0cc103aba00e1e638bea8ae5fedddbff345a06a7ec0d56"
+}
