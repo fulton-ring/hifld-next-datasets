@@ -171,6 +171,16 @@ class AquifersTests(unittest.TestCase):
                 'geopackage-contents-crs','geopackage-contents-bounds','geopackage-column-crs',
                 'geopackage-srs-definition','geopackage-srs-authority','geopackage-rtree-bounds','geopackage-header-crs','geopackage-header-bounds','geopackage-value'])
 
+    @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
+    def test_real_cached_geopackage_ancillary_metadata_self_repin_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp)
+            kwargs=dict(archive_path=CAPTURES/'zip.body',receipt_path=CAPTURES/'zip.json')
+            first=source.stage_aquifers_candidate(storage,**kwargs)
+            prefix=Path(tmp,'aquifers','aquifers',first['version'])
+            self.assert_cached_self_repin_rejected(storage,prefix,kwargs,Path(tmp),
+                                                  cases=['geopackage-ancillary-table'])
+
     def assert_cached_self_repin_rejected(self, storage, prefix, kwargs, root, cases=None):
         marker=prefix/'metadata/aquifers_candidate_ready.json'
         original_marker=marker.read_bytes()
@@ -210,6 +220,7 @@ class AquifersTests(unittest.TestCase):
             elif case.startswith('geopackage-') and case!='geopackage-value':
                 with sqlite3.connect(geopackage) as database:
                     statements={
+                        'geopackage-ancillary-table': 'CREATE TABLE unapproved_metadata (value TEXT)',
                         'geopackage-contents-crs': 'UPDATE gpkg_contents SET srs_id=4326',
                         'geopackage-contents-bounds': 'UPDATE gpkg_contents SET min_x=min_x+1',
                         'geopackage-column-crs': 'UPDATE gpkg_geometry_columns SET srs_id=4326',
@@ -260,7 +271,9 @@ class AquifersTests(unittest.TestCase):
                 'extra-output':'existing_candidate_inventory_conflict',
                 'missing-output':'existing_candidate_inventory_conflict',
                 'nonobject-roster':'existing_candidate_inventory_must_be_object'}
-            if case.startswith('geopackage-') and case!='geopackage-value':
+            if case=='geopackage-ancillary-table':
+                self.assertIn('cached_geopackage_noncanonical_container_bytes',str(caught.exception))
+            elif case.startswith('geopackage-') and case!='geopackage-value':
                 self.assertIn('cached_geopackage_native_crs_bounds_or_header_drift',str(caught.exception))
             elif case=='parquet-malformed-geometry':
                 self.assertIsInstance(caught.exception.__cause__,shapely.errors.ShapelyError)

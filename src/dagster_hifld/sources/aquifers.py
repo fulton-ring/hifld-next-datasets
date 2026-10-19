@@ -331,6 +331,10 @@ def validate_cached_geopackage_metadata(path: Path, records: bytes) -> None:
             database.execute("UPDATE gpkg_contents SET last_change='2003-10-01T00:00:00.000Z'")
         if geopackage_native_metadata(path) != geopackage_native_metadata(fresh):
             raise AquifersQuarantineError('cached_geopackage_native_crs_bounds_or_header_drift')
+        # This immutable writer is byte-deterministic with the pinned effective
+        # runtime. Reject unenumerated ancillary metadata, DDL or index changes too.
+        if path.read_bytes() != fresh.read_bytes():
+            raise AquifersQuarantineError('cached_geopackage_noncanonical_container_bytes')
 
 
 def validate_cached_payloads(path: Path, records: bytes, audit: dict) -> None:
