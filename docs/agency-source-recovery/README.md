@@ -77,7 +77,9 @@ Prioritize source families for investigation, but keep one dataset issue per inv
 
 The accompanying issue-draft generator produces `dataset-issues.jsonl`, one research-first issue draft per inventory entry. These are drafts, not verified implementation tickets or created GitHub issues. Unknown candidates are intentionally blank. The deterministic HTML marker permits a future publisher to skip already-created issues; search open and closed issues and preserve the returned URLs in the manifest. Do not bulk-dispatch these drafts as implementation-ready work.
 
-## GitHub project and worker design
+## GitHub project and worker implementation
+
+The executable workflows and controller now live in `.github/workflows/pipeline-dispatcher.yml`, `.github/workflows/pipeline-worker.yml` and `tools/pipeline_workers/`. See `tools/pipeline_workers/README.md` for configuration, schema contracts, retry behavior and validation. The material below describes the intended board and worker contract; live activation still requires project access and credentials.
 
 Proposed board states: Source research → Ready → In progress → Review → Changes requested → Done, with Potential breaking change, Blocked and Needs decision. Use a dedicated HIFLD project or a dedicated filtered view. Fields: Dataset ID, Agency, Source relationship, Source health, Last verified, Schema compatibility, Source role, Maintainer decision, Priority, Agent, Issue, PR, Worker session, Attempt count. Preserve a complete history on issues even if project access is temporarily unavailable.
 
@@ -104,15 +106,19 @@ Acceptance scenarios: duplicate events launch once; failed launches release the 
 
 ## Current blockers
 
-- This fork has GitHub Issues disabled (`has_issues=false`); enable Issues in repository settings before publishing the dataset tickets here. The upstream is `Public-Environmental-Data-Partners/hifld-next-datasets`; do not publish tickets upstream by accident.
+- Issues have been enabled on this fork, and dataset tickets are being created here. The upstream is `Public-Environmental-Data-Partners/hifld-next-datasets`; do not publish tickets upstream by accident.
 - The session has no GitHub Projects read/write tool. Project permissions and a supported authenticated controller still need setup; repository admin metadata alone does not establish project access.
 - The execution proxy is unreachable. Its configured policy also lacks agency domains. Restore the environment proxy and configure access to the audit/crosswalk hosts and verified agency hosts before a bulk audit. No live-check failures were inferred from this infrastructure problem.
 - The crosswalk workbook and row-level results from the prior audit have not been imported. DataLumos returned a web-fetch 403 and the My Community Data page did not yield readable body text in this session. Reuse the prior worker's raw artifacts if recoverable, otherwise download the original and rerun with bounded requests.
 
 ## Delivery order
 
-1. Enable issue tracking; restore endpoint access; obtain crosswalk and historical audit inputs.
+1. Complete the dataset ticket/project setup, restore endpoint access and obtain crosswalk/historical audit inputs.
 2. Match all inventory rows, record evidence and publish research-first tickets with stable IDs.
 3. Independently verify the first source families and implement a small pilot using existing pipeline components.
-4. Add CI and independent review; provision project/controller access and Codex credentials.
+4. The worker/controller CI and independent review implementation is in this PR; provision project/controller access and Codex credentials and live-validate it.
 5. Exercise the worker/revision/merge state machine on the pilot, then expand the implementation queue.
+
+## Inventory path anomaly
+
+The inventory uses `Done` as the path for `US PGA 5Pct50Yrs BC arc` (filename `us-pga-5pct50yrs-bc-arc`). Preserve this original inventory ID for traceability, but verify its correct published catalog identity during source research; do not treat the path as evidence of completion or silently rename an existing dataset. Nested paths such as `nfhl/...` are also preserved as inventory IDs.
