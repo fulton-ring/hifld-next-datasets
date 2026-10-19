@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.combined_statistical_areas import (
+    csa_source_integrity_job,
+    csa_source_integrity_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import (
     PUBLISH_PARTITION_NAME,
@@ -391,6 +395,8 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
+    jobs=[csa_source_integrity_job],
+    schedules=[csa_source_integrity_schedule],
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
     executor=_default_executor(),
