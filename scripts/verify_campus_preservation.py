@@ -55,7 +55,7 @@ with patch('dagster_hifld.assets.publish.process_layer_partitioned_geoparquet',s
     result,errors=run('unchanged_source_reuse','ornl_campus_historical_reconstruction',instance,run_config=source_config)
     assert result.success and result.output_for_node(source.op.name)['reused'],errors
     result,errors=run('full_5898_source_quality_blocks_15_invalid','campus_full_source_quality',instance,run_config=source_config)
-    assert not result.success and any(not v.passed and v.check_name==campus_historical_full_quality.name for v in result.get_asset_check_evaluations())
+    assert not result.success and any(not v.passed and v.check_name=='campus_historical_full_quality' for v in result.get_asset_check_evaluations())
     for cycle in [1,2]:
         result,errors=run(f'normal_catalog_formats_cycle_{cycle}_release_blocked','campus_normal_catalog_formats',instance,partition_key=prefix)
         assert not result.success,errors
