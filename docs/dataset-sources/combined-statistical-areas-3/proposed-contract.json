@@ -5,19 +5,34 @@
   "approved": false,
   "geometry": {
     "source_column": "SHAPE",
-    "type": "MultiPolygon",
+    "type": "driver-decoded MultiPolygon",
     "encoding": "native WKB",
     "crs": "EPSG:4269",
     "nullable": true,
     "observed_nulls": 0,
     "observed_invalid": 0,
-    "transformations": []
+    "transformations": [],
+    "producer_declaration": {
+      "field_type": "esriFieldTypeGeometry",
+      "shape_type": "esriGeometryPolygon",
+      "has_z": false,
+      "has_m": false
+    }
   },
   "columns": {
     "OBJECTID": {
-      "physical": "int64",
-      "nullable": false,
-      "role": "original intrinsic OpenFileGDB FID exposed unchanged as attribute"
+      "producer_declaration": {
+        "field_type": "esriFieldTypeOID",
+        "length_bytes": 4,
+        "nullable": false,
+        "required": true,
+        "editable": false
+      },
+      "driver_arrow_return_fids": "int64",
+      "draft_output_attribute": "int64",
+      "values": "Every original OID value retained without substitution",
+      "width_mapping_approved": false,
+      "role": "original intrinsic OpenFileGDB FID retained; widening in driver/output representation is reviewable, not accepted native physical equivalence"
     },
     "GEOID": {
       "physical": "string",
@@ -41,11 +56,21 @@
     },
     "ALAND": {
       "physical": "float64",
-      "nullable": true
+      "nullable": true,
+      "producer_declaration": {
+        "field_type": "esriFieldTypeDouble",
+        "length_bytes": 8,
+        "nullable": true
+      }
     },
     "AWATER": {
       "physical": "float64",
-      "nullable": true
+      "nullable": true,
+      "producer_declaration": {
+        "field_type": "esriFieldTypeDouble",
+        "length_bytes": 8,
+        "nullable": true
+      }
     },
     "INTPTLAT": {
       "physical": "string",
@@ -84,5 +109,6 @@
   "published_baseline_contract": null,
   "source_physical_nullability_vs_observed_completeness": "Declared nullable source attributes retain their declarations; this pinned full release happens to have zero nulls. New null values quarantine as observed-release drift, not destructive type tightening.",
   "gpkg_storage_fid": "_gpkg_storage_fid is an independent storage index, never a substitute source/published identifier. Native OBJECTID remains an explicit int64 field.",
-  "terminal_schema_changes": "Shared GeoParquet adds bbox and changes representation metadata/nullability. These require review; no format contract accepted."
+  "terminal_schema_changes": "Shared GeoParquet adds bbox and changes representation metadata/nullability. These require review; no format contract accepted.",
+  "producer_declaration_evidence": "evidence/native-layer-definition.json"
 }

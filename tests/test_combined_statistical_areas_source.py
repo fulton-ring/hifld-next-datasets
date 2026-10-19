@@ -47,6 +47,7 @@ class CSASourceTests(unittest.TestCase):
     def test_cached_native_rederivation_rejects_repinned_payload_tampering(self):
         props={'OBJECTID':[1],'GEOID':['001'],'GEOIDFQ':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))]}
         original=pa.Table.from_pydict(props,schema=pa.schema([pa.field(n,t) for n,t in zip(c.FIELDS,c.TYPES)]))
+        original=c.expected_parquet_table(original)
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'geopackage').mkdir();(root/'candidate').mkdir()
             gpkg=root/'geopackage'/f'{c.SLUG}.gpkg';parquet=root/'candidate/typed-source.parquet'
@@ -56,13 +57,36 @@ class CSASourceTests(unittest.TestCase):
             for name,values in [('ALAND',[2.0]),('OBJECTID',[99]),('GEOID',['999']),('SHAPE',[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(2,0),(0,1),(0,0)])]))])]:
                 changed=original.set_column(original.column_names.index(name),name,pa.array(values,type=c.TYPES[c.FIELDS.index(name)]))
                 c.pq.write_table(changed,parquet)
-                with self.assertRaisesRegex(ValueError,'fresh_original_native_records'):
+                with self.assertRaisesRegex(ValueError,'fresh_original'):
                     c.reconcile_cached_native_outputs(root,original)
             c.pq.write_table(original,parquet)
             gpkg.unlink()
             changed=original.set_column(3,'NAMELSAD',pa.array(['tampered']))
             c.pyogrio.write_arrow(changed,gpkg,layer=c.LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_storage_fid','GEOMETRY_NAME':'SHAPE'})
-            with self.assertRaisesRegex(ValueError,'fresh_original_native_records'):
+            with self.assertRaisesRegex(ValueError,'fresh_original'):
+                c.reconcile_cached_native_outputs(root,original)
+
+    def test_geometry_declaration_metadata_mutations_are_not_fidelity(self):
+        geometry=c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))
+        props={'OBJECTID':[1],'GEOID':['001'],'GEOIDFQ':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[geometry]}
+        original=pa.Table.from_pydict(props,schema=pa.schema([pa.field(n,t) for n,t in zip(c.FIELDS,c.TYPES)]))
+        expected=c.expected_parquet_table(original)
+        mutations=[('crs',c.pyproj.CRS(3857).to_json_dict()),('encoding','WKT'),('geometry_types',['Polygon']),('bbox',[0,0,999,999])]
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'geopackage').mkdir();(root/'candidate').mkdir()
+            gpkg=root/'geopackage'/f'{c.SLUG}.gpkg';parquet=root/'candidate/typed-source.parquet'
+            c.pyogrio.write_arrow(original,gpkg,layer=c.LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_storage_fid','GEOMETRY_NAME':'SHAPE'})
+            for name,value in mutations:
+                meta=dict(expected.schema.metadata);geo=json.loads(meta[b'geo']);geo['columns']['SHAPE'][name]=value;meta[b'geo']=c.encode(geo)
+                c.pq.write_table(expected.replace_schema_metadata(meta),parquet)
+                with self.subTest(name=name),self.assertRaisesRegex(ValueError,'metadata_disagrees_with_fresh_original'):
+                    c.reconcile_cached_native_outputs(root,original)
+            for geo in [{}, {'version':'1.1.0','primary_column':'invented','columns':{'SHAPE':{}}}]:
+                c.pq.write_table(expected.replace_schema_metadata({b'geo':c.encode(geo)}),parquet)
+                with self.assertRaises(ValueError):c.reconcile_cached_native_outputs(root,original)
+            c.pq.write_table(expected,parquet)
+            with c.sqlite3.connect(gpkg) as db:db.execute('UPDATE gpkg_contents SET min_x=999')
+            with self.assertRaisesRegex(ValueError,'geopackage_geometry_declarations'):
                 c.reconcile_cached_native_outputs(root,original)
 
     def test_source_schema_types_ids_completeness_and_geometry_guards(self):

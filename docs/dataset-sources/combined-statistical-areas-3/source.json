@@ -15,7 +15,12 @@
     "rows": 184,
     "native_crs": "EPSG:4269",
     "release_date": null,
-    "release_date_unknown_reason": "2024 edition and HTTP Last-Modified2024-08-08 are packaging evidence, not an established producer release date."
+    "release_date_unknown_reason": "2024 edition and HTTP Last-Modified2024-08-08 are packaging evidence, not an established producer release date.",
+    "intrinsic_OID": {
+      "producer": "esriFieldTypeOID Length4 required/nonnullable/noneditable",
+      "driver_and_draft_output": "int64; all values retained, widening/mapping unapproved",
+      "evidence": "evidence/native-layer-definition.json"
+    }
   },
   "baseline": {
     "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/combined-statistical-areas-3/combined-statistical-areas-3/v1.0.0/geoparquet/combined-statistical-areas-3.parquet",
@@ -49,7 +54,7 @@
       "id",
       "bbox"
     ],
-    "preservation": "Preserve all original source attrs, nativeFID OBJECTID, types, nullability and WKB; retain complete unapproved historical baseline separately. No ID mapping/type conversion/reprojection accepted."
+    "preservation": "Retain all source values/IDs/native geometry and full original GDB producer declarations. Producer OID is Length4; Arrow return_fids/draft output use int64, an explicitly unapproved representation widening. Eight source attributes retain producer types including Double Length8 areas."
   },
   "successor": {
     "edition": "2026",

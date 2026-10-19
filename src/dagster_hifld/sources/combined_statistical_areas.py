@@ -17,6 +17,7 @@ import stat
 import subprocess
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -39,6 +40,8 @@ URL = 'https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_nationgeo.gdb.
 SHA256 = '68f517f0ef6ab6bcbc2e89102fa960fd1c7c7a130039a1aee2f475319917aeb4'
 BYTES = 271963133
 FIELDS = ('OBJECTID','GEOID','GEOIDFQ','NAMELSAD','LSAD','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
+# Producer OID is esriFieldTypeOID Length4. This int64 is the GDAL Arrow
+# return_fids/output representation, not a native-width declaration/approval.
 TYPES = (pa.int64(),pa.string(),pa.string(),pa.string(),pa.string(),pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
 
 class CSAQuarantineError(ValueError):
@@ -117,7 +120,7 @@ def manifest_for(body,receipt,identity):
             'attribution':'U.S. Census Bureau, 2024 TIGER/Line national geographic geodatabase, Combined_Statistical_Area layer.',
             'release_date_unknown_reason':'2024 edition label is explicit; actual producer release date is not established. HTTP Last-Modified is packaging evidence only. Inventory links a 2023 metadata document, an unresolved lineage discrepancy.'}],
         'transformations':[{'operation':'decode_exact_original_openfilegdb_layer',
-            'parameters':{'layer':LAYER,'preserve_intrinsic_fid_as':'OBJECTID','native_crs':'EPSG:4269','repair':False,'reproject':False}},
+            'parameters':{'layer':LAYER,'preserve_intrinsic_fid_as':'OBJECTID','producer_oid_declaration':{'type':'esriFieldTypeOID','length_bytes':4,'nullable':False,'required':True,'editable':False},'driver_and_draft_output_oid':'int64; width representation change remains unapproved','native_crs':'EPSG:4269','repair':False,'reproject':False}},
             {'operation':'typed_native_geopackage_and_geoparquet','parameters':{'area_types':'float64','gpkg_fid':'independent storage index, not a source or published identifier'}}],
         'unsupported_output_formats':{'shapefile_zip':'Producer GDB field declarations and intrinsic identifiers cannot be silently remapped to DBF; no mapping approved.',
             'pmtiles':'Native coordinates would be reprojected and quantized; no visualization mapping approved.'}}
@@ -185,7 +188,29 @@ def inspect_archive(archive_path):
         inventory={i.filename:{'bytes':i.file_size,'crc32':f'{i.CRC:08x}'} for i in entries}
     metadata,table=pyogrio.read_arrow(f'/vsizip/{archive_path}/{GDB}',layer=LAYER,return_fids=True)
     validate_table(table,metadata)
+    metadata['native_layer_definition']=read_native_definition(archive_path)
     return metadata,table,inventory
+
+
+
+def read_native_definition(archive_path):
+    """Retain producer declarations separately from GDAL's Arrow exposure."""
+    _,definition=pyogrio.read_arrow(f'/vsizip/{archive_path}/{GDB}',sql=f'GetLayerDefinition {LAYER}')
+    if definition.num_rows!=1 or 'FIELD_1' not in definition.column_names:
+        raise CSAQuarantineError('missing_original_layer_definition')
+    xml=definition['FIELD_1'][0].as_py()
+    root=ET.fromstring(xml)
+    fields={field.findtext('Name'):{node.tag:node.text for node in field if node.tag!='Name'} for field in root.findall('./GPFieldInfoExs/GPFieldInfoEx')}
+    if set(fields)!=set(FIELDS) or root.findtext('OIDFieldName')!='OBJECTID' or root.findtext('HasZ')!='false' or root.findtext('HasM')!='false':
+        raise CSAQuarantineError('native_layer_definition_drift')
+    oid=fields['OBJECTID']
+    if any(oid.get(k)!=v for k,v in {'FieldType':'esriFieldTypeOID','Length':'4','IsNullable':'false','Required':'true','Editable':'false'}.items()):
+        raise CSAQuarantineError('native_oid_declaration_drift')
+    for name in ('ALAND','AWATER'):
+        if fields[name].get('FieldType')!='esriFieldTypeDouble' or fields[name].get('Length')!='8':
+            raise CSAQuarantineError('native_double_area_declaration_drift')
+    return {'definition_xml':xml,'fields':fields,'driver_oid_representation':'Arrow return_fids int64, not producer OID width',
+        'draft_output_oid_representation':'int64 attribute preserving every source value; widening/ID mapping not approved'}
 
 
 def validate_table(table,metadata):
@@ -208,11 +233,28 @@ def table_values(table):
 
 
 
+
+def expected_parquet_table(table):
+    """Exact schema/geometry declarations generated from fresh native records."""
+    geometry=table['SHAPE'].to_pylist()
+    geo={'version':'1.1.0','primary_column':'SHAPE','columns':{'SHAPE':{'encoding':'WKB','geometry_types':['MultiPolygon'],'crs':pyproj.CRS(4269).to_json_dict(),'bbox':shapely.total_bounds(shapely.from_wkb(geometry)).tolist()}}}
+    return table.replace_schema_metadata({b'geo':encode(geo)})
+
+
 def reconcile_cached_native_outputs(root,table):
     """Derive fidelity from pinned original rows, never from a repinned receipt."""
     gm,gt=pyogrio.read_arrow(root/'geopackage'/f'{SLUG}.gpkg',layer=LAYER)
     pt=pq.read_table(root/'candidate/typed-source.parquet')
-    if (gm['crs']!='EPSG:4269' or tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES
+    expected=expected_parquet_table(table)
+    bounds=shapely.total_bounds(shapely.from_wkb(table['SHAPE'].to_pylist())).tolist()
+    with sqlite3.connect(f'file:{root/"geopackage"/f"{SLUG}.gpkg"}?mode=ro',uri=True) as db:
+        declarations=db.execute('SELECT table_name,column_name,geometry_type_name,srs_id,z,m FROM gpkg_geometry_columns').fetchall()
+        contents=db.execute('SELECT data_type,srs_id,min_x,min_y,max_x,max_y FROM gpkg_contents WHERE table_name=?',(LAYER,)).fetchall()
+    if declarations!=[(LAYER,'SHAPE','MULTIPOLYGON',4269,0,0)] or contents!=[('features',4269,*bounds)]:
+        raise CSAQuarantineError('cached_geopackage_geometry_declarations_disagree_with_fresh_original')
+    if not pt.schema.equals(expected.schema,check_metadata=True):
+        raise CSAQuarantineError('cached_parquet_geometry_or_physical_schema_metadata_disagrees_with_fresh_original')
+    if (gm['geometry_name']!='SHAPE' or gm['geometry_type']!='MultiPolygon' or gm['crs']!='EPSG:4269' or tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES
         or tuple(pt.column_names)!=FIELDS or tuple(f.type for f in pt.schema)!=TYPES
         or table_values(gt)!=table_values(table) or table_values(pt)!=table_values(table)):
         raise CSAQuarantineError('cached_outputs_disagree_with_fresh_original_native_records')
@@ -272,15 +314,13 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
             gm,gt=pyogrio.read_arrow(gpkg,layer=LAYER)
             if tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES or gm['crs']!='EPSG:4269' or table_values(gt)!=table_values(table):
                 raise CSAQuarantineError('native_geopackage_value_physical_type_or_wkb_loss')
-            geometry=table['SHAPE'].to_pylist()
-            geo={'version':'1.1.0','primary_column':'SHAPE','columns':{'SHAPE':{'encoding':'WKB','geometry_types':['MultiPolygon'],'crs':pyproj.CRS(4269).to_json_dict(),'bbox':shapely.total_bounds(shapely.from_wkb(geometry)).tolist()}}}
-            table=table.replace_schema_metadata({b'geo':encode(geo)})
+            table=expected_parquet_table(table)
             parquet=temp/'candidate'/'typed-source.parquet'
             pq.write_table(table,parquet,compression='zstd')
             if not pq.read_table(parquet).equals(table,check_metadata=True):
                 raise CSAQuarantineError('typed_parquet_roundtrip_loss')
-            audit={'approved':False,'feature_count':184,'invalid_geometries':0,'crs':'EPSG:4269','source_physical_schema':str(table.schema),'members':inventory,
-                'intrinsic_source_id':'OBJECTID preserved as int64; independent GPKG storage FID not published/source ID',
+            audit={'approved':False,'feature_count':184,'invalid_geometries':0,'crs':'EPSG:4269','driver_arrow_schema':str(table.schema),'producer_native_layer_definition':metadata['native_layer_definition'],'members':inventory,
+                'intrinsic_source_id':'Producer OBJECTID esriFieldTypeOID Length4, required/nonnullable/noneditable; GDAL return_fids and draft output expose int64. Every original value preserved; widening/mapping remains unapproved. Independent GPKG storage FID not published/source ID',
                 'coverage_GEOIDs':sorted(table['GEOID'].to_pylist()),'full_value_type_id_and_native_wkb_roundtrip':{'geopackage':True,'parquet':True},
                 'published_compatibility':'Not accepted. Published id differs from every source OBJECTID; source doubles differ from published integer areas, source fields differ, metadata2023 vs GDB2024 lineage unresolved.'}
             payloads={'raw/source_capture.json':{'key':capture,'sha256':SHA256,'bytes':BYTES,'complete_original_gdb_members':71},'raw/retrieval.json':receipt,
@@ -295,7 +335,7 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
             # All source/provenance/output checks completed in a hidden build tree.
             os.rename(temp,root)
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':184,'reused':False}
-    except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException) as exc:
+    except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError) as exc:
         # The full original is already pinned in raw-captures when valid. Avoid a
         # second272MB copy per policy/schema failure; retain exact pointer+receipt.
         raw_key=f'_raw-captures/{SLUG}/{SHA256}/original.gdb.zip'
