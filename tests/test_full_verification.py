@@ -19,7 +19,8 @@ from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.release_approval import ReleaseApprovalError, _storage_identity, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.source_manifest import _merge_manifest_layers
+from dagster_hifld.source_manifest import _merge_manifest_layers, load_resolved_source_manifest, snapshot_source_metadata
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.validation import ComparisonLimits, compare_full_rows, sha256_file
 
 
@@ -87,8 +88,13 @@ def accepted_fixture(root):
                 "retrieved_at": "2026-10-19T00:00:00Z", "sha256": sha256_file(candidate), "bytes": candidate.stat().st_size,
                 "license": "synthetic", "attribution": "Synthetic Agency"}]}
     for name, value in (("source_manifest.json", manifest), ("quality_manifest.json", {"quality_check_passed": True}),
-                        ("data_dictionary.json", {"agency": "Synthetic Agency"})):
+                        ("data_dictionary.json", {"agency": "Synthetic Agency", **manifest}),
+                        ("resolved_provenance.json", manifest)):
         source.write("synthetic", "points", "vtest", f"metadata/{name}", json.dumps(value).encode())
+    snapshot_source_metadata(source, "synthetic", "points", "vtest")
+    projection = provenance_projection(load_resolved_source_manifest(source, "synthetic", "points", "vtest").metadata)
+    source.write_key(f"{prefix}/metadata/resolved_provenance.json", json.dumps(projection).encode())
+    source.write_key(f"{prefix}/metadata/data_dictionary.json", json.dumps({"agency": "Synthetic Agency", **projection}).encode())
     objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
     entry = {"destination": _storage_identity(target), "staged_version_prefix": prefix,
              "implementation_sha256": verifier_implementation_sha256(),

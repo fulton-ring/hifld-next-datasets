@@ -14,9 +14,9 @@ import re
 import tempfile
 from pathlib import Path
 
-from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.provenance import provenance_projection, validate_provenance
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.source_manifest import unsupported_output_reason
+from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason, prebuilt_output_keys
 from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, NativeReadLimits, _code_digest, _digest, compare_native_inputs, reader_versions
 
 
@@ -114,8 +114,9 @@ def require_release_approval(
     """Recheck complete staged inventories, reviewed metadata and copy byte pins.
 
     Returns source snapshots for the conditional copy, closing the hash/copy race.
-    This boundary cannot attest to transformations; their review is explicitly part
-    of the exact manual release decision until source-specific verifiers exist.
+    Native mode re-derives original files and replays the full comparison. The
+    explicit JSONL mode retains manual normalization review; neither technical
+    proof supplies source authority or dataset acceptance.
     """
     if not pairs:
         raise ReleaseApprovalError("empty_release_inventory")
@@ -180,10 +181,13 @@ def require_release_approval(
                 raise ReleaseApprovalError("missing_reviewed_candidate_normalization_derivation")
             from_manifest = json.loads(source.read_key(f"{prefix}/metadata/source_manifest.json"))
             validate_release_provenance(from_manifest)
+            resolved_policy = load_resolved_source_manifest(source, *prefix.split("/")).metadata
+            prebuilt_output_keys(resolved_policy, source, prefix, "geoparquet")
             for format_name, directory in (("shapefile_zip", "shapefile"), ("geopackage", "geopackage"),
                                            ("geoparquet", "geoparquet"), ("pmtiles", "pmtiles")):
-                if unsupported_output_reason(from_manifest, format_name) and any(name.startswith(f"{prefix}/{directory}/") for name in expected):
+                if unsupported_output_reason(resolved_policy, format_name) and any(name.startswith(f"{prefix}/{directory}/") for name in expected):
                     raise ReleaseApprovalError(f"unsupported_output_present:{format_name}")
+            _require_provenance_metadata(entry, source, prefix)
             quality = json.loads(source.read_key(f"{prefix}/metadata/quality_manifest.json"))
             if quality.get("quality_check_passed") is not True:
                 raise ReleaseApprovalError("catalog_quality_failed")
@@ -212,6 +216,29 @@ def require_release_approval(
         if entry["published_objects"][logical] != entry["staged_objects"][name]:
             raise ReleaseApprovalError(f"copy_bytes_differ_from_accepted_output:{logical}")
     return snapshots
+
+
+def _require_provenance_metadata(entry: dict, source: StagingStorageResource, prefix: str) -> None:
+    dataset_slug, file_slug, version = prefix.split("/")
+    try:
+        resolved = provenance_projection(load_resolved_source_manifest(source, dataset_slug, file_slug, version).metadata)
+        stored = json.loads(source.read_key(f"{prefix}/metadata/resolved_provenance.json"))
+        dictionary = json.loads(source.read_key(f"{prefix}/metadata/data_dictionary.json"))
+        if resolved is None or stored != resolved or provenance_projection(dictionary) != resolved:
+            raise ReleaseApprovalError("complete_input_provenance_not_preserved_in_downloadable_metadata")
+        for layer in resolved.get("manifest_layers", []):
+            snapshot_name = layer.get("snapshot", "")
+            if (not isinstance(snapshot_name, str) or not snapshot_name.startswith("metadata/source/")
+                    or ".." in Path(snapshot_name).parts):
+                raise ReleaseApprovalError("unsafe_authored_manifest_layer_snapshot")
+            key = f"{prefix}/{snapshot_name}"
+            if entry["staged_objects"].get(key) != layer.get("sha256") or entry["published_objects"].get(key) != layer.get("sha256"):
+                raise ReleaseApprovalError("authored_manifest_layers_must_be_downloadable")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ReleaseApprovalError("invalid_or_missing_resolved_provenance_metadata:" + str(exc)) from exc
+    key = f"{prefix}/metadata/resolved_provenance.json"
+    if entry["published_objects"].get(key) != entry["staged_objects"].get(key) or key not in entry["published_objects"]:
+        raise ReleaseApprovalError("resolved_provenance_metadata_must_be_downloadable")
 
 
 def _require_downloadable_evidence(entry: dict, prefix: str, descriptor: dict, *, parent: str = "") -> str:
