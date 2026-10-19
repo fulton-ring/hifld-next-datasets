@@ -247,7 +247,8 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
             # Catalog/format assets own subsequent files; source-owned directories
             # and the immutable receipt roster remain closed, never self-authorizing.
             source_actual={name for name in actual if name.startswith(('candidate/','raw/','geopackage/')) or name in expected}
-            if set(ready['objects'])!=expected or source_actual!=expected or any(p.is_symlink() for p in root.rglob('*')):
+            downstream={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json',f'geoparquet/{SLUG}.parquet'}
+            if set(ready['objects'])!=expected or source_actual!=expected or actual-expected-downstream or any(p.is_symlink() for p in root.rglob('*')):
                 raise CSAQuarantineError('immutable_candidate_inventory_conflict')
             for name,pin in ready['objects'].items():
                 if sha256_file(root/name)!=pin:
