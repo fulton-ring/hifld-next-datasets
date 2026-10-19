@@ -164,7 +164,7 @@ def _load_retained_capture(root: Path) -> tuple[bytes, dict[str, object], dict[s
             or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
             or receipt.get("complete_body") is not True or receipt.get("error_code") is not None
             or receipt.get("content_encoding") not in (None, "identity")
-            or receipt.get("content_length") != str(EXPECTED_ZIP_BYTES)
+            or receipt.get("content_length") not in (EXPECTED_ZIP_BYTES, str(EXPECTED_ZIP_BYTES))
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
             or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
             or body != wire):

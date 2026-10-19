@@ -36,7 +36,7 @@ class NaturalGasTradingHubsCandidateTests(unittest.TestCase):
         receipt = {"method": "GET", "url": hubs.SOURCE_URL, "final_url": hubs.SOURCE_URL,
                    "observed_at": observed, "status": 200, "complete_body": True,
                    "wire_bytes": len(body), "wire_sha256": digest, "bytes": len(body),
-                   "sha256": digest, "content_encoding": "identity", "content_length": str(len(body)),
+                   "sha256": digest, "content_encoding": "identity", "content_length": len(body),
                    "error_code": None}
         head = {"status": 200, "url": hubs.SOURCE_URL, "last_modified": "test-date",
                 "content_length": str(len(body)), "observed_at": observed}
