@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 parser=argparse.ArgumentParser()
+parser.add_argument('--construction-only',action='store_true',help='Reuse historical container negatives; run the new construction-binding probes instead.')
 parser.add_argument('--runtime',type=Path,required=True)
 parser.add_argument('--archive-helper',type=Path,help='Optional guarded lossless archive helper for closed bad-cache trees.')
 args=parser.parse_args();repo=Path(__file__).resolve().parents[1];capture=repo/'docs/dataset-sources/cbrs-prohibitions-1/evidence/captures'
@@ -85,9 +86,18 @@ with DagsterInstance.get() as instance,ExitStack() as guards:
  report['native_prebuilt']={'rows':1693,'all_original_ids_values_physical_dates_types_nulls_native_WKB_exact':True,'source_fid_type':'string original shapefile intrinsic FID proxy; no invented OBJECTID or published-ID mapping','native_date32_columns':['FI_Date','SU_Date'],'SU_Date_nulls':564,'sha256':source.sha(native.read_bytes()),'policy':policy,'generic_regeneration_calls':0}
  seed=runtime/'immutable-post-catalog-seed';shutil.copytree(root,seed);good=source.tree_inventory(seed)
  modes={'false_fidelity_report':'cached_complete_source_fidelity_evidence_drift:metadata/geopackage_source_fidelity.json','false_accepted_placeholder':'cached_complete_source_fidelity_evidence_drift:metadata/baseline_comparison.json','unknown_SQL_identifiers':'cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes','geometry_envelope':'cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes','contents_SRS':'cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes','missing_ready_marker':'existing_candidate_missing_ready_marker'}
+ if args.construction_only:modes={}
+ modes.update({'forged_construction_commit':'cached_provenance_differs_from_original_construction_bundle','missing_construction_bundle':'missing_original_construction_bundle','forged_external_construction_commit':'original_construction_commit_not_in_repository'})
+ bundle_path=runtime/'staging'/source.construction_bundle_key(output['version']);bundle_original=bundle_path.read_bytes()
+ report['original_construction_bundle']={'path':str(bundle_path),'sha256':source.sha(bundle_original),'manifest':json.loads(bundle_original)['manifest']};save()
  for mode,expected_reason in modes.items():
   marker=root/'metadata/cbrs_prohibitions_candidate_ready.json';ready=json.loads(marker.read_text());gpfile=root/'geopackage'/f'{source.SLUG}.gpkg';changed=[]
-  if mode=='false_fidelity_report':
+  if mode=='forged_construction_commit':
+   target=root/'metadata/source_manifest.json';doc=json.loads(target.read_text());doc['code_commit']='0'*40;target.write_bytes(source.encode(doc));changed=[target]
+  elif mode=='missing_construction_bundle':bundle_path.unlink()
+  elif mode=='forged_external_construction_commit':
+   doc=json.loads(bundle_original);doc['manifest']['code_commit']='0'*40;bundle_path.write_bytes(source.encode(doc))
+  elif mode=='false_fidelity_report':
    target=root/'metadata/geopackage_source_fidelity.json';doc=json.loads(target.read_text());doc['shared_verifier']['populations']['candidate']['rows']=1;doc['shared_verifier']['baseline']['approved']=True;target.write_bytes(source.encode(doc));changed=[target]
   elif mode=='false_accepted_placeholder':
    target=root/'metadata/baseline_comparison.json';doc=json.loads(target.read_text());doc.update(status='pass',approved=True,acceptance='approved');target.write_bytes(source.encode(doc));changed=[target]
@@ -100,7 +110,7 @@ with DagsterInstance.get() as instance,ExitStack() as guards:
   elif mode=='contents_SRS':
    with sqlite3.connect(gpfile) as db:db.execute('UPDATE gpkg_contents SET srs_id=4326')
    db.close();changed=[gpfile]
-  else:marker.unlink()
+  elif mode=='missing_ready_marker':marker.unlink()
   if mode!='missing_ready_marker':
    for file in changed:ready['objects'][str(file.relative_to(root))]=source.sha(file.read_bytes())
    marker.write_bytes(source.encode(ready))
@@ -113,8 +123,14 @@ with DagsterInstance.get() as instance,ExitStack() as guards:
    bundle='cbrs30-policy-'+mode.replace('_','-')+'-'+failed.run_id[:8]
    subprocess.run(['python',str(args.archive_helper),'--bundle',bundle,'--parent',str(quarantine),'candidate'],check=True)
    archive_manifest=json.loads((quarantine/'candidate.archived.json').read_text())['manifest']
-  report['cache_negatives'][mode]={'run_id':failed.run_id,'expected_reason':expected_reason,'whole_bad_inventory':bad_inventory,'quarantine_report':str(quarantine/'report.json'),'archive_manifest':archive_manifest,'not_discoverable':True,'prior_and_raw_preserved':True};save();shutil.copytree(seed,root)
+  report['cache_negatives'][mode]={'run_id':failed.run_id,'expected_reason':expected_reason,'whole_bad_inventory':bad_inventory,'quarantine_report':str(quarantine/'report.json'),'archive_manifest':archive_manifest,'not_discoverable':True,'prior_and_raw_preserved':True};save();bundle_path.write_bytes(bundle_original);shutil.copytree(seed,root)
  restored=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False);record('restored_complete_source_after_forensic_negatives',restored);assert restored.success and source.tree_inventory(root)==good
+ saved=runtime/'closed-original-for-rebuild-proof';os.rename(root,saved)
+ rebuilt=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False);record('fresh_rebuild_preserves_first_construction_bundle',rebuilt);assert rebuilt.success
+ assert bundle_path.read_bytes()==bundle_original
+ original_ready=json.loads((saved/'metadata/cbrs_prohibitions_candidate_ready.json').read_text());rebuilt_ready=json.loads((root/'metadata/cbrs_prohibitions_candidate_ready.json').read_text());assert rebuilt_ready==original_ready
+ assert all((root/name).read_bytes()==(saved/name).read_bytes() for name in original_ready['objects'])
+ report['fresh_rebuild_preserves_original_manifest_receipts_native_bytes']=True;save();shutil.rmtree(root);os.rename(saved,root)
  # One explicitly synthetic partition exercises both policy and quality failures.
  badprefix=prefix+'-synthetic-negative-tests';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot);instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[badprefix])
  badnative=badroot/'geoparquet'/f'{source.SLUG}.parquet';native_original=badnative.read_bytes();badnative.write_bytes(native_original+b'bad-staged-mutation')
@@ -127,5 +143,6 @@ with DagsterInstance.get() as instance,ExitStack() as guards:
  assert all(mock.call_count==0 for mock in generic)
  assert snapshot(published)==prior and source.tree_inventory(runtime/'staging/_raw-captures')==raw_before
  assert source.tree_inventory(root)==good
+ assert bundle_path.read_bytes()==bundle_original
  report.update(generic_converter_calls=0,all_real_source_rows_ids_schema_geometry_coverage_provenance_verified=True,prior_published_fixture_and_original_raw_preserved=True,two_normal_catalog_cycles_and_refresh_pass=True,quality=json.loads((root/'metadata/quality_manifest.json').read_text()),provenance_input_count=len(manifest['inputs']));save()
 print(json.dumps({'code_head':report['code_head'],'runs':[(r['kind'],r['run_id'],r['success']) for r in report['runs']],'generic_converter_calls':0}))

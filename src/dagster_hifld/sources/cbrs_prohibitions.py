@@ -367,8 +367,6 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('linked_candidate_object')
     actual={str(p.relative_to(root)) for p in paths if p.is_file()}
     expected=set(ready['objects'])|{'metadata/cbrs_prohibitions_candidate_ready.json'}
-    if not expected.issubset(actual) or actual-expected-allowed_derivatives:
-        raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     expected_manifest=provenance(cached)
     with tempfile.TemporaryDirectory(prefix='cbrs-prohibitions-policy-') as policy_tmp:
@@ -382,8 +380,13 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         original_receipt=f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json'
         if not storage.object_exists(original_receipt) or storage.read_key(original_receipt)!=encode(receipt):
             raise CBRSQuarantineError('cached_receipt_not_in_original_capture_depot')
+    original_manifest,original_captures=load_construction_bundle(storage,ready['version'],expected_manifest,identity,captures)
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
+    if manifest!=original_manifest or cached!=original_captures:
+        raise CBRSQuarantineError('cached_provenance_differs_from_original_construction_bundle')
     validate_release_provenance(manifest)
+    if not expected.issubset(actual) or actual-expected-allowed_derivatives:
+        raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     hashed_manifest=root/hashed_snapshot
     if hashed_manifest.exists() and hashed_manifest.read_bytes()!=canonical_manifest:
         raise CBRSQuarantineError('cached_hashed_provenance_snapshot_differs')
@@ -475,12 +478,91 @@ def fidelity_payloads(fidelity: dict,rows: list[dict],records: bytes,comparison:
     return payloads
 
 
-def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
+def construction_bundle_key(version: str) -> str:
+    return f'_source-provenance/{SLUG}/{version}/bundle.json'
+
+
+def validate_construction_commit(manifest: dict,identity: dict) -> None:
+    """A construction commit must contain exactly the pinned processing files.
+
+    Later documentation-only HEADs may differ. Neither the mutable candidate nor
+    a malformed external bundle can invent a commit or a different processor.
+    This local immutable depot is a preservation boundary, not a signature or a
+    defense against an administrator replacing the whole depot and Git history.
+    """
+    commit=manifest.get('code_commit');repo=Path(__file__).parents[3]
+    if not isinstance(commit,str) or not re.fullmatch('[0-9a-f]{40}',commit):
+        raise CBRSQuarantineError('original_construction_commit_not_valid')
+    try:
+        subprocess.check_output(['git','cat-file','-e',commit+'^{commit}'],cwd=repo,stderr=subprocess.DEVNULL)
+        for name,digest in identity['files'].items():
+            if sha(subprocess.check_output(['git','show',f'{commit}:{name}'],cwd=repo,stderr=subprocess.DEVNULL))!=digest:
+                raise CBRSQuarantineError('original_construction_commit_processing_files_differ')
+    except subprocess.CalledProcessError as exc:
+        raise CBRSQuarantineError('original_construction_commit_not_in_repository') from exc
+
+
+def load_construction_bundle(storage: StagingStorageResource,version: str,
+                             expected_manifest: dict,identity: dict,captures: dict) -> tuple[dict,dict]:
+    """Read original construction only; cache reuse must never self-bootstrap it."""
+    key=construction_bundle_key(version)
+    path=local_candidate_path(storage,key)
+    if not storage.object_exists(key):raise CBRSQuarantineError('missing_original_construction_bundle')
+    if not path.is_file() or path.stat().st_nlink!=1:raise CBRSQuarantineError('linked_original_construction_bundle')
+    bundle=strict_json(storage.read_key(key))
+    if (set(bundle)!={'schema_version','version','manifest','captures'} or bundle['schema_version']!=1
+            or bundle['version']!=version or not isinstance(bundle['captures'],dict)
+            or set(bundle['captures'])!=set(URLS) or not isinstance(bundle['manifest'],dict)):
+        raise CBRSQuarantineError('original_construction_bundle_roster_drift')
+    original={}
+    for name in URLS:
+        item=bundle['captures'][name]
+        if not isinstance(item,dict) or set(item)!={'body_key','receipt_key','receipt'}:
+            raise CBRSQuarantineError('original_construction_capture_roster_drift')
+        body=captures[name][0];receipt=item['receipt'];validate_receipt(body,receipt,URLS[name])
+        body_key=f'_raw-captures/{SLUG}/{sha(body)}/{name}.body'
+        receipt_key=f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json'
+        if item['body_key']!=body_key or item['receipt_key']!=receipt_key:
+            raise CBRSQuarantineError('original_construction_capture_depot_key_drift')
+        if storage.read_key(body_key)!=body or storage.read_key(receipt_key)!=encode(receipt):
+            raise CBRSQuarantineError('original_construction_capture_depot_bytes_drift')
+        original[name]=(body,receipt)
+    manifest=bundle['manifest'];expected=provenance(original)
+    expected.update(processing_fingerprint=sha(encode(identity)),prebuilt_output_policy=expected_manifest['prebuilt_output_policy'])
+    if set(manifest)!=set(expected) or any(manifest.get(k)!=v for k,v in expected.items() if k!='code_commit'):
+        raise CBRSQuarantineError('original_construction_manifest_drift')
+    validate_release_provenance(manifest);validate_construction_commit(manifest,identity)
+    return manifest,original
+
+
+def bind_first_construction_held(storage: StagingStorageResource,version: str,
+                                 payloads: dict,ready: dict,captures: dict,identity: dict) -> None:
+    """Called only after a fresh full-source build and while holding version lock."""
+    manifest=strict_json(payloads['metadata/source_manifest.json']);key=construction_bundle_key(version)
+    local_candidate_path(storage,key)
+    if not storage.object_exists(key):
+        validate_construction_commit(manifest,identity)
+        bundle={'schema_version':1,'version':version,'manifest':manifest,'captures':{name:{
+            'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
+            'receipt_key':f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json',
+            'receipt':receipt} for name,(body,receipt) in captures.items()}}
+        immutable(storage,key,encode(bundle))
+    original,original_captures=load_construction_bundle(storage,version,manifest,identity,captures)
+    payloads['metadata/source_manifest.json']=encode(original)
+    payloads['raw/retrieval.json']=encode(original_captures['official_zip'][1])
+    for name,(_,receipt) in original_captures.items():payloads[f'raw/captures/{name}.receipt.json']=encode(receipt)
+    ready['objects']={name:sha(value) for name,value in payloads.items()}
+
+
+def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict,
+                              *,captures: dict | None = None,identity: dict | None = None) -> None:
     """Install one fully built local version atomically; partial builds are never discoverable."""
     with candidate_lock(storage,prefix) as target:
         if target.exists() or target.is_symlink():
             # A valid concurrent winner is never overwritten or quarantined.
             raise CBRSQuarantineError('concurrent_or_incomplete_existing_candidate')
+        if captures is not None:
+            bind_first_construction_held(storage,ready['version'],payloads,ready,captures,identity)
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
             for name,value in payloads.items():immutable(private,name,value)
@@ -565,7 +647,7 @@ def stage_cbrs_prohibitions_candidate(storage: StagingStorageResource, *, captur
             ready = {'status':'working_draft_candidate_ready', 'approved':False, 'source_sha256':PIN,
                 'candidate_records_sha256':sha(records), 'processing_fingerprint':fingerprint, 'version':version,
                 'objects':{name:sha(value) for name,value in payloads.items()}}
-            commit_complete_candidate(storage,prefix,payloads,ready)
+            commit_complete_candidate(storage,prefix,payloads,ready,captures=captures,identity=identity)
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except _CachedCandidateQuarantined:

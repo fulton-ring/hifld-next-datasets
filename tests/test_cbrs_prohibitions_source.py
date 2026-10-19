@@ -196,6 +196,43 @@ class CBRSTests(unittest.TestCase):
             self.assertTrue(outcome and 'concurrent_or_incomplete_existing_candidate' in outcome[0])
             self.assertEqual((Path(d)/prefix/'winner').read_bytes(),b'valid-concurrent-winner')
 
+    def test_external_first_construction_preserves_original_receipts_and_commit(self):
+        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        repo=Path(__file__).parents[1];commit=s.subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
+        name='pyproject.toml';identity={'files':{name:s.sha(s.subprocess.check_output(['git','show',f'{commit}:{name}'],cwd=repo))}}
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);s.acquire(storage,CAPTURE)
+            native=Path(d)/'fixture.parquet';native.write_bytes(b'policy-only native fixture')
+            manifest=s.provenance(captures);manifest.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=s.native_prebuilt_policy(native))
+            version='v0.0.0-draft-construction-unit-fixture';payloads={'metadata/source_manifest.json':s.encode(manifest)};ready={'version':version}
+            with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
+                s.bind_first_construction_held(storage,version,payloads,ready,captures,identity)
+            bundle_key=s.construction_bundle_key(version);original_bundle=storage.read_key(bundle_key)
+            changed=copy.deepcopy(captures)
+            for _,receipt in changed.values():receipt['observed_at']='2026-10-20T01:02:03+00:00'
+            later=s.provenance(changed);later.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=manifest['prebuilt_output_policy'],code_commit='f'*40)
+            later_payload={'metadata/source_manifest.json':s.encode(later)}
+            with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
+                s.bind_first_construction_held(storage,version,later_payload,ready,changed,identity)
+            self.assertEqual(storage.read_key(bundle_key),original_bundle)
+            self.assertEqual(s.strict_json(later_payload['metadata/source_manifest.json']),manifest)
+            self.assertEqual(s.strict_json(later_payload['raw/retrieval.json']),captures['official_zip'][1])
+            Path(d,bundle_key).unlink()
+            with self.assertRaisesRegex(ValueError,'missing_original_construction_bundle'):
+                s.load_construction_bundle(storage,version,manifest,identity,captures)
+            forged=s.strict_json(original_bundle);forged['manifest']['code_commit']='0'*40
+            Path(d,bundle_key).write_bytes(s.encode(forged))
+            with self.assertRaisesRegex(ValueError,'original_construction_commit_not_in_repository'):
+                s.load_construction_bundle(storage,version,manifest,identity,captures)
+            forged=s.strict_json(original_bundle);forged['manifest']['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]['bytes']+=1
+            Path(d,bundle_key).write_bytes(s.encode(forged))
+            with self.assertRaisesRegex(ValueError,'original_construction_manifest_drift'):
+                s.load_construction_bundle(storage,version,manifest,identity,captures)
+            Path(d,bundle_key).write_bytes(original_bundle)
+            wrong_identity={'files':{name:'0'*64}}
+            with self.assertRaisesRegex(ValueError,'original_construction_commit_processing_files_differ'):
+                s.validate_construction_commit(manifest,wrong_identity)
+
     def test_compressed_wire_length_and_decoded_body_limit(self):
         url='https://www.fws.gov/test-transport-fixture';decoded=b'complete-decoded-body-'*10000;wire=gzip.compress(decoded)
         def response(request):
