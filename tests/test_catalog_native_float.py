@@ -38,3 +38,19 @@ class NativeFloatCatalogTests(TestCase):
             self.assertFalse(quality['quality_check_passed']);self.assertEqual(quality['sampled_null_geometry_count'],1)
             columns={c['name']:c for c in generate_data_dictionary(sample,'native')['columns']};self.assertEqual(columns['RUNUP_HT']['numNullValues'],1)
             self.assertEqual(pyogrio.raw.read_arrow(path,layer='native')[1].column('RUNUP_HT').to_pylist(),table.column('RUNUP_HT').to_pylist())
+
+    def test_attributes_only_float_geopackage_retains_values_without_inventing_geometry(self):
+        table=pa.table({'ID':pa.array([1,2],type=pa.int32()),'MEASUREMENT':pa.array([0.1,None],type=pa.float32()),'geometry':pa.array(['original attribute','retained attribute'],type=pa.string())})
+        with TemporaryDirectory() as d:
+            path=Path(d)/'attributes.gpkg'
+            pyogrio.raw.write_arrow(table,path,driver='GPKG',layer='attributes')
+            sample,quality=_summarize_geospatial_source(path,'attributes')
+            self.assertEqual(list(sample.columns),table.column_names)
+            self.assertEqual(sample['geometry'].tolist(),table.column('geometry').to_pylist())
+            self.assertEqual(str(sample['MEASUREMENT'].dtype),'float[pyarrow]')
+            self.assertEqual(quality['feature_count'],2);self.assertTrue(quality['quality_check_passed'])
+            self.assertEqual(quality['spatial_status'],'non_spatial_source');self.assertIsNone(quality['bounds'])
+            columns={c['name']:c for c in generate_data_dictionary(sample,'attributes')['columns']}
+            self.assertEqual(columns['MEASUREMENT']['type'],'float');self.assertEqual(columns['MEASUREMENT']['numNullValues'],1)
+            self.assertEqual(columns['MEASUREMENT']['min'],table.column('MEASUREMENT')[0].as_py())
+            self.assertEqual(columns['geometry']['type'],'string')

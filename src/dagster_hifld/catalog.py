@@ -402,14 +402,18 @@ def _summarize_native_float_geopackage(path: Path, layer_name: str | None, info:
         path, layer=layer_name, max_features=CATALOG_SAMPLE_FEATURE_LIMIT,
     )
     geometry_name = metadata.get("geometry_name") or "wkb_geometry"
-    if geometry_name not in table.column_names:
-        raise ValueError("Native GeoPackage Arrow sample has no geometry column")
-    attributes = table.drop([geometry_name]).to_pandas(types_mapper=pd.ArrowDtype)
-    sample = gpd.GeoDataFrame(
-        attributes,
-        geometry=gpd.GeoSeries.from_wkb(table.column(geometry_name).to_pylist(), crs=metadata.get("crs")),
-        crs=metadata.get("crs"),
-    )
+    if geometry_name in table.column_names:
+        attributes = table.drop([geometry_name]).to_pandas(types_mapper=pd.ArrowDtype)
+        sample = gpd.GeoDataFrame(
+            attributes,
+            geometry=gpd.GeoSeries.from_wkb(table.column(geometry_name).to_pylist(), crs=metadata.get("crs")),
+            crs=metadata.get("crs"),
+        )
+    elif not metadata.get("geometry_name") and not info.get("geometry_type"):
+        # A legitimate attributes-only GeoPackage has no geometry to invent.
+        sample = gpd.GeoDataFrame(table.to_pandas(types_mapper=pd.ArrowDtype))
+    else:
+        raise ValueError("Native spatial GeoPackage Arrow sample has no declared geometry column")
     quality = generate_quality_manifest(sample)
     count = int(info["features"])
     if count < 0:

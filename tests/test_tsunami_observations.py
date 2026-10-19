@@ -147,3 +147,44 @@ class SyntheticObservationBehaviorTests(TestCase):
         self.assertFalse((Path(self.tmp.name)/'_candidate-first-construction').exists())
         for store in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
             with self.assertRaisesRegex(s.ObservationQuarantineError,'draft_requires'):s.stage_tsunami_observations_candidate(store,capture_dir=self.capture)
+
+class ObservationRootGuardTests(TestCase):
+    def snap(self,path):return {str(p.relative_to(path)):s.sha(p.read_bytes()) for p in path.rglob('*') if p.is_file()}
+    def test_absolute_and_relative_root_and_ancestor_aliases_reject_before_capture_and_all_writes(self):
+        with tempfile.TemporaryDirectory() as d:
+            base=Path(d);outside=base/'outside';outside.mkdir();(outside/'child').mkdir();(outside/'prior.body').write_bytes(b'prior output fixture')
+            alias=base/'alias';alias.symlink_to(outside,target_is_directory=True);before=self.snap(outside);cwd=Path.cwd()
+            try:
+                os.chdir(base)
+                for selected in [alias,alias/'child',Path('alias'),Path('alias/child')]:
+                    storage=StagingStorageResource(local_dir=str(selected),use_local=True)
+                    for operation in [lambda:s.require_local(storage),lambda:s.acquire(storage,CAPTURES),
+                        lambda:s.stage_tsunami_observations_candidate(storage,capture_dir=CAPTURES),
+                        lambda:s.quarantine(storage,b'failed input',{},'synthetic guard probe'),
+                        lambda:s.immutable(storage,'metadata/probe.json',b'no redirected write')]:
+                        with self.subTest(selected=str(selected),operation=operation):
+                            with self.assertRaisesRegex(s.ObservationQuarantineError,'linked_local_staging_root_or_ancestor'):operation()
+                            self.assertEqual(self.snap(outside),before)
+            finally:os.chdir(cwd)
+    def test_empty_prefix_and_canonical_object_keys_are_required(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d,use_local=True)
+            for key in ['', '.', '../outside', '/outside','valid/../outside','valid//alias','valid/./alias','valid\\alias']:
+                with self.subTest(key=key):
+                    with self.assertRaisesRegex(s.ObservationQuarantineError,'unsafe_local_candidate_prefix'):s.immutable(storage,key,b'blocked')
+            for prefix in ['namespace','/','../escape']:
+                storage=StagingStorageResource(local_dir=d,use_local=True,prefix=prefix)
+                with self.assertRaisesRegex(s.ObservationQuarantineError,'draft_requires_empty_storage_prefix'):s.acquire(storage,CAPTURES)
+            self.assertEqual(list(Path(d).iterdir()),[])
+    def test_real_relative_root_acquisition_and_nested_aliases_preserve_lexical_boundary(self):
+        with tempfile.TemporaryDirectory() as d:
+            base=Path(d);cwd=Path.cwd()
+            try:
+                os.chdir(base);storage=StagingStorageResource(local_dir='real',use_local=True)
+                packs=s.acquire(storage,CAPTURES)
+                self.assertEqual(set(packs),set(s.ARCHIVE_NAMES));self.assertEqual(s.require_local(storage),base/'real')
+                outside=base/'outside';outside.mkdir();(outside/'prior').write_bytes(b'unchanged')
+                (base/'real/alias').symlink_to(outside,target_is_directory=True);before=self.snap(outside)
+                with self.assertRaisesRegex(s.ObservationQuarantineError,'linked_candidate_path'):s.immutable(storage,'alias/escape',b'blocked')
+                self.assertEqual(self.snap(outside),before)
+            finally:os.chdir(cwd)

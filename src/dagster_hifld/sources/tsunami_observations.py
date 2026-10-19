@@ -69,11 +69,33 @@ def strict_json(body: bytes) -> dict:
         raise ObservationQuarantineError('nonobject_or_error_json')
     return result
 
-def require_local(storage: StagingStorageResource) -> None:
-    if isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
+def require_local(storage: StagingStorageResource) -> Path:
+    """Validate the selected lexical root before acquisition, reads or writes.
+
+    resolve() would erase a root/ancestor alias before it could be rejected.
+    Draft keys own their complete namespace, so storage prefixes are forbidden.
+    """
+    if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
+        or storage.bucket or not storage.use_local or not storage.local_dir):
         raise ObservationQuarantineError('draft_requires_explicit_isolated_local_staging')
+    if storage.prefix:
+        raise ObservationQuarantineError('draft_requires_empty_storage_prefix')
+    selected = Path(storage.local_dir)
+    if '..' in selected.parts or '\x00' in str(selected):
+        raise ObservationQuarantineError('unsafe_lexical_local_staging_root')
+    root = Path(os.path.abspath(selected))
+    current = Path(root.anchor)
+    for part in root.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise ObservationQuarantineError('linked_local_staging_root_or_ancestor')
+        if current.exists() and not current.is_dir():
+            raise ObservationQuarantineError('non_directory_local_staging_root_or_ancestor')
+    return root
+
 
 def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
+    local_candidate_path(storage, key)
     before = storage.object_snapshot(key)
     if before is not None:
         if storage.read_key(key) != body or storage.object_snapshot(key) != before:
@@ -100,16 +122,17 @@ def processing_identity() -> dict:
             'verifier_sha256': verifier_implementation_sha256()}
 
 def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
-    require_local(storage)
-    root=Path(storage.local_dir).resolve()
-    key=storage._ensure_prefixed(prefix)
-    if Path(key).is_absolute() or any(part in {'.','..'} for part in Path(key).parts):
+    root = require_local(storage)
+    parts = PurePosixPath(prefix)
+    if (not prefix or not parts.parts or parts.is_absolute() or '..' in parts.parts or str(parts) != prefix
+        or '\\' in prefix or '\x00' in prefix):
         raise ObservationQuarantineError('unsafe_local_candidate_prefix')
-    target=root/key
-    current=root
-    for part in target.relative_to(root).parts:
-        current=current/part
-        if current.is_symlink(): raise ObservationQuarantineError('linked_candidate_path')
+    target = root.joinpath(*parts.parts)
+    current = root
+    for part in parts.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ObservationQuarantineError('linked_candidate_path')
     return target
 
 @contextmanager
@@ -130,7 +153,7 @@ def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, re
     with context as target:
         if not target.exists():
             return None
-        destination=Path(storage.local_dir)/'_quarantine'/SLUG/('invalid-cache-'+uuid4().hex)
+        destination=local_candidate_path(storage,'_quarantine/'+SLUG+'/invalid-cache-'+uuid4().hex)
         destination.mkdir(parents=True)
         os.rename(target,destination/'candidate')
         (destination/'report.json').write_bytes(encode({'approved':False,
