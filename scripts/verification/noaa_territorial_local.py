@@ -107,6 +107,42 @@ def main():
             assert any(failure['step'] == 'publish__verify' and 'missing_independent_release_approval_registry' in failure['message'] for failure in report['step_failures'])
             assert not any(key.endswith('promote') for key in report['materialized_asset_keys'])
             assert (root / 'staging' / output['candidate_key']).exists()
+        if source.success:
+            repeat = definitions.resolve_job_def("noaa_territorial_normal_ingest").execute_in_process(instance=instance,
+                run_config={"ops": {ingest.op.name: {"config": {"allow_unapproved_local_draft": True, "capture_directory": args.capture_directory}}}},
+                tags={"hifld/source_code_commit": head}, raise_on_error=False)
+            assert repeat.success and repeat.output_for_node(ingest.op.name) == output
+            report.update(refresh_run_id=repeat.run_id, refresh_success=repeat.success, immutable_refresh_same_output=True)
+            # A real full-source mutation exercises the same registered asset in
+            # persistent isolated Dagster state. Never create a fake approval.
+            capture = root / "drift-capture"; capture.mkdir()
+            version_root = root / "staging" / SLUG / SLUG / output["version"]
+            receipts_file = next((version_root / "raw/receipts").glob("*.json"))
+            receipts = json.loads(receipts_file.read_text())
+            for receipt in receipts:
+                name = receipt["capture"]
+                raw = (version_root / "raw" / (name + ".json")).read_bytes()
+                if name == "features":
+                    changed = json.loads(raw)
+                    changed["features"][0]["attributes"]["BOUND_ID"] = "UNAPPROVED-DRIFT"
+                    raw = json.dumps(changed).encode()
+                    receipt.update(sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
+                (capture / (name + ".json")).write_bytes(raw)
+            (capture / "receipts.json").write_text(json.dumps(receipts))
+            drift = definitions.resolve_job_def("noaa_territorial_normal_ingest").execute_in_process(instance=instance,
+                run_config={"ops": {ingest.op.name: {"config": {"allow_unapproved_local_draft": True, "capture_directory": str(capture)}}}},
+                tags={"hifld/source_code_commit": head, "hifld/probe": "real-input-drift-behavior-only"}, raise_on_error=False)
+            assert not drift.success
+            quarantines = list((root / "staging").rglob("quarantine.json"))
+            assert len(quarantines) == 1
+            quarantine = json.loads(quarantines[0].read_text())
+            assert "identifiers drift" in quarantine["reason"]
+            assert (quarantines[0].parents[1] / "raw/features.json").read_bytes() == (capture / "features.json").read_bytes()
+            assert not list(quarantines[0].parents[1].rglob("*.parquet"))
+            assert sha(root / "staging" / output["candidate_key"]) == output["candidate_sha256"]
+            report.update(failed_quality_run_id=drift.run_id, failed_quality_success=drift.success,
+                          failed_quality_quarantine=quarantine, valid_candidate_preserved=True,
+                          behavioral_probe="One real source BOUND_ID mutated solely for fail-closed testing; not producer data or approval")
         report['previous_public_candidate_preserved'] = sha(previous) == BASELINE_SHA256
         report['published_files'] = published.list_prefix()
         assert report['previous_public_candidate_preserved'] and len(report['published_files']) == 1
