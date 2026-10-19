@@ -14,12 +14,14 @@ import os
 import json
 import platform
 import re
+import shutil
 import sqlite3
 import stat
 import struct
 import subprocess
 import tempfile
 import zipfile
+import zlib
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -33,6 +35,8 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.construction_provenance import ConstructionCodeIdentityError, validate_construction_code_identity
+from dagster_hifld.construction_state import (ConstructionStateError, canonical_construction_bundle, load_first_construction, seal_first_construction)
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
@@ -49,6 +53,8 @@ FIDELITY_FILES = ('baseline_comparison.json','baseline_comparison.md','baseline_
 ARCHIVE_NAME = '20241219-cbrs-boundaries.zip'
 PIN = '8765dd5c6d8d0404d321b28af33236956de2daa8f43b81d61191f8f49eafabd0'
 ARCHIVE_BYTES = 32280370
+LIVE_BLOCK_BYTES = 1024 * 1024
+MIN_CAPTURE_FREE_BYTES = 300 * 1024 * 1024
 MAX_BYTES = 40_000_000
 MAX_EXPANDED_BYTES = 60_000_000
 STEM = '20241219_CBRS_Prohibitions'
@@ -65,7 +71,7 @@ class CBRSQuarantineError(ValueError):
 
 
 class _CachedCandidateQuarantined(CBRSQuarantineError):
-    """Complete invalid cache is already retained outside discovery."""
+    """Invalid cache or immutable first-history failure is already retained."""
 
 
 def encode(value: object) -> bytes:
@@ -93,8 +99,39 @@ def strict_json(body: bytes) -> dict:
 
 
 def require_local(storage: StagingStorageResource) -> None:
-    if isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
+    if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise CBRSQuarantineError('draft_requires_explicit_isolated_local_staging')
+    if storage.prefix:raise CBRSQuarantineError('draft_requires_empty_local_prefix')
+    if '..' in Path(storage.local_dir).parts:raise CBRSQuarantineError('parent_component_in_staging_root')
+    # Lexical ancestor checks precede any acquisition/state writes; no alias resolution.
+    root=Path(os.path.abspath(storage.local_dir))
+    for path in [*reversed(root.parents),root]:
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise CBRSQuarantineError('linked_or_non_directory_staging_root')
+
+
+def bounded_capture_input(path: Path,limit: int) -> tuple[bytes,str | None]:
+    """Return only consumed bounded regular-file bytes and an honest read verdict."""
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    body=b'';read_error=None
+    try:
+        before=os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1:
+            raise CBRSQuarantineError('linked_or_non_regular_capture_input')
+        try:
+            while len(body)<=limit:
+                block=os.read(descriptor,min(LIVE_BLOCK_BYTES,limit+1-len(body)))
+                if not block:break
+                body+=block
+        except OSError:read_error='capture_input_read_error'
+        after=os.fstat(descriptor)
+    finally:os.close(descriptor)
+    identity=lambda x:(x.st_dev,x.st_ino,x.st_size,x.st_mtime_ns,x.st_ctime_ns)
+    if read_error:return body,read_error
+    if identity(before)!=identity(after):return body,'capture_input_changed_during_read'
+    if len(body)>limit:return body,'capture_input_size_limit'
+    if len(body)!=before.st_size:return body,'capture_input_short_read'
+    return body,None
 
 
 def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
@@ -106,9 +143,12 @@ def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
         storage.write_key_if_unchanged(key, body, None)
 
 
-def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str) -> str:
+def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str, wire_body: bytes | None = None) -> str:
     prefix = f'_quarantine/{SLUG}/{sha(body)}/{uuid4().hex}'
     immutable(storage, f'{prefix}/response.body', body)
+    if wire_body is not None:
+        immutable(storage,f'{prefix}/wire.body',wire_body)
+        receipt={**receipt,'wire_bytes_captured':len(wire_body),'wire_sha256':sha(wire_body),'wire_evidence':'wire.body'}
     immutable(storage, f'{prefix}/receipt.json', encode(receipt))
     immutable(storage, f'{prefix}/report.json', encode({'approved': False, 'status': 'quarantined', 'reason': reason}))
     return prefix
@@ -128,43 +168,79 @@ def validate_receipt(body: bytes, receipt: dict, url: str) -> None:
         raise CBRSQuarantineError('capture_receipt_requires_timezone')
 
 
+def available_capture_bytes(storage: StagingStorageResource) -> int:
+    path=Path(os.path.abspath(storage.local_dir))
+    while not path.exists():path=path.parent
+    return shutil.disk_usage(path).free
+
+
 def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     require_local(storage)
     captures = {}
     for name,url in URLS.items():
         if capture_dir is not None:
-            body = b''; receipt_body=b''; receipt = {'capture_path':str(capture_dir),'requested_url':url}
+            body=b'';receipt_body=b'';body_read=False;receipt_read=False;body_complete=False;receipt_complete=False
+            receipt={'capture_path':str(capture_dir),'requested_url':url}
             try:
-                with (capture_dir / (name + '.body')).open('rb') as f: body = f.read(MAX_BYTES + 1)
-                receipt_body=(capture_dir / (name + '.receipt.json')).read_bytes()
+                body,read_error=bounded_capture_input(capture_dir/(name+'.body'),MAX_BYTES)
+                body_read=True;body_complete=read_error is None
+                immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',body)
+                if read_error:raise CBRSQuarantineError(read_error)
+                receipt_body,read_error=bounded_capture_input(capture_dir/(name+'.receipt.json'),65536)
+                receipt_read=True;receipt_complete=read_error is None
                 immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/receipts/{sha(receipt_body)}.body',receipt_body)
+                if read_error:raise CBRSQuarantineError(read_error)
                 receipt = strict_json(receipt_body)
                 validate_receipt(body,receipt,url)
                 if len(body)>MAX_BYTES: raise CBRSQuarantineError('capture_size_limit')
             except (OSError,ValueError,TypeError) as exc:
-                location=quarantine(storage,body,receipt,str(exc))
-                immutable(storage,f'{location}/original-receipt.body',receipt_body)
+                diagnostic={**receipt,'raw_body_read':body_read,'raw_body_complete':body_complete,'raw_receipt_read':receipt_read,'raw_receipt_complete':receipt_complete}
+                location=quarantine(storage,body,diagnostic,str(exc))
+                if receipt_read:
+                    suffix='original-receipt.body' if receipt_complete else 'original-receipt.prefix.body'
+                    immutable(storage,f'{location}/{suffix}',receipt_body)
                 raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
         else:
             for attempt in range(3):
-                body=b'';response=None;receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
+                body=b'';wire=b'';response=None;receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
                     with httpx.Client(headers={'Accept-Encoding':'identity'},follow_redirects=False,timeout=45) as client:
                         with client.stream('GET',url) as response:
                             receipt.update(final_url=str(response.url),status=response.status_code)
-                            for block in response.iter_bytes():
-                                body+=block[:MAX_BYTES+1-len(body)]
-                                if len(body)>MAX_BYTES: raise CBRSQuarantineError('response_size_limit')
+                            encoding=response.headers.get('content-encoding','identity').strip().lower()
+                            if encoding not in {'','identity','gzip','deflate'}:raise CBRSQuarantineError('unsupported_content_encoding')
+                            decoder=zlib.decompressobj(16+zlib.MAX_WBITS if encoding=='gzip' else zlib.MAX_WBITS) if encoding in {'gzip','deflate'} else None
+                            iterator=iter(response.iter_raw())
+                            while True:
+                                if available_capture_bytes(storage)<MIN_CAPTURE_FREE_BYTES+len(wire)+len(body)+LIVE_BLOCK_BYTES:
+                                    raise CBRSQuarantineError('capture_disk_reserve_before_next_block')
+                                try:raw_block=next(iterator)
+                                except StopIteration:break
+                                # Keep every actually delivered wire byte before cap/decode errors.
+                                wire+=raw_block
+                                if len(wire)>MAX_BYTES+LIVE_BLOCK_BYTES:raise CBRSQuarantineError('wire_response_size_limit')
+                                if decoder is None:
+                                    body+=raw_block
+                                    if len(body)>MAX_BYTES:raise CBRSQuarantineError('response_size_limit')
+                                else:
+                                    pending=raw_block
+                                    while True:
+                                        block=decoder.decompress(pending,LIVE_BLOCK_BYTES);body+=block
+                                        if len(body)>MAX_BYTES:raise CBRSQuarantineError('response_size_limit')
+                                        pending=decoder.unconsumed_tail
+                                        if not pending:break
+                            if decoder is not None and (not decoder.eof or decoder.unused_data):
+                                raise CBRSQuarantineError('incomplete_or_multiple_compressed_response')
                             receipt.update(byte_length=len(body),sha256=sha(body),wire_byte_length=response.num_bytes_downloaded,content_encoding=response.headers.get('content-encoding','identity'),content_length_header=response.headers.get('content-length'))
                             validate_receipt(body,receipt,url)
                             if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=response.num_bytes_downloaded:
                                 raise CBRSQuarantineError('incomplete_content_length')
                     break
-                except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
+                except (httpx.HTTPError,OSError,ValueError,TypeError,zlib.error) as exc:
                     receipt.update(byte_length=len(body),sha256=sha(body),partial=True)
                     if response is not None:
                         receipt.update(wire_byte_length=getattr(response,'num_bytes_downloaded',None),content_encoding=response.headers.get('content-encoding','identity'),content_length_header=response.headers.get('content-length'))
-                    location=quarantine(storage,body,receipt,str(exc))
+                    location=quarantine(storage,body,receipt,str(exc),wire_body=wire)
                     if attempt==2: raise CBRSQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
         captures[name]=(body,receipt)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',body)
@@ -341,7 +417,7 @@ def validate_geopackage_metadata(path: Path, rows: list[dict]) -> None:
 
 def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
     require_local(storage)
-    root=Path(storage.local_dir).resolve()
+    root=Path(os.path.abspath(storage.local_dir))
     key=storage._ensure_prefixed(prefix)
     if Path(key).is_absolute() or any(part in {'.','..'} for part in Path(key).parts):
         raise CBRSQuarantineError('unsafe_local_candidate_prefix')
@@ -479,40 +555,56 @@ def fidelity_payloads(fidelity: dict,rows: list[dict],records: bytes,comparison:
 
 
 def construction_bundle_key(version: str) -> str:
-    return f'_source-provenance/{SLUG}/{version}/bundle.json'
+    return f'_construction-state/{SLUG}/{version}.json'
+
+
+def preflight_construction_history_held(storage: StagingStorageResource,version: str,identity: dict) -> None:
+    """Inspect known history under the common lock before any cold native writer."""
+    refuse_observed_construction_loss(storage,version)
+    key=construction_bundle_key(version);prefix=f'{SLUG}/{SLUG}/{version}'
+    target=local_candidate_path(storage,prefix)
+    witnesses=[local_candidate_path(storage,key+suffix) for suffix in ('','.first-construction.json','.evidence')]
+    if target.exists() or any(path.exists() for path in witnesses):
+        try:load_first_construction(storage,key,version,sha(encode(identity)))
+        except ConstructionStateError as exc:
+            # If this write fails, do not detach the still-discoverable candidate.
+            record_construction_loss_held(storage,version,str(exc))
+            retained=quarantine_cached_candidate_held(storage,target,prefix,str(exc)) if target.exists() else 'outside first-state witnesses and incident'
+            raise _CachedCandidateQuarantined(f'observed_construction_history_loss:{exc}; retained:{retained}') from exc
 
 
 def validate_construction_commit(manifest: dict,identity: dict) -> None:
-    """A construction commit must contain exactly the pinned processing files.
+    """Delegate canonical reachable Git/blob binding; this is not execution proof."""
+    try:validate_construction_code_identity(Path(__file__).parents[3],manifest.get('code_commit'),identity['files'])
+    except ConstructionCodeIdentityError as exc:
+        raise CBRSQuarantineError('original_construction_commit:'+exc.code) from exc
 
-    Later documentation-only HEADs may differ. Neither the mutable candidate nor
-    a malformed external bundle can invent a commit or a different processor.
-    This local immutable depot is a preservation boundary, not a signature or a
-    defense against an administrator replacing the whole depot and Git history.
-    """
-    commit=manifest.get('code_commit');repo=Path(__file__).parents[3]
-    if not isinstance(commit,str) or not re.fullmatch('[0-9a-f]{40}',commit):
-        raise CBRSQuarantineError('original_construction_commit_not_valid')
-    try:
-        subprocess.check_output(['git','cat-file','-e',commit+'^{commit}'],cwd=repo,stderr=subprocess.DEVNULL)
-        for name,digest in identity['files'].items():
-            if sha(subprocess.check_output(['git','show',f'{commit}:{name}'],cwd=repo,stderr=subprocess.DEVNULL))!=digest:
-                raise CBRSQuarantineError('original_construction_commit_processing_files_differ')
-    except subprocess.CalledProcessError as exc:
-        raise CBRSQuarantineError('original_construction_commit_not_in_repository') from exc
+
+def construction_incident_path(storage: StagingStorageResource,version: str) -> Path:
+    return local_candidate_path(storage,f'_construction-incidents/{SLUG}/{version}')
+
+
+def refuse_observed_construction_loss(storage: StagingStorageResource,version: str) -> None:
+    if construction_incident_path(storage,version).exists():
+        raise CBRSQuarantineError('observed_construction_history_loss_requires_explicit_trusted_recovery')
+
+
+def record_construction_loss_held(storage: StagingStorageResource,version: str,reason: str) -> None:
+    """Persist before detaching a cache; an I/O error leaves the cache in place."""
+    prefix=str(construction_incident_path(storage,version).relative_to(Path(os.path.abspath(storage.local_dir))))
+    immutable(storage,prefix+'/observed-loss.json',encode({'approved':False,'version':version,
+        'reason':reason,'recovery':'Explicit operator restoration of exact trusted outside state and incident acknowledgement; never automatic.'}))
 
 
 def load_construction_bundle(storage: StagingStorageResource,version: str,
                              expected_manifest: dict,identity: dict,captures: dict) -> tuple[dict,dict]:
-    """Read original construction only; cache reuse must never self-bootstrap it."""
-    key=construction_bundle_key(version)
-    path=local_candidate_path(storage,key)
-    if not storage.object_exists(key):raise CBRSQuarantineError('missing_original_construction_bundle')
-    if not path.is_file() or path.stat().st_nlink!=1:raise CBRSQuarantineError('linked_original_construction_bundle')
-    bundle=strict_json(storage.read_key(key))
-    if (set(bundle)!={'schema_version','version','manifest','captures'} or bundle['schema_version']!=1
-            or bundle['version']!=version or not isinstance(bundle['captures'],dict)
-            or set(bundle['captures'])!=set(URLS) or not isinstance(bundle['manifest'],dict)):
+    """Read shared immutable original state; never reconstruct it from a cache."""
+    refuse_observed_construction_loss(storage,version)
+    envelope=strict_json(load_first_construction(storage,construction_bundle_key(version),version,sha(encode(identity))))
+    bundle=envelope['payload']
+    if (set(bundle)!={'schema_version','version','manifest','captures'} or type(bundle['schema_version']) is not int or bundle['schema_version']!=1
+            or bundle['version']!=version or type(bundle['captures']) is not dict
+            or set(bundle['captures'])!=set(URLS) or type(bundle['manifest']) is not dict):
         raise CBRSQuarantineError('original_construction_bundle_roster_drift')
     original={}
     for name in URLS:
@@ -538,15 +630,18 @@ def load_construction_bundle(storage: StagingStorageResource,version: str,
 def bind_first_construction_held(storage: StagingStorageResource,version: str,
                                  payloads: dict,ready: dict,captures: dict,identity: dict) -> None:
     """Called only after a fresh full-source build and while holding version lock."""
+    refuse_observed_construction_loss(storage,version)
     manifest=strict_json(payloads['metadata/source_manifest.json']);key=construction_bundle_key(version)
-    local_candidate_path(storage,key)
-    if not storage.object_exists(key):
-        validate_construction_commit(manifest,identity)
-        bundle={'schema_version':1,'version':version,'manifest':manifest,'captures':{name:{
-            'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
-            'receipt_key':f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json',
-            'receipt':receipt} for name,(body,receipt) in captures.items()}}
-        immutable(storage,key,encode(bundle))
+    validate_release_provenance(manifest);validate_construction_commit(manifest,identity)
+    for name,(body,receipt) in captures.items():
+        validate_receipt(body,receipt,URLS[name])
+        if storage.read_key(f'_raw-captures/{SLUG}/{sha(body)}/{name}.body')!=body or storage.read_key(f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json')!=encode(receipt):
+            raise CBRSQuarantineError('first_construction_capture_depot_bytes_drift')
+    bundle={'schema_version':1,'version':version,'manifest':manifest,'captures':{name:{
+        'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
+        'receipt_key':f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json',
+        'receipt':receipt} for name,(body,receipt) in captures.items()}}
+    seal_first_construction(storage,key,version,sha(encode(identity)),canonical_construction_bundle(version,sha(encode(identity)),bundle))
     original,original_captures=load_construction_bundle(storage,version,manifest,identity,captures)
     payloads['metadata/source_manifest.json']=encode(original)
     payloads['raw/retrieval.json']=encode(original_captures['official_zip'][1])
@@ -559,16 +654,31 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
     """Install one fully built local version atomically; partial builds are never discoverable."""
     with candidate_lock(storage,prefix) as target:
         if target.exists() or target.is_symlink():
-            # A valid concurrent winner is never overwritten or quarantined.
             raise CBRSQuarantineError('concurrent_or_incomplete_existing_candidate')
-        if captures is not None:
-            bind_first_construction_held(storage,ready['version'],payloads,ready,captures,identity)
+        if captures is not None:refuse_observed_construction_loss(storage,ready['version'])
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
             for name,value in payloads.items():immutable(private,name,value)
             immutable(private,'metadata/cbrs_prohibitions_candidate_ready.json',encode(ready))
+            # Complete private bytes and ready marker exist BEFORE first outside seal.
+            for name,value in payloads.items():
+                if private.read_key(name)!=value:raise CBRSQuarantineError('private_candidate_write_incomplete')
+            if private.read_key('metadata/cbrs_prohibitions_candidate_ready.json')!=encode(ready):
+                raise CBRSQuarantineError('private_ready_write_incomplete')
+            if captures is not None:
+                bind_first_construction_held(storage,ready['version'],payloads,ready,captures,identity)
+                # An existing original may predate a genuine docs-only HEAD.
+                # Apply its validated manifest/receipts only inside this private build.
+                for name,value in payloads.items():
+                    path=Path(tmp)/name
+                    if path.read_bytes()!=value:path.write_bytes(value)
+                marker=Path(tmp)/'metadata/cbrs_prohibitions_candidate_ready.json'
+                if marker.read_bytes()!=encode(ready):marker.write_bytes(encode(ready))
+            expected=set(payloads)|{'metadata/cbrs_prohibitions_candidate_ready.json'}
+            actual={str(path.relative_to(tmp)) for path in Path(tmp).rglob('*') if path.is_file()}
+            if actual!=expected or any(private.read_key(name)!=value for name,value in payloads.items()) or private.read_key('metadata/cbrs_prohibitions_candidate_ready.json')!=encode(ready):
+                raise CBRSQuarantineError('private_candidate_final_inventory_or_bytes_drift')
             os.rename(tmp,target)
-
 
 
 def stage_cbrs_prohibitions_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
@@ -577,16 +687,17 @@ def stage_cbrs_prohibitions_candidate(storage: StagingStorageResource, *, captur
     body,receipt = captures['official_zip']
     try:
         manifest=provenance(captures)
+        identity = processing_identity()
+        fingerprint = sha(encode(identity))
+        capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
+        version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
+        prefix = f'{SLUG}/{SLUG}/{version}'
+        ready_key = f'{prefix}/metadata/cbrs_prohibitions_candidate_ready.json'
+        with candidate_lock(storage,prefix):preflight_construction_history_held(storage,version,identity)
         with tempfile.TemporaryDirectory(prefix='cbrs_prohibitions-source-') as tmp:
             directory = Path(tmp)
             rows, audit, members = inspect_archive(body, directory)
             records = b''.join(encode(r) for r in rows)
-            identity = processing_identity()
-            fingerprint = sha(encode(identity))
-            capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
-            version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
-            prefix = f'{SLUG}/{SLUG}/{version}'
-            ready_key = f'{prefix}/metadata/cbrs_prohibitions_candidate_ready.json'
             with candidate_lock(storage,prefix) as target:
                 if target.exists():
                     try:
@@ -607,6 +718,7 @@ def stage_cbrs_prohibitions_candidate(storage: StagingStorageResource, *, captur
                         return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
                                 'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
+                        if isinstance(exc,ConstructionStateError):record_construction_loss_held(storage,version,str(exc))
                         retained=quarantine_cached_candidate_held(storage,target,prefix,str(exc))
                         raise _CachedCandidateQuarantined(f'{exc}; complete_cache_retained:{retained}') from exc
             geopackage = directory / f'{SLUG}.gpkg'

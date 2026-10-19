@@ -3,6 +3,7 @@ import copy
 import gzip
 import json
 import os
+import shutil
 import tempfile
 import sqlite3
 import struct
@@ -104,7 +105,7 @@ class CBRSTests(unittest.TestCase):
             status_code=200;url=s.URL;headers={}
             def __enter__(self):return self
             def __exit__(self,*a):pass
-            def iter_bytes(self,**kw):yield b'partial';raise httpx.ReadError('reset')
+            def iter_raw(self):yield b'partial';raise httpx.ReadError('reset')
         class Client:
             def __enter__(self):return self
             def __exit__(self,*a):pass
@@ -125,7 +126,7 @@ class CBRSTests(unittest.TestCase):
                 self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
 
     def test_archive_pin_and_zip_roster_changes_fail_before_decode(self):
-        body=b'PK\x03\x04synthetic unapproved invalid archive'
+        body=(CAPTURE/'official_zip.body').read_bytes() if os.environ.get('HIFLD_CBRS_PROHIBITIONS_CAPTURE_DIR') else b'PK\x03\x04synthetic unapproved invalid archive'
         for changed in [body[:-1],body[:1000],b'error']:
             with tempfile.TemporaryDirectory() as d,patch.object(s.fiona,'open') as opened,self.assertRaisesRegex(ValueError,'changed_truncated'):
                 s.inspect_archive(changed,Path(d))
@@ -235,43 +236,132 @@ class CBRSTests(unittest.TestCase):
             self.assertTrue(outcome and 'concurrent_or_incomplete_existing_candidate' in outcome[0])
             self.assertEqual((Path(d)/prefix/'winner').read_bytes(),b'valid-concurrent-winner')
 
-    @REAL_CAPTURE
-    def test_external_first_construction_preserves_original_receipts_and_commit(self):
-        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+    def tiny_construction(self,root,version='v0.0.0-draft-synthetic-history'):
+        """Opaque synthetic protocol data, never a real native source build."""
+        capture=root/'synthetic-captures';capture.mkdir()
+        bodies={'official_zip':b'explicitly synthetic opaque fixture', 'fws_data':b'synthetic page',
+            'fws_download':b'/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip',
+            'fws_prohibitions_metadata':b'synthetic 20241219 CBRS_Prohibitions'}
+        for name,body in bodies.items():
+            (capture/(name+'.body')).write_bytes(body)
+            (capture/(name+'.receipt.json')).write_bytes(s.encode({'requested_url':s.URLS[name],'final_url':s.URLS[name],'status':200,'byte_length':len(body),'sha256':s.sha(body),'observed_at':'2026-10-19T00:00:00+00:00','fixture':'synthetic only'}))
+        storage=StagingStorageResource(local_dir=str(root/'staging'));captures=s.acquire(storage,capture)
         repo=Path(__file__).parents[1];commit=s.subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
-        name='pyproject.toml';identity={'files':{name:s.sha(s.subprocess.check_output(['git','show',f'{commit}:{name}'],cwd=repo))}}
+        identity={'files':{'pyproject.toml':s.sha(s.subprocess.check_output(['git','show',commit+':pyproject.toml'],cwd=repo))}}
+        native=root/'synthetic.parquet';native.write_bytes(b'opaque synthetic prebuilt bytes, not a native dataset')
+        manifest=s.provenance(captures);manifest.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=s.native_prebuilt_policy(native))
+        payloads={'metadata/source_manifest.json':s.encode(manifest),'geoparquet/'+s.SLUG+'.parquet':native.read_bytes(),'raw/retrieval.json':s.encode(captures['official_zip'][1])}
+        payloads.update({f'raw/captures/{name}.receipt.json':s.encode(receipt) for name,(_,receipt) in captures.items()})
+        ready={'version':version,'objects':{name:s.sha(value) for name,value in payloads.items()}}
+        prefix=f'{s.SLUG}/{s.SLUG}/{version}'
+        return storage,capture,captures,identity,payloads,ready,prefix
+
+    def test_external_first_construction_preserves_original_receipts_and_commit(self):
         with tempfile.TemporaryDirectory() as d:
-            storage=StagingStorageResource(local_dir=d);s.acquire(storage,CAPTURE)
-            native=Path(d)/'fixture.parquet';native.write_bytes(b'policy-only native fixture')
-            manifest=s.provenance(captures);manifest.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=s.native_prebuilt_policy(native))
-            version='v0.0.0-draft-construction-unit-fixture';payloads={'metadata/source_manifest.json':s.encode(manifest)};ready={'version':version}
-            with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
-                s.bind_first_construction_held(storage,version,payloads,ready,captures,identity)
-            bundle_key=s.construction_bundle_key(version);original_bundle=storage.read_key(bundle_key)
-            changed=copy.deepcopy(captures)
-            for _,receipt in changed.values():receipt['observed_at']='2026-10-20T01:02:03+00:00'
-            later=s.provenance(changed);later.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=manifest['prebuilt_output_policy'],code_commit='f'*40)
-            later_payload={'metadata/source_manifest.json':s.encode(later)}
-            with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
-                s.bind_first_construction_held(storage,version,later_payload,ready,changed,identity)
-            self.assertEqual(storage.read_key(bundle_key),original_bundle)
-            self.assertEqual(s.strict_json(later_payload['metadata/source_manifest.json']),manifest)
-            self.assertEqual(s.strict_json(later_payload['raw/retrieval.json']),captures['official_zip'][1])
-            Path(d,bundle_key).unlink()
-            with self.assertRaisesRegex(ValueError,'missing_original_construction_bundle'):
-                s.load_construction_bundle(storage,version,manifest,identity,captures)
-            forged=s.strict_json(original_bundle);forged['manifest']['code_commit']='0'*40
-            Path(d,bundle_key).write_bytes(s.encode(forged))
-            with self.assertRaisesRegex(ValueError,'original_construction_commit_not_in_repository'):
-                s.load_construction_bundle(storage,version,manifest,identity,captures)
-            forged=s.strict_json(original_bundle);forged['manifest']['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]['bytes']+=1
-            Path(d,bundle_key).write_bytes(s.encode(forged))
-            with self.assertRaisesRegex(ValueError,'original_construction_manifest_drift'):
-                s.load_construction_bundle(storage,version,manifest,identity,captures)
-            Path(d,bundle_key).write_bytes(original_bundle)
-            wrong_identity={'files':{name:'0'*64}}
-            with self.assertRaisesRegex(ValueError,'original_construction_commit_processing_files_differ'):
-                s.validate_construction_commit(manifest,wrong_identity)
+            storage,capture,captures,identity,payloads,ready,prefix=self.tiny_construction(Path(d));version=ready['version']
+            s.commit_complete_candidate(storage,prefix,payloads,ready,captures=captures,identity=identity)
+            key=s.construction_bundle_key(version);original=storage.read_key(key)
+            manifest=s.strict_json(payloads['metadata/source_manifest.json'])
+            for name,(_,receipt) in captures.items():
+                (capture/(name+'.receipt.json')).write_bytes(s.encode({**receipt,'observed_at':'2026-10-20T00:00:00+00:00'}))
+            later=s.acquire(storage,capture);shutil.rmtree(Path(storage.local_dir,prefix))
+            later_payloads=dict(payloads);later_manifest=s.provenance(later);later_manifest.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=manifest['prebuilt_output_policy']);later_payloads['metadata/source_manifest.json']=s.encode(later_manifest)
+            s.commit_complete_candidate(storage,prefix,later_payloads,ready,captures=later,identity=identity)
+            self.assertEqual(storage.read_key(key),original)
+            self.assertEqual(s.strict_json(later_payloads['metadata/source_manifest.json']),manifest)
+            self.assertEqual(s.strict_json(later_payloads['raw/retrieval.json']),captures['official_zip'][1])
+            wrong_identity={'files':{'pyproject.toml':'0'*64}}
+            with self.assertRaisesRegex(ValueError,'construction_processing_blob_hash_mismatch'):s.validate_construction_commit(manifest,wrong_identity)
+
+    def test_shared_history_loss_repeated_cold_refusal_and_explicit_recovery(self):
+        for mode in ['alias','all_witnesses','marker_bool','marker_float','marker_noncanonical','cas_only']:
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d:
+                storage,_,captures,identity,payloads,ready,prefix=self.tiny_construction(Path(d));version=ready['version']
+                s.commit_complete_candidate(storage,prefix,payloads,ready,captures=captures,identity=identity)
+                state=Path(storage.local_dir,'_construction-state');trusted={str(p.relative_to(state)):p.read_bytes() for p in state.rglob('*') if p.is_file()};target=Path(storage.local_dir,prefix);candidate=s.tree_inventory(target);key=Path(storage.local_dir,s.construction_bundle_key(version));marker=Path(str(key)+'.first-construction.json')
+                if mode=='alias':key.unlink()
+                elif mode=='all_witnesses':shutil.rmtree(state)
+                elif mode=='cas_only':key.unlink();marker.unlink()
+                else:
+                    changed=s.strict_json(marker.read_bytes());changed['schema_version']=True if mode=='marker_bool' else 1.0 if mode=='marker_float' else 1
+                    marker.write_bytes(s.encode(changed)+(b'\n' if mode=='marker_noncanonical' else b''))
+                with s.candidate_lock(storage,prefix),self.assertRaisesRegex(s.CBRSQuarantineError,'observed_construction_history_loss'):
+                    s.preflight_construction_history_held(storage,version,identity)
+                self.assertFalse(target.exists());bad=list(Path(storage.local_dir,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'));self.assertEqual(len(bad),1);self.assertEqual(s.tree_inventory(bad[0]),candidate)
+                for retry in range(2):
+                    with patch.object(s,'seal_first_construction',wraps=s.seal_first_construction) as seal,self.assertRaisesRegex(s.CBRSQuarantineError,'observed_construction_history_loss_requires_explicit_trusted_recovery'):
+                        s.commit_complete_candidate(storage,prefix,dict(payloads),dict(ready),captures=captures,identity=identity)
+                    seal.assert_not_called()
+                # Explicit trusted operator fixture restoration, never automatic repair.
+                if state.exists():shutil.rmtree(state)
+                for name,body in trusted.items():p=state/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(body)
+                shutil.rmtree(s.construction_incident_path(storage,version));os.rename(bad[0],target)
+                with s.candidate_lock(storage,prefix):s.preflight_construction_history_held(storage,version,identity)
+                original,_=s.load_construction_bundle(storage,version,s.strict_json(payloads['metadata/source_manifest.json']),identity,captures)
+                self.assertEqual(original,s.strict_json(payloads['metadata/source_manifest.json']))
+
+    def test_source_uses_shared_canonical_reachable_git_binding(self):
+        with tempfile.TemporaryDirectory() as d:
+            _,_,_,identity,payloads,_,_=self.tiny_construction(Path(d));manifest=s.strict_json(payloads['metadata/source_manifest.json'])
+            s.validate_construction_commit(manifest,identity)
+            for changed in ['0'*40,'f'*40,manifest['code_commit'].upper()]:
+                with self.subTest(commit=changed),self.assertRaises(ValueError):s.validate_construction_commit({**manifest,'code_commit':changed},identity)
+            wrong={'files':{'pyproject.toml':'0'*64}}
+            with self.assertRaisesRegex(ValueError,'construction_processing_blob_hash_mismatch'):s.validate_construction_commit(manifest,wrong)
+
+    def test_private_failure_precedes_any_first_state_seal(self):
+        for key in ['metadata/source_manifest.json','metadata/cbrs_prohibitions_candidate_ready.json']:
+            for failure in [OSError('fixture disk'),KeyboardInterrupt()]:
+                with self.subTest(key=key,error=type(failure).__name__),tempfile.TemporaryDirectory() as d:
+                    storage,_,captures,identity,payloads,ready,prefix=self.tiny_construction(Path(d));original=s.immutable
+                    def fail_private(resource,name,body):
+                        if '.candidate-build-' in resource.local_dir and name==key:raise failure
+                        return original(resource,name,body)
+                    with patch.object(s,'immutable',side_effect=fail_private),patch.object(s,'seal_first_construction',wraps=s.seal_first_construction) as seal,self.assertRaises(type(failure)):
+                        s.commit_complete_candidate(storage,prefix,payloads,ready,captures=captures,identity=identity)
+                    seal.assert_not_called();self.assertFalse(Path(storage.local_dir,prefix).exists());self.assertFalse(Path(storage.local_dir,'_construction-state').exists());self.assertFalse(list(Path(storage.local_dir).rglob('.candidate-build-*')))
+
+    def test_incident_write_failure_keeps_complete_candidate_in_place(self):
+        with tempfile.TemporaryDirectory() as d:
+            storage,_,captures,identity,payloads,ready,prefix=self.tiny_construction(Path(d));version=ready['version'];s.commit_complete_candidate(storage,prefix,payloads,ready,captures=captures,identity=identity)
+            target=Path(storage.local_dir,prefix);before=s.tree_inventory(target);Path(storage.local_dir,s.construction_bundle_key(version)).unlink();original=s.immutable
+            def fail_journal(resource,key,body):
+                if key.startswith('_construction-incidents/'):raise OSError('synthetic incident write failure')
+                return original(resource,key,body)
+            with s.candidate_lock(storage,prefix),patch.object(s,'immutable',side_effect=fail_journal),self.assertRaisesRegex(OSError,'incident write failure'):s.preflight_construction_history_held(storage,version,identity)
+            self.assertEqual(s.tree_inventory(target),before);self.assertFalse(list(Path(storage.local_dir).rglob('invalid-cache-*')))
+
+    def test_lexical_root_aliases_reject_before_any_writes(self):
+        for ancestor in [False,True]:
+            with self.subTest(ancestor=ancestor),tempfile.TemporaryDirectory() as d:
+                root=Path(d);outside=root/'outside';outside.mkdir();(outside/'sentinel').write_bytes(b'unchanged');alias=root/'alias';alias.symlink_to(outside,target_is_directory=True)
+                selected=alias/'child' if ancestor else alias
+                with self.assertRaisesRegex(ValueError,'linked_or_non_directory_staging_root'):s.acquire(StagingStorageResource(local_dir=str(selected)),root/'no-capture')
+                self.assertEqual(s.tree_inventory(outside),{'sentinel':{'sha256':s.sha(b'unchanged'),'bytes':9}})
+
+    def test_parent_components_and_nonempty_prefix_reject_before_acquisition(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);outside=root/'outside';outside.mkdir();(outside/'sentinel').write_bytes(b'unchanged');alias=root/'alias';alias.symlink_to(outside,target_is_directory=True)
+            resources=[StagingStorageResource(local_dir=str(alias/'..'/'stage')),StagingStorageResource(local_dir=str(root/'stage'),prefix='../outside'),StagingStorageResource(local_dir=str(root/'stage'),prefix='alias')]
+            for resource in resources:
+                with self.subTest(resource=resource),self.assertRaises(ValueError):s.acquire(resource,root/'no-capture')
+            self.assertEqual(s.tree_inventory(outside),{'sentinel':{'sha256':s.sha(b'unchanged'),'bytes':9}});self.assertFalse((root/'stage').exists())
+
+    def test_receipt_io_and_size_failure_keep_only_consumed_bytes(self):
+        for mode in ['unreadable','oversize','symlink']:
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d:
+                root=Path(d);capture=root/'capture';capture.mkdir();body=b'synthetic retained before receipt I/O';(capture/'official_zip.body').write_bytes(body);receipt=capture/'official_zip.receipt.json';receipt.write_bytes(b'x'*65538 if mode=='oversize' else b'{}')
+                if mode=='unreadable':receipt.chmod(0)
+                if mode=='symlink':receipt.unlink();receipt.symlink_to(root/'nonexistent')
+                stage=root/'stage'
+                try:
+                    with self.assertRaises(ValueError):s.acquire(StagingStorageResource(local_dir=str(stage)),capture)
+                finally:
+                    if mode=='unreadable':receipt.chmod(0o600)
+                self.assertTrue(any(p.read_bytes()==body for p in stage.rglob('official_zip.body')))
+                diagnostics=[s.strict_json(p.read_bytes()) for p in stage.rglob('receipt.json')];self.assertEqual(len(diagnostics),1);self.assertEqual(diagnostics[0]['raw_receipt_read'],mode=='oversize')
+                if mode=='oversize':self.assertEqual(next(stage.rglob('original-receipt.prefix.body')).read_bytes(),b'x'*65537)
+                else:self.assertFalse(list(stage.rglob('original-receipt.body')))
 
     def test_compressed_wire_length_and_decoded_body_limit(self):
         url='https://www.fws.gov/test-transport-fixture';decoded=b'complete-decoded-body-'*10000;wire=gzip.compress(decoded)
@@ -303,6 +393,40 @@ class CBRSTests(unittest.TestCase):
             self.assertTrue(all(x['partial'] and x['wire_byte_length']==len(wire)-8 for x in receipts))
         with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s,'MAX_BYTES',100),patch.object(s.httpx,'Client',side_effect=lambda **kwargs:factory(transport=httpx.MockTransport(response),**kwargs)):
             with self.assertRaisesRegex(ValueError,'response_size_limit'):s.acquire(StagingStorageResource(local_dir=d),None)
-            self.assertTrue(all(p.read_bytes()==decoded[:101] for p in Path(d).rglob('response.body')))
+            self.assertTrue(all(p.read_bytes()==decoded for p in Path(d).rglob('response.body')))
+
+    def test_local_read_error_retains_actual_consumed_prefix(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);capture=root/'capture';capture.mkdir();(capture/'official_zip.body').write_bytes(b'synthetic prefix retained');stage=root/'stage'
+            original=s.os.read;calls=[0]
+            def interrupted(fd,limit):
+                calls[0]+=1
+                if calls[0]==1:return original(fd,5)
+                raise OSError('synthetic local read interruption')
+            with patch.object(s.os,'read',side_effect=interrupted),self.assertRaisesRegex(ValueError,'capture_input_read_error'):s.acquire(StagingStorageResource(local_dir=str(stage)),capture)
+            self.assertTrue(any(p.read_bytes()==b'synth' for p in stage.rglob('official_zip.body')))
+            diagnostic=s.strict_json(next(stage.rglob('receipt.json')).read_bytes());self.assertTrue(diagnostic['raw_body_read']);self.assertFalse(diagnostic['raw_body_complete']);self.assertFalse(diagnostic['raw_receipt_read'])
+
+    def test_live_delivered_overflow_and_reserve_before_next(self):
+        url='https://www.fws.gov/synthetic-transport';body=b'x'*68;factory=httpx.Client
+        def response(request):return httpx.Response(200,stream=httpx.ByteStream(body))
+        with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s,'MAX_BYTES',36),patch.object(s.httpx,'Client',side_effect=lambda **kw:factory(transport=httpx.MockTransport(response),**kw)):
+            with self.assertRaisesRegex(ValueError,'response_size_limit'):s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual([p.read_bytes() for p in Path(d).rglob('response.body')],[body]*3)
+        delivered=[]
+        class Blocks(httpx.SyncByteStream):
+            def __iter__(self):
+                delivered.append(1);yield b'a'*s.LIVE_BLOCK_BYTES
+                delivered.append(2);yield b'b'*s.LIVE_BLOCK_BYTES
+        def blocks(request):return httpx.Response(200,stream=Blocks())
+        for allow in [0,1]:
+            delivered.clear();calls=[0]
+            def available(storage):
+                calls[0]+=1
+                return 10**12 if allow and calls[0]%2 else 0
+            with tempfile.TemporaryDirectory() as d,patch.object(s,'URLS',{'fixture':url}),patch.object(s,'available_capture_bytes',side_effect=available),patch.object(s.httpx,'Client',side_effect=lambda **kw:factory(transport=httpx.MockTransport(blocks),**kw)):
+                with self.assertRaisesRegex(ValueError,'capture_disk_reserve_before_next_block'):s.acquire(StagingStorageResource(local_dir=d),None)
+                self.assertEqual(delivered,[1]*3 if allow else [])
+                self.assertEqual([p.read_bytes() for p in Path(d).rglob('response.body')],[b'a'*s.LIVE_BLOCK_BYTES if allow else b'']*3)
 
 if __name__=='__main__':unittest.main()

@@ -1,7 +1,7 @@
 # CBRS Prohibitions — unapproved working draft
 
 Source: FWS 2024-12-19 publication, https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data .
-The explicit asset retains all 1,693 native records, original shapefile FIDs, NAD83 coordinates, DATE/date32 values and raw inputs. Monthly refresh remains STOPPED.
+The explicit asset retains all 1,693 native records, original shapefile FIDs, NAD83 coordinates, DATE/date32 values and raw inputs. Monthly refresh remains STOPPED. Local staging requires an empty prefix and no parent/symlink aliases.
 Run focused tests: `uv run --frozen python -m unittest discover -s tests -p 'test_cbrs_prohibitions_source.py'`.
 Set `HIFLD_CBRS_PROHIBITIONS_CAPTURE_DIR` to complete original bodies/receipts for full real-input tests; default tests use clearly synthetic structural examples.
 Research/captures/logs/replay tools are preserved in local artifact `issue-30-reviewed-91889f5-research-artifact.tar.gz`.
