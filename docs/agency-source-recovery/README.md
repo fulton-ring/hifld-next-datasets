@@ -51,7 +51,7 @@ Prioritize source families for investigation, but keep one dataset issue per inv
 - USACE navigation: rediscover named layers rather than relying on obsolete numeric IDs. Validate agency ownership and per-layer semantics.
 - Energy: investigate official tabular releases where appropriate. Authentication-required Energy Atlas services are not usable public feeds. Do not assume EIA-860 reproduces pipeline geometry or the entire HIFLD energy catalog.
 
-`dataset-issues.jsonl` contains one research-first issue draft per inventory entry. These are drafts, not verified implementation tickets or created GitHub issues. Unknown candidates are intentionally blank. The deterministic HTML marker permits a future publisher to skip already-created issues; search open and closed issues and preserve the returned URLs in the manifest. Do not bulk-dispatch these drafts as implementation-ready work.
+The accompanying issue-draft generator produces `dataset-issues.jsonl`, one research-first issue draft per inventory entry. These are drafts, not verified implementation tickets or created GitHub issues. Unknown candidates are intentionally blank. The deterministic HTML marker permits a future publisher to skip already-created issues; search open and closed issues and preserve the returned URLs in the manifest. Do not bulk-dispatch these drafts as implementation-ready work.
 
 ## GitHub project and worker design
 
@@ -72,7 +72,7 @@ Dispatcher requirements:
 - One branch and PR per dataset, with source evidence, focused changes and a runnable verification record. Batch shared infrastructure separately to avoid conflicting worker edits.
 - Run an independent reviewer against the exact PR head commit. Review dataset identity, completeness, provenance, tests and release behavior. New commits invalidate old review results.
 - Changes requested resumes a bounded revision loop on the same PR. Stop and surface unresolved findings or exhausted attempts rather than endlessly relaunching.
-- Merge only according to the selected approval policy, after required checks and the independent review for the current head. The merge policy is currently undecided; this plan enables no automatic merges.
+- Merge only according to the selected approval policy, after required checks and the independent review for the current head. The selected policy is independent review plus required checks, then auto-merge. This document does not itself install or activate the controller.
 - Model execution should not itself control merge credentials. Keep the controller's permissions separate and obey repository branch rules. A review by the same GitHub identity may not satisfy GitHub's required reviewer rules; choose the bot/app identities explicitly.
 
 Acceptance scenarios: duplicate events launch once; failed launches release the lease; stale worker completion cannot move a newer attempt; cross-repo and unassigned cards are ignored; source failure is reported; review findings trigger revision; any head change invalidates merge eligibility; failed checks and unresolved findings block merge; no workflow silently starts a paid worker before its credentials and scope are configured.
