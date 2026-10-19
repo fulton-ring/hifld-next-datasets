@@ -151,6 +151,18 @@ class LiteralCatalogTests(unittest.TestCase):
             storage,metadata=fixture(Path(tmp));storage.write_key(PREFIX+'/geopackage/corrupt.gpkg',b'not a database')
             with self.assertRaisesRegex(ValueError,'higher_precedence'):summary(storage,metadata)
 
+    def test_caller_omission_cannot_erase_actual_authored_profile_or_invalid_presence(self):
+        for supplied in [{}, {'title':'Legacy subset without capability fields'}]:
+            with self.subTest(supplied=supplied),tempfile.TemporaryDirectory()as tmp:
+                storage,metadata=fixture(Path(tmp),[feature({'mixed':1}),feature({'mixed':''})])
+                # Valid explicit input remains literal, even without a profile
+                # in the caller's optional display-metadata subset.
+                self.assertEqual(summary(storage,supplied).quality_manifest['catalog_mode'],'literal_geojson_full_population')
+                storage.write_key(PREFIX+'/geojson/native.geojson',json.dumps({'type':'FeatureCollection','features':[feature({'mixed':1}),feature({'mixed':2})]}).encode())
+                with patch('dagster_hifld.catalog._summarize_geospatial_source',side_effect=AssertionError('Fiona fallback forbidden')),self.assertRaises(ValueError):summary(storage,supplied)
+                storage.write_key(PREFIX+'/metadata/source_manifest.json',b'{"literal_geojson_catalog":null}')
+                with self.assertRaisesRegex(ValueError,'profile'):summary(storage,supplied)
+
     def test_GCS_shaped_transport_nested_prefix_downloads_only_the_pinned_object(self):
         with tempfile.TemporaryDirectory()as tmp:
             local,metadata=fixture(Path(tmp),[feature({'ID':2**53+1,'value':''})],prefix='sandbox/nested')

@@ -66,11 +66,9 @@ def summarize_staged_catalog(
     if source_metadata is not None:
         provenance_projection(source_metadata)
     prefix = f"{dataset_slug}/{file_slug}/{version}"
-    # Existing callers with resolved legacy metadata retain their reader/I/O
-    # behavior. Explicit profiles (including malformed/null ones) are validated
-    # against actual authored manifests before any generic reader can run.
-    literal = (resolve_literal_metadata(staging, prefix, source_metadata)
-               if source_metadata is None or 'literal_geojson_catalog' in source_metadata else None)
+    # Resolve actual bounded authored metadata even when a caller supplies an
+    # empty/legacy subset; omission must not erase an explicitly pinned profile.
+    literal = resolve_literal_metadata(staging, prefix, source_metadata)
     if literal is not None:
         quality, native_dictionary = summarize_literal_geojson(staging, prefix, dictionary_name, literal)
         dictionary = generate_data_dictionary(gpd.GeoDataFrame(), dictionary_name, source_metadata=literal)
