@@ -1,0 +1,227 @@
+{
+  "actual_host": "gis.fema.gov (government producer host)",
+  "actual_publisher_account": "Producer-hosted ArcGIS Server; no external ArcGIS account delegation assumed",
+  "approved": false,
+  "authority_acceptance": false,
+  "baseline_acceptance": false,
+  "contract_approval": false,
+  "crosswalk": {
+    "archive": "https://www.datalumos.org/datalumos/project/239129/version/V1/view",
+    "archive_status": 403,
+    "status": "unresolved_provider403_not_explicit_unmatched",
+    "url": "https://doi.org/10.3886/E241367V1"
+  },
+  "dataset_slug": "federal-emergency-management-agency-fema-regional-offices",
+  "discovery_only_external_item": "https://www.arcgis.com/sharing/rest/content/items/133df65417ed40b28774cac04d53a7da?f=json",
+  "external_item_owner": "amber.dashnaw.ctr; authority is NOT inferred from owner or portal dates",
+  "fresh_implementation_live_observed_at": "2026-10-19T12:30:07.530907+00:00",
+  "implementation": {
+    "asset": "src/dagster_hifld/assets/fema_regional_offices.py",
+    "processing_commit": "7e1719e1539af1a0e09fc2bdfc5dc1370f0d4cd5",
+    "runner": "scripts/verify_fema_regional_offices_draft.py",
+    "source": "src/dagster_hifld/sources/fema_regional_offices.py",
+    "tests": "tests/test_fema_regional_offices.py"
+  },
+  "issue": 83,
+  "landing_page": {
+    "CONNECT_denial_claim": false,
+    "source_GIS_service_status": 200,
+    "status": 403,
+    "url": "https://www.fema.gov/about/organization/regions"
+  },
+  "machine_layer": "https://gis.fema.gov/arcgis/rest/services/FEMA/RegHQs/FeatureServer/0",
+  "metadata_xml": "https://gis.fema.gov/arcgis/rest/services/FEMA/RegHQs/FeatureServer/info/metadata",
+  "observed_at": "2026-10-19T12:16:32.204715+00:00",
+  "official_folder": "https://gis.fema.gov/arcgis/rest/services/FEMA?f=pjson",
+  "official_root": "https://gis.fema.gov/arcgis/rest/services?f=pjson",
+  "prior_findings": {
+    "issue": "https://github.com/fulton-ring/agent-content-demos/issues/40",
+    "role": "Research context reread, not fresh endpoint evidence",
+    "sha256": "18a13f3e24da0bc6a7b435dede524e5b30167b5167c1c5c4279c83c7edb6e38c"
+  },
+  "producer": "Federal Emergency Management Agency",
+  "proposed_contract": {
+    "approved": false,
+    "arrow_proposal": "Original SmallInteger=int16; original strings/nulls/width declarations retained; OID width undeclared represented losslessly as int64. Allsource types/IDs/WKB preserved, no surrogate main columns.",
+    "attributes": [
+      {
+        "alias": "OBJECTID",
+        "defaultValue": null,
+        "domain": null,
+        "editable": false,
+        "modelName": "OBJECTID",
+        "name": "objectid",
+        "nullable": false,
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "alias": "CITY_NAME",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 40,
+        "modelName": "CITY_NAME",
+        "name": "city_name",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "STATE_NAME",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 25,
+        "modelName": "STATE_NAME",
+        "name": "state_name",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "TYPE",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 25,
+        "modelName": "TYPE",
+        "name": "type",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "ZIP",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 13,
+        "modelName": "ZIP",
+        "name": "zip",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "Name",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 40,
+        "modelName": "Name",
+        "name": "name",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "REGION OBJECTID",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "modelName": "REGION_OBJECTID",
+        "name": "region_objectid",
+        "nullable": true,
+        "type": "esriFieldTypeSmallInteger"
+      },
+      {
+        "alias": "REGION NUMBER",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "modelName": "REGION_NUMBER",
+        "name": "region_number",
+        "nullable": true,
+        "type": "esriFieldTypeSmallInteger"
+      },
+      {
+        "alias": "ADDRESS1",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 50,
+        "modelName": "ADDRESS1",
+        "name": "address1",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "ADDRESS2",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 50,
+        "modelName": "ADDRESS2",
+        "name": "address2",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "STATE",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 13,
+        "modelName": "STATE",
+        "name": "state",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "ZIP +4",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 13,
+        "modelName": "ZIP4",
+        "name": "zip4",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "WEBSITE",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 100,
+        "modelName": "WEBSITE",
+        "name": "website",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      },
+      {
+        "alias": "TELEPHONE",
+        "defaultValue": null,
+        "domain": null,
+        "editable": true,
+        "length": 15,
+        "modelName": "TELEPHONE",
+        "name": "telephone",
+        "nullable": true,
+        "type": "esriFieldTypeString"
+      }
+    ],
+    "coverage": "Complete10regional+3area+1national; neverfiltered to10",
+    "crs": "EPSG:4326",
+    "decisions_pending": [
+      "native field names vs published truncations",
+      "native int16 vs published int64",
+      "trailing address whitespace",
+      "extra duplicate published id",
+      "baseline/source acceptance and compatibility contract",
+      "record currency/release date",
+      "rights/citation and promotion"
+    ],
+    "geometry": "Point",
+    "native_feature_count_at_observation": 14,
+    "proposed_aliases_diagnostic_only": {
+      "region_num": "region_number",
+      "region_obj": "region_objectid"
+    },
+    "published_identifiers": "All original objectid/id columns retained separately in full raw baselines and baseline report; duplicate id values are not converted into unique source IDs."
+  },
+  "record_release_date": null,
+  "refresh": "Explicit stopped weekly draft refresh; current official live acquisition or complete fixture replay, deterministic candidate construction. No production write allowed.",
+  "relationship": "Complete current producer office-point layer, identical14 OID/native points to complete published candidates; field/type/whitespace/additional-ID compatibility unresolved. Layer2 region polygons are separate issue84.",
+  "release_approval": false,
+  "release_date_unknown_reason": "Producer service provides no verified record release date. XML CreaDate20201016 is metadata creation; inventory issued2019-04-09/modified2025-04-08 and portal times are separate observations.",
+  "schema_version": 1,
+  "semantic_exclusion": "Only drawingInfo renderer is excluded: repeat FEMA reads demonstrably change random legend colors. Complete wire metadata preserved; other source semantics fail drift checks.",
+  "source_input_plan": "Before/after metadata/count/full sorted OID roster; exact ID-targeted pages<=100; all source properties and native geometry, no outSR/precision transform; full raw bodies and receipt bytes preserved.",
+  "status": "reviewable_working_local_draft_release_blocked"
+}

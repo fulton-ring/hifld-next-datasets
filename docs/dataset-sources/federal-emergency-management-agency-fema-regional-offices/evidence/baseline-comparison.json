@@ -1,0 +1,430 @@
+{
+  "approved": false,
+  "complete_published_candidates": {
+    "baseline_collection": {
+      "bytes": 12916,
+      "sha256": "340fa9498e39d64e407c5dcab1e84feafb23d82a01936162656f7fd8b644b1bc",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/collection.json"
+    },
+    "baseline_geojson": {
+      "bytes": 7173,
+      "sha256": "0f8439ffcfc56171c17adb61345835f66d5dc945364e999cac8693397829fac0",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geojson/federal-emergency-management-agency-fema-regional-offices-geojson.geojson"
+    },
+    "baseline_geopackage": {
+      "bytes": 102400,
+      "sha256": "bc28a5954d466a74ad8920cad8718a59e3b02e79d0ff99324c310e39699f2f44",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geopackage/federal-emergency-management-agency-fema-regional-offices.gpkg"
+    },
+    "baseline_geoparquet": {
+      "bytes": 15912,
+      "sha256": "ef61557aa4c166eeeee527db980f58e1299d28af6c629d48db318f1ee1785243",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geoparquet/federal-emergency-management-agency-fema-regional-offices.parquet"
+    },
+    "baseline_metadata": {
+      "bytes": 19531,
+      "sha256": "f959494f40a545f033d8dfaf7cdadade67ede957dc186e731371d675ad30444c",
+      "url": "https://storage.googleapis.com/storage/v1/b/hifld-next-datasets-prod/o?prefix=hifld%2Ffederal-emergency-management-agency-fema-regional-offices%2Ffederal-emergency-management-agency-fema-regional-offices%2Fv1.0.0%2F&maxResults=100"
+    },
+    "baseline_pmtiles": {
+      "bytes": 3850,
+      "sha256": "bbcc30135a87bc89d628554adde5cc37f9e9fdf6cadc36ca9b6d34ef6b37b8b1",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/pmtiles/federal-emergency-management-agency-fema-regional-offices.pmtiles"
+    },
+    "baseline_shapefile": {
+      "bytes": 3170,
+      "sha256": "01f422a97621a5fb771808cfeb27d21d4f9dcf41a107d622f08fabb13bea3c16",
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/shapefile/federal-emergency-management-agency-fema-regional-offices.zip"
+    }
+  },
+  "current_source_objectids": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "diagnostic_aliases_unapproved": {
+    "region_num": "region_number",
+    "region_obj": "region_objectid"
+  },
+  "formats": {
+    "geojson": {
+      "columns": [
+        "objectid",
+        "city_name",
+        "state_name",
+        "type",
+        "zip",
+        "name",
+        "region_objectid",
+        "region_number",
+        "address1",
+        "address2",
+        "state",
+        "zip4",
+        "website",
+        "telephone",
+        "geometry"
+      ],
+      "compared_attribute_values": 196,
+      "diagnostic_attribute_differences": [],
+      "geometry_WKB_exact_with_current_source": 14,
+      "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+      "published_identifiers": [
+        {
+          "id": null,
+          "objectid": 1
+        },
+        {
+          "id": null,
+          "objectid": 2
+        },
+        {
+          "id": null,
+          "objectid": 3
+        },
+        {
+          "id": null,
+          "objectid": 4
+        },
+        {
+          "id": null,
+          "objectid": 5
+        },
+        {
+          "id": null,
+          "objectid": 6
+        },
+        {
+          "id": null,
+          "objectid": 7
+        },
+        {
+          "id": null,
+          "objectid": 8
+        },
+        {
+          "id": null,
+          "objectid": 9
+        },
+        {
+          "id": null,
+          "objectid": 10
+        },
+        {
+          "id": null,
+          "objectid": 11
+        },
+        {
+          "id": null,
+          "objectid": 12
+        },
+        {
+          "id": null,
+          "objectid": 13
+        },
+        {
+          "id": null,
+          "objectid": 14
+        }
+      ],
+      "rows": 14,
+      "schema": "Original JSON properties retained in full raw body; schema not inferred as native producer types."
+    },
+    "geopackage": {
+      "columns": [
+        "objectid",
+        "city_name",
+        "state_name",
+        "type",
+        "zip",
+        "name",
+        "region_obj",
+        "region_num",
+        "address1",
+        "address2",
+        "state",
+        "zip4",
+        "website",
+        "telephone",
+        "id",
+        "geometry"
+      ],
+      "compared_attribute_values": 196,
+      "diagnostic_attribute_differences": [
+        {
+          "published": "546 Bonney Loop",
+          "published_field": "address1",
+          "source": "546 Bonney Loop ",
+          "source_field": "address1",
+          "source_objectid": 3
+        }
+      ],
+      "geometry_WKB_exact_with_current_source": 14,
+      "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+      "published_identifiers": [
+        {
+          "id": 1,
+          "objectid": 1
+        },
+        {
+          "id": 2,
+          "objectid": 2
+        },
+        {
+          "id": 3,
+          "objectid": 3
+        },
+        {
+          "id": 4,
+          "objectid": 4
+        },
+        {
+          "id": 5,
+          "objectid": 5
+        },
+        {
+          "id": 6,
+          "objectid": 6
+        },
+        {
+          "id": 7,
+          "objectid": 7
+        },
+        {
+          "id": 8,
+          "objectid": 8
+        },
+        {
+          "id": 9,
+          "objectid": 9
+        },
+        {
+          "id": 10,
+          "objectid": 10
+        },
+        {
+          "id": 1,
+          "objectid": 11
+        },
+        {
+          "id": 2,
+          "objectid": 12
+        },
+        {
+          "id": 3,
+          "objectid": 13
+        },
+        {
+          "id": 4,
+          "objectid": 14
+        }
+      ],
+      "rows": 14,
+      "schema": "objectid: int64\ncity_name: string\nstate_name: string\ntype: string\nzip: string\nname: string\nregion_obj: int64\nregion_num: int64\naddress1: string\naddress2: string\nstate: string\nzip4: string\nwebsite: string\ntelephone: string\nid: int64\ngeom: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\":{\n  \"$schema\": \"https://proj.org/sche' + 2211"
+    },
+    "geoparquet": {
+      "columns": [
+        "geometry",
+        "objectid",
+        "city_name",
+        "state_name",
+        "type",
+        "zip",
+        "name",
+        "region_obj",
+        "region_num",
+        "address1",
+        "address2",
+        "state",
+        "zip4",
+        "website",
+        "telephone",
+        "id"
+      ],
+      "compared_attribute_values": 196,
+      "diagnostic_attribute_differences": [
+        {
+          "published": "546 Bonney Loop",
+          "published_field": "address1",
+          "source": "546 Bonney Loop ",
+          "source_field": "address1",
+          "source_objectid": 3
+        }
+      ],
+      "geometry_WKB_exact_with_current_source": 14,
+      "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+      "published_identifiers": [
+        {
+          "id": 8,
+          "objectid": 8
+        },
+        {
+          "id": 4,
+          "objectid": 14
+        },
+        {
+          "id": 3,
+          "objectid": 3
+        },
+        {
+          "id": 9,
+          "objectid": 9
+        },
+        {
+          "id": 2,
+          "objectid": 2
+        },
+        {
+          "id": 1,
+          "objectid": 1
+        },
+        {
+          "id": 5,
+          "objectid": 5
+        },
+        {
+          "id": 10,
+          "objectid": 10
+        },
+        {
+          "id": 1,
+          "objectid": 11
+        },
+        {
+          "id": 3,
+          "objectid": 13
+        },
+        {
+          "id": 6,
+          "objectid": 6
+        },
+        {
+          "id": 2,
+          "objectid": 12
+        },
+        {
+          "id": 7,
+          "objectid": 7
+        },
+        {
+          "id": 4,
+          "objectid": 4
+        }
+      ],
+      "rows": 14,
+      "schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nobjectid: int64\ncity_name: string\nstate_name: string\ntype: string\nzip: string\nname: string\nregion_obj: int64\nregion_num: int64\naddress1: string\naddress2: string\nstate: string\nzip4: string\nwebsite: string\ntelephone: string\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1897\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 759"
+    },
+    "shapefile": {
+      "columns": [
+        "objectid",
+        "city_name",
+        "state_name",
+        "type",
+        "zip",
+        "name",
+        "region_obj",
+        "region_num",
+        "address1",
+        "address2",
+        "state",
+        "zip4",
+        "website",
+        "telephone",
+        "id",
+        "geometry"
+      ],
+      "compared_attribute_values": 196,
+      "diagnostic_attribute_differences": [
+        {
+          "published": "546 Bonney Loop",
+          "published_field": "address1",
+          "source": "546 Bonney Loop ",
+          "source_field": "address1",
+          "source_objectid": 3
+        }
+      ],
+      "geometry_WKB_exact_with_current_source": 14,
+      "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+      "published_identifiers": [
+        {
+          "id": 1,
+          "objectid": 1
+        },
+        {
+          "id": 2,
+          "objectid": 2
+        },
+        {
+          "id": 3,
+          "objectid": 3
+        },
+        {
+          "id": 4,
+          "objectid": 4
+        },
+        {
+          "id": 5,
+          "objectid": 5
+        },
+        {
+          "id": 6,
+          "objectid": 6
+        },
+        {
+          "id": 7,
+          "objectid": 7
+        },
+        {
+          "id": 8,
+          "objectid": 8
+        },
+        {
+          "id": 9,
+          "objectid": 9
+        },
+        {
+          "id": 10,
+          "objectid": 10
+        },
+        {
+          "id": 1,
+          "objectid": 11
+        },
+        {
+          "id": 2,
+          "objectid": 12
+        },
+        {
+          "id": 3,
+          "objectid": 13
+        },
+        {
+          "id": 4,
+          "objectid": 14
+        }
+      ],
+      "rows": 14,
+      "schema": "objectid: int64\ncity_name: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nstate_name: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\ntype: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nzip: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nname: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nregion_obj: int64\nregion_num: int64\naddress1: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\naddress2: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nstate: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nzip4: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nwebsite: string\n  -- field metadata --\n  GDAL:OGR:width: '84'\ntelephone: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nid: int64\nwkb_geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\":{\n  \"$schema\": \"https://proj.org/sche' + 701"
+    }
+  },
+  "pmtiles": "Complete original bytes/provider MD5 pinned; vector content not decoded or claimed native-lossless.",
+  "reason_codes": [
+    "unapproved_FEMA_source_baseline_column_names_int16_vs_int64_trailing_space_extra_published_ID_contract"
+  ],
+  "release_decision": "No baseline, source, tolerance, ID mapping, schema migration, contract or release accepted.",
+  "roster_change": false,
+  "schema_version": 1,
+  "source_geometry_native4326_sha256": "c995654568e87fb3007017fb199155e7810ebd4b0f78651daae1709de294a93b",
+  "status": "blocked"
+}

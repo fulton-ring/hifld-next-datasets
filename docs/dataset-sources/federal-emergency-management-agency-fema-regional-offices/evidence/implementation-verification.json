@@ -1,0 +1,1290 @@
+{
+  "actual_main_runs": [
+    {
+      "kind": "genuine_unreadable_first_receipt_body_only_diagnostic",
+      "run_id": "beb14ade-61ec-4a6c-b1b9-ad535331491c",
+      "success": false
+    },
+    {
+      "kind": "complete_real_fourteen_office_source",
+      "run_id": "1e55c212-061c-447d-9172-bc8c6307ec5e",
+      "success": true
+    },
+    {
+      "kind": "source_idempotent_full_byte_reuse",
+      "run_id": "ee07527a-6bc9-44ae-8c8f-3e314ed97465",
+      "success": true
+    },
+    {
+      "kind": "normal_catalog_1_real_missing_release_registry",
+      "run_id": "8635196e-b83c-493e-aa84-7a3360775b90",
+      "success": false
+    },
+    {
+      "kind": "source_refresh_after_catalog_1",
+      "run_id": "bdb632bb-915b-460b-afe7-31fe7d6a8396",
+      "success": true
+    },
+    {
+      "kind": "normal_catalog_2_real_missing_release_registry",
+      "run_id": "5a1a456e-79f4-447b-8b31-b22e951f3ae3",
+      "success": false
+    },
+    {
+      "kind": "source_refresh_after_catalog_2",
+      "run_id": "d9766686-c081-4963-badc-318b16628160",
+      "success": true
+    },
+    {
+      "kind": "synthetic_null_geometry_quality_gate",
+      "run_id": "f313e39e-6ff1-448f-81d5-69af40af34a3",
+      "success": false
+    },
+    {
+      "kind": "display_only_new_receipt_context_reuses_original",
+      "run_id": "f24e23cc-33f7-4152-ad0b-7451be92e8cc",
+      "success": true
+    },
+    {
+      "kind": "unknown_metadata_whole_candidate_rejected",
+      "run_id": "27f212d7-f4fe-4fa2-887c-ed206756e6fa",
+      "success": false
+    },
+    {
+      "kind": "cold_rebuild_exact_original_after_cache_corruption",
+      "run_id": "e2e84ae0-9ce5-484c-ac8b-f6f1e7f96e8f",
+      "success": true
+    },
+    {
+      "kind": "coforged_original_receipt_and_manifest_denied",
+      "run_id": "b66211d4-251d-49bd-afc9-3f5d06a54257",
+      "success": false
+    },
+    {
+      "kind": "forged_original_repeated_cold_1",
+      "run_id": "5293b6f4-1b4a-474e-a4bd-3ca5228a4d45",
+      "success": false
+    },
+    {
+      "kind": "forged_original_repeated_cold_2",
+      "run_id": "be76f38b-b967-48b4-a8f2-1f923360858b",
+      "success": false
+    },
+    {
+      "kind": "explicit_exact_original_restore_after_forgery",
+      "run_id": "b8db0421-d120-4f1f-818c-717939d4e741",
+      "success": true
+    },
+    {
+      "kind": "all_outside_original_witnesses_missing",
+      "run_id": "c0f6d6d0-4d81-46c3-803f-f4b79d0bbdfa",
+      "success": false
+    },
+    {
+      "kind": "all_witnesses_missing_cold_1",
+      "run_id": "263a558d-326c-4c8f-b329-77beaab69d93",
+      "success": false
+    },
+    {
+      "kind": "all_witnesses_missing_cold_2",
+      "run_id": "4b1535a8-d1c8-4774-99b6-e56161a2307d",
+      "success": false
+    },
+    {
+      "kind": "explicit_exact_all_original_witness_restore",
+      "run_id": "87d48aea-476f-499e-9909-93a38fbf51b6",
+      "success": true
+    },
+    {
+      "kind": "incident_write_fault_preserves_remaining_candidate",
+      "run_id": "43ae8d7a-1a85-4fe9-8666-2898403bf5f4",
+      "success": false
+    },
+    {
+      "kind": "partial_incident_blocks_even_after_original_restore",
+      "run_id": "36e7390a-ddc3-46d2-ad1f-10686205c79e",
+      "success": false
+    },
+    {
+      "kind": "explicit_reviewed_fixture_incident_restore",
+      "run_id": "e67c2646-9eeb-43f8-9b9d-1ef832a6d824",
+      "success": true
+    }
+  ],
+  "actual_supplemental_run": {
+    "all_original_raw_preserved": true,
+    "approved": false,
+    "head": "7e1719e1539af1a0e09fc2bdfc5dc1370f0d4cd5",
+    "new_observations_retained": 38,
+    "original_candidate_state_prior_all_bytes_unchanged": true,
+    "output": {
+      "dataset_slug": "federal-emergency-management-agency-fema-regional-offices",
+      "feature_count": 14,
+      "file_slug": "federal-emergency-management-agency-fema-regional-offices",
+      "reused": true,
+      "version": "v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5"
+    },
+    "run_id": "e080d3f5-fdbe-4f26-9444-1d6012b952be",
+    "scope": "Actual registered refresh using separately freshly downloaded complete HTTP inputs, not a second liveHTTP request inside this run; immutable original construction remains first7e1719e.",
+    "success": true
+  },
+  "all_expected_gate_and_preservation_assertions": true,
+  "approved": false,
+  "cited_issue_workflow_documents": "tools/pipeline_workers/README.md and docs/agency-source-recovery/README.md are absent on reviewed base08; no PR1 edits or permission inferred. Current user draft-implementation scope supersedes historical contract-before-code/automerge instructions.",
+  "external_decisions_unapproved": [
+    "native field names vs published truncations",
+    "native int16 vs published int64",
+    "trailing address whitespace",
+    "extra duplicate published id",
+    "baseline/source acceptance and compatibility contract",
+    "record currency/release date",
+    "rights/citation and promotion"
+  ],
+  "focused": {
+    "pass": true,
+    "registration_seconds": 2.534,
+    "registration_tests": 1,
+    "seconds": 4.867,
+    "source_tests": 13
+  },
+  "full_local_suite": {
+    "passed": 549,
+    "real_sibling_iac": "56aa10757129c457c530d707d9a40bae13e0907f",
+    "seconds": 88.814,
+    "skip_reason": "opt-in production GCS integration",
+    "skipped": 1,
+    "tests": 550
+  },
+  "git_publication": {
+    "first_construction_not_started_before_alignment": true,
+    "native_preserved": "99a80c5f6b9388133bb265e986c857c627939691",
+    "parent": "08e575415891cef6609366a303a5d28dba4a3cc6",
+    "remote_reread": true,
+    "same_entire_tree": true,
+    "server_head": "7e1719e1539af1a0e09fc2bdfc5dc1370f0d4cd5",
+    "tree": "b3e7c9c14d0de9714a514ee3ee03f154abf5911d"
+  },
+  "independent_review": {
+    "status": "pending"
+  },
+  "live_intake": {
+    "all_success": true,
+    "bytes": 229924,
+    "complete_responses": 18,
+    "earlier_default_sandbox_socket_EPERM_attempt_preserved": true,
+    "environment_unchanged": true,
+    "rows": 14,
+    "source_record_sha256": "c995654568e87fb3007017fb199155e7810ebd4b0f78651daae1709de294a93b"
+  },
+  "native": {
+    "all_original_values_IDs_physical_types_nulls_whitespace_native_points_exact": true,
+    "attributes": 14,
+    "baseline_comparison": {
+      "approved": false,
+      "complete_published_candidates": {
+        "baseline_collection": {
+          "bytes": 12916,
+          "sha256": "340fa9498e39d64e407c5dcab1e84feafb23d82a01936162656f7fd8b644b1bc",
+          "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/collection.json"
+        },
+        "baseline_geojson": {
+          "bytes": 7173,
+          "sha256": "0f8439ffcfc56171c17adb61345835f66d5dc945364e999cac8693397829fac0",
+          "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geojson/federal-emergency-management-agency-fema-regional-offices-geojson.geojson"
+        },
+        "baseline_geopackage": {
+          "bytes": 102400,
+          "sha256": "bc28a5954d466a74ad8920cad8718a59e3b02e79d0ff99324c310e39699f2f44",
+          "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geopackage/federal-emergency-management-agency-fema-regional-offices.gpkg"
+        },
+        "baseline_geoparquet": {
+          "bytes": 15912,
+          "sha256": "ef61557aa4c166eeeee527db980f58e1299d28af6c629d48db318f1ee1785243",
+          "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/geoparquet/federal-emergency-management-agency-fema-regional-offices.parquet"
+        },
+        "baseline_metadata": {
+          "bytes": 19531,
+          "sha256": "f959494f40a545f033d8dfaf7cdadade67ede957dc186e731371d675ad30444c",
+          "url": "https://storage.googleapis.com/storage/v1/b/hifld-next-datasets-prod/o?prefix=hifld%2Ffederal-emergency-management-agency-fema-regional-offices%2Ffederal-emergency-management-agency-fema-regional-offices%2Fv1.0.0%2F&maxResults=100"
+        },
+        "baseline_pmtiles": {
+          "bytes": 3850,
+          "sha256": "bbcc30135a87bc89d628554adde5cc37f9e9fdf6cadc36ca9b6d34ef6b37b8b1",
+          "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/pmtiles/federal-emergency-management-agency-fema-regional-offices.pmtiles"
+        },
+        "baseline_shapefile": {
+          "bytes": 3170,
+          "sha256": "01f422a97621a5fb771808cfeb27d21d4f9dcf41a107d622f08fabb13bea3c16",
+          "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v1.0.0/shapefile/federal-emergency-management-agency-fema-regional-offices.zip"
+        }
+      },
+      "current_source_objectids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "diagnostic_aliases_unapproved": {
+        "region_num": "region_number",
+        "region_obj": "region_objectid"
+      },
+      "formats": {
+        "geojson": {
+          "columns": [
+            "objectid",
+            "city_name",
+            "state_name",
+            "type",
+            "zip",
+            "name",
+            "region_objectid",
+            "region_number",
+            "address1",
+            "address2",
+            "state",
+            "zip4",
+            "website",
+            "telephone",
+            "geometry"
+          ],
+          "compared_attribute_values": 196,
+          "diagnostic_attribute_differences": [],
+          "geometry_WKB_exact_with_current_source": 14,
+          "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+          "published_identifiers": [
+            {
+              "id": null,
+              "objectid": 1
+            },
+            {
+              "id": null,
+              "objectid": 2
+            },
+            {
+              "id": null,
+              "objectid": 3
+            },
+            {
+              "id": null,
+              "objectid": 4
+            },
+            {
+              "id": null,
+              "objectid": 5
+            },
+            {
+              "id": null,
+              "objectid": 6
+            },
+            {
+              "id": null,
+              "objectid": 7
+            },
+            {
+              "id": null,
+              "objectid": 8
+            },
+            {
+              "id": null,
+              "objectid": 9
+            },
+            {
+              "id": null,
+              "objectid": 10
+            },
+            {
+              "id": null,
+              "objectid": 11
+            },
+            {
+              "id": null,
+              "objectid": 12
+            },
+            {
+              "id": null,
+              "objectid": 13
+            },
+            {
+              "id": null,
+              "objectid": 14
+            }
+          ],
+          "rows": 14,
+          "schema": "Original JSON properties retained in full raw body; schema not inferred as native producer types."
+        },
+        "geopackage": {
+          "columns": [
+            "objectid",
+            "city_name",
+            "state_name",
+            "type",
+            "zip",
+            "name",
+            "region_obj",
+            "region_num",
+            "address1",
+            "address2",
+            "state",
+            "zip4",
+            "website",
+            "telephone",
+            "id",
+            "geometry"
+          ],
+          "compared_attribute_values": 196,
+          "diagnostic_attribute_differences": [
+            {
+              "published": "546 Bonney Loop",
+              "published_field": "address1",
+              "source": "546 Bonney Loop ",
+              "source_field": "address1",
+              "source_objectid": 3
+            }
+          ],
+          "geometry_WKB_exact_with_current_source": 14,
+          "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+          "published_identifiers": [
+            {
+              "id": 1,
+              "objectid": 1
+            },
+            {
+              "id": 2,
+              "objectid": 2
+            },
+            {
+              "id": 3,
+              "objectid": 3
+            },
+            {
+              "id": 4,
+              "objectid": 4
+            },
+            {
+              "id": 5,
+              "objectid": 5
+            },
+            {
+              "id": 6,
+              "objectid": 6
+            },
+            {
+              "id": 7,
+              "objectid": 7
+            },
+            {
+              "id": 8,
+              "objectid": 8
+            },
+            {
+              "id": 9,
+              "objectid": 9
+            },
+            {
+              "id": 10,
+              "objectid": 10
+            },
+            {
+              "id": 1,
+              "objectid": 11
+            },
+            {
+              "id": 2,
+              "objectid": 12
+            },
+            {
+              "id": 3,
+              "objectid": 13
+            },
+            {
+              "id": 4,
+              "objectid": 14
+            }
+          ],
+          "rows": 14,
+          "schema": "objectid: int64\ncity_name: string\nstate_name: string\ntype: string\nzip: string\nname: string\nregion_obj: int64\nregion_num: int64\naddress1: string\naddress2: string\nstate: string\nzip4: string\nwebsite: string\ntelephone: string\nid: int64\ngeom: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\":{\n  \"$schema\": \"https://proj.org/sche' + 2211"
+        },
+        "geoparquet": {
+          "columns": [
+            "geometry",
+            "objectid",
+            "city_name",
+            "state_name",
+            "type",
+            "zip",
+            "name",
+            "region_obj",
+            "region_num",
+            "address1",
+            "address2",
+            "state",
+            "zip4",
+            "website",
+            "telephone",
+            "id"
+          ],
+          "compared_attribute_values": 196,
+          "diagnostic_attribute_differences": [
+            {
+              "published": "546 Bonney Loop",
+              "published_field": "address1",
+              "source": "546 Bonney Loop ",
+              "source_field": "address1",
+              "source_objectid": 3
+            }
+          ],
+          "geometry_WKB_exact_with_current_source": 14,
+          "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+          "published_identifiers": [
+            {
+              "id": 8,
+              "objectid": 8
+            },
+            {
+              "id": 4,
+              "objectid": 14
+            },
+            {
+              "id": 3,
+              "objectid": 3
+            },
+            {
+              "id": 9,
+              "objectid": 9
+            },
+            {
+              "id": 2,
+              "objectid": 2
+            },
+            {
+              "id": 1,
+              "objectid": 1
+            },
+            {
+              "id": 5,
+              "objectid": 5
+            },
+            {
+              "id": 10,
+              "objectid": 10
+            },
+            {
+              "id": 1,
+              "objectid": 11
+            },
+            {
+              "id": 3,
+              "objectid": 13
+            },
+            {
+              "id": 6,
+              "objectid": 6
+            },
+            {
+              "id": 2,
+              "objectid": 12
+            },
+            {
+              "id": 7,
+              "objectid": 7
+            },
+            {
+              "id": 4,
+              "objectid": 4
+            }
+          ],
+          "rows": 14,
+          "schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nobjectid: int64\ncity_name: string\nstate_name: string\ntype: string\nzip: string\nname: string\nregion_obj: int64\nregion_num: int64\naddress1: string\naddress2: string\nstate: string\nzip4: string\nwebsite: string\ntelephone: string\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1897\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 759"
+        },
+        "shapefile": {
+          "columns": [
+            "objectid",
+            "city_name",
+            "state_name",
+            "type",
+            "zip",
+            "name",
+            "region_obj",
+            "region_num",
+            "address1",
+            "address2",
+            "state",
+            "zip4",
+            "website",
+            "telephone",
+            "id",
+            "geometry"
+          ],
+          "compared_attribute_values": 196,
+          "diagnostic_attribute_differences": [
+            {
+              "published": "546 Bonney Loop",
+              "published_field": "address1",
+              "source": "546 Bonney Loop ",
+              "source_field": "address1",
+              "source_objectid": 3
+            }
+          ],
+          "geometry_WKB_exact_with_current_source": 14,
+          "native_point_geometry": "EPSG:4326, no tolerance or approved transformation inferred",
+          "published_identifiers": [
+            {
+              "id": 1,
+              "objectid": 1
+            },
+            {
+              "id": 2,
+              "objectid": 2
+            },
+            {
+              "id": 3,
+              "objectid": 3
+            },
+            {
+              "id": 4,
+              "objectid": 4
+            },
+            {
+              "id": 5,
+              "objectid": 5
+            },
+            {
+              "id": 6,
+              "objectid": 6
+            },
+            {
+              "id": 7,
+              "objectid": 7
+            },
+            {
+              "id": 8,
+              "objectid": 8
+            },
+            {
+              "id": 9,
+              "objectid": 9
+            },
+            {
+              "id": 10,
+              "objectid": 10
+            },
+            {
+              "id": 1,
+              "objectid": 11
+            },
+            {
+              "id": 2,
+              "objectid": 12
+            },
+            {
+              "id": 3,
+              "objectid": 13
+            },
+            {
+              "id": 4,
+              "objectid": 14
+            }
+          ],
+          "rows": 14,
+          "schema": "objectid: int64\ncity_name: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nstate_name: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\ntype: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nzip: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nname: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nregion_obj: int64\nregion_num: int64\naddress1: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\naddress2: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nstate: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nzip4: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nwebsite: string\n  -- field metadata --\n  GDAL:OGR:width: '84'\ntelephone: string\n  -- field metadata --\n  GDAL:OGR:width: '80'\nid: int64\nwkb_geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\":{\n  \"$schema\": \"https://proj.org/sche' + 701"
+        }
+      },
+      "pmtiles": "Complete original bytes/provider MD5 pinned; vector content not decoded or claimed native-lossless.",
+      "reason_codes": [
+        "unapproved_FEMA_source_baseline_column_names_int16_vs_int64_trailing_space_extra_published_ID_contract"
+      ],
+      "release_decision": "No baseline, source, tolerance, ID mapping, schema migration, contract or release accepted.",
+      "roster_change": false,
+      "schema_version": 1,
+      "source_geometry_native4326_sha256": "c995654568e87fb3007017fb199155e7810ebd4b0f78651daae1709de294a93b",
+      "status": "blocked"
+    },
+    "parquet_bytes": 14308,
+    "parquet_sha256": "dd521c10f9efc35fbb1c8dcf71fcc346ddaa649d7d69bd1d9797144154291fa9",
+    "rows": 14,
+    "schema": "objectid: int64 not null\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"OBJECTID\",\"defaultValue\":null,\"domain\":null' + 103\ncity_name: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"CITY_NAME\",\"defaultValue\":null,\"domain\":nul' + 119\nstate_name: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"STATE_NAME\",\"defaultValue\":null,\"domain\":nu' + 122\ntype: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"TYPE\",\"defaultValue\":null,\"domain\":null,\"ed' + 104\nzip: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"ZIP\",\"defaultValue\":null,\"domain\":null,\"edi' + 101\nname: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"Name\",\"defaultValue\":null,\"domain\":null,\"ed' + 104\nregion_objectid: int16\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"REGION OBJECTID\",\"defaultValue\":null,\"domai' + 131\nregion_number: int16\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"REGION NUMBER\",\"defaultValue\":null,\"domain\"' + 125\naddress1: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"ADDRESS1\",\"defaultValue\":null,\"domain\":null' + 116\naddress2: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"ADDRESS2\",\"defaultValue\":null,\"domain\":null' + 116\nstate: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"STATE\",\"defaultValue\":null,\"domain\":null,\"e' + 107\nzip4: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"ZIP +4\",\"defaultValue\":null,\"domain\":null,\"' + 106\nwebsite: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"WEBSITE\",\"defaultValue\":null,\"domain\":null,' + 114\ntelephone: string\n  -- field metadata --\n  fema:esri_field: '{\"alias\":\"TELEPHONE\",\"defaultValue\":null,\"domain\":nul' + 119\ngeometry: binary\n-- schema metadata --\ngeo: '{\"columns\":{\"geometry\":{\"bbox\":[-157.8831646561729,18.4265334522228' + 1557",
+    "source_audit": {
+      "approved": false,
+      "coverage": "Complete FEMA RegHQs office POINT layer: 10 regional+3 area+1 national at initial observation. No filter to10, polygon substitution or geocoding.",
+      "current_source_count": 14,
+      "feature_count": 14,
+      "geometry": "Point",
+      "initial_verified_count": 14,
+      "invalid_geometries": 0,
+      "metadata_display_exclusion": "Only drawingInfo is excluded from semantic equality/version: random renderer colors; complete original wire metadata is preserved.",
+      "office_type_counts": {
+        "area": 3,
+        "national": 1,
+        "regional": 10
+      },
+      "original_field_definitions": [
+        {
+          "alias": "OBJECTID",
+          "defaultValue": null,
+          "domain": null,
+          "editable": false,
+          "modelName": "OBJECTID",
+          "name": "objectid",
+          "nullable": false,
+          "type": "esriFieldTypeOID"
+        },
+        {
+          "alias": "CITY_NAME",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "modelName": "CITY_NAME",
+          "name": "city_name",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "STATE_NAME",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 25,
+          "modelName": "STATE_NAME",
+          "name": "state_name",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "TYPE",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 25,
+          "modelName": "TYPE",
+          "name": "type",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "ZIP",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 13,
+          "modelName": "ZIP",
+          "name": "zip",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "Name",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 40,
+          "modelName": "Name",
+          "name": "name",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "REGION OBJECTID",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "modelName": "REGION_OBJECTID",
+          "name": "region_objectid",
+          "nullable": true,
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "REGION NUMBER",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "modelName": "REGION_NUMBER",
+          "name": "region_number",
+          "nullable": true,
+          "type": "esriFieldTypeSmallInteger"
+        },
+        {
+          "alias": "ADDRESS1",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 50,
+          "modelName": "ADDRESS1",
+          "name": "address1",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "ADDRESS2",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 50,
+          "modelName": "ADDRESS2",
+          "name": "address2",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "STATE",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 13,
+          "modelName": "STATE",
+          "name": "state",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "ZIP +4",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 13,
+          "modelName": "ZIP4",
+          "name": "zip4",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "WEBSITE",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 100,
+          "modelName": "WEBSITE",
+          "name": "website",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        },
+        {
+          "alias": "TELEPHONE",
+          "defaultValue": null,
+          "domain": null,
+          "editable": true,
+          "length": 15,
+          "modelName": "TELEPHONE",
+          "name": "telephone",
+          "nullable": true,
+          "type": "esriFieldTypeString"
+        }
+      ],
+      "physical_decode": "SmallInteger=int16, strings/nulls/literal whitespace retained, native4326 Point float64. No coordinate geocoding, rounding or repair.",
+      "release_day": "unknown; XML metadata creation 20201016, inventory dates and external portal timestamps do not establish record release/currency.",
+      "roster_change_from_initial_requires_review": false,
+      "semantic_metadata_sha256": "ae1fea0d907b97858cb1985824f16072f8eac508ae0e6c9e74eb934c7bc4c3a1",
+      "source_crs": "EPSG:4326",
+      "source_original_OID": "objectid retained; OID width undeclared, Arrowint64 is a proposed lossless representation. No published extra id invented or mapped."
+    }
+  },
+  "observed_checks_processing_head": {
+    "build-only": "success",
+    "publish": "skipped",
+    "run": "https://github.com/fulton-ring/hifld-next-datasets/actions/runs/39253112189",
+    "scope": "Observed limited build check only; local fullsuite is separate. No production or full CI success inferred."
+  },
+  "pins": [
+    {
+      "bytes": 2454,
+      "path": "/workspace/work/hifld-coordinator/83/focused-eaf7.log",
+      "sha256": "2726b0513b6d93bbc04a57fe1300a5f558ff868c6b3b5047d468c3a6c32e3f0e"
+    },
+    {
+      "bytes": 531,
+      "path": "/workspace/work/hifld-coordinator/83/parent-registration-tests.log",
+      "sha256": "1bcfca4012a9cc5edf088d247e514c03a1b1ff80668b066ca25c04d305bee0bf"
+    },
+    {
+      "bytes": 18712,
+      "path": "/workspace/work/hifld-coordinator/83/full-suite.log",
+      "sha256": "aff3f855fee750664db369470d9c83fe2813499342b107dc32c7e68fe9e09cfe"
+    },
+    {
+      "bytes": 61925,
+      "path": "/workspace/work/hifld-coordinator/83/materialization.log",
+      "sha256": "9ee4cdfb670122058ae0083d38aa7e3017dd046eb95f04f819fcd00f5af9a37d"
+    },
+    {
+      "bytes": 90451,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/execution.json",
+      "sha256": "83168ef79b71a060b183afc914c91b37e92b48f3a9bbe608990162a5da858386"
+    },
+    {
+      "bytes": 259,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network.log",
+      "sha256": "90a22df01d6f5d8ca3eb98135244b45b8822c61f200df31f0e48d0fb99ecc33e"
+    },
+    {
+      "bytes": 12571,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/result.json",
+      "sha256": "4413aa83bbc414939777d0401b853f95cbf797ce874bf3f09a405da9f2044444"
+    },
+    {
+      "bytes": 4067,
+      "path": "/workspace/work/hifld-coordinator/83/fresh-live-parity.json",
+      "sha256": "ba0a722453f1d62034c8aeb5fea5623edb91c2af7a191401a55cc461e4106812"
+    },
+    {
+      "bytes": 713,
+      "path": "/workspace/work/hifld-coordinator/83/fresh-live-registered-reuse.json",
+      "sha256": "2635721365be445d6ce722489b7511858432257dc09e92b595b1c24959703d1b"
+    },
+    {
+      "bytes": 3114,
+      "path": "/workspace/work/hifld-coordinator/83/fresh-live-registered-reuse.log",
+      "sha256": "bbfc6d90aceee9b76d0acff4db98697a77052fd0e0a717d44bcf66f8bb9035d2"
+    },
+    {
+      "bytes": 2549,
+      "path": "/workspace/work/hifld-coordinator/83/fresh-live-reuse-driver.py",
+      "sha256": "214c98815d39f91c9544c32620d5f0da288f384a4cd6b3a2f052025b00e13b43"
+    },
+    {
+      "bytes": 352,
+      "path": "/workspace/work/hifld-coordinator/83/exact-mcp-source-publication.json",
+      "sha256": "49c6da5489a2bdd1a5b0121487b011ca193852cc1f21d15240cc84930ce2d3b0"
+    },
+    {
+      "bytes": 7067,
+      "path": "/workspace/work/hifld-coordinator/83/prior-issue40.json",
+      "sha256": "18a13f3e24da0bc6a7b435dede524e5b30167b5167c1c5c4279c83c7edb6e38c"
+    },
+    {
+      "bytes": 1937,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_folder.body",
+      "sha256": "f2d7aaf21002e7592e968a763f4daab6fcda61118ffafc48282aa8cb65b56ec5"
+    },
+    {
+      "bytes": 319,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_folder.receipt.json",
+      "sha256": "702ea3c513b3c8557f1dfd1f73bb81101ccf994b7884c58aa16cad6d20d663e2"
+    },
+    {
+      "bytes": 285,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_root.body",
+      "sha256": "ad868bed357591f96a3d07aee81c4a6a34480f758ec129be14bf1a7af9550e8c"
+    },
+    {
+      "bytes": 308,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_root.receipt.json",
+      "sha256": "2627566b04cd6a387df18a68c0d37a3aa04a8f14cdd496757995a225b8ef02c7"
+    },
+    {
+      "bytes": 6641,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_service.body",
+      "sha256": "0f8b51021e03c72a38b8e25c5573a3a5b8eb92e7cb5b5799017ea71c912aa4b0"
+    },
+    {
+      "bytes": 361,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_service.receipt.json",
+      "sha256": "6ef96dc3a01caa951ee78b2d8aa1223cb2e006026fa3dc0e405375e1c738e82e"
+    },
+    {
+      "bytes": 6466,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_xml.body",
+      "sha256": "d6561707bbf94ca4fcf09d28b358a3260b468e3bb822fca5aced5cdf92a107d2"
+    },
+    {
+      "bytes": 373,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/authority_xml.receipt.json",
+      "sha256": "a2010acb3599f72f9d3b3845f97de1794e95c7c4bf6c88e0f687371eaaf86b62"
+    },
+    {
+      "bytes": 12916,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_collection.body",
+      "sha256": "340fa9498e39d64e407c5dcab1e84feafb23d82a01936162656f7fd8b644b1bc"
+    },
+    {
+      "bytes": 612,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_collection.receipt.json",
+      "sha256": "1b5d127a11aaf3080d5e6813c456cfd20593cc106dceb4feece0582f388dc0e6"
+    },
+    {
+      "bytes": 7173,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_geojson.body",
+      "sha256": "0f8439ffcfc56171c17adb61345835f66d5dc945364e999cac8693397829fac0"
+    },
+    {
+      "bytes": 743,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_geojson.receipt.json",
+      "sha256": "bb11c12b383f216eaacaebd0d8bbd983e7b7e86f9ea1f633d0e6c79c56af13ef"
+    },
+    {
+      "bytes": 102400,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_geopackage.body",
+      "sha256": "bc28a5954d466a74ad8920cad8718a59e3b02e79d0ff99324c310e39699f2f44"
+    },
+    {
+      "bytes": 729,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_geopackage.receipt.json",
+      "sha256": "98bcd03d6f839f2b1321200d1c9a326cc0f652a736ff7821fb2c6cd07c5eb2ef"
+    },
+    {
+      "bytes": 15912,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_geoparquet.body",
+      "sha256": "ef61557aa4c166eeeee527db980f58e1299d28af6c629d48db318f1ee1785243"
+    },
+    {
+      "bytes": 734,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_geoparquet.receipt.json",
+      "sha256": "34b02952142523c014db594295c2deaebb18b52c733ed3c8bd8c3bfb3c6b51eb"
+    },
+    {
+      "bytes": 19531,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_metadata.body",
+      "sha256": "f959494f40a545f033d8dfaf7cdadade67ede957dc186e731371d675ad30444c"
+    },
+    {
+      "bytes": 672,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_metadata.receipt.json",
+      "sha256": "defe31aba9081218ca328f5e2cf9ff7860363c514ab4b603f4d6891c227b4922"
+    },
+    {
+      "bytes": 3850,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_pmtiles.body",
+      "sha256": "bbcc30135a87bc89d628554adde5cc37f9e9fdf6cadc36ca9b6d34ef6b37b8b1"
+    },
+    {
+      "bytes": 727,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_pmtiles.receipt.json",
+      "sha256": "8d327c8907d1c43e4471d764de56a49a6fc4fa4c2fb3dad25bb9b4c27701e14c"
+    },
+    {
+      "bytes": 3170,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_shapefile.body",
+      "sha256": "01f422a97621a5fb771808cfeb27d21d4f9dcf41a107d622f08fabb13bea3c16"
+    },
+    {
+      "bytes": 723,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/baseline_shapefile.receipt.json",
+      "sha256": "0deb288019807d4c13ca180c60562975746e1c2130d140f22973b959c1640aeb"
+    },
+    {
+      "bytes": 12,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/count_after.body",
+      "sha256": "d086d346fbb21cce7fd033131dbc339e86fd2416ddc29c726c6708825c13f382"
+    },
+    {
+      "bytes": 439,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/count_after.receipt.json",
+      "sha256": "3d75954f442b216c054a2822c575e29700a62a2c3c21208223e05513d3572bab"
+    },
+    {
+      "bytes": 12,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/count_before.body",
+      "sha256": "d086d346fbb21cce7fd033131dbc339e86fd2416ddc29c726c6708825c13f382"
+    },
+    {
+      "bytes": 439,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/count_before.receipt.json",
+      "sha256": "f99d6b5c35b0652393c00454fcb9ddc47adc007a9b7d82fb37eb26d22b9a258f"
+    },
+    {
+      "bytes": 79,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/ids_after.body",
+      "sha256": "d1bbc2d0cb4eaa5acd14a88231b4523279ee6f76c95555cebf7823b4321dc30c"
+    },
+    {
+      "bytes": 435,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/ids_after.receipt.json",
+      "sha256": "fc26d260e22520842b506ea6c0e868bd92b44ef930f95edde529f8eb95c95c13"
+    },
+    {
+      "bytes": 79,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/ids_before.body",
+      "sha256": "d1bbc2d0cb4eaa5acd14a88231b4523279ee6f76c95555cebf7823b4321dc30c"
+    },
+    {
+      "bytes": 435,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/ids_before.receipt.json",
+      "sha256": "17d10fa9e843a050d92fca599c3b021d07d9b08dc1a55a38968256b349f166f7"
+    },
+    {
+      "bytes": 21218,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/metadata_after.body",
+      "sha256": "ff079119d2ec70de639b3ec96883063e36cceafda2ee0db74479538da1189605"
+    },
+    {
+      "bytes": 366,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/metadata_after.receipt.json",
+      "sha256": "67796e7f5048e21f7e2d6f026b579da90b8db012800f1f350f1fc067f4dbdcff"
+    },
+    {
+      "bytes": 21218,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/metadata_before.body",
+      "sha256": "e650145315bdcced6bb0e7278e3bbc00bd93d0325f650140057ac7be5979ffb7"
+    },
+    {
+      "bytes": 366,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/metadata_before.receipt.json",
+      "sha256": "7d642c95ecf8388b4b04d53784aa2aa127ca87b0ce249588faa9d2699b431eb3"
+    },
+    {
+      "bytes": 7025,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/page_00000.body",
+      "sha256": "a61c1f9225961a416e6f1a6b55d40fe2441f9db5ad006a820cf69429a5c31aa0"
+    },
+    {
+      "bytes": 627,
+      "path": "/workspace/work/hifld-coordinator/83/capture-fixture/page_00000.receipt.json",
+      "sha256": "213a3f0b0474cfce23012136dc14968d965af95fef61a58fec2cb0282e855251"
+    },
+    {
+      "bytes": 1937,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_folder.body",
+      "sha256": "f2d7aaf21002e7592e968a763f4daab6fcda61118ffafc48282aa8cb65b56ec5"
+    },
+    {
+      "bytes": 420,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_folder.receipt.json",
+      "sha256": "f1a837ec8a3e0e5bd86fd0b628cb99de55016aba833d70163abd9dac916aa3b5"
+    },
+    {
+      "bytes": 285,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_root.body",
+      "sha256": "ad868bed357591f96a3d07aee81c4a6a34480f758ec129be14bf1a7af9550e8c"
+    },
+    {
+      "bytes": 408,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_root.receipt.json",
+      "sha256": "04414eefc7ee8a4019698798c96cc3533043535c1da2fe3e4d872f32fe206177"
+    },
+    {
+      "bytes": 6641,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_service.body",
+      "sha256": "0f8b51021e03c72a38b8e25c5573a3a5b8eb92e7cb5b5799017ea71c912aa4b0"
+    },
+    {
+      "bytes": 462,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_service.receipt.json",
+      "sha256": "39a4e1b06fe250aaa650c5c17f53514e8afb57b878689eea43b41e518cc7fee1"
+    },
+    {
+      "bytes": 6466,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_xml.body",
+      "sha256": "d6561707bbf94ca4fcf09d28b358a3260b468e3bb822fca5aced5cdf92a107d2"
+    },
+    {
+      "bytes": 474,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/authority_xml.receipt.json",
+      "sha256": "052f2f109c5767ef9a31f4dd9aaca418076bd3d5c5f746276630f28bb8d0853c"
+    },
+    {
+      "bytes": 12916,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_collection.body",
+      "sha256": "340fa9498e39d64e407c5dcab1e84feafb23d82a01936162656f7fd8b644b1bc"
+    },
+    {
+      "bytes": 717,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_collection.receipt.json",
+      "sha256": "5af6d6eb220504b86a2f494220328bf6a656053c92acdbf3bc61bded18293adb"
+    },
+    {
+      "bytes": 7173,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_geojson.body",
+      "sha256": "0f8439ffcfc56171c17adb61345835f66d5dc945364e999cac8693397829fac0"
+    },
+    {
+      "bytes": 846,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_geojson.receipt.json",
+      "sha256": "e0618592f0e44c6bb81db0e141817eeabe73cb3893a3207750a2cd00350314ad"
+    },
+    {
+      "bytes": 102400,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_geopackage.body",
+      "sha256": "bc28a5954d466a74ad8920cad8718a59e3b02e79d0ff99324c310e39699f2f44"
+    },
+    {
+      "bytes": 836,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_geopackage.receipt.json",
+      "sha256": "1af94582e57832b01064cdd7302de6f36a84d2d2da5b636887fa20e752d899a3"
+    },
+    {
+      "bytes": 15912,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_geoparquet.body",
+      "sha256": "ef61557aa4c166eeeee527db980f58e1299d28af6c629d48db318f1ee1785243"
+    },
+    {
+      "bytes": 839,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_geoparquet.receipt.json",
+      "sha256": "478cb8c4dfba2a5b99886bbb4caf347c7f871068ddb689e81cce497cd2e85d56"
+    },
+    {
+      "bytes": 19531,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_metadata.body",
+      "sha256": "f959494f40a545f033d8dfaf7cdadade67ede957dc186e731371d675ad30444c"
+    },
+    {
+      "bytes": 777,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_metadata.receipt.json",
+      "sha256": "c706882407594786e2eaf34a75aefba474ff92145164ca29c872a37487e0c212"
+    },
+    {
+      "bytes": 3850,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_pmtiles.body",
+      "sha256": "bbcc30135a87bc89d628554adde5cc37f9e9fdf6cadc36ca9b6d34ef6b37b8b1"
+    },
+    {
+      "bytes": 830,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_pmtiles.receipt.json",
+      "sha256": "2f48db64595f15b302257580526cf14d8d5e225313fee6ce5208ea03730f0c8b"
+    },
+    {
+      "bytes": 3170,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_shapefile.body",
+      "sha256": "01f422a97621a5fb771808cfeb27d21d4f9dcf41a107d622f08fabb13bea3c16"
+    },
+    {
+      "bytes": 826,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/baseline_shapefile.receipt.json",
+      "sha256": "fe2aa6dcbaafeec043bfdba1ff6f31a686822580a2d55b756a92e7f75563d07e"
+    },
+    {
+      "bytes": 12,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/count_after.body",
+      "sha256": "d086d346fbb21cce7fd033131dbc339e86fd2416ddc29c726c6708825c13f382"
+    },
+    {
+      "bytes": 538,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/count_after.receipt.json",
+      "sha256": "b85169f409e876c5e138c59f65cce17b6c759bfb7aa1b9dd00a7075866b15024"
+    },
+    {
+      "bytes": 12,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/count_before.body",
+      "sha256": "d086d346fbb21cce7fd033131dbc339e86fd2416ddc29c726c6708825c13f382"
+    },
+    {
+      "bytes": 538,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/count_before.receipt.json",
+      "sha256": "59dff094baea5e1f3489e923cdc989c8a08c662d9cf233f22c7a1a02355c009a"
+    },
+    {
+      "bytes": 79,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/ids_after.body",
+      "sha256": "d1bbc2d0cb4eaa5acd14a88231b4523279ee6f76c95555cebf7823b4321dc30c"
+    },
+    {
+      "bytes": 534,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/ids_after.receipt.json",
+      "sha256": "e93f8084b16a307972213729287858703ed0b149c02b56cc58ec1b1c8ff39b7d"
+    },
+    {
+      "bytes": 79,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/ids_before.body",
+      "sha256": "d1bbc2d0cb4eaa5acd14a88231b4523279ee6f76c95555cebf7823b4321dc30c"
+    },
+    {
+      "bytes": 534,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/ids_before.receipt.json",
+      "sha256": "9abcad0f754fbdfd435219a814e29efe29a4ce3c5482d8ddc10dad61edeb8c12"
+    },
+    {
+      "bytes": 21218,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/metadata_after.body",
+      "sha256": "e650145315bdcced6bb0e7278e3bbc00bd93d0325f650140057ac7be5979ffb7"
+    },
+    {
+      "bytes": 468,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/metadata_after.receipt.json",
+      "sha256": "62e70482b724f6e4569473784d7c8c0d64a5b5d710710ae15bcdeda0390b8895"
+    },
+    {
+      "bytes": 21218,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/metadata_before.body",
+      "sha256": "ff079119d2ec70de639b3ec96883063e36cceafda2ee0db74479538da1189605"
+    },
+    {
+      "bytes": 468,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/metadata_before.receipt.json",
+      "sha256": "6e9cd183024a7e57d2b3aada9c7811e72d43aad44d3225a2fc81b01866475359"
+    },
+    {
+      "bytes": 7025,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/page_00000.body",
+      "sha256": "a61c1f9225961a416e6f1a6b55d40fe2441f9db5ad006a820cf69429a5c31aa0"
+    },
+    {
+      "bytes": 728,
+      "path": "/workspace/work/hifld-coordinator/83/live-intake-network/captures/page_00000.receipt.json",
+      "sha256": "afe36afd256994d467466ed3f8ee4b1310adb4807fa9d926dae5a87ad4341224"
+    },
+    {
+      "bytes": 14308,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5/geoparquet/federal-emergency-management-agency-fema-regional-offices.parquet",
+      "sha256": "dd521c10f9efc35fbb1c8dcf71fcc346ddaa649d7d69bd1d9797144154291fa9"
+    },
+    {
+      "bytes": 98304,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5/geopackage/federal-emergency-management-agency-fema-regional-offices.gpkg",
+      "sha256": "df6164107db42bcdb911790dddc86e41d22802a3637b87e7e6474125683f24a7"
+    },
+    {
+      "bytes": 14308,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5/candidate/typed-source.parquet",
+      "sha256": "dd521c10f9efc35fbb1c8dcf71fcc346ddaa649d7d69bd1d9797144154291fa9"
+    },
+    {
+      "bytes": 24723,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5/metadata/source_manifest.json",
+      "sha256": "dd711b339ceee5d4ef94ad353f708e5d72fbf59957167df5b863e78db69e64c5"
+    },
+    {
+      "bytes": 5367,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5/metadata/fema_regional_offices_candidate_ready.json",
+      "sha256": "1407f820e5e341cd1de09529529776eb4f5eb3fb8c9e7ec5e7af6fdace4303e9"
+    },
+    {
+      "bytes": 8983,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5/metadata/baseline_comparison.json",
+      "sha256": "d6da45771d848de9f5eff53538876263b64a158d8ca775a63f7c1e09be3d0bd5"
+    },
+    {
+      "bytes": 37713,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/_construction-state/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5.json",
+      "sha256": "4ab8034f59947d7cc230a97d23b42647f615abf175aa3a62ad1a3c75105498c9"
+    },
+    {
+      "bytes": 37713,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/_construction-state/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5.json.evidence/4ab8034f59947d7cc230a97d23b42647f615abf175aa3a62ad1a3c75105498c9.json",
+      "sha256": "4ab8034f59947d7cc230a97d23b42647f615abf175aa3a62ad1a3c75105498c9"
+    },
+    {
+      "bytes": 531,
+      "path": "/workspace/work/hifld-coordinator/83/runtime/staging/_construction-state/federal-emergency-management-agency-fema-regional-offices/v0.0.0-draft-fema-offices-1e100d0bd5e7a487-04258549b052f4a5.json.first-construction.json",
+      "sha256": "ebdfe46f456032e7c8a7fb8db279653e159196bc40872854281259f79b355d3f"
+    }
+  ],
+  "processing_commit": "7e1719e1539af1a0e09fc2bdfc5dc1370f0d4cd5",
+  "quality": {
+    "bounds": [
+      -157.883165,
+      18.426533,
+      -66.062003,
+      61.21454
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "89cacc6f6dfa2e71f1cbbef182f5ddadbdfc2185d75c8f7b0c4198b556f6f769",
+    "feature_count": 14,
+    "geometry_type": "Point",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 14,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "scope": "Current C0 native source/registered integration, no source changes afterward;22main actual registered runs plus1supplemental actual genuine freshHTTP capture reuse."
+}
