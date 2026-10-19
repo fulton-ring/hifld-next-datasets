@@ -106,9 +106,9 @@ Acceptance scenarios: duplicate events launch once; failed launches release the 
 
 ## Current blockers
 
-- Issues have been enabled on this fork, and dataset tickets are being created here. The upstream is `Public-Environmental-Data-Partners/hifld-next-datasets`; do not publish tickets upstream by accident.
+- Issues have been enabled on this fork, and all 415 dataset tickets have been created here and linked from the inventory. The upstream is `Public-Environmental-Data-Partners/hifld-next-datasets`; do not publish tickets upstream by accident.
 - The session has no GitHub Projects read/write tool. Project permissions and a supported authenticated controller still need setup; repository admin metadata alone does not establish project access.
-- The execution proxy is unreachable. Its configured policy also lacks agency domains. Restore the environment proxy and configure access to the audit/crosswalk hosts and verified agency hosts before a bulk audit. No live-check failures were inferred from this infrastructure problem.
+- The running execution environment still enforces its restricted network snapshot and denies the GitHub Projects API; its policy also lacks agency domains. Publish/select an updated environment and verify actual API access before Project setup or a bulk source audit. No live-check failures were inferred from this infrastructure problem.
 - The crosswalk workbook and row-level results from the prior audit have not been imported. DataLumos returned a web-fetch 403 and the My Community Data page did not yield readable body text in this session. Reuse the prior worker's raw artifacts if recoverable, otherwise download the original and rerun with bounded requests.
 
 ## Delivery order
