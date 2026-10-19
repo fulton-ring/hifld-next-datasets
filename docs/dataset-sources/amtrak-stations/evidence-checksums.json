@@ -12,8 +12,8 @@
     "sha256": "b207098b37863d006b383c36ff6c0c4ddac379c0c705ab46d6c7ff3f05d8cf04"
   },
   "evidence/crosswalk.receipt.json": {
-    "bytes": 2811,
-    "sha256": "9f80afa53ba901a6175c22b0825d083f28a670e17dcc8776ced518691aa99e0b"
+    "bytes": 2584,
+    "sha256": "d04574776956e817a9bc13a36ae481417ba89bd84d6ae02684587ace236794da"
   },
   "evidence/dictionary.receipt.json": {
     "bytes": 747,
