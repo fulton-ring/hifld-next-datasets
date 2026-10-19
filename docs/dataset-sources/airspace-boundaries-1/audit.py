@@ -10,6 +10,7 @@ import sys
 import pyarrow.parquet as pq
 from shapely import from_wkb
 from shapely.geometry import shape
+from dagster_hifld.faa_airspace import native_geometries
 
 ROOT = pathlib.Path(__file__).parent
 E = ROOT / 'evidence'
@@ -58,6 +59,17 @@ def main():
     equal_topology=[k for k in common if gmap[k].equals(bmap[k])]
     current_bounds=[min(g.bounds[0] for g in gmap.values()),min(g.bounds[1] for g in gmap.values()),max(g.bounds[2] for g in gmap.values()),max(g.bounds[3] for g in gmap.values())]
     result={'source_count':count,'candidate_count':len(br),'source_crs':native['spatialReference'],'comparison_crs':'EPSG:4326 (ArcGIS outSR transformation vs GeoParquet declared CRS)','max_record_count':layer['maxRecordCount'],'pagination_supported':layer['advancedQueryCapabilities']['supportsPagination'],'complete':True,'completeness_note':'Count, independent returnIdsOnly, native all-column/geometry and GeoJSON rows reconcile; terminal page empty; no exceededTransferLimit. Sequential observations, not atomic snapshot.','source_ids':{k:id_audit(nr,k) for k in ('OBJECTID','GLOBAL_ID','GlobalID','IDENT','ICAO_ID','ADHP_ID')},'candidate_ids':{k:id_audit(br,k) for k in ('OBJECTID','GLOBAL_ID','IDENT','ICAO_ID','ADHP_ID','id')},'source_columns':fields,'candidate_schema':[{ 'name':f.name,'type':str(f.type),'nullable':f.nullable} for f in t.schema],'source_only_columns':sorted(set(fields)-set(t.column_names)),'candidate_only_columns':sorted(set(t.column_names)-set(fields)-{'geometry'}),'join_key':'GLOBAL_ID (unique in each observed capture; longitudinal stability not established)','common_GLOBAL_ID_count':len(common),'source_only_GLOBAL_IDs':sorted(src.keys()-base.keys()),'candidate_only_GLOBAL_IDs':sorted(base.keys()-src.keys()),'shared_column_changed_counts':differences,'geometry_exact_normalized_changed_count':len(changed),'geometry_topologically_equal_count':len(equal_topology),'geometry_comparison_note':'Exact normalized GEOS coordinates compared for every common GLOBAL_ID; no snapping/tolerance. A difference alone does not isolate source edits from coordinate transformation/serialization.','source_geometry_types':distribution(g.geom_type for g in gmap.values()),'candidate_geometry_types':distribution(g.geom_type for g in bmap.values()),'source_invalid_geometry_count':sum(not g.is_valid for g in gmap.values()),'candidate_invalid_geometry_count':sum(not g.is_valid for g in bmap.values()),'source_empty_geometry_count':sum(g.is_empty for g in gmap.values()),'source_bounds':current_bounds,'candidate_bounds':[min(g.bounds[0] for g in bmap.values()),min(g.bounds[1] for g in bmap.values()),max(g.bounds[2] for g in bmap.values()),max(g.bounds[3] for g in bmap.values())],'source_TYPE_CODE_counts':distribution(r['TYPE_CODE'] for r in nr),'candidate_TYPE_CODE_counts':distribution(r['TYPE_CODE'] for r in br),'source_attribute_json_types':{c:distribution(type(r[c]).__name__ for r in nr) for c in fields},'source_null_counts':{c:sum(r[c] is None for r in nr) for c in fields},'source_to_geojson_attributes_exact':True,'accepted_baseline':None}
+    native_by_oid=native_geometries(load_bytes('source-native'),nr,count)
+    native_by_global={r['GLOBAL_ID']:native_by_oid[r['OBJECTID']] for r in nr}
+    result['native_geometry_count']=len(native_by_oid)
+    result['native_invalid_geometry_count']=sum(not g.is_valid for g in native_by_oid.values())
+    result['native_ring_coordinate_sequences_preserved']=True
+    result['native_geometry_types']=distribution(g.geom_type for g in native_by_oid.values())
+    result['native_bounds']=[min(g.bounds[0] for g in native_by_oid.values()),min(g.bounds[1] for g in native_by_oid.values()),max(g.bounds[2] for g in native_by_oid.values()),max(g.bounds[3] for g in native_by_oid.values())]
+    result['native_vs_published_candidate_exact_coordinate_changed_count']=sum(not native_by_global[k].equals_exact(bmap[k],0,normalize=True) for k in common)
+    result['native_vs_published_candidate_comparison_limitation']='Coordinate/grouping comparison only: native EPSG4269 vs candidate declared4326; no CRS equivalence or accepted migration inferred.'
+    result['source_geojson_export_invalid_geometry_count']=result.pop('source_invalid_geometry_count')
+    result['source_geojson_export_geometry_types']=result.pop('source_geometry_types')
     out=E/'audit-summary.json';out.write_text(json.dumps(result,indent=2)+'\n');print(json.dumps({k:v for k,v in result.items() if k in ('source_count','candidate_count','common_GLOBAL_ID_count','source_only_columns','candidate_only_columns','geometry_exact_normalized_changed_count','geometry_topologically_equal_count','shared_column_changed_counts','source_bounds','candidate_bounds')},indent=2))
 
 if __name__=='__main__': main()

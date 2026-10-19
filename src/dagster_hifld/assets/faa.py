@@ -1,11 +1,13 @@
 """FAA dataset assets."""
 
 import pathlib
-import tempfile
 
-from dagster import AssetKey, Field, asset
+from dagster import (
+    AssetKey, AssetSelection, DefaultScheduleStatus, Field, RunRequest, SkipReason,
+    asset, define_asset_job, schedule,
+)
 
-from dagster_hifld.faa_airspace import capture, stage_candidate
+from dagster_hifld.faa_airspace import ingest_candidate
 
 from dagster_hifld.download import build_version_id, download_convert_and_stage
 from dagster_hifld.resources import StagingStorageResource
@@ -45,12 +47,9 @@ _AVIATION_BASE = (
 )
 def faa_airspace_boundaries(context, staging_storage: StagingStorageResource) -> dict:
     capture_dir = context.op_config.get("capture_dir", "")
-    if capture_dir:
-        return stage_candidate(staging_storage, pathlib.Path(capture_dir))
-    with tempfile.TemporaryDirectory(prefix="faa-airspace-capture-") as tmp:
-        root = pathlib.Path(tmp)
-        capture(root)
-        return stage_candidate(staging_storage, root)
+    return ingest_candidate(
+        staging_storage, pathlib.Path(capture_dir) if capture_dir else None
+    )
 
 
 
@@ -68,4 +67,34 @@ def faa_aviation_facilities(context, staging_storage: StagingStorageResource) ->
         _AVIATION_FILE_SLUG,
         version,
         staging_storage,
+    )
+
+# Proposed local research poll only; coordinator registers these with Definitions.
+# The schedule remains stopped and the asset independently refuses remote storage.
+
+faa_airspace_draft_refresh_job = define_asset_job(
+    "faa_airspace_draft_refresh",
+    selection=AssetSelection.assets(faa_airspace_boundaries),
+    tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"},
+)
+
+
+@schedule(
+    job=faa_airspace_draft_refresh_job,
+    cron_schedule="0 6 * * *",
+    execution_timezone="America/New_York",
+    default_status=DefaultScheduleStatus.STOPPED,
+    required_resource_keys={"staging_storage"},
+)
+def faa_airspace_draft_refresh_schedule(context):
+    """Daily 06:00 New York proposal; activation is a separate human decision."""
+    storage = context.resources.staging_storage
+    if not storage.use_local or storage.bucket:
+        return SkipReason("Draft FAA refresh is limited to isolated local quarantine storage")
+    if context.scheduled_execution_time is None:
+        return SkipReason("Draft FAA refresh requires an explicit scheduled day")
+    day = context.scheduled_execution_time.date().isoformat()
+    return RunRequest(
+        run_key=f"faa-airspace-draft-{day}",
+        tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"},
     )

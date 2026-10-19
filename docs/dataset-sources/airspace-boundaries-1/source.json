@@ -1,7 +1,7 @@
 {
   "dataset_id": "airspace-boundaries-1",
   "issue": 10,
-  "outcome": "draft_pipeline_quarantined_needs_decision",
+  "outcome": "working_native_geometry_draft_pipeline_quarantined_needs_decision",
   "producer": "USDOT / FAA Aeronautical Information Services",
   "source_role": "producer_publication_candidate",
   "publisher": {
@@ -76,11 +76,16 @@
       "/workspace/work/hifld-coordinator/10/source-geojson.body"
     ],
     "replay": "PYTHONPATH=src .venv/bin/python docs/dataset-sources/airspace-boundaries-1/audit.py /workspace/work/hifld-coordinator/10",
-    "runtime_files_required_for_full_replay": true
+    "runtime_files_required_for_full_replay": true,
+    "native_geometry_valid_count": 477,
+    "native_geometry_invalid_count": 0,
+    "native_ring_coordinate_sequences_preserved": true,
+    "server_geojson_diagnostic_invalid_count": 22,
+    "geometry_interpretation": "GDAL/Fiona ESRIJSON assembles native Esri rings into proper shells/holes; every original coordinate/ring sequence reconciles exactly. Native CRS4269 retained. Server outSR4326 GeoJSON is diagnostic, with22 invalid Hole lies outside shell geometries already present in its served grouping."
   },
   "proposed_contract": {
     "approved": false,
-    "mapping": "Retain every source column exact name/value and declared physical type/nullability; no approved published mapping. Raw native4269 rings and GeoJSON4326 export both retained. Typed WKB/Arrow candidate quarantined.",
+    "mapping": "Retain all original fields exact name/value and declared physical type/nullability in typed Arrow and roundtrip-verified native GeoPackage. Candidate geometry is nativeEPSG4269 from GDAL Esri ring interpretation, not the invalid server GeoJSON export. Original GeoJSON Feature.id is strict nonnull unique int64 and retained in explicit __source_geojson_feature_id without coercion. Every published mapping remains unapproved.",
     "columns": [
       {
         "name": "OBJECTID",
@@ -606,13 +611,13 @@
       {
         "name": "geometry",
         "type": "WKB binary",
-        "crs": "EPSG:4326",
-        "mapping": "Unapproved serialized producer GeoJSON geometry; original native geometry retained raw"
+        "crs": "EPSG:4269",
+        "mapping": "GDAL ESRIJSON shell/hole assembly, original native rings/coordinates unchanged; no reprojection or repair. WKB and native GeoPackage representation unapproved."
       },
       {
         "name": "__source_geojson_feature_id",
         "type": "int64",
-        "mapping": "Original GeoJSON Feature.id retained without generating substitute IDs; unapproved additional column"
+        "mapping": "Strict exact nonnull unique int64 Feature.id from original GeoJSON, rejects fractional/bool/overflow/duplicate/null, retains exact value; no generated substitute ID. Unapproved extra property."
       }
     ],
     "published_candidate_schema": [
@@ -824,6 +829,18 @@
       "IDENT": "Nonunique/nullability as observed, retain exact string",
       "ICAO_ID": "Not unique, retain strings",
       "ADHP_ID": "May null, retain strings"
+    },
+    "generated_geoparquet_observed_unapproved_diffs": {
+      "additional_columns": [
+        "bbox"
+      ],
+      "loosened_nullability_columns": [
+        "OBJECTID",
+        "GlobalID",
+        "__source_geojson_feature_id",
+        "geometry"
+      ],
+      "note": "Original values and numeric physical widths unchanged; observed terminal schema differs from typedprimaryGeoParquet/GPKG source. These are not automatically accepted. See full terminal_roundtrip exacthead evidence."
     }
   },
   "breaking_changes": {
@@ -847,29 +864,45 @@
       "id"
     ],
     "all_common_geometries_differ": true,
-    "geometry_note": "Published declared4326 data contains xoutside[-180,180]; native current4269also unwrapped; producer outSR4326changes normalization/transformation. No automated compatibility claim.22invalid geometries in producer4326GeoJSON are preserved unrepaired; cause requires review."
+    "geometry_note": "Native477polygons are all valid after normal Esri ring interpretation; served4326GeoJSON export has22invalid polygons due ring grouping, retained only as diagnostic. Native bounds extend-200.992...to191.026...with pole90. Native vs old declared4326 candidate changes360of374common exact-coordinate geometries (CRS semantic equivalence unapproved); all374serverexport geometries differ. No wrap/split/reprojection or repair is invented.",
+    "native_vs_candidate_exact_coordinate_changed_count": 360
   },
   "implementation": {
     "adapter": "src/dagster_hifld/faa_airspace.py",
     "asset": "ingest/airspace-boundaries-1/airspace-boundaries-1",
-    "behavior": "Complete bounded official extraction or checksum-pinned replay -> immutable typed all-column local quarantine; no production storage and no discoverable acceptedversion. Generic catalog/format/promotion integration exercised in separately isolated draft sandbox.",
-    "shared_verifier_dependency": "8be7468aede14b81c17cac5d0bae1301c8203ed0",
+    "behavior": "Bounded complete official extraction or checksum replay -> durable raw+receipts (including failures) -> native Esri geometry interpretation -> explicit typed GeoParquet and full roundtrip-verified native GeoPackage -> immutable local quarantine. Generic catalog and supported formats run in isolated draft state; exact acceptance blocks all promotion.",
+    "shared_verifier_dependency": "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
     "raw_downloads_lossless": true,
     "candidate_replay_idempotent": true,
-    "auto_promotion": false
+    "auto_promotion": false,
+    "durable_rejected_capture_evidence": true,
+    "strict_original_geojson_feature_ids": true,
+    "refresh_job": "faa_airspace_draft_refresh_job",
+    "refresh_schedule": {
+      "export": "faa_airspace_draft_refresh_schedule",
+      "cron": "0 6 * * *",
+      "timezone": "America/New_York",
+      "default_status": "STOPPED",
+      "local_only": true,
+      "activation_approved": false
+    }
   },
   "maintainer_decisions_required": [
-    "Accept or reject exact pinned375-row published baseline candidate and original-DHS crosswalk mapping evidence",
-    "Approve changed successor scope:103GLOBAL_ID additions,1removal,336OBJECTID changes and changed attributes",
-    "Choose raw/published physical types and explicit all-column identifier mapping including newGlobalID and truncatedShape fields",
-    "Resolve CRS/antimeridian geometry migration and22invalid producer4326GeoJSON polygons; no automatic repair",
-    "Accept source/release contract and exact shared verifier release decision before any publication"
+    "Accept or reject exact pinned375-row published baseline candidate and originalDHS crosswalk mapping evidence",
+    "Approve changed successor scope103GLOBAL_ID additions,1removal,336OBJECTID changes and changed attributes",
+    "Choose raw/published all-column physical types/nullability and identifier mapping including GlobalID, full Shape fields and original GeoJSON Feature.id",
+    "Review native Esri geometry interpretation/CRS4269 representation vs old candidate declared4326; separately decide any antimeridian/polar rendering substitute rather than accepting invalid serverGeoJSON grouping",
+    "Accept exact source/release contract and shared verifier release decision before publication; decide whether/where to activate stopped local-only refresh proposal"
   ],
   "validation": {
     "targeted_tests": "tests/test_faa_airspace.py",
     "local_graph_replay": "docs/dataset-sources/airspace-boundaries-1/run_local.py",
     "evidence": "evidence/local-materialization.json",
-    "expected_result": "Ingest477 succeeds; catalog blocks22invalid producer-export geometries; independent release approval rejects absentregistry; accepted sentinel inventory unchanged",
+    "expected_result": "Native ingest477 and catalogquality0invalid succeed; GeoPackage/GeoParquet supported format stages succeed; Shapefile/PMTiles explicitly excluded; missing independent acceptance registry blocks verification/promotion and preserves staged data and preexisting local sentinel inventory.",
     "full_suite": "See evidence/validation.json; missing sibling hifld-next-iac/environments/prod/dagster.tf remains unresolved"
+  },
+  "unsupported_output_formats": {
+    "shapefile_zip": "Native Shape__Area11 andShape__Length13 and __source_geojson_feature_id exceed DBF10-character names; priorpublished truncation is not silently repeated. No approved destructive column/type mapping.",
+    "pmtiles": "Native NAD83 unwrappedlongitudes[-200.992180556,191.02666667] andlatitude90 cannot be represented by currentWGS84/Mercator converter without rejected out-of-range coordinates or unapproved antimeridian/polar geometry mapping. Full native data remains available in typed/GPKG candidates."
   }
 }

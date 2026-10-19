@@ -751,15 +751,10 @@
   "geometry_exact_normalized_changed_count": 374,
   "geometry_topologically_equal_count": 0,
   "geometry_comparison_note": "Exact normalized GEOS coordinates compared for every common GLOBAL_ID; no snapping/tolerance. A difference alone does not isolate source edits from coordinate transformation/serialization.",
-  "source_geometry_types": {
-    "MultiPolygon": 4,
-    "Polygon": 473
-  },
   "candidate_geometry_types": {
     "MultiPolygon": 365,
     "Polygon": 10
   },
-  "source_invalid_geometry_count": 22,
   "candidate_invalid_geometry_count": 0,
   "source_empty_geometry_count": 0,
   "source_bounds": [
@@ -975,5 +970,25 @@
     "GlobalID": 0
   },
   "source_to_geojson_attributes_exact": true,
-  "accepted_baseline": null
+  "accepted_baseline": null,
+  "native_geometry_count": 477,
+  "native_invalid_geometry_count": 0,
+  "native_ring_coordinate_sequences_preserved": true,
+  "native_geometry_types": {
+    "MultiPolygon": 4,
+    "Polygon": 473
+  },
+  "native_bounds": [
+    -200.992180556,
+    -29.9999999999999,
+    191.02666667,
+    90.0000000000001
+  ],
+  "native_vs_published_candidate_exact_coordinate_changed_count": 360,
+  "native_vs_published_candidate_comparison_limitation": "Coordinate/grouping comparison only: native EPSG4269 vs candidate declared4326; no CRS equivalence or accepted migration inferred.",
+  "source_geojson_export_invalid_geometry_count": 22,
+  "source_geojson_export_geometry_types": {
+    "MultiPolygon": 4,
+    "Polygon": 473
+  }
 }
