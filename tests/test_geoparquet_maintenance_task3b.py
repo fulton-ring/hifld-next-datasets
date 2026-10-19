@@ -360,7 +360,7 @@ class Task3BTests(unittest.TestCase):
                 production.read_bytes("d", "f", "v", "geoparquet/part.parquet"), old
             )
 
-    def test_replace_apply_backups_and_promotes_only_canonical_objects(self):
+    def test_replace_apply_preserves_accepted_release_until_separate_migration(self):
         with (
             tempfile.TemporaryDirectory() as production_dir,
             tempfile.TemporaryDirectory() as staging_dir,
@@ -397,15 +397,13 @@ class Task3BTests(unittest.TestCase):
                 production, staging, "d", "f", "v", "run", apply=True
             )
 
-            self.assertEqual(report["status"], "promoted")
-            self.assertFalse(production.object_exists("d/f/v/geoparquet/old.parquet"))
-            self.assertTrue(production.object_exists("d/f/v/geoparquet/new.parquet"))
+            self.assertEqual(report["status"], "blocked")
+            self.assertIn("separately accepted", report["errors"][0])
+            self.assertTrue(production.object_exists("d/f/v/geoparquet/old.parquet"))
+            self.assertFalse(production.object_exists("d/f/v/geoparquet/new.parquet"))
+            self.assertEqual(production.read_key("d/f/v/geoparquet/old.parquet"), old)
             self.assertTrue(production.object_exists("d/f/v/pmtiles/tiles.pmtiles"))
-            self.assertTrue(
-                production.object_exists(
-                    "_rollback/geoparquet/run/d/f/v/geoparquet/old.parquet"
-                )
-            )
+            self.assertFalse(production.list_prefix("_rollback"))
 
     def test_benchmark_sends_token_header_without_reporting_token(self):
         class Response:

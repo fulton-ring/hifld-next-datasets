@@ -10,12 +10,18 @@ from pathlib import Path
 import fiona
 import geopandas as gpd
 import pandas as pd
+import pyogrio
 from shapely.geometry import shape
 from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dtype, is_hashable, is_integer_dtype
 
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.evidence_io import validate_evidence_directory
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.native_geoparquet_catalog import has_other_source, pinned_native_path, summarize_native_path, resolve_native_metadata
+from dagster_hifld.output_policy import prebuilt_output_spec
+from dagster_hifld.literal_geojson_catalog import resolve_literal_metadata, summarize_literal_geojson
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     discover_canonical_source_file,
@@ -57,6 +63,25 @@ def summarize_staged_catalog(
     *,
     source_metadata: dict | None = None,
 ) -> CatalogSummary:
+    if source_metadata is not None:
+        provenance_projection(source_metadata)
+    prefix = f"{dataset_slug}/{file_slug}/{version}"
+    # Resolve actual bounded authored metadata even when a caller supplies an
+    # empty/legacy subset; omission must not erase an explicitly pinned profile.
+    literal = resolve_literal_metadata(staging, prefix, source_metadata)
+    if literal is not None:
+        quality, native_dictionary = summarize_literal_geojson(staging, prefix, dictionary_name, literal)
+        dictionary = generate_data_dictionary(gpd.GeoDataFrame(), dictionary_name, source_metadata=literal)
+        dictionary.update(native_dictionary)
+        return CatalogSummary(quality, dictionary)
+    if not has_other_source(staging, prefix):
+        proposed = source_metadata if source_metadata is not None else resolve_native_metadata(staging, prefix)
+        if prebuilt_output_spec(proposed, "geoparquet") is not None:
+            with pinned_native_path(staging, prefix, proposed) as native_path:
+                quality, native_dictionary = summarize_native_path(native_path, dictionary_name, proposed)
+            dictionary = generate_data_dictionary(gpd.GeoDataFrame(), dictionary_name, source_metadata=proposed)
+            dictionary.update(native_dictionary)
+            return CatalogSummary(quality, dictionary)
     with staging.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
         version_path = Path(version_dir)
         reader_errors: list[str] = []
@@ -200,8 +225,9 @@ def generate_data_dictionary(
                 if use_sampling
                 else non_null
             )
-            entry["min"] = float(sample_col.min())
-            entry["max"] = float(sample_col.max())
+            number = int if column_type == "integer" else float
+            entry["min"] = number(sample_col.min())
+            entry["max"] = number(sample_col.max())
 
         if column_type == "string":
             try:
@@ -246,8 +272,18 @@ def generate_data_dictionary(
             "metadata_resolved_from",
             "inventory_match_type",
             "manifest_keys",
+            "schema_version",
+            "processor",
+            "inputs",
+            "transformations",
+            "code_commit",
+            "lineage",
+            "unsupported_output_formats",
+            "prebuilt_output_policy",
+            "literal_geojson_catalog",
+            "manifest_layers",
         ):
-            if key in source_metadata and source_metadata[key] not in (None, "", [], {}):
+            if key in source_metadata and (key == "transformations" or source_metadata[key] not in (None, "", [], {})):
                 dictionary[key] = source_metadata[key]
     return dictionary
 
@@ -260,24 +296,18 @@ def write_catalog_metadata(
     quality_dict: dict,
     dictionary_dict: dict,
 ) -> dict[str, str]:
-    quality_key = staging.write(
-        dataset_slug,
-        file_slug,
-        version,
-        "metadata/quality_manifest.json",
-        json.dumps(quality_dict, sort_keys=True, indent=2).encode("utf-8"),
-    )
-    dictionary_key = staging.write(
-        dataset_slug,
-        file_slug,
-        version,
-        "metadata/data_dictionary.json",
-        json.dumps(dictionary_dict, sort_keys=True, indent=2).encode("utf-8"),
-    )
-    return {
-        "quality_manifest": quality_key,
-        "data_dictionary": dictionary_key,
-    }
+    provenance = provenance_projection(dictionary_dict)
+    if staging.use_local or not staging.bucket:
+        validate_evidence_directory(Path(staging.local_dir).resolve() / staging.build_target_location(dataset_slug, file_slug, version, "metadata"))
+    documents = {"quality_manifest": ("quality_manifest.json", quality_dict), "data_dictionary": ("data_dictionary.json", dictionary_dict)}
+    if provenance is not None:
+        documents["resolved_provenance"] = ("resolved_provenance.json", provenance)
+    result = {}
+    for name, (filename, contents) in documents.items():
+        key = staging.build_target_location(dataset_slug, file_slug, version, "metadata/" + filename)
+        staging.write_key_if_unchanged(key, json.dumps(contents, sort_keys=True, indent=2).encode("utf-8"), staging.object_snapshot(key))
+        result[name] = key
+    return result
 
 
 def _load_best_file(version_dir: Path) -> gpd.GeoDataFrame | None:
@@ -383,7 +413,53 @@ def _iter_geospatial_sources(version_dir: Path):
             yield legacy_shapefile, None
 
 
+def _summarize_native_float_geopackage(path: Path, layer_name: str | None, info: dict) -> tuple[gpd.GeoDataFrame, dict]:
+    """Bounded Arrow sampling retains native FLOAT values older Fiona omits.
+
+    This path changes catalog sampling only. It never rewrites source data,
+    widens native values or changes the selected layer/format precedence.
+    """
+    metadata, table = pyogrio.raw.read_arrow(
+        path, layer=layer_name, max_features=CATALOG_SAMPLE_FEATURE_LIMIT,
+    )
+    geometry_name = metadata.get("geometry_name")
+    if geometry_name in table.column_names:
+        attributes = table.drop([geometry_name]).to_pandas(types_mapper=pd.ArrowDtype)
+        sample = gpd.GeoDataFrame(
+            attributes,
+            geometry=gpd.GeoSeries.from_wkb(table.column(geometry_name).to_pylist(), crs=metadata.get("crs")),
+            crs=metadata.get("crs"),
+        )
+    elif not metadata.get("geometry_name") and not info.get("geometry_type"):
+        # A legitimate attributes-only GeoPackage has no geometry to invent.
+        sample = gpd.GeoDataFrame(table.to_pandas(types_mapper=pd.ArrowDtype))
+    else:
+        raise ValueError("Native spatial GeoPackage Arrow sample has no declared geometry column")
+    quality = generate_quality_manifest(sample)
+    count = int(info["features"])
+    if count < 0:
+        count = int(pyogrio.read_info(path, layer=layer_name, force_feature_count=True)["features"])
+    bounds = info.get("total_bounds")
+    if bounds is not None:
+        quality["bounds"] = [round(float(value), 6) for value in bounds]
+    quality.update(
+        feature_count=count,
+        catalog_mode="streaming_geospatial_arrow_native_float",
+        sampled_feature_count=len(sample),
+        sampled_null_geometry_count=quality.pop("null_geometry_count"),
+        sampled_invalid_geometry_count=quality["invalid_geometry_count"],
+    )
+    return sample, quality
+
+
 def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gpd.GeoDataFrame, dict]:
+    # Older Fiona/GDAL can silently omit SQLite FLOAT attributes. Select Arrow
+    # only when the actual GeoPackage declares native binary32 columns; retain
+    # existing reader behavior for every other format and physical schema.
+    if path.suffix.lower() == ".gpkg" and path.is_file():
+        info = pyogrio.read_info(path, layer=layer_name)
+        if "float32" in info.get("dtypes", []):
+            return _summarize_native_float_geopackage(path, layer_name, info)
     open_kwargs: dict[str, object] = {}
     if layer_name:
         open_kwargs["layer"] = layer_name
@@ -431,6 +507,17 @@ def _summarize_geospatial_source(path: Path, layer_name: str | None) -> tuple[gp
             geometry="geometry",
             crs=crs,
         )
+    # from_features infers nullable integer columns as binary floats, potentially
+    # losing IDs beyond 2**53 before the dictionary ever inspects the sample.
+    # Rebuild numeric columns from original Fiona values and its declared schema.
+    # Do not convert the already-inferred float column back to integer.
+    numeric_dtypes = {"int": "Int64", "int16": "Int16", "int32": "Int32", "int64": "Int64",
+                      "uint16": "UInt16", "uint32": "UInt32", "uint64": "UInt64",
+                      "float": "Float64", "float32": "Float64", "float64": "Float64", "double": "Float64"}
+    for name, source_type in (schema.get("properties") or {}).items():
+        dtype = numeric_dtypes.get(str(source_type).split(":", 1)[0].lower())
+        if dtype:
+            sample[name] = pd.array([feature["properties"].get(name) for feature in sample_features], dtype=dtype)
     if bounds is None and len(sample) and sample.geometry.notnull().any():
         bounds = [round(float(value), 6) for value in sample.geometry.total_bounds]
     if not geometry_type and geom_types:
