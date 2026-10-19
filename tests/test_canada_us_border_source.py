@@ -9,12 +9,14 @@ from unittest.mock import patch
 
 import fiona
 import httpx
+import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import DefaultScheduleStatus
 from shapely.geometry import shape
 
 from dagster_hifld.assets.ibc import ibc_boundary_draft_refresh_schedule, ibc_canada_us_border
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+from dagster_hifld.definitions import _iter_staged_version_paths
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import canada_us_border as s
 
@@ -126,3 +128,63 @@ class BoundaryTests(unittest.TestCase):
             fake=Stream();fake.rows=mutated
             with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d,patch.object(s.fiona,'open',return_value=fake),self.assertRaises(ValueError):
                 s.inspect_archive((CAPTURE/'ibc-zip.body').read_bytes(),Path(d))
+
+    def test_cache_repin_cannot_replace_fresh_source_reconciliation(self):
+        for kind in ['parquet_value','parquet_type','gpkg_value','records','extra_file','extra_ready']:
+            with self.subTest(kind=kind),tempfile.TemporaryDirectory() as d:
+                storage=StagingStorageResource(local_dir=d)
+                output=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                root=Path(d,s.SLUG,s.SLUG,output['version']);marker=root/'metadata/canada_us_border_candidate_ready.json'
+                ready=json.loads(marker.read_text());target=None
+                if kind.startswith('parquet'):
+                    target=root/'candidate/typed-source.parquet';table=pq.read_table(target)
+                    if kind=='parquet_value':table=table.set_column(table.schema.get_field_index('SectionEng'),table.schema.field('SectionEng'),pa.array(['changed']*30))
+                    else:table=table.set_column(table.schema.get_field_index('SectionNum'),'SectionNum',table.column('SectionNum').cast(pa.int64()))
+                    pq.write_table(table,target)
+                elif kind=='gpkg_value':
+                    target=root/'geopackage'/f'{s.SLUG}.gpkg'
+                    with fiona.open(target) as f:schema=f.schema;crs=f.crs;rows=[{'properties':dict(r['properties']),'geometry':r.geometry} for r in f]
+                    rows[0]['properties']['SectionEng']='changed';target.unlink()
+                    with fiona.open(target,'w',driver='GPKG',layer=s.SLUG,crs=crs,schema=schema) as f:f.writerecords(rows)
+                elif kind=='records':
+                    target=root/'metadata/candidate.records.jsonl';target.write_bytes(target.read_bytes().replace(b'West',b'East'))
+                else:
+                    target=root/'candidate/extra.parquet';target.write_bytes(b'extra')
+                    if kind=='extra_file':target=None
+                if target is not None:ready['objects'][str(target.relative_to(root))]=s.sha(target.read_bytes())
+                marker.write_text(json.dumps(ready))
+                raw=(root/'raw'/s.ARCHIVE_NAME).read_bytes()
+                with self.assertRaisesRegex(ValueError,'fidelity|differ|roster|schema|inventory'):
+                    s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                self.assertEqual((root/'raw'/s.ARCHIVE_NAME).read_bytes(),raw)
+                self.assertTrue(list(Path(d,'_quarantine').rglob('report.json')))
+
+    def test_interrupted_private_build_never_discoverable(self):
+        original=s.immutable
+        for failure in [OSError('injected disk failure'),KeyboardInterrupt('injected interruption')]:
+            with self.subTest(failure=type(failure).__name__),tempfile.TemporaryDirectory() as d:
+                storage=StagingStorageResource(local_dir=d)
+                def injected(target,key,body):
+                    if Path(target.local_dir).name.startswith('.candidate-build-') and key=='candidate/typed-source.parquet':raise failure
+                    return original(target,key,body)
+                with patch.object(s,'immutable',side_effect=injected),self.assertRaises(s.BoundaryQuarantineError if isinstance(failure,OSError) else KeyboardInterrupt):
+                    s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
+                self.assertEqual(list(_iter_staged_version_paths(storage)),[])
+                self.assertTrue(list(Path(d,'_raw-captures').rglob('ibc-zip.body')))
+                self.assertFalse(list(Path(d).rglob('.candidate-build-*')))
+
+    def test_invalid_offset_and_original_bad_receipt_bytes_retained(self):
+        for original in [b'{"url":"x","url":"y"}',b'[]']:
+            with self.subTest(original=original),tempfile.TemporaryDirectory() as d:
+                capture=Path(d,'capture');shutil.copytree(CAPTURE,capture)
+                (capture/'ibc-zip.receipt.json').write_bytes(original)
+                storage=StagingStorageResource(local_dir=str(Path(d,'stage')))
+                with self.assertRaises(ValueError):s.stage_canada_us_border_candidate(storage,capture_dir=capture)
+                self.assertTrue(any(p.read_bytes()==original for p in Path(d,'stage','_quarantine').rglob('original-receipt.body')))
+        body=(CAPTURE/'ibc-zip.body').read_bytes();receipt=json.loads((CAPTURE/'ibc-zip.receipt.json').read_text())
+        for timestamp in ['2026-10-19T01:02:03+00:99','2026-10-19T01:02:03+24:00','2026-10-19T01:02:03+01:60','2026-10-19T25:02:03+00:00']:
+            with self.subTest(timestamp=timestamp),self.assertRaises(ValueError):s.validate_receipt(body,{**receipt,'observed_at':timestamp},s.URL)
+        with tempfile.TemporaryDirectory() as d:
+            captures=s.acquire(StagingStorageResource(local_dir=d),CAPTURE);manifest=s.provenance(captures)
+        for item in manifest['inputs']:
+            self.assertEqual(item['license'],'https://open.canada.ca/en/open-government-licence-canada' if item['input_id'].startswith('ibc-zip:') else s.TERMS)

@@ -9,8 +9,11 @@ import collections
 import hashlib
 import importlib.metadata
 import io
+import fcntl
+import os
 import json
 import platform
+import re
 import sqlite3
 import stat
 import struct
@@ -109,7 +112,10 @@ def validate_receipt(body: bytes, receipt: dict, url: str) -> None:
             or type(receipt.get('bytes')) is not int or receipt['bytes'] != len(body)
             or receipt.get('sha256') != sha(body)):
         raise BoundaryQuarantineError('capture_receipt_url_status_hash_length_mismatch')
-    moment = datetime.fromisoformat(receipt.get('observed_at', ''))
+    timestamp=receipt.get('observed_at')
+    if not isinstance(timestamp,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)',timestamp):
+        raise BoundaryQuarantineError('capture_receipt_requires_strict_aware_iso_timestamp')
+    moment = datetime.fromisoformat(timestamp)
     if moment.tzinfo is None:
         raise BoundaryQuarantineError('capture_receipt_requires_timezone')
 
@@ -119,14 +125,17 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     captures = {}
     for name,url in URLS.items():
         if capture_dir is not None:
-            body = b''; receipt = {'capture_path':str(capture_dir),'url':url}
+            body = b''; receipt_body=b''; receipt = {'capture_path':str(capture_dir),'url':url}
             try:
                 with (capture_dir / (name + '.body')).open('rb') as f: body = f.read(MAX_BYTES + 1)
-                receipt = strict_json((capture_dir / (name + '.receipt.json')).read_bytes())
+                receipt_body=(capture_dir / (name + '.receipt.json')).read_bytes()
+                immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/receipts/{sha(receipt_body)}.body',receipt_body)
+                receipt = strict_json(receipt_body)
                 validate_receipt(body,receipt,url)
                 if len(body)>MAX_BYTES: raise BoundaryQuarantineError('capture_size_limit')
             except (OSError,ValueError,TypeError) as exc:
                 location=quarantine(storage,body,receipt,str(exc))
+                immutable(storage,f'{location}/original-receipt.body',receipt_body)
                 raise BoundaryQuarantineError(f'{exc}; retained:{location}') from exc
         else:
             for attempt in range(3):
@@ -166,7 +175,8 @@ def provenance(captures: dict) -> dict:
             'canonical_url':URLS[name],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],
             'retrieved_at':receipt['observed_at'],'release_date':'2018-04-20' if name=='ibc-zip' else None,
             'release_date_unknown_reason':'Supporting producer webpage has no source publication date; fetch time is not release date.',
-            'sha256':sha(body),'bytes':len(body),'license':'https://open.canada.ca/en/open-government-licence-canada',
+            'sha256':sha(body),'bytes':len(body),'license':'https://open.canada.ca/en/open-government-licence-canada' if name=='ibc-zip' else TERMS,
+            'license_scope':'Dataset-specific embedded OGLCanada; compatibility with generic website restriction remains under review.' if name=='ibc-zip' else 'Supporting website material subject to website terms; no blanket dataset-licence applicability inferred.',
             'attribution':'International Boundary Commission, Canada / United States of America Boundary Dataset, edition 1.3, 2018-04-20. Copy of official work; not produced in affiliation with or endorsed by the Commission.',
             'lineage':'Producer-hosted distribution and supporting producer pages; embedded dataset-specific licence retained alongside website terms. No release approval.',
             'authority_evidence':LANDING})
@@ -264,6 +274,92 @@ def compare_derivative(source: Path, candidate: Path, output: Path) -> dict:
                 'sha256': pin, 'bytes': source.stat().st_size}})
 
 
+def typed_table(rows: list[dict], audit: dict) -> pa.Table:
+    schema=pa.schema([pa.field(k,pa.int32() if v.startswith('int32') else pa.float64() if v.startswith('float') else pa.string(),nullable=False) for k,v in SCHEMA.items()]+[pa.field('geometry',pa.binary(),nullable=False)])
+    table=pa.Table.from_pylist([{**r['properties'],'geometry':shape(r['geometry']).wkb} for r in rows],schema=schema)
+    geo={'version':'1.1.0','primary_column':'geometry','columns':{'geometry':{'encoding':'WKB','geometry_types':['LineString'],'crs':pyproj.CRS(4269).to_json_dict(),'bbox':audit['bounds']}}}
+    return table.replace_schema_metadata({b'geo':encode(geo)})
+
+
+def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
+    require_local(storage)
+    root=Path(storage.local_dir).resolve()
+    key=storage._ensure_prefixed(prefix)
+    if Path(key).is_absolute() or any(part in {'.','..'} for part in Path(key).parts):
+        raise BoundaryQuarantineError('unsafe_local_candidate_prefix')
+    target=root/key
+    current=root
+    for part in target.relative_to(root).parts:
+        current=current/part
+        if current.is_symlink(): raise BoundaryQuarantineError('linked_candidate_path')
+    return target
+
+
+def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready: dict,
+                               rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
+    """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
+    root=local_candidate_path(storage,prefix)
+    # The normal graph adds only these derivative files. Source-owned directories remain exact.
+    allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
+        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json'}
+    paths=list(root.rglob('*'))
+    if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
+        raise BoundaryQuarantineError('linked_candidate_object')
+    actual={str(p.relative_to(root)) for p in paths if p.is_file()}
+    expected=set(ready['objects'])|{'metadata/canada_us_border_candidate_ready.json'}
+    if not expected.issubset(actual) or actual-expected-allowed_derivatives:
+        raise BoundaryQuarantineError('existing_candidate_unrostered_or_missing_object')
+    cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
+    expected_manifest=provenance(cached)
+    if any(cached[name][0]!=captures[name][0] for name in URLS):
+        raise BoundaryQuarantineError('cached_capture_differs_from_fresh_source')
+    manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
+    validate_release_provenance(manifest)
+    # code_commit identifies the original immutable construction, including later docs-only commits.
+    for name,value in expected_manifest.items():
+        if name!='code_commit' and manifest.get(name)!=value:
+            raise BoundaryQuarantineError('cached_provenance_differs_from_original_capture')
+    expected_bytes={'raw/'+ARCHIVE_NAME:captures['ibc-zip'][0],
+        'raw/retrieval.json':encode(cached['ibc-zip'][1]),
+        'metadata/candidate.records.jsonl':b''.join(encode(r) for r in rows),
+        'metadata/processing_identity.json':encode(identity),
+        'metadata/canada_us_border_source_audit.json':encode(audit),
+        'metadata/proposed_source_contract.json':encode(PROPOSAL)}
+    expected_bytes.update({f'raw/members/{name}':body for name,body in members.items()})
+    if any((root/name).read_bytes()!=body for name,body in expected_bytes.items()):
+        raise BoundaryQuarantineError('cached_source_or_normalized_records_differ')
+    with fiona.open(root/'geopackage'/f'{SLUG}.gpkg') as stream:
+        expected_schema={'properties':{k:('int32' if v.startswith('int32') else 'float' if v.startswith('float') else v) for k,v in SCHEMA.items()},'geometry':'LineString'}
+        if dict(stream.schema)!=expected_schema or not pyproj.CRS(stream.crs).equals(pyproj.CRS(4269)):
+            raise BoundaryQuarantineError('cached_geopackage_schema_or_crs_drift')
+        decoded=[{'type':'Feature','properties':dict(r['properties']),'geometry':mapping(shape(r['geometry'])) if r['geometry'] else None} for r in stream]
+    if b''.join(encode(r) for r in decoded)!=b''.join(encode(r) for r in rows):
+        raise BoundaryQuarantineError('cached_geopackage_source_fidelity_failure')
+    if not pq.read_table(root/'candidate/typed-source.parquet').equals(typed_table(rows,audit),check_metadata=True):
+        raise BoundaryQuarantineError('cached_typed_parquet_source_fidelity_failure')
+
+
+def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
+    """Install one fully built local version atomically; partial builds are never discoverable."""
+    target=local_candidate_path(storage,prefix)
+    target.parent.mkdir(parents=True,exist_ok=True)
+    # Cooperating refresh processes cannot replace an existing version or race its first commit.
+    lock=target.parent/('.'+target.name+'.lock')
+    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    with os.fdopen(descriptor,'r+b') as held:
+        if os.fstat(held.fileno()).st_nlink!=1: raise BoundaryQuarantineError('linked_candidate_lock')
+        fcntl.flock(held,fcntl.LOCK_EX)
+        if target.exists() or target.is_symlink():
+            raise BoundaryQuarantineError('concurrent_or_incomplete_existing_candidate')
+        with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
+            private=StagingStorageResource(local_dir=tmp,use_local=True)
+            for name,value in payloads.items(): immutable(private,name,value)
+            immutable(private,'metadata/canada_us_border_candidate_ready.json',encode(ready))
+            os.rename(tmp,target)
+    # Keep the tiny lock inode: unlinking permits a third process to bypass a waiter.
+
+
+
 def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
@@ -293,6 +389,7 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
                     snapshot = storage.object_snapshot(key)
                     if snapshot is None or sha(storage.read_key(key)) != expected or storage.object_snapshot(key) != snapshot:
                         raise BoundaryQuarantineError(f'existing_candidate_object_changed:{name}')
+                reconcile_cached_candidate(storage,prefix,ready,rows,audit,captures,identity,members)
                 return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'feature_count': len(rows),
                         'status': 'working_draft_candidate_ready', 'processing_fingerprint': fingerprint}
             geopackage = directory / f'{SLUG}.gpkg'
@@ -314,10 +411,7 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             fidelity = compare_derivative(source_records, decoded, directory / 'comparison')
             if decoded.read_bytes() != records:
                 raise BoundaryQuarantineError('geopackage_complete_fidelity_failure')
-            arrow_schema = pa.schema([pa.field(k, pa.int32() if v.startswith('int32') else pa.float64() if v.startswith('float') else pa.string(), nullable=False) for k,v in SCHEMA.items()] + [pa.field('geometry', pa.binary(), nullable=False)])
-            table = pa.Table.from_pylist([{**r['properties'], 'geometry': shape(r['geometry']).wkb} for r in rows], schema=arrow_schema)
-            geo = {'version': '1.1.0', 'primary_column': 'geometry', 'columns': {'geometry': {'encoding': 'WKB', 'geometry_types': ['LineString'], 'crs': pyproj.CRS(4269).to_json_dict(), 'bbox': audit['bounds']}}}
-            table = table.replace_schema_metadata({b'geo': encode(geo)})
+            table=typed_table(rows,audit)
             parquet = directory / 'typed-source.parquet'
             pq.write_table(table, parquet, compression='zstd')
             decoded.write_bytes(b''.join(encode({'type': 'Feature', 'properties': {k:r[k] for k in SCHEMA},
@@ -339,12 +433,10 @@ def stage_canada_us_border_candidate(storage: StagingStorageResource, *, capture
             payloads.update({f'raw/members/{name}': value for name,value in members.items()})
             payloads.update({f'raw/captures/{name}.body':value[0] for name,value in captures.items()})
             payloads.update({f'raw/captures/{name}.receipt.json':encode(value[1]) for name,value in captures.items()})
-            for name,value in payloads.items():
-                immutable(storage, f'{prefix}/{name}', value)
             ready = {'status':'working_draft_candidate_ready', 'approved':False, 'source_sha256':PIN,
                 'candidate_records_sha256':sha(records), 'processing_fingerprint':fingerprint, 'version':version,
                 'objects':{name:sha(value) for name,value in payloads.items()}}
-            immutable(storage, ready_key, encode(ready))
+            commit_complete_candidate(storage,prefix,payloads,ready)
             return {'dataset_slug':SLUG, 'file_slug':SLUG, 'version':version, 'feature_count':len(rows),
                     'status':ready['status'], 'processing_fingerprint':fingerprint}
     except (ValueError, TypeError, KeyError, OSError, RuntimeError, zipfile.BadZipFile, sqlite3.Error, fiona.errors.FionaError) as exc:

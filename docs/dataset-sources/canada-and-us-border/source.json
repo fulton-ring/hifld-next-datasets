@@ -46,7 +46,7 @@
     }
   },
   "crosswalk": {
-    "result": "unmatched_due_to_origin403",
+    "result": "unverified_inaccessible_origin403",
     "doi": "https://doi.org/10.3886/E241367V1",
     "archive": "https://www.datalumos.org/datalumos/project/238829/version/V1/view",
     "inventory_match": "Exact title/30segments/scale description matches official source; this does not establish reviewed crosswalk match"

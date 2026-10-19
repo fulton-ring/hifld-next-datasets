@@ -57,6 +57,9 @@ with DagsterInstance.get() as instance:
  errors=record('normal_formats_missing_approval',formats)
  assert not formats.success and errors and all('missing_independent_release_approval_registry' in error for error in errors),errors
  assert snapshot(published)==prior
+ post=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
+ record('real_complete_post_formats_refresh',post);assert post.success and post.output_for_node(ibc_canada_us_border.op.name)==output
+ assert snapshot(published)==prior
  rows=pq.read_table(root/'candidate/typed-source.parquet').to_pylist();assert len(rows)==30
  with fiona.open(root/'geopackage'/f'{source.SLUG}.gpkg') as f:gp={r['properties']['SectionNum']:r for r in f}
  for row in rows:
