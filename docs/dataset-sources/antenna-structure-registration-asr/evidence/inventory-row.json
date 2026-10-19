@@ -1,0 +1,13 @@
+{
+  "path": ".\\antenna-structure-registration-asr",
+  "filename": "antenna-structure-registration-asr",
+  "title": "Antenna Structure Registration (ASR)",
+  "description": "The FCC Rules define the term \"antenna structure\" to include \"[T]he radiating and/or receive system, its supporting structures and any appurtenances mounted thereon.\" In practical terms, an antenna structure could be a free standing structure, built specifically to support antennas or act as an antenna, or it could be a structure mounted on some other man-made object (such as a building or bridge). If the structure is mounted on some other man-made object such as a building or bridge, the structure must be registered with the FCC, not the building or bridge.Objects such as buildings, observation towers, bridges, windmills, and water towers that do not have an antenna mounted on them are not antenna structures and should not be registered. Keep in mind that the FCC only has jurisdiction over antenna structures, and thus, other objects that do not house antennas are not required to be registered with the FCC -- regardless of their location or height.Antenna Structure Registration (ASR) - OverviewDocumentation and Data Dictionary provided by FCC:Intro to ASR database filesASR Table Data ElementsASR Data Field Definitions",
+  "publisher": "Federal Communications Commission (FCC)",
+  "agency": "Federal Communications Commission",
+  "office": "",
+  "keywords": "['Antenna Structure Registration', 'ASR', 'HIFLD open', 'Communication', 'FCC', 'HIFLD', 'Feature Service', 'SDI', 'NSDI', 'Open Data', 'FGDC', 'Emergency Preparedness', 'Disaster Planning', 'Infrastructure']",
+  "Download Location": "https://www.datalumos.org/datalumos/project/238655/version/V1/view",
+  "date_issued": "2024-06-27",
+  "date_modified": "2024-07-06"
+}

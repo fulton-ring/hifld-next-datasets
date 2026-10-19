@@ -1,0 +1,223 @@
+{
+  "dataset_id": "antenna-structure-registration-asr",
+  "issue": 18,
+  "outcome": "external_blocker",
+  "worker": "/root/fcc_18",
+  "implementation_scope": "Draft pipeline code/local tests authorized pending acceptance; no feasible faithful extraction without verified complete source bytes/schema. No archive-refresh substitute implemented.",
+  "producer": {
+    "name": "Federal Communications Commission",
+    "basis": "exact inventory attribution; no complete current release captured"
+  },
+  "publisher": null,
+  "verified_maintained_source": null,
+  "accepted_baseline": null,
+  "accepted_contract": null,
+  "release_date": null,
+  "crosswalk": {
+    "url": "https://doi.org/10.3886/E241367V1",
+    "status": "unverified_provider_403_after_observed_redirect",
+    "evidence": "evidence/crosswalk.receipt.json"
+  },
+  "network": {
+    "configured": "unrestricted",
+    "observed": "enforced",
+    "revision": "8",
+    "source_bulk_failure": "origin HTTP403 Akamai Access Denied",
+    "historical_gis_failure": "CONNECT403",
+    "configuration_changed": false
+  },
+  "published_candidate": {
+    "request_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/antenna-structure-registration-asr/antenna-structure-registration-asr/v1.0.0/geoparquet/antenna-structure-registration-asr.parquet",
+    "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/antenna-structure-registration-asr/antenna-structure-registration-asr/v1.0.0/geoparquet/antenna-structure-registration-asr.parquet",
+    "bytes": 2099257,
+    "sha256": "fc43f476d4181538ad139d0e6504122cf4f258e0dd1d4817981377c62b73258d",
+    "generation": "1791506349781360"
+  },
+  "candidate_acceptance": "unapproved",
+  "candidate_rows": 17666,
+  "proposed_physical_candidate_schema": [
+    {
+      "name": "geometry",
+      "type": "binary",
+      "nullable": true
+    },
+    {
+      "name": "RegNum",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "UniqSysID",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "Entity",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ContAdd",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ContPO",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ContCity",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ContState",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "ContZip",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "ContName",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LatDeg",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "LatMin",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "LatSec",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "LatDir",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LonDeg",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "LonMin",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "LonSec",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "LonDir",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "CoordsType",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "StatusCode",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LocAdd",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LocCity",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "LocState",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "Strucht",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "FAAstudy",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "FAAcirc",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "latdec",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "londec",
+      "type": "double",
+      "nullable": true
+    },
+    {
+      "name": "url",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "id",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "bbox",
+      "type": "struct<xmin: double, ymin: double, xmax: double, ymax: double>",
+      "nullable": true
+    }
+  ],
+  "raw_fcc_schema": null,
+  "candidate_analysis": "evidence/published-analysis.json",
+  "diagnostic_policy": "No positional relabeling, ID rewriting, coordinate repair, status filtering, or inference of official raw field types.",
+  "blockers": [
+    {
+      "kind": "source_access",
+      "evidence": [
+        "evidence/asr-r-towers.receipt.json",
+        "evidence/asr-a-towers.receipt.json",
+        "evidence/asr-definitions.receipt.json"
+      ],
+      "decision": "Provide reachable complete official ASR release +dictionary with verifiable attribution, or verified delegated maintained distributor."
+    },
+    {
+      "kind": "potential_breaking_change",
+      "evidence": [
+        "evidence/published-analysis.json"
+      ],
+      "decision": "Review actual source contract and published field/ID inconsistencies; choose compatibility/migration explicitly before release."
+    }
+  ],
+  "verification": {
+    "offline_full_candidate_audit": true,
+    "actual_source_materialization": false,
+    "independent_review": "requested after commit",
+    "full_suite": "not rerun for evidence-only changes; missing sibling IaC remains unresolved",
+    "production_changed": false
+  }
+}

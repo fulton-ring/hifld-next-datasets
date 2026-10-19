@@ -1,0 +1,10 @@
+{
+  "name": "fcc-asr",
+  "request_url": "https://www.fcc.gov/wireless/bureau-divisions/competition-infrastructure-policy-division/antenna-structure-registration",
+  "observed_at": "2026-10-19T05:57:40.126493+00:00",
+  "status": 403,
+  "final_url": "https://www.fcc.gov/wireless/bureau-divisions/competition-infrastructure-policy-division/antenna-structure-registration",
+  "error": "HTTP Error 403: Forbidden",
+  "bytes_read": 500,
+  "sha256": "8c8976abf799a478fe5abd49747437f6d49d0d43725d2b7a2949e88126c9d388"
+}

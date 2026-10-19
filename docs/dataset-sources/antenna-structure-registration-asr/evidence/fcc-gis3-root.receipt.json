@@ -1,0 +1,6 @@
+{
+  "name": "fcc-gis3-root",
+  "request_url": "https://webgis3.fcc.gov/server/rest/services?f=pjson",
+  "observed_at": "2026-10-19T05:58:48.243474+00:00",
+  "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+}

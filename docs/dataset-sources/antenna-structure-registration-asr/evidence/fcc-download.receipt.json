@@ -1,0 +1,10 @@
+{
+  "name": "fcc-download",
+  "request_url": "https://www.fcc.gov/wireless/data/public-access-files-database-downloads",
+  "observed_at": "2026-10-19T05:57:40.134446+00:00",
+  "status": 403,
+  "final_url": "https://www.fcc.gov/wireless/data/public-access-files-database-downloads",
+  "error": "HTTP Error 403: Forbidden",
+  "bytes_read": 441,
+  "sha256": "15a0f8da20d73018dfe9ed5de05441a9bfc65743e3a38922094b204016b1f2d3"
+}

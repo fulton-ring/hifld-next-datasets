@@ -1,0 +1,10 @@
+{
+  "name": "asr-definitions",
+  "request_url": "https://www.fcc.gov/wireless/data/public-access-files-database-downloads/antenna-structure-registration-asr-database",
+  "observed_at": "2026-10-19T05:57:40.604070+00:00",
+  "status": 403,
+  "final_url": "https://www.fcc.gov/wireless/data/public-access-files-database-downloads/antenna-structure-registration-asr-database",
+  "error": "HTTP Error 403: Forbidden",
+  "bytes_read": 505,
+  "sha256": "029ccb2157ae36cdbc96d233ebb7d65b7f1006f2ce89c4b7ea22f0cbcb401795"
+}

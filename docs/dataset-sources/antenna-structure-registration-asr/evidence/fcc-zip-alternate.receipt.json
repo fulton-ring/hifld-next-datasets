@@ -1,0 +1,10 @@
+{
+  "name": "fcc-zip-alternate",
+  "request_url": "https://data.fcc.gov/download/pub/uls/complete/r_tower.zip?download=1",
+  "observed_at": "2026-10-19T05:58:48.761583+00:00",
+  "status": 403,
+  "final_url": "https://data.fcc.gov/download/pub/uls/complete/r_tower.zip?download=1",
+  "error": "HTTP Error 403: Forbidden",
+  "bytes_read": 432,
+  "sha256": "f9c84d7a3e2b9857fc0d3a93e75686448892914ecd65f6df218b4c5e7423f798"
+}

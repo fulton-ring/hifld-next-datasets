@@ -1,0 +1,50 @@
+{
+  "requested_at": "2026-10-19T05:59:36.655195+00:00",
+  "role": "unapproved published baseline candidate",
+  "request_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/antenna-structure-registration-asr/antenna-structure-registration-asr/v1.0.0/geoparquet/antenna-structure-registration-asr.parquet",
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/antenna-structure-registration-asr/antenna-structure-registration-asr/v1.0.0/geoparquet/antenna-structure-registration-asr.parquet",
+  "status": 200,
+  "generation": "1791506349781360",
+  "headers": {
+    "content-type": "application/octet-stream",
+    "x-guploader-uploadid": "AP6rU82fCB6bdhzEtym2O2EhZP8n6uqnx_0vKqIIU3G5v13QLXN8-SvP_7XM-mRppx-lWbk1",
+    "expires": "Mon, 19 Oct 2026 06:59:36 GMT",
+    "date": "Mon, 19 Oct 2026 05:59:36 GMT",
+    "cache-control": "public, max-age=3600",
+    "last-modified": "Fri, 09 Oct 2026 00:39:09 GMT",
+    "etag": "\"f7ac7e54bd89af9c6eda164c4e83cbab\"",
+    "x-goog-generation": "1791506349781360",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "2099257",
+    "x-goog-hash": "crc32c=08h5tw==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "2099257",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "*",
+    "server": "envoy",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "x-envoy-upstream-service-time": "372",
+    "connection": "close"
+  },
+  "declared_asset": {
+    "file:checksum": "d50110f7ac7e54bd89af9c6eda164c4e83cbab",
+    "file:size": 2099257,
+    "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/antenna-structure-registration-asr/antenna-structure-registration-asr/v1.0.0/geoparquet/antenna-structure-registration-asr.parquet",
+    "roles": [
+      "data"
+    ],
+    "title": "antenna-structure-registration-asr.parquet",
+    "type": "application/vnd.apache.parquet"
+  },
+  "bytes": 2099257,
+  "sha256": "fc43f476d4181538ad139d0e6504122cf4f258e0dd1d4817981377c62b73258d",
+  "generation_read": {
+    "request_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/antenna-structure-registration-asr/antenna-structure-registration-asr/v1.0.0/geoparquet/antenna-structure-registration-asr.parquet?generation=1791506349781360",
+    "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/antenna-structure-registration-asr/antenna-structure-registration-asr/v1.0.0/geoparquet/antenna-structure-registration-asr.parquet?generation=1791506349781360",
+    "status": 200,
+    "bytes": 2099257,
+    "sha256": "fc43f476d4181538ad139d0e6504122cf4f258e0dd1d4817981377c62b73258d"
+  }
+}

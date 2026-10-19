@@ -1,0 +1,10 @@
+{
+  "name": "fcc-asr-table-doc",
+  "request_url": "https://data.fcc.gov/download/pub/uls/ASR_Table_Definitions.pdf",
+  "observed_at": "2026-10-19T05:59:37.451395+00:00",
+  "status": 403,
+  "final_url": "https://data.fcc.gov/download/pub/uls/ASR_Table_Definitions.pdf",
+  "error": "HTTP Error 403: Forbidden",
+  "bytes_read": 432,
+  "sha256": "5ceb716201545000081fe4d4102d40130e1a1e91611e92d95c3745450f6d488e"
+}

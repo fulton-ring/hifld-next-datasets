@@ -1,0 +1,553 @@
+{
+  "acceptance": "unapproved published candidate; never used as accepted contract",
+  "bytes": 2099257,
+  "sha256": "fc43f476d4181538ad139d0e6504122cf4f258e0dd1d4817981377c62b73258d",
+  "rows": 17666,
+  "arrow_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nRegNum: int64\nUniqSysID: int64\nEntity: string\nContAdd: string\nContPO: string\nContCity: string\nContState: string\nContZip: int64\nContName: string\nLatDeg: int64\nLatMin: int64\nLatSec: double\nLatDir: string\nLonDeg: int64\nLonMin: int64\nLonSec: double\nLonDir: string\nCoordsType: string\nStatusCode: string\nLocAdd: string\nLocCity: string\nLocState: string\nStrucht: double\nFAAstudy: string\nFAAcirc: string\nlatdec: double\nlondec: double\nurl: string\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 3476\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 759",
+  "schema_metadata": {
+    "pandas": "{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\": \"geometry\", \"field_name\": \"geometry\", \"pandas_type\": \"empty\", \"numpy_type\": \"object\", \"metadata\": null}, {\"name\": \"RegNum\", \"field_name\": \"RegNum\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}, {\"name\": \"UniqSysID\", \"field_name\": \"UniqSysID\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}, {\"name\": \"Entity\", \"field_name\": \"Entity\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"ContAdd\", \"field_name\": \"ContAdd\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"ContPO\", \"field_name\": \"ContPO\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"ContCity\", \"field_name\": \"ContCity\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"ContState\", \"field_name\": \"ContState\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"ContZip\", \"field_name\": \"ContZip\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}, {\"name\": \"ContName\", \"field_name\": \"ContName\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"LatDeg\", \"field_name\": \"LatDeg\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}, {\"name\": \"LatMin\", \"field_name\": \"LatMin\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}, {\"name\": \"LatSec\", \"field_name\": \"LatSec\", \"pandas_type\": \"float64\", \"numpy_type\": \"Float64\", \"metadata\": null}, {\"name\": \"LatDir\", \"field_name\": \"LatDir\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"LonDeg\", \"field_name\": \"LonDeg\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}, {\"name\": \"LonMin\", \"field_name\": \"LonMin\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}, {\"name\": \"LonSec\", \"field_name\": \"LonSec\", \"pandas_type\": \"float64\", \"numpy_type\": \"Float64\", \"metadata\": null}, {\"name\": \"LonDir\", \"field_name\": \"LonDir\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"CoordsType\", \"field_name\": \"CoordsType\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"StatusCode\", \"field_name\": \"StatusCode\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"LocAdd\", \"field_name\": \"LocAdd\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"LocCity\", \"field_name\": \"LocCity\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"LocState\", \"field_name\": \"LocState\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"Strucht\", \"field_name\": \"Strucht\", \"pandas_type\": \"float64\", \"numpy_type\": \"Float64\", \"metadata\": null}, {\"name\": \"FAAstudy\", \"field_name\": \"FAAstudy\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"FAAcirc\", \"field_name\": \"FAAcirc\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"latdec\", \"field_name\": \"latdec\", \"pandas_type\": \"float64\", \"numpy_type\": \"Float64\", \"metadata\": null}, {\"name\": \"londec\", \"field_name\": \"londec\", \"pandas_type\": \"float64\", \"numpy_type\": \"Float64\", \"metadata\": null}, {\"name\": \"url\", \"field_name\": \"url\", \"pandas_type\": \"unicode\", \"numpy_type\": \"string\", \"metadata\": null}, {\"name\": \"id\", \"field_name\": \"id\", \"pandas_type\": \"int64\", \"numpy_type\": \"Int64\", \"metadata\": null}], \"attributes\": {}, \"creator\": {\"library\": \"pyarrow\", \"version\": \"23.0.1\"}, \"pandas_version\": \"2.3.3\"}",
+    "geo": "{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB\",\"crs\":{\"$schema\":\"https://proj.org/schemas/v0.7/projjson.schema.json\",\"type\":\"GeographicCRS\",\"name\":\"WGS 84\",\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"World Geodetic System 1984\",\"ellipsoid\":{\"name\":\"WGS 84\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257223563}},\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Geodetic latitude\",\"abbreviation\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},{\"name\":\"Geodetic longitude\",\"abbreviation\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]},\"id\":{\"authority\":\"EPSG\",\"code\":4326}},\"geometry_types\":[\"Point\"],\"covering\":{\"bbox\":{\"xmin\":[\"bbox\",\"xmin\"],\"ymin\":[\"bbox\",\"ymin\"],\"xmax\":[\"bbox\",\"xmax\"],\"ymax\":[\"bbox\",\"ymax\"]}}}},\"version\":\"1.1.0\",\"creator\":{\"library\":\"geopandas\",\"version\":\"1.1.3\"}}"
+  },
+  "columns": [
+    {
+      "name": "geometry",
+      "type": "binary",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "dfdcd5476b5b2a95f49613bad8d6f747d2e2024d56eba232fd69e4ef9b2ff5e7"
+    },
+    {
+      "name": "RegNum",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "fb2abc411bd414dd2d4cbdf36c47287fce7f4253fb4f2960a7e243de32123aa3",
+      "distinct_nonnull": 17666,
+      "duplicate_rows": 0,
+      "minimum": 11,
+      "maximum": 1027130
+    },
+    {
+      "name": "UniqSysID",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "e915c692299c52e6c5ab20cd4ee1f60ccac4867556454f0cfffdabf8b4fb593f",
+      "distinct_nonnull": 17666,
+      "duplicate_rows": 0,
+      "minimum": 98052,
+      "maximum": 1328264
+    },
+    {
+      "name": "Entity",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "76abec605f28719490f85261fe3da15cc9fb48628611188b623fcc5f20692330"
+    },
+    {
+      "name": "ContAdd",
+      "type": "string",
+      "nullable": true,
+      "nulls": 482,
+      "ordered_value_sha256": "3baab18a667aa0b7ddc9fb49890767a771b1fc1b1a590137bb3f48cdbfa4e1fe"
+    },
+    {
+      "name": "ContPO",
+      "type": "string",
+      "nullable": true,
+      "nulls": 1875,
+      "ordered_value_sha256": "ff9ef03f5eb9021494d57bd4c583b60448e8bbb51030a780d03e86734823fa47"
+    },
+    {
+      "name": "ContCity",
+      "type": "string",
+      "nullable": true,
+      "nulls": 14383,
+      "ordered_value_sha256": "f544639ca74221f8c7b606992e17a6327ea802175c0c0a90683b56e006b072cc"
+    },
+    {
+      "name": "ContState",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "eada22fced37dfbd83de07c7921edaf4fce89c4e6cb374b79125dde59f2ea754"
+    },
+    {
+      "name": "ContZip",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "a24761f39900c2dcec15eb7aa78e8b7bafba20d3a2fefb8814d968102a241e19"
+    },
+    {
+      "name": "ContName",
+      "type": "string",
+      "nullable": true,
+      "nulls": 1,
+      "ordered_value_sha256": "ca41e79ea7baed50a14b784a36b3c6742a9f34cab0613af386d711b431b3a331"
+    },
+    {
+      "name": "LatDeg",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 3367,
+      "ordered_value_sha256": "bda67553a6af117a3153afd1d55c2a9c23d3b3ddadee95a0afe7050b8f0d52c6"
+    },
+    {
+      "name": "LatMin",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "02a5112882f81f81a282be8c443e11e0e1d74b1a8cf70e880ac5d5fbbd141e2c"
+    },
+    {
+      "name": "LatSec",
+      "type": "double",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "0841e00a8256a9d46e318c9c39e7230bcae3e80d7213bcc88895f733fd57f499"
+    },
+    {
+      "name": "LatDir",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "710924cf2b8e51fc80610beb057584a79303a261e23a5bdb60f0acd28b473d2a",
+      "most_common": [
+        [
+          "30",
+          91
+        ],
+        [
+          "14",
+          85
+        ],
+        [
+          "10",
+          79
+        ],
+        [
+          "20",
+          78
+        ],
+        [
+          "49",
+          77
+        ],
+        [
+          "40",
+          77
+        ],
+        [
+          "0",
+          76
+        ],
+        [
+          "42",
+          76
+        ],
+        [
+          "21",
+          76
+        ],
+        [
+          "28",
+          75
+        ],
+        [
+          "17",
+          74
+        ],
+        [
+          "25",
+          74
+        ],
+        [
+          "35",
+          72
+        ],
+        [
+          "2",
+          71
+        ],
+        [
+          "45",
+          71
+        ]
+      ]
+    },
+    {
+      "name": "LonDeg",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "e76a6c409e1c92dc2f9b58254299f16df1a916bace0c5c634e0545715f031367"
+    },
+    {
+      "name": "LonMin",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "8f4568ba6b71bbb5724f042215330b9f9fe5fb975a66b2137732f27e5f6372d7"
+    },
+    {
+      "name": "LonSec",
+      "type": "double",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "acd8cfa7ddd31a3d0b800c77f4b9ef4300f38915127ea1635688c82859adcd69"
+    },
+    {
+      "name": "LonDir",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "96b815f80ef47ec8a6fa30cc58f04f8963c5110ec2ce8389128419f4d8af25ba",
+      "most_common": [
+        [
+          "20",
+          89
+        ],
+        [
+          "29",
+          87
+        ],
+        [
+          "52",
+          83
+        ],
+        [
+          "59",
+          79
+        ],
+        [
+          "30",
+          79
+        ],
+        [
+          "0",
+          79
+        ],
+        [
+          "58",
+          77
+        ],
+        [
+          "17",
+          77
+        ],
+        [
+          "54",
+          76
+        ],
+        [
+          "23",
+          75
+        ],
+        [
+          "9",
+          75
+        ],
+        [
+          "38",
+          74
+        ],
+        [
+          "49",
+          74
+        ],
+        [
+          "18",
+          73
+        ],
+        [
+          "55",
+          72
+        ]
+      ]
+    },
+    {
+      "name": "CoordsType",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "fa53f9baeba733b27d97dc3a2618c90491e2156c12f71362c02ceefa9077fea8",
+      "most_common": [
+        [
+          "W",
+          17624
+        ],
+        [
+          "E",
+          32
+        ],
+        [
+          "T",
+          10
+        ]
+      ]
+    },
+    {
+      "name": "StatusCode",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "59c15718641e354cceee3e20696b3afe7091fd6b3e3c1feba043f46be9784dd0",
+      "most_common": [
+        [
+          "T",
+          17656
+        ],
+        [
+          "G",
+          10
+        ]
+      ]
+    },
+    {
+      "name": "LocAdd",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "a95c9676c1da3d13393f73f646c4f05dee676a82d458fe648d6c12f3de0fa6eb"
+    },
+    {
+      "name": "LocCity",
+      "type": "string",
+      "nullable": true,
+      "nulls": 2,
+      "ordered_value_sha256": "141463fc35c5e9a1e6f50c7bf2b3d040cf5b21f26c610685e65f906c548e6269"
+    },
+    {
+      "name": "LocState",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "2e94f13260e5c5eee06e76666e5cd80178e3948b2c728f1aba9dfe7853512a68",
+      "most_common": [
+        [
+          "Miami",
+          145
+        ],
+        [
+          "Fort Worth",
+          78
+        ],
+        [
+          "Houston",
+          63
+        ],
+        [
+          "San Antonio",
+          42
+        ],
+        [
+          "Columbia",
+          37
+        ],
+        [
+          "Los Angeles",
+          37
+        ],
+        [
+          "Portland",
+          36
+        ],
+        [
+          "Cleveland",
+          36
+        ],
+        [
+          "San Jose",
+          34
+        ],
+        [
+          "Weatherford",
+          34
+        ],
+        [
+          "Tampa",
+          34
+        ],
+        [
+          "Greenville",
+          33
+        ],
+        [
+          "Salem",
+          33
+        ],
+        [
+          "Reno",
+          33
+        ],
+        [
+          "Las Vegas",
+          32
+        ]
+      ]
+    },
+    {
+      "name": "Strucht",
+      "type": "double",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "3d6ab66df9e24e6226fe67e9dd733a76524fb8968a1c8646c39bef07c2566aa2"
+    },
+    {
+      "name": "FAAstudy",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "125e19a8903d97e2fb26ac7cfddf3e55e5b0559d91aebef68260d29c6537a27e"
+    },
+    {
+      "name": "FAAcirc",
+      "type": "string",
+      "nullable": true,
+      "nulls": 52,
+      "ordered_value_sha256": "b10b1ec01c9abf77a1f537ec670c247e748adfef73ae9ba7ed9a04dc726a6626"
+    },
+    {
+      "name": "latdec",
+      "type": "double",
+      "nullable": true,
+      "nulls": 10201,
+      "ordered_value_sha256": "5dd5943f8ec42c0bbb5752171788526004a5b2d6d178a144ab612596d679141c"
+    },
+    {
+      "name": "londec",
+      "type": "double",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "4a38b767a5a979e5864901bca5bbde0cb2c90aedea3ed160a6bd0737eb1a6a25"
+    },
+    {
+      "name": "url",
+      "type": "string",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "12ffc2f093e0b319c42198ed87e4e9a7217d2671d36ac1cd764b70af15b3cf17"
+    },
+    {
+      "name": "id",
+      "type": "int64",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "51105e4c3b94a92f4f175f616cad5660beefec0864afbb060275b3b455481028",
+      "distinct_nonnull": 11,
+      "duplicate_rows": 17655,
+      "minimum": 0,
+      "maximum": 10
+    },
+    {
+      "name": "bbox",
+      "type": "struct<xmin: double, ymin: double, xmax: double, ymax: double>",
+      "nullable": true,
+      "nulls": 0,
+      "ordered_value_sha256": "45c82611a512c41ef6608a6e0625c06ae377a74ea43db05ed2e62141e3220762"
+    }
+  ],
+  "geometry": {
+    "types": {
+      "0": 17666
+    },
+    "invalid": 0,
+    "empty": 0,
+    "bounds": [
+      -176.705472221965,
+      -15.1500000001998,
+      145.743055555869,
+      71.2992222219281
+    ],
+    "coordinate_rows": 17666
+  },
+  "diagnostics_not_repairs": {
+    "nonnull_declared_latlon_pairs": 7465,
+    "declared_latlon_exactly_equal_geometry_xy_rows": 0,
+    "declared_latitude_outside_90_rows": 0,
+    "declared_lat_direction_outside_NS_rows": 17656,
+    "declared_lon_direction_outside_EW_rows": 17656,
+    "declared_url_not_http_rows": 17656,
+    "first_two_observed_rows": [
+      {
+        "geometry": "0101000000e3698b92ccf350c0860be94c16464740",
+        "RegNum": 13239,
+        "UniqSysID": 1022879,
+        "Entity": "101375",
+        "ContAdd": "Townsquare Media of Presque Isle, Inc.",
+        "ContPO": "1 Manhattanville Road",
+        "ContCity": null,
+        "ContState": "Purchase",
+        "ContZip": 0,
+        "ContName": "10577",
+        "LatDeg": 0,
+        "LatMin": 46,
+        "LatSec": 32.0,
+        "LatDir": "51.2",
+        "LonDeg": 0,
+        "LonMin": 67,
+        "LonSec": 48.0,
+        "LonDir": "33.7",
+        "CoordsType": "W",
+        "StatusCode": "T",
+        "LocAdd": "G",
+        "LocCity": "NORTH PEAK OF MARS HILL, 4 KM EAST OF CITY",
+        "LocState": "MARS HILL",
+        "Strucht": 0.0,
+        "FAAstudy": "121.9",
+        "FAAcirc": "2022-ANE-5767-OE",
+        "latdec": 70.0,
+        "londec": 46.5475555556,
+        "url": "-67.8093611111",
+        "id": 0,
+        "bbox": {
+          "xmin": -67.8093611108266,
+          "ymin": 46.5475555551448,
+          "xmax": -67.8093611108266,
+          "ymax": 46.5475555551448
+        }
+      },
+      {
+        "geometry": "010100000006b96f5e4df450c0aca0bcbbbb2b4740",
+        "RegNum": 2276,
+        "UniqSysID": 1022755,
+        "Entity": "124323",
+        "ContAdd": null,
+        "ContPO": "274 BRITTON ROAD",
+        "ContCity": null,
+        "ContState": "MONTICELLO",
+        "ContZip": 0,
+        "ContName": "4760",
+        "LatDeg": 0,
+        "LatMin": 46,
+        "LatSec": 20.0,
+        "LatDir": "30",
+        "LonDeg": 0,
+        "LonMin": 67,
+        "LonSec": 49.0,
+        "LonDir": "2",
+        "CoordsType": "W",
+        "StatusCode": "T",
+        "LocAdd": "G",
+        "LocCity": "274 BRITTON ROAD",
+        "LocState": "MONTICELLO",
+        "Strucht": 0.0,
+        "FAAstudy": "123.5",
+        "FAAcirc": "2005-ANE-266-OE",
+        "latdec": null,
+        "londec": 46.3416666667,
+        "url": "-67.8172222222",
+        "id": 0,
+        "bbox": {
+          "xmin": -67.8172222224276,
+          "ymin": 46.3416666670831,
+          "xmax": -67.8172222224276,
+          "ymax": 46.3416666670831
+        }
+      }
+    ],
+    "interpretation": "Name/value inconsistencies are observed on the complete published candidate. No alternate schema, positional repair, identifier substitution, or actual source contract is inferred."
+  }
+}

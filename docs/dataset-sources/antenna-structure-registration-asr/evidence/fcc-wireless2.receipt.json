@@ -1,0 +1,10 @@
+{
+  "name": "fcc-wireless2",
+  "request_url": "https://wireless2.fcc.gov/UlsApp/AsrSearch/asrRegistrationSearch.jsp",
+  "observed_at": "2026-10-19T05:58:06.062389+00:00",
+  "status": 403,
+  "final_url": "https://wireless2.fcc.gov/UlsApp/AsrSearch/asrRegistrationSearch.jsp",
+  "error": "HTTP Error 403: Forbidden",
+  "bytes_read": 425,
+  "sha256": "c7e6737ffaef9037fcc48c5edcde1b20e872024da5c9527a2d8a69f5c38d2f93"
+}
