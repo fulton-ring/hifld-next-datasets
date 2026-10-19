@@ -67,7 +67,7 @@ def processing_identity():
                 'gdal': str(pyogrio.__gdal_version__)}
     fingerprint = hashlib.sha256(json.dumps({'installed_pipeline_sha256': pipeline,
         'versions': versions}, sort_keys=True).encode()).hexdigest()
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[2]
     result = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True)
     commit = result.stdout.strip() if result.returncode == 0 else None
     dirty = subprocess.run(['git', '-C', str(root), 'diff', '--quiet', '--', 'src/dagster_hifld'], capture_output=True).returncode

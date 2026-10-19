@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -36,6 +37,10 @@ with DagsterInstance.from_config(str(state)) as instance:
     prefix=f"{a.SLUG}/{a.SLUG}/{out['version']}";root=Path(stage.local_dir)/prefix
     table=pq.read_table(root/'draft_candidate/candidate.parquet');assert table.num_rows==19427
     result['candidate_audit']=a.verify_typed_geopackage(root/'draft_candidate/candidate.parquet',root/'geopackage'/f'{a.SLUG}.gpkg')
+    provenance=json.loads((root/'draft_candidate/provenance.json').read_bytes())
+    assert provenance['processing']['code_commit']==subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+    assert provenance['processing']['working_tree_modified'] is False
+    result['processing_provenance']=provenance['processing']
     audit=a.inspect_capture(capture)
     originals=[f for p in sorted(capture.glob('page-*.body')) for f in a._json(p)['features']]
     assert table.column_names==[f['name'] for f in audit['fields']]+['geometry']

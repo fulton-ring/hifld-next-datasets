@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest import mock
 
@@ -46,6 +47,12 @@ class AviationTests(unittest.TestCase):
                 'sha256':hashlib.sha256(body).hexdigest(),'status':200,'complete_body':True,
                 'observed_at':'2026-10-19T00:00:00+00:00'}
             (self.capture/(name+'.receipt.json')).write_text(json.dumps(receipt))
+
+    def test_processing_provenance_binds_actual_worktree_commit(self):
+        expected=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[1],text=True).strip()
+        identity=a.processing_identity()
+        self.assertEqual(identity['code_commit'],expected)
+        self.assertEqual(len(identity['installed_pipeline_sha256']),64)
 
     def test_full_native_types_ids_duplicates_and_idempotency(self):
         result=_stage_aviation(self.capture,self.storage); again=_stage_aviation(self.capture,self.storage)
