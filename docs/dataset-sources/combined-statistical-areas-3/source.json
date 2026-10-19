@@ -88,5 +88,10 @@
     "failed_diagnostics_are_source_inputs": false
   },
   "raw_preservation": "Complete original ZIP retained once at immutable staging _raw-captures/<slug>/<sha>/original.gdb.zip. Canonical candidate records exact key/hash/length; no writable hardlink or copy aliases. Full runtime original remains at /workspace/work/hifld-coordinator/40/official2024_nationgeo.zip; not committed because272MB exceeds GitHub limit.",
-  "proposed_contract": "proposed-contract.json"
+  "proposed_contract": "proposed-contract.json",
+  "cache_validation": {
+    "gpkg": "Complete byte-for-byte deterministic native reconstruction, binding SRS definitions/authority, binary geometry headers/flags/envelopes, indexes/RTree and all metadata. Immutable canonical caches; no equivalent repacking accepted implicitly.",
+    "parquet": "Complete freshly expected physical/geometry schema metadata and all source values/native WKB",
+    "approval_granted": false
+  }
 }
