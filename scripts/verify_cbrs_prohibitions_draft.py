@@ -1,27 +1,33 @@
-"""Actual isolated Dagster source and normal format/gate runs on all1693real prohibition areas."""
+"""Actual complete-source local Dagster graph; no real acceptance is invented."""
 from __future__ import annotations
 import argparse
 import json
 import os
 import shutil
-import subprocess
 import sqlite3
-import pyarrow as pa
+import struct
+import subprocess
+from contextlib import ExitStack
 from pathlib import Path
+from unittest.mock import patch
 
-parser=argparse.ArgumentParser();parser.add_argument('--runtime',type=Path,required=True);args=parser.parse_args()
-repo=Path(__file__).resolve().parents[1];capture=repo/'docs/dataset-sources/cbrs-prohibitions-1/evidence/captures'
+parser=argparse.ArgumentParser()
+parser.add_argument('--runtime',type=Path,required=True)
+parser.add_argument('--archive-helper',type=Path,help='Optional guarded lossless archive helper for closed bad-cache trees.')
+args=parser.parse_args();repo=Path(__file__).resolve().parents[1];capture=repo/'docs/dataset-sources/cbrs-prohibitions-1/evidence/captures'
 runtime=args.runtime.resolve();assert not runtime.exists()
 for name in ['dagster','staging','published']:(runtime/name).mkdir(parents=True)
 (runtime/'dagster/dagster.yaml').write_text('telemetry:\n  enabled: false\n')
 for key in ['HIFLD_STAGING_BUCKET','HIFLD_DATASETS_BUCKET','KUBERNETES_SERVICE_HOST','HIFLD_RELEASE_APPROVALS']:os.environ.pop(key,None)
 os.environ.update(DAGSTER_HOME=str(runtime/'dagster'),HIFLD_STAGING_DIR=str(runtime/'staging'),HIFLD_DATASETS_DIR=str(runtime/'published'),HIFLD_SHADOW_MANUAL_ONLY='1')
 import fiona
+import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 from dagster import Definitions,AssetSelection,define_asset_job,DagsterInstance
 from dagster_hifld.definitions import defs as normal,_iter_staged_version_paths
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
+from dagster_hifld.assets import publish as publisher
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME,build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import cbrs_prohibitions as source
@@ -32,97 +38,94 @@ published.write_key('synthetic-accepted-fixture.bin',b'local-fixture-only-not-an
 def snapshot(storage):return {key:source.sha(storage.read_key(key)) for key in storage.list_prefix()}
 prior=snapshot(published)
 normalkeys=[key for key in normal.resolve_asset_graph().get_all_asset_keys() if key.path[0]=='publish']
-defs=Definitions(assets=normal.assets,asset_checks=normal.asset_checks,resources={'staging_storage':staging,'published_storage':published},
- jobs=[define_asset_job('cbrs_source',selection=AssetSelection.assets(fws_cbrs_prohibitions)),define_asset_job('cbrs_graph',selection=AssetSelection.assets(*normalkeys))])
-report={'code_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'module':source.__file__,'runtime':str(runtime),'approved':False,'runs':[]}
+defs=Definitions(assets=normal.assets,asset_checks=normal.asset_checks,resources={'staging_storage':staging,'published_storage':published},jobs=[define_asset_job('cbrs_source',selection=AssetSelection.assets(fws_cbrs_prohibitions)),define_asset_job('cbrs_graph',selection=AssetSelection.assets(*normalkeys))])
+report={'code_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'module':source.__file__,'runtime':str(runtime),'approved':False,'runs':[],'cache_negatives':{}}
 config={'ops':{fws_cbrs_prohibitions.op.name:{'config':{'capture_dir':str(capture)}}}}
+def save():(runtime/'execution.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
 def record(kind,result):
  errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
- report['runs'].append({'kind':kind,'run_id':result.run_id,'success':result.success,'errors':errors,
-  'materializations':[e.asset_key.to_user_string() for e in result.get_asset_materialization_events()],
-  'checks':[{'name':e.check_name,'passed':e.passed} for e in result.get_asset_check_evaluations()]})
- return errors
-with DagsterInstance.get() as instance:
- sourcejob=defs.resolve_job_def('cbrs_source');graph=defs.resolve_job_def('cbrs_graph')
- first=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
- record('real_complete_source',first);assert first.success
+ report['runs'].append({'kind':kind,'run_id':result.run_id,'success':result.success,'errors':errors,'materializations':[e.asset_key.to_user_string() for e in result.get_asset_materialization_events()],'checks':[{'name':e.check_name,'passed':e.passed} for e in result.get_asset_check_evaluations()]});save();return errors
+
+def forbid_generic(stack):
+ return [stack.enter_context(patch.object(publisher,name,side_effect=AssertionError('Generic regeneration forbidden for native DATE source'))) for name in ['process_layer_partitioned_geoparquet','process_layer_chunked','_validate_reusable_geoparquet_layout']]
+
+with DagsterInstance.get() as instance,ExitStack() as guards:
+ generic=forbid_generic(guards);sourcejob=defs.resolve_job_def('cbrs_source');graph=defs.resolve_job_def('cbrs_graph')
+ first=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False);record('real_complete_source',first);assert first.success
  output=first.output_for_node(fws_cbrs_prohibitions.op.name);assert output['feature_count']==1693
- prefix=build_publish_partition_key(source.SLUG,source.SLUG,output['version']);root=runtime/'staging'/prefix
+ prefix=build_publish_partition_key(source.SLUG,source.SLUG,output['version']);root=runtime/'staging'/prefix;report['output']=output
  assert (source.SLUG,source.SLUG,output['version']) in list(_iter_staged_version_paths(staging))
  assert source.sha((root/'raw'/source.ARCHIVE_NAME).read_bytes())==source.PIN
- before={str(p.relative_to(root)):source.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
- again=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
- record('real_complete_refresh',again);assert again.success and output==again.output_for_node(fws_cbrs_prohibitions.op.name)
- assert before=={str(p.relative_to(root)):source.sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+ raw_before=source.tree_inventory(runtime/'staging/_raw-captures');before=source.tree_inventory(root)
+ again=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False);record('real_complete_refresh',again);assert again.success and output==again.output_for_node(fws_cbrs_prohibitions.op.name);assert before==source.tree_inventory(root)
  instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[prefix])
- formats=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False)
- errors=record('normal_formats_missing_approval',formats)
- assert not formats.success and errors and all('missing_independent_release_approval_registry' in error for error in errors),errors
- assert snapshot(published)==prior
- post=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
- record('real_complete_post_formats_refresh',post);assert post.success and post.output_for_node(fws_cbrs_prohibitions.op.name)==output
- assert snapshot(published)==prior
- # The second normal catalog snapshots its previously generated dictionary/quality.
- second_formats=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False)
- second_errors=record('second_normal_formats_missing_approval',second_formats)
- assert not second_formats.success and second_errors and all('missing_independent_release_approval_registry' in e for e in second_errors)
+ for cycle in [1,2]:
+  formats=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False);errors=record(f'normal_catalog_cycle_{cycle}_missing_approval',formats)
+  assert not formats.success and errors and all('missing_independent_release_approval_registry' in e for e in errors),errors
+  gp_events=[e.event_specific_data.materialization.metadata for e in formats.get_asset_materialization_events() if e.asset_key.path==['publish','formats','geoparquet']]
+  assert gp_events and gp_events[0]['generation_mode'].value=='preserved_prebuilt' and gp_events[0]['generic_regeneration'].value=='disabled'
+  assert snapshot(published)==prior
+  refresh=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False);record(f'complete_source_refresh_after_catalog_cycle_{cycle}',refresh);assert refresh.success and refresh.output_for_node(fws_cbrs_prohibitions.op.name)==output
+  assert snapshot(published)==prior
  assert (root/'metadata/source/data_dictionary.json').exists() and (root/'metadata/source/quality_manifest.json').exists()
- second_refresh=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
- record('real_complete_post_second_catalog_refresh',second_refresh)
- assert second_refresh.success and second_refresh.output_for_node(fws_cbrs_prohibitions.op.name)==output
- assert snapshot(published)==prior
- rows=pq.read_table(root/'candidate/typed-source.parquet').to_pylist();assert len(rows)==1693
+ native=root/'geoparquet'/f'{source.SLUG}.parquet';terminal=pq.read_table(native);rows=pq.read_table(root/'candidate/typed-source.parquet').to_pylist();assert len(rows)==len(terminal)==1693
+ assert native.read_bytes()==(root/'candidate/typed-source.parquet').read_bytes()
  with fiona.open(root/'geopackage'/f'{source.SLUG}.gpkg') as f:gp={r['properties']['__source_fid']:r for r in f}
- for row in rows:
-  expected=gp[row['__source_fid']];assert dict(expected['properties'])=={key:row[key].isoformat() if hasattr(row[key],'isoformat') else row[key] for key in source.SCHEMA}
-  assert shapely.geometry.shape(expected.geometry).wkb==row['geometry']
- terminal=pq.read_table(root/'geoparquet'/f'{source.SLUG}.parquet')
- assert len(terminal)==1693
- for name,kind in source.SCHEMA.items():
-  assert str(terminal.schema.field(name).type)==('double' if kind.startswith('float') else 'date32[day]' if kind=='date' else 'string')
- assert set(terminal.column_names)-set(source.SCHEMA)-{'geometry'}==set()
- bysection={row['__source_fid']:row for row in rows}
+ byfid={r['__source_fid']:r for r in rows};assert set(byfid)==set(gp)=={str(i) for i in range(1693)}
  for row in terminal.to_pylist():
-  expected=bysection[row['__source_fid']]
-  assert {key:row[key] for key in source.SCHEMA}=={key:expected[key] for key in source.SCHEMA}
-  assert row['geometry']==expected['geometry']
- report['terminal_parquet']={'rows':1693,'all_source_values_types_wkb_exact':True,'extra_columns':[],'native_date32_columns':['FI_Date','SU_Date'],'normal_geoparquet_regeneration':'explicitly excluded pending native-date-to-string mapping approval','nullable_inference_requires_review':True}
- # Authentic complete-candidate self-repin attacks exercise the actual registered Dagster asset.
- readyfile=root/'metadata/cbrs_prohibitions_candidate_ready.json';ready_original=readyfile.read_bytes()
- gpfile=root/'geopackage'/f'{source.SLUG}.gpkg';gp_original=gpfile.read_bytes()
- parquet=root/'candidate/typed-source.parquet';parquet_original=parquet.read_bytes()
- report['self_repin_probes']=[]
- for attack in ['gpkg_contents_srs','gpkg_spatial_ref_definition','parquet_geo_crs']:
-  try:
-   if attack.startswith('gpkg'):
-    with sqlite3.connect(gpfile) as db:
-     db.execute("UPDATE gpkg_contents SET srs_id=4326" if attack=='gpkg_contents_srs' else "UPDATE gpkg_spatial_ref_sys SET definition='undefined' WHERE srs_id=4269")
-    target=gpfile
-   else:
-    table=pq.read_table(parquet);metadata=dict(table.schema.metadata);geo=json.loads(metadata[b'geo']);geo['columns']['geometry']['crs']={'type':'name','properties':{'name':'EPSG:3857'}}
-    metadata[b'geo']=source.encode(geo);pq.write_table(table.replace_schema_metadata(metadata),parquet,compression='zstd');target=parquet
-   ready=json.loads(ready_original);ready['objects'][str(target.relative_to(root))]=source.sha(target.read_bytes());readyfile.write_bytes(source.encode(ready))
-   negative=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False)
-   errors=record('complete_source_cache_self_repin_'+attack,negative)
-   assert not negative.success and errors
-   assert snapshot(published)==prior
-   report['self_repin_probes'].append({'attack':attack,'run_id':negative.run_id,'rejected':True,'prior_published_preserved':True})
-  finally:
-   gpfile.write_bytes(gp_original);parquet.write_bytes(parquet_original);readyfile.write_bytes(ready_original)
- assert all((root/key).read_bytes() and source.sha((root/key).read_bytes())==digest for key,digest in json.loads(ready_original)['objects'].items())
- # Corrupt a separate explicitly synthetic test partition, leaving the real candidate unchanged.
- badprefix=prefix+'-synthetic-invalid-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot)
+  expected=byfid[row['__source_fid']];assert {k:row[k] for k in source.SCHEMA}=={k:expected[k] for k in source.SCHEMA} and row['geometry']==expected['geometry']
+  feature=gp[row['__source_fid']];assert dict(feature['properties'])=={k:row[k].isoformat() if hasattr(row[k],'isoformat') else row[k] for k in source.SCHEMA};assert shapely.geometry.shape(feature.geometry).wkb==row['geometry']
+ for name,kind in source.SCHEMA.items():assert str(terminal.schema.field(name).type)==('double' if kind.startswith('float') else 'date32[day]' if kind=='date' else 'string')
+ assert terminal.column('SU_Date').null_count==564 and terminal.column('FI_Date').null_count==0
+ assert set(terminal.column_names)==set(source.SCHEMA)|{'geometry'}
+ manifest=json.loads((root/'metadata/source_manifest.json').read_text());policy=manifest['prebuilt_output_policy'];assert 'geoparquet' not in manifest['unsupported_output_formats']
+ assert policy['formats']['geoparquet']['objects']==[{'path':f'geoparquet/{source.SLUG}.parquet','sha256':source.sha(native.read_bytes()),'bytes':native.stat().st_size}]
+ assert json.loads((root/'metadata/data_dictionary.json').read_text())['prebuilt_output_policy']==policy
+ assert json.loads((root/'metadata/resolved_provenance.json').read_text())['prebuilt_output_policy']==policy
+ report['native_prebuilt']={'rows':1693,'all_original_ids_values_physical_dates_types_nulls_native_WKB_exact':True,'source_fid_type':'string original shapefile intrinsic FID proxy; no invented OBJECTID or published-ID mapping','native_date32_columns':['FI_Date','SU_Date'],'SU_Date_nulls':564,'sha256':source.sha(native.read_bytes()),'policy':policy,'generic_regeneration_calls':0}
+ seed=runtime/'immutable-post-catalog-seed';shutil.copytree(root,seed);good=source.tree_inventory(seed)
+ modes={'false_fidelity_report':'cached_complete_source_fidelity_evidence_drift:metadata/geopackage_source_fidelity.json','false_accepted_placeholder':'cached_complete_source_fidelity_evidence_drift:metadata/baseline_comparison.json','unknown_SQL_identifiers':'cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes','geometry_envelope':'cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes','contents_SRS':'cached_geopackage_auxiliary_metadata_or_header_drift:complete_container_bytes','missing_ready_marker':'existing_candidate_missing_ready_marker'}
+ for mode,expected_reason in modes.items():
+  marker=root/'metadata/cbrs_prohibitions_candidate_ready.json';ready=json.loads(marker.read_text());gpfile=root/'geopackage'/f'{source.SLUG}.gpkg';changed=[]
+  if mode=='false_fidelity_report':
+   target=root/'metadata/geopackage_source_fidelity.json';doc=json.loads(target.read_text());doc['shared_verifier']['populations']['candidate']['rows']=1;doc['shared_verifier']['baseline']['approved']=True;target.write_bytes(source.encode(doc));changed=[target]
+  elif mode=='false_accepted_placeholder':
+   target=root/'metadata/baseline_comparison.json';doc=json.loads(target.read_text());doc.update(status='pass',approved=True,acceptance='approved');target.write_bytes(source.encode(doc));changed=[target]
+  elif mode=='unknown_SQL_identifiers':
+   with sqlite3.connect(gpfile) as db:db.execute('CREATE TABLE unapproved_extra_identifiers (OBJECTID INTEGER)');db.execute('INSERT INTO unapproved_extra_identifiers VALUES (90000001)')
+   db.close();changed=[gpfile]
+  elif mode=='geometry_envelope':
+   with sqlite3.connect(gpfile) as db:blob=db.execute('SELECT geom FROM "'+source.SLUG+'" ORDER BY fid LIMIT 1').fetchone()[0]
+   db.close();assert ((blob[3]>>1)&7)==1;data=bytearray(gpfile.read_bytes());offset=data.find(blob[:64]);assert offset>=0;data[offset+8:offset+16]=struct.pack('<d' if blob[3]&1 else '>d',0.0);gpfile.write_bytes(data);changed=[gpfile]
+  elif mode=='contents_SRS':
+   with sqlite3.connect(gpfile) as db:db.execute('UPDATE gpkg_contents SET srs_id=4326')
+   db.close();changed=[gpfile]
+  else:marker.unlink()
+  if mode!='missing_ready_marker':
+   for file in changed:ready['objects'][str(file.relative_to(root))]=source.sha(file.read_bytes())
+   marker.write_bytes(source.encode(ready))
+  bad_inventory=source.tree_inventory(root);qroot=runtime/'staging/_quarantine'/source.SLUG;before_quarantine=set(qroot.glob('invalid-cache-*')) if qroot.exists() else set()
+  failed=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False);errors=record('actual_complete_cache_'+mode,failed);assert not failed.success and any(expected_reason in e for e in errors)
+  created=set(qroot.glob('invalid-cache-*'))-before_quarantine;assert len(created)==1;quarantine=created.pop();qr=json.loads((quarantine/'report.json').read_text());assert qr['reason']==expected_reason and qr['objects']==bad_inventory and source.tree_inventory(quarantine/'candidate')==bad_inventory
+  assert not root.exists() and (source.SLUG,source.SLUG,output['version']) not in list(_iter_staged_version_paths(staging));assert snapshot(published)==prior and source.tree_inventory(runtime/'staging/_raw-captures')==raw_before
+  archive_manifest=None
+  if args.archive_helper:
+   bundle='cbrs30-policy-'+mode.replace('_','-')+'-'+failed.run_id[:8]
+   subprocess.run(['python',str(args.archive_helper),'--bundle',bundle,'--parent',str(quarantine),'candidate'],check=True)
+   archive_manifest=json.loads((quarantine/'candidate.archived.json').read_text())['manifest']
+  report['cache_negatives'][mode]={'run_id':failed.run_id,'expected_reason':expected_reason,'whole_bad_inventory':bad_inventory,'quarantine_report':str(quarantine/'report.json'),'archive_manifest':archive_manifest,'not_discoverable':True,'prior_and_raw_preserved':True};save();shutil.copytree(seed,root)
+ restored=sourcejob.execute_in_process(instance=instance,run_config=config,raise_on_error=False);record('restored_complete_source_after_forensic_negatives',restored);assert restored.success and source.tree_inventory(root)==good
+ # One explicitly synthetic partition exercises both policy and quality failures.
+ badprefix=prefix+'-synthetic-negative-tests';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot);instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[badprefix])
+ badnative=badroot/'geoparquet'/f'{source.SLUG}.parquet';native_original=badnative.read_bytes();badnative.write_bytes(native_original+b'bad-staged-mutation')
+ badpolicy=graph.execute_in_process(instance=instance,partition_key=badprefix,raise_on_error=False);errors=record('synthetic_prebuilt_staged_mutation',badpolicy);assert not badpolicy.success and any('Prebuilt output bytes changed' in e for e in errors);assert snapshot(published)==prior;badnative.write_bytes(native_original)
  gpfile=badroot/'geopackage'/f'{source.SLUG}.gpkg'
  with fiona.open(gpfile) as f:schema=f.schema;crs=f.crs;features=[{'properties':dict(r['properties']),'geometry':r.geometry} for r in f]
  features[0]['geometry']=None;gpfile.unlink()
  with fiona.open(gpfile,'w',driver='GPKG',layer=source.SLUG,schema=schema,crs=crs) as f:f.writerecords(features)
- instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[badprefix])
- bad=graph.execute_in_process(instance=instance,partition_key=badprefix,raise_on_error=False)
- record('synthetic_failed_geometry_quality_gate',bad);assert not bad.success
- assert any(not e.passed for e in bad.get_asset_check_evaluations())
- assert snapshot(published)==prior
- assert (root/'candidate/typed-source.parquet').read_bytes()==(root/'geoparquet'/f'{source.SLUG}.parquet').read_bytes()
- report.update(output=output,all_1693_ids_values_types_wkb_preserved=True,source_discoverable_without_manual_copy=True,refresh_byte_idempotent=True,prior_published_fixture_preserved=True,
-  quality=json.loads((root/'metadata/quality_manifest.json').read_text()),provenance_input_count=len(json.loads((root/'metadata/source_manifest.json').read_text())['inputs']))
-(runtime/'execution.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
-print(json.dumps({'code_head':report['code_head'],'runs':[(r['kind'],r['run_id'],r['success']) for r in report['runs']]}))
+ badquality=graph.execute_in_process(instance=instance,partition_key=badprefix,raise_on_error=False);record('synthetic_failed_geometry_quality',badquality);assert not badquality.success and any(not e.passed for e in badquality.get_asset_check_evaluations())
+ assert all(mock.call_count==0 for mock in generic)
+ assert snapshot(published)==prior and source.tree_inventory(runtime/'staging/_raw-captures')==raw_before
+ assert source.tree_inventory(root)==good
+ report.update(generic_converter_calls=0,all_real_source_rows_ids_schema_geometry_coverage_provenance_verified=True,prior_published_fixture_and_original_raw_preserved=True,two_normal_catalog_cycles_and_refresh_pass=True,quality=json.loads((root/'metadata/quality_manifest.json').read_text()),provenance_input_count=len(manifest['inputs']));save()
+print(json.dumps({'code_head':report['code_head'],'runs':[(r['kind'],r['run_id'],r['success']) for r in report['runs']],'generic_converter_calls':0}))

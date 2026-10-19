@@ -34,6 +34,8 @@ import shapely
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
@@ -199,7 +201,6 @@ def provenance(captures: dict) -> dict:
         'transformations':[{'operation':'decode_original_shapefile','preserved':'All six DBF columns and physical types (including native date fields), native NAD83 coordinates and original shapefile FID under proposed __source_fid. Complete ZIP and25members retained.',
             'repair_or_projection':False,'mapping_approval':'not established; full published candidate compatibility and original FID/OBJECTID/id crosswalk remain unapproved'}],
         'unsupported_output_formats':{'shapefile_zip':'The full original producer archive is retained in raw/. Regenerated DBF loses the proposed explicit original source FID or renames it; no regenerated mapping approval.',
-            'geoparquet':'Normal GeoPackage conversion currently casts native DBF dates to strings. Source adapter supplies a separately verified native date32 GeoParquet; normal regeneration is quarantined until a mapping is approved.',
             'pmtiles':'Tile reprojection and quantization alter native geometry. No visualization mapping approved.'}}
 
     validate_release_provenance(manifest)
@@ -298,6 +299,13 @@ def typed_table(rows: list[dict], audit: dict) -> pa.Table:
     return table.replace_schema_metadata({b'geo':encode(geo)})
 
 
+def native_prebuilt_policy(parquet: Path) -> dict:
+    """Describe an already-written native artifact; this is no release approval."""
+    return {'schema_version':1,'formats':{'geoparquet':{
+        'reason':'Native DBF DATE fields must retain Arrow date32 and source identifiers, physical types and WKB. Generic GeoPackage conversion currently casts dates to strings; only this exact complete native artifact may be reused without regeneration. Source/baseline/output mapping acceptance remains pending.',
+        'objects':[{'path':f'geoparquet/{SLUG}.parquet','sha256':sha256_file(parquet),'bytes':parquet.stat().st_size}]}}}
+
+
 def gpkg_metadata(path: Path) -> dict:
     with sqlite3.connect(path) as db:
         tables = {}
@@ -349,7 +357,9 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive every source-owned byte; a self-pinned ready receipt is no authority."""
     root=local_candidate_path(storage,prefix)
-    allowed_derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json',
+    canonical_manifest=(root/'metadata/source_manifest.json').read_bytes()
+    hashed_snapshot=f'metadata/source/version_{sha(canonical_manifest)}_source_manifest.json'
+    allowed_derivatives={hashed_snapshot,'metadata/resolved_provenance.json','metadata/quality_manifest.json','metadata/data_dictionary.json',
         'metadata/geoparquet_layout.json','metadata/source/source_manifest.json',
         'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}
     paths=list(root.rglob('*'))
@@ -361,6 +371,10 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     expected_manifest=provenance(cached)
+    with tempfile.TemporaryDirectory(prefix='cbrs-prohibitions-policy-') as policy_tmp:
+        fresh_native=Path(policy_tmp)/'native.parquet'
+        pq.write_table(typed_table(rows,audit),fresh_native,compression='zstd')
+        expected_manifest['prebuilt_output_policy']=native_prebuilt_policy(fresh_native)
     expected_manifest['processing_fingerprint']=sha(encode(identity))
     if any(cached[name][0]!=captures[name][0] for name in URLS):
         raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
@@ -370,6 +384,9 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
             raise CBRSQuarantineError('cached_receipt_not_in_original_capture_depot')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(manifest)
+    hashed_manifest=root/hashed_snapshot
+    if hashed_manifest.exists() and hashed_manifest.read_bytes()!=canonical_manifest:
+        raise CBRSQuarantineError('cached_hashed_provenance_snapshot_differs')
     snapshot_manifest=root/'metadata/source/source_manifest.json'
     if snapshot_manifest.exists() and strict_json(snapshot_manifest.read_bytes())!=manifest:
         raise CBRSQuarantineError('cached_source_provenance_snapshot_differs')
@@ -377,6 +394,11 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     for name,value in expected_manifest.items():
         if name!='code_commit' and manifest.get(name)!=value:
             raise CBRSQuarantineError('cached_provenance_differs_from_original_capture')
+    resolved_file=root/'metadata/resolved_provenance.json'
+    if resolved_file.exists():
+        expected_resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
+        if strict_json(resolved_file.read_bytes())!=expected_resolved:
+            raise CBRSQuarantineError('cached_resolved_provenance_differs')
     records=b''.join(encode(r) for r in rows)
     expected_bytes={'raw/'+ARCHIVE_NAME:captures['official_zip'][0],
         'raw/retrieval.json':encode(cached['official_zip'][1]),'metadata/candidate.records.jsonl':records,
@@ -528,7 +550,7 @@ def stage_cbrs_prohibitions_candidate(storage: StagingStorageResource, *, captur
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
             commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
+            manifest.update(code_commit=commit,processing_fingerprint=fingerprint,prebuilt_output_policy=native_prebuilt_policy(parquet))
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(), f'geoparquet/{SLUG}.parquet':parquet.read_bytes(),

@@ -163,6 +163,22 @@ class CBRSTests(unittest.TestCase):
             self.assertEqual(str(table.schema.field('SU_Date').type),'date32[day]')
             self.assertEqual(table.column('SU_Date').null_count,564)
 
+    def test_native_prebuilt_policy_binds_existing_artifact_without_whole_format_ban(self):
+        from dagster_hifld.output_policy import validate_output_policy
+        captures={n:((CAPTURE/(n+'.body')).read_bytes(),s.strict_json((CAPTURE/(n+'.receipt.json')).read_bytes())) for n in s.URLS}
+        manifest=s.provenance(captures)
+        self.assertNotIn('geoparquet',manifest['unsupported_output_formats'])
+        self.assertEqual(set(manifest['unsupported_output_formats']),{'shapefile_zip','pmtiles'})
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'native.parquet'
+            with self.assertRaises(FileNotFoundError):s.native_prebuilt_policy(path)
+            path.write_bytes(b'synthetic native-policy fixture only')
+            manifest['prebuilt_output_policy']=s.native_prebuilt_policy(path)
+            validate_output_policy(manifest)
+            self.assertEqual(manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'],[{'path':f'geoparquet/{s.SLUG}.parquet','sha256':s.sha(path.read_bytes()),'bytes':path.stat().st_size}])
+            manifest['unsupported_output_formats']['geoparquet']='Inherited whole-format prohibition must still win'
+            with self.assertRaises(ValueError):validate_output_policy(manifest)
+
     def test_common_lock_preserves_concurrent_install_winner(self):
         with tempfile.TemporaryDirectory() as d:
             storage=StagingStorageResource(local_dir=d);prefix='a/a/v0.0.0-fixture'
