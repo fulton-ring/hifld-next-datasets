@@ -528,15 +528,56 @@
       "current_invalid_first_claim_does_not_poison_state": true,
       "prior_fixture_unchanged": true,
       "native_writer_AST_and_output_hashes_unchanged": "evidence/preseal-writer-scope.json; current raw literal binary audit matches every prior native value/hash."
-    }
+    },
+    "genuine_docs_only_refresh": {
+      "head": "ca1a4c970966b49c6ccbbfb2b4c2ee9ebc4cb69e",
+      "original_construction_commit": "2b26b63bed9de0387a5d5c458143b62b01835f32",
+      "changed_paths": [
+        "docs/dataset-sources/tsunami-capable-tide-stations/README.md",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/checksums.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/focused.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/full-suite.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/historical-7df/focused.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/historical-7df/full-suite.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/historical-7df/manual-native-audit.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/historical-7df/manual-native-audit.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/historical-7df/materialization.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/historical-7df/materialization.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/historical-7df/source.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/materialization.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/materialization.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/preseal-code-identity-after.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/preseal-code-identity-before.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/preseal-first-error-actual.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/preseal-first-error-actual.log",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/preseal-writer-scope.json",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/verify_docs_only_history.py",
+        "docs/dataset-sources/tsunami-capable-tide-stations/evidence/verify_preseal_first_error_actual.py",
+        "docs/dataset-sources/tsunami-capable-tide-stations/source.json"
+      ],
+      "run_id": "52000287-e389-411c-9562-877cdd37baf2",
+      "success": true,
+      "all_staging_objects_unchanged": true,
+      "prior_synthetic_accepted_fixture_unchanged": true,
+      "original_construction_provenance_retained": true,
+      "source_rows": 374
+    },
+    "actual_shared_first_state_fault_runs_scope": "Prior sourcea30; original five actualfault/restoration runs retained. Current source2b26 has fresh normal11+invalid-first-code3+docs-only1, plus current24tests."
   },
   "acceptance_decisions_required": [
     "Source/archive crosswalk inaccessible; exact accepted continuation/current-operational interpretation and release freshness decision",
     "Preserved current and historical STAT/STAT_OBJID/OID populations: no automatic ID map",
     "Physical schema/nullability/sourceOID storage representation and historical Parquet integer widths, omitted STAT_OBJID, derived bbox, original geometry precision/coverage compatibility",
     "Native prebuilt output mapping and excluded lossy formats",
-    "Independent exact-candidate release approval registry"
+    "Independent exact-candidate release approval registry",
+    "Explicit rights/license acceptance; item licenseInfo is empty, source-item URL is a locator only"
   ],
   "release_approved": false,
-  "no_merge_closure_or_production_write": true
+  "no_merge_closure_or_production_write": true,
+  "rights_status": {
+    "accepted": false,
+    "actual_item_licenseInfo": "",
+    "actual_item_accessInformation": "NOAA NCEI",
+    "license_URL_meaning": "Preserved source-item locator only, not proof of a license grant; rights acceptance remains an explicit release decision."
+  }
 }

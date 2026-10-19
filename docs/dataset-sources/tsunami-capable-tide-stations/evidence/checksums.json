@@ -251,6 +251,14 @@
     "bytes": 843,
     "sha256": "3cb574a2116f60adc2fdced8450ebdf901d5287e3e881d25131dd1b1fdada07d"
   },
+  "preseal-docs-only.json": {
+    "bytes": 2350,
+    "sha256": "1e24c216ebeed3f2fd365925fcab2437fc52b4686cdf80af52bb39a5574727db"
+  },
+  "preseal-docs-only.log": {
+    "bytes": 4333,
+    "sha256": "8b7257ee8dadb7944d98084639709c9e4c7e05d6c0a0f753fc2f4233ec32b5fa"
+  },
   "preseal-first-error-actual.json": {
     "bytes": 6773,
     "sha256": "c15bed30f5793fb24c9e7b281bc73cc6fe5180b7ce795a21a89742b0abdf64e9"
