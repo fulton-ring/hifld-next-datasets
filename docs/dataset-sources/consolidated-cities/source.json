@@ -288,6 +288,50 @@
         "acquire"
       ],
       "full_suite_and_dagster_scope": "Prior9ca31d9 full514 suite and8 Dagster runs remain historical exact-code evidence; no new full-suite or terminal graph run claimed for transport-only followup. Fresh live complete inputs, all-row/schema/native-WKB reconciliation, unchanged writer ASTs and byte-identical regenerated outputs verify unchanged pipeline data behavior."
+    },
+    "authenticated_construction": {
+      "source_test_code_commit": "f300cb5646042079696f28b5ec9c5043f6afb628",
+      "shared_git_identity_code": "0223a2ccab8cd7f10d291c90ead94956b09493c4",
+      "historical_defect": "historical-original-defect.json",
+      "actual_normal_lifecycle": "actual-normal-lifecycle.json",
+      "actual_provenance_denials_recovery": "actual-provenance-denials-recovery.json",
+      "actual_registered_run_count": 16,
+      "focused_tests": {
+        "total": 14,
+        "passed": 14,
+        "seconds": 23.782
+      },
+      "full_local_suite": {
+        "total": 537,
+        "passed": 536,
+        "skipped": 1,
+        "errors": 0,
+        "seconds": 120.556,
+        "production_opt_in_skipped": true,
+        "actual_sibling_iac_commit": "56aa10757129c457c530d707d9a40bae13e0907f"
+      },
+      "unchanged_native_function_asts": [
+        "inspect_archives",
+        "write_native_gpkg",
+        "expected_parquet_table",
+        "reconcile_outputs"
+      ],
+      "native_payload_parity": {
+        "geopackage/consolidated-cities.gpkg": {
+          "sha256": "313abb20cb84b838f779433eff2b91d49fc459fc91c9d7fcc0bf7356f0bbfe7c",
+          "matches_prior_independent_native_audit": true
+        },
+        "candidate/typed-source.parquet": {
+          "sha256": "e9158748e04c139d463eb75c16a2001f7ed20e442a35869303295bc44350a9a4",
+          "matches_prior_independent_native_audit": true
+        }
+      },
+      "construction": "Actual reachable Git commit and all regular processing blobs authenticated on fresh and cached original manifest; existing missing/invalid bundle quarantines whole candidate; complete private candidate is validated before first original receipt/manifest binding is installed under common lock",
+      "historical_reuse": "Genuine subsequent documentation-only HEAD actual reuse/rebuild proof follows this checkpoint, original full manifest retained",
+      "release_decisions": "All actual source-edition/baseline/ID/schema/native4269 vs3857 geometry/format rights and independent contract acceptance remain unapproved",
+      "independent_review": "Required on final exact head; prior reviewed native data parity preserved; actual new code reviewed separately",
+      "approved": false,
+      "ci_claim": false
     }
   },
   "approval": false

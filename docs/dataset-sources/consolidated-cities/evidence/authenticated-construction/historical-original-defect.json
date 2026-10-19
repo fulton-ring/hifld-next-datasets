@@ -1,0 +1,20 @@
+{
+  "source_head": "0721d0461715bb3223a47699e5d4fc27fa4a7dff",
+  "approved": false,
+  "runs": [
+    {
+      "kind": "complete_real_source",
+      "run_id": "08e25ff8-bfc9-4f52-9648-d1699d39560d",
+      "success": true
+    },
+    {
+      "kind": "coforged_canonical_and_external_zero_commit",
+      "run_id": "dde3f065-808d-4266-a8b3-5c403846dcae",
+      "success": true,
+      "false_commit_retained": true,
+      "errors": []
+    }
+  ],
+  "raw_preserved": true,
+  "prior_preserved": true
+}
