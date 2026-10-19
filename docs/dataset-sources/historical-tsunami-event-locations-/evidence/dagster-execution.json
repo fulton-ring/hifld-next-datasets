@@ -1,0 +1,296 @@
+{
+  "code_head": "5d2989b796101a3665c72dd8732592a4735994e9",
+  "module": "/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py",
+  "approved": false,
+  "runtime": "/workspace/work/hifld-coordinator/113/runtime",
+  "runs": [
+    {
+      "kind": "complete_real_source",
+      "run_id": "99f9716f-7ef9-49cd-9732-25835f00c36a",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "complete_source_reuse",
+      "run_id": "f3871eae-da15-4fbe-8a3e-511dacfcf79c",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_1_missing_approval",
+      "run_id": "8120abad-0f05-49c3-aafc-76baedefba58",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "source_after_catalog_1",
+      "run_id": "b542fa4a-3630-45d9-9fc9-82f1b8dbdb9c",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_2_missing_approval",
+      "run_id": "b33ebdcb-ec88-4ea8-8151-e462ba76027f",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "source_after_catalog_2",
+      "run_id": "7fb54324-d157-4fe6-bf22-c4f55e57f710",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "synthetic_failed_geometry_quality_gate",
+      "run_id": "0feab32e-e497-4f71-8b3b-c033fac44445",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ],
+      "materializations": [
+        "publish/catalog"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ]
+    },
+    {
+      "kind": "self_repinned_approval_placeholder_blocked",
+      "run_id": "7f9b4379-63b8-4d5e-a59a-f02b1af626c1",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_event_locations___historical_tsunami_event_locations_\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:source_owned_report_wrapper_placeholder_or_raw_provenance_drift:metadata/baseline_comparison.json; retained:_quarantine/historical-tsunami-event-locations-/acquisitions/1801cba2425643bca49f30c8a183f834\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/assets/historical_tsunami_events.py\", line 8, in noaa_historical_tsunami_events\n    result=stage_tsunami_events(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_EVENTS_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 373, in stage_tsunami_events\n    retained=retain_failure(storage,captures,str(exc));raise TsunamiQuarantineError(str(exc)+'; retained:'+retained) from exc\n                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:source_owned_report_wrapper_placeholder_or_raw_provenance_drift:metadata/baseline_comparison.json\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 360, in stage_tsunami_events\n    immutable(storage,str(dest.relative_to(base))+'.reason.json',encode({'approved':False,'reason':str(exc),'original_prefix':prefix}));raise TsunamiQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc\n                                                                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: source_owned_report_wrapper_placeholder_or_raw_provenance_drift:metadata/baseline_comparison.json\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 357, in stage_tsunami_events\n    reconcile_cache(storage,prefix,version,table,audit,captures,identity,pin)\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 336, in reconcile_cache\n    if (root/name).read_bytes()!=body:raise TsunamiQuarantineError('source_owned_report_wrapper_placeholder_or_raw_provenance_drift:'+name)\n                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "cold_rebuild_after_approval_placeholder",
+      "run_id": "9d58c988-71ac-4b6b-b4df-a26ede680c3e",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "self_repinned_auxiliary_srs_blocked",
+      "run_id": "b13bcac7-631f-4664-8b6e-02d2a46260a5",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_event_locations___historical_tsunami_event_locations_\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:gpkg_full_container_srs_headers_sql_or_index_drift; retained:_quarantine/historical-tsunami-event-locations-/acquisitions/c003e85e73484b028cf604cf46ae5ad1\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/assets/historical_tsunami_events.py\", line 8, in noaa_historical_tsunami_events\n    result=stage_tsunami_events(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_EVENTS_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 373, in stage_tsunami_events\n    retained=retain_failure(storage,captures,str(exc));raise TsunamiQuarantineError(str(exc)+'; retained:'+retained) from exc\n                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:gpkg_full_container_srs_headers_sql_or_index_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 360, in stage_tsunami_events\n    immutable(storage,str(dest.relative_to(base))+'.reason.json',encode({'approved':False,'reason':str(exc),'original_prefix':prefix}));raise TsunamiQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc\n                                                                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: gpkg_full_container_srs_headers_sql_or_index_drift\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 357, in stage_tsunami_events\n    reconcile_cache(storage,prefix,version,table,audit,captures,identity,pin)\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 342, in reconcile_cache\n    verify_outputs(root,table)\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 267, in verify_outputs\n    if sha256_file(fresh)!=sha256_file(root/'geopackage'/f'{SLUG}.gpkg'):raise TsunamiQuarantineError('gpkg_full_container_srs_headers_sql_or_index_drift')\n                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "cold_rebuild_after_auxiliary_srs",
+      "run_id": "19b263fd-31d4-4af1-9fe2-35a1b89b6ad3",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "self_repinned_forged_reachable_code_commit_blocked",
+      "run_id": "0f216edf-e0e5-458a-b010-dc66cf40bc5e",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_event_locations___historical_tsunami_event_locations_\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:construction_processing_blob_missing; retained:_quarantine/historical-tsunami-event-locations-/acquisitions/39610a8fdea144a5b51a490ce5ee69f0\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/assets/historical_tsunami_events.py\", line 8, in noaa_historical_tsunami_events\n    result=stage_tsunami_events(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_EVENTS_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 373, in stage_tsunami_events\n    retained=retain_failure(storage,captures,str(exc));raise TsunamiQuarantineError(str(exc)+'; retained:'+retained) from exc\n                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:construction_processing_blob_missing\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 360, in stage_tsunami_events\n    immutable(storage,str(dest.relative_to(base))+'.reason.json',encode({'approved':False,'reason':str(exc),'original_prefix':prefix}));raise TsunamiQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc\n                                                                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.construction_provenance.ConstructionCodeIdentityError: construction_processing_blob_missing\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 357, in stage_tsunami_events\n    reconcile_cache(storage,prefix,version,table,audit,captures,identity,pin)\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 327, in reconcile_cache\n    captures,manifest=original_bundle(storage,version,captures,identity,manifest_for(captures,identity,pin))\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 313, in original_bundle\n    validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'])\n                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/construction_provenance.py\", line 137, in validate_construction_code_identity\n    raise ConstructionCodeIdentityError(\"construction_processing_blob_missing\")\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "cold_rebuild_after_forged_reachable_code_commit",
+      "run_id": "aade378a-ea96-4429-be13-4776af86a912",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "self_repinned_missing_original_binding_blocked",
+      "run_id": "5b6005d0-d4d2-49ab-bb6e-7bf8e349f8a3",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"ingest__historical_tsunami_event_locations___historical_tsunami_event_locations_\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:missing_original_binding_after_first_construction; retained:_quarantine/historical-tsunami-event-locations-/acquisitions/8cf1f71fde774e7caa553bcff20d013a\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/assets/historical_tsunami_events.py\", line 8, in noaa_historical_tsunami_events\n    result=stage_tsunami_events(staging_storage,capture_dir=os.environ.get('HIFLD_TSUNAMI_EVENTS_CAPTURE_DIR'));context.add_output_metadata(result);return result\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 373, in stage_tsunami_events\n    retained=retain_failure(storage,captures,str(exc));raise TsunamiQuarantineError(str(exc)+'; retained:'+retained) from exc\n                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: invalid_candidate_detached_intact:missing_original_binding_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 360, in stage_tsunami_events\n    immutable(storage,str(dest.relative_to(base))+'.reason.json',encode({'approved':False,'reason':str(exc),'original_prefix':prefix}));raise TsunamiQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc\n                                                                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nThe above exception was caused by the following exception:\ndagster_hifld.sources.historical_tsunami_events.TsunamiQuarantineError: missing_original_binding_after_first_construction\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 357, in stage_tsunami_events\n    reconcile_cache(storage,prefix,version,table,audit,captures,identity,pin)\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 327, in reconcile_cache\n    captures,manifest=original_bundle(storage,version,captures,identity,manifest_for(captures,identity,pin))\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/113/src/dagster_hifld/sources/historical_tsunami_events.py\", line 297, in original_bundle\n    if storage.object_exists(started):raise TsunamiQuarantineError('missing_original_binding_after_first_construction')\n                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+      ],
+      "materializations": [],
+      "checks": []
+    },
+    {
+      "kind": "cold_rebuild_after_missing_original_binding",
+      "run_id": "87766532-d82c-41d9-9fee-c473f1c8d9fe",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-"
+      ],
+      "checks": []
+    }
+  ],
+  "terminal_parquet": {
+    "rows": 2590,
+    "all_original_fields": 76,
+    "schema": "UNIQUE_ID: int64 not null\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Unique ID\",\"defaultValue\":null,\"description' + 228\nYEAR: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Year\",\"defaultValue\":null,\"description\":\"{\\' + 204\nMONTH: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Month\",\"defaultValue\":null,\"description\":\"{' + 250\nDAY: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Day\",\"defaultValue\":null,\"description\":\"{\\\"' + 219\nHOUR: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Hour\",\"defaultValue\":null,\"description\":\"{\\' + 227\nMINUTE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Minute\",\"defaultValue\":null,\"description\":\"' + 234\nSECOND: float\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Second\",\"defaultValue\":null,\"description\":\"' + 232\nDATE_STRING: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Date String\",\"defaultValue\":null,\"descripti' + 253\nEVENT_DATE: timestamp[ms, tz=UTC]\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event Date\",\"defaultValue\":null,\"descriptio' + 266\nLATITUDE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Latitude\",\"defaultValue\":null,\"description\"' + 244\nLONGITUDE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Longitude\",\"defaultValue\":null,\"description' + 247\nLOCATION_NAME: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Location Name\",\"defaultValue\":null,\"descrip' + 267\nAREA: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Area\",\"defaultValue\":null,\"description\":\"{\\' + 246\nCOUNTRY: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Country\",\"defaultValue\":null,\"description\":' + 245\nREGION_CODE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Region Code\",\"defaultValue\":null,\"descripti' + 248\nREGION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Region\",\"defaultValue\":null,\"description\":\"' + 262\nCAUSE_CODE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Cause Code\",\"defaultValue\":null,\"descriptio' + 242\nCAUSE: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Cause\",\"defaultValue\":null,\"description\":\"{' + 257\nEVENT_VALIDITY_CODE: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event Validity Code\",\"defaultValue\":null,\"d' + 288\nEVENT_VALIDITY: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event Validity\",\"defaultValue\":null,\"descri' + 287\nEQ_MAG_UNK: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Unknown Magnitude\",\"defaultValue\":null,\"des' + 304\nEQ_MAG_MB: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Body Wave Magnitude (MB)\",\"defaultValue\":nu' + 293\nEQ_MAG_MS: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Surface Wave Magnitude (MS)\",\"defaultValue\"' + 299\nEQ_MAG_MW: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Moment Magnitude (MW)\",\"defaultValue\":null,' + 301\nEQ_MAG_ML: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Local Magnitude (ML)\",\"defaultValue\":null,\"' + 294\nEQ_MAG_MFA: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Magnitude from Amplitude (MFA)\",\"defaultVal' + 306\nEQ_MAGNITUDE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Earthquake Magnitude\",\"defaultValue\":null,\"' + 313\nEQ_MAGNITUDE_RANK: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Earthquake Magnitude Rank\",\"defaultValue\":n' + 311\nEQ_DEPTH: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Earthquake Depth (km)\",\"defaultValue\":null,' + 303\nMAX_EVENT_RUNUP: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Maximum Tsunami Runup (m)\",\"defaultValue\":n' + 291\nTS_MT_ABE: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Tsunami Magnitude Abe (TS_MT_ABE)\",\"default' + 279\nTS_MT_II: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Tsunami Magnitude II (TS_MT_II)\",\"defaultVa' + 289\nTS_INTENSITY: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Tsunami Intensity\",\"defaultValue\":null,\"des' + 293\nDAMAGE_MILLIONS_DOLLARS: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage (Million USD)\",\"defaultValue\":null,\"' + 288\nDAMAGE_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Amount Rank\",\"defaultValue\":null,\"de' + 301\nDAMAGE_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Description\",\"defaultValue\":null,\"de' + 294\nHOUSES_DESTROYED: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed\",\"defaultValue\":null,\"desc' + 251\nHOUSES_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Rank\",\"defaultValue\":null,' + 302\nHOUSES_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Description\",\"defaultValue' + 338\nDEATHS: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Deaths\",\"defaultValue\":null,\"description\":\"' + 243\nDEATHS_AMOUNT_ORDER: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Deaths Amount Order\",\"defaultValue\":null,\"d' + 321\nDEATHS_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Deaths Description\",\"defaultValue\":null,\"de' + 316\nINJURIES: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Injuries\",\"defaultValue\":null,\"description\"' + 239\nINJURIES_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Injuries Amount Order\",\"defaultValue\":null,' + 298\nINJURIES_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Injuries Description\",\"defaultValue\":null,\"' + 299\nMISSING: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons\",\"defaultValue\":null,\"descr' + 250\nMISSING_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons Amount Order\",\"defaultValue' + 290\nMISSING_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons Description\",\"defaultValue\"' + 307\nNUM_RUNUP: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Number of Runup Measurements\",\"defaultValue' + 275\nDAMAGE_MILLIONS_DOLLARS_TOTAL: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Damage (Million USD)\",\"defaultValue\":' + 308\nDAMAGE_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Severity Order\",\"defaultValue\":null,' + 299\nDAMAGE_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Damage Severity Description\",\"defaultValue\"' + 304\nHOUSES_DESTROYED_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Destroyed\",\"defaultValue\":null' + 281\nHOUSES_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Amount Order\",\"defaultValu' + 295\nHOUSES_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Destroyed Description\",\"defaultValue' + 308\nDEATHS_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Deaths\",\"defaultValue\":null,\"descript' + 288\nDEATHS_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Deaths Amount Order\",\"defaultValue\":n' + 308\nDEATHS_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Deaths Description\",\"defaultValue\":nu' + 304\nINJURIES_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Injuries\",\"defaultValue\":null,\"descri' + 273\nINJURIES_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Injuries Amount Order\",\"defaultValue\"' + 300\nINJURIES_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Injuries Description\",\"defaultValue\":' + 345\nMISSING_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Missing People\",\"defaultValue\":null,\"' + 267\nMISSING_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Missing Persons Scale Order\",\"defaultValue\"' + 334\nMISSING_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Missing Description\",\"defaultValue\":n' + 334\nHOUSES_DAMAGED: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Damaged\",\"defaultValue\":null,\"descri' + 267\nHOUSES_DAMAGED_AMOUNT_ORDER: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Damaged Scale Order\",\"defaultValue\":' + 315\nHOUSES_DAM_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Houses Damaged Description\",\"defaultValue\":' + 332\nHOUSES_DAMAGED_TOTAL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Damaged\",\"defaultValue\":null,\"' + 277\nHOUSES_DAM_AMOUNT_ORDER_TOTAL: int16\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Damaged Scale Order\",\"defaultV' + 327\nHOUSES_DAM_TOTAL_DESCRIPTION: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Total Houses Damaged Description\",\"defaultV' + 334\nCAUSE_SYMBOL: double\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Cause Code\",\"defaultValue\":null,\"descriptio' + 298\nURL: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Reference URL\",\"defaultValue\":null,\"descrip' + 259\nCOMMENTS: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Comments\",\"defaultValue\":null,\"description\"' + 298\nID: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Event ID\",\"defaultValue\":null,\"description\"' + 244\nMAP_SYMBOL: int32\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Map Symbol Code\",\"defaultValue\":null,\"descr' + 288\nOCEANIC_TSUNAMI: string\n  -- field metadata --\n  noaa:esri_field: '{\"alias\":\"Oceanic Tsunami\",\"defaultValue\":null,\"descr' + 267\ngeometry: binary\n-- schema metadata --\ngeo: '{\"columns\":{\"geometry\":{\"bbox\":[-20034280.077556238,-10881563.71909' + 2437",
+    "sha256": "249dfcf646b5f4be6bea1a03e61043d02a19bf6ce9ba0f8af64f49520dc9171a",
+    "no_bbox_added": true,
+    "all_source_IDs_types_nulls_timestamp_ms_and_native_wkb_exact": true
+  },
+  "quality": {
+    "bounds": [
+      -20034280.077556,
+      -10881563.719091,
+      20035727.230937,
+      14569861.765966
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "7dd38558d9a3f53007738e8eece415af7d9b8313c01c26264b763ed749daf474",
+    "feature_count": 2590,
+    "geometry_type": "Point",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 2590,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "cache_probes": [
+    {
+      "kind": "approval_placeholder",
+      "failure_run_id": "7f9b4379-63b8-4d5e-a59a-f02b1af626c1",
+      "restored_run_id": "9d58c988-71ac-4b6b-b4df-a26ede680c3e",
+      "quarantine": "/workspace/work/hifld-coordinator/113/runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-b2e060caa989416cba26db31140db678",
+      "all_rejected_bytes_preserved": true
+    },
+    {
+      "kind": "auxiliary_srs",
+      "failure_run_id": "b13bcac7-631f-4664-8b6e-02d2a46260a5",
+      "restored_run_id": "19b263fd-31d4-4af1-9fe2-35a1b89b6ad3",
+      "quarantine": "/workspace/work/hifld-coordinator/113/runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-c2a6382b97de4d0bb75c29c37103fe6d",
+      "all_rejected_bytes_preserved": true
+    },
+    {
+      "kind": "forged_reachable_code_commit",
+      "failure_run_id": "0f216edf-e0e5-458a-b010-dc66cf40bc5e",
+      "restored_run_id": "aade378a-ea96-4429-be13-4776af86a912",
+      "quarantine": "/workspace/work/hifld-coordinator/113/runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-7d270bbf6f344b5884eb2184979e3c18",
+      "all_rejected_bytes_preserved": true
+    },
+    {
+      "kind": "missing_original_binding",
+      "failure_run_id": "5b6005d0-d4d2-49ab-bb6e-7bf8e349f8a3",
+      "restored_run_id": "87766532-d82c-41d9-9fee-c473f1c8d9fe",
+      "quarantine": "/workspace/work/hifld-coordinator/113/runtime/staging/_quarantine/historical-tsunami-event-locations-/invalid-candidate-454050a633794a498d95072bd611f8ce",
+      "all_rejected_bytes_preserved": true
+    }
+  ],
+  "output": {
+    "dataset_slug": "historical-tsunami-event-locations-",
+    "file_slug": "historical-tsunami-event-locations-",
+    "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed",
+    "feature_count": 2590,
+    "reused": false
+  },
+  "complete_rows_IDs_physical_schema_nulls_dates_native_geometry_and_provenance_verified": true,
+  "source_discoverable_without_copy": true,
+  "source_byte_idempotent": true,
+  "native_prebuilt_retained_across_two_catalog_cycles": true,
+  "failed_quality_and_missing_approval_preserve_prior_fixture": true,
+  "all_raw_originals_preserved": true,
+  "actual_concurrent_construction": {
+    "scope": "Actual independent Dagster processes raced construction under same stable source lock and shared isolated instance/storage",
+    "runs": [
+      {
+        "run_id": "19aff403-e91d-4b90-89a5-f56181ec17d1",
+        "success": true,
+        "output": {
+          "dataset_slug": "historical-tsunami-event-locations-",
+          "file_slug": "historical-tsunami-event-locations-",
+          "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed",
+          "feature_count": 2590,
+          "reused": true
+        },
+        "errors": []
+      },
+      {
+        "run_id": "e08d505f-e470-4fda-8bd9-be992cc9bf08",
+        "success": true,
+        "output": {
+          "dataset_slug": "historical-tsunami-event-locations-",
+          "file_slug": "historical-tsunami-event-locations-",
+          "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed",
+          "feature_count": 2590,
+          "reused": false
+        },
+        "errors": []
+      }
+    ],
+    "one_complete_first_writer_survives_and_waiter_reuses": true,
+    "prior_healthy_draft_preserved": "/workspace/work/hifld-coordinator/113/runtime/closed-prior-draft-for-concurrency"
+  },
+  "synthetic_receipt_only_refresh": {
+    "classification": "Explicit synthetic receipt-only replay, not actual new upstream observation",
+    "run_id": "ed03c163-a030-4e75-8a17-a49d1d451bf7",
+    "success": true,
+    "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed",
+    "original_manifest_receipts_candidate_and_prior_fixture_byte_identical": true,
+    "fresh_synthetic_receipts_separately_preserved": true
+  }
+}

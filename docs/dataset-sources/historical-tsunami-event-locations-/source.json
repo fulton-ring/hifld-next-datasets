@@ -1383,5 +1383,67 @@
     "baseline_mapping": "No accepted mapping; current2590 vs published2637, extra IDs/columns, physical schema/date/geometry/coverage decisions pending"
   },
   "refresh": "STOPPED weekly complete-source refresh; source-content+processing fingerprints create new draft versions, old candidates/raw inputs preserved. Unknown source-schema or completeness/authority drift quarantines complete captured inputs. No automatic release.",
-  "validation": "11focused tests pass including complete real35-response extraction. Actual registered Dagster source/reuse/normalcatalog/gate proof and native independent review pending."
+  "validation": {
+    "frozen_source_code_head": "5d2989b796101a3665c72dd8732592a4735994e9",
+    "focused_tests": {
+      "total": 12,
+      "passed": 12,
+      "complete_real_capture": true,
+      "log": "evidence/focused-canonical-order.log"
+    },
+    "full_suite": {
+      "total": 534,
+      "passed": 533,
+      "skipped": 1,
+      "seconds": 87.102,
+      "errors": 0,
+      "failures": 0,
+      "log": "evidence/full-suite-canonical-order.log",
+      "actual_unmodified_IaC_commit": "56aa10757129c457c530d707d9a40bae13e0907f",
+      "tippecanoe": "actual executable in PATH",
+      "CI": "not inferred"
+    },
+    "dagster": {
+      "actual_complete_lifecycle_runs": 15,
+      "actual_concurrent_construction_runs": 2,
+      "source_run_id": "99f9716f-7ef9-49cd-9732-25835f00c36a",
+      "all_assertions": "pass",
+      "evidence": "evidence/dagster-execution.json",
+      "independent_exact_head_review": "pending",
+      "synthetic_receipt_only_refresh": {
+        "classification": "Explicit synthetic receipt-only replay, not actual new upstream observation",
+        "run_id": "ed03c163-a030-4e75-8a17-a49d1d451bf7",
+        "success": true,
+        "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed",
+        "original_manifest_receipts_candidate_and_prior_fixture_byte_identical": true,
+        "fresh_synthetic_receipts_separately_preserved": true
+      },
+      "synthetic_receipt_scope": "Explicit replay fixture tests implementation behavior only; not a new actual HTTP observation or acceptance."
+    },
+    "first_failed_real_run": {
+      "run_id": "473624c1-583b-4378-9a2b-ab0ef7c3a7bd",
+      "reason": "Original construction manifest input list depended on dict insertion order and did not match canonically restored binding. Complete private native outputs verified, installation failed closed.",
+      "fix": "Canonical sorted manifest inputs plus reverse-dictionary regression5d2989b. Failed complete runtime/raw/firstbinding/log retained.",
+      "evidence": "evidence/first-input-order-failure.json"
+    },
+    "reproduction": {
+      "script": "scripts/verify_historical_tsunami_events_draft.py --runtime EMPTY --capture-dir COMPLETE_ORIGINAL35RESPONSES",
+      "portable_script_validation": "compiled; exact recorded source/gate/concurrency drivers in evidence were actually executed. No undocumented claim of executing this argument-refactored standalone script.",
+      "bounded_storage": "~200MB plus existing8.6MB original capture; standalone keeps all complete negative fixtures."
+    }
+  },
+  "crosswalk": {
+    "url": "https://doi.org/10.3886/E241367V1",
+    "status": "provider403; actualmatch remains unverified, not declared unmatched",
+    "evidence": "evidence/crosswalk.receipt.json"
+  },
+  "official_service_item": {
+    "item_id": "5a44c3d4d465498993120b70ab568876",
+    "title": "Historical Tsunami Events",
+    "owner": "ncei_noaa",
+    "accessInformation": "NOAA National Centers for Environmental Information (NCEI)",
+    "licenseInfo": "empty; does not invent a license grant",
+    "description_match": "Current item description explicitly matches inventory historical event-layer description and links NCEI natural-hazards products/viewers.",
+    "evidence": "evidence/official_service_item.body"
+  }
 }

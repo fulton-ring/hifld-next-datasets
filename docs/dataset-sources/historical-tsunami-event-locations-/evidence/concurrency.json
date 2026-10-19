@@ -1,0 +1,31 @@
+{
+  "scope": "Actual independent Dagster processes raced construction under same stable source lock and shared isolated instance/storage",
+  "runs": [
+    {
+      "run_id": "19aff403-e91d-4b90-89a5-f56181ec17d1",
+      "success": true,
+      "output": {
+        "dataset_slug": "historical-tsunami-event-locations-",
+        "file_slug": "historical-tsunami-event-locations-",
+        "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed",
+        "feature_count": 2590,
+        "reused": true
+      },
+      "errors": []
+    },
+    {
+      "run_id": "e08d505f-e470-4fda-8bd9-be992cc9bf08",
+      "success": true,
+      "output": {
+        "dataset_slug": "historical-tsunami-event-locations-",
+        "file_slug": "historical-tsunami-event-locations-",
+        "version": "v0.0.0-draft-tsunami-67d3f56dc554db06-e8f534b0375010ed",
+        "feature_count": 2590,
+        "reused": false
+      },
+      "errors": []
+    }
+  ],
+  "one_complete_first_writer_survives_and_waiter_reuses": true,
+  "prior_healthy_draft_preserved": "/workspace/work/hifld-coordinator/113/runtime/closed-prior-draft-for-concurrency"
+}
