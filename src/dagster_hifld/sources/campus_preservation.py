@@ -146,6 +146,26 @@ def retain_diagnostic(storage, pieces, reason):
     return str(root)
 
 
+def bounded_regular_read(path, limit):
+    """Reject oversized/special inputs before allocation and bound raced growth."""
+    observed = path.lstat()
+    if not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1:
+        raise CampusQuarantineError('linked_or_special_source_capture')
+    if observed.st_size > limit: raise CampusQuarantineError('source_capture_size_limit')
+    descriptor = os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        current = os.fstat(descriptor)
+        if (current.st_dev,current.st_ino,current.st_size,current.st_mtime_ns,current.st_nlink) != (observed.st_dev,observed.st_ino,observed.st_size,observed.st_mtime_ns,1):
+            raise CampusQuarantineError('source_capture_changed_before_read')
+        with os.fdopen(os.dup(descriptor),'rb') as stream: body = stream.read(limit+1)
+        after = os.fstat(descriptor)
+        if len(body) > limit: raise CampusQuarantineError('source_capture_size_limit')
+        if (after.st_size,after.st_mtime_ns,after.st_nlink) != (current.st_size,current.st_mtime_ns,1) or len(body) != current.st_size:
+            raise CampusQuarantineError('source_capture_changed_during_read')
+        return body
+    finally: os.close(descriptor)
+
+
 def acquire(storage, capture_directory):
     local_root(storage)
     if capture_directory is None: raise CampusQuarantineError('explicit_preserved_capture_directory_required')
@@ -156,12 +176,14 @@ def acquire(storage, capture_directory):
         for name, pin in INPUTS.items():
             for suffix, limit in [('.body',16_000_000),('.receipt.json',128_000)]:
                 path = root/(name+suffix)
-                info = path.lstat()
-                if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                    raise CampusQuarantineError('linked_or_special_source_capture')
-                body = path.read_bytes()
+                try: body = bounded_regular_read(path,limit)
+                except CampusQuarantineError as exc:
+                    if str(exc) == 'source_capture_size_limit':
+                        pieces[name+suffix+'.oversize-diagnostic.json'] = encode({'trust':'untrusted_diagnostic',
+                            'path':str(path),'observed_bytes':path.lstat().st_size,'limit':limit,
+                            'body_captured':False,'original_preserved_in_place':True})
+                    raise
                 pieces[name+suffix] = body
-                if len(body) > limit: raise CampusQuarantineError('source_capture_size_limit')
             body = pieces[name+'.body']; receipt = strict_json(pieces[name+'.receipt.json'])
             validate_capture(name,body,receipt)
             captures[name] = (body, receipt)
@@ -424,10 +446,17 @@ def observed_trust_loss(storage, version, fp, *, candidate=None, restored_manife
     an additional observed claim against which that restoration is checked.
     Unobserved simultaneous loss of every outside record cannot be detected.
     """
-    key = '_construction-incidents/'+SLUG+'/'+version+'.json'
+    folder = checked_path(storage,'_construction-incidents/'+SLUG+'/'+version)
+    key = str(folder.relative_to(Path(storage.local_dir)))+'/incident.json'
     path = checked_path(storage,key)
-    if not path.exists() and candidate is None: return False
-    if not path.exists():
+    if not folder.exists() and candidate is None: return False
+    if not folder.exists():
+        # Persist refusal existence first. Even an interrupted body write leaves
+        # a fail-closed incident; never reconstruct authority from this marker.
+        folder.mkdir(parents=True)
+        descriptor = os.open(folder.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try: os.fsync(descriptor)
+        finally: os.close(descriptor)
         claim = None; manifest_path = candidate/'metadata/source_manifest.json'
         try:
             descriptor = os.open(manifest_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
@@ -440,7 +469,9 @@ def observed_trust_loss(storage, version, fp, *, candidate=None, restored_manife
         immutable(storage,key,encode({'schema_version':1,'version':version,'processing_fingerprint':fp,
             'status':'observed_original_construction_trust_loss','approved':False,
             'observed_cached_manifest_sha256':claim}))
-    body = path.read_bytes(); value = strict_json(body); claim = value.get('observed_cached_manifest_sha256')
+    try: body = bounded_regular_read(path,128_000)
+    except FileNotFoundError as exc: raise CampusQuarantineError('incomplete_observed_trust_loss_journal') from exc
+    value = strict_json(body); claim = value.get('observed_cached_manifest_sha256')
     if claim is not None and (type(claim) is not str or re.fullmatch('[0-9a-f]{64}',claim) is None):
         raise CampusQuarantineError('invalid_observed_trust_loss_claim')
     expected = {'schema_version':1,'version':version,'processing_fingerprint':fp,
@@ -502,6 +533,7 @@ def stage_campus_preservation(storage, capture_directory):
         state = root/key
         has_history = state.exists() or state.with_name(state.name+'.first-construction.json').exists() or state.with_name(state.name+'.evidence').exists()
         if target.exists():
+            can_detach = True
             try:
                 try:
                     captures,manifest = original_context(storage,key,version,fp,captures,identity,tables[PRIMARY])
@@ -510,11 +542,16 @@ def stage_campus_preservation(storage, capture_directory):
                     # Commit the refusal outside the candidate BEFORE detach.
                     # Otherwise total witness loss followed by quarantine could
                     # look like first use on the next call and reset receipts.
-                    observed_trust_loss(storage,version,fp,candidate=target)
+                    try: observed_trust_loss(storage,version,fp,candidate=target)
+                    except (ValueError,OSError,TypeError,KeyError,RuntimeError):
+                        can_detach = False
+                        raise
                     raise
                 expected = source_payloads(captures,identity,audits,report,manifest,tables)
                 reconcile_cache(storage,prefix,expected,tables[PRIMARY],version,fp)
             except (ValueError,OSError,TypeError,KeyError,RuntimeError,sqlite3.Error) as exc:
+                if not can_detach:
+                    raise CampusQuarantineError('trust_loss_journal_failed_candidate_retained_untrusted:'+str(exc)) from exc
                 quarantine = checked_path(storage,'_quarantine/'+SLUG+'/invalid-candidate-'+uuid4().hex)
                 quarantine.parent.mkdir(parents=True,exist_ok=True); os.rename(target,quarantine)
                 raise CampusQuarantineError('invalid_candidate_preserved_outside_discovery:'+str(quarantine)+':'+str(exc)) from exc

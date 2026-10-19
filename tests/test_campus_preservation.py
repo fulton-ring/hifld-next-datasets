@@ -12,7 +12,7 @@ from unittest.mock import patch
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from dagster import DefaultScheduleStatus, Definitions, validate_run_config
+from dagster import DefaultScheduleStatus, Definitions, build_schedule_context, validate_run_config
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import campus_preservation as s
 from dagster_hifld.assets.campus_preservation import (ornl_campus_historical_integrity_schedule,
@@ -161,7 +161,7 @@ class CampusPreservationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
                 s.stage_campus_preservation(storage,s.CAPTURES)
             self.assertFalse(path.exists())
-            incident=base/'_construction-incidents'/s.SLUG/(self.output['version']+'.json')
+            incident=base/'_construction-incidents'/s.SLUG/self.output['version']/'incident.json'
             first_incident=incident.read_bytes()
             captures=Path(temporary)/'later-simulated-receipts';shutil.copytree(s.CAPTURES,captures)
             for name in s.INPUTS:
@@ -178,12 +178,46 @@ class CampusPreservationTests(unittest.TestCase):
             self.assertFalse(result['reused']);self.assertEqual(incident.read_bytes(),first_incident)
             self.assertEqual((path/'metadata/source_manifest.json').read_bytes(),(self.base/self.prefix/'metadata/source_manifest.json').read_bytes())
 
+    def test_oversize_capture_rejected_before_open_and_original_retained(self):
+        for suffix,limit in [('.body',16_000_000),('.receipt.json',128_000)]:
+            with self.subTest(suffix=suffix),tempfile.TemporaryDirectory() as temporary:
+                root=Path(temporary);captures=root/'captures';shutil.copytree(s.CAPTURES,captures)
+                name=next(iter(s.INPUTS))+suffix;path=captures/name
+                with path.open('wb') as stream: stream.truncate(limit+1)
+                storage=StagingStorageResource(local_dir=str(root/'staging'));real_open=s.os.open
+                def guarded_open(target,*args,**kwargs):
+                    if Path(target)==path: raise AssertionError('oversize input opened')
+                    return real_open(target,*args,**kwargs)
+                with patch.object(s.os,'open',side_effect=guarded_open),self.assertRaisesRegex(ValueError,'source_capture_size_limit'):
+                    s.acquire(storage,captures)
+                self.assertEqual(path.stat().st_size,limit+1)
+                diagnostic=next((root/'staging/_quarantine').rglob('*.oversize-diagnostic.json'))
+                self.assertFalse(s.strict_json(diagnostic.read_bytes())['body_captured'])
+
+    def test_incident_storage_fault_cannot_detach_or_bootstrap(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            storage,path=self.clone(temporary);base=Path(storage.local_dir)
+            shutil.rmtree(base/'_construction-state'/s.SLUG)
+            real_immutable=s.immutable
+            def fail_incident(resource,key,body):
+                if key.startswith('_construction-incidents/'): raise OSError('actual incident write failure')
+                return real_immutable(resource,key,body)
+            with patch.object(s,'immutable',side_effect=fail_incident),self.assertRaisesRegex(ValueError,'trust_loss_journal_failed_candidate_retained_untrusted'):
+                s.stage_campus_preservation(storage,s.CAPTURES)
+            self.assertTrue(path.exists())
+            incident=base/'_construction-incidents'/s.SLUG/self.output['version']
+            self.assertTrue(incident.is_dir());self.assertFalse((incident/'incident.json').exists())
+            for retry in [1,2]:
+                with self.subTest(retry=retry),self.assertRaisesRegex(ValueError,'incomplete_observed_trust_loss_journal'):
+                    s.stage_campus_preservation(storage,s.CAPTURES)
+                self.assertTrue(path.exists());self.assertFalse((base/'_construction-state'/s.SLUG).exists())
+
     def test_stopped_schedule_config_matches_actual_asset_op_name(self):
         defs=Definitions(assets=[ornl_campus_historical_preservation],asset_checks=[campus_historical_full_quality],
             resources={'staging_storage':StagingStorageResource(local_dir=str(self.base))},jobs=[ornl_campus_historical_reconstruction_job])
         with patch.dict(os.environ,{'HIFLD_CAMPUS_CAPTURE_DIR':str(s.CAPTURES)}):
             validate_run_config(defs.resolve_job_def(ornl_campus_historical_reconstruction_job.name),
-                                ornl_campus_historical_integrity_schedule.run_config)
+                                ornl_campus_historical_integrity_schedule.evaluate_tick(build_schedule_context()).run_requests[0].run_config)
 
 
 if __name__=='__main__':unittest.main()
