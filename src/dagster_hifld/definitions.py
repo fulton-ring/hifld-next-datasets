@@ -32,6 +32,7 @@ from dagster_hifld.source_formats import (
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
 )
+from dagster_hifld.assets.usgs_nldi import usgs_nldi_draft_refresh_schedule
 
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
@@ -406,10 +407,17 @@ def _configured_sensors():
     return [version_discovery_sensor]
 
 
+def _configured_schedules():
+    if os.environ.get("HIFLD_SHADOW_MANUAL_ONLY") == "1":
+        return []
+    return [usgs_nldi_draft_refresh_schedule]
+
+
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
     sensors=_configured_sensors(),
+    schedules=_configured_schedules(),
     executor=_default_executor(),
     resources={
         "staging_storage": StagingStorageResource.from_env(),
