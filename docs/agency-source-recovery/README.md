@@ -40,6 +40,30 @@ Implementation uses explicit source-specific Dagster assets and the existing ing
 
 A source being unavailable from a restricted runner is `network_blocked` or `unverified`, not `dead`. A service answering is not proof that its data is maintained. A static archive is not an updating pipeline.
 
+## Potential breaking changes and schema contract
+
+Add a dedicated **Potential breaking change** board lane. Enter it whenever source identity, identifiers, schema, geometry, coverage or meaning may change. An agent must report the difference rather than silently normalize it away. This lane blocks implementation-ready dispatch, publication/promotion and auto-merge until a maintainer explicitly accepts a documented compatibility plan. Independent agent review alone cannot clear this exception. Approval is tied to the reviewed schema/source contract and PR head; later changes require re-evaluation.
+
+Before implementation, capture a versioned schema contract from the accepted published dataset and its data dictionary, alongside the raw source schema. If no accepted baseline exists, obtain maintainer approval for the initial contract. The contract names allowed published columns, types, nullability, meanings, ID roles, geometry/CRS and coverage. Keep raw downloads losslessly in staging; publish only the explicitly accepted projection.
+
+Every candidate release produces a machine-readable diff and a readable report covering added, removed and renamed columns; type and nullability changes; ID uniqueness/null counts and continuity; geometry/CRS and coverage changes. Unexpected differences fail the compatibility check and route the issue to Potential breaking change. Never auto-update the baseline to make the check pass.
+
+- Preserve all existing source and published ID columns, their names, types and values. Preserve leading zeros and large integer precision. Do not drop IDs, substitute row numbers, regenerate IDs or treat ArcGIS OBJECTID as a stable cross-release identifier without evidence. If upstream removes or changes IDs, flag it and propose a mapping/migration; do not invent continuity.
+- New upstream columns remain in the raw snapshot, but do not automatically enter the published schema. List each addition with meaning and reason; explicitly map and approve it before publication. An allowlist must not silently discard identifiers: any unmapped identifier or suspected ID field triggers review.
+- Renames, removed columns, changed field meanings, lossy type coercions, newly nullable required fields, ID churn and changed geometry/coverage require an explicit compatibility decision. Do not swap a partial substitute into an existing dataset slug just because its title resembles the original.
+- Tests must exercise missing/renamed IDs, leading-zero IDs, duplicate/null keys, unexpected added columns and type changes. Verify that a flagged release can be retained in staging while the last accepted published release remains available.
+- Resolution records the before/after schema, impact, mapping, migration/versioning decision, approving maintainer and commit. Only then return to Ready or Review as appropriate; all normal checks and independent review still apply.
+
+## Authoritative sources and mirrors
+
+Track **source role** separately from **health**, **freshness** and **relationship to the archive**. A mirror can respond and contain newer uploads without being the producer or a maintained agency release.
+
+For every URL record the original producer, publishing organization/account, host, service/item identity, upstream lineage, source release date and evidence URL. Classify it as producer publication, delegated official distributor, third-party mirror, historical archive or unresolved. Government ownership, a .gov URL, an ArcGIS title/logo, HIFLD branding or a recent portal edit alone does not establish authority or currency. Agency ArcGIS services require ownership and lineage evidence; a delegated distributor requires an explicit producer link or documented delegation.
+
+PASDA HIFLD/FEMA snapshots, DataLumos, SeerAI/Source Cooperative and Esri archive copies are preservation candidates for these HIFLD layers, not evidence of current producer publication. Classify each actual item; do not infer the role of all data on a platform from its domain. Follow mirrors' upstream references to the producer and verify the actual service or release.
+
+Retain mirrors as separate fallback/archive records with their provenance and snapshot dates. Do not silently promote a mirror to the authoritative URL when the producer is unavailable. Any proposed fallback publication needs a maintainer decision and must remain visibly identified as a mirror or archive, with the original source and last verified release. Unknown lineage stays unresolved and cannot become implementation-ready.
+
 ## Initial implementation queue
 
 Prioritize source families for investigation, but keep one dataset issue per inventory ID:
@@ -55,7 +79,7 @@ The accompanying issue-draft generator produces `dataset-issues.jsonl`, one rese
 
 ## GitHub project and worker design
 
-Proposed board states: Source research → Ready → In progress → Review → Changes requested → Done, with Blocked and Needs decision. Use a dedicated HIFLD project or a dedicated filtered view. Fields: Dataset ID, Agency, Source relationship, Source health, Last verified, Priority, Agent, Issue, PR, Worker session, Attempt count. Preserve a complete history on issues even if project access is temporarily unavailable.
+Proposed board states: Source research → Ready → In progress → Review → Changes requested → Done, with Potential breaking change, Blocked and Needs decision. Use a dedicated HIFLD project or a dedicated filtered view. Fields: Dataset ID, Agency, Source relationship, Source health, Last verified, Schema compatibility, Source role, Maintainer decision, Priority, Agent, Issue, PR, Worker session, Attempt count. Preserve a complete history on issues even if project access is temporarily unavailable.
 
 Select the runner using the supported official Codex Action or CLI/SDK, not an assumed counterpart of Claude's routines API:
 
@@ -70,12 +94,13 @@ Dispatcher requirements:
 - Claim each issue atomically with a lease, run ID and expiration. Check active PR/session before launching. Use bounded concurrency and retries, and recover expired claims.
 - Make issue creation, dispatch, PR creation and status transitions idempotent. Never interpolate issue text into shell code.
 - One branch and PR per dataset, with source evidence, focused changes and a runnable verification record. Batch shared infrastructure separately to avoid conflicting worker edits.
+- Exclude Potential breaking change cards from dispatch and auto-merge eligibility. Treat unresolved provenance and schema differences as blocking findings; require the explicit maintainer decision described above.
 - Run an independent reviewer against the exact PR head commit. Review dataset identity, completeness, provenance, tests and release behavior. New commits invalidate old review results.
 - Changes requested resumes a bounded revision loop on the same PR. Stop and surface unresolved findings or exhausted attempts rather than endlessly relaunching.
 - Merge only according to the selected approval policy, after required checks and the independent review for the current head. The selected policy is independent review plus required checks, then auto-merge. This document does not itself install or activate the controller.
 - Model execution should not itself control merge credentials. Keep the controller's permissions separate and obey repository branch rules. A review by the same GitHub identity may not satisfy GitHub's required reviewer rules; choose the bot/app identities explicitly.
 
-Acceptance scenarios: duplicate events launch once; failed launches release the lease; stale worker completion cannot move a newer attempt; cross-repo and unassigned cards are ignored; source failure is reported; review findings trigger revision; any head change invalidates merge eligibility; failed checks and unresolved findings block merge; no workflow silently starts a paid worker before its credentials and scope are configured.
+Acceptance scenarios: duplicate events launch once; failed launches release the lease; stale worker completion cannot move a newer attempt; cross-repo and unassigned cards are ignored; source failure is reported; review findings trigger revision; any head change invalidates merge eligibility; failed checks and unresolved findings block merge; schema drift or unresolved mirror lineage routes to Potential breaking change and blocks publication/merge; agent approval cannot substitute for the maintainer decision; no workflow silently starts a paid worker before its credentials and scope are configured.
 
 ## Current blockers
 
