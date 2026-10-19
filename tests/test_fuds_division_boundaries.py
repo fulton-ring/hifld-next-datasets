@@ -8,6 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+from shapely import wkb
 from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import fuds_division_boundaries as source
@@ -30,8 +33,8 @@ def _fixtures(*, bad_ids: bool = False, bad_schema: bool = False) -> dict[str, d
         "advancedQueryCapabilities":{"supportsPagination":True,"supportsOrderBy":True}}
     sq1=[[0,0],[0,1],[1,1],[1,0],[0,0]]
     sq2=[[2,0],[2,1],[3,1],[3,0],[2,0]]
-    features=[{"attributes":{"OBJECTID":1,"DIV":"LRD","MIL_DIV":"Great Lakes","MACOM_ID":1.0,"SHAPE_Length":4.0,"SHAPE_Area":1.0},"geometry":{"rings":[sq1]}},
-              {"attributes":{"OBJECTID":2,"DIV":"MVD","MIL_DIV":"Mississippi","MACOM_ID":2.0,"SHAPE_Length":4.0,"SHAPE_Area":1.0},"geometry":{"rings":[sq2]}}]
+    features=[{"attributes":{"OBJECTID":1,"DIV":"LRD","MIL_DIV":"Great Lakes","MACOM_ID":1.0,"SE_ANNO_CAD_DATA":None,"SHAPE_Length":4.0,"SHAPE_Area":1.0},"geometry":{"rings":[sq1]}},
+              {"attributes":{"OBJECTID":2,"DIV":"MVD","MIL_DIV":"Mississippi","MACOM_ID":2.0,"SE_ANNO_CAD_DATA":None,"SHAPE_Length":4.0,"SHAPE_Area":1.0},"geometry":{"rings":[sq2]}}]
     page=[features[1],features[0]] if bad_ids else features
     page0={"features":page[:1],"spatialReference":{"wkid":4326,"latestWkid":4326},"exceededTransferLimit":True}
     page1={"features":page[1:],"spatialReference":{"wkid":4326,"latestWkid":4326}}
@@ -56,8 +59,16 @@ class FudsDivisionBoundariesTests(unittest.TestCase):
                 candidate=source.capture_fuds_division_boundaries(storage,version="vfixture",capture_directory=tmp+"/captures")
             self.assertEqual(candidate["feature_count"],2)
             self.assertFalse(candidate["release_accepted"])
-            summary=summarize_staged_catalog(storage,source.DATASET_SLUG,source.FILE_SLUG,candidate["version"],"FUDS divisions")
             prefix=f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
+            table=pq.read_table(Path(tmp)/prefix/f"geoparquet/{source.DATASET_SLUG}.parquet")
+            self.assertEqual(table.column("OBJECTID").to_pylist(),[1,2])
+            self.assertEqual(table.column("DIV").to_pylist(),["LRD","MVD"])
+            self.assertEqual(table.column("MIL_DIV").to_pylist(),["Great Lakes","Mississippi"])
+            self.assertEqual(table.schema.field("SE_ANNO_CAD_DATA").type,pa.binary())
+            self.assertEqual(table.column("SE_ANNO_CAD_DATA").to_pylist(),[None,None])
+            self.assertTrue(wkb.loads(table.column("geometry")[0].as_py()).equals_exact(
+                source._esri_polygon({"rings":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]}),0))
+            summary=summarize_staged_catalog(storage,source.DATASET_SLUG,source.FILE_SLUG,candidate["version"],"FUDS divisions")
             storage.write_key(f"{prefix}/metadata/quality_manifest.json",json.dumps(summary.quality_manifest).encode())
             storage.write_key(f"{prefix}/metadata/data_dictionary.json",json.dumps(summary.data_dictionary).encode())
             with patch.object(source,"PAGE_SIZE",1), patch.object(source,"capture_get",side_effect=fake_get):

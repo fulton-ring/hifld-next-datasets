@@ -103,9 +103,9 @@ def _esri_polygon(geometry: dict) -> MultiPolygon:
 
 def _native_parquet(fields: list[dict], features: list[dict]) -> bytes:
     # SHAPE is the geometry and ArcGIS does not return it as an attribute.
-    # Blob values are absent from query responses. The schema declaration and
-    # complete responses are retained; no unavailable value is invented.
-    attr_fields = [f for f in fields if f["type"] not in {"esriFieldTypeGeometry", "esriFieldTypeBlob"}]
+    # SHAPE is returned through the Esri geometry member. Other attributes,
+    # including nullable BLOB values, retain their declared source types.
+    attr_fields = [f for f in fields if f["type"] != "esriFieldTypeGeometry"]
     names = [f["name"] for f in attr_fields]
     cols = {f["name"]: pa.array([x["attributes"][f["name"]] for x in features], type=_arrow_type(f))
             for f in attr_fields}
@@ -177,9 +177,12 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
             ids_after = get(client,"ids_after",LAYER_URL+"/query",{"where":"1=1","returnIdsOnly":"true","f":"json"}).get("objectIds")
         if layer != after or service != service_after or count_after != count or sorted(ids_after or []) != seed:
             raise ValueError("source_changed_during_capture")
-        field_names=[f["name"] for f in fields if f["type"] not in {"esriFieldTypeGeometry","esriFieldTypeBlob"}]
+        field_names=[f["name"] for f in fields if f["type"] != "esriFieldTypeGeometry"]
         if any(not isinstance(x.get("attributes"),dict) or list(x["attributes"]) != field_names for x in features):
             raise ValueError("source_record_schema_drift")
+        blob_values=[x["attributes"].get("SE_ANNO_CAD_DATA") for x in features]
+        if any(value is not None for value in blob_values):
+            raise ValueError("source_blob_values_non_null_unreviewed")
         if sorted(x["attributes"]["OBJECTID"] for x in features) != seed: raise ValueError("source_population_incomplete")
         features.sort(key=lambda x:x["attributes"]["OBJECTID"])
         geom_digest=_sha(_canonical([[x["attributes"]["OBJECTID"],x["geometry"]] for x in features]))
@@ -191,24 +194,24 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
             "source_geometry_sha256":geom_digest,"source_schema_sha256":schema_digest,"source_crs_epsg":4326,
             "geometry_type":"Polygon","all_ids_captured_once":True,"ids_equal_before_after":True,
             "source_release_date":None,"source_release_date_unknown_reason":"Service metadata provides no producer release date.",
-            "declared_field_values_not_returned_by_feature_query":{"SE_ANNO_CAD_DATA":{
-                "source_type":"esriFieldTypeBlob","value_status":"unknown; omitted from all captured feature attributes",
-                "raw_response_retained":True,"substituted_null":False}}}
+            "source_blob_values":{"SE_ANNO_CAD_DATA":{"source_type":"esriFieldTypeBlob",
+                "value_status":"producer returned explicit JSON null for every feature",
+                "explicit_null_count":len(blob_values),"substituted_null":False}}}
         manifest={"schema_version":1,"processor":"HIFLD Next","approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,
             "agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"source_release_date":None,
             "date_issued":None,"date_modified":None,"code_commit":identity["code_commit"],"inputs":[
                 {"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication",
                  "canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],
                  "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unreviewed; no license claim made.",
-                 "attribution":"USACE layer copyright/attribution has not been reviewed.","role":"producer_publication","release_date":None,
+                 "attribution":"USACE layer copyright/attribution has not been reviewed.","release_date":None,
                  "release_date_unknown_reason":"USACE service responses do not provide a producer release date."}
                 for n,(_b,r) in sorted(captures.items())],
             "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
                 "layer_id":LAYER_ID,"attributes":"all query-returned source attributes retained in source order/types/values",
                 "geometry":"Esri rings interpreted as Polygon/MultiPolygon WKB in EPSG:4326; no repair or simplification",
-                "blob_field":"SE_ANNO_CAD_DATA is not returned by Esri feature queries; verbatim raw responses retained",
+                "blob_field":"SE_ANNO_CAD_DATA returned explicit null values; preserved as nullable binary with no substitutions",
                 "approval_gates_open":True}}],
-            "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Candidate preserves all query-returned FUDS fields and native vertices; the declared but unreturned BLOB value remains unknown and approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}}}
+            "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Candidate preserves query-returned FUDS fields and native vertices; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}}}
         validate_release_provenance(manifest); validate_output_policy(manifest)
         outputs={native_name:native,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
             "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
