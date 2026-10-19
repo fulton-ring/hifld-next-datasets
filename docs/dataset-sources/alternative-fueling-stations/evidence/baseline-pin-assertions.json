@@ -1,0 +1,11 @@
+{
+  "bytes": 10134712,
+  "catalog_size_matches": true,
+  "catalog_multihash": "d50110fa2c6bc1dbad355bc364ebb923a43865",
+  "md5": "fa2c6bc1dbad355bc364ebb923a43865",
+  "catalog_md5_matches": true,
+  "sha256": "e61fb6e9c0afedd0c8ead2369fefb957b6abb8af096f3dc956d8f7ab7e6eb907",
+  "gcs_generation": "1791506347426060",
+  "initial_and_pinned_bytes_identical": true,
+  "accepted": false
+}

@@ -1,0 +1,27 @@
+{
+  "rows": 103502,
+  "terminal_files": 1,
+  "source_candidate_sha256": "312e63540633797b63792751249e7cbe2cc0a41e8560b692e03d585eefd5d58b",
+  "all_station_ids_unique_and_equal": true,
+  "all_raw_source_columns_retained": true,
+  "source_field_type_changes": {},
+  "source_field_nullability_changes": {
+    "OBJECTID": {
+      "source": false,
+      "terminal": true
+    }
+  },
+  "typed_value_changes": {},
+  "native_WKB_changes": 0,
+  "additional_terminal_columns": [
+    "bbox"
+  ],
+  "terminal_pins": [
+    {
+      "relative_path": "geoparquet/alternative-fueling-stations.parquet",
+      "bytes": 12706287,
+      "sha256": "35d350e360b59ab1f4a2f08644a206a4119fc79811a993674cb6fb2ac5c19674"
+    }
+  ],
+  "approval": "none; additional columns/nullability and baseline/schema/ID migration remain review decisions"
+}

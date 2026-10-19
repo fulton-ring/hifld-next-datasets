@@ -7,11 +7,36 @@
   "raw_and_candidate_graph": "evidence/draft-materialization.json",
   "normal_ingest_and_catalog": "evidence/standard-materialization.json",
   "full_candidate_assertions": "evidence/full-candidate-assertions.json",
-  "full_suite": "Not claimed; missing sibling IaC explicit limitation",
+  "full_suite": {
+    "total": 480,
+    "passed": 478,
+    "errors": 1,
+    "skipped": 1,
+    "command": "uv run --frozen --offline python -m unittest discover tests",
+    "environment": "Isolated local cloud storage variables unset; source module from worktree11; tippecanoe2.53.0 on PATH.",
+    "sole_error": "Missing sibling /workspace/hifld-worker-worktrees/hifld-next-iac/environments/prod/dagster.tf; test_hifld_user_code_has_pod_disruption_budget",
+    "skip": "Production GCS opt-in test",
+    "log_sha256": "a0ac71c7e346b88f80a79aa1d3d9be1959b6240f98dbfdf501f6da17e8b7af7e",
+    "success_claimed": false,
+    "scope_note": "Executed before the two final STOPPED-schedule/early-cloud-guard tests were added; both additional source tests pass in the ten-source-test invocation."
+  },
   "CI": "Not observed or inferred",
   "promotion_approval": "none",
   "shared_dependency": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
-  "format_graph": "Final typed input graph running; old generic diagnostic succeeded but had known unacceptable type/value coercions, now replaced by typed bridge.",
+  "format_graph": {
+    "receipt": "evidence/final-graph-assertions.json",
+    "run_id": "4b2bb620-c893-4583-907a-220aee00a5e5",
+    "catalog_and_quality_check": "pass",
+    "geopackage": "typed bridge reused; all source fields/schema/values/native WKB verified",
+    "geoparquet": "generated; complete terminal audit proves all source fields/physical widths/values/native WKB preserved",
+    "pmtiles": "generated derived visualization; no raw-format equality/acceptance claim",
+    "shapefile": "explicit unsupported skip, file_count0, no stale shapefile artifact",
+    "verify": "expected missing_independent_release_approval_registry rejection",
+    "baseline_check_and_promote": "did not execute after verification failed",
+    "accepted_fixture_preserved": true,
+    "candidate_and_raw_preserved": true,
+    "no_release_approval": true
+  },
   "discrete_shared_integer_fix": "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
   "integer_conversion_tests": {
     "passed": 110,
@@ -20,5 +45,26 @@
     "log_sha256": "efb29659b8a06cc2afa41c79e152c3e1f25708ea692f036f41b83442b8aedf79",
     "scope": "Actual typedGPKG\u2192terminalParquet int32min/max/null and int64min/max,2^53+1/null; originalrecords before DataFrame rounding; invalid values/overflow reject."
   },
-  "typed_geopackage_assertions": "evidence/typed-geopackage-assertions.json"
+  "typed_geopackage_assertions": "evidence/typed-geopackage-assertions.json",
+  "actual_local_readiness": {
+    "server_info_status": 200,
+    "graphql_status": 200,
+    "repository_type": "RepositoryConnection",
+    "loaded_asset_count": 75,
+    "fuel_ingest_registered": true,
+    "port": 3511,
+    "isolated_state_storage": true,
+    "local_only": true
+  },
+  "terminal_parquet_assertions": "evidence/terminal-parquet-assertions.json",
+  "source_tests_after_stopped_schedule": {
+    "passed": 10,
+    "log_sha256": "158b7f706cf98a11e4bf6e67b924a5ba98baadd1423cf8c4a4cefce2dbb2d18d",
+    "scope": "STOPPED source-only 09:00America/New_York integrity poll; deterministic dated draft version; remote resource rejects before any live capture."
+  },
+  "final_focused_tests": {
+    "passed": 79,
+    "command": "uv run --frozen --offline python -m unittest tests.test_fuel_stations tests.test_conversion_integer_fidelity tests.test_dynamic_partitions tests.test_checks tests.test_full_verification tests.test_catalog -q",
+    "log_sha256": "278a6323e1495fda20a43e11c4172193705a1353c50c61353f3ae30f709d3877"
+  }
 }

@@ -41,6 +41,7 @@
     "status": "explicit_unmatched",
     "url": "https://doi.org/10.3886/E241367V1"
   },
+  "external_decision_document": "DECISION.md",
   "external_decisions": [
     "Accept exact source/distributor lineage and crosswalk unmatched result or supply accepted crosswalk evidence.",
     "Accept a pinned historical baseline and versioned raw/published schema/ID mapping preserving all identifiers.",
@@ -58,12 +59,38 @@
   "issue": 11,
   "pipeline": {
     "dependency_commit": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
+    "final_real_graph_receipt": "evidence/final-graph-assertions.json",
     "integer_conversion_fix": "15a515241e16e5cda8c8b30d9599f321dc9aabcd",
     "module": "src/dagster_hifld/assets/fuel_stations.py",
     "previous_generic_format_diagnostic": "evidence/generated-gpkg-audit.json retains full audit of old experimental GeoJSON\u2192GeoPackage coercions; those artifacts are quarantined and not the typed bridge.",
     "promotion": "Independent exact-release approval required by shared #417; missing registry rejects. No registry/approval authored here.",
+    "refresh_poll": {
+      "cron": "0 9 * * *",
+      "default_status": "STOPPED",
+      "definition_registration": "Coordinator-owned integration; no activation authorized",
+      "execution_timezone": "America/New_York",
+      "job": "fuel_stations_draft_refresh_job",
+      "local_guard": "Refuse bucket/remote staging before any network capture",
+      "official_release_cadence_inferred": false,
+      "proposed_only": true,
+      "schedule": "fuel_stations_draft_refresh_schedule",
+      "selection": "source ingest only; no publish/catalog asset selection"
+    },
     "registry": "src/dagster_hifld/assets/ingest_registry.py",
     "scope": "Working draft raw+typedcandidate graph and normal explicit ingest+catalog graph; local staging only. No API-funded agent/worker. Shared verifier dependency PR421.",
+    "terminal_parquet_audit": "evidence/terminal-parquet-assertions.json",
+    "terminal_representational_differences": {
+      "OBJECTID_nullability": {
+        "actual_null_ids": 0,
+        "raw_and_typed_candidate_and_GPKG": false,
+        "terminal_parquet": true
+      },
+      "all80_attribute_types_values_and_native_WKB_preserved": true,
+      "approval": "none; explicit maintainer review required",
+      "derived_columns": [
+        "bbox"
+      ]
+    },
     "typed_geopackage": "Streaming pyogrio Arrow bridge verified every raw source field/name/physical type/nullability/value and native WKB for103502rows; avoids generic GeoPandas coercion. Internal format fid never replaces OBJECTID/id."
   },
   "proposed_contract": {
