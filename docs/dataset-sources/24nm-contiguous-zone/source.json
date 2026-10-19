@@ -238,9 +238,9 @@
     "dagster": "isolated local Dagster1.12.19 server_info plus RepositoryConnection73 assets on3404, captured2026-10-19",
     "materialization_performed": true,
     "ingestion_approved": false,
-    "actual_source_run_id": "5114b073-41db-431d-afc7-a90d8e191efb",
-    "actual_formats_run_id": "ee659fd6-7bd9-4e7a-96b4-8532df65620a",
-    "blocked_release_run_id": "d7167da7-6f19-44cf-b8e1-7e143a17b506",
+    "actual_source_run_id": "69b2d451-5e11-4a57-897c-07dc57abdf1b",
+    "actual_formats_run_id": "a9ccb5c1-3512-40a6-bb4f-90a566dca51b",
+    "blocked_release_run_id": "b375f7d5-fe22-4e44-b64c-88c81c9fa701",
     "release_approved": false,
     "lossy_shapefile_excluded": true,
     "prior_local_release_preserved": true
@@ -297,7 +297,7 @@
     "format_drift_audit": "evidence/draft-format-audit.json",
     "final_report": "evidence/draft-integration.json",
     "live_capture_receipt": "evidence/draft-live-capture-receipt.json",
-    "code_tested": "b6c2ba3798868811913d3981b3071b03b4cfd41a",
+    "code_tested": "807c8e87c96de45e93e49397c1900f28fdf64a07",
     "supported_draft_outputs": [
       "native candidate GeoParquet",
       "typed GeoPackage",
@@ -317,6 +317,9 @@
     "skipped": 1,
     "full_suite_passed": false,
     "ci_passed": false,
-    "error": "Missing sibling IaC dagster.tf"
+    "error": "Missing sibling IaC dagster.tf",
+    "full_suite_code_tested": "b6c2ba3798868811913d3981b3071b03b4cfd41a",
+    "later_focused_code_tested": "807c8e87c96de45e93e49397c1900f28fdf64a07",
+    "later_focused_tests_passed": 31
   }
 }

@@ -1,7 +1,7 @@
 {
   "draft-format-audit.json": "4441b9564bbd1a1e4329ddcc94072a1f60986be2b980d7b57d2b2d877ae17278",
-  "draft-integration.json": "6bd76d58c85be719505fc4efd2d97c7d48fdf6be9302664f1992fcea2aac4f32",
+  "draft-integration.json": "402ce10d85e6fc277c3294e5d794a19876b2b34d6065f100abcbf2c0c3efb9a6",
   "draft-live-capture-receipt.json": "a53aa8bed1cd3c1f0c37a42c6a515dbcf1812902226a8f2d89814789668b9ff7",
   "draft-source-guard.json": "e817451a83571fd7ec6846159dc72c2d5f4db13c740df534ee17a518e1a795b3",
-  "draft-validation.json": "81cec162c7bfc6adf817b35cf72f3427812d84b98bc820065a5a8516db10a5af"
+  "draft-validation.json": "94f6859ee6e2a74b7a6af94b7ccd075340f93ab0a333240372afb3e537e9c502"
 }

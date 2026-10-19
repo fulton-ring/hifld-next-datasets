@@ -12,5 +12,27 @@
   "full_suite_success": false,
   "ci_pass_claimed": false,
   "log_path": "/workspace/work/noaa-4/full-suite-final.log",
-  "log_sha256": "e854f5d4203221b459f4e3ce93410f9af5b3354b4201db353b74d60d5205d974"
+  "log_sha256": "e854f5d4203221b459f4e3ce93410f9af5b3354b4201db353b74d60d5205d974",
+  "later_focused_checks": {
+    "code_tested": "807c8e87c96de45e93e49397c1900f28fdf64a07",
+    "dependency": "0603d057aeefb12f0737714bc137fa2f3f3fc78e",
+    "complete_real_source_integration": 3,
+    "shared_verifier": 20,
+    "source_manifest": 8,
+    "all_passed": true,
+    "logs": {
+      "integration-policy-final.log": {
+        "path": "/workspace/work/noaa-4/integration-policy-final.log",
+        "sha256": "9bfc70ba01e504ba80326195c1dd18175660f06eb0e7f5a7eadad61e08fcdecf"
+      },
+      "verifier-policy-final.log": {
+        "path": "/workspace/work/noaa-4/verifier-policy-final.log",
+        "sha256": "9df2f7fb9e0bc25c9f2b3233e4dff20d78739f333fc5b783c9782ffda458b20f"
+      },
+      "source-manifest-final.log": {
+        "path": "/workspace/work/noaa-4/source-manifest-final.log",
+        "sha256": "db4eaa9dfd9f5e560f3ca47f4ef6c495eb503b1c9d4d8dc081be9cd0057ee7a2"
+      }
+    }
+  }
 }
