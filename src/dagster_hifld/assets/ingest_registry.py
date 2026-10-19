@@ -18,9 +18,11 @@ from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_fa
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 
 from dagster_hifld.assets.epa_eez import epa_eez
+from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 
 hifld_ingest_assets = [
     epa_eez,
+    epa_regions_with_eez,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     *census_blocks_2020_ingest_assets,

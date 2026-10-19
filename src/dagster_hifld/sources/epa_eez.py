@@ -15,6 +15,7 @@ import stat
 import struct
 import math
 import io
+from dataclasses import dataclass
 from collections import Counter
 from urllib.parse import urlparse, parse_qs, urlencode
 import subprocess
@@ -39,6 +40,16 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.validation import sha256_file
 
 SLUG='epa-region-boundaries-exclusive-economic-zone-eez'
+SLUG_WITH_EEZ='epa-region-boundaries-with-exclusive-economic-zone'
+@dataclass(frozen=True)
+class DatasetIdentity:
+    slug: str
+    title: str
+    audit_name: str
+    ready_name: str
+
+EEZ_IDENTITY=DatasetIdentity(SLUG,'EPA Region Boundaries Exclusive Economic Zone (EEZ) — complete current producer-hosted draft','epa_eez_source_audit.json','epa_eez_candidate_ready.json')
+WITH_EEZ_IDENTITY=DatasetIdentity(SLUG_WITH_EEZ,'EPA Region Boundaries with Exclusive Economic Zone — complete current producer-hosted draft','epa_regions_with_eez_source_audit.json','epa_regions_with_eez_candidate_ready.json')
 LANDING='https://geodata.epa.gov/arcgis/rest/services/OEI/EPA_Locations/MapServer'
 SERVICE=LANDING
 BASE=SERVICE+'/4'
@@ -103,8 +114,8 @@ def immutable(storage,key,body):
         raise EpaEezQuarantineError('immutable_capture_changed:'+key)
 
 
-def quarantine(storage,captures,reason):
-    key=f'_quarantine/{SLUG}/{uuid4().hex}'
+def quarantine(storage,captures,reason,identity=EEZ_IDENTITY):
+    key=f'_quarantine/{identity.slug}/{uuid4().hex}'
     for name,(body,receipt) in captures.items():
         immutable(storage,key+'/'+name+'.body',body)
         immutable(storage,key+'/'+name+'.receipt.json',encode(receipt))
@@ -142,26 +153,26 @@ def candidate_roster(root):
     return names
 
 
-def construction_record_key(version):return f'_construction-state/{SLUG}/{version}.json'
+def construction_record_key(version,identity=EEZ_IDENTITY):return f'_construction-state/{identity.slug}/{version}.json'
 
 
-def incident_directory(version):return f'_construction-state/{SLUG}/incident-{version}'
+def incident_directory(version,identity=EEZ_IDENTITY):return f'_construction-state/{identity.slug}/incident-{version}'
 
 
-def state_present(storage,version):
-    key=construction_record_key(version);root=Path(storage.local_dir).absolute()
+def state_present(storage,version,identity=EEZ_IDENTITY):
+    key=construction_record_key(version,identity);root=Path(storage.local_dir).absolute()
     return any((root/value).exists()for value in(key,key+'.first-construction.json',key+'.evidence'))
 
 
-def refuse_observed_loss(storage,version):
-    if(Path(storage.local_dir).absolute()/incident_directory(version)).exists():raise EpaEezQuarantineError('permanent_observed_original_trust_loss_requires_explicit_reviewed_restore')
+def refuse_observed_loss(storage,version,identity=EEZ_IDENTITY):
+    if(Path(storage.local_dir).absolute()/incident_directory(version,identity)).exists():raise EpaEezQuarantineError('permanent_observed_original_trust_loss_requires_explicit_reviewed_restore')
 
 
-def record_observed_loss(storage,version,fingerprint,reason):
+def record_observed_loss(storage,version,fingerprint,reason,identity=EEZ_IDENTITY):
     # The reviewed shared protocol fsyncs each created directory and the final
     # records before returning. Any failure preserves the existing candidate;
     # even an incomplete incident directory blocks subsequent cold retries.
-    key=incident_directory(version)+'/record.json'
+    key=incident_directory(version,identity)+'/record.json'
     body=canonical_construction_bundle(version,fingerprint,{'approved':False,'kind':'observed_original_trust_loss','reason':reason,
         'operator_action':'Restore exact original witnesses and explicitly retain/review this negative incident; no automatic bootstrap.'})
     seal_first_construction(storage,key,version,fingerprint,body)
@@ -213,14 +224,14 @@ def preserve_transfer_result(path,result):
     return readback
 
 
-def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
+def acquire(storage,capture_dir=None,identity=EEZ_IDENTITY):
+    local_only(storage);captures={};attempt=f'_acquisition-attempts/{identity.slug}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise EpaEezQuarantineError('unsafe_capture_root')
     try:
         for name,url in URLS.items():
             if root is not None:
                 body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
+                immutable(storage,f'_raw-captures/{identity.slug}/{digest(body)}/{name}.body',body)
                 raw=bounded_input(root/(name+'.receipt.json'),65536)
             else:
                 path=Path(storage.local_dir)/attempt/name;path.mkdir(parents=True)
@@ -252,13 +263,13 @@ def acquire(storage,capture_dir=None):
                 receipt['complete_body']=result.complete and readback
                 receipt['independent_sink_readback_matches']=readback
                 body=bounded_input(path/'decoded.body',MAX_BODY_BYTES+1024*1024)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body);raw=encode(receipt)
+                immutable(storage,f'_raw-captures/{identity.slug}/{digest(body)}/{name}.body',body);raw=encode(receipt)
             immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
             receipt=strict_json(raw);validate_receipt(name,body,receipt);captures[name]=(body,receipt)
         return captures
     except Exception as exc:
         immutable(storage,attempt+'/failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))
-        where=quarantine(storage,captures,str(exc));raise EpaEezQuarantineError('source_acquisition_failed:'+str(exc)+';retained:'+where)from exc
+        where=quarantine(storage,captures,str(exc),identity);raise EpaEezQuarantineError('source_acquisition_failed:'+str(exc)+';retained:'+where)from exc
 
 
 def parquet_table(table):
@@ -267,15 +278,15 @@ def parquet_table(table):
     return table.replace_schema_metadata({b'geo':encode(geo)})
 
 
-def validate_output(root,table):
-    actual=pq.read_table(root/'geoparquet'/f'{SLUG}.parquet')
+def validate_output(root,table,identity=EEZ_IDENTITY):
+    actual=pq.read_table(root/'geoparquet'/f'{identity.slug}.parquet')
     if not actual.equals(parquet_table(table),check_metadata=True):raise EpaEezQuarantineError('full_typed_native_output_drift')
 
 
-def manifest_for(captures,identity,output_pin):
-    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),'title':'EPA Region Boundaries Exclusive Economic Zone (EEZ) — complete current producer-hosted draft','publisher':'U.S. Environmental Protection Agency','agency':'Environmental Protection Agency','source_url':LANDING,'license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(n,*captures[n])for n in URLS],
+def manifest_for(captures,identity,output_pin,dataset=EEZ_IDENTITY):
+    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),'title':dataset.title,'publisher':'U.S. Environmental Protection Agency','agency':'Environmental Protection Agency','source_url':LANDING,'license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(n,*captures[n])for n in URLS],
         'transformations':[{'operation':'complete_EPA_EEZ_only_extraction_native_source_CRS','parameters':{'source':'Exact EPA_Locations/MapServer/4, not ordinary region or alternate coastline layers; producer lineage2011 TIGER/Line and NOAA maritime boundaries retained without claiming modern data edition.','ids':'Original OBJECTID and literal EPAREGION are preserved; all historical format IDs retained separately, no approved join.','types':'Original Double binary64 and text literal values/nulls/width declarations preserved. OID candidate Int64 is proposed only: source physical bit width unspecified. Original Shape geometry declaration remains native field name.','geometry':'Official query explicitly requests producer-declared sourceSpatialReference4269; exact returned NAD83 rings/XY retained in WKB, no local projection/precision change/repair. Default service3857 display CRS remains separately documented. Polygon/MultiPolygon container grouping comes from GDAL EsriJSON decoding and is independently checked against every original ordered ring; no historical grouping/CRS mapping approved.','coverage':'Complete ten-region EEZ source, all original IDs and geometries; no partial substitution or silently extended coastline.','release':'Source, edition, rights, coverage, schema/IDs, geometry/baseline compatibility, contract and release acceptance remain false.'}}],
-        'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Pin complete original names/IDs/types/nulls/native NAD83 geometry; generic schema regeneration unapproved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**output_pin}]}}},
+        'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Pin complete original names/IDs/types/nulls/native NAD83 geometry; generic schema regeneration unapproved.','objects':[{'path':'geoparquet/'+dataset.slug+'.parquet',**output_pin}]}}},
         'unsupported_output_formats':{'geopackage':'Producer field widths/OID encoding and geometry container contract remain unapproved; faithful native GeoParquet is staged.','shapefile_zip':'Truncated names/widths/null mappings cannot silently replace original fields.','pmtiles':'Reprojection/quantization, dropped records and cartographic feature IDs remain unapproved.'}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
 
@@ -285,89 +296,89 @@ def candidate_bytes(root,name):
     return bounded_input(root/name,MAX_BODY_BYTES if name.endswith('.body')else(12_000_000 if name.endswith('.parquet')else MAX_AUX_BYTES))
 
 
-def source_payloads(captures,identity,audit,manifest):
-    values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/epa_eez_source_audit.json':encode(audit)}
+def source_payloads(captures,identity,audit,manifest,dataset=EEZ_IDENTITY):
+    values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/'+dataset.audit_name:encode(audit)}
     for n,(b,r)in captures.items():values['raw/'+n+'.body']=b;values['raw/'+n+'.receipt.json']=encode(r)
     return values
 
 
-def original_context(storage,version,fingerprint,captures,identity,manifest,*,create=False):
-    key=construction_record_key(version)
+def original_context(storage,version,fingerprint,captures,identity,manifest,dataset=EEZ_IDENTITY,*,create=False):
+    key=construction_record_key(version,dataset)
     if create:
         inspect_captures(captures);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
-        body=seal_first_construction(storage,key,version,fingerprint,canonical_construction_bundle(version,fingerprint,{'manifest':manifest,'captures':{n:{'body_key':f'_raw-captures/{SLUG}/{digest(b)}/{n}.body','receipt':r}for n,(b,r)in captures.items()}}))
+        body=seal_first_construction(storage,key,version,fingerprint,canonical_construction_bundle(version,fingerprint,{'manifest':manifest,'captures':{n:{'body_key':f'_raw-captures/{dataset.slug}/{digest(b)}/{n}.body','receipt':r}for n,(b,r)in captures.items()}}))
     else:body=load_first_construction(storage,key,version,fingerprint)
     payload=strict_json(body)['payload'];original={}
     if set(payload)!={'manifest','captures'}or set(payload['captures'])!=set(URLS):raise EpaEezQuarantineError('invalid_original_context')
     for n,item in payload['captures'].items():
-        key=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{n}.body"
+        key=f"_raw-captures/{dataset.slug}/{item['receipt']['sha256']}/{n}.body"
         if item['body_key']!=key:raise EpaEezQuarantineError('invalid_original_raw_key')
         original[n]=(bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES),item['receipt'])
     a,_=inspect_captures(original);b,_=inspect_captures(captures)
     if not a.equals(b,check_metadata=True):raise EpaEezQuarantineError('original_source_population_drift')
     old=payload['manifest'];obj=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
-    expected=manifest_for(original,identity,{k:obj[k]for k in('bytes','sha256')})
+    expected=manifest_for(original,identity,{k:obj[k]for k in('bytes','sha256')},dataset)
     if encode({k:v for k,v in old.items()if k!='code_commit'})!=encode({k:v for k,v in expected.items()if k!='code_commit'}):raise EpaEezQuarantineError('original_manifest_context_drift')
     validate_release_provenance(old);validate_output_policy(old);validate_construction_code_identity(Path(__file__).parents[3],old['code_commit'],identity['files']);return original,old
 
 
-def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cached=False,storage=None):
-    roster=candidate_roster(root);expected=source_payloads(captures,identity,audit,manifest);names=set(expected)|{f'geoparquet/{SLUG}.parquet'}
+def validate_candidate(root,table,identity,captures,audit,manifest,version,dataset=EEZ_IDENTITY,*,cached=False,storage=None):
+    roster=candidate_roster(root);expected=source_payloads(captures,identity,audit,manifest,dataset);names=set(expected)|{f'geoparquet/{dataset.slug}.parquet'}
     ready={'approved':False,'version':version,'processing_fingerprint':digest(encode(identity)),'objects':{n:sha256_file(root/n)for n in names}}
-    if not(names|{READY}).issubset(roster):raise EpaEezQuarantineError('missing_candidate_object')
-    if not cached and roster!=names|{READY}:raise EpaEezQuarantineError('private_candidate_roster_drift')
+    if not(names|{dataset.ready_name}).issubset(roster):raise EpaEezQuarantineError('missing_candidate_object')
+    if not cached and roster!=names|{dataset.ready_name}:raise EpaEezQuarantineError('private_candidate_roster_drift')
     if cached:
         allowed={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json','metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'}
-        if roster-(names|{READY}|allowed):raise EpaEezQuarantineError('unknown_cached_object')
-        for name in roster-(names|{READY}):strict_json(candidate_bytes(root,name))
+        if roster-(names|{dataset.ready_name}|allowed):raise EpaEezQuarantineError('unknown_cached_object')
+        for name in roster-(names|{dataset.ready_name}):strict_json(candidate_bytes(root,name))
         for name in('metadata/source/source_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'):
             if name in roster and candidate_bytes(root,name)!=encode(manifest):raise EpaEezQuarantineError('cached_source_snapshot_drift')
         if 'metadata/resolved_provenance.json'in roster:
             if storage is None:raise EpaEezQuarantineError('resolved_provenance_requires_explicit_storage_context')
-            projected=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
+            projected=provenance_projection(load_resolved_source_manifest(storage,dataset.slug,dataset.slug,version).metadata)
             if encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(projected):raise EpaEezQuarantineError('cached_resolved_provenance_drift')
     for n,b in expected.items():
         if candidate_bytes(root,n)!=b:raise EpaEezQuarantineError('candidate_source_bytes_drift:'+n)
-    if candidate_bytes(root,READY)!=encode(ready):raise EpaEezQuarantineError('candidate_ready_drift')
-    validate_output(root,table)
+    if candidate_bytes(root,dataset.ready_name)!=encode(ready):raise EpaEezQuarantineError('candidate_ready_drift')
+    validate_output(root,table,dataset)
 
 
-def stage_epa_eez(storage,*,capture_dir=None):
-    local_only(storage);captures=acquire(storage,capture_dir)
+def stage_epa_eez(storage,*,capture_dir=None,dataset=EEZ_IDENTITY):
+    local_only(storage);captures=acquire(storage,capture_dir,dataset)
     try:table,audit=inspect_captures(captures)
     except Exception as exc:
-        where=quarantine(storage,captures,str(exc));raise EpaEezQuarantineError('source_drift_quarantined:'+where)from exc
+        where=quarantine(storage,captures,str(exc),dataset);raise EpaEezQuarantineError('source_drift_quarantined:'+where)from exc
     identity=processing_identity();fingerprint=digest(encode(identity));version='v0.0.0-draft-epa-eez-'+fingerprint[:16]
-    base=Path(storage.local_dir).absolute();prefix=f'{SLUG}/{SLUG}/{version}';root=base/prefix;locks=base/'_locks';locks.mkdir(exist_ok=True)
-    descriptor=os.open(locks/(SLUG+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    base=Path(storage.local_dir).absolute();prefix=f'{dataset.slug}/{dataset.slug}/{version}';root=base/prefix;locks=base/'_locks';locks.mkdir(exist_ok=True)
+    descriptor=os.open(locks/(dataset.slug+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
     with os.fdopen(descriptor,'r+b')as lock:
         if os.fstat(lock.fileno()).st_nlink!=1:raise EpaEezQuarantineError('linked_lock')
-        fcntl.flock(lock,fcntl.LOCK_EX);refuse_observed_loss(storage,version)
+        fcntl.flock(lock,fcntl.LOCK_EX);refuse_observed_loss(storage,version,dataset)
         # A private deterministic output provides the pin before any trust seal.
-        build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
+        build=base/'_building'/dataset.slug;build.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as temporary:
-            temp=Path(temporary);(temp/'geoparquet').mkdir();path=temp/'geoparquet'/f'{SLUG}.parquet';pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table)
-            manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)})
-            if root.exists()or state_present(storage,version):
+            temp=Path(temporary);(temp/'geoparquet').mkdir();path=temp/'geoparquet'/f'{dataset.slug}.parquet';pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table,dataset)
+            manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)},dataset)
+            if root.exists()or state_present(storage,version,dataset):
                 try:
-                    captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest)
+                    captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,dataset)
                     table,audit=inspect_captures(captures)
                 except Exception as exc:
-                    try:record_observed_loss(storage,version,fingerprint,type(exc).__name__)
+                    try:record_observed_loss(storage,version,fingerprint,type(exc).__name__,dataset)
                     except Exception as write:raise IncidentWriteError('incident_failure_candidate_preserved')from write
                     if root.exists():
-                        q=base/'_quarantine'/SLUG/('observed-loss-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q)
+                        q=base/'_quarantine'/dataset.slug/('observed-loss-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q)
                     raise EpaEezQuarantineError('observed_original_trust_loss')from exc
                 if root.exists():
-                    try:validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                    try:validate_candidate(root,table,identity,captures,audit,manifest,version,dataset,cached=True,storage=storage)
                     except Exception as exc:
-                        q=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q);raise EpaEezQuarantineError('invalid_cache_moved_intact:'+str(q))from exc
-                    return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'source_null_geometry_count':audit['null_geometry_count'],'source_invalid_geometry_count':audit['invalid_geometry_count'],'reused':True}
-            for n,b in source_payloads(captures,identity,audit,manifest).items():write_private(temp,n,b)
-            ready={'approved':False,'version':version,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));validate_candidate(temp,table,identity,captures,audit,manifest,version)
-            captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,create=True)
-            validate_candidate(temp,table,identity,captures,audit,manifest,version);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
-    return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'source_null_geometry_count':audit['null_geometry_count'],'source_invalid_geometry_count':audit['invalid_geometry_count'],'reused':False}
+                        q=base/'_quarantine'/dataset.slug/('invalid-candidate-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q);raise EpaEezQuarantineError('invalid_cache_moved_intact:'+str(q))from exc
+                    return {'dataset_slug':dataset.slug,'file_slug':dataset.slug,'version':version,'feature_count':table.num_rows,'source_null_geometry_count':audit['null_geometry_count'],'source_invalid_geometry_count':audit['invalid_geometry_count'],'reused':True}
+            for n,b in source_payloads(captures,identity,audit,manifest,dataset).items():write_private(temp,n,b)
+            ready={'approved':False,'version':version,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,dataset.ready_name,encode(ready));validate_candidate(temp,table,identity,captures,audit,manifest,version,dataset)
+            captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,dataset,create=True)
+            validate_candidate(temp,table,identity,captures,audit,manifest,version,dataset);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+    return {'dataset_slug':dataset.slug,'file_slug':dataset.slug,'version':version,'feature_count':table.num_rows,'source_null_geometry_count':audit['null_geometry_count'],'source_invalid_geometry_count':audit['invalid_geometry_count'],'reused':False}
 
 
 def id_roster(body):

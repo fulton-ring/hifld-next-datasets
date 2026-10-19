@@ -12,6 +12,7 @@ import shapely
 from dagster import AssetKey,DefaultScheduleStatus
 from dagster_hifld.sources import epa_eez as f
 from dagster_hifld.assets.epa_eez import epa_eez_draft_schedule,epa_eez_full_quality
+from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez_draft_schedule,epa_regions_with_eez_full_quality
 from dagster_hifld.definitions import defs
 
 
@@ -76,6 +77,20 @@ class EpaEezTests(unittest.TestCase):
             with self.assertRaises(ValueError):f.id_roster(f.encode({'objectIdFieldName':'OBJECTID','objectIds':ids}))
     def test_normal_registration_blocking_quality_and_stopped_monthly(self):
         job=defs.resolve_job_def('epa_eez_draft_refresh');self.assertEqual(job.asset_layer.executable_asset_keys,{AssetKey(['ingest',f.SLUG,f.SLUG])});self.assertTrue(next(iter(epa_eez_full_quality.check_specs)).blocking);self.assertEqual(epa_eez_draft_schedule.default_status,DefaultScheduleStatus.STOPPED)
+    def test_second_inventory_has_independent_namespaced_draft_and_preserves_75_defaults(self):
+        from dagster_hifld.sources.epa_eez import WITH_EEZ_IDENTITY
+        from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
+        captures,sha=synthetic_captures()
+        with mock.patch.object(f,'SOURCE_RECORD_SHA256',sha):
+            table,audit=f.inspect_captures(captures)
+            payloads=f.source_payloads(captures,{},audit,{},WITH_EEZ_IDENTITY)
+            self.assertIn('metadata/epa_regions_with_eez_source_audit.json',payloads)
+            self.assertNotIn('metadata/epa_eez_source_audit.json',payloads)
+        self.assertEqual(f.source_payloads(captures,{},audit,{},f.EEZ_IDENTITY)['metadata/epa_eez_source_audit.json'],f.encode(audit))
+        self.assertEqual(epa_regions_with_eez.key,AssetKey(['ingest',WITH_EEZ_IDENTITY.slug,WITH_EEZ_IDENTITY.slug]))
+        self.assertEqual(defs.resolve_job_def('epa_regions_with_eez_draft_refresh').asset_layer.executable_asset_keys,{epa_regions_with_eez.key})
+        self.assertTrue(next(iter(epa_regions_with_eez_full_quality.check_specs)).blocking)
+        self.assertEqual(epa_regions_with_eez_draft_schedule.default_status,DefaultScheduleStatus.STOPPED)
     @unittest.skipUnless(os.environ.get('HIFLD_EPA_EEZ_REAL_CAPTURE_DIR'),'complete real EEZ capture external opt-in')
     def test_complete_real_EPA_EEZ_capture(self):
         root=Path(os.environ['HIFLD_EPA_EEZ_REAL_CAPTURE_DIR']);captures={n:((root/(n+'.body')).read_bytes(),f.strict_json((root/(n+'.receipt.json')).read_bytes()))for n in f.URLS};table,a=f.inspect_captures(captures);self.assertEqual(table.num_rows,10);self.assertEqual(table.column_names,[d['name']for d in f.FIELD_DEFINITIONS]);self.assertGreater(a['vertices'],100000)
