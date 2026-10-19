@@ -1,7 +1,6 @@
 """Bounded-memory capture of the EPA FRS interest-contact table."""
 from __future__ import annotations
 
-import gzip
 import hashlib
 import json
 import sqlite3
@@ -12,6 +11,7 @@ from typing import Any, Callable, Iterable, Mapping
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
+from dagster_hifld.http_capture import capture_http_response
 
 
 SERVICE_URL = "https://gispub.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer"
@@ -76,40 +76,38 @@ class PageResponse:
 
 def request_page(client: httpx.Client, url: str, params: Mapping[str, Any],
                  *, max_bytes: int = MAX_RESPONSE_BYTES) -> PageResponse:
-    """Read one bounded gzip response without losing the source wire representation."""
+    """Incrementally retain one bounded response and its original wire bytes."""
     request = client.build_request("GET", url, params=params)
     response = client.send(request, stream=True)
-    wire = bytearray()
     try:
-        for chunk in response.iter_raw():
-            wire.extend(chunk)
-            if len(wire) > max_bytes:
-                raise IncompleteSourceResponse("source_wire_response_exceeds_bound", bytes(wire),
-                                                str(request.url), response.headers, response.status_code)
-        encoding = response.headers.get("content-encoding", "").lower()
-        if encoding == "gzip":
-            decoded = gzip.decompress(wire)
-        elif encoding in ("", "identity"):
-            decoded = bytes(wire)
-        else:
-            raise EPAFRSContactCaptureError("unsupported_source_content_encoding")
-        if len(decoded) > max_bytes:
-            raise IncompleteSourceResponse("source_decoded_response_exceeds_bound", bytes(wire),
-                                            str(request.url), response.headers, response.status_code)
+        wire = bytearray()
+        decoded = bytearray()
+        capture = capture_http_response(
+            response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
+            reserve=lambda _progress: None,
+            retain_wire=wire.extend,
+            retain_decoded=decoded.extend,
+        )
         final_url = str(response.url)
         status = response.status_code
         headers = dict(response.headers)
+        if not capture.complete:
+            code = ("source_wire_response_exceeds_bound" if capture.error_code == "wire_limit_exceeded"
+                    else "source_decoded_response_exceeds_bound" if capture.error_code == "decoded_limit_exceeded"
+                    else "source_compressed_response_incomplete")
+            raise IncompleteSourceResponse(code, bytes(wire), str(request.url), headers, status)
     except IncompleteSourceResponse:
         raise
     except Exception as exc:
-        raise IncompleteSourceResponse("source_response_stream_failed", bytes(wire),
+        partial_wire = bytes(wire) if "wire" in locals() else b""
+        raise IncompleteSourceResponse("source_response_stream_failed", partial_wire,
                                        str(request.url), response.headers, response.status_code) from exc
     finally:
         response.close()
     if status != 200 or final_url != str(request.url):
         raise IncompleteSourceResponse("source_http_status_or_redirect_changed", bytes(wire),
                                         str(request.url), headers, status)
-    return PageResponse(bytes(wire), decoded, headers, status, final_url)
+    return PageResponse(bytes(wire), bytes(decoded), headers, status, final_url)
 
 
 def _payload(response: PageResponse) -> dict[str, Any]:

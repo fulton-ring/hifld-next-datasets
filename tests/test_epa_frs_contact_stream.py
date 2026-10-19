@@ -1,19 +1,23 @@
+import gzip
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
+import httpx
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources.epa_frs_contact_stream import (
     EPAFRSContactCaptureError,
     FIELDS,
+    IncompleteSourceResponse,
     SERVICE_URL,
     TABLE_ID,
     TABLE_NAME,
     TABLE_URL,
     PageResponse,
     capture_to_parquet,
+    request_page,
 )
 
 
@@ -87,6 +91,28 @@ class EPAFRSContactStreamTests(unittest.TestCase):
         row["NEW_SOURCE_FIELD"] = "unmapped"
         with self.assertRaisesRegex(EPAFRSContactCaptureError, "source_record_fields_changed"):
             _validate_attributes(row)
+
+    def test_compressed_expansion_and_incomplete_gzip_keep_bounded_wire_evidence(self):
+        expanded = b"x" * (4 * 1024 * 1024)
+        complete_wire = gzip.compress(expanded)
+
+        def transport_for(wire):
+            return httpx.MockTransport(lambda request: httpx.Response(
+                200, headers={"content-encoding": "gzip"}, stream=httpx.ByteStream(wire),
+                request=request))
+
+        with httpx.Client(transport=transport_for(complete_wire)) as client:
+            with self.assertRaises(IncompleteSourceResponse) as caught:
+                request_page(client, "https://source.example.test/item", {}, max_bytes=8192)
+        self.assertIn("source_decoded_response_exceeds_bound", str(caught.exception))
+        self.assertEqual(caught.exception.wire, complete_wire)
+
+        incomplete_wire = gzip.compress(b"fixture payload")[:-2]
+        with httpx.Client(transport=transport_for(incomplete_wire)) as client:
+            with self.assertRaises(IncompleteSourceResponse) as caught:
+                request_page(client, "https://source.example.test/item", {}, max_bytes=8192)
+        self.assertIn("source_compressed_response_incomplete", str(caught.exception))
+        self.assertEqual(caught.exception.wire, incomplete_wire)
 
 
 if __name__ == "__main__":
