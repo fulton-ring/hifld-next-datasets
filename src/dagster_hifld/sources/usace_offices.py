@@ -276,6 +276,17 @@ def _validate_layer_schema(metadata: dict) -> None:
         raise USACEOfficesSourceError("source_spatial_reference_drift")
 
 
+def _validate_page_schema(page_fields: list, layer_fields: list) -> None:
+    """Compare page declarations to the pinned layer schema, not just names."""
+    if type(page_fields) is not list or type(layer_fields) is not list or len(page_fields) != len(layer_fields):
+        raise USACEOfficesSourceError("query_field_declaration_roster_drift")
+    for page_field, layer_field in zip(page_fields, layer_fields):
+        if (not isinstance(page_field, dict) or not isinstance(layer_field, dict)
+                or any(page_field.get(key) != layer_field.get(key) for key in ("name", "type", "length"))
+                or ("nullable" in page_field and page_field.get("nullable") != layer_field.get("nullable"))):
+            raise USACEOfficesSourceError("query_field_declaration_drift")
+
+
 def _source_contract(metadata: dict, count_before: int, count_after: int, before_ids: list[int], after_ids: list[int], features: list) -> dict:
     object_id = metadata.get("objectIdField")
     names = tuple(f["name"] for f in metadata.get("fields", []))
@@ -428,8 +439,7 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
             page = _strict_json(get(client, f"features_{index:05d}", url))
             if page.get("exceededTransferLimit") is True:
                 raise USACEOfficesSourceError("source_page_exceeded_transfer_limit")
-            if tuple(f.get("name") for f in page.get("fields", [])) != tuple(f.get("name") for f in layer_before.get("fields", [])):
-                raise USACEOfficesSourceError("query_field_roster_changed")
+            _validate_page_schema(page.get("fields"), layer_before.get("fields"))
             features.extend(page.get("features", []))
         layer_after = _strict_json(get(client, "layer_after", BASE + "?f=pjson"))
         _validate_layer_schema(layer_after)

@@ -6,6 +6,7 @@ from dagster_hifld.sources.usace_offices import (
     USACEOfficesSourceError,
     _source_contract,
     _table,
+    _validate_page_schema,
     _validate_rows,
 )
 
@@ -60,6 +61,13 @@ class USACEOfficesSourceTests(unittest.TestCase):
     def test_physical_field_width_is_retained_in_source_metadata(self):
         metadata, _ = fixture()
         self.assertEqual(metadata["fields"][1]["length"], 3000)
+
+    def test_query_page_type_drift_is_rejected_even_when_names_match(self):
+        metadata, _ = fixture()
+        page_fields = [dict(field) for field in metadata["fields"]]
+        page_fields[1]["type"] = "esriFieldTypeInteger"
+        with self.assertRaisesRegex(USACEOfficesSourceError, "query_field_declaration_drift"):
+            _validate_page_schema(page_fields, metadata["fields"])
 
 
 if __name__ == "__main__":
