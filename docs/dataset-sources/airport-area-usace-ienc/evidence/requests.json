@@ -1,0 +1,103 @@
+[
+  {
+    "name": "master-item",
+    "url": "https://www.arcgis.com/sharing/rest/content/items/6ee858a220a143a48c8d40a6cf0d3680?f=json",
+    "final_url": "https://www.arcgis.com/sharing/rest/content/items/6ee858a220a143a48c8d40a6cf0d3680?f=json",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:00.620485+00:00",
+    "sha256": "832bb9de132b374765e38a46b0b662a1560d683a898faf53f98f20c8becbfd59",
+    "bytes": 1591
+  },
+  {
+    "name": "search",
+    "url": "https://www.arcgis.com/sharing/rest/search?f=json&num=100&q=Airport%20Area%20USACE",
+    "final_url": "https://www.arcgis.com/sharing/rest/search?f=json&num=100&q=Airport%20Area%20USACE",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:00.977012+00:00",
+    "sha256": "e6d8b8a1a713c18650c53d84fc92f6f1f3b55c7ded0382d4379feb2015020020",
+    "bytes": 227792
+  },
+  {
+    "name": "official",
+    "url": "https://www.agc.army.mil/Missions/Echarts/",
+    "final_url": "https://www.agc.army.mil/Missions/Echarts/",
+    "status": null,
+    "checked_at": "2026-10-19T04:21:00.981571+00:00",
+    "sha256": "0a306d4e36d88d99d3a6dd48d585caf871d000965a5328901f103d884dff9d41",
+    "bytes": 55
+  },
+  {
+    "name": "archive",
+    "url": "https://www.datalumos.org/datalumos/project/238564/version/V1/view",
+    "final_url": "https://www.datalumos.org/datalumos/project/238564/version/V1/view",
+    "status": null,
+    "checked_at": "2026-10-19T04:21:00.985318+00:00",
+    "sha256": "0a306d4e36d88d99d3a6dd48d585caf871d000965a5328901f103d884dff9d41",
+    "bytes": 55
+  },
+  {
+    "name": "crosswalk",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "final_url": "https://doi.org/10.3886/E241367V1",
+    "status": null,
+    "checked_at": "2026-10-19T04:21:01.226851+00:00",
+    "sha256": "0a306d4e36d88d99d3a6dd48d585caf871d000965a5328901f103d884dff9d41",
+    "bytes": 55
+  },
+  {
+    "name": "service",
+    "url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer?f=json",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:07.972678+00:00",
+    "sha256": "1bfe95c94fb9563265ce130e600a8a668c45fd7602d62681bee69a163e504941",
+    "bytes": 22102
+  },
+  {
+    "name": "owner",
+    "url": "https://www.arcgis.com/sharing/rest/community/users/usace_agc_dkd?f=json",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:08.231983+00:00",
+    "sha256": "1510875b305483cda318fa70b395210e0f69209c8ea8fc4cbbab008da99cf944",
+    "bytes": 347
+  },
+  {
+    "name": "organization",
+    "url": "https://www.arcgis.com/sharing/rest/portals/n1YM8pTrFmm7L4hs?f=json",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:08.520706+00:00",
+    "sha256": "9c0f313cfa3d399abb1dedb14f7d50ed9bc32c4bcdc87cd616e5de988e787542",
+    "bytes": 151
+  },
+  {
+    "name": "layer",
+    "url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/57?f=json",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:17.055649+00:00",
+    "sha256": "19a09987e934eb8264f8d914888a5a40ba999ce0d0c5377af3f9eb9cc5a2e6de",
+    "bytes": 10513
+  },
+  {
+    "name": "count",
+    "url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/57/query?f=json&where=1%3D1&returnCountOnly=true",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:17.407553+00:00",
+    "sha256": "f4bd6a80b62862c1c398a385b12e8ad21246f7848fd284785a1d525117f6dea7",
+    "bytes": 12
+  },
+  {
+    "name": "ids",
+    "url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/57/query?f=json&where=1%3D1&returnIdsOnly=true",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:17.727398+00:00",
+    "sha256": "ecae32f8178932f23b6973dc29498e674f745adf61272a023be3a93e639d9105",
+    "bytes": 255
+  },
+  {
+    "name": "features",
+    "url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/57/query?f=json&where=1%3D1&outFields=*&returnGeometry=true&orderByFields=OBJECTID&resultRecordCount=2000",
+    "status": 200,
+    "checked_at": "2026-10-19T04:21:17.941148+00:00",
+    "sha256": "c9442d67ac55fa5188dd236b8a144627be53742f2628a35acf39203351723e61",
+    "bytes": 226820
+  }
+]

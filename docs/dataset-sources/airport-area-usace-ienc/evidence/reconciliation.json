@@ -1,0 +1,158 @@
+{
+  "count": 72,
+  "id_sets_equal": true,
+  "exceededTransferLimit": false,
+  "maxRecordCount": 2000,
+  "supportsPagination": true,
+  "geometry_type": "esriGeometryPolygon",
+  "crs": {
+    "wkid": 4326,
+    "latestWkid": 4326
+  },
+  "extent": {
+    "xmin": -96.40238799999997,
+    "ymin": 29.705207700000074,
+    "xmax": -80.86129599999998,
+    "ymax": 44.94200110000003,
+    "spatialReference": {
+      "wkid": 4326,
+      "latestWkid": 4326
+    }
+  },
+  "fields": {
+    "OBJECTID": {
+      "type": "esriFieldTypeOID",
+      "schema_nullable": false,
+      "null_count": 0,
+      "distinct": 72
+    },
+    "Category_of_Airport": {
+      "type": "esriFieldTypeString",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 4
+    },
+    "Object_Name": {
+      "type": "esriFieldTypeString",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 46
+    },
+    "Information": {
+      "type": "esriFieldTypeString",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 19
+    },
+    "Scale_Minimum": {
+      "type": "esriFieldTypeInteger",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 1
+    },
+    "Source_Date": {
+      "type": "esriFieldTypeString",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 17
+    },
+    "Source_Indication": {
+      "type": "esriFieldTypeString",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 18
+    },
+    "Source_Dataset": {
+      "type": "esriFieldTypeString",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 30
+    },
+    "Feature_ID": {
+      "type": "esriFieldTypeString",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 72
+    },
+    "Shape__Area": {
+      "type": "esriFieldTypeDouble",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 72
+    },
+    "Shape__Length": {
+      "type": "esriFieldTypeDouble",
+      "schema_nullable": true,
+      "null_count": 0,
+      "distinct": 72
+    }
+  },
+  "null_geometry": 0,
+  "categories": {
+    "Civil Aeroport Airport": 36,
+    "Small Planes Airport": 27,
+    "": 1,
+    "Civil Heliport": 8
+  },
+  "coordinate_bounds": [
+    -96.402388,
+    29.7052077000001,
+    -80.861296,
+    44.9420011
+  ],
+  "out_of_range_coordinates": 0,
+  "empty_geometry": 0,
+  "unclosed_rings": 0,
+  "source_date_distribution": {
+    "20170125": 2,
+    "20160401": 1,
+    "20050414": 1,
+    "20040825": 1,
+    "20110406": 1,
+    "20081130": 4,
+    "20100430": 3,
+    "20031224": 1,
+    "20060901": 2,
+    "20070101": 1,
+    "20060515": 1,
+    "20260415": 1,
+    "20070701": 1,
+    "20080501": 3,
+    "20200515": 14,
+    "20180620": 5,
+    "20190715": 30
+  },
+  "source_datasets": {
+    "U37AR063.000": 2,
+    "U37AT046.000": 1,
+    "U37CR307.000": 1,
+    "U37IL285.000": 1,
+    "U37LM716.000": 1,
+    "U37MO101.000": 1,
+    "U37MO301.000": 1,
+    "U37MO399.000": 2,
+    "U37MO600.000": 3,
+    "U37OH087.000": 1,
+    "U37OH275.000": 1,
+    "U37OH312.000": 1,
+    "U37OH439.000": 1,
+    "U37RR165.000": 1,
+    "U37TB176.000": 1,
+    "U37TN306.000": 1,
+    "U37TN564.000": 1,
+    "U37TN606.000": 2,
+    "U37UM000.000": 3,
+    "U37UM079.000": 2,
+    "U37UM155.000": 4,
+    "U37UM218.000": 5,
+    "U37UM359.000": 3,
+    "U37UM526.000": 1,
+    "U37UM578.000": 1,
+    "U37UM615.000": 4,
+    "U37UM660.000": 3,
+    "U37UM723.000": 3,
+    "U37UM785.000": 2,
+    "U37UM819.000": 18
+  },
+  "geometry_validity": "Structural rings/bounds checked; OGC topology not evaluated. No conversion performed."
+}

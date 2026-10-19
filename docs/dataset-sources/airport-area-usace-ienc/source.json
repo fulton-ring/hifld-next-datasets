@@ -1,0 +1,200 @@
+{
+  "dataset_id": "airport-area-usace-ienc",
+  "issue": 9,
+  "status": "blocked",
+  "requested_status": [
+    "Blocked",
+    "Needs decision",
+    "Potential breaking change"
+  ],
+  "source_role": "unresolved",
+  "producer": "US Army Corps of Engineers (inventory and source attribution; independently verified publication chain missing)",
+  "publisher": {
+    "account": "usace_agc_dkd",
+    "profile_name": "Dale Dodson",
+    "organization_id": "n1YM8pTrFmm7L4hs",
+    "authority_verified": false
+  },
+  "landing_url": "https://www.arcgis.com/home/item.html?id=6ee858a220a143a48c8d40a6cf0d3680",
+  "download_url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/57/query?f=json&where=1%3D1&outFields=*&returnGeometry=true",
+  "lineage_evidence": [
+    {
+      "capture": "evidence/master-item.txt",
+      "finding": "Item attributes USACE, US Army Geospatial Center, US Coast Guard, IIC Technologies; says all IENC vector data (16-Sep-26). Attribution does not establish delegated authority."
+    },
+    {
+      "capture": "evidence/layer.json",
+      "finding": "Named polygon AIRPORT_AREA id57, matching serviceItemId; id4 AIRPORT_AREA_POINT is different geometry and excluded."
+    },
+    {
+      "capture": "evidence/organization.json",
+      "finding": "HTTP200 JSON error403; no organization verification"
+    },
+    {
+      "capture": "evidence/official.txt",
+      "finding": "Agency link unavailable: tunnel CONNECT403"
+    }
+  ],
+  "release_date": null,
+  "release_date_note": "16-Sep-26 is unverified item snippet date, not accepted release date. Portal modification and layer edit timestamps are not release dates.",
+  "checked_at": "2026-10-19T04:21:00Z",
+  "relationship_to_archive": "unresolved; named layer candidate, no title-only continuity accepted",
+  "crosswalk": {
+    "status": "UNVERIFIED",
+    "doi": "10.3886/E241367V1",
+    "reason": "Original XLSX unavailable and DOI/archive CONNECT403; no rows or hyperlink targets parsed. Not an unmatched result."
+  },
+  "archive": {
+    "source_role": "archive",
+    "url": "https://www.datalumos.org/datalumos/project/238564/version/V1/view",
+    "inventory_modified": "2025-04-08",
+    "schema_and_ids": "unavailable"
+  },
+  "accepted_baseline": {
+    "status": "unavailable",
+    "version": null,
+    "checksum": null,
+    "comparison": "blocked; no accepted HIFLD Next output or dictionary retrieved"
+  },
+  "extraction": {
+    "capture": "evidence/features.json",
+    "replay": "python docs/dataset-sources/airport-area-usace-ienc/replay.py",
+    "result": "72 full polygon features = count = all unique nonnull OBJECTIDs; exact ID set match; no transfer limit reported",
+    "scope": "single response below maxRecordCount; pagination supported but not needed; replay verifies captured snapshot only"
+  },
+  "published_contract": {
+    "status": "PROPOSED_UNAPPROVED",
+    "approved": false,
+    "version": "research-proposal-2026-10-19",
+    "basis": "all fields from candidate live layer; NOT an accepted published baseline",
+    "columns": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "nullable": false,
+        "meaning": "OBJECTID; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "service object ID; not verified stable across releases",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Category_of_Airport",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Category_of_Airport; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Object_Name",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Object_Name; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Information",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Information; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Scale_Minimum",
+        "type": "esriFieldTypeInteger",
+        "nullable": true,
+        "meaning": "Scale_Minimum; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Source_Date",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Source_Date; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Source_Indication",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Source_Indication; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Source_Dataset",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Source_Dataset; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "source identifier; continuity not verified",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Feature_ID",
+        "type": "esriFieldTypeString",
+        "nullable": true,
+        "meaning": "Feature_ID; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "source identifier; continuity not verified",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Shape__Area",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "meaning": "Shape__Area; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      },
+      {
+        "name": "Shape__Length",
+        "type": "esriFieldTypeDouble",
+        "nullable": true,
+        "meaning": "Shape__Length; interpretation follows source label only, dictionary not independently verified",
+        "id_role": "attribute",
+        "mapping": "identity; preserve exact name, type, values, nulls, precision and whitespace"
+      }
+    ],
+    "geometry": {
+      "name": "geometry",
+      "type": "esriGeometryPolygon",
+      "nullable": false,
+      "meaning": "source polygon rings retained without simplification",
+      "id_role": "none",
+      "crs": {
+        "wkid": 4326,
+        "latestWkid": 4326
+      }
+    },
+    "coverage": {
+      "scope": "USACE inland navigation chart airport areas; not nationwide airport inventory",
+      "extent": {
+        "xmin": -96.40238799999997,
+        "ymin": 29.705207700000074,
+        "xmax": -80.86129599999998,
+        "ymax": 44.94200110000003,
+        "spatialReference": {
+          "wkid": 4326,
+          "latestWkid": 4326
+        }
+      },
+      "observed_count": 72
+    },
+    "unknown_columns": "retain losslessly in raw capture; quarantine drift pending explicit approval",
+    "identifiers": "No substitute IDs; OBJECTID stability and Feature_ID continuity require baseline verification."
+  },
+  "refresh_policy": {
+    "cadence": "unknown; agency publication practice unverified",
+    "proposal": "check metadata monthly only after authority/contract approval; changed schema/IDs/geometry/coverage quarantined; bounded retries never promote incomplete/error responses"
+  },
+  "implementation_gate": [
+    "official producer/delegation verification",
+    "original crosswalk hyperlink reconciliation",
+    "accepted published baseline and ID/schema comparison",
+    "maintainer approval for all-column contract",
+    "shared #417 acceptance prerequisite"
+  ],
+  "materialization": "not performed; research only"
+}
