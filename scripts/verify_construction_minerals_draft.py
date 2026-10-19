@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import subprocess
+import struct
 from pathlib import Path
 from unittest.mock import patch
 
@@ -75,9 +76,11 @@ with DagsterInstance.get() as instance:
     assert manifest['approved']is False and len(manifest['inputs'])==14
     report['native_candidate']={'rows':766,'physical_schema':str(table.schema),'native_parquet_sha256':source.sha256_file(native),'native_parquet_bytes':native.stat().st_size,'all_source_fields_IDs_exact_decimals_native_geometry_verified':True,'published_identity_columns':published_ids.column_names,'all6_complete_published_identifier_columns_separate':True,'own_PRJ_and_conflicting_FGDC_datum_retained':True}
     report['quality']=json.loads((root/'metadata/quality_manifest.json').read_text())
-    # Explicit synthetic clone: make one geometry null, then accurately re-pin its
+    # Explicit synthetic clone: make one source geometry null and accurately re-pin its
     # proposed native capability. Normal quality must reject; source is untouched.
     badprefix=prefix+'-synthetic-null-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot);bad=badroot/f'geoparquet/{source.SLUG}.parquet';badtable=pq.read_table(bad);values=badtable['geometry'].to_pylist();values[0]=None
+    for relative in ('shapefile/minop2x020.shp','shapefile/.extracted/preservation-package/minop2x020.shp'):
+        path=badroot/relative;body=bytearray(path.read_bytes());struct.pack_into('<i',body,108,0);path.write_bytes(body)
     index=badtable.schema.get_field_index('geometry');badtable=badtable.set_column(index,pa.field('geometry',pa.binary(),nullable=True),pa.array(values,pa.binary()));bad.write_bytes(source.parquet_bytes(badtable))
     bm=json.loads((badroot/'metadata/source_manifest.json').read_text());pin=bm['prebuilt_output_policy']['formats']['geoparquet']['objects'][0];pin.update(sha256=source.sha256_file(bad),bytes=bad.stat().st_size);(badroot/'metadata/source_manifest.json').write_bytes(source.encode(bm))
     # Remove catalog-derived authored snapshot so the clone's synthetic manifest

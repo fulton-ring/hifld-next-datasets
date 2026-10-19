@@ -310,7 +310,11 @@ def reconcile_cache(storage,prefix,version,table,published_ids,audit,captures,id
     ready=strict_json((root/READY).read_bytes())
     if ready.get('version')!=version or ready.get('approved')is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise MineralsQuarantineError('ready_identity_or_closed_source_inventory_drift')
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'
-    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    extracted={f'shapefile/.extracted/preservation-package/{name}':body for name,(body,receipt) in captures.items() if name.startswith('minop2x020.')}
+    extracted_root=root/'shapefile/.extracted/preservation-package'
+    if extracted_root.exists():
+        if not extracted_root.is_dir() or {str(p.relative_to(root)) for p in extracted_root.rglob('*') if p.is_file()}!=set(extracted) or any((root/name).read_bytes()!=body for name,body in extracted.items()):raise MineralsQuarantineError('catalog_extracted_original_sidecar_bytes_or_completeness_drift')
+    derivatives={*extracted,'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derivatives) or not (names|{READY}).issubset(actual) or any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise MineralsQuarantineError('unknown_missing_or_linked_candidate_object')
     for name,body in expected.items():

@@ -152,6 +152,14 @@ class MineralsTests(unittest.TestCase):
             with patch.object(s,'manifest_for',side_effect=wrong),self.assertRaisesRegex(ValueError,'construction_invalid_commit'):self.stage(storage)
             self.assertFalse((Path(tmp)/'_construction-state').exists())
 
+    def test_catalog_extracted_sidecars_complete_exact_only_no_broad_metadata_allowlist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage=StagingStorageResource(local_dir=tmp);result=self.stage(storage);root=Path(tmp)/s.SLUG/s.SLUG/result['version'];extracted=root/'shapefile/.extracted/preservation-package';extracted.mkdir(parents=True)
+            for name in ('dbf','prj','shp','shp.xml','shx'):shutil.copyfile(root/('shapefile/minop2x020.'+name),extracted/('minop2x020.'+name))
+            self.assertTrue(self.stage(storage)['reused'])
+            (extracted/'minop2x020.prj').write_bytes(b'forged CRS')
+            with self.assertRaisesRegex(ValueError,'catalog_extracted_original_sidecar'):self.stage(storage)
+
     def test_unknown_catalog_metadata_whole_quarantine_and_original_raw_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage=StagingStorageResource(local_dir=tmp);result=self.stage(storage);root=Path(tmp)/s.SLUG/s.SLUG/result['version'];raw={str(p):s.sha256_file(p) for p in (Path(tmp)/'_raw-captures').rglob('*') if p.is_file()}
