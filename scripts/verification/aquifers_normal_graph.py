@@ -51,6 +51,7 @@ def main():
     def save():root.joinpath('execution.json').write_bytes(source.encode(report))
     with DagsterInstance.get() as instance:
         job=defs.resolve_job_def('usgs_aquifers_draft_refresh')
+        report['registered_source_refresh_job']=True
         assert list(job.graph.node_dict)==[usgs_aquifers.op.name]
         config={'ops':{usgs_aquifers.op.name:{'config':{'archive_path':str(args.archive.resolve()),'receipt_path':str(args.receipt.resolve())}}}}
         result=job.execute_in_process(instance=instance,run_config=config)
