@@ -27,7 +27,7 @@ def inventory(path):return {str(p.relative_to(path)):s.sha256_file(p) for p in p
 rawbefore=inventory(runtime/'staging/_raw-captures');prior=inventory(runtime/'published')
 original_candidate=inventory(root)
 assert json.loads(manifest)['code_commit']==original['code_head']
-assert s.processing_identity()==json.loads((root/'metadata/processing_identity.json').read_bytes())
+assert s.encode(s.processing_identity())==s.encode(json.loads((root/'metadata/processing_identity.json').read_bytes()))
 capture=runtime/'later-observation-fixture';capture.mkdir()
 old=repo/'docs/dataset-sources/cbrs-buffer-zone-1/evidence/captures'
 for name in s.URLS:
