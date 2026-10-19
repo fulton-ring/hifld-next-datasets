@@ -81,7 +81,7 @@ class CBRSTests(unittest.TestCase):
             manifest=s.provenance(captures,prebuilt_body=b'synthetic-authenticity-fixture')
             manifest['processing_fingerprint']='fixture';files=s.processing_identity()['files']
             version='v0.0.0-draft-code-authenticity-fixture';key=f'_source-provenance/{s.SLUG}/{version}/bundle.json'
-            for commit,reason in [('0'*40,'construction_invalid_commit'),('4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19','construction_processing_blob')]:
+            for commit,reason in [('0'*40,'construction_invalid_commit'),('f7669766e2cd9168f06f833b70c64fbbf7747edf','construction_processing_blob_hash_mismatch')]:
                 changed=copy.deepcopy(manifest);changed['code_commit']=commit
                 with self.subTest(commit=commit),s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
                     with self.assertRaisesRegex(ValueError,reason):
@@ -90,7 +90,7 @@ class CBRSTests(unittest.TestCase):
             with s.candidate_lock(storage,f'{s.SLUG}/{s.SLUG}/{version}'):
                 s.original_construction_bundle(storage,version,captures,manifest,files,create=True)
                 original=storage.read_key(key)
-                for value in ['0'*40,'4cdb6bcb80b6fb66ff8fffeb86ae760fa544de19']:
+                for value in ['0'*40,'f7669766e2cd9168f06f833b70c64fbbf7747edf']:
                     bundle=json.loads(original);bundle['manifest']['code_commit']=value;Path(d,key).write_bytes(s.encode(bundle))
                     with self.assertRaisesRegex(ValueError,'construction_'):
                         s.original_construction_bundle(storage,version,captures,manifest,files)
