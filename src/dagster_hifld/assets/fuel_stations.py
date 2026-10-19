@@ -38,6 +38,10 @@ from dagster_hifld.release_approval import verifier_implementation_sha256
 SLUG = 'alternative-fueling-stations'
 SERVICE = 'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0'
 PROPOSED_SCHEMA_SHA256 = 'd7141e155260c80d2d87f80a3f62e7273b792154e1d77c85ff2ef5c99f25fdc3'  # Review draft pin, not an approved contract.
+UNSUPPORTED_OUTPUT_FORMATS = {
+    'shapefile_zip': 'Unapproved lossy format: 80 source fields include >10-character names/identifier columns and embedded JSON text beyond DBF width; no reviewed lossless name/type/null/value mapping.',
+    'pmtiles': 'Unapproved derived representation: actual tippecanoe command permits density-based feature dropping and indexed FlatGeobuf assigns feature IDs by sequence; rendered per-zoom station-ID and coverage preservation are not verified. Canonical typed candidate/GeoPackage/Parquet remain available.',
+}
 FUEL_PARTITIONS = DynamicPartitionsDefinition(name='draft_alternative_fueling_stations_version')
 _TYPES = {'esriFieldTypeOID': pa.int64(), 'esriFieldTypeInteger': pa.int32(),
           'esriFieldTypeDouble': pa.float64(), 'esriFieldTypeDate': pa.int64(),
@@ -572,7 +576,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
         'lineage':{'producer':'DOE/NLR AFDC', 'distributor_item':'9010c04bcdf84c36abb74e98778af579','crosswalk':'unverified; DataLumos403 prevents inspecting the mapping'},
         'promotion_allowed':False, 'complete_rows':audit['rows'],
-        'unsupported_output_formats':{'shapefile_zip':'Unapproved lossy format: 80 source fields include >10-character names/identifier columns and embedded JSON text beyond DBF width; no reviewed lossless name/type/null/value mapping.'}}
+        'unsupported_output_formats':dict(UNSUPPORTED_OUTPUT_FORMATS)}
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2)+'\n').encode()
     manifest_path = metadata / 'source_manifest.json'
     if manifest_path.exists() and manifest_path.read_bytes() != manifest_bytes:

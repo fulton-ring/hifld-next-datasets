@@ -124,6 +124,7 @@ class FuelDraftTest(unittest.TestCase):
         source=json.loads((root/'metadata/source_manifest.json').read_bytes())
         self.assertTrue(source['inputs'][0]['input_id'])
         self.assertFalse(source['promotion_allowed'])
+        self.assertEqual(set(source['unsupported_output_formats']), {'shapefile_zip', 'pmtiles'})
         self.assertEqual(pq.read_table(root/'draft_candidate/candidate.parquet').num_rows,1)
         bridge = root / 'geopackage' / (SLUG + '.gpkg')
         self.assertEqual(verify_typed_geopackage(root/'draft_candidate/candidate.parquet', bridge)['rows'], 1)

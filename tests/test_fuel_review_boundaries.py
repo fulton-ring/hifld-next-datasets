@@ -12,9 +12,12 @@ from unittest.mock import patch
 from dagster import DagsterInstance
 from dagster_hifld.assets.fuel_stations import (
     SLUG, SERVICE, _capture_json, build_candidate, inspect_capture,
-    stage_fuel_capture, bts_alternative_fueling_stations,
+    stage_fuel_capture, bts_alternative_fueling_stations, UNSUPPORTED_OUTPUT_FORMATS,
 )
 from dagster_hifld.definitions import defs
+from dagster_hifld.assets.publish import _write_and_publish_pmtiles
+from dagster_hifld.promotion import promote_immutable_objects
+from dagster_hifld.release_approval import ReleaseApprovalError
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from tests.test_fuel_stations import fixture, write
 
@@ -111,6 +114,29 @@ class FuelReviewBoundaryTests(unittest.TestCase):
                 stage_fuel_capture(self.capture,self.staging,'v0.0.0-origin')
         self.assertEqual((previous/'candidate.parquet').read_bytes(),saved)
         self.assertFalse((self.root/'staging'/SLUG).exists())
+
+    def test_pmtiles_policy_skips_before_generation_or_existing_reuse_and_gate_preserves(self):
+        version='v0.0.0-policy'
+        prefix=f'{SLUG}/{SLUG}/{version}'
+        self.staging.write(SLUG,SLUG,version,'metadata/source_manifest.json',json.dumps({
+            'source_url':SERVICE,'inputs':[{'input_id':SERVICE}],
+            'unsupported_output_formats':UNSUPPORTED_OUTPUT_FORMATS}).encode())
+        diagnostic=self.staging.write(SLUG,SLUG,version,'pmtiles/diagnostic.pmtiles',b'diagnostic-only')
+        published=PublishedStorageResource(local_dir=str(self.root/'published'),use_local=True)
+        old=published.write_key('previous/keep.bin',b'preserve prior release')
+        before=published.sha256_key(old)
+        with patch('dagster_hifld.assets.publish.process_layer_chunked') as convert,patch('dagster_hifld.assets.publish._prepare_format_publish') as reuse:
+            outputs=_write_and_publish_pmtiles(self.staging,SLUG,SLUG,version)
+        convert.assert_not_called();reuse.assert_not_called()
+        self.assertEqual(len(outputs),1)
+        self.assertEqual(outputs[0].path, '')
+        self.assertIn('unsupported_output_format:',outputs[0].source_metadata['skip_reason'])
+        with patch.dict('os.environ',{},clear=True):
+            with self.assertRaisesRegex(ReleaseApprovalError,'missing_independent_release_approval_registry'):
+                promote_immutable_objects(self.staging,published,[(diagnostic,diagnostic)],version_prefix=prefix)
+        self.assertEqual(published.sha256_key(old),before)
+        self.assertFalse(published.object_exists(diagnostic))
+        self.assertEqual(self.staging.read_key(diagnostic),b'diagnostic-only')
 
     def test_bounded_retry_keeps_transport_and_http_error_bytes_before_success(self):
         target=self.root/'download';target.mkdir()
