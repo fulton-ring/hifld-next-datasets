@@ -256,6 +256,38 @@
       "actual_source_revision": "56aa10757129c457c530d707d9a40bae13e0907f",
       "archive_sha256": "ee36600c45e5bb71d5b96736a34ec4391a31dc1502c7c01ff8b2413eeadebc00",
       "historical_missing_sibling_errors": "Historical only; actual unmodified sibling source supplied, no suppression or infrastructure commands."
+    },
+    "transport_followup": {
+      "source_code_commit": "c6f9532edfd2056bba5b330ab6d58de0dc2e8185",
+      "evidence": "evidence/transport-followup/validation.json",
+      "focused_tests": {
+        "total": 12,
+        "passed": 12,
+        "seconds": 2.794
+      },
+      "live_inputs": 8,
+      "live_http200": 8,
+      "content_encoding_observed": "none on all8 identity requests; complete gzip/length-mismatch/premature-gzip-stream cases independently tested with actual HTTPX decoders/counters",
+      "wire_measure": "HTTPX num_bytes_downloaded vs HTTP Content-Length (encoded body), separate decoded bytes/SHA; Content-Length absent is allowed",
+      "request_accept_encoding": "identity",
+      "decoded_body_chunks": "Unbuffered iteration retains yielded partial bytes on stream failure; all three failed attempts quarantined",
+      "all_seven_original_zip_bytes_unchanged": true,
+      "whole_generated_geopackage_and_typed_parquet_bytes_unchanged": {
+        "geopackage": {
+          "new_sha256": "313abb20cb84b838f779433eff2b91d49fc459fc91c9d7fcc0bf7356f0bbfe7c",
+          "original_sha256": "313abb20cb84b838f779433eff2b91d49fc459fc91c9d7fcc0bf7356f0bbfe7c",
+          "bytes_identical": true
+        },
+        "typed_parquet": {
+          "new_sha256": "e9158748e04c139d463eb75c16a2001f7ed20e442a35869303295bc44350a9a4",
+          "original_sha256": "e9158748e04c139d463eb75c16a2001f7ed20e442a35869303295bc44350a9a4",
+          "bytes_identical": true
+        }
+      },
+      "changed_source_functions": [
+        "acquire"
+      ],
+      "full_suite_and_dagster_scope": "Prior9ca31d9 full514 suite and8 Dagster runs remain historical exact-code evidence; no new full-suite or terminal graph run claimed for transport-only followup. Fresh live complete inputs, all-row/schema/native-WKB reconciliation, unchanged writer ASTs and byte-identical regenerated outputs verify unchanged pipeline data behavior."
     }
   },
   "approval": false

@@ -1,0 +1,241 @@
+{
+  "classification": "Actual LIVE acquire of all eight official Census inputs into isolated RAW-ONLY storage; transport followup, no new terminal materialization or dataset acceptance",
+  "tested_commit": "c6f9532edfd2056bba5b330ab6d58de0dc2e8185",
+  "prior_pipeline_code_commit": "9ca31d9a9f06c85449d11bb591fea5982881ec5e",
+  "prior_pipeline_evidence": "evidence/local-verification/materialization.json",
+  "requests": [
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/",
+      "observed_at": "2026-10-19T08:21:51.900664+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": null,
+      "wire_bytes_downloaded": 15684,
+      "bytes": 15684,
+      "sha256": "3aed5442415d9c1bfa655b11b316f9e5162bf1f9b744e79bcefc6952484b342d",
+      "complete_body": true,
+      "name": "census2026_concity",
+      "decoded_bytes": 15684,
+      "decoded_sha256": "3aed5442415d9c1bfa655b11b316f9e5162bf1f9b744e79bcefc6952484b342d"
+    },
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_09_concity.zip",
+      "observed_at": "2026-10-19T08:21:52.559365+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_09_concity.zip",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": "21198",
+      "wire_bytes_downloaded": 21198,
+      "bytes": 21198,
+      "sha256": "8753ff394c81e89db39c7e92b05f652c7f063209db9c3b1c6cec3bcd1e469359",
+      "complete_body": true,
+      "name": "tl_2026_09_concity",
+      "decoded_bytes": 21198,
+      "decoded_sha256": "8753ff394c81e89db39c7e92b05f652c7f063209db9c3b1c6cec3bcd1e469359"
+    },
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_13_concity.zip",
+      "observed_at": "2026-10-19T08:21:52.901836+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_13_concity.zip",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": "70989",
+      "wire_bytes_downloaded": 70989,
+      "bytes": 70989,
+      "sha256": "7b1aef4ed64ac5fff90e73f24b9a2d6b3310889d2328e316705637b24a2901ac",
+      "complete_body": true,
+      "name": "tl_2026_13_concity",
+      "decoded_bytes": 70989,
+      "decoded_sha256": "7b1aef4ed64ac5fff90e73f24b9a2d6b3310889d2328e316705637b24a2901ac"
+    },
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_18_concity.zip",
+      "observed_at": "2026-10-19T08:21:53.201798+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_18_concity.zip",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": "40552",
+      "wire_bytes_downloaded": 40552,
+      "bytes": 40552,
+      "sha256": "317ac029de739b6bba242b763a97a2bc54b2384f2905177c5a69034ef9923622",
+      "complete_body": true,
+      "name": "tl_2026_18_concity",
+      "decoded_bytes": 40552,
+      "decoded_sha256": "317ac029de739b6bba242b763a97a2bc54b2384f2905177c5a69034ef9923622"
+    },
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_20_concity.zip",
+      "observed_at": "2026-10-19T08:21:53.580315+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_20_concity.zip",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": "20322",
+      "wire_bytes_downloaded": 20322,
+      "bytes": 20322,
+      "sha256": "e7d5aab415b5fd5aa95cc42f2c0a1e95f117bdd3a78d7368e83479ac4cf0b964",
+      "complete_body": true,
+      "name": "tl_2026_20_concity",
+      "decoded_bytes": 20322,
+      "decoded_sha256": "e7d5aab415b5fd5aa95cc42f2c0a1e95f117bdd3a78d7368e83479ac4cf0b964"
+    },
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_21_concity.zip",
+      "observed_at": "2026-10-19T08:21:53.904023+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_21_concity.zip",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": "33841",
+      "wire_bytes_downloaded": 33841,
+      "bytes": 33841,
+      "sha256": "30abb05506f8c9d4557f0272f5688d57462443e830db013c2e0091cfc59df255",
+      "complete_body": true,
+      "name": "tl_2026_21_concity",
+      "decoded_bytes": 33841,
+      "decoded_sha256": "30abb05506f8c9d4557f0272f5688d57462443e830db013c2e0091cfc59df255"
+    },
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_30_concity.zip",
+      "observed_at": "2026-10-19T08:21:54.140426+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_30_concity.zip",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": "77912",
+      "wire_bytes_downloaded": 77912,
+      "bytes": 77912,
+      "sha256": "b32b8fbd032f66750cfcf753b6ee363ccf5b97d4fd854b9587049c22acdb52eb",
+      "complete_body": true,
+      "name": "tl_2026_30_concity",
+      "decoded_bytes": 77912,
+      "decoded_sha256": "b32b8fbd032f66750cfcf753b6ee363ccf5b97d4fd854b9587049c22acdb52eb"
+    },
+    {
+      "url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_47_concity.zip",
+      "observed_at": "2026-10-19T08:21:54.319332+00:00",
+      "attempt": 1,
+      "status": 200,
+      "final_url": "https://www2.census.gov/geo/tiger/TIGER2026/CONCITY/tl_2026_47_concity.zip",
+      "requested_accept_encoding": "identity",
+      "content_encoding": null,
+      "content_length": "57134",
+      "wire_bytes_downloaded": 57134,
+      "bytes": 57134,
+      "sha256": "c4239eb3cb9853606a539c043c6c8db2459bf5badb670a65bc7c20e9c1b98c05",
+      "complete_body": true,
+      "name": "tl_2026_47_concity",
+      "decoded_bytes": 57134,
+      "decoded_sha256": "c4239eb3cb9853606a539c043c6c8db2459bf5badb670a65bc7c20e9c1b98c05"
+    }
+  ],
+  "complete_original_archives": 7,
+  "feature_count": 8,
+  "native_GEOIDs": [
+    "0947500",
+    "1303436",
+    "1304200",
+    "1836000",
+    "2028410",
+    "2148003",
+    "3011390",
+    "4752004"
+  ],
+  "native_crs": "EPSG:4269",
+  "geometry_counts": {
+    "Polygon": 7,
+    "MultiPolygon": 1
+  },
+  "all_eight_source_provenance_inputs_validate": true,
+  "source_owned_original_zip_comparison": {
+    "tl_2026_09_concity": {
+      "live_sha256": "8753ff394c81e89db39c7e92b05f652c7f063209db9c3b1c6cec3bcd1e469359",
+      "original_sha256": "8753ff394c81e89db39c7e92b05f652c7f063209db9c3b1c6cec3bcd1e469359",
+      "identical": true
+    },
+    "tl_2026_13_concity": {
+      "live_sha256": "7b1aef4ed64ac5fff90e73f24b9a2d6b3310889d2328e316705637b24a2901ac",
+      "original_sha256": "7b1aef4ed64ac5fff90e73f24b9a2d6b3310889d2328e316705637b24a2901ac",
+      "identical": true
+    },
+    "tl_2026_18_concity": {
+      "live_sha256": "317ac029de739b6bba242b763a97a2bc54b2384f2905177c5a69034ef9923622",
+      "original_sha256": "317ac029de739b6bba242b763a97a2bc54b2384f2905177c5a69034ef9923622",
+      "identical": true
+    },
+    "tl_2026_20_concity": {
+      "live_sha256": "e7d5aab415b5fd5aa95cc42f2c0a1e95f117bdd3a78d7368e83479ac4cf0b964",
+      "original_sha256": "e7d5aab415b5fd5aa95cc42f2c0a1e95f117bdd3a78d7368e83479ac4cf0b964",
+      "identical": true
+    },
+    "tl_2026_21_concity": {
+      "live_sha256": "30abb05506f8c9d4557f0272f5688d57462443e830db013c2e0091cfc59df255",
+      "original_sha256": "30abb05506f8c9d4557f0272f5688d57462443e830db013c2e0091cfc59df255",
+      "identical": true
+    },
+    "tl_2026_30_concity": {
+      "live_sha256": "b32b8fbd032f66750cfcf753b6ee363ccf5b97d4fd854b9587049c22acdb52eb",
+      "original_sha256": "b32b8fbd032f66750cfcf753b6ee363ccf5b97d4fd854b9587049c22acdb52eb",
+      "identical": true
+    },
+    "tl_2026_47_concity": {
+      "live_sha256": "c4239eb3cb9853606a539c043c6c8db2459bf5badb670a65bc7c20e9c1b98c05",
+      "original_sha256": "c4239eb3cb9853606a539c043c6c8db2459bf5badb670a65bc7c20e9c1b98c05",
+      "identical": true
+    }
+  },
+  "complete_live_vs_prior_typed_rows_schema_field_metadata_and_native_WKB_exact": true,
+  "writer_payloads": {
+    "geopackage": {
+      "new_sha256": "313abb20cb84b838f779433eff2b91d49fc459fc91c9d7fcc0bf7356f0bbfe7c",
+      "original_sha256": "313abb20cb84b838f779433eff2b91d49fc459fc91c9d7fcc0bf7356f0bbfe7c",
+      "bytes_identical": true
+    },
+    "typed_parquet": {
+      "new_sha256": "e9158748e04c139d463eb75c16a2001f7ed20e442a35869303295bc44350a9a4",
+      "original_sha256": "e9158748e04c139d463eb75c16a2001f7ed20e442a35869303295bc44350a9a4",
+      "bytes_identical": true
+    }
+  },
+  "only_changed_source_function": [
+    "acquire"
+  ],
+  "all_other_source_function_AST_sha256": {
+    "encode": "12a9c23b1a3290ff9bd3dce858e2e10eddc109e4df755c42298da5b832a7962b",
+    "digest": "1bf83cf633754bc5b364dead5d7d98152f4287819f7cc00affb2f67ac4d3fc60",
+    "strict_json": "97e58a31e15c688c2a2db260c72b26a7f0db5e879afd912790df82b8b6141648",
+    "local_only": "f19ba79f344797c1982bed7e479e56082c34bf1cac1430bd1729e8d4ebeffe7e",
+    "immutable": "9de76ea09f235caef62ec78ba9877538a01b2bb4c7c1221aba0b2272c6b94a7e",
+    "quarantine": "873c242d7f03c02edb66aa8dc6fccd705e3d224c4b388fe0a2186ed6b5b3a0dd",
+    "processing_identity": "8ded72f97853846f55005bed196e66ba338cf10bc48d4326e5fbab3792d1ee5e",
+    "validate_receipt": "2196eb4adae58a59654c878155e96b45d0b1ef32b139eef7c7367cd29f7d85b5",
+    "manifest_for": "f9a15c2692e6f5ce755aed9e6a2940f36b49471577ddb03e102022a26e3ecdc2",
+    "dbf_definition": "7566a3cffaabc6ed0ad42ce8def8758903f2b8d16fc227f32a9a92f51c2c9f28",
+    "decode_dbf_rows": "cdaaa0addcd95b974ed276ddf9835b0fa9c7ba35127d0a260e6561f206205fa5",
+    "inspect_archives": "d133dc2f7e831aeb32b2a69ada63e3c34169a6b1374be56bf7a069e003e6cbff",
+    "validate_table": "43c3f9a026de895cb4686ef3d45e34e35d8d9512b5b62df851070afe0f1de5fd",
+    "expected_parquet_table": "03ca7e3739a42acba246ba0f7cd237f72c6024d6f82792fb5bce61ce9a894286",
+    "write_native_gpkg": "a09259bb8b7d2e4fdaff439670c2afb0bb20d29a55a5630586d2b758dfdc0260",
+    "reconcile_outputs": "86be7b49e7c1b06589d36c816c2723d134cba62d3ab91ed1d7cdc45dd38482a2",
+    "source_payloads": "fcb33d95c546b2d7ad7b4e65fc7ae3a1f75e8ab507cfcf237430b3be6842367f",
+    "reconcile_cache": "ec26d7fe8306f6a48d10e15c23cc5e193a7637f0b430a9979789974c062a8e5b",
+    "original_provenance_bundle": "47e6015c9f7d37599027ed3b897529f549c47521e604942832a0f78feb550cf8",
+    "stage_consolidated_cities": "c04ce9c18f3870142f5a05802d5064344af0ecea2fe89044611c60cc81441249"
+  },
+  "source_function_name_sets_unchanged": true,
+  "no_canonical_version_created": true,
+  "no_production_or_approved_release_written": true,
+  "raw_only_storage": "/workspace/work/hifld-coordinator/41/live-wire/raw-only-staging"
+}
