@@ -18,6 +18,7 @@ from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.epa_eez import epa_eez_full_quality, epa_eez_draft_job, epa_eez_draft_schedule
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez_full_quality, epa_regions_with_eez_draft_job, epa_regions_with_eez_draft_schedule
 from dagster_hifld.assets.epa_facilities import epa_facilities_full_quality, epa_facilities_draft_job, epa_facilities_draft_schedule
+from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels_full_quality, epa_facilities_labels_draft_job, epa_facilities_labels_draft_schedule
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -411,9 +412,9 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=[*hifld_asset_checks,epa_eez_full_quality,epa_regions_with_eez_full_quality,epa_facilities_full_quality],
-    jobs=[epa_eez_draft_job,epa_regions_with_eez_draft_job,epa_facilities_draft_job],
-    schedules=[epa_eez_draft_schedule,epa_regions_with_eez_draft_schedule,epa_facilities_draft_schedule],
+    asset_checks=[*hifld_asset_checks,epa_eez_full_quality,epa_regions_with_eez_full_quality,epa_facilities_full_quality,epa_facilities_labels_full_quality],
+    jobs=[epa_eez_draft_job,epa_regions_with_eez_draft_job,epa_facilities_draft_job,epa_facilities_labels_draft_job],
+    schedules=[epa_eez_draft_schedule,epa_regions_with_eez_draft_schedule,epa_facilities_draft_schedule,epa_facilities_labels_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
