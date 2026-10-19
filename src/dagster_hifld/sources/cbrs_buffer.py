@@ -33,6 +33,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
@@ -407,7 +408,7 @@ def quarantine_rejected_cache_held(storage: StagingStorageResource, prefix: str,
 
 
 def original_provenance_bundle(storage: StagingStorageResource, version: str,
-                               captures: dict, manifest: dict, *, create: bool=False) -> tuple[dict,dict]:
+                               captures: dict, manifest: dict, processing_files: dict, *, create: bool=False) -> tuple[dict,dict]:
     """Pin first construction outside the candidate, under the stable version lock.
 
     Later equal-body observations and docs-only commits cannot rewrite the original
@@ -417,6 +418,7 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     if not storage.object_exists(key):
         if not create:
             raise CBRSQuarantineError('missing_original_construction_provenance_bundle')
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
         bundle={'manifest':manifest,'captures':{name:{
             'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
             'receipt':receipt} for name,(body,receipt) in captures.items()}}
@@ -442,6 +444,7 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     validate_release_provenance(actual)
     if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
         raise CBRSQuarantineError('original_construction_manifest_drift')
+    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)
     return original,actual
 
 
@@ -450,9 +453,13 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
     root=local_candidate_path(storage,prefix)
     # The normal graph adds only these derivative files. Source-owned directories remain exact.
+    manifest_body=(root/'metadata/source_manifest.json').read_bytes()
+    authored_snapshot='metadata/source/version_'+sha(manifest_body)+'_source_manifest.json'
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
-        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json',
-        'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}
+        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json',
+        'metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',authored_snapshot}
+    if (root/authored_snapshot).exists() and (root/authored_snapshot).read_bytes()!=manifest_body:
+        raise CBRSQuarantineError('cached_authored_manifest_snapshot_differs')
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise CBRSQuarantineError('linked_candidate_object')
@@ -543,7 +550,7 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                         if target.is_symlink():raise CBRSQuarantineError('linked_candidate_path')
                         if not storage.object_exists(ready_key):
                             raise CBRSQuarantineError('incomplete_existing_candidate_missing_ready_receipt')
-                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest)
+                        captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
                         ready = strict_json(storage.read_key(ready_key))
                         expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', 'metadata/cbrs_buffer_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {'metadata/source_fidelity/baseline_comparison.json','metadata/source_fidelity/baseline_comparison.md','metadata/source_fidelity/baseline_differences.jsonl','metadata/source_fidelity/baseline_field_changes.jsonl'} | {f'raw/members/{name}' for name in MEMBERS} | {f'raw/captures/{name}{suffix}' for name in URLS for suffix in ('.body','.receipt.json')}
                         if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
@@ -562,7 +569,7 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,fiona.errors.FionaError) as exc:
                         quarantine_rejected_cache_held(storage,prefix,str(exc))
                         raise
-                captures,manifest=original_provenance_bundle(storage,version,captures,manifest,create=True)
+                captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'],create=True)
                 body,receipt=captures['official_zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_native_geopackage(rows,geopackage)

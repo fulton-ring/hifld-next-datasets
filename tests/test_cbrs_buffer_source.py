@@ -204,19 +204,27 @@ class CBRSTests(unittest.TestCase):
             storage=StagingStorageResource(local_dir=d)
             captures=s.acquire(storage,CAPTURE);manifest=s.provenance(captures)
             manifest['processing_fingerprint']='test-fixture-not-acceptance'
+            processing_files=s.processing_identity()['files']
             version='v0.0.0-fixture';prefix=s.SLUG+'/'+s.SLUG+'/'+version
             with s.candidate_lock(storage,prefix):
                 with self.assertRaisesRegex(ValueError,'missing_original_construction'):
-                    s.original_provenance_bundle(storage,version,captures,manifest)
-                original,first=s.original_provenance_bundle(storage,version,captures,manifest,create=True)
+                    s.original_provenance_bundle(storage,version,captures,manifest,processing_files)
+                original,first=s.original_provenance_bundle(storage,version,captures,manifest,processing_files,create=True)
             key=f'_source-provenance/{s.SLUG}/{version}/bundle.json';pin=storage.read_key(key)
             changed={n:(body,{**receipt,'observed_at':'2026-10-20T01:02:03+00:00'}) for n,(body,receipt) in captures.items()}
             # Real construction may precede later docs-only HEADs and observations.
-            with patch.object(s.subprocess,'check_output',return_value='a'*40):
-                later=s.provenance(changed);later['processing_fingerprint']=manifest['processing_fingerprint']
-                with s.candidate_lock(storage,prefix):
-                    reused,replayed=s.original_provenance_bundle(storage,version,changed,later)
-                    rebuilt,reconstructed=s.original_provenance_bundle(storage,version,changed,later,create=True)
+            later=s.provenance(changed);later['processing_fingerprint']=manifest['processing_fingerprint']
+            later['code_commit']='a'*40 # Explicit hypothetical later context; never changes the pinned original.
+            with s.candidate_lock(storage,prefix):
+                reused,replayed=s.original_provenance_bundle(storage,version,changed,later,processing_files)
+                rebuilt,reconstructed=s.original_provenance_bundle(storage,version,changed,later,processing_files,create=True)
+            # Co-forging both records cannot make a nonexistent or wrong-code Git identity valid.
+            bundle=s.strict_json(pin)
+            for commit in ['0'*40,'6969d05028352eefd20348a738a829034af9882f']:
+                bundle['manifest']['code_commit']=commit;Path(d,key).write_bytes(s.encode(bundle))
+                with self.assertRaisesRegex(ValueError,'construction_'):
+                    s.original_provenance_bundle(storage,version,captures,manifest,processing_files)
+            Path(d,key).write_bytes(pin)
             self.assertEqual(first,manifest);self.assertEqual(replayed,first);self.assertEqual(reconstructed,first)
             self.assertEqual(reused,original);self.assertEqual(rebuilt,original)
             self.assertEqual(storage.read_key(key),pin)
