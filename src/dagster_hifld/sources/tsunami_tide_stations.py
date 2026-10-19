@@ -287,6 +287,9 @@ def original_bundle(storage,key,version,identity,*,create=None):
     if create is None:body=load_first_construction(storage,key,version,fingerprint)
     else:
         captures,manifest=create
+        # Reject invalid original claims before creating permanent trust state.
+        validate_release_provenance(manifest)
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
         payload={'manifest':manifest,'captures':{n:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{n}.body','receipt':receipt}for n,(body,receipt)in captures.items()}}
         body=seal_first_construction(storage,key,version,fingerprint,canonical_construction_bundle(version,fingerprint,payload))
     payload=strict_json(body)['payload']

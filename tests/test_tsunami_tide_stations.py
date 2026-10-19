@@ -134,3 +134,14 @@ class TideOriginalTests(unittest.TestCase):
                 with self.assertRaises(BlockingIOError):fcntl.flock(other,fcntl.LOCK_EX|fcntl.LOCK_NB)
             return original(*args,**kwargs)
         with patch.object(f,'reconcile_cache',checking):self.assertTrue(self.refresh()['reused'])
+
+    def test_invalid_construction_code_cannot_seal_any_first_state(self):
+        original=f.manifest_for
+        def invalid_claim(captures,identity):
+            manifest=original(captures,identity);manifest['code_commit']='0'*40;return manifest
+        with tempfile.TemporaryDirectory()as tmp,patch.object(f,'manifest_for',side_effect=invalid_claim):
+            with self.assertRaisesRegex(f.TideStationQuarantineError,'construction_invalid_commit'):
+                f.stage_tide_stations(f.StagingStorageResource(use_local=True,local_dir=tmp),capture_dir=CAPTURE)
+            self.assertFalse([p for p in Path(tmp).glob('_construction-state/**/*')if p.is_file()])
+            self.assertFalse(list(Path(tmp).glob(f'{f.SLUG}/{f.SLUG}/v*')))
+            self.assertTrue(list(Path(tmp).glob('_raw-captures/**/*.body')))
