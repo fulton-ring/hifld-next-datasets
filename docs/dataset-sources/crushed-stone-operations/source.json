@@ -1,0 +1,217 @@
+{
+  "actual_input_publisher": "Stanford Libraries preservation; original agency-byte authentication/selection unapproved",
+  "approved": false,
+  "archive": {
+    "body_publication": "Challenge/sessionHTML is retained privately locally; public evidence records status/size/SHA without publishing challenge body.",
+    "status": 403,
+    "url": "https://www.datalumos.org/datalumos/project/239033/version/V1/view"
+  },
+  "baseline_approved": false,
+  "baseline_problem": {
+    "all9attributes_and_nativeWKB_equal_complete42baseline": true,
+    "complete_formats": 6,
+    "family": "MINOP2X020 construction-minerals, explicitly excludescrushedstone",
+    "open_formats_decoded": 5,
+    "relationship": "Material datasetidentity/coverage/schema/source-selection break requiring decision; no exactcontinuation claimed",
+    "rows": 766
+  },
+  "canonical_candidate": "Opted-in native GeoParquet only; original masters/archive stay raw-only. General shared417 reader/discovery integration is pending before actual materialization. No canonical Shapefile or unknown-format workaround.",
+  "contract_approved": false,
+  "coverage_criteria": "Active2002, production>50000tons, non-government/non-portable; complete preserved2324 records/48states, not allcurrentoperations/50statecensus",
+  "crosswalk": {
+    "status": "unresolvedprovider403, not unmatched",
+    "url": "https://doi.org/10.3886/E241367V1"
+  },
+  "dataset_slug": "crushed-stone-operations",
+  "download_verified_https_status": 404,
+  "external_decisions": [
+    "Datasetidentity:wrong766MINOP label vs proper2324CRSTON source",
+    "Historical input selection/original-byte authenticity",
+    "Baseline correction vs separate dataset/version path",
+    "Allnative/publishedfield-ID-type-coverage contract",
+    "Rights/citation/currency/release"
+  ],
+  "geometry": "All original native Point doubles, NAD83EPSG4269 ownPRJ agreedhistoricalmetadata; no reprojection/repair/geocoding",
+  "historical_active_year": "2002",
+  "historical_download": "http://dds.cr.usgs.gov/pub/data/nationalatlas/crstonx020_nt00109.tar.gz",
+  "historical_publication_month": "200506",
+  "issue": 48,
+  "master_verification": "All5master sizes/SHA1/MD5 match Stanford publicXML; all original bodies retained; this is package consistency, not authentication of missing original USGS archive",
+  "native_schema": {
+    "active_year": "2002",
+    "allASCII": true,
+    "approved": false,
+    "commodities": {
+      "CRUSHED STONE": 2324
+    },
+    "count": 2324,
+    "fields": [
+      [
+        "CRSTONX020",
+        "N",
+        11,
+        0
+      ],
+      [
+        "COMP_NAME",
+        "C",
+        254,
+        0
+      ],
+      [
+        "OPER_NAME",
+        "C",
+        254,
+        0
+      ],
+      [
+        "COUNTY",
+        "C",
+        254,
+        0
+      ],
+      [
+        "STATE",
+        "C",
+        254,
+        0
+      ],
+      [
+        "FIPS",
+        "C",
+        254,
+        0
+      ],
+      [
+        "STATE_FIPS",
+        "C",
+        254,
+        0
+      ],
+      [
+        "LATITUDE",
+        "N",
+        19,
+        4
+      ],
+      [
+        "LONGITUDE",
+        "N",
+        19,
+        4
+      ],
+      [
+        "OPER_TYPE",
+        "C",
+        254,
+        0
+      ],
+      [
+        "COMMODITY",
+        "C",
+        254,
+        0
+      ]
+    ],
+    "ldid": 87,
+    "original_source_crs": "NAD83",
+    "proposed_native_decimal_decode": "CRSTONX020 decimal(11,0), LATITUDE/LONGITUDE decimal(19,4), source C254literal strings withrightpaddingonly; complete rawbytesretained",
+    "publication_metadata": "200506",
+    "states": [
+      "AK",
+      "AL",
+      "AR",
+      "AZ",
+      "CA",
+      "CO",
+      "CT",
+      "FL",
+      "GA",
+      "HI",
+      "IA",
+      "ID",
+      "IL",
+      "IN",
+      "KS",
+      "KY",
+      "LA",
+      "MA",
+      "MD",
+      "ME",
+      "MI",
+      "MN",
+      "MO",
+      "MS",
+      "MT",
+      "NC",
+      "NE",
+      "NH",
+      "NJ",
+      "NM",
+      "NV",
+      "NY",
+      "OH",
+      "OK",
+      "OR",
+      "PA",
+      "RI",
+      "SC",
+      "SD",
+      "TN",
+      "TX",
+      "UT",
+      "VA",
+      "VT",
+      "WA",
+      "WI",
+      "WV",
+      "WY"
+    ],
+    "unique_source_CRSTONX020": 2324
+  },
+  "official_metadata": "https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/crstonx020.xml",
+  "package_id": "stanford-cs268nn2622-preservation-as-provided-v1",
+  "preservation_url": "https://purl.stanford.edu/cs268nn2622",
+  "producer": "USGS Minerals Information Team historical dataset family",
+  "proposed_schema_contract": {
+    "approved": false,
+    "main_columns": [
+      "CRSTONX020",
+      "COMP_NAME",
+      "OPER_NAME",
+      "COUNTY",
+      "STATE",
+      "FIPS",
+      "STATE_FIPS",
+      "LATITUDE",
+      "LONGITUDE",
+      "OPER_TYPE",
+      "COMMODITY",
+      "geometry"
+    ],
+    "nullability": "dBASEIII has no nullable flags; allcurrentfieldsnonblank. No invented null substitutions; proposed Arrowcurrentnonnull metadata unapproved.",
+    "physical_types": "Exact DBF decimal(width,scale), original C254strings and LDID87/rawbytes; currentallcharacterASCII, leadingzeroFIPS preserved",
+    "published_ids": "All raw+complete five-format ID/systemFID/featureID sidecars preserved independently; no crossdataset MINOP\u2194CRSTON join",
+    "source_ids": "CRSTONX020original decimal11,0; no invented main IDs, physical record/header lineage separate"
+  },
+  "real_input_artifact": {
+    "approved": false,
+    "artifact_bytes": 1490104,
+    "artifact_locator": "coordinator48:crushed-stone-complete-real-fixture-artifact.tar.gz",
+    "artifact_sha256": "4ed1451fb98c24fcd710236b8550157ceccc09597cbd0d733b157ae6b5d7d343",
+    "capture_pin_manifest": "coordinator48:complete-real-fixture-artifact.json",
+    "complete_source_records": 2324,
+    "original_fixture_bytes": 752146,
+    "original_fixture_sha256": "99404e55ae5256ecf590decbefad864bb619cf021e69c9e324e422b8602da93a",
+    "replay": "HIFLD_CRUSHED_STONE_REAL_CAPTURE_DIR=/path/to/explicit-package PYTHONPATH=.:src:tests python -m unittest test_crushed_stone -v",
+    "schema_version": 1,
+    "scope": "Complete real HTTP200 historical package and complete baseline replay captures, artifact-only; Git contains synthetic structural fixture plus opt-in real replay tests.",
+    "verified_members": 33
+  },
+  "refresh": "STOPPEDexplicit localreconstruction/integrity only, no default archive fetch orpolling/currentfeed claim",
+  "release_approved": false,
+  "schema_version": 1,
+  "source_approved": false,
+  "status": "working_explicit_historical_preservation_candidate_draft",
+  "test_fixture": "Small synthetic structural seed only in Git; full real captures via explicit opt-in checksummed artifact."
+}

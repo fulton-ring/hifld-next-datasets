@@ -5,6 +5,7 @@ assets are derived automatically from this registry.
 """
 
 from dagster_hifld.assets.usgs import usgs_aquifers
+from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -63,6 +64,7 @@ from dagster_hifld.assets.combined_statistical_areas import census_combined_stat
 from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
 
 hifld_ingest_assets = [
+    usgs_crushed_stone_preservation,
     nces_colleges_universities,
     usgs_aquifers,
     noaa_12nm_territorial_sea,
