@@ -1,6 +1,0 @@
-{
-  "name": "fcc-gis-historical-service",
-  "request_url": "https://webgis3.fcc.gov/server/rest/services/Towers_Antennas/ULS_Cellular_Towers_and_Antenna_Structures_As_of_December_2017/FeatureServer?f=json",
-  "observed_at": "2026-10-19T05:59:37.450601+00:00",
-  "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
-}
