@@ -1,0 +1,232 @@
+{
+  "approved": false,
+  "source_rows": 574,
+  "baseline_rows": 574,
+  "source_fields": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID"
+    },
+    {
+      "name": "Panel_No",
+      "type": "esriFieldTypeString",
+      "alias": "Panel_No",
+      "length": 10
+    },
+    {
+      "name": "State",
+      "type": "esriFieldTypeString",
+      "alias": "State",
+      "length": 2
+    },
+    {
+      "name": "Map_Date",
+      "type": "esriFieldTypeDate",
+      "alias": "Map_Date",
+      "length": 8
+    },
+    {
+      "name": "Title",
+      "type": "esriFieldTypeString",
+      "alias": "Title",
+      "length": 75
+    },
+    {
+      "name": "Title_2",
+      "type": "esriFieldTypeString",
+      "alias": "Title_2",
+      "length": 75
+    },
+    {
+      "name": "Title_3",
+      "type": "esriFieldTypeString",
+      "alias": "Title_3",
+      "length": 75
+    },
+    {
+      "name": "Title_4",
+      "type": "esriFieldTypeString",
+      "alias": "Title_4",
+      "length": 75
+    },
+    {
+      "name": "Map_Link",
+      "type": "esriFieldTypeString",
+      "alias": "Map_Link",
+      "length": 150
+    },
+    {
+      "name": "Effective_Date",
+      "type": "esriFieldTypeDate",
+      "alias": "Effective_Date",
+      "length": 8
+    },
+    {
+      "name": "Historical_Link",
+      "type": "esriFieldTypeString",
+      "alias": "Change_Link",
+      "length": 500
+    },
+    {
+      "name": "Shape_Length",
+      "type": "esriFieldTypeDouble",
+      "alias": "Shape_Length"
+    },
+    {
+      "name": "Shape_Area",
+      "type": "esriFieldTypeDouble",
+      "alias": "Shape_Area"
+    }
+  ],
+  "baseline_schema": "geometry: binary\n  -- field metadata --\n  ARROW:extension:name: 'geoarrow.wkb'\n  ARROW:extension:metadata: '{\"crs\": {\"$schema\": \"https://proj.org/schema' + 544\nOBJECTID: int64\nPanel_No: string\nState: string\nMap_Date: string\nTitle: string\nTitle_2: string\nTitle_3: string\nTitle_4: string\nMap_Link: string\nShape_Leng: double\nShape_Area: double\nEffective_: string\nHistorical: string\nid: int64\nbbox: struct<xmin: double, ymin: double, xmax: double, ymax: double>\n  child 0, xmin: double\n  child 1, ymin: double\n  child 2, xmax: double\n  child 3, ymax: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1813\ngeo: '{\"primary_column\":\"geometry\",\"columns\":{\"geometry\":{\"encoding\":\"WKB' + 761",
+  "unique_panel_ids": [
+    574,
+    574
+  ],
+  "panel_intersection": 574,
+  "source_only": [],
+  "baseline_only": [],
+  "source_oid_unique": 574,
+  "baseline_id_unique": 574,
+  "oid_equal": 574,
+  "published_id_equal_source_oid": 574,
+  "geometry_wkb_equal": 574,
+  "geometry_topological_equal": 574,
+  "field_differences": {
+    "OBJECTID": {
+      "baseline_name": "OBJECTID",
+      "same_typed_value": 574,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Panel_No": {
+      "baseline_name": "Panel_No",
+      "same_typed_value": 574,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "State": {
+      "baseline_name": "State",
+      "same_typed_value": 574,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Map_Date": {
+      "baseline_name": "Map_Date",
+      "same_typed_value": 0,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Title": {
+      "baseline_name": "Title",
+      "same_typed_value": 572,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Title_2": {
+      "baseline_name": "Title_2",
+      "same_typed_value": 365,
+      "source_nulls": 114,
+      "baseline_nulls": 321
+    },
+    "Title_3": {
+      "baseline_name": "Title_3",
+      "same_typed_value": 287,
+      "source_nulls": 170,
+      "baseline_nulls": 457
+    },
+    "Title_4": {
+      "baseline_name": "Title_4",
+      "same_typed_value": 291,
+      "source_nulls": 243,
+      "baseline_nulls": 526
+    },
+    "Map_Link": {
+      "baseline_name": "Map_Link",
+      "same_typed_value": 574,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Effective_Date": {
+      "baseline_name": "Effective_",
+      "same_typed_value": 0,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Historical_Link": {
+      "baseline_name": "Historical",
+      "same_typed_value": 574,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Shape_Length": {
+      "baseline_name": "Shape_Leng",
+      "same_typed_value": 51,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    },
+    "Shape_Area": {
+      "baseline_name": "Shape_Area",
+      "same_typed_value": 2,
+      "source_nulls": 0,
+      "baseline_nulls": 0
+    }
+  },
+  "date_diagnostic_only": {
+    "Map_Date": 574,
+    "Effective_Date": 574
+  },
+  "source_states": {
+    "NC": 29,
+    "SC": 23,
+    "RI": 11,
+    "FL": 94,
+    "AL": 9,
+    "VI": 6,
+    "PR": 28,
+    "NJ": 22,
+    "DE": 9,
+    "TX": 53,
+    "MS": 9,
+    "OH": 7,
+    "MI": 36,
+    "WI": 5,
+    "MN": 1,
+    "LA": 46,
+    "NH": 1,
+    "MA": 37,
+    "CT": 11,
+    "VA": 39,
+    "MD": 23,
+    "NY": 40,
+    "ME": 19,
+    "GA": 16
+  },
+  "baseline_states": {
+    "ME": 19,
+    "MI": 36,
+    "WI": 5,
+    "MN": 1,
+    "LA": 46,
+    "TX": 53,
+    "OH": 7,
+    "FL": 94,
+    "AL": 9,
+    "MS": 9,
+    "GA": 16,
+    "SC": 23,
+    "NC": 29,
+    "MD": 23,
+    "VA": 39,
+    "DE": 9,
+    "NJ": 22,
+    "NY": 40,
+    "CT": 11,
+    "NH": 1,
+    "MA": 37,
+    "RI": 11,
+    "PR": 28,
+    "VI": 6
+  }
+}

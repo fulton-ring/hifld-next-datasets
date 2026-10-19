@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "issue": 29,
+  "dataset_slug": "cbrs-map-panels-1",
+  "status": "draft_implementation_in_progress",
+  "approval": {
+    "source": false,
+    "baseline": false,
+    "contract": false,
+    "release": false
+  },
+  "scope": "User correction authorizes reviewable draft code and local tests pending real acceptance; no merge or production approval.",
+  "source": {
+    "producer": "U.S. Fish and Wildlife Service",
+    "distribution": "Official FWS maps-and-data delegates exact ArcGIS item and USGS CBRS Mapper; layer5 CBRS Map Panels",
+    "landing": "https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data",
+    "download": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query",
+    "source_release_date": null,
+    "unknown_release_reason": "Per-map Map_Date/Effective_Date values do not establish feed publication; item modification/fetch dates are not publication dates.",
+    "rows": 574,
+    "native_crs": "EPSG:4269",
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "alias": "OBJECTID"
+      },
+      {
+        "name": "Panel_No",
+        "type": "esriFieldTypeString",
+        "alias": "Panel_No",
+        "length": 10
+      },
+      {
+        "name": "State",
+        "type": "esriFieldTypeString",
+        "alias": "State",
+        "length": 2
+      },
+      {
+        "name": "Map_Date",
+        "type": "esriFieldTypeDate",
+        "alias": "Map_Date",
+        "length": 8
+      },
+      {
+        "name": "Title",
+        "type": "esriFieldTypeString",
+        "alias": "Title",
+        "length": 75
+      },
+      {
+        "name": "Title_2",
+        "type": "esriFieldTypeString",
+        "alias": "Title_2",
+        "length": 75
+      },
+      {
+        "name": "Title_3",
+        "type": "esriFieldTypeString",
+        "alias": "Title_3",
+        "length": 75
+      },
+      {
+        "name": "Title_4",
+        "type": "esriFieldTypeString",
+        "alias": "Title_4",
+        "length": 75
+      },
+      {
+        "name": "Map_Link",
+        "type": "esriFieldTypeString",
+        "alias": "Map_Link",
+        "length": 150
+      },
+      {
+        "name": "Effective_Date",
+        "type": "esriFieldTypeDate",
+        "alias": "Effective_Date",
+        "length": 8
+      },
+      {
+        "name": "Historical_Link",
+        "type": "esriFieldTypeString",
+        "alias": "Change_Link",
+        "length": 500
+      },
+      {
+        "name": "Shape_Length",
+        "type": "esriFieldTypeDouble",
+        "alias": "Shape_Length"
+      },
+      {
+        "name": "Shape_Area",
+        "type": "esriFieldTypeDouble",
+        "alias": "Shape_Area"
+      }
+    ],
+    "OID_storage_width": "Not supplied by API; source esriFieldTypeOID declaration retained. Draft int64 is an explicit storage proxy, not an assertion of source physical width.",
+    "date_representation": "Original numeric UTC millisecond JSON values retained as int64. Native esriFieldTypeDate declarations retained; no unapproved conversion to ISO string/date.",
+    "geometry": "574 valid Polygon, each one original ring; native coordinates and original ring order retained."
+  },
+  "published_candidate": {
+    "accepted": false,
+    "rows": 574,
+    "sha256": "36662423bf6f187a2efb9b399d44ca78e25532c7d3b8200e609028ea88df659d",
+    "comparison": "evidence/complete-comparison.json",
+    "complete_join_key_diagnostic": "All574 original OBJECTID and published id equal, and all574 Panel_No equal; no IDs generated.",
+    "all_574_geometry_wkb_equal": true,
+    "schema_differences": [
+      "Shape_Length versus Shape_Leng",
+      "Effective_Date versus Effective_",
+      "Historical_Link versus Historical",
+      "both native millisecond date integers versus published strings",
+      "empty strings preserved separately from nulls",
+      "two Title values differ",
+      "Shape_Length/Shape_Area floating precision differs"
+    ]
+  },
+  "crosswalk": {
+    "status": "unmatched",
+    "reason": "Complete DOI response redirects to DataLumos Cloudflare403; preserved original prior same-day captures, no new successful crosswalk audit claimed.",
+    "prior_findings": "Copied full prior issue40/comments are background only, not endpoint audit."
+  },
+  "pipeline": {
+    "source": "src/dagster_hifld/sources/cbrs_map_panels.py",
+    "asset": "src/dagster_hifld/assets/fws_map_panels.py",
+    "refresh": "Monthly first day13:00 America/New_York, STOPPED source-only local draft",
+    "atomic_staging": "Hidden complete build atomically renamed under per-version advisory lock",
+    "reuse": "Fresh complete original extraction compared with cached Parquet metadata and values, GPKG native columns/rows/geometry BLOB headers/declarations/SRS WKT/authority/bounds, exact source object roster/provenance",
+    "release_gate": "Shared independent exact release registry required; no real approval fixture"
+  },
+  "external_decisions": [
+    "Accept exact delegated source and unknown feed publication date with per-map date semantics.",
+    "Approve versioned full schema/ID/physical representation mapping; preserve source and published names/values without destructive rename, null normalization or date conversion.",
+    "Choose and accept complete574-row published baseline; floating precision, two title changes and nullable/empty-string differences remain explicit.",
+    "Accept use constraints and each output-format loss contract before release."
+  ]
+}

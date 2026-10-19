@@ -1,0 +1,13 @@
+{
+  "requested_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+  "final_url": "https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query?where=1%3D1&returnIdsOnly=true&f=json",
+  "status": 200,
+  "byte_length": 2343,
+  "sha256": "bab9586c82c65b09eced3e640329778aed9b3acd3674e2f46dfa996c3f1e7305",
+  "observed_at": "2026-10-19T07:40:35.784777+00:00",
+  "headers": {
+    "content-type": "application/json;charset=UTF-8",
+    "etag": "\"x8dGJtWCHodTSYBk_1775678284\"",
+    "date": "Mon, 19 Oct 2026 07:40:34 GMT"
+  }
+}
