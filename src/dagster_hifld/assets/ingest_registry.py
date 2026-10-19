@@ -17,7 +17,10 @@ from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 
+from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
+
 hifld_ingest_assets = [
+    census_combined_statistical_areas,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     *census_blocks_2020_ingest_assets,
