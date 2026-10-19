@@ -26,18 +26,18 @@ def fixture():
         {"name":"In_Latest_NTAD_Upload","type":"esriFieldTypeString","alias":"In_Latest_NTAD_Upload","length":254,"nullable":True,"domain":None},
         {"name":"License","type":"esriFieldTypeString","alias":"License","length":254,"nullable":True,"domain":None},
     ]
-    layer = {"id":0,"name":"National Transit Map Agencies","geometryType":"esriGeometryPoint","objectIdField":"OBJECTID","maxRecordCount":2000,
+    layer = {"id":0,"name":"National Transit Map Agencies","geometryType":"esriGeometryPoint","objectIdField":"OBJECTID","maxRecordCount":2000,"hasZ":True,"hasM":False,
         "extent":{"spatialReference":{"latestWkid":4326}},"fields":fields}
-    feature = {"attributes":{"OBJECTID":1,"NTD_ID":"0012","NTAD_NTD_ID":"0012","Agency_Name":"Example Transit","Common_Name":"Example","City":"Example","State":"CA","Lon":-120.0,"Lat":37.0,"In_Latest_NTAD_Upload":"Yes","License":"Public Domain"},"geometry":{"x":-120.0,"y":37.0}}
+    feature = {"attributes":{"OBJECTID":1,"NTD_ID":"0012","NTAD_NTD_ID":"0012","Agency_Name":"Example Transit","Common_Name":"Example","City":"Example","State":"CA","Lon":-120.0,"Lat":37.0,"In_Latest_NTAD_Upload":"Yes","License":"Public Domain"},"geometry":{"x":-120.0,"y":37.0,"z":0}}
     service={"serviceItemId":source.ITEM_ID,"layers":[{"id":0}]}
-    item={"id":source.ITEM_ID,"owner":source.OWNER,"access":"public","url":source.SERVICE_URL,"description":"compiled on 2026-09-23"}
+    item={"id":source.ITEM_ID,"owner":source.OWNER,"access":"public","url":source.SERVICE_URL,"description":"compiled on September 23, 2026"}
     docs={"item":item,"service_before":service,"layer_before":layer,"count_before":{"count":1},"ids_before":{"objectIds":[1]},"ids_seed":{"objectIds":[1]},
         "count_after":{"count":1},"ids_after":{"objectIds":[1]},"layer_after":layer,"service_after":service}
     for i in range(5): docs[f"page_{i:03}"]={"spatialReference":{"latestWkid":4326},"features":[feature] if i==0 else []}
     fields_profile,_=source._field_profile(fields)
     profile={"features":[feature]}
     record=hashlib.sha256(canonical([feature])).hexdigest()
-    geometry=hashlib.sha256(canonical([[1,-120.0,37.0]])).hexdigest()
+    geometry=hashlib.sha256(canonical([[1,-120.0,37.0,0]])).hexdigest()
     schema=hashlib.sha256(canonical(fields_profile)).hexdigest()
     ids=hashlib.sha256(canonical([1])).hexdigest()
     captures={k:(canonical(v),{"complete_body":True,"status":200}) for k,v in docs.items()}

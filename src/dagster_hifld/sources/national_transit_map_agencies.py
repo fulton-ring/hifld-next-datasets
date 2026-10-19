@@ -40,11 +40,12 @@ SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services
 LAYER_ID = 0
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 SOURCE_RELEASE = "2026-09-23"
+SOURCE_RELEASE_TEXT = "September 23, 2026"
 EXPECTED_COUNT = 1239
 EXPECTED_IDS_SHA256 = "7a2baf2d47556afe754208a28bfd7da99a3115bcc32d79fc4f1cb680650682b0"
 EXPECTED_SCHEMA_SHA256 = "a9f1aff709a051aaa6809b575c9f4c8c803a1e9c42f0dc135a0566220be888bc"
 EXPECTED_RECORD_SHA256 = "e7c048ce039bffa402b2e819b9f4a213fa72c4e6bcef94a5ed4e2e7a6d27fa2b"
-EXPECTED_GEOMETRY_SHA256 = "91a11db636f18408cfed88489535b0e7e6e8d713719c6441e1dee31cd532000c"
+EXPECTED_GEOMETRY_SHA256 = "cf3d7364dbfa56b5a5557495baac94d57e6ac1df308c3f20413194c29b1b49bb"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 16_000_000
 
@@ -100,7 +101,7 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
     item, service, layer = docs["item"], docs["service_before"], docs["layer_before"]
     if item.get("id") != ITEM_ID or item.get("owner") != OWNER or item.get("access") != "public" or item.get("url") != SERVICE_URL:
         raise ValueError("official_BTS_item_identity_drift")
-    if SOURCE_RELEASE not in str(item.get("description", "")):
+    if SOURCE_RELEASE_TEXT.casefold() not in str(item.get("description", "")).casefold():
         raise ValueError("official_source_release_date_drift")
     if service.get("serviceItemId") != ITEM_ID or LAYER_ID not in [x.get("id") for x in service.get("layers",[]) if isinstance(x,dict)]:
         raise ValueError("official_BTS_service_identity_drift")
@@ -110,6 +111,8 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
         raise ValueError("official_BTS_ID_or_transfer_contract_drift")
     if layer.get("extent",{}).get("spatialReference",{}).get("latestWkid") != 4326:
         raise ValueError("official_BTS_CRS_drift")
+    if layer.get("hasZ") is not True or layer.get("hasM") is not False:
+        raise ValueError("official_BTS_geometry_dimension_drift")
     fields, schema_sha = _field_profile(layer.get("fields"))
     if schema_sha != EXPECTED_SCHEMA_SHA256 or _field_profile(docs["layer_after"].get("fields"))[0] != fields:
         raise ValueError("source_schema_drift")
@@ -135,10 +138,10 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
     if len(features)!=EXPECTED_COUNT or sorted(f.get("attributes",{}).get("OBJECTID") for f in features)!=ids:
         raise ValueError("source_page_population_incomplete")
     for f in features:
-        if set(f.get("attributes",{}))!=names or not isinstance(f.get("geometry"),dict) or set(f["geometry"])!={"x","y"}:
+        if set(f.get("attributes",{}))!=names or not isinstance(f.get("geometry"),dict) or set(f["geometry"])!={"x","y","z"}:
             raise ValueError("source_record_or_geometry_schema_drift")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
-    record_sha=_sha(_canonical(features)); geometry_sha=_sha(_canonical([[f["attributes"]["OBJECTID"],f["geometry"]["x"],f["geometry"]["y"]] for f in features]))
+    record_sha=_sha(_canonical(features)); geometry_sha=_sha(_canonical([[f["attributes"]["OBJECTID"],f["geometry"]["x"],f["geometry"]["y"],f["geometry"]["z"]] for f in features]))
     if record_sha!=EXPECTED_RECORD_SHA256 or geometry_sha!=EXPECTED_GEOMETRY_SHA256:
         raise ValueError("source_values_or_geometry_drift")
     return fields, features
@@ -184,10 +187,10 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
 
 def _parquet(fields: list[dict[str, object]], features: list[dict[str, object]]) -> bytes:
     columns={f["name"]:pa.array([r["attributes"][f["name"]] for r in features], type=_arrow_type(f)) for f in fields}
-    columns["geometry"]=pa.array([Point(r["geometry"]["x"],r["geometry"]["y"]).wkb for r in features],type=pa.binary())
+    columns["geometry"]=pa.array([Point(r["geometry"]["x"],r["geometry"]["y"],r["geometry"]["z"]).wkb for r in features],type=pa.binary())
     schema=pa.schema([pa.field(f["name"],_arrow_type(f),nullable=f.get("nullable",True)) for f in fields]+
         [pa.field("geometry",pa.binary(),nullable=False)])
-    geo={"version":"1.1.0","primary_column":"geometry","columns":{"geometry":{"encoding":"WKB","geometry_types":["Point"],"crs":pyproj.CRS.from_epsg(4326).to_json_dict(),"edges":"spherical"}}}
+    geo={"version":"1.1.0","primary_column":"geometry","columns":{"geometry":{"encoding":"WKB","geometry_types":["Point Z"],"crs":pyproj.CRS.from_epsg(4326).to_json_dict(),"edges":"spherical"}}}
     sink=pa.BufferOutputStream();pq.write_table(pa.Table.from_pydict(columns,schema=schema.with_metadata({b"geo":_canonical(geo)})),sink,compression="zstd")
     return sink.getvalue().to_pybytes()
 
@@ -252,11 +255,11 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         "source_modified":None,"date_issued":SOURCE_RELEASE,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
         "inputs":[{"input_id":n,"producer":"Bureau of Transportation Statistics (USDOT_BTS)","host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":ITEM_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Creative Commons Attribution 3.0 United States (CC-BY-3.0)","attribution":"Acknowledgment of USDOT and BTS, as stated by the USDOT_BTS ArcGIS item; underlying GTFS source rights require review.","release_date":SOURCE_RELEASE,"item_modified_is_release_date":False} for n,r in receipts.items()],
         "lineage":"USDOT_BTS ArcGIS item ad6b0823f7364cac86c5421834eaba84, exact National Transit Map Agencies layer 0. Description states compiled 2026-09-23. The separately observed portal modified timestamp is not treated as source release date. GCS v1.0.0 is compiled 2025-06-30 and differs (1,246 vs 1,239 records; candidate native formats also omit or alter physical fields); no historical continuation or source approval is assumed.",
-        "transformations":[{"operation":"Esri JSON to native GeoParquet candidate","parameters":{"all_source_fields":"preserved in declared order and physical types","source_ids":"OBJECTID retained verbatim; other ID-like fields retained verbatim","geometry":"point coordinates retained as WKB in EPSG:4326; no repair or reproject","release_status":"unapproved"}}],
+        "transformations":[{"operation":"Esri JSON to native GeoParquet candidate","parameters":{"all_source_fields":"preserved in declared order and physical types","source_ids":"OBJECTID retained verbatim; other ID-like fields retained verbatim","geometry":"x,y,z point coordinates retained as WKB in EPSG:4326; no repair or reproject","release_status":"unapproved"}}],
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"One-to-one typed source fields and point coordinates retained; baseline and release approval pending.","objects":[{"path":f"geoparquet/{DATASET_SLUG}.parquet",**source_objects[f"geoparquet/{DATASET_SLUG}.parquet"]}]}}},
         "unsupported_output_formats":{"geopackage":"Historical candidate does not match the current source contract; explicit approved mapping pending.","shapefile_zip":"Historical candidate truncates field names and omits source OBJECTID.","pmtiles":"Display-only format; no publication transformation approved."}}
     validate_release_provenance(manifest)
-    audit={"feature_count":EXPECTED_COUNT,"source_id_sha256":EXPECTED_IDS_SHA256,"source_record_sha256":record_sha,"source_geometry_sha256":EXPECTED_GEOMETRY_SHA256,"source_schema_sha256":schema_sha,"source_fields":fields,"source_crs_epsg":4326,"geometry_type":"Point","null_geometry_count":0,"item_id":ITEM_ID,"item_owner":OWNER,"source_release":SOURCE_RELEASE,"portal_modified_is_not_release_date":True,
+    audit={"feature_count":EXPECTED_COUNT,"source_id_sha256":EXPECTED_IDS_SHA256,"source_record_sha256":record_sha,"source_geometry_sha256":EXPECTED_GEOMETRY_SHA256,"source_schema_sha256":schema_sha,"source_fields":fields,"source_crs_epsg":4326,"geometry_type":"Point Z","null_geometry_count":0,"item_id":ITEM_ID,"item_owner":OWNER,"source_release":SOURCE_RELEASE,"portal_modified_is_not_release_date":True,
         "historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     root.joinpath("capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"feature_count":EXPECTED_COUNT,"receipts":receipts})+b"\n")
     state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
