@@ -73,6 +73,7 @@ def execute(kind,success,reason=None):
  errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
  report['runs'].append({'kind':kind,'run_id':result.run_id,'success':result.success,'errors':errors});save()
  assert result.success is success,(kind,errors)
+ if success and 'output' in globals():assert result.output_for_node(asset.op.name)==output
  if reason:assert any(reason in e for e in errors),(kind,errors)
  assert pins(r/'published')==prior
  return result
@@ -126,6 +127,7 @@ with DagsterInstance.get() as instance:
  else:
   basepins=report['healthy_base_archive']['complete_file_roster'];bundle=(r/'trusted-original-bundle.json').read_bytes();first=(r/'trusted-original-marker.json').read_bytes()
   assert key.read_bytes()==bundle and marker.read_bytes()==first
+  assert s.encode(s.processing_identity())==s.encode(json.loads((root/'metadata/processing_identity.json').read_bytes())), 'Effective runtime identity changed; preserve original and do not construct a different version in this historical-context probe.'
   later=r/'later-observation-fixture';later.mkdir()
   for name in s.URLS:
    os.link(capture/(name+'.body'),later/(name+'.body'))

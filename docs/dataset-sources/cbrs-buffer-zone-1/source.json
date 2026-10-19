@@ -144,7 +144,7 @@
     "later_docs_only_head_and_observation_receipts": "actual registered full1145 refresh/rebuild preserves first commit and original receipts",
     "focused_execution": "evidence/review-repairs/construction-binding-focused-execution.json",
     "normal_graph_execution": "evidence/review-repairs/construction-binding-normal-graph-execution.json",
-    "scope": "Candidate-only self-repinning guards verified; separate depot co-forgery/code-identity authenticity probe still pending, not handoff-ready",
+    "scope": "Historical1c candidate-only proof; later external-coforgery gap repaired by shared Git validator and durable_construction_history; no acceptance.",
     "full_suite": {
       "total": 514,
       "passed": 513,
@@ -170,7 +170,7 @@
     "shared_helper_tests": 11,
     "normal_graph_execution": "evidence/review-repairs/git-identity-normal-graph-execution.json",
     "writer_AST_and_native_byte_parity": "evidence/review-repairs/git-identity-native-writer-and-data-parity.json",
-    "focused_full_pipeline_coforgery_rejections_and_exact_independent_review": "pending; no handoff-ready or source/release acceptance"
+    "focused_full_pipeline_coforgery_rejections_and_exact_independent_review": "Source76 eight completed expected scoped results retained; current exact-head independent review pending."
   },
   "durable_construction_history": {
     "source_checkpoint": "ec327f58f2e6bc173d7b0044f39de7dc160b8ea6",
@@ -179,8 +179,26 @@
     "missing_or_partial_history": "fail closed on all retries; explicit original restoration only",
     "real_first_marker_storage_fault_and_repeated_calls_unit": "PASS; final20 source tests107.566seconds",
     "actual_firstwriter_no_history_run": "ac4f4fd1-78b5-453a-81de-944f345a2c46",
-    "actual_final_repeated_calls_recovery": "pending; no handoff-ready claim",
+    "actual_final_repeated_calls_recovery": "evidence/review-repairs/construction-history-actual-execution.json",
     "prior_source76_eight_run_scope": "evidence/review-repairs/late-binding-partial-eight-run-and-deliberate-interruption.json",
-    "native_writer_parity": "evidence/review-repairs/construction-history-native-writer-parity.json"
+    "native_writer_parity": "evidence/review-repairs/construction-history-native-writer-parity.json",
+    "actual_final_source_run": "8870588e-9053-45f0-8bce-a92d2a68ac07",
+    "actual_trusted_restore_run": "dac414b9-19b3-42da-a477-83e55bf36c19",
+    "actual_two_call_guards": [
+      "primary_missing",
+      "marker_missing",
+      "marker_malformed",
+      "cas_only"
+    ],
+    "later_docs_original_context_rebuild": "pending; no handoff-ready claim",
+    "full_local_suite": {
+      "total": 542,
+      "passed": 541,
+      "skipped": 1,
+      "seconds": 405.946,
+      "source_checkpoint": "ec327f58f2e6bc173d7b0044f39de7dc160b8ea6",
+      "log": "evidence/review-repairs/construction-history-full-suite-542.log",
+      "CI_pass_inferred": false
+    }
   }
 }
