@@ -221,7 +221,7 @@ class ContiguousDraftTests(unittest.TestCase):
                 after = {str(f.relative_to(p / 'published')): hashlib.sha256(f.read_bytes()).hexdigest() for f in (p / 'published').rglob('*') if f.is_file()}
                 self.assertEqual(before, after)
                 self.assertTrue((version_dir / 'metadata/noaa_extraction.json').is_file())
-                result = {'classification': 'working local draft; complete retained real source capture; receipt timestamps establish acquisition, no new-live-read claim; no dataset acceptance',
+                result = {'classification': 'working local draft; complete retained real source bytes; receipt times may be synthetic idempotency fixtures; no new-live-read or acquisition-time assertion; no dataset acceptance',
                     'source_code_commit': tags['hifld/source_code_commit'],
                     'module': source_module.__file__, 'asset_collection': 'dagster_hifld.definitions.defs.assets',
                     'normal_registered_asset_count': len(registered_defs.resolve_asset_graph().get_all_asset_keys()), 'source_run_id': first.run_id, 'idempotent_run_id': second.run_id,
