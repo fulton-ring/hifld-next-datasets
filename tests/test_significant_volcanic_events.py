@@ -81,6 +81,49 @@ class SignificantVolcanicTests(unittest.TestCase):
             with mock.patch.object(f.httpx,'Client',return_value=client),mock.patch.object(f,'MAX_BODY_BYTES',36):
                 with self.assertRaises(ValueError):f.acquire(StagingStorageResource(local_dir=d))
             wire=list(Path(d).glob('_acquisition-attempts/*/*/*/wire.body'));self.assertEqual(len(wire),1);self.assertEqual(wire[0].read_bytes(),b'x'*37)
+    def test_partial_wire_and_decoded_blocks_retained_before_rejection(self):
+        delivered=bytes(range(64));original=Path.open
+        class Stream(httpx.SyncByteStream):
+            def __iter__(self):yield delivered
+        for target,claimed in[('wire.body',False),('wire.body',True),('decoded.body',False)]:
+            class Short:
+                def __init__(self,stream):self.stream=stream
+                def __enter__(self):return self
+                def __exit__(self,*args):return self.stream.__exit__(*args)
+                def write(self,body):
+                    self.stream.write(body[:7]);return len(body)if claimed else 7
+                def flush(self):return self.stream.flush()
+                def fileno(self):return self.stream.fileno()
+            def opening(path,*args,**kwargs):
+                stream=original(path,*args,**kwargs)
+                return Short(stream)if path.name==target and args and args[0]=='xb'else stream
+            with tempfile.TemporaryDirectory()as d:
+                client=httpx.Client(transport=httpx.MockTransport(lambda req:httpx.Response(200,stream=Stream())))
+                with mock.patch.object(f.httpx,'Client',return_value=client),mock.patch.object(Path,'open',opening):
+                    with self.assertRaises(ValueError):f.acquire(StagingStorageResource(local_dir=d))
+                pending=list(Path(d).glob('_acquisition-attempts/*/*/*/pending_'+target));self.assertEqual(len(pending),1);self.assertEqual(pending[0].read_bytes(),delivered)
+                physical=next(Path(d).glob('_acquisition-attempts/*/*/*/'+target));self.assertEqual(physical.read_bytes(),delivered[:7])
+                transfer=json.loads(next(Path(d).glob('_acquisition-attempts/*/*/*/transfer.json')).read_bytes());self.assertFalse(transfer['complete']);self.assertFalse(transfer['independent_physical_readback_matches_acknowledged_sinks']);self.assertEqual(transfer['physical_'+target.split('.')[0]]['bytes'],7)
+                self.assertFalse((Path(d)/'_construction-state').exists())
+
+    def test_cached_authored_snapshot_and_resolved_wrapper_exact(self):
+        with tempfile.TemporaryDirectory()as d:
+            base=Path(d);version='v0.0.0-draft-structural';root=base/f.SLUG/f.SLUG/version;(root/'geoparquet').mkdir(parents=True)
+            table=decode(page());path=root/'geoparquet'/f'{f.SLUG}.parquet';pq.write_table(f.parquet_table(table),path,compression='zstd');identity={'fixture':'explicit synthetic two-row cache'};audit={};captures={}
+            for name,url in f.URLS.items():
+                body=('Explicit synthetic input: '+name).encode();captures[name]=(body,{'url':url,'final_url':url,'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,'observed_at':'2026-10-19T00:00:00+00:00'})
+            manifest=f.manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':f.sha256_file(path)})
+            for name,body in f.source_payloads(captures,identity,audit,manifest).items():f.write_private(root,name,body)
+            ready={'approved':False,'version':version,'processing_fingerprint':f.digest(f.encode(identity)),'objects':{str(p.relative_to(root)):f.sha256_file(p)for p in root.rglob('*')if p.is_file()}};f.write_private(root,f.READY,f.encode(ready));storage=StagingStorageResource(local_dir=d)
+            canonical=f.encode(manifest);f.write_private(root,'metadata/source/source_manifest.json',canonical)
+            projected=f.provenance_projection(f.load_resolved_source_manifest(storage,f.SLUG,f.SLUG,version).metadata);f.write_private(root,'metadata/resolved_provenance.json',f.encode(projected))
+            f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+            for name in['metadata/source/source_manifest.json','metadata/resolved_provenance.json']:
+                original=(root/name).read_bytes();f.write_private(root,name,b'{"approved":true,"code_commit":"FORGED_SOURCE_WRAPPER"}\n')
+                with self.assertRaisesRegex(ValueError,'cached_source_snapshot_drift|cached_resolved_provenance_drift'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                f.write_private(root,name,original)
+            f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+
     def test_malformed_receipt_retains_consumed_body_before_parse(self):
         with tempfile.TemporaryDirectory()as d:
             r=Path(d);cap=r/'inputs';cap.mkdir();first=next(iter(f.URLS));(cap/(first+'.body')).write_bytes(b'original literal source body');(cap/(first+'.receipt.json')).write_bytes(b'{bad')

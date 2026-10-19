@@ -31,6 +31,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
@@ -187,6 +189,32 @@ def validate_receipt(name,body,receipt):
         'release_date_unknown_reason':'No verified dated data release. Event YEAR/MO/DAY, service editingInfo, portal modification and retrieval are separate values, never invented release dates.'}
 
 
+def retain_capture_fragment(path,body):
+    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
+    try:
+        if os.write(descriptor,body)!=len(body):raise OSError('short_pending_capture_write')
+        os.fsync(descriptor)
+    finally:os.close(descriptor)
+    if bounded_input(path,len(body))!=body:raise OSError('pending_capture_readback_mismatch')
+
+
+def preserve_transfer_result(path,result):
+    transfer={key:value for key,value in vars(result).items()if key not in('pending_wire','pending_decoded')}
+    for label in('wire','decoded'):
+        pending=getattr(result,'pending_'+label)
+        if pending:retain_capture_fragment(path/('pending_'+label+'.body'),pending)
+        transfer['pending_'+label+'_artifact']={'bytes':len(pending),'sha256':digest(pending),'path':'pending_'+label+'.body'if pending else None}
+        observed=path/(label+'.body')
+        transfer['physical_'+label]={'bytes':observed.stat().st_size,'sha256':sha256_file(observed)}
+    readback=(transfer['physical_wire']['bytes']==result.wire_bytes_retained
+        and transfer['physical_wire']['sha256']==result.wire_sha256
+        and transfer['physical_decoded']['bytes']==result.decoded_bytes_retained
+        and transfer['physical_decoded']['sha256']==result.decoded_sha256)
+    transfer['independent_physical_readback_matches_acknowledged_sinks']=readback
+    retain_capture_fragment(path/'transfer.json',encode(transfer))
+    return readback
+
+
 def acquire(storage,capture_dir=None):
     local_only(storage);captures={};attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise VolcanicQuarantineError('unsafe_capture_root')
@@ -199,20 +227,32 @@ def acquire(storage,capture_dir=None):
             else:
                 path=Path(storage.local_dir)/attempt/name;path.mkdir(parents=True)
                 with(path/'wire.body').open('xb')as wire,(path/'decoded.body').open('xb')as decoded:
-                    def retain(stream,block):
-                        if stream.write(block)!=len(block):raise OSError('short_capture_write')
+                    def retain(stream,block,target):
+                        before=os.fstat(stream.fileno());written=stream.write(block)
                         stream.flush();os.fsync(stream.fileno())
+                        if written!=len(block):raise OSError('short_capture_write')
+                        reader=os.open(target,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+                        try:
+                            actual=os.fstat(reader)
+                            if(not stat.S_ISREG(actual.st_mode)or actual.st_nlink!=1
+                                or(actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino)
+                                or actual.st_size!=before.st_size+len(block)
+                                or os.pread(reader,len(block),before.st_size)!=block):raise OSError('capture_block_readback_mismatch')
+                        finally:os.close(reader)
                     def reserve(progress):
                         if shutil.disk_usage(path).free<SPACE_FLOOR+progress.reserve_bytes:raise OSError('disk_floor_before_read')
-                    receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat()}
+                    receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat()};result=None
                     try:
                         with httpx.Client(follow_redirects=False,timeout=60,headers={'Accept-Encoding':'identity'})as client,client.stream('GET',url)as response:
                             result=capture_http_response(response,max_wire_bytes=MAX_BODY_BYTES,max_decoded_bytes=MAX_BODY_BYTES,
-                                reserve=reserve,retain_wire=lambda b:retain(wire,b),retain_decoded=lambda b:retain(decoded,b))
+                                reserve=reserve,retain_wire=lambda b:retain(wire,b,path/'wire.body'),retain_decoded=lambda b:retain(decoded,b,path/'decoded.body'))
                             receipt.update(final_url=str(response.url),status=response.status_code,complete_body=result.complete,
                                 bytes=result.decoded_bytes_retained,sha256=result.decoded_sha256,wire_bytes=result.wire_bytes_received,error_code=result.error_code)
                     finally:
+                        if result is not None:readback=preserve_transfer_result(path,result)
                         wire.flush();decoded.flush()
+                receipt['complete_body']=result.complete and readback
+                receipt['independent_sink_readback_matches']=readback
                 body=bounded_input(path/'decoded.body',MAX_BODY_BYTES+1024*1024)
                 immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body);raw=encode(receipt)
             immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
@@ -240,7 +280,7 @@ def manifest_for(captures,identity,output_pin):
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
         'title':'Historical Significant Volcanic Event Locations — complete current official NOAA NCEI draft','publisher':'NOAA National Centers for Environmental Information','agency':'National Oceanic and Atmospheric Administration','source_url':LANDING,'license':LICENSE,
         'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(n,*captures[n])for n in URLS],
-        'transformations':[{'operation':'complete_official_ID_targeted_feature_extraction','parameters':{'source_ids':'OBJECTID, VOL_ID, SIG_ID, TSU_ID, HAZ_EVENT_ID, ID, OID and literal NUM remain distinct original columns; no historical ID join accepted.','types':'Original SmallInteger int16/Integer and OID int32/Double float64/string/nullability/width metadata retained. Original JSON lexical bytes remain immutable.','dates':'Original YEAR/MO/DAY components including BCE and nulls remain literal integers; TIME_ERUPT remains original coded string, never converted to invented timestamp.','geometry':'Native3857 Point WKB from original binary64 x/y, no projection, precision change or repair.','relationship':'903 current official significant event records; historical893-row baseline and schema/ID/geometry differences remain unapproved.'}}],
+        'transformations':[{'operation':'complete_official_ID_targeted_feature_extraction','parameters':{'source_ids':'OBJECTID, VOL_ID, SIG_ID, TSU_ID, HAZ_EVENT_ID, ID, OID and literal NUM remain distinct original columns; no historical ID join accepted.','types':'Original SmallInteger int16/Integer int32/Double float64/string/nullability/width metadata retained. OID Arrow int32 is a proposed bounded staging representation; source OID physical width is not explicitly declared. Original ID values/declarations/JSON lexical bytes remain immutable; no width or published schema mapping approved.','dates':'Original YEAR/MO/DAY components including BCE and nulls remain literal integers; TIME_ERUPT remains original coded string, never converted to invented timestamp.','geometry':'Native3857 Point WKB from original binary64 x/y, no projection, precision change or repair.','relationship':'903 current official significant event records; historical893-row baseline and schema/ID/geometry differences remain unapproved.'}}],
         'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all59 original attributes/IDs/types/nulls/metadata and exact native WKB; generic schema regeneration unapproved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**output_pin}]}}},
         'unsupported_output_formats':{'geopackage':'Original source field widths/types and container mapping have no approved GeoPackage contract.','shapefile_zip':'Original long names/string/null/physical widths cannot be silently coerced.','pmtiles':'Reprojection/quantization and feature ID mapping remain unapproved.'}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
@@ -277,7 +317,7 @@ def original_context(storage,version,fingerprint,captures,identity,manifest,*,cr
     validate_release_provenance(old);validate_output_policy(old);validate_construction_code_identity(Path(__file__).parents[3],old['code_commit'],identity['files']);return original,old
 
 
-def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cached=False):
+def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cached=False,storage=None):
     roster=candidate_roster(root);expected=source_payloads(captures,identity,audit,manifest);names=set(expected)|{f'geoparquet/{SLUG}.parquet'}
     ready={'approved':False,'version':version,'processing_fingerprint':digest(encode(identity)),'objects':{n:sha256_file(root/n)for n in names}}
     if not(names|{READY}).issubset(roster):raise VolcanicQuarantineError('missing_candidate_object')
@@ -285,6 +325,13 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
     if cached:
         allowed={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json','metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'}
         if roster-(names|{READY}|allowed):raise VolcanicQuarantineError('unknown_cached_object')
+        for name in roster-(names|{READY}):strict_json(candidate_bytes(root,name))
+        for name in('metadata/source/source_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'):
+            if name in roster and candidate_bytes(root,name)!=encode(manifest):raise VolcanicQuarantineError('cached_source_snapshot_drift')
+        if 'metadata/resolved_provenance.json'in roster:
+            if storage is None:raise VolcanicQuarantineError('resolved_provenance_requires_explicit_storage_context')
+            projected=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
+            if encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(projected):raise VolcanicQuarantineError('cached_resolved_provenance_drift')
     for n,b in expected.items():
         if candidate_bytes(root,n)!=b:raise VolcanicQuarantineError('candidate_source_bytes_drift:'+n)
     if candidate_bytes(root,READY)!=encode(ready):raise VolcanicQuarantineError('candidate_ready_drift')
@@ -314,7 +361,7 @@ def stage_significant_volcanic(storage,*,capture_dir=None):
                         q=base/'_quarantine'/SLUG/('observed-loss-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q)
                     raise VolcanicQuarantineError('observed_original_trust_loss')from exc
                 if root.exists():
-                    try:validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True)
+                    try:validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
                     except Exception as exc:
                         q=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q);raise VolcanicQuarantineError('invalid_cache_moved_intact:'+str(q))from exc
                     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True}
