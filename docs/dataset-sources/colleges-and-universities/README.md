@@ -21,7 +21,7 @@ Reproduce from the complete committed originals with managed dependencies, insta
 ```bash
 COLLEGES_TEST_CAPTURE_DIR=$PWD/docs/dataset-sources/colleges-and-universities/evidence/inputs PYTHONPATH=src uv run python -m unittest discover -s tests -p test_colleges_universities.py
 PYTHONPATH=src uv run python scripts/verify_colleges_draft.py --capture-dir docs/dataset-sources/colleges-and-universities/evidence/inputs --runtime-dir /tmp/colleges-unique-isolated-runtime
-uv run python scripts/compare_colleges_candidate.py --evidence-dir docs/dataset-sources/colleges-and-universities/evidence/inputs
+uv run python scripts/compare_colleges_candidate.py --evidence-dir docs/dataset-sources/colleges-and-universities/evidence/inputs --output-dir /tmp/colleges-comparison
 ```
 
 Source files: `src/dagster_hifld/sources/colleges_universities.py`, `src/dagster_hifld/assets/colleges_universities.py`. Evidence includes complete original current/historical NCES inputs, complete pinned published GDB and Parquet candidates, all baseline ID diagnostics, live transport receipts, full execution logs and SHA/length pins. The current release day is unknown; the school year is 2025–2026 and embedded shapefile creation is 2026-03-05, which is not asserted as publication date.
