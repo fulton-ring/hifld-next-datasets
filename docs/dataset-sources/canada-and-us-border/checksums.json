@@ -1,0 +1,78 @@
+{
+  "evidence/baseline.parquet": {
+    "sha256": "f419f5cc00580f3e1c3cf70aaa1c8132c02aaed47bac603965cecdf8ad22794b",
+    "bytes": 270300
+  },
+  "evidence/baseline.receipt.json": {
+    "sha256": "77095cc27637016c7a16e604cf146d5463104b9e235dba46ed0d2d0cf0a46ccf",
+    "bytes": 1499
+  },
+  "evidence/candidate-catalog.body": {
+    "sha256": "f96236b267c3a50d967b5dabebb0970efe0c5cdbd0faffaa506d6dafba550f73",
+    "bytes": 2441
+  },
+  "evidence/candidate-collection.body": {
+    "sha256": "0100a249f1aed2e1b0e28e51d0a1ce21e360caaa81ba77e700747f59cf472f5e",
+    "bytes": 10361
+  },
+  "evidence/candidate-file-catalog.body": {
+    "sha256": "e60b954cbedda94054bfed6aeefc1954bb5b6e78fcfde96e035aafda2878bf4e",
+    "bytes": 2754
+  },
+  "evidence/captures/ibc-about.body": {
+    "sha256": "419b2740d7171340e763789fcff608c18b04fcbad6200b7eb88a456901a6bfaa",
+    "bytes": 17941
+  },
+  "evidence/captures/ibc-about.receipt.json": {
+    "sha256": "b8eea576b74e0389404676f808b80dfb1018221f92244f5d4ec16172fa099ba8",
+    "bytes": 735
+  },
+  "evidence/captures/ibc-digital.body": {
+    "sha256": "d840f22df49c99cd6ca807f85edd416322422d18b1f2898032267e2afc0f1cc6",
+    "bytes": 10155
+  },
+  "evidence/captures/ibc-digital.receipt.json": {
+    "sha256": "1d075ef124d48e5ed0a54abb41d5055078aab122633651df2a7ce387a1527e53",
+    "bytes": 760
+  },
+  "evidence/captures/ibc-terms.body": {
+    "sha256": "df8d3cda6eb70b9471958a0fdea208739a26db7feb98fe5c8581180348d2572d",
+    "bytes": 14871
+  },
+  "evidence/captures/ibc-terms.receipt.json": {
+    "sha256": "adc38786a1c67b443fe6f191d920f05ec82aed8495edf223c78b8a8a914340ef",
+    "bytes": 717
+  },
+  "evidence/captures/ibc-zip.body": {
+    "sha256": "eb327459528b87cbc27e55ccc6bfd6982562c75559823a00b6dc50c04abcaab1",
+    "bytes": 258764
+  },
+  "evidence/captures/ibc-zip.receipt.json": {
+    "sha256": "d0841be0e324e39d80460fca83782a3d544971d9a649d3ffebd1eef7b088865e",
+    "bytes": 875
+  },
+  "evidence/crosswalk.receipt.json": {
+    "sha256": "80adb3b8d526d6969a2268195245d767c28cc1237500412a470d4f0d5d35cf73",
+    "bytes": 2834
+  },
+  "evidence/dagster-verified.log": {
+    "sha256": "1ca513e15dafe5f98632014009f52ddb710425a074f576a474906500cf0e4392",
+    "bytes": 16419
+  },
+  "evidence/datalumos.receipt.json": {
+    "sha256": "dbd934dc6e204daaed32895799d7926a015730064459c1c7a60131c351200250",
+    "bytes": 2866
+  },
+  "evidence/execution.json": {
+    "sha256": "8f97972557d12cc0a339cea9dc6219d2255544288682dc785505741b22b894c1",
+    "bytes": 7494
+  },
+  "evidence/full-suite.log": {
+    "sha256": "291942c6734971ec8374d076655c287b1d66f5b65b647a83043b15ffafee1b45",
+    "bytes": 19669
+  },
+  "evidence/tests.log": {
+    "sha256": "9fa8100cdef154ec3c6c121843d36aeb7d1d1fd30a696b3fb3f656681f1d1633",
+    "bytes": 338
+  }
+}

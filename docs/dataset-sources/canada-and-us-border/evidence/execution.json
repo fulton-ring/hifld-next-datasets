@@ -1,0 +1,106 @@
+{
+  "code_head": "92eb227361aecb95903e0734a17b8fdaa57d7a96",
+  "module": "/workspace/hifld-worker-worktrees/26/src/dagster_hifld/sources/canada_us_border.py",
+  "runtime": "/workspace/work/hifld-coordinator/26/dagster-verified",
+  "approved": false,
+  "runs": [
+    {
+      "kind": "real_complete_source",
+      "run_id": "b7de02da-6e34-41c5-8efb-d71a5391a6c0",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/canada-and-us-border/canada-and-us-border"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "real_complete_refresh",
+      "run_id": "39da478c-2385-49ca-8bcd-ec67358b09a4",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/canada-and-us-border/canada-and-us-border"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_formats_missing_approval",
+      "run_id": "d2458f8b-846e-40d7-b537-9e99d130d5bc",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/26/src/dagster_hifld/assets/publish.py\", line 1380, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/26/src/dagster_hifld/release_approval.py\", line 120, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/26/src/dagster_hifld/release_approval.py\", line 48, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "synthetic_failed_geometry_quality_gate",
+      "run_id": "3710da09-7e3e-4b04-ab58-31bccb8672cd",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-next-datasets/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ],
+      "materializations": [
+        "publish/catalog"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ]
+    }
+  ],
+  "output": {
+    "dataset_slug": "canada-and-us-border",
+    "file_slug": "canada-and-us-border",
+    "version": "v0.0.0-draft-ibc13-4b5287604b6e69cb-a6bb7e038fd3a973",
+    "feature_count": 30,
+    "status": "working_draft_candidate_ready",
+    "processing_fingerprint": "a6bb7e038fd3a973b2b03a383cebefe179e58b4e0d28e2a0b7dc386a10d2b30c"
+  },
+  "all_30_ids_values_types_wkb_preserved": true,
+  "source_discoverable_without_manual_copy": true,
+  "refresh_byte_idempotent": true,
+  "prior_published_fixture_preserved": true,
+  "quality": {
+    "bounds": [
+      -141.001836,
+      40.451389,
+      -65.699167,
+      69.646614
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "5e3a9dc5abcdcc1ab35310750b59ca18deee248aae1ff1afdb6a60f49a9e3c79",
+    "feature_count": 30,
+    "geometry_type": "LineString",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 30,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "provenance_input_count": 4,
+  "terminal_parquet": {
+    "rows": 30,
+    "all_source_values_types_wkb_exact": true,
+    "extra_columns": [
+      "bbox"
+    ],
+    "nullable_inference_requires_review": true
+  }
+}

@@ -1,0 +1,20 @@
+# Canada and US Border — working local draft
+
+This implements the International Boundary Commission's directly published edition1.3, dated2018-04-20 by its embedded ISO metadata. The official Digital Boundary page still distributes this edition. It is a static producer release, not a2026survey and not a legal boundary definition. All30native NAD83 LineStrings, five original fields, original Shapefile FIDs, per-segment mapping scales, and the complete11-member ZIP remain intact.
+
+`source.json` describes the draft, exact captures and release decisions. `comparison.json` compares all30rows with the complete unapproved published candidate. All5shared attributes match; all30geometries are topologically equal and their coordinates are byte-exact inside the published single-part MultiLineString wrappers. Original LineString/MultiLineString types and published IDs differ, so this is not an approved compatibility decision. Published `id`, `SHAPE_Length`, `bbox` are preserved in the complete baseline; the extractor does not invent replacements.
+
+The user authorizes reviewable draft implementation and isolated local tests while source/baseline/contract decisions remain pending. This replaces the earlier dispatcher research-only restriction and grants no release, merge or production approval. The embedded Open Government Licence Canada and generic website commercial redistribution restriction are both preserved for a maintainer decision.
+
+The source asset writes canonical discoverable SEMVER staging without runner copies. All four capture receipts/provenance records are validated before any canonical output. Pinned-source/schema/ID/CRS/type/coverage errors and partial network attempts retain raw bytes in quarantine. Installed Python/code/dependencies/native engines bind immutable versions; changed captures or runtime use a distinct candidate namespace. A STOPPED monthly schedule checks availability/integrity, and changed producer releases require review instead of silent adoption.
+
+Run the complete captured real source and normal Dagster graph in fresh isolated storage:
+
+```sh
+PYTHONPATH="$PWD/src" uv run --frozen python scripts/verify_canada_us_border_draft.py --runtime /tmp/ibc-draft-run
+PYTHONPATH="$PWD/src" uv run --frozen python -m unittest discover -s tests -p test_canada_us_border_source.py
+```
+
+The recorded source and refresh succeed on all30rows. The normal graph materializes catalog/quality/GPKG/Parquet, then fails at the missing independent acceptance registry. A separate explicitly corrupted local test partition fails the blocking geometry-quality check. Both preserve prior published fixture bytes. Primary typed Parquet/GPKG retain all fields, types and WKB exactly; terminal Parquet additionally derives `bbox` and infers nullability, requiring schema review. PMTiles and regenerated Shapefile are explicitly excluded; their asset events do not mean those formats were generated or approved.
+
+No CI success, full-suite success, real baseline acceptance, production write, merge or issue closure is claimed. The sibling IaC test dependency remains a full-suite limitation. Exact run IDs and checks are in `evidence/execution.json`; independent review remains required on the final head.
