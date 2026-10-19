@@ -1,5 +1,7 @@
 """Faithful draft mechanics and failure isolation; fixtures do not grant acceptance."""
 import copy
+import gzip
+import threading
 import json
 import sqlite3
 import tempfile
@@ -176,5 +178,54 @@ class CBRSTests(unittest.TestCase):
                     (root/name).write_bytes(body)
             # Independent fresh replay must derive the entire same report and all sidecars.
             s._FIDELITY_PAYLOAD_CACHE.clear();self.assertEqual(s.fidelity_payloads(records,fingerprint),expected)
+
+    def test_compressed_wire_length_and_incomplete_wire_response(self):
+        original_client=s.httpx.Client
+        plain=b'complete decoded producer response'*100
+        compressed=gzip.compress(plain)
+        def response(request):
+            self.assertEqual(request.headers['Accept-Encoding'],'identity')
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed))},stream=httpx.ByteStream(compressed))
+        def client(**kw):return original_client(transport=httpx.MockTransport(response),**kw)
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=client):
+            captures=s.acquire(StagingStorageResource(local_dir=d),None)
+            self.assertEqual(len(captures),4)
+            for body,receipt in captures.values():
+                self.assertEqual(body,plain);self.assertEqual(receipt['received_wire_bytes'],len(compressed))
+                self.assertNotEqual(receipt['received_wire_bytes'],receipt['byte_length'])
+        def truncated(request):return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed))},stream=httpx.ByteStream(compressed[:-4]))
+        def badclient(**kw):return original_client(transport=httpx.MockTransport(truncated),**kw)
+        with tempfile.TemporaryDirectory() as d,patch.object(s.httpx,'Client',side_effect=badclient),self.assertRaisesRegex(ValueError,'incomplete_content_length'):
+            try:s.acquire(StagingStorageResource(local_dir=d),None)
+            finally:self.assertEqual(len(list(Path(d).rglob('report.json'))),3)
+
+    def test_invalid_lookup_quarantine_and_concurrent_valid_winner_share_lock(self):
+        # These are explicitly synthetic implementation fixtures, not dataset approval.
+        captures={'official_zip':(b'synthetic-body',{})};identity={'fixture':True}
+        fp=s.sha(s.encode(identity));cp=s.sha(s.encode({'official_zip':s.sha(b'synthetic-body')}))
+        prefix=s.SLUG+'/'+s.SLUG+'/v0.0.0-draft-cbrs20241219-'+cp[:16]+'-'+fp[:16]
+        held=threading.Event();release=threading.Event();started=threading.Event();winner=threading.Event();errors=[]
+        original_q=s.quarantine_rejected_cache_held;original_diag=s.quarantine
+        with tempfile.TemporaryDirectory() as d:
+            storage=StagingStorageResource(local_dir=d);target=Path(d)/prefix
+            (target/'geopackage').mkdir(parents=True);(target/'geopackage/incomplete.gpkg').write_bytes(b'old incomplete')
+            def pause_q(*args):
+                held.set();self.assertTrue(release.wait(10));return original_q(*args)
+            def diagnostic(*args):
+                self.assertTrue(winner.wait(10));return original_diag(*args)
+            def source():
+                try:s.stage_cbrs_buffer_candidate(storage)
+                except Exception as e:errors.append(str(e))
+            def install():
+                started.set();s.commit_complete_candidate(storage,prefix,{'geopackage/winner.gpkg':b'valid winner fixture'},{'synthetic':True});winner.set()
+            with patch.object(s,'acquire',return_value=captures),patch.object(s,'provenance',return_value={}),patch.object(s,'inspect_archive',return_value=([],{},{})),patch.object(s,'processing_identity',return_value=identity),patch.object(s,'quarantine_rejected_cache_held',side_effect=pause_q),patch.object(s,'quarantine',side_effect=diagnostic):
+                a=threading.Thread(target=source);a.start();self.assertTrue(held.wait(10))
+                b=threading.Thread(target=install);b.start();self.assertTrue(started.wait(10))
+                self.assertFalse(winner.wait(.15));release.set();a.join(10);b.join(10)
+                self.assertFalse(a.is_alive());self.assertFalse(b.is_alive())
+            self.assertTrue(winner.is_set());self.assertTrue(any('missing_ready' in x for x in errors))
+            self.assertEqual((target/'geopackage/winner.gpkg').read_bytes(),b'valid winner fixture')
+            moved=list(Path(d,'_quarantine',s.SLUG,'rejected-cache').rglob('incomplete.gpkg'))
+            self.assertEqual(len(moved),1);self.assertEqual(moved[0].read_bytes(),b'old incomplete')
 
 if __name__=='__main__':unittest.main()
