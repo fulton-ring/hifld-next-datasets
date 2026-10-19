@@ -1,0 +1,628 @@
+{
+  "assets": {
+    "geojson-1f483b55c7cd": {
+      "file:checksum": "d5011019213f623cc666ea0d9afeba4e459d0b",
+      "file:size": 39580099,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/geojson/aiannh-areas-1-geojson.geojson",
+      "roles": [
+        "data"
+      ],
+      "title": "aiannh-areas-1-geojson.geojson",
+      "type": "application/geo+json"
+    },
+    "geopackage-2f913502488d": {
+      "file:checksum": "d501100d0f5579157bce6825094dedd4045298",
+      "file:size": 14639104,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/geopackage/aiannh-areas-1.gpkg",
+      "roles": [
+        "data"
+      ],
+      "title": "aiannh-areas-1.gpkg",
+      "type": "application/geopackage+sqlite3"
+    },
+    "geoparquet-49dfb20ed546": {
+      "file:checksum": "d5011076d24089e4f0fd140956b39e62f6cb56",
+      "file:size": 8263475,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/geoparquet/aiannh-areas-1.parquet",
+      "roles": [
+        "data"
+      ],
+      "title": "aiannh-areas-1.parquet",
+      "type": "application/vnd.apache.parquet"
+    },
+    "pmtiles-2ba379db0a4d": {
+      "file:checksum": "d5011042feed72fe1da9d3decbedda36acf956",
+      "file:size": 4158787,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/pmtiles/aiannh-areas-1.pmtiles",
+      "roles": [
+        "data"
+      ],
+      "title": "aiannh-areas-1.pmtiles",
+      "type": "application/vnd.pmtiles"
+    },
+    "shapefile-916c24d1afed": {
+      "file:checksum": "d501104f114eefa83991954d9bce92954cfafb",
+      "file:size": 9194804,
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/shapefile/aiannh-areas-1.zip",
+      "roles": [
+        "data"
+      ],
+      "title": "aiannh-areas-1.zip",
+      "type": "application/zip"
+    }
+  },
+  "description": "Federal (federal AIRs) are areas that have been set aside by the United States for the use of tribes, the exterior boundaries of which are more particularly defined in the final tribal treaties, agreements, executive orders, federal statutes, secretarial orders, or judicial determinations. The Bureau of Indian Affairs maintains a list of all federally recognized tribal governments and makes final determination of the inventory federal AIRs. The Census Bureau recognizes federal reservations (and associated off-reservation trust lands) as territory over which American Indian tribes have primary governmental authority. American Indian reservations can be legally described as colonies, communities, Indian colonies, Indian communities, Indian rancheria, Indian reservations, Indian villages, pueblos, rancherias, ranches, reservations, reserves, settlements, or villages. The Census Bureau contacts representatives of American Indian tribal governments to identify the boundaries for federal reservations through its annual Boundary and Annexation Survey. Federal reservations may cross state and all other area boundaries.State (state AIRs) are reservations established by some state governments for tribes recognized by the state. A governor-appointed state liaison provides the names and boundaries for state-recognized American Indian reservations to the Census Bureau. State reservations must be defined within a single state, but may cross county and other types of boundaries. To further identify and differentiate state-recognized American Indian areas from those that are federally recognized, the text, \"(state)\" is appended to the AIR name.Off-Reservation Trust Lands are areas for which the United States holds title in trust for the benefit of a tribe (tribal trust land) or for an individual American Indian (individual trust land). Trust lands can be alienated or encumbered only by the owner with the approval of the Secretary of the Interior or his/her authorized representative. Trust lands may be located on or off a reservation; however, the Census Bureau tabulates data only for off-reservation trust lands with the off-reservation trust lands always associated with a specific federally recognized reservation and/or tribal government. As for federally recognized reservations, the Census Bureau obtains the boundaries of off-reservation trust lands from American Indian tribal governments through its annual Boundary and Annexation Survey. The Census Bureau recognizes and tabulates data for reservations and off-reservation trust lands because American Indian tribes have primary governmental authority over these lands. The Census Bureau does not identify fee land (or land in fee simple status) or restricted fee lands as specific geographic areas.Download:\u00a0https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zipMetadata:\u00a0https://meta.geo.census.gov/data/existing/decennial/GEO/GPMB/TIGERline/Current_19115/series_tl_2023_aiannh.shp.iso.xml",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -174.23598799979408,
+          18.910690000066186,
+          -67.03551799979047,
+          71.34018600002793
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "hifld:agency": "Census Bureau",
+  "hifld:feature_count": 704,
+  "hifld:feature_id_column": null,
+  "hifld:geometry_column": "geometry",
+  "hifld:geometry_type": "MultiPolygon",
+  "hifld:inventory_match_type": null,
+  "hifld:manifest_keys": [
+    "aiannh-areas-1/metadata/source_manifest.json",
+    "aiannh-areas-1/aiannh-areas-1/metadata/source_manifest.json"
+  ],
+  "hifld:manifest_role": "resolved_version",
+  "hifld:metadata_resolved_from": {},
+  "hifld:metadata_sources": [],
+  "hifld:native_bbox": [
+    -19395861.462,
+    2144423.9263000004,
+    -7462359.728800001,
+    11519605.0709
+  ],
+  "hifld:native_crs": "{\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\", \"base_crs\": {\"coordinate_system\": {\"axis\": [{\"abbreviation\": \"lat\", \"direction\": \"north\", \"name\": \"Latitude\", \"unit\": \"degree\"}, {\"abbreviation\": \"lon\", \"direction\": \"east\", \"name\": \"Longitude\", \"unit\": \"degree\"}], \"subtype\": \"ellipsoidal\"}, \"datum\": {\"ellipsoid\": {\"inverse_flattening\": 298.257223563, \"name\": \"WGS 84\", \"semi_major_axis\": 6378137}, \"name\": \"World Geodetic System 1984\", \"type\": \"GeodeticReferenceFrame\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 4326}, \"name\": \"WGS 84\"}, \"conversion\": {\"method\": {\"id\": {\"authority\": \"EPSG\", \"code\": 1024}, \"name\": \"Popular Visualisation Pseudo Mercator\"}, \"name\": \"unnamed\", \"parameters\": [{\"id\": {\"authority\": \"EPSG\", \"code\": 8801}, \"name\": \"Latitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8802}, \"name\": \"Longitude of natural origin\", \"unit\": \"degree\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8806}, \"name\": \"False easting\", \"unit\": \"metre\", \"value\": 0}, {\"id\": {\"authority\": \"EPSG\", \"code\": 8807}, \"name\": \"False northing\", \"unit\": \"metre\", \"value\": 0}]}, \"coordinate_system\": {\"axis\": [{\"abbreviation\": \"\", \"direction\": \"east\", \"name\": \"Easting\", \"unit\": \"metre\"}, {\"abbreviation\": \"\", \"direction\": \"north\", \"name\": \"Northing\", \"unit\": \"metre\"}], \"subtype\": \"Cartesian\"}, \"id\": {\"authority\": \"EPSG\", \"code\": 3857}, \"name\": \"WGS 84 / Pseudo-Mercator\", \"type\": \"ProjectedCRS\"}",
+  "hifld:office": null,
+  "hifld:quality": {
+    "columns_hash": "8b144ec6af409ff1ff1bed6af3a1314926eda5ed1617e0aaece698c4da5c385e",
+    "invalid_geometry_count": 38,
+    "manifest_href": "metadata/quality_manifest.json",
+    "null_geometry_count": 0,
+    "passed": false,
+    "provenance": "production_metadata_and_parquet_footer_spike",
+    "sampled_feature_count": null,
+    "sampled_invalid_geometry_count": null,
+    "sampled_null_geometry_count": null
+  },
+  "hifld:source_dates": {
+    "issued": "2024-06-05",
+    "modified": "2025-04-08",
+    "provenance": {
+      "issued": "inventory",
+      "modified": "inventory"
+    }
+  },
+  "hifld:spatial_status": "spatial",
+  "id": "hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0",
+  "keywords": [
+    "Borders",
+    "Boundaries",
+    "Government"
+  ],
+  "license": "other",
+  "links": [
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/catalog.json",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/aiannh-areas-1/aiannh-areas-1/catalog.json",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/collection.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/AGENTS.md",
+      "rel": "agents",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/README.md",
+      "rel": "describedby",
+      "type": "text/markdown"
+    },
+    {
+      "href": "https://www.datalumos.org/datalumos/project/238558/version/V1/view",
+      "rel": "derived_from"
+    },
+    {
+      "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/pmtiles/aiannh-areas-1.pmtiles",
+      "rel": "pmtiles",
+      "title": "aiannh-areas-1.pmtiles",
+      "type": "application/vnd.pmtiles"
+    }
+  ],
+  "providers": [
+    {
+      "name": "Census Bureau",
+      "roles": [
+        "producer"
+      ]
+    },
+    {
+      "name": "HIFLD Next",
+      "roles": [
+        "host"
+      ],
+      "url": "https://hifld.publicenvirodata.org"
+    }
+  ],
+  "stac_extensions": [
+    "https://schemas.portolan-sdi.org/portolan/v0.2.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/table/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/web-map-links/v1.3.0/schema.json"
+  ],
+  "stac_version": "1.1.0",
+  "table:columns": [
+    {
+      "is_geometry": true,
+      "name": "geometry",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "geometry"
+    },
+    {
+      "exampleValues": [
+        "6550",
+        "7215",
+        "9836",
+        "6350",
+        "5955"
+      ],
+      "is_geometry": false,
+      "length": 4,
+      "name": "AIANNH",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "E1",
+        "E1",
+        "D9",
+        "E1",
+        "D0"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "AIANNHCC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "D0",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "D6",
+        "D9",
+        "E1",
+        "F1"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "R",
+        "R",
+        "R",
+        "R",
+        "R"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "AIANNHCOMP",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "M",
+        "R",
+        "T"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "02-30065",
+        "02-60205",
+        "22-53552",
+        "02-14885",
+        "40-40027"
+      ],
+      "is_geometry": false,
+      "length": 8,
+      "name": "AIANNHFP1",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "35-81380",
+        "31-42900",
+        "46-35640",
+        "31-53310",
+        "46-58305"
+      ],
+      "is_geometry": false,
+      "length": 8,
+      "name": "AIANNHFP2",
+      "null_count": 675,
+      "nullable": true,
+      "numNullValues": 675,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "46-64530",
+        "49-53920",
+        "32-25550",
+        "49-79270"
+      ],
+      "is_geometry": false,
+      "length": 8,
+      "name": "AIANNHFP3",
+      "null_count": 700,
+      "nullable": true,
+      "numNullValues": 700,
+      "possibleValues": [
+        "32-25550",
+        "46-64530",
+        "49-53920",
+        "49-79270"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "02418603",
+        "02419166",
+        "02813264",
+        "02418836",
+        "02418655"
+      ],
+      "is_geometry": false,
+      "length": 8,
+      "name": "AIANNHNS",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "29082578",
+        "30099744",
+        "334621528",
+        "274512568",
+        "499488940"
+      ],
+      "is_geometry": false,
+      "length": 11,
+      "name": "AREALAND",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "16515",
+        "197882",
+        "18032138",
+        "1473374",
+        "1557225"
+      ],
+      "is_geometry": false,
+      "length": 10,
+      "name": "AREAWATER",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Grayling",
+        "Perryville",
+        "Natchitoches",
+        "Circle",
+        "Kiowa-Comanche-Apache-Ft Sill Apache/Caddo-Wichita-Delaware"
+      ],
+      "is_geometry": false,
+      "length": 59,
+      "name": "BASENAME",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "+62.8997526",
+        "+55.9329003",
+        "+31.7170184",
+        "+65.7934982",
+        "+35.0569985"
+      ],
+      "is_geometry": false,
+      "length": 11,
+      "name": "CENTLAT",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-160.1079017",
+        "-159.1558029",
+        "-093.0947891",
+        "-144.1814354",
+        "-098.3211294"
+      ],
+      "is_geometry": false,
+      "length": 12,
+      "name": "CENTLON",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "F",
+        "F",
+        "S",
+        "F",
+        "F"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "FSRFLG",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "F",
+        "S"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "S",
+        "S",
+        "S",
+        "S",
+        "S"
+      ],
+      "is_geometry": false,
+      "length": 1,
+      "name": "FUNCSTAT",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "A",
+        "N",
+        "S"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "6550R",
+        "7215R",
+        "9836R",
+        "6350R",
+        "5955R"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "GEOID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "HU100",
+      "null_count": 704,
+      "nullable": true,
+      "numNullValues": 704,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "+62.8960504",
+        "+55.9340484",
+        "+31.7169524",
+        "+65.7904252",
+        "+35.0575938"
+      ],
+      "is_geometry": false,
+      "length": 11,
+      "name": "INTPTLAT",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "-160.1129771",
+        "-159.1555464",
+        "-093.0891129",
+        "-144.1960076",
+        "-098.3176096"
+      ],
+      "is_geometry": false,
+      "length": 12,
+      "name": "INTPTLON",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "79",
+        "79",
+        "92",
+        "79",
+        "90"
+      ],
+      "is_geometry": false,
+      "length": 2,
+      "name": "LSADC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "G2130",
+        "G2130",
+        "G2150",
+        "G2130",
+        "G2170"
+      ],
+      "is_geometry": false,
+      "length": 5,
+      "name": "MTFCC",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "possibleValues": [
+        "G2100",
+        "G2120",
+        "G2130",
+        "G2140",
+        "G2150",
+        "G2160",
+        "G2170"
+      ],
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "Grayling ANVSA",
+        "Perryville ANVSA",
+        "Natchitoches SDTSA",
+        "Circle ANVSA",
+        "Kiowa-Comanche-Apache-Ft Sill Apache/Caddo-Wichita-Delaware joint-use OTSA"
+      ],
+      "is_geometry": false,
+      "length": 87,
+      "name": "NAME",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "435",
+        "440",
+        "690",
+        "543",
+        "701"
+      ],
+      "is_geometry": false,
+      "max": "704.0",
+      "min": "1.0",
+      "name": "OBJECTID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    },
+    {
+      "exampleValues": [
+        "22490758926757",
+        "2249093609861",
+        "2249015922734261",
+        "22490758926733",
+        "22490701208260"
+      ],
+      "is_geometry": false,
+      "length": 16,
+      "name": "OID",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "POP100",
+      "null_count": 704,
+      "nullable": true,
+      "numNullValues": 704,
+      "type": "string"
+    },
+    {
+      "is_geometry": false,
+      "name": "UR",
+      "null_count": 704,
+      "nullable": true,
+      "numNullValues": 704,
+      "type": "string"
+    },
+    {
+      "exampleValues": [
+        "435",
+        "440",
+        "690",
+        "543",
+        "701"
+      ],
+      "is_geometry": false,
+      "max": "704.0",
+      "min": "1.0",
+      "name": "id",
+      "null_count": 0,
+      "nullable": false,
+      "numNullValues": 0,
+      "type": "integer"
+    }
+  ],
+  "title": "American Indian / Alaska Native / Native Hawaiian (AIANNH) Areas",
+  "type": "Collection"
+}

@@ -1,0 +1,24 @@
+{
+  "slug": "aiannh-areas-1",
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/geoparquet/aiannh-areas-1.parquet",
+  "expected_bytes": 8263475,
+  "catalog_asset": {
+    "file:checksum": "d5011076d24089e4f0fd140956b39e62f6cb56",
+    "file:size": 8263475,
+    "href": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0/geoparquet/aiannh-areas-1.parquet",
+    "roles": [
+      "data"
+    ],
+    "title": "aiannh-areas-1.parquet",
+    "type": "application/vnd.apache.parquet"
+  },
+  "catalog_sha256": "b72c9132f31a2d8299326258c9722a164dba57cc3a5231107e61cc58d819119c",
+  "version_id": "hifld/aiannh-areas-1/aiannh-areas-1/v1.0.0",
+  "status": 200,
+  "bytes": 8263475,
+  "sha256": "878e40fea860e5dcd2979e391c5b70fad0d5290e7f8b3785b5831b6eae40e1c4",
+  "generation": "1791506346721167",
+  "etag": "\"76d24089e4f0fd140956b39e62f6cb56\"",
+  "capture": "data/aiannh-areas-1.parquet",
+  "size_matches": true
+}

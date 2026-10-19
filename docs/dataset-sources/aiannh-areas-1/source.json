@@ -20,14 +20,14 @@
   ],
   "release_date": "2023-11-22",
   "release_date_basis": "Official 2023 landing page explicit release statement; embedded metadata publication has year precision only",
-  "checked_at": "2026-10-19T04:23:03.096161+00:00",
+  "checked_at": "2026-10-19T04:47:48.802399+00:00",
   "relationship_to_archive": "unresolved: exact inventory-linked producer vintage located; archive bytes and original DHS crosswalk cannot be compared",
   "crosswalk": {
     "status": "UNVERIFIED",
     "doi": "https://doi.org/10.3886/E241367V1",
     "original_xlsx_available": false,
     "hyperlink_targets_parsed": false,
-    "reason": "DOI redirects to DataLumos project 241367; CONNECT tunnel 403; no claim of unmatched row"
+    "reason": "Current retry follows DOI to DataLumos project241367: HTTP403 Cloudflare challenge under enforced unrestricted rev6; no CONNECT tunnel denial. Original XLSX unavailable; no unmatched claim."
   },
   "historical_archive": {
     "source_role": "archive",
@@ -66,7 +66,7 @@
     "status": "proposed_unapproved",
     "approved": false,
     "version": "research-proposal-1",
-    "baseline": "Unknown accepted published HIFLD Next version/dictionary/checksums; proposal derives from complete inventory-linked 2023 source only",
+    "baseline": "Located complete published v1.0.0 candidate, pinned SHA256878e40fea860e5dcd2979e391c5b70fad0d5290e7f8b3785b5831b6eae40e1c4; candidate NOT accepted. Existing source-derived proposal does not match legacy schema or grain; all columns require explicit migration/retention decision.",
     "columns": [
       {
         "name": "AIANNHCE",
@@ -247,7 +247,7 @@
     "method": "Single national ZIP per vintage, ZIP CRC validated, SHP full scan reconciled to DBF counts; no pagination or transfer limit applies to static files",
     "report": "evidence/audit.json",
     "all_ids_and_attributes": "evidence/rows2023.json, rows2025.json, rows2026.json; complete per-record geometry digests, bounded sample geometries",
-    "limitations": "No accepted baseline or generated candidate comparison. Geometry digests measure WKB changes, not topological equivalence."
+    "limitations": "Complete pinned candidate compared with all three complete historical-byte-matching source ZIPs. Diagnostic CRS conversion does not approve tolerance, repair, mapping, grain changes or baseline. Full raw geometry re-audit requires matching preserved ZIPs and Parquet."
   },
   "refresh_policy": {
     "proposal": "Discover annual TIGER releases; stage each explicitly named vintage separately; do not overwrite historical semantics",
@@ -255,15 +255,26 @@
     "failure": "Reject HTTP errors, ArcGIS JSON error payloads if later considered, corrupt ZIP, missing members, schema/ID/coverage drift; retain last accepted release"
   },
   "blockers": [
-    "Original DHS XLSX and archive exact match unavailable",
-    "Accepted published baseline and maintainer-approved all-column contract missing",
-    "2023 to 2026 includes ID additions/removals, GEOIDFQ changes and geometry/category changes: explicit migration/vintage decision required",
-    "Shared #417 row comparator and publication gate prerequisite; no implementation acceptance asserted"
+    "Original DHS XLSX/archive exact match remains unavailable: current DataLumos HTTP403 challenge",
+    "Published candidate is pinned and fully compared but baseline acceptance and all-column contract remain maintainer decisions",
+    "Legacy704-area combined M grain differs from raw2025 867 R/T components; source2023 and2026 area-code memberships also differ. Maintainer must choose fixed2023 vs2025 vs annual successors and explicit grain/ID/schema/CRS/geometry-invalid policy",
+    "Shared #417 verifier/promotion implementation independent of this dataset acceptance; no implementation acceptance asserted"
   ],
   "runtime": {
     "port": 3408,
     "server_info": "evidence/server-info.json",
     "graphql": "evidence/graphql.json",
-    "materialized": false
+    "materialized": false,
+    "latest_readiness": "evidence/retry/readiness.json"
+  },
+  "published_baseline_candidate": {
+    "approved": false,
+    "manifest": "evidence/retry/published-candidate.json",
+    "comparison": "evidence/retry/comparison.json",
+    "full_attributes_and_geometry_digests": "evidence/retry/published-rows.json.gz",
+    "count": 704,
+    "native_crs": "EPSG:3857",
+    "geometry_invalid": 38,
+    "lineage": "All704 area codes, GNIS identifier sets and summed land/water areas match2025 source groups. Strong2025 grouped-lineage signal only; source_manifest repeats2023 download in inventory text and supplies no actual acquisition provenance. No exact geometry/source relationship established."
   }
 }

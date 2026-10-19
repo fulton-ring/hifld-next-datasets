@@ -34,3 +34,28 @@ assert not graph.get('errors')
 assert graph['data']['repositoriesOrError']['__typename']=='RepositoryConnection'
 assert any(n['assetKey']['path']==['ingest','aiannh-areas-1','aiannh-areas-1'] for n in graph['data']['assetNodes'])
 print('PASS: retained checksums, complete row IDs/attributes/category counts, DBF counts, all-column proposal, and captured Dagster readiness; no ingestion acceptance')
+
+# Current retry: complete retained published attributes and pinned geometry digests.
+import gzip
+retry = E / 'retry'
+for name, digest in json.loads((retry / 'checksums.json').read_text()).items():
+    assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == digest, name
+current = json.loads((retry / 'comparison.json').read_text())
+published = json.loads(gzip.decompress((retry / 'published-rows.json.gz').read_bytes()))
+assert current['approved'] is False
+assert len(published) == current['baseline']['count'] == 704
+assert sum(not r['valid'] for r in published) == current['baseline']['invalid_geometry'] == 38
+assert hashlib.sha256((retry / 'published-rows.json.gz').read_bytes()).hexdigest() == current['baseline_rows_sha256']
+by_geoid = {r['properties']['GEOID']: r for r in published}
+assert len(by_geoid) == len(published)
+for year in (2023, 2025, 2026):
+    source = {r['properties']['GEOID']: r for r in json.loads((E / f'rows{year}.json').read_text())}
+    shared = source.keys() & by_geoid.keys()
+    c = current['comparisons'][str(year)]
+    assert c['exact_geoid_shared'] == len(shared)
+    assert c['source_only_geoids'] == sorted(source.keys() - by_geoid.keys())
+    assert c['published_only_geoids'] == sorted(by_geoid.keys() - source.keys())
+    for field, count in c['changed_shared_attribute_counts'].items():
+        assert count == sum(source[k]['properties'][field] != by_geoid[k]['properties'][field] for k in shared)
+assert all(r['historical_bytes_match'] for r in json.loads((retry / 'refetch.json').read_text()))
+print('PASS: retry checksums, all704 retained published records/IDs, invalid geometry38, all-vintage ID and shared-field diffs. Full topology re-audit requires pinned raw files; no acceptance.')

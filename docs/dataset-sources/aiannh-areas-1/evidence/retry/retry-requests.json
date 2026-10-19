@@ -1,0 +1,65 @@
+[
+  {
+    "name": "published-source-manifest",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/metadata/source_manifest.json",
+    "status": 200,
+    "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/aiannh-areas-1/metadata/source_manifest.json",
+    "bytes": 3214,
+    "sha256": "ee2d5e8583c757216de457f74c40bf01318bff14b086b3651c226d04e99d1664",
+    "checked_at": "2026-10-19T04:47:47.007356+00:00"
+  },
+  {
+    "name": "published-parent-source-manifest",
+    "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/metadata/source_manifest.json",
+    "status": 200,
+    "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/aiannh-areas-1/metadata/source_manifest.json",
+    "bytes": 3264,
+    "sha256": "88669d558a67ba124854bfc4130091f3c76ca0a3bb237e4f90929fab55c873b0",
+    "checked_at": "2026-10-19T04:47:47.377751+00:00"
+  },
+  {
+    "name": "census-cartographic",
+    "url": "https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html",
+    "status": 403,
+    "final_url": "https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html",
+    "bytes": 17,
+    "sha256": "2938e9f1284180959e33ab1718d0793a72ff6e4cdb8108c34dcd14e69446de5c",
+    "checked_at": "2026-10-19T04:47:47.714879+00:00"
+  },
+  {
+    "name": "census2023",
+    "url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.2023.html",
+    "status": 403,
+    "final_url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.2023.html",
+    "bytes": 17,
+    "sha256": "2938e9f1284180959e33ab1718d0793a72ff6e4cdb8108c34dcd14e69446de5c",
+    "checked_at": "2026-10-19T04:47:48.025412+00:00"
+  },
+  {
+    "name": "census2026",
+    "url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html",
+    "status": 403,
+    "final_url": "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html",
+    "bytes": 17,
+    "sha256": "2938e9f1284180959e33ab1718d0793a72ff6e4cdb8108c34dcd14e69446de5c",
+    "checked_at": "2026-10-19T04:47:48.344744+00:00"
+  },
+  {
+    "name": "crosswalk-retry",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+    "bytes": 6157,
+    "sha256": "36ae596504536032dafb70629fb3bd99115b701249d7e1f67d159260a1c0f223",
+    "checked_at": "2026-10-19T04:47:48.679689+00:00"
+  },
+  {
+    "name": "archive-retry",
+    "url": "https://www.datalumos.org/datalumos/project/238558/version/V1/view",
+    "status": 403,
+    "final_url": "https://www.datalumos.org/datalumos/project/238558/version/V1/view",
+    "bytes": 6136,
+    "sha256": "38cb35dc59b5e06f01210c8e5a797921620bbe46b9c7a2522685637d6dd6692e",
+    "checked_at": "2026-10-19T04:47:48.802399+00:00"
+  }
+]
