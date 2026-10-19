@@ -33,6 +33,8 @@ import shapely
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
@@ -324,7 +326,9 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     root=local_candidate_path(storage,prefix)
     # The normal graph adds only these derivative files. Source-owned directories remain exact.
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
-        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json'}
+        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json',
+        'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',
+        'metadata/source/version_'+sha((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'}
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise CBRSQuarantineError('linked_candidate_object')
@@ -338,6 +342,16 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(manifest)
+    for relative in ('metadata/source/source_manifest.json',
+                     'metadata/source/version_'+sha((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'):
+        snapshot=root/relative
+        if snapshot.exists() and snapshot.read_bytes()!=(root/'metadata/source_manifest.json').read_bytes():
+            raise CBRSQuarantineError('cached_original_provenance_snapshot_drift')
+    if (root/'metadata/resolved_provenance.json').exists():
+        resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
+        if (resolved.get('inputs')!=manifest['inputs'] or resolved.get('processor')!=manifest['processor']
+                or strict_json((root/'metadata/resolved_provenance.json').read_bytes())!=resolved):
+            raise CBRSQuarantineError('cached_resolved_provenance_drift')
     # code_commit identifies the original immutable construction, including later docs-only commits.
     for name,value in expected_manifest.items():
         if name!='code_commit' and manifest.get(name)!=value:
