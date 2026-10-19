@@ -267,7 +267,8 @@ def verify_outputs(root,table):
         if sha256_file(fresh)!=sha256_file(root/'geopackage'/f'{SLUG}.gpkg'):raise TsunamiQuarantineError('gpkg_full_container_srs_headers_sql_or_index_drift')
 def manifest_for(captures,identity,parquet_pin):
     ids=source_ids(strict_json(captures['ids_before'][0]));urls=request_plan(ids);inputs=[]
-    for name,(body,receipt) in captures.items():
+    for name in sorted(captures):
+        body,receipt=captures[name]
         validate_capture(name,body,receipt,urls[name]);host=urlsplit(urls[name]).hostname
         item={'input_id':name+':'+digest(body),'producer':'NOAA National Centers for Environmental Information','host':host,'role':'producer_publication' if host=='www.ncei.noaa.gov' else 'official_distributor',
             'canonical_url':urls[name],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,

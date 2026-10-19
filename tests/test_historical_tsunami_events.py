@@ -29,6 +29,12 @@ class TsunamiEventTests(unittest.TestCase):
     def test_declared_physical_types_dates_nulls_and_literal_text(self):
         table,audit=s.inspect_captures(self.fixture());self.assertEqual(table['SECOND'].type,pa.float32());self.assertEqual(table['MONTH'].type,pa.int16());self.assertEqual(table['ID'].type,pa.int32());self.assertEqual(table['EVENT_DATE'].type,pa.timestamp('ms',tz='UTC'));self.assertEqual(table['EVENT_DATE'].cast(pa.int64()).to_pylist(),[0]);self.assertEqual(table['COMMENTS'][0].as_py(),'  literal text\r\n<P>unchanged  ');self.assertEqual(audit['Single_wire_decimal_to_declared_binary32_differences'],{'SECOND':1});self.assertTrue(audit['roster_change_from_initial_requires_review'])
 
+    def test_manifest_input_order_survives_canonical_original_binding(self):
+        captures=self.fixture();identity={'files':{}};pin={'sha256':'a'*64,'bytes':1}
+        original=s.manifest_for(captures,identity,pin)
+        restored=s.manifest_for(dict(reversed(list(captures.items()))),identity,pin)
+        self.assertEqual(original,restored)
+
     def test_gpkg_and_parquet_native_roundtrip_and_full_container(self):
         table,_=s.inspect_captures(self.fixture())
         with tempfile.TemporaryDirectory() as tmp:
