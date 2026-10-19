@@ -145,6 +145,17 @@ def local_only(storage):
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise MineralsQuarantineError('linked_staging_object')
 
 
+def bounded_input(path,limit):
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(descriptor,'rb') as stream:
+        before=os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or before.st_size>limit:raise MineralsQuarantineError('unsafe_or_oversize_input')
+        body=stream.read(limit+1);after=os.fstat(stream.fileno())
+    fields=lambda value:(value.st_dev,value.st_ino,value.st_size,value.st_mtime_ns,value.st_ctime_ns,value.st_nlink)
+    if len(body)>limit or len(body)!=before.st_size or fields(before)!=fields(after):raise MineralsQuarantineError('incomplete_or_changed_bounded_input')
+    return body
+
+
 def acquire(storage,capture_dir,package_id):
     local_only(storage)
     if package_id!=PACKAGE or not capture_dir:raise MineralsQuarantineError('explicit_unapproved_preservation_package_selection_required_no_default_fetch')
@@ -157,7 +168,7 @@ def acquire(storage,capture_dir,package_id):
             paths=[root/(name+suffix) for suffix in ('.body','.receipt.json')]
             if any(not p.is_file() or p.is_symlink() or p.stat().st_nlink!=1 for p in paths):raise MineralsQuarantineError('linked_or_nonregular_package_input')
             if paths[0].stat().st_size>2*1024*1024 or paths[1].stat().st_size>65536:raise MineralsQuarantineError('package_input_exceeds_bound')
-            body=paths[0].read_bytes();raw_receipt=paths[1].read_bytes()
+            body=bounded_input(paths[0],2*1024*1024);raw_receipt=bounded_input(paths[1],65536)
             # Preserve the full bounded attempted input BEFORE interpreting any
             # receipt. These CAS bytes are evidence, not validated provenance.
             body_key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'
