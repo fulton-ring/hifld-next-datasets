@@ -1,0 +1,698 @@
+{
+  "code_head": "689073bc0fd6dae123c00549b6600e76565401d5",
+  "runtime": "/workspace/work/hifld-coordinator/45/actual-dagster",
+  "module": "/workspace/hifld-worker-worktrees/45/src/dagster_hifld/sources/county_subdivisions.py",
+  "approved": false,
+  "runs": [
+    {
+      "kind": "complete_real_source_36492",
+      "run_id": "7f5b06b2-2fb5-4511-9301-34485dc9fe63",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/county-subdivisions-1/county-subdivisions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "complete_real_idempotent_refresh",
+      "run_id": "0e3fba43-7ac6-4742-bf87-0e72bed3fb33",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/county-subdivisions-1/county-subdivisions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_missing_approval_1",
+      "run_id": "2387ee7f-15cb-424f-81ab-7d3149cd46f6",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/45/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/45/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/45/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "complete_real_post_catalog_refresh_1",
+      "run_id": "7c9c25b9-6d40-40a2-a33e-80517b473e8b",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/county-subdivisions-1/county-subdivisions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "normal_catalog_missing_approval_2",
+      "run_id": "c1dadcdb-0247-402c-ab27-d5e4fbf33f95",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op \"publish__verify\":\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 505, in core_dagster_event_sequence_for_step\n    for user_event in _step_output_error_checked_user_event_sequence(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 184, in _step_output_error_checked_user_event_sequence\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 88, in _process_asset_results_to_events\n    for user_event in user_event_sequence:\n                      ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 188, in execute_core_compute\n    for step_output in _yield_compute_results(step_context, inputs, compute_fn, compute_context):\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute.py\", line 157, in _yield_compute_results\n    for event in iterate_with_context(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 392, in iterate_with_context\n    with context_fn():\n         ^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 87, in op_execution_error_boundary\n    raise error_cls(\n\nThe above exception was caused by the following exception:\ndagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/utils.py\", line 57, in op_execution_error_boundary\n    yield\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_utils/__init__.py\", line 394, in iterate_with_context\n    next_output = next(iterator)\n                  ^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 135, in _coerce_op_compute_fn_to_iterator\n    result = invoke_compute_fn(\n             ^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/compute_generator.py\", line 115, in invoke_compute_fn\n    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/45/src/dagster_hifld/assets/publish.py\", line 1390, in verify_release\n    require_release_approval(staging_storage, published_storage, pairs)\n  File \"/workspace/hifld-worker-worktrees/45/src/dagster_hifld/release_approval.py\", line 123, in require_release_approval\n    registry = _registry(source, destination)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/hifld-worker-worktrees/45/src/dagster_hifld/release_approval.py\", line 50, in _registry\n    raise ReleaseApprovalError(\"missing_independent_release_approval_registry\")\n"
+      ],
+      "materializations": [
+        "publish/catalog",
+        "publish/formats/geopackage",
+        "publish/formats/geoparquet",
+        "publish/formats/pmtiles",
+        "publish/formats/shapefile_zip"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "complete_real_post_catalog_refresh_2",
+      "run_id": "8e69c4b2-d155-4df7-8276-98cf617f6105",
+      "success": true,
+      "errors": [],
+      "materializations": [
+        "ingest/county-subdivisions-1/county-subdivisions-1"
+      ],
+      "checks": []
+    },
+    {
+      "kind": "synthetic_two_row_failed_quality",
+      "run_id": "43beeb7f-ab3c-4b33-a0f1-e24250ac227e",
+      "success": false,
+      "errors": [
+        "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset check failed with ERROR severity:\npublish/catalog: quality_manifest\n\nStack Trace:\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_plan.py\", line 247, in dagster_event_sequence_for_step\n    yield from check.generator(step_events)\n  File \"/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/dagster/_core/execution/plan/execute_step.py\", line 543, in core_dagster_event_sequence_for_step\n    raise DagsterAssetCheckFailedError(\n"
+      ],
+      "materializations": [
+        "publish/catalog"
+      ],
+      "checks": [
+        {
+          "name": "quality_manifest",
+          "passed": false
+        }
+      ]
+    }
+  ],
+  "harness_resume": "Preserved all six completed runs; fixed dictionary geometry label assertion from SHAPE to generic catalog geometry; no source/candidate changes or repeated complete source runs.",
+  "output": {
+    "dataset_slug": "county-subdivisions-1",
+    "file_slug": "county-subdivisions-1",
+    "version": "v0.0.0-draft-census2024-e2409cd4ddb1a930-10358c9d1ce15f7c",
+    "feature_count": 36492,
+    "reused": false
+  },
+  "source_audit": {
+    "approved": false,
+    "class_counts": {
+      "C2": 233,
+      "C5": 4285,
+      "T1": 16172,
+      "T5": 45,
+      "T9": 255,
+      "Z1": 9635,
+      "Z2": 18,
+      "Z3": 304,
+      "Z5": 5255,
+      "Z7": 152,
+      "Z9": 138
+    },
+    "empty_geometry_count": 0,
+    "function_counts": {
+      "A": 16171,
+      "B": 17,
+      "C": 29,
+      "F": 4826,
+      "G": 1603,
+      "I": 255,
+      "N": 8052,
+      "S": 5539
+    },
+    "invalid_geometry_count": 0,
+    "members": {
+      "tlgdb_2024_a_us_substategeo.gdb/a00000001.TablesByName.atx": {
+        "bytes": 4118,
+        "crc32": "35804a27"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000001.gdbindexes": {
+        "bytes": 110,
+        "crc32": "96cbdec4"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000001.gdbtable": {
+        "bytes": 488,
+        "crc32": "90c2284d"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000001.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "8107b51f"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000002.gdbtable": {
+        "bytes": 1460,
+        "crc32": "4d207319"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000002.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "b963ede8"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000003.gdbindexes": {
+        "bytes": 42,
+        "crc32": "10a41729"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000003.gdbtable": {
+        "bytes": 736,
+        "crc32": "18157d35"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000003.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "1a085454"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.CatItemsByPhysicalName.atx": {
+        "bytes": 4118,
+        "crc32": "4c67ee6a"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.CatItemsByType.atx": {
+        "bytes": 4118,
+        "crc32": "79590b39"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.FDO_UUID.atx": {
+        "bytes": 4118,
+        "crc32": "47a3ca74"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.gdbindexes": {
+        "bytes": 310,
+        "crc32": "20b0d3a9"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.gdbtable": {
+        "bytes": 36277,
+        "crc32": "6500f031"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "751b5b19"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000004.spx": {
+        "bytes": 4118,
+        "crc32": "863010df"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000005.CatItemTypesByName.atx": {
+        "bytes": 12310,
+        "crc32": "df4be44f"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000005.CatItemTypesByParentTypeID.atx": {
+        "bytes": 4118,
+        "crc32": "421b974d"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000005.CatItemTypesByUUID.atx": {
+        "bytes": 4118,
+        "crc32": "3bfc6327"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000005.gdbindexes": {
+        "bytes": 296,
+        "crc32": "81a6dd1a"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000005.gdbtable": {
+        "bytes": 2025,
+        "crc32": "f2ce4648"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000005.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "4d473476"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000006.CatRelsByDestinationID.atx": {
+        "bytes": 4118,
+        "crc32": "51b26fe9"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000006.CatRelsByOriginID.atx": {
+        "bytes": 4118,
+        "crc32": "3aff2ede"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000006.CatRelsByType.atx": {
+        "bytes": 4118,
+        "crc32": "f0223795"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000006.FDO_UUID.atx": {
+        "bytes": 4118,
+        "crc32": "c381bdd2"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000006.gdbindexes": {
+        "bytes": 318,
+        "crc32": "11bee99e"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000006.gdbtable": {
+        "bytes": 778,
+        "crc32": "6437966f"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000006.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "5d574486"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.CatRelTypesByBackwardLabel.atx": {
+        "bytes": 12310,
+        "crc32": "288d74eb"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.CatRelTypesByDestItemTypeID.atx": {
+        "bytes": 4118,
+        "crc32": "1936f798"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.CatRelTypesByForwardLabel.atx": {
+        "bytes": 12310,
+        "crc32": "4a0741ca"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.CatRelTypesByName.atx": {
+        "bytes": 12310,
+        "crc32": "50bb7d04"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.CatRelTypesByOriginItemTypeID.atx": {
+        "bytes": 4118,
+        "crc32": "b8b3eb2c"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.CatRelTypesByUUID.atx": {
+        "bytes": 4118,
+        "crc32": "d472e5ac"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.gdbindexes": {
+        "bytes": 602,
+        "crc32": "c1cd0064"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.gdbtable": {
+        "bytes": 3630,
+        "crc32": "958cbeac"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000007.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "b003d138"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000009.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000009.gdbtable": {
+        "bytes": 56298478,
+        "crc32": "b454e2f6"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000009.gdbtablx": {
+        "bytes": 102432,
+        "crc32": "c450de81"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000009.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000009.spx": {
+        "bytes": 397334,
+        "crc32": "ba07787f"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000a.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000a.gdbtable": {
+        "bytes": 49268526,
+        "crc32": "78b15868"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000a.gdbtablx": {
+        "bytes": 20512,
+        "crc32": "934eb183"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000a.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000a.spx": {
+        "bytes": 57366,
+        "crc32": "5bcfb263"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000b.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000b.gdbtable": {
+        "bytes": 29683757,
+        "crc32": "2b067f8a"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000b.gdbtablx": {
+        "bytes": 66592,
+        "crc32": "b29d1a5a"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000b.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000b.spx": {
+        "bytes": 282646,
+        "crc32": "47647be9"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000c.freelist": {
+        "bytes": 4440,
+        "crc32": "cd9fdbdc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000c.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000c.gdbtable": {
+        "bytes": 263015561,
+        "crc32": "8eec3e50"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000c.gdbtablx": {
+        "bytes": 430112,
+        "crc32": "ce49b078"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000c.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000c.spx": {
+        "bytes": 1437718,
+        "crc32": "5681c936"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000d.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000d.gdbtable": {
+        "bytes": 135617,
+        "crc32": "096f648e"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000d.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "fb50fffb"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000d.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000d.spx": {
+        "bytes": 4118,
+        "crc32": "8720047c"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000e.freelist": {
+        "bytes": 4440,
+        "crc32": "bd7093d4"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000e.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000e.gdbtable": {
+        "bytes": 186487485,
+        "crc32": "d88474c3"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000e.gdbtablx": {
+        "bytes": 184352,
+        "crc32": "781bb4dc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000e.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000e.spx": {
+        "bytes": 753686,
+        "crc32": "f2b30f3f"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000f.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000f.gdbtable": {
+        "bytes": 5866113,
+        "crc32": "03270866"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000f.gdbtablx": {
+        "bytes": 5152,
+        "crc32": "aabda4ba"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000f.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a0000000f.spx": {
+        "bytes": 4118,
+        "crc32": "0536c445"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000010.freelist": {
+        "bytes": 4440,
+        "crc32": "cd9fdbdc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000010.gdbindexes": {
+        "bytes": 116,
+        "crc32": "ff7a70bc"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000010.gdbtable": {
+        "bytes": 450986940,
+        "crc32": "e10b8d61"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000010.gdbtablx": {
+        "bytes": 1218592,
+        "crc32": "3f4c9e9d"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000010.horizon": {
+        "bytes": 32,
+        "crc32": "3050f004"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/a00000010.spx": {
+        "bytes": 3813398,
+        "crc32": "adbdf3ca"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/gdb": {
+        "bytes": 8,
+        "crc32": "701aad4b"
+      },
+      "tlgdb_2024_a_us_substategeo.gdb/timestamps": {
+        "bytes": 400,
+        "crc32": "2add107f"
+      }
+    },
+    "native_attributes": 11,
+    "native_layer_definition": "<?xml version=\"1.0\"?>\n<typens:DEFeatureClassInfo xmlns:typens=\"http://www.esri.com/schemas/ArcGIS/10.3\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xsi:type=\"typens:DEFeatureClassInfo\"><CatalogPath>\\County_Subdivision</CatalogPath><Name>County_Subdivision</Name><ChildrenExpanded>false</ChildrenExpanded><DatasetType>esriDTFeatureClass</DatasetType><DSID>8</DSID><Versioned>false</Versioned><CanVersion>false</CanVersion><ConfigurationKeyword>DEFAULTS</ConfigurationKeyword><HasOID>true</HasOID><OIDFieldName>OBJECTID</OIDFieldName><GPFieldInfoExs xsi:type=\"typens:ArrayOfGPFieldInfoEx\"><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>COUSUBNS</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>8</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>GEOID</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>10</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>GEOIDFQ</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>19</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>NAMELSAD</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>100</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>CLASSFP</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>2</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>FUNCSTAT</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>1</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>ALAND</Name><FieldType>esriFieldTypeDouble</FieldType><IsNullable>true</IsNullable><Length>8</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>AWATER</Name><FieldType>esriFieldTypeDouble</FieldType><IsNullable>true</IsNullable><Length>8</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>INTPTLAT</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>11</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>INTPTLON</Name><FieldType>esriFieldTypeString</FieldType><IsNullable>true</IsNullable><Length>12</Length><Precision>0</Precision><Scale>0</Scale></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>OBJECTID</Name><FieldType>esriFieldTypeOID</FieldType><IsNullable>false</IsNullable><Length>4</Length><Precision>0</Precision><Scale>0</Scale><Required>true</Required><Editable>false</Editable><AliasName>OBJECTID</AliasName></GPFieldInfoEx><GPFieldInfoEx xsi:type=\"typens:GPFieldInfoEx\"><Name>SHAPE</Name><FieldType>esriFieldTypeGeometry</FieldType><IsNullable>true</IsNullable><Length>0</Length><Precision>0</Precision><Scale>0</Scale><AliasName>SHAPE</AliasName></GPFieldInfoEx></GPFieldInfoExs><CLSID>{52353152-891A-11D0-BEC6-00805F7C4268}</CLSID><EXTCLSID/><RelationshipClassNames xsi:type=\"typens:Names\"/><AliasName/><ModelName/><HasGlobalID>false</HasGlobalID><GlobalIDFieldName/><RasterFieldName/><ExtensionProperties xsi:type=\"typens:PropertySet\"><PropertyArray xsi:type=\"typens:ArrayOfPropertySetProperty\"/></ExtensionProperties><ControllerMemberships xsi:type=\"typens:ArrayOfControllerMembership\"/><FeatureType>esriFTSimple</FeatureType><ShapeType>esriGeometryPolygon</ShapeType><ShapeFieldName>SHAPE</ShapeFieldName><HasM>false</HasM><HasZ>false</HasZ><HasSpatialIndex>false</HasSpatialIndex><AreaFieldName/><LengthFieldName/><Extent xsi:nil=\"true\"/><SpatialReference xsi:type=\"typens:GeographicCoordinateSystem\"><WKT>GEOGCS[\"GCS_North_American_1983\",DATUM[\"D_North_American_1983\",SPHEROID[\"GRS_1980\",6378137,298.257222101]],PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.017453292519943295]]</WKT><ZOrigin>-100000</ZOrigin><ZScale>10000</ZScale><MOrigin>-100000</MOrigin><MScale>10000</MScale><ZTolerance>0.001</ZTolerance><MTolerance>0.001</MTolerance></SpatialReference></typens:DEFeatureClassInfo>\n",
+    "native_wkb_bytes": 489108707,
+    "nulls": {
+      "ALAND": 0,
+      "AWATER": 0,
+      "CLASSFP": 0,
+      "COUSUBNS": 0,
+      "FUNCSTAT": 0,
+      "GEOID": 0,
+      "GEOIDFQ": 0,
+      "INTPTLAT": 0,
+      "INTPTLON": 0,
+      "NAMELSAD": 0,
+      "OBJECTID": 0,
+      "SHAPE": 0
+    },
+    "physical_fields": {
+      "ALAND": {
+        "FieldType": "esriFieldTypeDouble",
+        "IsNullable": "true",
+        "Length": "8",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "AWATER": {
+        "FieldType": "esriFieldTypeDouble",
+        "IsNullable": "true",
+        "Length": "8",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "CLASSFP": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "2",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "COUSUBNS": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "8",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "FUNCSTAT": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "1",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "GEOID": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "10",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "GEOIDFQ": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "19",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "INTPTLAT": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "11",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "INTPTLON": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "12",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "NAMELSAD": {
+        "FieldType": "esriFieldTypeString",
+        "IsNullable": "true",
+        "Length": "100",
+        "Precision": "0",
+        "Scale": "0"
+      },
+      "OBJECTID": {
+        "AliasName": "OBJECTID",
+        "Editable": "false",
+        "FieldType": "esriFieldTypeOID",
+        "IsNullable": "false",
+        "Length": "4",
+        "Precision": "0",
+        "Required": "true",
+        "Scale": "0"
+      },
+      "SHAPE": {
+        "AliasName": "SHAPE",
+        "FieldType": "esriFieldTypeGeometry",
+        "IsNullable": "true",
+        "Length": "0",
+        "Precision": "0",
+        "Scale": "0"
+      }
+    },
+    "records_sha256": "060a5730ff18c87fe473eb98376b76fb93aeb18d6f7834a1eb3206fffc37abac",
+    "rows": 36492,
+    "state_counts": {
+      "01": 390,
+      "02": 37,
+      "04": 80,
+      "05": 1095,
+      "06": 404,
+      "08": 209,
+      "09": 174,
+      "10": 27,
+      "11": 1,
+      "12": 316,
+      "13": 586,
+      "15": 44,
+      "16": 170,
+      "17": 1696,
+      "18": 1012,
+      "19": 1663,
+      "20": 1525,
+      "21": 493,
+      "22": 576,
+      "23": 529,
+      "24": 290,
+      "25": 357,
+      "26": 1580,
+      "27": 2759,
+      "28": 410,
+      "29": 1394,
+      "30": 194,
+      "31": 1182,
+      "32": 71,
+      "33": 260,
+      "34": 569,
+      "35": 130,
+      "36": 1023,
+      "37": 1041,
+      "38": 1761,
+      "39": 1607,
+      "40": 305,
+      "41": 212,
+      "42": 2573,
+      "44": 40,
+      "45": 299,
+      "46": 1328,
+      "47": 844,
+      "48": 862,
+      "49": 93,
+      "50": 256,
+      "51": 552,
+      "53": 242,
+      "54": 225,
+      "55": 1925,
+      "56": 71,
+      "60": 16,
+      "66": 20,
+      "69": 12,
+      "72": 939,
+      "78": 23
+    }
+  },
+  "quality": {
+    "bounds": [
+      -179.231086,
+      -14.601813,
+      179.859681,
+      71.439786
+    ],
+    "catalog_mode": "streaming_geospatial",
+    "columns_hash": "f62cab3c4db4379bef1ddd1728d0114d05532ebf24e9c72f31f9a368d31784ba",
+    "feature_count": 36492,
+    "geometry_type": "MultiPolygon",
+    "invalid_geometry_count": 0,
+    "quality_check_passed": true,
+    "sampled_feature_count": 5000,
+    "sampled_invalid_geometry_count": 0,
+    "sampled_null_geometry_count": 0,
+    "spatial_status": "spatial",
+    "version": "v1"
+  },
+  "all_original_native_values_ids_types_nulls_wkb_verified": true,
+  "original_external_capture_preserved_read_only": true,
+  "prior_local_publication_fixture_unchanged": true,
+  "discovery_registered": true,
+  "candidate_snapshot": {
+    "geopackage/county-subdivisions-1.gpkg": "31d67a00afefbe21e63ef4b8f1a0bec8b8dd12998e96f38ebf95238f03a2c047",
+    "raw/retrieval.json": "4c38f649632f38766b32687436063e2ca37c87186ba11cd541a375996c6041f6",
+    "raw/source_capture.json": "67598dc56582088a9d8ca2308da6bd44068f798f9c5a58ecf361ff9b8f0dffed",
+    "geoparquet/county-subdivisions-1.parquet": "1c8fcf9ec260705dfbe97fca10b650e9cebc0a68bd2dd49bb9d49807381d8888",
+    "metadata/quality_manifest.json": "5aa5679cc8131aeac295ecb43a00183cb589681c94843ef7f76d0b09431d7d00",
+    "metadata/baseline_field_changes.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "metadata/processing_identity.json": "10358c9d1ce15f7ceee3e500d902f493850f916243bd7e5c19c53a26725c8a52",
+    "metadata/data_dictionary.json": "a3a297f1a6214b905b395de99ff7fcee2ec6ee5fe84859e1567cffb65e5537e7",
+    "metadata/resolved_provenance.json": "2995a0b54a8b639fa6291be8ea23408a3af42f3b7357a49d8b91486f5cd44447",
+    "metadata/cousub_candidate_ready.json": "bbb3c3e5e45a56492712451e341debaaa339559804f9b0ce9ab4e345158bfdc8",
+    "metadata/baseline_differences.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "metadata/geopackage_source_fidelity.json": "09a8cf97782d7c3882c098d9778151ac4c380f7186d29e304404e6bbe8e4f230",
+    "metadata/cousub_source_audit.json": "045254b8fa8d8b2ca86f2fbab6806784ed86ad6679e99662fb07570afa4ce259",
+    "metadata/source_manifest.json": "12f19ad69f9720aa64019a9585187b2a26a487ba7819f82d4f621f9c6489e3ce",
+    "metadata/baseline_comparison.json": "26819920bcecdabd1a7316669483917be6d2fd11307b14e25b060253d912ab36",
+    "metadata/parquet_source_fidelity.json": "09a8cf97782d7c3882c098d9778151ac4c380f7186d29e304404e6bbe8e4f230",
+    "metadata/source/quality_manifest.json": "5aa5679cc8131aeac295ecb43a00183cb589681c94843ef7f76d0b09431d7d00",
+    "metadata/source/data_dictionary.json": "a3a297f1a6214b905b395de99ff7fcee2ec6ee5fe84859e1567cffb65e5537e7",
+    "metadata/source/version_12f19ad69f9720aa64019a9585187b2a26a487ba7819f82d4f621f9c6489e3ce_source_manifest.json": "12f19ad69f9720aa64019a9585187b2a26a487ba7819f82d4f621f9c6489e3ce",
+    "metadata/source/source_manifest.json": "12f19ad69f9720aa64019a9585187b2a26a487ba7819f82d4f621f9c6489e3ce"
+  },
+  "terminal_parquet": {
+    "bytes": 354551677,
+    "sha256": "1c8fcf9ec260705dfbe97fca10b650e9cebc0a68bd2dd49bb9d49807381d8888",
+    "native_oid_type": "int32"
+  }
+}

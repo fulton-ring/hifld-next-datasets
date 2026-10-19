@@ -1,0 +1,408 @@
+{
+  "scope": "Independent full original historical GPKG decompression/hash/provider MD5 and in-memory query-only SQLite raw values/WKB vs complete historical Parquet; no source/current mapping approval",
+  "approved": false,
+  "original_body_bytes": 525926400,
+  "original_body_sha256": "eef838944f362b9f8adb29a87fda97079c4b1e29996b02b8bf2731ca57be1c8a",
+  "original_provider_MD5": "08412fe20116b7a513116123bf9db535",
+  "temporary_expansion": "in-memory SQLite deserialize only; no disk duplicate; original compressed lossless body untouched",
+  "rows": 36498,
+  "native_columns": [
+    [
+      0,
+      "fid",
+      "INTEGER",
+      1,
+      null,
+      1
+    ],
+    [
+      1,
+      "geom",
+      "MULTIPOLYGON",
+      0,
+      null,
+      0
+    ],
+    [
+      2,
+      "AREALAND",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      3,
+      "AREAWATER",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      4,
+      "BASENAME",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      5,
+      "CENTLAT",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      6,
+      "CENTLON",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      7,
+      "CNECTA",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      8,
+      "COUNTY",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      9,
+      "COUSUB",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      10,
+      "COUSUBCC",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      11,
+      "COUSUBNS",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      12,
+      "FUNCSTAT",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      13,
+      "GEOID",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      14,
+      "HU100",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      15,
+      "INTPTLAT",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      16,
+      "INTPTLON",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      17,
+      "LSADC",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      18,
+      "MTFCC",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      19,
+      "NAME",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      20,
+      "NECTA",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      21,
+      "NECTADIV",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      22,
+      "OBJECTID",
+      "INTEGER",
+      0,
+      null,
+      0
+    ],
+    [
+      23,
+      "OID",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      24,
+      "POP100",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      25,
+      "STATE",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      26,
+      "UR",
+      "TEXT",
+      0,
+      null,
+      0
+    ],
+    [
+      27,
+      "id",
+      "INTEGER",
+      0,
+      null,
+      0
+    ]
+  ],
+  "native_geometry_declaration": [
+    "geom",
+    "MULTIPOLYGON",
+    3857
+  ],
+  "native_SQL_type_values": {
+    "fid": [
+      "int"
+    ],
+    "geom": [
+      "bytes"
+    ],
+    "AREALAND": [
+      "str"
+    ],
+    "AREAWATER": [
+      "str"
+    ],
+    "BASENAME": [
+      "str"
+    ],
+    "CENTLAT": [
+      "str"
+    ],
+    "CENTLON": [
+      "str"
+    ],
+    "CNECTA": [
+      "NoneType"
+    ],
+    "COUNTY": [
+      "str"
+    ],
+    "COUSUB": [
+      "str"
+    ],
+    "COUSUBCC": [
+      "str"
+    ],
+    "COUSUBNS": [
+      "str"
+    ],
+    "FUNCSTAT": [
+      "str"
+    ],
+    "GEOID": [
+      "str"
+    ],
+    "HU100": [
+      "NoneType"
+    ],
+    "INTPTLAT": [
+      "str"
+    ],
+    "INTPTLON": [
+      "str"
+    ],
+    "LSADC": [
+      "str"
+    ],
+    "MTFCC": [
+      "str"
+    ],
+    "NAME": [
+      "str"
+    ],
+    "NECTA": [
+      "NoneType"
+    ],
+    "NECTADIV": [
+      "NoneType"
+    ],
+    "OBJECTID": [
+      "int"
+    ],
+    "OID": [
+      "str"
+    ],
+    "POP100": [
+      "NoneType"
+    ],
+    "STATE": [
+      "str"
+    ],
+    "UR": [
+      "NoneType"
+    ],
+    "id": [
+      "int"
+    ]
+  },
+  "all_shared_attribute_types_values_and_native_WKB_exact": true,
+  "intrinsic_fid_separate": true,
+  "nulls": {
+    "fid": 0,
+    "geom": 0,
+    "AREALAND": 0,
+    "AREAWATER": 0,
+    "BASENAME": 0,
+    "CENTLAT": 0,
+    "CENTLON": 0,
+    "CNECTA": 36498,
+    "COUNTY": 0,
+    "COUSUB": 0,
+    "COUSUBCC": 0,
+    "COUSUBNS": 0,
+    "FUNCSTAT": 0,
+    "GEOID": 0,
+    "HU100": 36498,
+    "INTPTLAT": 0,
+    "INTPTLON": 0,
+    "LSADC": 0,
+    "MTFCC": 0,
+    "NAME": 0,
+    "NECTA": 36498,
+    "NECTADIV": 36498,
+    "OBJECTID": 0,
+    "OID": 0,
+    "POP100": 36498,
+    "STATE": 0,
+    "UR": 36498,
+    "id": 0
+  },
+  "ID_censuses": {
+    "fid": {
+      "rows": 36498,
+      "unique": 36498,
+      "ordered_sha256": "6acedecac2b3ef6b4a5cdafecefbe6b65fec8aa40636c45ae596d3a1b8785315"
+    },
+    "OBJECTID": {
+      "rows": 36498,
+      "unique": 36498,
+      "ordered_sha256": "6acedecac2b3ef6b4a5cdafecefbe6b65fec8aa40636c45ae596d3a1b8785315"
+    },
+    "id": {
+      "rows": 36498,
+      "unique": 36498,
+      "ordered_sha256": "6acedecac2b3ef6b4a5cdafecefbe6b65fec8aa40636c45ae596d3a1b8785315"
+    },
+    "OID": {
+      "rows": 36498,
+      "unique": 36498,
+      "ordered_sha256": "9f23866c2477333d633a24d2e6067116df2922c8b5511ed6538330b9e7706ea5"
+    },
+    "COUSUBNS": {
+      "rows": 36498,
+      "unique": 36156,
+      "ordered_sha256": "8343e6dfd81d255b20e896455abe69ed1a19cabccce15f34be44d5ddd2da67cc"
+    },
+    "GEOID": {
+      "rows": 36498,
+      "unique": 36498,
+      "ordered_sha256": "579805b8f34f8f524eb8cc66389403407807ab34e5c0a6a32d7be6892bdf49ad"
+    },
+    "STATE": {
+      "rows": 36498,
+      "unique": 56,
+      "ordered_sha256": "198d88428cc371f9f6b0646c47c26bc27ef84d0a86535e6ea1a1a2f14254bf8e"
+    },
+    "COUNTY": {
+      "rows": 36498,
+      "unique": 333,
+      "ordered_sha256": "c5530995239e6c1dc3dd09405f3144634f4538a7519d15449cf459e35a1efa0e"
+    },
+    "COUSUB": {
+      "rows": 36498,
+      "unique": 21650,
+      "ordered_sha256": "1204fb81b5eff5ffe0d7171410b0aaa05ec4436bffcc39e7ea28bb7abd339518"
+    }
+  },
+  "GPKG_envelope_codes": {
+    "1": 36498
+  }
+}

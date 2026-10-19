@@ -1,0 +1,49 @@
+{
+  "parquet": {
+    "bytes": 209709959,
+    "sha256": "1f9107aa5e3af90d581f5df02d5dff443884cafb170583f3e3efbaa5be206fea",
+    "md5": "980f8c35fe35aa8c93a42613e891bbba",
+    "receipt": {
+      "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/county-subdivisions-1/county-subdivisions-1/v1.0.0/geoparquet/county-subdivisions-1.parquet",
+      "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/county-subdivisions-1/county-subdivisions-1/v1.0.0/geoparquet/county-subdivisions-1.parquet",
+      "status": 200,
+      "observed_at": "2026-10-19T11:42:55.259106+00:00",
+      "bytes": 209709959,
+      "sha256": "1f9107aa5e3af90d581f5df02d5dff443884cafb170583f3e3efbaa5be206fea",
+      "md5": "980f8c35fe35aa8c93a42613e891bbba",
+      "x_goog_hash": "crc32c=srZ8Ug==, md5=mA+MNf41qoyTpCYT6JG7ug==",
+      "generation": "1791506359369627",
+      "complete_body": true,
+      "classification": "complete unapproved published baseline candidate"
+    }
+  },
+  "geopackage": {
+    "original_bytes": 525926400,
+    "sha256": "eef838944f362b9f8adb29a87fda97079c4b1e29996b02b8bf2731ca57be1c8a",
+    "provider_md5": "08412fe20116b7a513116123bf9db535",
+    "lossless_compressed_bytes": 299196386,
+    "compressed_sha256": "d04bff3d853e5d3cb12c7307dd14b30e2d5ca4b2dc95d8e96b6aac950726a48a",
+    "complete_original_replay_verified": true
+  },
+  "geojson": {
+    "original_bytes": 1394822984,
+    "sha256": "bad62d5a6e765aab321eea9efa3bf6db3a365fa7655e1a04d870e21e54d993d1",
+    "provider_md5": "1ac752fdd2162d0a34be3b9737c3afa8",
+    "lossless_compressed_bytes": 422163385,
+    "compressed_sha256": "bbe142e20f7451d29f9b5aa62f21d4152e25ca243c47bae6298dd86ea0db8923",
+    "complete_original_replay_verified": true
+  },
+  "pmtiles": {
+    "original_bytes": 124989468,
+    "sha256": "8afa697575d674a9578f3bdab844de03eaf0f1a54b07ffb406a75a4f04bbcc7f",
+    "provider_md5": "8ba1281f512471ad0c2b49f3ff3e112d",
+    "lossless_compressed_bytes": 124637236,
+    "compressed_sha256": "f3b72f9acdf57e61e2a59748ef30eaac2fc91eb64f352677f5d2015827020393",
+    "complete_original_replay_verified": true,
+    "header_version": 3,
+    "header_declared_addressed_tiles": 83790,
+    "header_declared_tile_entries": 68613,
+    "header_declared_tile_contents": 51629,
+    "feature_geometry_or_ID_decoding_performed": false
+  }
+}

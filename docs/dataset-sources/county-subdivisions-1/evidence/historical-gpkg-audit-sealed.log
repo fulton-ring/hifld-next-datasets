@@ -1,0 +1,12 @@
+/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/pyogrio/core.py:280: RuntimeWarning: File /proc/self/fd/5 has GPKG application_id, but non conformant file extension
+  return ogr_read_info(
+Traceback (most recent call last):
+  File "/workspace/work/hifld-coordinator/45/audit_historical_gpkg.py", line 27, in <module>
+    path='/proc/self/fd/'+str(fd);info=pyogrio.read_info(path);baseline={}
+                                       ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/hifld-worker-worktrees/19/.venv/lib/python3.12/site-packages/pyogrio/core.py", line 280, in read_info
+    return ogr_read_info(
+           ^^^^^^^^^^^^^^
+  File "pyogrio/_io.pyx", line 2018, in pyogrio._io.ogr_read_info
+  File "pyogrio/_io.pyx", line 262, in pyogrio._io.ogr_open
+pyogrio.errors.DataSourceError: sqlite3_open(/proc/self/fd/5) failed: unable to open database file

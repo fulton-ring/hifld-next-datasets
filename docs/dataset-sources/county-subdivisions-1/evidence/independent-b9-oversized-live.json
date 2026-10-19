@@ -1,0 +1,25 @@
+{
+  "head": "b9aafc3c124f3c6f627fe887f0944ca0d7a339d8",
+  "scope": "Actual HTTPX streaming machinery with explicit bounded synthetic oversize response, no genuine source/live publication claim",
+  "reason": "live_capture_failed_partial_retained:oversized_source_or_storage_floor",
+  "HTTP_response_bytes_consumed": 37,
+  "preserved_partial_bytes": 37,
+  "consumed_body_preserved_exactly": true,
+  "transport_failure_receipt": {
+    "preserved_partial_path": "/workspace/work/review-cousub45-b9-oversized-live/stage/_raw-captures/synthetic-oversize/capture-2c566927aa614076b0e7a15289d7fca0.partial",
+    "receipt": {
+      "bytes": 37,
+      "complete_body": false,
+      "content_encoding": null,
+      "content_length": "37",
+      "final_url": "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_substategeo.gdb.zip",
+      "observed_at": "2026-10-19T12:55:50.542927+00:00",
+      "reason": "oversized_source_or_storage_floor",
+      "requested_accept_encoding": "identity",
+      "sha256": "66c6f0ae542077a19fae99ca43ec51bc50203dd24e34ec1bafe95b6dec8e8969",
+      "status": 200,
+      "url": "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_substategeo.gdb.zip",
+      "wire_bytes_downloaded": 37
+    }
+  }
+}

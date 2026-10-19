@@ -1,0 +1,16 @@
+{
+  "approved": false,
+  "status": "PASS",
+  "constructor": "b9aafc3c124f3c6f627fe887f0944ca0d7a339d8",
+  "scope": "Full current native files byte-identical to independently complete-audited original689 gold and prior0f; no native reader/writer/state changes",
+  "files": {
+    "geopackage/county-subdivisions-1.gpkg": {
+      "bytes": 524169216,
+      "sha256": "31d67a00afefbe21e63ef4b8f1a0bec8b8dd12998e96f38ebf95238f03a2c047"
+    },
+    "geoparquet/county-subdivisions-1.parquet": {
+      "bytes": 354551677,
+      "sha256": "1c8fcf9ec260705dfbe97fca10b650e9cebc0a68bd2dd49bb9d49807381d8888"
+    }
+  }
+}

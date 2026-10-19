@@ -1,0 +1,13 @@
+{
+  "classification": "Exact original bounded summaries restored; complete closed generated tree preserved in verified archive. Original source captures preserved.",
+  "archive": "/workspace/work/hifld-coordinator/closed-generated-archives/cousub45-closed-before-receipt-fix-graphs-grouped-long.tar.zst",
+  "manifest": "/workspace/work/hifld-coordinator/closed-generated-archives/cousub45-closed-before-receipt-fix-graphs-grouped-long.manifest.json",
+  "restore": [
+    "tar",
+    "--use-compress-program=zstd -d --long=29",
+    "-xf",
+    "/workspace/work/hifld-coordinator/closed-generated-archives/cousub45-closed-before-receipt-fix-graphs-grouped-long.tar.zst",
+    "-C",
+    "/workspace/work/hifld-coordinator/45"
+  ]
+}

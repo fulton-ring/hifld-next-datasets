@@ -1,0 +1,20 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/county-subdivisions-1/county-subdivisions-1/v1.0.0/pmtiles/county-subdivisions-1.pmtiles",
+  "observed_at": "2026-10-19T12:08:48.324804+00:00",
+  "complete_body": true,
+  "classification": "complete historical published candidate only after full body/provider checksum verification",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/county-subdivisions-1/county-subdivisions-1/v1.0.0/pmtiles/county-subdivisions-1.pmtiles",
+  "content_length": "124989468",
+  "provider_hash": "crc32c=IpYvsw==, md5=i6EoH1Ekca0MK0nz/z4RLQ==",
+  "generation": "1791506359525172",
+  "wire_bytes_downloaded": 124989468,
+  "bytes": 124989468,
+  "sha256": "8afa697575d674a9578f3bdab844de03eaf0f1a54b07ffb406a75a4f04bbcc7f",
+  "md5": "8ba1281f512471ad0c2b49f3ff3e112d",
+  "collection_checksum": "d501108ba1281f512471ad0c2b49f3ff3e112d",
+  "lossless_full_replay_verified": true,
+  "compression": "zstd; original full HTTP body reproduced exactly",
+  "compressed_bytes": 124637236,
+  "compressed_sha256": "f3b72f9acdf57e61e2a59748ef30eaac2fc91eb64f352677f5d2015827020393"
+}

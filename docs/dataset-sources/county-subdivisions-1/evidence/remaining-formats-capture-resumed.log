@@ -1,0 +1,3 @@
+{"format": "geojson", "status": "verified existing complete capture preserved"}
+{"format": "geopackage", "status": "verified existing complete capture preserved"}
+{"format": "pmtiles", "status": "PASS", "bytes": 124989468, "compressed_bytes": 124637236, "sha256": "8afa697575d674a9578f3bdab844de03eaf0f1a54b07ffb406a75a4f04bbcc7f"}

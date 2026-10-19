@@ -1,0 +1,20 @@
+{
+  "url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/county-subdivisions-1/county-subdivisions-1/v1.0.0/geojson/county-subdivisions-1-geojson.geojson",
+  "observed_at": "2026-10-19T11:57:08.243063+00:00",
+  "complete_body": true,
+  "classification": "complete historical published candidate only after full body/provider checksum verification",
+  "status": 200,
+  "final_url": "https://storage.googleapis.com/hifld-next-datasets-prod/hifld/county-subdivisions-1/county-subdivisions-1/v1.0.0/geojson/county-subdivisions-1-geojson.geojson",
+  "content_length": "1394822984",
+  "provider_hash": "crc32c=RfuGYg==, md5=GsdS/dIWLQo0vjuXN8OvqA==",
+  "generation": "1791506359463125",
+  "wire_bytes_downloaded": 1394822984,
+  "bytes": 1394822984,
+  "sha256": "bad62d5a6e765aab321eea9efa3bf6db3a365fa7655e1a04d870e21e54d993d1",
+  "md5": "1ac752fdd2162d0a34be3b9737c3afa8",
+  "collection_checksum": "d501101ac752fdd2162d0a34be3b9737c3afa8",
+  "lossless_full_replay_verified": true,
+  "compression": "zstd; original full HTTP body reproduced exactly",
+  "compressed_bytes": 422163385,
+  "compressed_sha256": "bbe142e20f7451d29f9b5aa62f21d4152e25ca243c47bae6298dd86ea0db8923"
+}

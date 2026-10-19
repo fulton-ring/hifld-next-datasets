@@ -1,0 +1,41 @@
+{
+  "approved": false,
+  "original_constructor": "689073bc0fd6dae123c00549b6600e76565401d5",
+  "new_constructor": "0f3983da9b5bc7faca8cfbe9f2c8e428fcac6cc7",
+  "changed_functions": [
+    "acquire",
+    "observe_external_receipt",
+    "reconcile_cache"
+  ],
+  "all_other_source_function_AST_exact": true,
+  "shared_catalog_publish_approval_blobs_unchanged": [
+    "src/dagster_hifld/assets/publish.py",
+    "src/dagster_hifld/catalog.py",
+    "src/dagster_hifld/release_approval.py"
+  ],
+  "native_source_and_writer_functions_unchanged": [
+    "candidate_lock",
+    "digest",
+    "encode",
+    "geo_metadata",
+    "immutable",
+    "local_only",
+    "manifest_for",
+    "native_batch",
+    "native_definition",
+    "original_bundle",
+    "processing_identity",
+    "scan",
+    "source_audit",
+    "source_payloads",
+    "source_reader",
+    "stage_county_subdivisions_candidate",
+    "strict_json",
+    "unaliased",
+    "uri",
+    "validate_receipt",
+    "verify_outputs",
+    "write_gpkg",
+    "write_parquet"
+  ]
+}

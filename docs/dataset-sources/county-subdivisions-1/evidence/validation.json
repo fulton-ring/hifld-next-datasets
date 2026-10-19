@@ -1,0 +1,82 @@
+{
+  "status": "PASS_local_draft_only",
+  "approved": false,
+  "source_constructor": "b9aafc3c124f3c6f627fe887f0944ca0d7a339d8",
+  "actual_complete_source_rows": 36492,
+  "local_suite": {
+    "tests": 554,
+    "passed": 553,
+    "skipped": 1,
+    "seconds": 130.563,
+    "skip": "production GCS E2E only; real sibling IaC56aa and complete real source audit present"
+  },
+  "final_graph_runs": [
+    {
+      "kind": "actual_synthetic_bad_receipt_full_original_source",
+      "run_id": "47ced8d8-75d9-47c0-96fa-6a757cb3718e",
+      "success": false
+    },
+    {
+      "kind": "complete_real_source_36492",
+      "run_id": "36647dc3-e120-4350-9109-3a3811cf65a4",
+      "success": true
+    },
+    {
+      "kind": "complete_real_idempotent_refresh",
+      "run_id": "e8777010-2d77-4892-a6aa-3cc5b0950b06",
+      "success": true
+    },
+    {
+      "kind": "normal_catalog_missing_approval_1",
+      "run_id": "d7ffc652-f230-40a8-8bdf-44942c3035d3",
+      "success": false
+    },
+    {
+      "kind": "complete_real_post_catalog_refresh_1",
+      "run_id": "a2d64819-7dbd-41dc-b185-c3af03bcf525",
+      "success": true
+    }
+  ],
+  "preservation": {
+    "all_original_native_values_ids_types_nulls_wkb_verified": true,
+    "original_external_capture_preserved_read_only": true,
+    "prior_local_publication_fixture_unchanged": true
+  },
+  "native_byte_parity": "native-gold-parity-finalb9.json",
+  "historical_proofs": {
+    "seven_runs": "actual-historical689.json",
+    "quality_negative": "43beeb7f-ab3c-4b33-a0f1-e24250ac227e",
+    "two_real_approval_denials": [
+      "2387ee7f-15cb-424f-81ab-7d3149cd46f6",
+      "c1dadcdb-0247-402c-ab27-d5e4fbf33f95"
+    ],
+    "unchanged_code_scope": "native-processing-AST-identity.json",
+    "interrupted48bd": "first complete source PASS; refresh intentionally interrupted before repairing acquisition; not counted as successful refresh",
+    "prior_final0f": "actual-final0f.json (five actual outcomes; preserved with original code0f scope)",
+    "unchanged_native_after_live_guard": "native-processing-AST-live-identity.json: only acquire AST changes0f\u2192b9"
+  },
+  "harness_incidents": [
+    "Initial old689 driver expected SHAPE but generic catalog dictionary calls geometry. Corrected harness and resumed six completed records, then actual quality negative; original failed log retained.",
+    "Native historical GPKG audit initial sealed-memfd/SQLite proc reader unsupported. Corrected bounded verified temporary duplicate audit PASS; original compressed body retained.",
+    "Initial complete GeoJSON parser auxiliary trailer-bracket assertion failed after all rows parsed; corrected full replay PASS.",
+    "Conservative disk guard paused before PMTiles acquisition; parent freed verified closed generated graphs, complete capture resumed and full replay PASS.",
+    "Initial HTTPX synthetic encoded content fixture eager-decoded; corrected stream=ByteStream exercise tests encoded wire and truncated partial retention."
+  ],
+  "review_repairs": [
+    "ready marker binds exact original source SHA and closed key roster",
+    "bounded regular unique NOFOLLOW receipt observation retained before JSON/URL/status/checksum parse validation; UNTRUSTED diagnostics do not claim valid source",
+    "Live consumed bounded chunk is persisted before size rejection; storage-floor preflight before every next read, tested with actual HTTPX oversized37B and counted first/next-read floor cases"
+  ],
+  "production": "No production write/acceptance/merge/closure",
+  "CI": "Not inferred from local tests; final GitHub status read recorded separately",
+  "independent_review": {
+    "worker": "/root/review_research",
+    "scope": "complete native/baseline audit and16 bounded registered mechanics cases PASS; final exact documentation head plus complete reuse pending"
+  },
+  "live_guard": {
+    "max_decoded_chunk_bytes": 1048576,
+    "policy": "Reserve one full bounded block above300MB floor BEFORE next iterator read; persist each consumed block before pinned-size rejection, at most one decoded-block overshoot; complete_body=false on all rejected attempts",
+    "tests": "evidence/focused-live-retention-repair.log",
+    "source_commit": "b9aafc3c124f3c6f627fe887f0944ca0d7a339d8"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "approved": false,
+  "scope": "All four actual historical collection formats fully captured/checksummed; native tables/IDs/geometry audited for Parquet/GPKG/GeoJSON; PMTiles archive fully pinned but not decoded as a lossless native table",
+  "formats": {
+    "geojson": {
+      "complete_receipt": "evidence/published-geojson.receipt.json",
+      "retained_lossless_body": "/workspace/work/hifld-coordinator/45/published-format-captures/geojson.body.zst",
+      "bytes": 1394822984,
+      "sha256": "bad62d5a6e765aab321eea9efa3bf6db3a365fa7655e1a04d870e21e54d993d1",
+      "md5": "1ac752fdd2162d0a34be3b9737c3afa8",
+      "generation": "1791506359463125",
+      "compressed_bytes": 422163385,
+      "compressed_sha256": "bbe142e20f7451d29f9b5aa62f21d4152e25ca243c47bae6298dd86ea0db8923",
+      "lossless_full_replay_verified": true
+    },
+    "geopackage": {
+      "complete_receipt": "evidence/published-geopackage.receipt.json",
+      "retained_lossless_body": "/workspace/work/hifld-coordinator/45/published-format-captures/geopackage.body.zst",
+      "bytes": 525926400,
+      "sha256": "eef838944f362b9f8adb29a87fda97079c4b1e29996b02b8bf2731ca57be1c8a",
+      "md5": "08412fe20116b7a513116123bf9db535",
+      "generation": "1791506359451281",
+      "compressed_bytes": 299196386,
+      "compressed_sha256": "d04bff3d853e5d3cb12c7307dd14b30e2d5ca4b2dc95d8e96b6aac950726a48a",
+      "lossless_full_replay_verified": true
+    },
+    "pmtiles": {
+      "complete_receipt": "evidence/published-pmtiles.receipt.json",
+      "retained_lossless_body": "/workspace/work/hifld-coordinator/45/published-format-captures/pmtiles.body.zst",
+      "bytes": 124989468,
+      "sha256": "8afa697575d674a9578f3bdab844de03eaf0f1a54b07ffb406a75a4f04bbcc7f",
+      "md5": "8ba1281f512471ad0c2b49f3ff3e112d",
+      "generation": "1791506359525172",
+      "compressed_bytes": 124637236,
+      "compressed_sha256": "f3b72f9acdf57e61e2a59748ef30eaac2fc91eb64f352677f5d2015827020393",
+      "lossless_full_replay_verified": true
+    },
+    "geoparquet": {
+      "complete_receipt": "evidence/published-baseline.receipt.json",
+      "retained_body": "/workspace/work/hifld-coordinator/45/published-baseline.parquet",
+      "bytes": 209709959,
+      "sha256": "1f9107aa5e3af90d581f5df02d5dff443884cafb170583f3e3efbaa5be206fea",
+      "complete": true
+    }
+  }
+}
