@@ -1,21 +1,21 @@
 {
-  "username": "NHQRedCrossGIS",
-  "udn": null,
-  "id": "e6dea1146df797f16130b18285c8c8bf",
-  "fullName": "GIS NHQ",
-  "firstName": "GIS",
-  "lastName": "NHQ",
+  "access": "public",
+  "created": 1342558239000,
+  "culture": "en",
+  "cultureFormat": "us",
   "description": "",
+  "firstName": "GIS",
+  "fullName": "GIS NHQ",
+  "id": "e6dea1146df797f16130b18285c8c8bf",
+  "lastName": "NHQ",
+  "modified": 1780594336000,
+  "provider": "arcgis",
+  "region": "US",
   "tags": [
     "undefined"
   ],
-  "culture": "en",
-  "cultureFormat": "us",
-  "region": "US",
-  "units": "english",
   "thumbnail": "",
-  "access": "public",
-  "created": 1342558239000,
-  "modified": 1780594336000,
-  "provider": "arcgis"
+  "udn": null,
+  "units": "english",
+  "username": "NHQRedCrossGIS"
 }

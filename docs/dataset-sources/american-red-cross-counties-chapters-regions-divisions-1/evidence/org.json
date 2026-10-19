@@ -4,13 +4,9 @@
   "3DBasemapGalleryGroupQuery": "title:\"ArcGIS Online 3D Basemaps\" AND owner:esri_en",
   "access": "public",
   "allSSL": true,
-  "allowedRedirectUris": [
-    
-  ],
+  "allowedRedirectUris": [],
   "analysisLayersGroupQuery": "title:\"Living Atlas Analysis Layers\" AND owner:esri",
-  "authorizedCrossOriginDomains": [
-    
-  ],
+  "authorizedCrossOriginDomains": [],
   "backgroundImage": "images/arcgis_background.jpg",
   "basemapGalleryGroupQuery": "title:\"United States Basemaps\" AND owner:Esri_cy_US",
   "canShareBingPublic": false,
@@ -20,80 +16,99 @@
   "contentCategorySetsGroupQuery": "title:\"ArcGIS Online Content Category Sets\" AND owner:esri_en",
   "culture": "en",
   "cultureFormat": "us",
+  "currentVersion": "2026.2",
   "customBaseUrl": "maps.arcgis.com",
   "default3DBasemapQuery": "typekeywords:\"sourceId#topographic\" AND type:\"Web Scene\" AND owner:esri_en",
   "defaultBasemap": {
     "baseMapLayers": [
       {
-        "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer",
         "layerType": "ArcGISTiledMapServiceLayer",
         "resourceInfo": {
+          "capabilities": "Map,Tilemap,Query,Data",
           "currentVersion": 10.3,
-          "mapName": "Layers",
-          "supportsDynamicLayers": false,
+          "exportTilesAllowed": false,
+          "fullExtent": {
+            "spatialReference": {
+              "latestWkid": 3857,
+              "wkid": 102100
+            },
+            "xmax": 20037507.067161843,
+            "xmin": -20037507.067161843,
+            "ymax": 19971868.88040863,
+            "ymin": -19971868.880408604
+          },
+          "initialExtent": {
+            "spatialReference": {
+              "latestWkid": 3857,
+              "wkid": 102100
+            },
+            "xmax": 28848255.049479112,
+            "xmin": -28848255.049479112,
+            "ymax": 16430757.376790084,
+            "ymin": -2077452.082122866
+          },
           "layers": [
             {
+              "defaultVisibility": false,
               "id": 0,
+              "maxScale": 0,
+              "minScale": 0,
               "name": "Citations",
               "parentLayerId": -1,
-              "defaultVisibility": false,
-              "subLayerIds": null,
-              "minScale": 0,
-              "maxScale": 0
+              "subLayerIds": null
             }
           ],
-          "tables": [
-            
-          ],
-          "spatialReference": {
-            "wkid": 102100,
-            "latestWkid": 3857
-          },
+          "mapName": "Layers",
+          "maxImageHeight": 4096,
+          "maxImageWidth": 4096,
+          "maxRecordCount": 100,
+          "maxScale": 70.5310735,
+          "minScale": 591657527.591555,
           "singleFusedMapCache": true,
+          "spatialReference": {
+            "latestWkid": 3857,
+            "wkid": 102100
+          },
+          "supportedExtensions": "KmlServer",
+          "supportedImageFormatTypes": "PNG32,PNG24,PNG,JPG,DIB,TIFF,EMF,PS,PDF,GIF,SVG,SVGZ,BMP",
+          "supportedQueryFormats": "JSON, AMF",
+          "supportsDynamicLayers": false,
+          "tables": [],
           "tileInfo": {
-            "rows": 256,
             "cols": 256,
+            "compressionQuality": 90,
             "dpi": 96,
             "format": "JPEG",
-            "compressionQuality": 90,
-            "origin": {
-              "x": -2.0037508342787E7,
-              "y": 2.0037508342787E7
-            },
-            "spatialReference": {
-              "wkid": 102100,
-              "latestWkid": 3857
-            },
             "lods": [
               {
                 "level": 0,
                 "resolution": 156543.03392800014,
-                "scale": 5.91657527591555E8
+                "scale": 591657527.591555
               },
               {
                 "level": 1,
                 "resolution": 78271.51696399994,
-                "scale": 2.95828763795777E8
+                "scale": 295828763.795777
               },
               {
                 "level": 2,
                 "resolution": 39135.75848200009,
-                "scale": 1.47914381897889E8
+                "scale": 147914381.897889
               },
               {
                 "level": 3,
                 "resolution": 19567.87924099992,
-                "scale": 7.3957190948944E7
+                "scale": 73957190.948944
               },
               {
                 "level": 4,
                 "resolution": 9783.93962049996,
-                "scale": 3.6978595474472E7
+                "scale": 36978595.474472
               },
               {
                 "level": 5,
                 "resolution": 4891.96981024998,
-                "scale": 1.8489297737236E7
+                "scale": 18489297.737236
               },
               {
                 "level": 6,
@@ -185,40 +200,20 @@
                 "resolution": 0.01866138385297604,
                 "scale": 70.5310735
               }
-            ]
-          },
-          "initialExtent": {
-            "xmin": -2.8848255049479112E7,
-            "ymin": -2077452.082122866,
-            "xmax": 2.8848255049479112E7,
-            "ymax": 1.6430757376790084E7,
+            ],
+            "origin": {
+              "x": -20037508.342787,
+              "y": 20037508.342787
+            },
+            "rows": 256,
             "spatialReference": {
-              "wkid": 102100,
-              "latestWkid": 3857
+              "latestWkid": 3857,
+              "wkid": 102100
             }
           },
-          "fullExtent": {
-            "xmin": -2.0037507067161843E7,
-            "ymin": -1.9971868880408604E7,
-            "xmax": 2.0037507067161843E7,
-            "ymax": 1.997186888040863E7,
-            "spatialReference": {
-              "wkid": 102100,
-              "latestWkid": 3857
-            }
-          },
-          "minScale": 5.91657527591555E8,
-          "maxScale": 70.5310735,
-          "units": "esriMeters",
-          "supportedImageFormatTypes": "PNG32,PNG24,PNG,JPG,DIB,TIFF,EMF,PS,PDF,GIF,SVG,SVGZ,BMP",
-          "capabilities": "Map,Tilemap,Query,Data",
-          "supportedQueryFormats": "JSON, AMF",
-          "exportTilesAllowed": false,
-          "maxRecordCount": 100,
-          "maxImageHeight": 4096,
-          "maxImageWidth": 4096,
-          "supportedExtensions": "KmlServer"
-        }
+          "units": "esriMeters"
+        },
+        "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer"
       }
     ],
     "title": "Topographic"
@@ -228,89 +223,89 @@
       {
         "id": "World_Hillshade_2559",
         "layerType": "ArcGISTiledMapServiceLayer",
-        "url": "https://ibasemaps-api.arcgis.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer",
-        "visibility": true,
         "opacity": 1,
-        "title": "World Hillshade"
+        "title": "World Hillshade",
+        "url": "https://ibasemaps-api.arcgis.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer",
+        "visibility": true
       },
       {
         "id": "VectorTile_9568",
-        "type": "VectorTileLayer",
         "layerType": "VectorTileLayer",
-        "title": "World Topographic Map",
+        "opacity": 1,
         "styleUrl": "https://cdn.arcgis.com/sharing/rest/content/items/42df0d22517e49ad84edcee4c093857d/resources/styles/root.json",
-        "visibility": true,
-        "opacity": 1
+        "title": "World Topographic Map",
+        "type": "VectorTileLayer",
+        "visibility": true
       }
     ],
     "title": "Topographic"
   },
   "defaultExtent": {
-    "type": "extent",
-    "xmin": -1.4999999999994682E7,
-    "ymin": 2699999.9999989746,
-    "xmax": -6199999.999997801,
-    "ymax": 6499999.999996886,
     "spatialReference": {
       "wkid": 102100
-    }
+    },
+    "type": "extent",
+    "xmax": -6199999.999997801,
+    "xmin": -14999999.999994682,
+    "ymax": 6499999.999996886,
+    "ymin": 2699999.9999989746
   },
   "defaultVectorBasemap": {
     "baseMapLayers": [
       {
         "id": "World_Hillshade_3805",
         "layerType": "ArcGISTiledMapServiceLayer",
-        "url": "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer",
-        "visibility": true,
         "opacity": 1,
-        "title": "World Hillshade"
+        "title": "World Hillshade",
+        "url": "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer",
+        "visibility": true
       },
       {
         "id": "195012aeb31-layer-2",
-        "type": "VectorTileLayer",
         "layerType": "VectorTileLayer",
-        "title": "World Topographic Map",
+        "opacity": 1,
         "styleUrl": "https://cdn.arcgis.com/sharing/rest/content/items/27e89eb03c1e4341a1d75e597f0291e6/resources/styles/root.json",
-        "visibility": true,
-        "opacity": 1
+        "title": "World Topographic Map",
+        "type": "VectorTileLayer",
+        "visibility": true
       }
     ],
     "title": "Topographic"
   },
-  "description": "<b><font color=\"#dc143c\" size=\"4\">Disaster Services, Geospatial Technology Unit<\/font><\/b><div><br /><\/div><div>The unit supports a wide range of users from national headquarters to Divisions, Regions and Chapters.<\/div><div><br /><\/div><div><p><\/p><p><\/p><p><\/p><p><\/p><p><\/p><\/div>",
+  "description": "<b><font color=\"#dc143c\" size=\"4\">Disaster Services, Geospatial Technology Unit</font></b><div><br /></div><div>The unit supports a wide range of users from national headquarters to Divisions, Regions and Chapters.</div><div><br /></div><div><p></p><p></p><p></p><p></p><p></p></div>",
   "dev3DBasemapGalleryGroupQuery": "title:\"World 3D Basemaps for Developers\" AND owner:esri_en",
   "devBasemapGalleryGroupQuery": "title:\"World Basemaps for Developers\" AND owner:esri",
   "disconnectedModeEnabled": false,
   "eueiEnabled": true,
   "featuredGroups": [
     {
-      "title": "National Maps for USA",
-      "owner": "Federal_User_Community"
+      "owner": "Federal_User_Community",
+      "title": "National Maps for USA"
     },
     {
-      "title": "Esri Maps and Data",
-      "owner": "esri"
+      "owner": "esri",
+      "title": "Esri Maps and Data"
     },
     {
-      "title": "Community Basemaps",
-      "owner": "esri"
+      "owner": "esri",
+      "title": "Community Basemaps"
     },
     {
-      "title": "Landsat Community",
-      "owner": "esri"
+      "owner": "esri",
+      "title": "Landsat Community"
     },
     {
-      "title": "Web Application Templates",
-      "owner": "esri_en"
+      "owner": "esri_en",
+      "title": "Web Application Templates"
     },
     {
-      "title": "ArcGIS for Local Government",
-      "owner": "ArcGISTeamLocalGov"
+      "owner": "ArcGISTeamLocalGov",
+      "title": "ArcGIS for Local Government"
     },
     {
-      "title": "American Red Cross Geospatial Technology",
+      "id": "012376cf2abc40a687aaee4e0224792d",
       "owner": "NHQRedCrossGIS",
-      "id": "012376cf2abc40a687aaee4e0224792d"
+      "title": "American Red Cross Geospatial Technology"
     }
   ],
   "featuredGroupsId": "id:012376cf2abc40a687aaee4e0224792d",
@@ -325,50 +320,59 @@
       "url": "https://aimodels.arcgis.com"
     },
     "aiUtilityServices": {
-      "url": "https://aiutils.arcgis.com",
       "api": {
-        "text_translate": "/api/text/translate",
-        "text_analyze": "/api/text/analyze",
+        "audio_speech": "/api/audio/speech",
+        "audio_transcribe": "/api/audio/transcribe",
+        "embeddings": "/api/embeddings",
+        "file_analyze": "/api/file/analyze",
         "image_analyze": "/api/image/analyze",
         "image_extract": "/api/image/extractText",
-        "file_analyze": "/api/file/analyze",
-        "embeddings": "/api/embeddings",
-        "audio_transcribe": "/api/audio/transcribe",
-        "audio_speech": "/api/audio/speech"
+        "text_analyze": "/api/text/analyze",
+        "text_translate": "/api/text/translate"
       },
+      "imageExtractTextUtility": "/api/assistant/imageExtractText",
       "translateUtility": "/api/translate",
-      "imageExtractTextUtility": "/api/assistant/imageExtractText"
+      "url": "https://aiutils.arcgis.com"
+    },
+    "analysis": {
+      "url": "https://analysis.arcgis.com/arcgis/rest/services/tasks/GPServer"
+    },
+    "analysisModels": {
+      "url": "https://webanalysis.arcgis.com"
     },
     "asyncClosestFacility": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/ClosestFacility/GPServer/FindClosestFacilities",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/ClosestFacility/GPServer/FindClosestFacilities"
     },
     "asyncFleetRouting": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/VehicleRoutingProblem/GPServer",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/VehicleRoutingProblem/GPServer"
+    },
+    "asyncGeocode": {
+      "url": "https://analysis.arcgis.com/arcgis/rest/services/tasks/GPServer"
     },
     "asyncLocationAllocation": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/LocationAllocation/GPServer",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/LocationAllocation/GPServer"
     },
     "asyncODCostMatrix": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/OriginDestinationCostMatrix/GPServer",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/OriginDestinationCostMatrix/GPServer"
     },
     "asyncPrintTask": {
       "url": "https://print.arcgis.com/arcgis/rest/services/PrintingToolsAsync/GPServer/Export%20Web%20Map%20Task"
     },
     "asyncRoute": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/Route/GPServer",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/Route/GPServer"
     },
     "asyncServiceArea": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/ServiceAreas/GPServer/GenerateServiceAreas",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/ServiceAreas/GPServer/GenerateServiceAreas"
     },
     "asyncVRP": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/VehicleRoutingProblem/GPServer/SolveVehicleRoutingProblem",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/VehicleRoutingProblem/GPServer/SolveVehicleRoutingProblem"
     },
     "batchGeocode": [
       {
@@ -376,18 +380,27 @@
       }
     ],
     "closestFacility": {
-      "url": "https://route.arcgis.com/arcgis/rest/services/World/ClosestFacility/NAServer/ClosestFacility_World",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://route.arcgis.com/arcgis/rest/services/World/ClosestFacility/NAServer/ClosestFacility_World"
+    },
+    "creditEstimation": {
+      "url": "https://analysis.arcgis.com/arcgis/rest/services/Estimate/GPServer"
     },
     "dashboardsUtility": {
       "url": "https://dashboards-api.arcgis.com"
     },
+    "dataPipelines": {
+      "url": "https://datapipelinesservices.arcgis.com"
+    },
+    "datastoreManagement": {
+      "url": "https://datastoremanagement.arcgis.com"
+    },
     "defaultElevationLayers": [
       {
-        "url": "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
         "id": "globalElevation",
         "layerType": "ArcGISTiledElevationServiceLayer",
-        "units": "esriMeters"
+        "units": "esriMeters",
+        "url": "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer"
       }
     ],
     "elevation": {
@@ -398,19 +411,22 @@
     },
     "geocode": [
       {
-        "url": "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer",
-        "northLat": "Ymax",
-        "southLat": "Ymin",
-        "eastLon": "Xmax",
-        "westLon": "Xmin",
-        "name": "ArcGIS World Geocoding Service",
-        "suggest": true,
-        "placefinding": true,
         "batch": true,
+        "eastLon": "Xmax",
         "esri": true,
-        "ordinal": 0
+        "name": "ArcGIS World Geocoding Service",
+        "northLat": "Ymax",
+        "ordinal": 0,
+        "placefinding": true,
+        "southLat": "Ymin",
+        "suggest": true,
+        "url": "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer",
+        "westLon": "Xmin"
       }
     ],
+    "geoenrichment": {
+      "url": "https://geoenrich.arcgis.com/arcgis/rest/services/World/GeoenrichmentServer"
+    },
     "geometry": {
       "url": "https://utility.arcgisonline.com/arcgis/rest/services/Geometry/GeometryServer"
     },
@@ -421,58 +437,64 @@
       "url": "https://print.arcgis.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Get%20Layout%20Templates%20Info%20Task"
     },
     "locationTracking": {
-      "url": "https://locationservices.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/location_tracking/FeatureServer",
-      "id": "604d9505b89240bda18f47c68365fcb3"
+      "id": "604d9505b89240bda18f47c68365fcb3",
+      "url": "https://locationservices.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/location_tracking/FeatureServer"
     },
     "odCostMatrix": {
-      "url": "https://route.arcgis.com/arcgis/rest/services/World/OriginDestinationCostMatrix/NAServer/OriginDestinationCostMatrix_World",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://route.arcgis.com/arcgis/rest/services/World/OriginDestinationCostMatrix/NAServer/OriginDestinationCostMatrix_World"
     },
     "orthomappingElevation": {
       "url": "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer"
     },
     "packaging": {
-      "url": "https://packaging.arcgis.com/arcgis/rest/services/OfflinePackaging/GPServer",
-      "maxMapAreaItemsLimit": 16,
       "exportTilesMap": [
         {
-          "source": "https://services.arcgisonline.com",
-          "export": "https://tiledbasemaps.arcgis.com"
+          "export": "https://tiledbasemaps.arcgis.com",
+          "source": "https://services.arcgisonline.com"
         },
         {
-          "source": "https://basemaps-api.arcgis.com",
-          "export": "https://basemaps.arcgis.com"
+          "export": "https://basemaps.arcgis.com",
+          "source": "https://basemaps-api.arcgis.com"
         },
         {
-          "source": "https://ibasemaps-api.arcgis.com",
-          "export": "https://tiledbasemaps.arcgis.com"
+          "export": "https://tiledbasemaps.arcgis.com",
+          "source": "https://ibasemaps-api.arcgis.com"
         }
-      ]
+      ],
+      "maxMapAreaItemsLimit": 16,
+      "url": "https://packaging.arcgis.com/arcgis/rest/services/OfflinePackaging/GPServer"
     },
     "printTask": {
       "url": "https://utility.arcgisonline.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task"
     },
+    "rasterAnalytics": {
+      "url": "https://rasteranalysis.arcgis.com/arcgis/rest/services/RasterAnalysisTools/GPServer"
+    },
+    "rasterUtilities": {
+      "url": "https://rasteranalysis.arcgis.com/arcgis/rest/services/Utilities/RasterUtilities/GPServer"
+    },
     "route": {
-      "url": "https://route.arcgis.com/arcgis/rest/services/World/Route/NAServer/Route_World",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://route.arcgis.com/arcgis/rest/services/World/Route/NAServer/Route_World"
     },
     "routingUtilities": {
       "url": "https://logistics.arcgis.com/arcgis/rest/services/World/Utilities/GPServer"
     },
     "serviceArea": {
-      "url": "https://route.arcgis.com/arcgis/rest/services/World/ServiceAreas/NAServer/ServiceArea_World",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://route.arcgis.com/arcgis/rest/services/World/ServiceAreas/NAServer/ServiceArea_World"
     },
     "snapToRoads": {
-      "url": "https://route.arcgis.com/arcgis/rest/services/World/SnapToRoadsSync/GPServer",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://route.arcgis.com/arcgis/rest/services/World/SnapToRoadsSync/GPServer"
     },
     "symbols": {
       "url": "https://utility.arcgisonline.com/arcgis/rest/services/Utilities/Symbols/SymbolServer"
     },
     "syncVRP": {
-      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/VehicleRoutingProblemSync/GPServer/EditVehicleRoutingProblem",
-      "defaultTravelMode": "FEgifRtFndKNcJMJ"
+      "defaultTravelMode": "FEgifRtFndKNcJMJ",
+      "url": "https://logistics.arcgis.com/arcgis/rest/services/World/VehicleRoutingProblemSync/GPServer/EditVehicleRoutingProblem"
     },
     "traffic": {
       "url": "https://traffic.arcgis.com/arcgis/rest/services/World/Traffic/MapServer"
@@ -482,39 +504,16 @@
     },
     "workflowManager": {
       "url": "https://workflow.arcgis.com"
-    },
-    "analysis": {
-      "url": "https://analysis.arcgis.com/arcgis/rest/services/tasks/GPServer"
-    },
-    "geoenrichment": {
-      "url": "https://geoenrich.arcgis.com/arcgis/rest/services/World/GeoenrichmentServer"
-    },
-    "asyncGeocode": {
-      "url": "https://analysis.arcgis.com/arcgis/rest/services/tasks/GPServer"
-    },
-    "creditEstimation": {
-      "url": "https://analysis.arcgis.com/arcgis/rest/services/Estimate/GPServer"
-    },
-    "rasterAnalytics": {
-      "url": "https://rasteranalysis.arcgis.com/arcgis/rest/services/RasterAnalysisTools/GPServer"
-    },
-    "rasterUtilities": {
-      "url": "https://rasteranalysis.arcgis.com/arcgis/rest/services/Utilities/RasterUtilities/GPServer"
-    },
-    "datastoreManagement": {
-      "url": "https://datastoremanagement.arcgis.com"
-    },
-    "dataPipelines": {
-      "url": "https://datapipelinesservices.arcgis.com"
-    },
-    "analysisModels": {
-      "url": "https://webanalysis.arcgis.com"
     }
   },
   "homePageFeaturedContent": "id:7b1ddb018a9441a18f5a2c012e50988b",
   "homePageFeaturedContentCount": 12,
+  "httpPort": 80,
+  "httpsPort": 443,
   "id": "pGfbNJoYypmNq86F",
+  "ipCntryCode": "US",
   "isPortal": false,
+  "isReadOnly": false,
   "layerTemplatesGroupQuery": "title:\"Esri Layer Templates\" AND owner:esri_en",
   "livingAtlasGroupQuery": "title:\"LAW Search\" AND owner:Esri_LivingAtlas",
   "metadataEditable": true,
@@ -526,59 +525,63 @@
   "portalMode": "multitenant",
   "portalName": "ArcGIS Online",
   "portalProperties": {
+    "homePage": "modern",
+    "hub": {
+      "enabled": true,
+      "settings": {
+        "communityOrg": {
+          "orgId": "lfOxfDe0gxrQzYYn",
+          "portalHostname": "arc-nhq-gis-hub.maps.arcgis.com"
+        },
+        "events": {
+          "publicViewId": "368a567411b1494bae22080f85cce1e2",
+          "serviceId": "6719077a349f41119bc787284383ccbd"
+        },
+        "informationalBanner": false,
+        "orgType": "enterprise"
+      }
+    },
     "links": {
       "contactUs": {
         "url": "mailto:greg.tune@redcross.org",
         "visible": true
       }
     },
-    "showSocialMediaLinks": true,
+    "mapViewer": "modern",
+    "mapViewerSwitchDate": 1756847536239,
+    "openData": {
+      "enabled": true,
+      "settings": {
+        "canHandleCrossOrgSignin": true,
+        "groupId": "d48b0dfe53d749c6889d70fac476b027"
+      }
+    },
+    "revertHttpsEndDate": null,
+    "semanticSearchEnabled": true,
     "sharedTheme": {
+      "body": {},
+      "button": {},
       "header": {
         "background": "#e60000",
         "text": "#ffffff"
       },
-      "body": {
-        
-      },
-      "button": {
-        
-      },
       "logo": {
-        "small": "http://maps.redcross.org/Website/img/arc_logo11.gif",
-        "link": "http://arc-nhq-gis.maps.arcgis.com/home/index.html"
+        "link": "http://arc-nhq-gis.maps.arcgis.com/home/index.html",
+        "small": "http://maps.redcross.org/Website/img/arc_logo11.gif"
       }
     },
-    "openData": {
-      "enabled": true,
-      "settings": {
-        "groupId": "d48b0dfe53d749c6889d70fac476b027",
-        "canHandleCrossOrgSignin": true
-      }
-    },
-    "hub": {
-      "enabled": true,
-      "settings": {
-        "orgType": "enterprise",
-        "communityOrg": {
-          "orgId": "lfOxfDe0gxrQzYYn",
-          "portalHostname": "arc-nhq-gis-hub.maps.arcgis.com"
-        },
-        "events": {
-          "serviceId": "6719077a349f41119bc787284383ccbd",
-          "publicViewId": "368a567411b1494bae22080f85cce1e2"
-        },
-        "informationalBanner": false
-      }
-    },
-    "revertHttpsEndDate": null,
     "showCreditsOnProfile": true,
-    "homePage": "modern",
-    "mapViewer": "modern",
-    "mapViewerSwitchDate": 1756847536239,
-    "semanticSearchEnabled": true
+    "showSocialMediaLinks": true
   },
   "portalThumbnail": null,
+  "publicSubscriptionInfo": {
+    "companionOrganizations": [
+      {
+        "organizationUrl": "arc-nhq-gis-hub.maps.arcgis.com",
+        "type": "Community"
+      }
+    ]
+  },
   "rasterFunctionTemplatesGroupQuery": "title:\"Raster Function Templates\" AND owner:esri_en",
   "region": "US",
   "rotatorPanels": [
@@ -592,6 +595,7 @@
   "stylesGroupQuery": "title:\"Esri Styles\" AND owner:esri_en",
   "supports3DTilesServices": true,
   "supportsHostedServices": true,
+  "supportsOAuth": true,
   "symbolSetsGroupQuery": "title:\"Esri Symbols\" AND owner:esri_en",
   "templatesGroupQuery": "title:\"Web Application Templates\" AND owner:esri_en",
   "thumbnail": "thumbnail.png",
@@ -601,19 +605,5 @@
   "useDefault3dBasemap": false,
   "useVectorBasemaps": true,
   "vectorBasemapGalleryGroupQuery": "title:\"United States Vector Basemaps\" AND owner:Esri_cy_US",
-  "publicSubscriptionInfo": {
-    "companionOrganizations": [
-      {
-        "type": "Community",
-        "organizationUrl": "arc-nhq-gis-hub.maps.arcgis.com"
-      }
-    ]
-  },
-  "ipCntryCode": "US",
-  "httpPort": 80,
-  "httpsPort": 443,
-  "supportsOAuth": true,
-  "isReadOnly": false,
-  "currentVersion": "2026.2",
   "vectorSearchEnabled": false
 }
