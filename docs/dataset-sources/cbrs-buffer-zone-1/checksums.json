@@ -2,8 +2,8 @@
   "schema_version": 1,
   "files": {
     "README.md": {
-      "bytes": 8939,
-      "sha256": "7a2f99ae5ef1fadb9196151c6f40c6acb2221b350ce8cbe783c95883a99efb95"
+      "sha256": "a5aa3a4168ca9c81c60e5da629f91a2919d8eb145ff902a937f2caa909c9e57d",
+      "bytes": 9417
     },
     "evidence/baseline_comparison.json": {
       "bytes": 202,
