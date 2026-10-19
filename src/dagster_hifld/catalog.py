@@ -246,6 +246,12 @@ def generate_data_dictionary(
             "metadata_resolved_from",
             "inventory_match_type",
             "manifest_keys",
+            "schema_version",
+            "processor",
+            "inputs",
+            "transformations",
+            "code_commit",
+            "lineage",
         ):
             if key in source_metadata and source_metadata[key] not in (None, "", [], {}):
                 dictionary[key] = source_metadata[key]

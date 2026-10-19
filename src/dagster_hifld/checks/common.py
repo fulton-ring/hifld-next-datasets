@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 
-from dagster import AssetCheckResult, MetadataValue
+from dagster import AssetCheckResult
 
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.release_approval import ReleaseApprovalError, require_release_approval
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
+# Retained only for compatibility with callers; no acceptance semantics remain.
 BASELINE_VERSION = "v20260214"
-ROW_COUNT_TOLERANCE = 0.10
 
 
 def read_quality_check_result(
@@ -39,7 +40,7 @@ def read_quality_check_result(
         ).decode("utf-8")
     )
     return AssetCheckResult(
-        passed=bool(data.get("quality_check_passed")),
+        passed=data.get("quality_check_passed") is True,
         metadata=data,
     )
 
@@ -49,118 +50,17 @@ def read_baseline_comparison_result(
     dataset_slug: str,
     file_slug: str,
     version: str,
+    destination: PublishedStorageResource | None = None,
 ) -> AssetCheckResult:
-    """Compare current partition to BASELINE_VERSION for column superset and row count (±10%)."""
-    if version == BASELINE_VERSION:
-        return AssetCheckResult(
-            passed=True,
-            metadata={
-                "reason": "is_baseline",
-                "baseline_version": BASELINE_VERSION,
-            },
-        )
-
-    baseline_quality_key = (
-        f"{dataset_slug}/{file_slug}/{BASELINE_VERSION}/metadata/quality_manifest.json"
-    )
-    if not staging_storage.object_exists(baseline_quality_key):
-        return AssetCheckResult(
-            passed=True,
-            metadata={
-                "reason": "no_baseline",
-                "baseline_version": BASELINE_VERSION,
-            },
-        )
-
-    current_quality_key = (
-        f"{dataset_slug}/{file_slug}/{version}/metadata/quality_manifest.json"
-    )
-    current_dict_key = (
-        f"{dataset_slug}/{file_slug}/{version}/metadata/data_dictionary.json"
-    )
-    if not staging_storage.object_exists(current_quality_key):
-        return AssetCheckResult(
-            passed=False,
-            metadata={
-                "reason": "current_catalog_incomplete",
-                "missing": "quality_manifest.json",
-                "dataset_slug": dataset_slug,
-                "file_slug": file_slug,
-                "version": version,
-            },
-        )
-    if not staging_storage.object_exists(current_dict_key):
-        return AssetCheckResult(
-            passed=False,
-            metadata={
-                "reason": "current_catalog_incomplete",
-                "missing": "data_dictionary.json",
-                "dataset_slug": dataset_slug,
-                "file_slug": file_slug,
-                "version": version,
-            },
-        )
-
-    baseline_quality = json.loads(
-        staging_storage.read_bytes(
-            dataset_slug,
-            file_slug,
-            BASELINE_VERSION,
-            "metadata/quality_manifest.json",
-        ).decode("utf-8")
-    )
-    current_quality = json.loads(
-        staging_storage.read_bytes(
-            dataset_slug,
-            file_slug,
-            version,
-            "metadata/quality_manifest.json",
-        ).decode("utf-8")
-    )
-    baseline_dict = json.loads(
-        staging_storage.read_bytes(
-            dataset_slug,
-            file_slug,
-            BASELINE_VERSION,
-            "metadata/data_dictionary.json",
-        ).decode("utf-8")
-    )
-    current_dict = json.loads(
-        staging_storage.read_bytes(
-            dataset_slug,
-            file_slug,
-            version,
-            "metadata/data_dictionary.json",
-        ).decode("utf-8")
-    )
-
-    baseline_cols = {c["name"] for c in baseline_dict.get("columns", []) if "name" in c}
-    current_cols = {c["name"] for c in current_dict.get("columns", []) if "name" in c}
-    dropped_cols = sorted(baseline_cols - current_cols)
-    added_cols = sorted(current_cols - baseline_cols)
-
-    baseline_rows = int(baseline_quality.get("feature_count") or 0)
-    current_rows = int(current_quality.get("feature_count") or 0)
-    if baseline_rows > 0:
-        row_delta_pct = abs(current_rows - baseline_rows) / baseline_rows
-    else:
-        row_delta_pct = 0.0 if current_rows == 0 else 1.0
-
-    columns_ok = not dropped_cols
-    rows_ok = row_delta_pct <= ROW_COUNT_TOLERANCE
-    passed = columns_ok and rows_ok
-
-    return AssetCheckResult(
-        passed=passed,
-        metadata={
-            "baseline_version": BASELINE_VERSION,
-            "baseline_row_count": baseline_rows,
-            "current_row_count": current_rows,
-            "row_delta_pct": round(row_delta_pct * 100, 2),
-            "row_tolerance_pct": ROW_COUNT_TOLERANCE * 100,
-            "dropped_columns": MetadataValue.json(dropped_cols),
-            "added_columns": MetadataValue.json(added_cols),
-            "columns_ok": columns_ok,
-            "rows_ok": rows_ok,
-        },
-    )
+    """Require an exact independently accepted report, never sampled count parity."""
+    key = f"{dataset_slug}/{file_slug}/{version}/metadata/baseline_comparison.json"
+    if not staging_storage.object_exists(key):
+        return AssetCheckResult(passed=False, metadata={"reason": "missing_full_data_comparison"})
+    try:
+        # Use configured destination solely to match the independent decision.
+        # No destination writes occur during acceptance checking.
+        destination = destination or PublishedStorageResource.from_env()
+        require_release_approval(staging_storage, destination, [(key, key.removeprefix(staging_storage.prefix.rstrip("/") + "/") if staging_storage.prefix else key)])
+    except (ReleaseApprovalError, ValueError, OSError, KeyError, TypeError) as exc:
+        return AssetCheckResult(passed=False, metadata={"reason": str(exc)})
+    return AssetCheckResult(passed=True, metadata={"reason": "exact_manual_release_decision", "report": key})
