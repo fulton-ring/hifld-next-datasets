@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.bts_rail_tofc_cofc import (
+    bts_intermodal_freight_rail_tofc_cofc_complete,
+    bts_rail_tofc_cofc_draft_schedule,
+)
 from dagster_hifld.assets.epa_power_generation import (
     epa_frs_eia_860_power_generation_complete,
     epa_power_generation_draft_schedule,
@@ -412,8 +416,8 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete],
-    schedules=[epa_power_generation_draft_schedule],
+    asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete, bts_intermodal_freight_rail_tofc_cofc_complete],
+    schedules=[epa_power_generation_draft_schedule, bts_rail_tofc_cofc_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
