@@ -1,0 +1,20 @@
+{
+  "full-comparison": {
+    "original_sha256": "bf826bc463778a66765ca9541a448b277362151744f1e33e3cc0f0204262597b",
+    "replay_sha256": "bf826bc463778a66765ca9541a448b277362151744f1e33e3cc0f0204262597b",
+    "byte_equal": true,
+    "bytes": 2889578
+  },
+  "coordinate-drift": {
+    "original_sha256": "86de19e8445167413c04afc949c75bd7d832c0c2f20497e3d16837f09b188f4f",
+    "replay_sha256": "86de19e8445167413c04afc949c75bd7d832c0c2f20497e3d16837f09b188f4f",
+    "byte_equal": true,
+    "bytes": 2663042
+  },
+  "raw-native-and-published-id-audit": {
+    "original_sha256": "8f66ccbb4bad441cd2fe18264fc815035f5e992954fa3abd3ff5f1b1720a5f54",
+    "replay_sha256": "8f66ccbb4bad441cd2fe18264fc815035f5e992954fa3abd3ff5f1b1720a5f54",
+    "byte_equal": true,
+    "bytes": 2569877
+  }
+}

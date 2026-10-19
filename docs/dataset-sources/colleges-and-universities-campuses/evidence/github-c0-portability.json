@@ -1,0 +1,15 @@
+{
+  "observed_at": "2026-10-19T12:11:06.381057+00:00",
+  "native_local_checkpoint": "22b8d5da5d138d28443b85627f55b4beed757a28",
+  "native_backup_ref": "refs/heads/codex/local-backup-39-22b8d5d",
+  "public_github_checkpoint": "c2b69c5834744c1a694c6c34565b7df94600cebc",
+  "public_parent": "18d18d097318377c35409a3f1a230ac4bf66c852",
+  "identical_complete_tree": "cfdaac7a3f4ad3c8ff7cc70539502bffcdc1ba16",
+  "all11changed_blobs_compared_to_native_sha": true,
+  "branch_ref_update_expected_old_only": true,
+  "environment_changed": false,
+  "credentials_exported": false,
+  "full_suite_scope": "552tests551PASS1skip195.889s at native22b tree; exactfilesidenticalC0, no new C0 fullsuite claim",
+  "requires_fresh_C0_actual_native_manifest": true,
+  "release_approved": false
+}

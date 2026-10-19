@@ -130,5 +130,8 @@
   "network_limitations": {
     "datalumos_and_dhs_crosswalk": "provider403; unverified/inaccessible, not proof of unmatched identity",
     "legacy_arcgis_item": "Inaccessible item; oldserviceArcGIS400error; currentlanding200 is not verifiedreplacement"
-  }
+  },
+  "source_code_commit": "c2b69c5834744c1a694c6c34565b7df94600cebc",
+  "validation_receipt": "evidence/validation.json",
+  "public_complete_source_execution": "evidence/dagster-execution-public-c0.json"
 }
