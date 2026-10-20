@@ -5923,7 +5923,7 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 531,
-      "reviewed_head": "4be341a",
+      "reviewed_head": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-20T02:05:05Z",
@@ -5935,16 +5935,23 @@
         {
           "pr": 531,
           "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/531",
-          "title": "Draft pipeline: overhead pipeline lines (#261)",
+          "title": "Draft pipeline: preserve official USACE IENC overhead pipeline lines (#261)",
           "state": "open",
-          "head_sha_claim_in_body": "4be341a",
+          "head_sha_claim_in_body": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
           "review_evidence_status": "not_recovered_in_ledger",
           "association_confidence": 1.0
         }
       ],
       "work_status": "active_draft_pipeline",
       "assigned_worker": "dataset_11",
-      "status_note": "Overhead pipeline lines; active worker dataset_11. PR #531 reported head 4be341a."
+      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1\u201392, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED.",
+      "local_or_current_branch_evidence": {
+        "pr": 531,
+        "head": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
+        "source_run": "5cb01297-f068-4d98-92b0-cacbce7e0eec",
+        "catalog_run": "db344ed2-39f1-4dc7-b8c2-46e639ec32ac",
+        "reported": "92 rows; all 14 attributes; OBJECTID roster 1\u201392; five focused tests pass; draft only"
+      }
     },
     {
       "issue": 262,
@@ -6044,7 +6051,7 @@
         {
           "pr": 532,
           "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/532",
-          "title": "Research: FCC ULS facilities (#265)",
+          "title": "Document Paging Transmission Towers source audit",
           "state": "open",
           "head_sha_claim_in_body": "279a65961c41848170afc041109713f15bf319c3",
           "review_evidence_status": "research-only; review evidence not recovered",
@@ -6053,7 +6060,7 @@
       ],
       "work_status": "research_only_draft_pr",
       "assigned_worker": "dataset_265",
-      "status_note": "FCC ULS research PR #532. FCC candidate ZIPs/docs and data.fcc.gov license-view returned HTTP 403 with envoy/x-reference-error on 2026-10-20; access denial, not dead-source evidence. ULS schema/join/filter/release markers remain unverified. HIFLD Esri copy candidate extraction completed (6541 rows/4 pages/FID unique) but is not authority. Research only; no archive-refresh ingest."
+      "status_note": "Open research-only PR #532 at exact head 279a65961c41848170afc041109713f15bf319c3 for Paging Transmission Towers. FCC candidate bulk paths/docs returned HTTP 403 with Envoy headers, so schema/join/license filters/release markers remain unverified. A non-FCC-owned HIFLD-labeled Esri service yielded 6541 records/4 pages/28 fields/FID unique, but no delegation or release date. DataLumos/crosswalk also 403. Runtime receipts remain untracked at /workspace/work/265/runtime; no ingest added."
     },
     {
       "issue": 266,
@@ -10220,10 +10227,10 @@
       "state": "open",
       "dataset_issue_candidate": 257,
       "association_confidence": 1,
-      "head_sha_claim_in_body": "39f8488",
-      "review_evidence_status": "root fix pending per coordinator",
+      "head_sha_claim_in_body": "39f848879d39909510ac443798716e26d13d3d4d",
+      "review_evidence_status": "coordinator reports root fix pending; draft",
       "updated_at": null,
-      "latest_head_from_coordinator": "39f8488"
+      "latest_head_from_coordinator": "39f848879d39909510ac443798716e26d13d3d4d"
     },
     {
       "pr": 530,
@@ -10244,18 +10251,18 @@
       "state": "open",
       "dataset_issue_candidate": 261,
       "association_confidence": 1,
-      "head_sha_claim_in_body": "4be341a",
-      "review_evidence_status": "not_recovered_in_ledger"
+      "head_sha_claim_in_body": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
+      "review_evidence_status": "draft implementation evidence in body; no exact-head independent review found in recovered issue comments"
     },
     {
       "pr": 532,
       "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/532",
-      "title": "Research: FCC ULS facilities (#265)",
+      "title": "Document Paging Transmission Towers source audit",
       "state": "open",
       "dataset_issue_candidate": 265,
       "association_confidence": 1,
       "head_sha_claim_in_body": "279a65961c41848170afc041109713f15bf319c3",
-      "review_evidence_status": "research-only; review evidence not recovered"
+      "review_evidence_status": "research only; independent exact-head review pending"
     }
   ],
   "current_coordination_update": {
