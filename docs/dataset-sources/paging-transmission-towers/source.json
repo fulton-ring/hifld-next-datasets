@@ -8,7 +8,7 @@
     "date_meaning": "Inventory archive modification date; not a source release date",
     "http_audit_2026_10_20": "HTTP 403 from this environment; endpoint access was denied and is not classified as dead"
   },
-  "research_status": "source unresolved; draft-only; no ingest implementation",
+  "research_status": "official producer feed candidate identified but payload inaccessible in this environment; draft-only; no ingest implementation",
   "crosswalk": {
     "dhs_crosswalk_doi": "https://doi.org/10.3886/E241367V1",
     "prior_audit": "https://github.com/fulton-ring/agent-content-demos/issues/40#issuecomment-6253017620",
@@ -18,11 +18,22 @@
   "producer": {
     "name": "Federal Communications Commission (FCC)",
     "evidence": "HIFLD item metadata attributes this layer to FCC and says HIFLD hosted the data as received from the provider.",
-    "official_current_public_feed": null,
-    "official_feed_status": "not established",
+    "official_current_public_feed": "FCC ULS complete-download endpoint is a plausible producer feed for paging licenses; a complete licensed population would also need the FCC site/location table joined with verified keys and filters.",
+    "official_feed_status": "candidate identified; not verified: FCC hosts returned HTTP 403 from the Envoy egress layer before response content could be evaluated",
     "lineage_claim": "Inventory description says derived from the FCC Licensing Database; exact table/extract lineage and source release date are not established."
   },
   "candidates": [
+    {
+      "role": "FCC ULS producer bulk-download candidates",
+      "producer": "Federal Communications Commission (FCC), Universal Licensing System (ULS)",
+      "paging_table_url": "https://wireless2.fcc.gov/uls/data/complete/l_paging.zip",
+      "site_location_table_url": "https://wireless2.fcc.gov/uls/data/complete/l_location.zip",
+      "download_documentation_url": "https://www.fcc.gov/wireless/data/public-access-files-database-downloads",
+      "audit_status": "Each URL returned HTTP 403 with `server: envoy` and an `x-reference-error` header on 2026-10-20. These are access-denial responses from the request path, not evidence that the FCC resources are dead or unavailable to ordinary clients.",
+      "payload_schema_status": "not inspected; no ZIP or documentation body was available",
+      "join_feasibility": "unverified. The HIFLD copy exposes UniqSysID and LocNum plus location coordinates, which suggests a possible relation to FCC ULS site/location records; exact source table fields, keys, active-license status rules, paging service filters, and one-to-many behavior must be verified from actual FCC files before implementing.",
+      "freshness_status": "No release or update cadence was verified from the inaccessible download documentation or files."
+    },
     {
       "role": "Esri-hosted HIFLD-labeled copy; authority unresolved",
       "owner": "tqd32886_USG",
@@ -60,7 +71,7 @@
     },
     "release_date": null,
     "freshness_conclusion": "No source release date or refresh history was verified. A responding service, portal modified timestamp, or complete extraction is not proof of a current agency release.",
-    "blocker": "No maintained FCC publication or documented official delegation was established. The available live candidate is a HIFLD-labeled hosted copy with unresolved account authority and release lineage. Per issue #265, do not implement an archive-refresh pipeline or promote this candidate as an agency feed."
+    "blocker": "An FCC ULS producer bulk-download path is a plausible official source, but the supplied ULS download, location-table, and public-access documentation URLs all returned Envoy 403 responses in this environment. Until payload/schema/join/filter and freshness checks can be made, the source-specific extraction cannot be designed or validated safely. The live Esri alternative is a HIFLD-labeled hosted copy with unresolved account authority and release lineage; do not treat it as the refresh source."
   },
   "proposed_raw_schema_contract": {
     "status": "unapproved; schema snapshot for review only",
