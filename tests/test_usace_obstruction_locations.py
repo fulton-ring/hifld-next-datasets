@@ -93,6 +93,63 @@ class UsaceObstructionLocationsTests(unittest.TestCase):
                 _fields, features, _audit = obstructions.validate_obstruction_snapshot(bad)
                 obstructions.obstruction_geoparquet(_fields, features)
 
+    def test_crs_inheritance_and_mismatches_are_quarantined(self):
+        fields, captures = self._captures()
+        with patch.object(obstructions, "EXPECTED_COUNT", 2), patch.object(obstructions, "PAGE_SIZE", 1):
+            # Pages and geometries may inherit only from the already validated layer.
+            inherited = dict(captures)
+            for page_name in ("page_000", "page_001"):
+                page = json.loads(inherited[page_name][0])
+                del page["spatialReference"]
+                inherited[page_name] = (json.dumps(page).encode(), {})
+            parsed, features, audit = obstructions.validate_obstruction_snapshot(inherited)
+            self.assertEqual(parsed, fields)
+            self.assertEqual(len(features), 2)
+            self.assertIn("inherits from the validated layer", audit["source_crs_inheritance"])
+
+            def capture_with_docs(docs, root, version):
+                bodies = {name: json.dumps(doc, separators=(",", ":")).encode()
+                          for name, doc in docs.items()}
+
+                def fake_fetch(_client, _url, capture_root, name, _budget):
+                    body = bodies[name]
+                    receipt = {"method":"GET", "url":obstructions.LAYER_URL,
+                               "final_url":obstructions.LAYER_URL, "observed_at":"2026-10-20T00:00:00Z",
+                               "status":200, "complete_body":True, "bytes":len(body),
+                               "sha256":obstructions._sha(body), "wire_bytes":len(body),
+                               "wire_sha256":obstructions._sha(body), "content_encoding":"identity",
+                               "content_length":len(body), "error_code":None, "error_type":None}
+                    Path(capture_root, f"{name}.body").write_bytes(body)
+                    Path(capture_root, f"{name}.wire").write_bytes(body)
+                    Path(capture_root, f"{name}.receipt.json").write_bytes(
+                        obstructions._canonical(receipt) + b"\n")
+                    return body, receipt
+
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+                with patch.object(obstructions, "_fetch_retry", side_effect=fake_fetch):
+                    with self.assertRaisesRegex(ValueError, "spatial_reference_drift"):
+                        obstructions.capture_usace_obstruction_locations(
+                            storage, version=version, capture_directory=str(root / "capture"))
+                manifest = json.loads((root / "capture" / "capture_manifest.json").read_bytes())
+                self.assertFalse(manifest["complete"])
+                self.assertIn("ValueError", manifest["error_code"])
+                quarantine = root / "staging" / "_quarantine" / obstructions.DATASET_SLUG
+                self.assertTrue(list(quarantine.iterdir()))
+
+            for label, mutate in (
+                ("geometry", lambda docs: docs["page_000"]["features"][0]["geometry"].update(
+                    spatialReference={"wkid":3857})),
+                ("page", lambda docs: docs["page_000"].update(spatialReference={"wkid":3857})),
+                ("contradictory", lambda docs: docs["page_000"]["features"][0]["geometry"].update(
+                    spatialReference={"wkid":4326,"latestWkid":3857})),
+                ("wkt", lambda docs: docs["page_000"].update(spatialReference={
+                    "latestWkid":4326,"wkt":obstructions.pyproj.CRS.from_epsg(3857).to_wkt()})),
+            ):
+                with tempfile.TemporaryDirectory() as tmp:
+                    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+                    mutate(docs)
+                    capture_with_docs(docs, Path(tmp), f"vbad-{label}")
+
     def test_offline_replay_and_first_candidate_cache(self):
         _fields, captures = self._captures()
         with tempfile.TemporaryDirectory() as tmp:

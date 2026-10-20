@@ -48,6 +48,44 @@ EXPECTED_FIELDS = [
 ]
 
 
+_EXPECTED_SOURCE_CRS = pyproj.CRS.from_epsg(4326)
+
+
+def _validate_source_spatial_reference(reference: object, label: str) -> None:
+    """Reject any declared CRS other than unambiguous EPSG:4326.
+
+    ArcGIS may omit a page reference when it inherits the validated layer
+    reference, or omit a feature geometry reference when it inherits the
+    validated page/layer reference. Explicit but incomplete references do not
+    inherit: their wkid/latestWkid/WKT declarations must agree on EPSG:4326.
+    """
+    if not isinstance(reference, dict):
+        raise ValueError(f"{label}_spatial_reference_missing_or_ambiguous")
+
+    declared = False
+    for name in ("wkid", "latestWkid"):
+        if name not in reference:
+            continue
+        value = reference[name]
+        if type(value) is not int or value != 4326:
+            raise ValueError(f"{label}_spatial_reference_drift")
+        declared = True
+
+    if "wkt" in reference:
+        wkt = reference["wkt"]
+        try:
+            crs = pyproj.CRS.from_wkt(wkt) if isinstance(wkt, str) and wkt else None
+        except (pyproj.exceptions.CRSError, TypeError, ValueError):
+            crs = None
+        if (crs is None or crs.to_epsg(min_confidence=100) != 4326
+                or not crs.equals(_EXPECTED_SOURCE_CRS)):
+            raise ValueError(f"{label}_spatial_reference_drift")
+        declared = True
+
+    if not declared:
+        raise ValueError(f"{label}_spatial_reference_missing_or_ambiguous")
+
+
 def validate_obstruction_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     """Validate exact layer, schema, count, IDs and all page geometries."""
     docs = {name: json.loads(body) for name, (body, _) in captures.items()}
@@ -60,9 +98,9 @@ def validate_obstruction_snapshot(captures: Mapping[str, tuple[bytes, dict]]) ->
     declared = [(f.get("name"), f.get("type")) for f in fields] if isinstance(fields, list) else None
     if (layer.get("id") != 19 or layer.get("name") != "OBSTRUCTION_POINT"
             or layer.get("geometryType") != "esriGeometryPoint" or declared != EXPECTED_FIELDS
-            or layer.get("spatialReference", {}).get("latestWkid") != 4326
             or layer.get("maxRecordCount") != 2000):
         raise ValueError("source_layer_schema_or_spatial_contract_drift")
+    _validate_source_spatial_reference(layer.get("spatialReference"), "source_layer")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_metadata_changed_during_capture")
     if any(docs[name].get("count") != EXPECTED_COUNT for name in ("count_before", "count_after")):
@@ -77,8 +115,9 @@ def validate_obstruction_snapshot(captures: Mapping[str, tuple[bytes, dict]]) ->
         page = docs[f"page_{i:03d}"]
         if "error" in page or page.get("exceededTransferLimit") is True:
             raise ValueError("source_page_error_or_truncated")
-        if page.get("spatialReference", {}).get("latestWkid") != 4326:
-            raise ValueError("source_page_spatial_reference_drift")
+        if "spatialReference" in page:
+            _validate_source_spatial_reference(page["spatialReference"], "source_page")
+        # ArcGIS JSON inherits an omitted page CRS from the validated layer CRS.
         rows = page.get("features")
         if not isinstance(rows, list):
             raise ValueError("source_page_features_missing")
@@ -92,6 +131,10 @@ def validate_obstruction_snapshot(captures: Mapping[str, tuple[bytes, dict]]) ->
                 or not isinstance(geom, dict) or set(geom) - {"x", "y", "z", "m", "spatialReference"}
                 or not all(isinstance(geom.get(k), (int, float)) for k in ("x", "y"))):
             raise ValueError("source_record_schema_or_geometry_drift")
+        if "spatialReference" in geom:
+            _validate_source_spatial_reference(geom["spatialReference"], "source_geometry")
+        # An omitted geometry CRS inherits from its validated page, or from
+        # the validated layer when the page itself omits the CRS.
         got_ids.append(attrs.get("OBJECTID"))
         geom_audit.append([attrs["OBJECTID"], geom])
     if len(features) != EXPECTED_COUNT or sorted(got_ids) != ids or len(set(got_ids)) != EXPECTED_COUNT:
@@ -103,6 +146,7 @@ def validate_obstruction_snapshot(captures: Mapping[str, tuple[bytes, dict]]) ->
         "source_record_sha256": _sha(_canonical([f["attributes"] for f in features])),
         "source_geometry_sha256": _sha(_canonical(sorted(geom_audit))),
         "source_schema_sha256": _sha(_canonical(fields)), "source_wkid": 4326,
+        "source_crs_inheritance": "Explicit layer/page/geometry references must unambiguously declare EPSG:4326; omitted page CRS inherits from the validated layer and omitted geometry CRS inherits from the validated page/layer.",
         "source_geometry_type": "esriGeometryPoint", "null_geometry_count": 0,
         "source_coverage_scope": "Complete official USACE IENC OBSTRUCTION_POINT feature class; coverage limited to the IENC charting program.",
         "drift_guard": "Exact layer identity, field names/types, CRS, count, all-row ID roster and before/after metadata are checked.",
@@ -261,13 +305,13 @@ def capture_usace_obstruction_locations(storage: StagingStorageResource, *, vers
                 for name, url in _urls(ids):
                     captures[name] = _fetch_retry(client, url, root, name, budget)
             except Exception as exc:
-                _record_incomplete(root,captures,version,exc)
+                _record_incomplete(root,storage,version,captures,exc)
                 raise
     try:
         fields, features, audit = validate_obstruction_snapshot(captures)
     except Exception as exc:
         if not replay:
-            _record_incomplete(root,captures,version,exc)
+            _record_incomplete(root,storage,version,captures,exc)
         raise
     parquet = obstruction_geoparquet(fields, features)
     source_hash = _capture_content_sha256(captures, root)
