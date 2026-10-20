@@ -19,6 +19,7 @@ from dagster_hifld.assets.epa_power_generation import (
     epa_frs_eia_860_power_generation_complete,
     epa_power_generation_draft_schedule,
 )
+from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms_complete, bsee_ocs_platforms_draft_schedule
 from dagster_hifld.assets.boem_ocs_diagrams import (
     boem_ocs_diagrams_draft_schedule,
     boem_ocs_protraction_diagrams_complete,
@@ -417,8 +418,9 @@ def _configured_sensors():
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete,
-                  boem_ocs_protraction_diagrams_complete],
-    schedules=[epa_power_generation_draft_schedule, boem_ocs_diagrams_draft_schedule],
+                  bsee_ocs_platforms_complete, boem_ocs_protraction_diagrams_complete],
+    schedules=[epa_power_generation_draft_schedule, bsee_ocs_platforms_draft_schedule,
+               boem_ocs_diagrams_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
