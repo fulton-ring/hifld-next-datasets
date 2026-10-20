@@ -20,6 +20,11 @@ from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_schedule,
     quaternary_fault_lines_population_complete,
 )
+from dagster_hifld.assets.ornl_power_plants import (
+    eia_power_plants_complete,
+    eia_power_plants_draft_job,
+    eia_power_plants_draft_schedule,
+)
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
@@ -484,6 +489,7 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[
         *hifld_asset_checks,
+        eia_power_plants_complete,
         census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
@@ -510,6 +516,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
+        eia_power_plants_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -529,6 +536,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
+        eia_power_plants_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
