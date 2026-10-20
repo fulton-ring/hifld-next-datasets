@@ -153,10 +153,10 @@ def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_direct
     validate_release_provenance(manifest);validate_output_policy(manifest);provenance_projection(manifest)
     integrity_after=verify_staged_filegdb(storage,prefix,objects)
     write_immutable(storage,f"{prefix}/metadata/source_manifest.json",canonical_json(manifest)+b"\n")
-    audit={"source_feature_count":EXPECTED_COUNT,"source_id_sha256":sha256(canonical_json(ids)),"observed_source_id_roster_sha256":OBSERVED_ID_ROSTER_SHA256,"source_schema_sha256":sha256(canonical_json(fields)),"source_fields":fields,"source_field_types":EXPECTED_FIELD_TYPES,"source_extent_observation":OBSERVED_COVERAGE,
+    audit={"source_feature_count":EXPECTED_COUNT,"source_null_geometry_count":integrity["null_geometry_count"],"source_id_sha256":sha256(canonical_json(ids)),"observed_source_id_roster_sha256":OBSERVED_ID_ROSTER_SHA256,"source_schema_sha256":sha256(canonical_json(fields)),"source_fields":fields,"source_field_types":EXPECTED_FIELD_TYPES,"source_extent_observation":OBSERVED_COVERAGE,
       "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"source_hasZ":True,"source_hasM":True,**integrity,"staged_filegdb_integrity":integrity_after,
       "source_release_date":None,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"baseline_accepted":False,"capture_receipts":receipts}
     write_immutable(storage,f"{prefix}/metadata/source_audit.json",canonical_json(audit)+b"\n")
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"candidate_ready":True,"reused":replayed,
-      "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"native_Z_M_and_BLOB_preserved":True,"source_null_geometry_count":0,
+      "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"native_Z_M_and_BLOB_preserved":True,"source_null_geometry_count":integrity["null_geometry_count"],
       "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

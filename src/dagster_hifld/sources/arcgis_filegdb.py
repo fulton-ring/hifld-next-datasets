@@ -103,11 +103,12 @@ def extract_filegdb(archive_path: Path, work_dir: Path, *, expected_layer: str,
             actual=list(src.schema["properties"])
             if actual!=names_expected: raise ValueError("source_filegdb_field_roster_drift")
             if binary-set(actual): raise ValueError("source_filegdb_blob_field_missing")
-            seen=[]
+            seen=[];null_geometry_count=0
             for feat in src:
                 try: fid=int(feat.id)
                 except (TypeError,ValueError) as exc: raise ValueError("source_filegdb_ID_invalid") from exc
                 seen.append(fid)
+                if feat["geometry"] is None: null_geometry_count+=1
                 for name in binary:
                     if not isinstance(feat["properties"].get(name),bytes): raise ValueError("source_filegdb_blob_value_type_drift")
             if len(seen)!=expected_count or set(seen)!=ids_expected: raise ValueError("source_filegdb_ID_population_drift")
@@ -119,7 +120,7 @@ def extract_filegdb(archive_path: Path, work_dir: Path, *, expected_layer: str,
     if expected_zm is not None:
         z,m=expected_zm if isinstance(expected_zm,tuple) else (expected_zm,expected_zm)
         if ("3D " in info," Measured " in info)!=(z,m): raise ValueError("source_filegdb_ZM_geometry_contract_drift")
-    return gdb,gdb_root,{"feature_count":expected_count,"unique_id_count":len(ids_expected),"field_names":names_expected,
+    return gdb,gdb_root,{"feature_count":expected_count,"unique_id_count":len(ids_expected),"null_geometry_count":null_geometry_count,"field_names":names_expected,
                          "binary_fields":sorted(binary),"gdal_layer_summary":info.split("\n",1)[-1].strip()}
 
 def stage_filegdb_archive(storage: StagingStorageResource,prefix:str,archive_path:Path,gdb_path:Path,gdb_root:str,
