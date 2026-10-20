@@ -76,6 +76,70 @@ from dagster_hifld.sources.usace_navigation_marks_areas import (
     FILE_SLUG as NAVIGATION_MARKS_FILE_SLUG,
     capture_usace_navigation_marks_areas,
 )
+from dagster_hifld.sources.usace_obstruction_areas import (
+    DATASET_SLUG as OBSTRUCTION_AREAS_DATASET_SLUG,
+    FILE_SLUG as OBSTRUCTION_AREAS_FILE_SLUG,
+    capture_usace_obstruction_areas,
+)
+
+class UsaceObstructionAreasConfig(Config):
+    capture_directory: str = ""
+
+@asset(
+    key=AssetKey(["ingest", OBSTRUCTION_AREAS_DATASET_SLUG, OBSTRUCTION_AREAS_FILE_SLUG]),
+    group_name="usace", compute_kind="http",
+    description=(
+        "Official USACE IENC OBSTRUCTION_AREA feature class (247 rows observed). "
+        "Faithful candidate only; source release, baseline, schema/ID, coverage and rights acceptance remain pending."
+    ),
+)
+def usace_obstruction_areas_usace_ienc_2(context, config: UsaceObstructionAreasConfig,
+                                           staging_storage: StagingStorageResource) -> dict:
+    result = capture_usace_obstruction_areas(
+        staging_storage, version=build_version_id(context),
+        capture_directory=config.capture_directory or None,
+    )
+    context.instance.add_dynamic_partitions(
+        PUBLISH_PARTITION_NAME,
+        [build_publish_partition_key(OBSTRUCTION_AREAS_DATASET_SLUG, OBSTRUCTION_AREAS_FILE_SLUG, result["version"])],
+    )
+    context.add_output_metadata(result)
+    return result
+
+@asset_check(asset=usace_obstruction_areas_usace_ienc_2, blocking=True)
+def usace_obstruction_areas_complete(candidate: dict) -> AssetCheckResult:
+    passed = (candidate.get("feature_count", 0) > 0
+              and candidate.get("source_population_complete") is True
+              and candidate.get("geometry_invalid_count", 0) == 0
+              and candidate.get("geometry_empty_count", 0) == 0)
+    return AssetCheckResult(passed=passed, metadata={
+        "complete_source_population": candidate.get("feature_count", 0),
+        "source_id_sha256": candidate.get("source_id_sha256", "missing"),
+        "source_id_min": candidate.get("source_id_min", "missing"),
+        "source_id_max": candidate.get("source_id_max", "missing"),
+        "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
+        "source_coverage_scope": candidate.get("source_coverage_scope", "missing"),
+        "drift_guard": candidate.get("drift_guard", "missing"),
+        "geometry_valid_count": candidate.get("geometry_valid_count", 0),
+        "geometry_invalid_count": candidate.get("geometry_invalid_count", 0),
+        "geometry_empty_count": candidate.get("geometry_empty_count", 0),
+        "geometry_bounds": candidate.get("geometry_bounds", "missing"),
+        "baseline_comparison_accepted": False, "source_release_accepted": False,
+        "source_freshness_accepted": False, "schema_contract_accepted": False,
+        "id_contract_accepted": False, "coverage_accepted": False,
+        "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
+    })
+
+usace_obstruction_areas_draft_job = define_asset_job(
+    "usace_obstruction_areas_draft_refresh",
+    selection=AssetSelection.assets(usace_obstruction_areas_usace_ienc_2),
+)
+usace_obstruction_areas_draft_schedule = ScheduleDefinition(
+    name="usace_obstruction_areas_draft_refresh_schedule",
+    job=usace_obstruction_areas_draft_job,
+    cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
+    default_status=DefaultScheduleStatus.STOPPED,
+)
 
 class UsaceNavigationMarksAreasConfig(Config):
     capture_directory: str = ""
