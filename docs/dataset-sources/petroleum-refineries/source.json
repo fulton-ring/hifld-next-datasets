@@ -1,0 +1,85 @@
+{
+  "dataset_id": "petroleum-refineries",
+  "title": "Petroleum Refineries",
+  "inventory": {
+    "agency": "Department of Energy",
+    "publisher": "Not specified",
+    "archive_url": "https://www.datalumos.org/datalumos/project/240514/version/V1/view",
+    "archive_inventory_modified": "2024-10-31",
+    "archive_modified_is_current_release_date": false
+  },
+  "crosswalk": {
+    "reference": "https://doi.org/10.3886/E241367V1",
+    "match_status": "unverified",
+    "reason": "DataLumos returned HTTP 403 during review; this is not evidence of an unmatched entry."
+  },
+  "candidate_sources": [
+    {
+      "url": "https://www.eia.gov/maps/map_data/Petroleum_Refineries_US_EIA.zip",
+      "role": "official EIA historical geospatial product; not current",
+      "observed_http_status": 200,
+      "observed_last_modified": "2022-02-03T19:32:04Z",
+      "observed_bytes": 37784,
+      "observed_sha256": "08243aed0c1f3d5206435d4932fb4e94ead8fe1b8e8d4220a03f601a460f4909",
+      "archive_members": [
+        "Petroleum_Refineries_US_2021.cpg",
+        "Petroleum_Refineries_US_2021.dbf",
+        "Petroleum_Refineries_US_2021.prj",
+        "Petroleum_Refineries_US_2021.sbn",
+        "Petroleum_Refineries_US_2021.sbx",
+        "Petroleum_Refineries_US_2021.shp",
+        "Petroleum_Refineries_US_2021.shp.xml",
+        "Petroleum_Refineries_US_2021.shx"
+      ],
+      "observed_dataset": {
+        "rows": 130,
+        "period": "As of Jan. 1 2021",
+        "crs": "EPSG:4326",
+        "attributes": [
+          "OBJECTID", "site_id", "Company", "Corp", "Site", "State", "PADD", "AD_Mbpd", "VDist_Mbpd", "CaDis_Mbpd", "HyCrk_Mbpd", "VRedu_Mbpd", "CaRef_Mbpd", "Isal_Mbpd", "HDS_Mbpd", "Cokin_Mbpd", "Asph_Mbpd", "Source", "Period_", "Latitude", "Longitude", "Link_Impor"
+        ],
+        "geometry": "Point",
+        "coverage_bounds": [-158.0914, 17.70857, -64.74876, 70.324832]
+      },
+      "limits": [
+        "No current release or update cadence established.",
+        "Location lineage includes publicly researched agency/company/satellite sources and is not established as a direct EIA coordinate feed.",
+        "Historical HIFLD crosswalk/baseline not reviewed due DataLumos 403."
+      ]
+    },
+    {
+      "url": "https://www.eia.gov/petroleum/refinerycapacity/",
+      "role": "current official EIA nonspatial capacity successor/related product",
+      "observed_release": "2026-06-26",
+      "data_as_of": "2026-01-01",
+      "release_cadence": "annual",
+      "limitations": [
+        "Official FAQ points to refinery capacity tables and a per-refinery workbook, not a current maintained point layer.",
+        "No accepted spatial, identifier, or coverage mapping to the HIFLD point inventory."
+      ]
+    },
+    {
+      "url": "https://www.arcgis.com/sharing/rest/content/items/dd7c50959b4f4c038e09054b2073b7d4?f=json",
+      "role": "third-party fallback candidate; ArcGIS owner is priho011_UMN",
+      "limitations": [
+        "The portal item's topic/source description references EIA capacity reports, but item ownership is not EIA delegation.",
+        "A recent item edit is not proof of source currency or authority."
+      ]
+    }
+  ],
+  "proposed_contract": {
+    "status": "historical candidate adapter implemented; publication/currentness and all contracts remain unapproved",
+    "rule": "Preserve the exact raw EIA ZIP, every source field, OBJECTID, site_id, physical type, value, geometry and coverage. Do not infer substitute IDs, enrich or join current EIA capacity rows to historical locations, or silently drop schema drift. Changed upstream bytes or release metadata require a new review before capture."
+  },
+  "decision": {
+    "maintained_public_geospatial_source_verified": false,
+    "historical_adapter_available": true,
+    "archive_refresh_pipeline_appropriate": false,
+    "baseline_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "release_accepted": false,
+    "status": "historical_draft_only"
+  }
+}
