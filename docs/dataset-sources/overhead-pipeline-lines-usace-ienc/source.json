@@ -70,10 +70,16 @@
     "preserve_every_raw_identifier": true
   },
   "registered_runs": {
-    "catalog": "7360a261-2830-4129-b527-d970b84ec127",
+    "catalog": "db344ed2-39f1-4dc7-b8c2-46e639ec32ac",
+    "catalog_feature_count": 92,
     "catalog_quality_passed": true,
+    "id_output_matches_complete_roster": true,
+    "invalid_geometry_count": 0,
+    "output_attributes_including_oid": 14,
+    "output_rows": 92,
+    "output_version": "vca7646e69e642ad94e5a75d0637ada2c",
     "published_output_written": false,
-    "source": "ddb0b6f4-13a1-4174-a60d-9902fad1b3e0"
+    "source": "5cb01297-f068-4d98-92b0-cacbce7e0eec"
   },
   "source": {
     "delegation_evidence": {
