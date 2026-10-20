@@ -1,17 +1,69 @@
 import io
+import hashlib
+import json
+import tempfile
 import unittest
 import math
+from contextlib import nullcontext
+from pathlib import Path
+from unittest.mock import Mock
 
+import httpx
 import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.sources.usace_administrative_areas import (
-    EXPECTED_FIELD_DECLARATIONS, EXPECTED_FIELDS, _esri_polygon, _parquet_bytes, _validate,
+    EXPECTED_FIELD_DECLARATIONS, EXPECTED_FIELDS, _esri_polygon, _fetch_retry, _parquet_bytes, _validate,
 )
+from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 
 
 class UsaceAdministrativeAreasTests(unittest.TestCase):
+    def test_midstream_transport_failure_is_receipted_and_retry_roster_is_sealed(self):
+        class BrokenStream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b"partial-"
+                raise httpx.ReadError("connection reset")
+            def close(self):
+                pass
+
+        class CompleteStream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b"complete"
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            failed = httpx.Response(200, headers={"content-length":"20"}, stream=BrokenStream(),
+                                    request=httpx.Request("GET", "https://example.test/data"))
+            succeeded = httpx.Response(200, stream=CompleteStream(), request=httpx.Request("GET", "https://example.test/data"))
+            client = Mock()
+            client.stream.side_effect = [nullcontext(failed), nullcontext(succeeded)]
+            budget = [0]
+            body, receipt = _fetch_retry(client, "https://example.test/data", root, "page_000", budget)
+            self.assertEqual(body, b"complete")
+            self.assertTrue(receipt["complete_body"])
+            failure = json.loads((root / "page_000.attempt1.receipt.json").read_bytes())
+            self.assertFalse(failure["complete_body"])
+            self.assertEqual(failure["bytes"], len(b"partial-"))
+            self.assertEqual(failure["sha256"], hashlib.sha256(b"partial-").hexdigest())
+            self.assertEqual(failure["error_type"], "ReadError")
+            roster = capture_roster_digests(root)
+            validate_capture_roster(root, set(roster))
+            with self.assertRaisesRegex(ValueError, "capture_roster_mismatch"):
+                validate_capture_roster(root, set(roster) - {"page_000.wire"})
+            with self.assertRaisesRegex(ValueError, "capture_roster_mismatch"):
+                validate_capture_roster(root, set(roster) | {"unbound.extra"})
+            (root / "unbound.extra").write_bytes(b"extra")
+            with self.assertRaisesRegex(ValueError, "capture_roster_mismatch"):
+                validate_capture_roster(root, set(roster))
+            (root / "unbound.extra").unlink()
+            (root / "page_000.attempt1.body").write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "capture_roster_artifact_mismatch"):
+                validate_capture_roster(root, roster)
+
     def test_native_physical_types_ids_and_polygon_coordinates_are_retained(self):
         fields = [
             {"name":"OBJECTID","type":"esriFieldTypeOID","nullable":False},

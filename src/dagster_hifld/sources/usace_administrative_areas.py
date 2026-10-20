@@ -22,7 +22,7 @@ from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -84,18 +84,32 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     def reserve(progress):
         if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
             raise ValueError("source_capture_budget_exceeded")
-    with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-        result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-            max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
-            retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
-        final_url = str(response.url)
+    response = None
+    result = None
+    final_url = url
+    transport_error = None
+    try:
+        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
+            final_url = str(response.url)
+            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
+                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
+                retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
+    except Exception as exc:
+        transport_error = type(exc).__name__
     receipt = {"method":"GET", "url":url, "final_url":final_url, "observed_at":observed,
-        "status":result.status_code, "complete_body":result.complete,
+        "status":result.status_code if result is not None else (response.status_code if response is not None else None),
+        "complete_body":bool(result is not None and result.complete and transport_error is None),
         "wire_bytes":sizes["wire"], "wire_sha256":hashes["wire"].hexdigest(),
         "bytes":sizes["body"], "sha256":hashes["body"].hexdigest(),
-        "content_encoding":result.content_encoding, "content_length":result.content_length,
-        "error_code":result.error_code}
+        "content_encoding":result.content_encoding if result is not None else None,
+        "content_length":result.content_length if result is not None else None,
+        "error_code":result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
+        "error_type":result.error_type if result is not None else transport_error}
     (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+    if transport_error:
+        raise httpx.TransportError("capture_transport_error:" + transport_error)
+    if result is None:
+        raise ValueError("capture_result_missing")
     body, wire = body_path.read_bytes(), wire_path.read_bytes()
     if (not result.complete or result.status_code != 200 or final_url != url
         or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
@@ -338,6 +352,11 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
             retained_manifest=json.loads((root/"capture_manifest.json").read_bytes())
             if retained_manifest.get("complete") is not True or not isinstance(retained_manifest.get("receipts"),dict):
                 raise ValueError("retained_capture_manifest_invalid")
+            roster=retained_manifest.get("artifact_roster")
+            if not isinstance(roster,dict): raise ValueError("retained_capture_roster_manifest_missing")
+            validate_capture_roster(root,set(roster)|{"capture_manifest.json"})
+            if roster != capture_roster_digests(root,exclude={"capture_manifest.json"}):
+                raise ValueError("retained_capture_artifact_digest_mismatch")
             ids_body,ids_receipt=_load_replay(root,"ids_before")
             ids=json.loads(ids_body).get("objectIds")
             if not isinstance(ids,list): raise ValueError("retained_id_seed_invalid")
@@ -396,7 +415,7 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/administrative-areas-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
@@ -423,7 +442,6 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
             "feature_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
-            "source_null_geometry_count":0,"source_invalid_geometry_count":0,
             "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
             "source_release_accepted":False,"source_freshness_accepted":False,
             "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
@@ -433,5 +451,5 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
     from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
 
