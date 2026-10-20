@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import tempfile
 from datetime import datetime, timezone
 from io import BytesIO
@@ -23,9 +24,13 @@ import pyproj
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import candidate_prefix, content_derived_version, processing_identity, seal_ready_candidate, write_immutable
+from dagster_hifld.sources.epa_frs_common import (
+    candidate_prefix, content_derived_version, processing_identity,
+    seal_ready_candidate, verify_cached_candidate, write_immutable,
+)
 
 DATASET_SLUG = "petroleum-refineries"
 FILE_SLUG = DATASET_SLUG
@@ -41,6 +46,7 @@ SOURCE_MEMBERS = {
     "Petroleum_Refineries_US_2021.sbx", "Petroleum_Refineries_US_2021.shp",
     "Petroleum_Refineries_US_2021.shp.xml", "Petroleum_Refineries_US_2021.shx",
 }
+MAX_SOURCE_BYTES = 2_000_000
 SOURCE_FIELDS = [
     ("OBJECTID", "OFTInteger64", pa.int64()), ("site_id", "OFTInteger64", pa.int64()),
     ("Company", "OFTString", pa.string()), ("Corp", "OFTString", pa.string()),
@@ -71,33 +77,74 @@ def _capture(directory: Path | None) -> tuple[bytes, dict, Path]:
     root.mkdir(parents=True, exist_ok=True)
     body_path, wire_path, receipt_path = (root / "source_zip.body", root / "source_zip.wire", root / "source_zip.receipt.json")
     manifest_path = root / "capture_manifest.json"
+    expected_names = {"source_zip.body", "source_zip.wire", "source_zip.receipt.json", "capture_manifest.json"}
     if manifest_path.exists():
+        if ({path.name for path in root.iterdir()} != expected_names
+                or any(path.is_symlink() or not stat.S_ISREG(path.lstat().st_mode) for path in root.iterdir())):
+            raise ValueError("retained_source_capture_roster_invalid")
         manifest = json.loads(manifest_path.read_bytes())
         receipt = json.loads(receipt_path.read_bytes())
         body, wire = body_path.read_bytes(), wire_path.read_bytes()
         if (manifest.get("complete") is not True or manifest.get("receipts") != {"source_zip": receipt}
                 or receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL or receipt.get("final_url") != SOURCE_URL
-                or receipt.get("status") != 200 or len(body) != SOURCE_ZIP_BYTES or body != wire
+                or receipt.get("status") != 200 or receipt.get("complete_body") is not True
+                or receipt.get("bytes") != len(body) or receipt.get("wire_bytes") != len(wire)
+                or receipt.get("last_modified") != SOURCE_LAST_MODIFIED or len(body) != SOURCE_ZIP_BYTES or body != wire
                 or _sha(body) != SOURCE_ZIP_SHA256 or receipt.get("sha256") != _sha(body)
                 or receipt.get("wire_sha256") != _sha(wire)):
             raise ValueError("retained_source_capture_invalid")
         return body, receipt, root
-    with httpx.Client(timeout=90, follow_redirects=False, headers={"Accept-Encoding": "identity"}) as client:
-        with client.stream("GET", SOURCE_URL) as response:
-            if response.status_code != 200 or str(response.url) != SOURCE_URL:
-                raise ValueError("source_http_identity_changed_review_required")
-            body = b"".join(response.iter_bytes())
-            headers = dict(response.headers)
+    observed = datetime.now(timezone.utc).isoformat()
+    wire_hash, body_hash = hashlib.sha256(), hashlib.sha256()
+    sizes = {"wire": 0, "body": 0}
+
+    def retain(path: Path, kind: str, digest, block: bytes) -> None:
+        with path.open("ab") as stream:
+            stream.write(block)
+        sizes[kind] += len(block)
+        digest.update(block)
+
+    for path in (wire_path, body_path):
+        path.unlink(missing_ok=True)
+    result = None
+    headers = {}
+    final_url = SOURCE_URL
+    error_code = None
+    try:
+        with httpx.Client(timeout=90, follow_redirects=False, headers={"Accept-Encoding": "identity"}) as client:
+            with client.stream("GET", SOURCE_URL) as response:
+                headers = dict(response.headers)
+                final_url = str(response.url)
+                result = capture_http_response(
+                    response, max_wire_bytes=MAX_SOURCE_BYTES, max_decoded_bytes=MAX_SOURCE_BYTES,
+                    reserve=lambda _progress: None,
+                    retain_wire=lambda block: retain(wire_path, "wire", wire_hash, block),
+                    retain_decoded=lambda block: retain(body_path, "body", body_hash, block),
+                )
+    except (httpx.HTTPError, OSError) as exc:
+        error_code = type(exc).__name__
+    body = body_path.read_bytes() if body_path.exists() else b""
+    wire = wire_path.read_bytes() if wire_path.exists() else b""
+    receipt = {"method": "GET", "url": SOURCE_URL, "final_url": final_url, "observed_at": observed,
+        "status": result.status_code if result else None, "complete_body": bool(result and result.complete),
+        "bytes": sizes["body"], "sha256": body_hash.hexdigest(), "wire_bytes": sizes["wire"],
+        "wire_sha256": wire_hash.hexdigest(), "last_modified": headers.get("last-modified"),
+        "content_length": result.content_length if result else None,
+        "content_encoding": result.content_encoding if result else None,
+        "error_code": error_code or (result.error_code if result else "capture_failed")}
+    receipt_path.write_bytes(_json(receipt))
+    manifest = {"complete": False, "captured_at": observed, "receipts": {"source_zip": receipt}}
+    manifest_path.write_bytes(_json(manifest))
+    if (result is None or not result.complete or result.status_code != 200 or final_url != SOURCE_URL
+            or receipt["bytes"] != len(body) or receipt["wire_bytes"] != len(wire)
+            or receipt["sha256"] != _sha(body) or receipt["wire_sha256"] != _sha(wire)):
+        raise ValueError("source_capture_incomplete_review_required")
     if len(body) != SOURCE_ZIP_BYTES or _sha(body) != SOURCE_ZIP_SHA256:
         raise ValueError("source_archive_changed_new_release_review_required")
     if headers.get("last-modified") != SOURCE_LAST_MODIFIED:
         raise ValueError("source_last_modified_changed_new_release_review_required")
-    observed = datetime.now(timezone.utc).isoformat()
-    receipt = {"method": "GET", "url": SOURCE_URL, "final_url": SOURCE_URL, "observed_at": observed,
-               "status": 200, "complete_body": True, "bytes": len(body), "sha256": _sha(body),
-               "wire_bytes": len(body), "wire_sha256": _sha(body), "last_modified": headers.get("last-modified")}
-    body_path.write_bytes(body); wire_path.write_bytes(body); receipt_path.write_bytes(_json(receipt))
-    manifest_path.write_bytes(_json({"complete": True, "captured_at": observed, "receipts": {"source_zip": receipt}}))
+    manifest["complete"] = True
+    manifest_path.write_bytes(_json(manifest))
     return body, receipt, root
 
 
@@ -197,13 +244,19 @@ def capture_petroleum_refineries_eia(storage: StagingStorageResource, *, capture
         "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False, "release_accepted": False}
     outputs["metadata/candidate_ready.json"] = _json(ready)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is None:
+    identity_fingerprint = _sha(_json(identity))
+    expected_objects = {name: {"bytes": len(content), "sha256": _sha(content)} for name, content in outputs.items()}
+    if storage.object_snapshot(state_key) is not None:
+        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
+            identity_fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"],
+            expected_objects, {"source_zip": receipt})
+    else:
         for name, content in outputs.items():
             write_immutable(storage, f"{prefix}/{name}", content)
-        seal_ready_candidate(storage, state_key, version, _sha(_json(identity)), {"processing_identity": identity,
+        seal_ready_candidate(storage, state_key, version, identity_fingerprint, {"processing_identity": identity,
             "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-            "capture_receipts": {"source_zip": receipt}, "objects": {name: {"bytes": len(content), "sha256": _sha(content)} for name, content in outputs.items()}})
-        validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+            "capture_receipts": {"source_zip": receipt}, "objects": expected_objects})
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": len(records),
         "source_population_complete": True, "source_vintage": SOURCE_VINTAGE, "historical_only": True,
         "source_ids_sha256": audit["source_ids_sha256"], "source_record_sha256": audit["source_record_sha256"],
