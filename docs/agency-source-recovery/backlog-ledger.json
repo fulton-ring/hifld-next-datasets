@@ -19,9 +19,9 @@
     "prs_with_high_confidence_issue_association": 78,
     "open_issue_work_progress": {
       "total_dataset_issues": 415,
-      "open_pr_associated": 95,
-      "no_open_pr_in_recovered_catalog": 320,
-      "classification": "The 320 are unworked/not blocked by default; absence of a recovered open PR is not evidence of an external blocker."
+      "open_pr_associated": 98,
+      "no_open_pr_in_recovered_catalog": 317,
+      "classification": "The no-open-PR records are unworked/not blocked by default; absence of a recovered open PR is not evidence of an external blocker."
     }
   },
   "coordination_issue_417": {
@@ -751,14 +751,19 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "Coordinator-reported issue/PR/comment search; cached service directory /workspace/work/hifld-coordinator/21/research/service_directory.body"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T01:57:31Z",
       "live_issue_created_at": "2026-10-19T01:57:31Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "work_status": "active_source_research",
+      "assigned_worker": "dataset_27",
+      "status_note": "Caution Area Locations USACE IENC. Coordinator confirms open issue with zero prior PR/comments. Cached official IENC service directory research exists at /workspace/work/hifld-coordinator/21/research/service_directory.body; resolve exact layer name/ID before constructing a pipeline. Draft pipeline may proceed before baseline approval; require exact publisher/linkage, raw source fidelity, bounded completeness, schema/CRS checks, sealed candidate, standard partition/catalog/quality/registered verifier gates, STOPPED refresh. Do not assert source authority without BTS official link/USACE attribution evidence."
     },
     {
       "issue": 28,
@@ -5727,7 +5732,9 @@
       "live_issue_state": "open",
       "current_pr": 527,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "PR #527 scoped code-guard review comment 5580349669; exact head 1c6e403ba8e898e22802cdac839aa7cfd2a25d58"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-20T01:59:24Z",
       "live_issue_created_at": "2026-10-19T02:13:06Z",
@@ -5743,7 +5750,8 @@
           "review_evidence_status": "head_claim_only",
           "association_confidence": 1
         }
-      ]
+      ],
+      "status_note": "Open draft PR #527 at exact head 1c6e403ba8e898e22802cdac839aa7cfd2a25d58; independent scoped code-guard PASS comment 5580349669. No new full-graph replay."
     },
     {
       "issue": 254,
@@ -5830,7 +5838,9 @@
       "live_issue_state": "open",
       "current_pr": 529,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "PR #529 independent review comment 6282407482; retained source packet /workspace/work/257-resume"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-20T01:40:47Z",
       "live_issue_created_at": "2026-10-19T02:13:30Z",
@@ -5846,7 +5856,8 @@
           "review_evidence_status": "not_in_search_payload",
           "association_confidence": 1
         }
-      ]
+      ],
+      "status_note": "Current exact head 39f848879d39909510ac443798716e26d13d3d4d independently reviewed at comment 6282407482. Source run cfa5aac4-4cbf-41f9-9364-88cb00bfd119; catalog b821b4d7-8dce-462c-801c-72b92cdcc240; cache 5cdb6440-c98b-4f19-bb60-76e163339014 reused; verifier d1fa3dd5-a187-40d7-897b-9445da3214d5 refused missing approval with published fixture preserved. 7,317 rows; output SHA reported 52a20aa3\u20260997; recovered source ZIP SHA 24f3fee\u2026503c."
     },
     {
       "issue": 258,
@@ -5896,7 +5907,9 @@
       "live_issue_state": "open",
       "current_pr": 530,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "PR #530 scoped code-guard review comment 5580350035; exact head 126dae201632ddcc911881a138d0c88af753fcd0"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-20T02:04:34Z",
       "live_issue_created_at": "2026-10-19T02:13:45Z",
@@ -5912,7 +5925,8 @@
           "review_evidence_status": "head_claim_only",
           "association_confidence": 1
         }
-      ]
+      ],
+      "status_note": "Open draft PR #530 at exact head 126dae201632ddcc911881a138d0c88af753fcd0; independent scoped code-guard PASS comment 5580350035. No new full-graph replay."
     },
     {
       "issue": 261,
@@ -5924,7 +5938,9 @@
       "live_issue_state": "open",
       "current_pr": 531,
       "reviewed_head": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
-      "evidence_refs": [],
+      "evidence_refs": [
+        "PR #531 exact-head independent review comment 5580351370; source/catalog/cache/verifier run IDs recorded by coordinator"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-20T02:05:05Z",
       "live_issue_created_at": "2026-10-19T02:13:49Z",
@@ -5944,7 +5960,7 @@
       ],
       "work_status": "active_draft_pipeline",
       "assigned_worker": "dataset_11",
-      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1\u201392, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED.",
+      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1\u201392, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED. Independent exact-head review PASS comment 5580351370. Current source run 5a53d090-d9c1-4194-a375-5442087c06cd, catalog 97364133-8105-4f6b-91f4-1ba5e7c9f520, cache 40c1f7c6-32e8-445c-822a-7455e47eb14a, verifier f6eab900-f66d-4d64-90fe-6ef06bfc1844; all 92 x 14 attributes and XY path sequences matched, verifier refused missing approval and preserved published inventory.",
       "local_or_current_branch_evidence": {
         "pr": 531,
         "head": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
@@ -6175,16 +6191,20 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
+      "current_pr": 536,
+      "reviewed_head": "7472fa8cbe4158269d4130c2215253b8e162ed53",
+      "evidence_refs": [
+        "PR #536 exact head 7472fa8cbe4158269d4130c2215253b8e162ed53; issue comment 6282518676; local raw captures /workspace/work/271/runtime-staging/_candidates/plate-boundaries/v20261020T031630Z/"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:14:25Z",
       "live_issue_created_at": "2026-10-19T02:14:25Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "work_status": "draft_pipeline_open",
+      "status_note": "Plate Boundaries (USGS). Open draft PR #536 at 7472fa8cbe4158269d4130c2215253b8e162ed53. Complete official USGS Plates layer extraction/materialization: 1,175/1,175 IDs; registered run 081713bf-2954-4c81-8dd0-0174fceca794; candidate 459009 bytes SHA256 678863382d2e28b437016337d08136fa622a87e8f83683323e9f5bdf6c3cc9cf; receipt SHA 03827b10f6ad496c707c5f8752ba7cb30c1dcb49d007f134b536de3ae76d5869; 7 focused tests pass. Historical archive equivalence/current edition, schema/ID/baseline, rights, coverage/release decisions remain pending."
     },
     {
       "issue": 272,
@@ -10263,6 +10283,16 @@
       "association_confidence": 1,
       "head_sha_claim_in_body": "279a65961c41848170afc041109713f15bf319c3",
       "review_evidence_status": "research only; independent exact-head review pending"
+    },
+    {
+      "pr": 536,
+      "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/536",
+      "title": "Draft pipeline: complete official USGS Plate Boundaries (#271)",
+      "state": "open",
+      "dataset_issue_candidate": 271,
+      "association_confidence": 1,
+      "head_sha_claim_in_body": "7472fa8cbe4158269d4130c2215253b8e162ed53",
+      "review_evidence_status": "draft pipeline evidence; external acceptance decisions pending"
     }
   ],
   "current_coordination_update": {
@@ -10286,6 +10316,35 @@
       "head_branch": "codex/cloud-dataset-257",
       "head_sha": "39f8488",
       "coordinator_note": "root fix pending"
+    },
+    "reviewed_shared_guard_prs": {
+      "253": {
+        "head": "1c6e403ba8e898e22802cdac839aa7cfd2a25d58",
+        "review_comment": 5580349669,
+        "scope": "code guard only; not full graph"
+      },
+      "260": {
+        "head": "126dae201632ddcc911881a138d0c88af753fcd0",
+        "review_comment": 5580350035,
+        "scope": "code guard only; not full graph"
+      }
+    },
+    "pr_529_review": {
+      "head": "39f848879d39909510ac443798716e26d13d3d4d",
+      "comment": 6282407482,
+      "source_run": "cfa5aac4-4cbf-41f9-9364-88cb00bfd119",
+      "catalog_run": "b821b4d7-8dce-462c-801c-72b92cdcc240",
+      "cache_run": "5cdb6440-c98b-4f19-bb60-76e163339014",
+      "verifier_run": "d1fa3dd5-a187-40d7-897b-9445da3214d5",
+      "rows": 7317
+    },
+    "work_issue_27": "Active source research; initial issue has no prior PR/comments, layer identity unresolved from cached official IENC directory.",
+    "work_issue_271": "Plate Boundaries draft PR #536 head 7472fa8cbe4158269d4130c2215253b8e162ed53"
+  },
+  "repository_level_blockers": [
+    {
+      "type": "project_access",
+      "detail": "Configured HIFLD_PROJECT_TOKEN resource is not accessible by the integration for organization Projects v2; GitHub Actions variable probe returned 403. This blocks project/workflow automation access only and is not evidence that any dataset source is dead."
     }
-  }
+  ]
 }
