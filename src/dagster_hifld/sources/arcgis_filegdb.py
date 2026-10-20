@@ -124,7 +124,7 @@ def extract_filegdb(archive_path: Path, work_dir: Path, *, expected_layer: str,
                          "binary_fields":sorted(binary),"gdal_layer_summary":info.split("\n",1)[-1].strip()}
 
 def stage_filegdb_archive(storage: StagingStorageResource,prefix:str,archive_path:Path,gdb_path:Path,gdb_root:str,
-                          *,archive_rel:str="raw/source_filegdb.zip") -> list[dict[str,Any]]:
+                          *,archive_rel:str="file_geodatabase/source_filegdb.zip") -> list[dict[str,Any]]:
     """Store original ZIP and all extracted GDB parts immutably."""
     if not isinstance(storage,StagingStorageResource): raise ValueError("staging_storage_required")
     rel=PurePosixPath(archive_rel)
@@ -140,14 +140,15 @@ def stage_filegdb_archive(storage: StagingStorageResource,prefix:str,archive_pat
 def verify_staged_filegdb(storage:StagingStorageResource,prefix:str,objects:list[dict[str,Any]]) -> dict[str,Any]:
     """Verify exact immutable object roster and bytes after catalog writes."""
     expected={storage._ensure_prefixed(f"{prefix}/{x['path']}"):x for x in objects}
-    archive_key=storage._ensure_prefixed(f"{prefix}/raw/source_filegdb.zip")
+    filegdb_prefix=storage._ensure_prefixed(f"{prefix}/file_geodatabase")
+    archives=[key for key in expected if key.startswith(filegdb_prefix+"/") and key.lower().endswith(".zip")]
     gdb_roots={key.split("/file_geodatabase/",1)[1].split("/",1)[0]
-               for key in expected if "/file_geodatabase/" in key}
-    if len(gdb_roots)!=1 or archive_key not in expected:
+               for key in expected if key.startswith(filegdb_prefix+"/") and not key.lower().endswith(".zip")}
+    if len(gdb_roots)!=1 or len(archives)!=1:
         raise ValueError("cached_filegdb_expected_inventory_invalid")
+    archive_key=archives[0]
     gdb_prefix=storage._ensure_prefixed(f"{prefix}/file_geodatabase/{next(iter(gdb_roots))}")
     candidates=set(storage.list_prefix(f"{prefix}/file_geodatabase"))
-    candidates.update(key for key in storage.list_prefix(f"{prefix}/raw") if key==archive_key)
     actual={key for key in candidates if key==archive_key or key.startswith(gdb_prefix+"/")}
     wanted={key for key in expected if key==archive_key or key.startswith(gdb_prefix+"/")}
     if actual!=wanted: raise ValueError("cached_filegdb_candidate_roster_drift")
