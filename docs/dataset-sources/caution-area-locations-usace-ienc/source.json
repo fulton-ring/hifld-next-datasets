@@ -1,0 +1,237 @@
+{
+  "issue": 27,
+  "inventory_id": "caution-area-locations-usace-ienc",
+  "inventory_title": "Caution Area Locations (USACE IENC)",
+  "inventory_publisher": "US Army Corps of Engineers",
+  "research_status": "Complete current official service layer captured and materialized as an unapproved draft; archive comparison and acceptance decisions remain pending.",
+  "producer": {
+    "name": "US Army Corps of Engineers, Army Geospatial Center, IENC Program",
+    "delegation": "BTS NTAD item explicitly describes the USACE/AGC IENC program and links both the USACE IENC master geodatabase and Feature Classes service. Target service metadata carries copyrightText USACE IENC. This supports current service provenance, not archive equivalence or release approval.",
+    "bts_item_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "bts_item_owner": "USDOT_BTS",
+    "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+    "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer",
+    "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7"
+  },
+  "native_layer": {
+    "layer_id": 7,
+    "layer_name": "CAUTION_AREA_POINT",
+    "geometry_type": "esriGeometryPoint",
+    "wkid": 4326,
+    "extent": {
+      "spatialReference": {
+        "falseM": -100000,
+        "falseX": -400,
+        "falseY": -400,
+        "falseZ": -100000,
+        "latestWkid": 4326,
+        "mTolerance": 0.001,
+        "mUnits": 10000,
+        "wkid": 4326,
+        "xyTolerance": 8.983152841195215e-09,
+        "xyUnits": 999999999.9999999,
+        "zTolerance": 0.001,
+        "zUnits": 10000
+      },
+      "xmax": -81.29485629999994,
+      "xmin": -95.72697399999998,
+      "ymax": 44.954175400000054,
+      "ymin": 30.60400500000003
+    },
+    "service_feature_count": 36,
+    "ids": "OBJECTID 1\u201336, exact before/after roster preserved",
+    "source_id_sha256": "02e99fd62f6f540ab038420ccae4d559eeff82837530ee80520686aea761e7b7",
+    "source_record_sha256": "e6a993f174ffd9cd32459b689c4b449de105a16c42a79f92dccf5e4482eab1f3",
+    "source_schema_sha256": "5d57fa678fa74c181b0646306270f409f53285035af190f5ca322b61984201d2",
+    "source_geometry_sha256": "bb6ad2086ce74421a13a2ea89e462c3dcf1643611a2b3f579e472045fac660eb",
+    "attributes": [
+      {
+        "name": "OBJECTID",
+        "esri_type": "esriFieldTypeOID"
+      },
+      {
+        "name": "Object_Name",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Periodic_Date_Start",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Periodic_Date_End",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Information",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Scale_Minimum",
+        "esri_type": "esriFieldTypeInteger"
+      },
+      {
+        "name": "Source_Date",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Indication",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Feature_ID",
+        "esri_type": "esriFieldTypeString",
+        "length": 254
+      }
+    ],
+    "geometry_handling": "Native XY values retained without reprojection; read back as GeoParquet WKB Points. No attribute transformation or generated row IDs."
+  },
+  "capture": {
+    "captured_at": "2026-10-20T03:25:08.491727+00:00",
+    "capture_manifest_sha256": "ecbfa31609df5bbabb694b48ba70a69de2be6edc555d9f0b1150d4e4aecc0049",
+    "source_capture_evidence_sha256": "3362abcae8cb7c748989a1ab4b6ea34bdc9bb813ceec5a14798a3fd9fceb1a27",
+    "raw_body_wire_receipts": "All full response bodies, wire bytes and request receipts retained locally at runtime/captures-complete/...; each request is pinned to GET and exact expected/final URL. Checksums below permit future comparison.",
+    "artifacts": {
+      "bts_item": {
+        "request_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+        "http_status": 200,
+        "body_bytes": 5576,
+        "body_sha256": "a0db815390a69371cb90343dd50481e2061b173eae762ace210c7e7b8f6077b4",
+        "wire_bytes": 5576,
+        "wire_sha256": "a0db815390a69371cb90343dd50481e2061b173eae762ace210c7e7b8f6077b4"
+      },
+      "count_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7/query?where=1%3D1&returnCountOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 12,
+        "body_sha256": "593fb7a18dcb19999a056526e0f2f8e8379fee202193dc8217f963e2baa2a197",
+        "wire_bytes": 12,
+        "wire_sha256": "593fb7a18dcb19999a056526e0f2f8e8379fee202193dc8217f963e2baa2a197"
+      },
+      "count_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7/query?where=1%3D1&returnCountOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 12,
+        "body_sha256": "593fb7a18dcb19999a056526e0f2f8e8379fee202193dc8217f963e2baa2a197",
+        "wire_bytes": 12,
+        "wire_sha256": "593fb7a18dcb19999a056526e0f2f8e8379fee202193dc8217f963e2baa2a197"
+      },
+      "ids_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 145,
+        "body_sha256": "67a1f2154dc40b9e0de956b8f6aa00560ede56d88f85158e9f9c02986a71e71b",
+        "wire_bytes": 145,
+        "wire_sha256": "67a1f2154dc40b9e0de956b8f6aa00560ede56d88f85158e9f9c02986a71e71b"
+      },
+      "ids_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 145,
+        "body_sha256": "67a1f2154dc40b9e0de956b8f6aa00560ede56d88f85158e9f9c02986a71e71b",
+        "wire_bytes": 145,
+        "wire_sha256": "67a1f2154dc40b9e0de956b8f6aa00560ede56d88f85158e9f9c02986a71e71b"
+      },
+      "layer_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7?f=pjson",
+        "http_status": 200,
+        "body_bytes": 6949,
+        "body_sha256": "dcac241832a7c66be8b3c23ddfdf62281d8e9ef2b19603843b19981f707e6845",
+        "wire_bytes": 6949,
+        "wire_sha256": "dcac241832a7c66be8b3c23ddfdf62281d8e9ef2b19603843b19981f707e6845"
+      },
+      "layer_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7?f=pjson",
+        "http_status": 200,
+        "body_bytes": 6949,
+        "body_sha256": "dcac241832a7c66be8b3c23ddfdf62281d8e9ef2b19603843b19981f707e6845",
+        "wire_bytes": 6949,
+        "wire_sha256": "dcac241832a7c66be8b3c23ddfdf62281d8e9ef2b19603843b19981f707e6845"
+      },
+      "page_000": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer/7/query?objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%2C10%2C11%2C12%2C13%2C14%2C15%2C16%2C17%2C18%2C19%2C20%2C21%2C22%2C23%2C24%2C25%2C26%2C27%2C28%2C29%2C30%2C31%2C32%2C33%2C34%2C35%2C36&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json",
+        "http_status": 200,
+        "body_bytes": 16471,
+        "body_sha256": "276fa08021fba8f52bf5557b670cd258115946288cec89db3c9c049178450232",
+        "wire_bytes": 16471,
+        "wire_sha256": "276fa08021fba8f52bf5557b670cd258115946288cec89db3c9c049178450232"
+      },
+      "service_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer?f=pjson",
+        "http_status": 200,
+        "body_bytes": 5381,
+        "body_sha256": "fcf02469b855a546fb6af9879c1f044196db302bb0cc62b5caaac831c794f3f1",
+        "wire_bytes": 5381,
+        "wire_sha256": "fcf02469b855a546fb6af9879c1f044196db302bb0cc62b5caaac831c794f3f1"
+      },
+      "service_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/CAUTION_AREA_POINT/MapServer?f=pjson",
+        "http_status": 200,
+        "body_bytes": 5381,
+        "body_sha256": "fcf02469b855a546fb6af9879c1f044196db302bb0cc62b5caaac831c794f3f1",
+        "wire_bytes": 5381,
+        "wire_sha256": "fcf02469b855a546fb6af9879c1f044196db302bb0cc62b5caaac831c794f3f1"
+      },
+      "service_directory": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+        "http_status": 200,
+        "body_bytes": 8518,
+        "body_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb",
+        "wire_bytes": 8518,
+        "wire_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb"
+      }
+    }
+  },
+  "candidate": {
+    "code_commit": "49e8841d3a9297a96f6860d1a82585004c5764ad",
+    "version": "v5f54e746d3cd16fecb7430afc2c8152f",
+    "staging_path": "caution-area-locations-usace-ienc/caution-area-locations-usace-ienc/v5f54e746d3cd16fecb7430afc2c8152f",
+    "parquet_bytes": 7053,
+    "parquet_sha256": "af78687a9fb5b65f595415aa784b7468a38255fe7fc7ce75a03dbe38261c24bb",
+    "feature_count": 36,
+    "geometry_valid": 36,
+    "geometry_empty": 0,
+    "geometry_invalid": 0,
+    "quality_manifest_passed": true,
+    "quality_manifest_path": "caution-area-locations-usace-ienc/caution-area-locations-usace-ienc/v5f54e746d3cd16fecb7430afc2c8152f/metadata/quality_manifest.json",
+    "refresh_schedule": "Stopped; no refresh automatically enabled."
+  },
+  "dagster_evidence": {
+    "source_run_id": "7f8d9cdb-944a-4319-8cc4-ef878cdd61bd",
+    "source_success": true,
+    "source_asset_check": [
+      {
+        "name": "usace_caution_areas_complete",
+        "passed": true
+      }
+    ],
+    "cache_reuse_run_id": "3234e388-e45d-499c-8ff8-fc73e9995159",
+    "cache_reused": true,
+    "catalog_run_id": "03e1f0bf-f1b0-44f1-b8b3-f41f4114058c",
+    "catalog_success": true,
+    "registered_verify_run_id": "b6a0ecea-c304-4f1c-a397-217e19d20a86",
+    "verify_result": "Expected failure at independent empty approval registry: missing_or_ambiguous_exact_object_approval; published fixture inventory unchanged.",
+    "published_inventory_unchanged": true,
+    "approval_registry": "/workspace/work/27/runtime/lifecycle/approval-registry.json",
+    "published_fixture": "/workspace/work/27/runtime/lifecycle/published/fixture/sentinel.bin"
+  },
+  "open_decisions": {
+    "archive_crosswalk": "DataLumos V1/source archive not compared byte-for-byte to current service population.",
+    "baseline": "No accepted HIFLD Next baseline/version mapping established.",
+    "identity": "OBJECTID and Feature_ID are retained as source identifiers; cross-refresh identity stability and published ID contract await maintainer decision.",
+    "coverage": "36 points are the complete current CAUTION_AREA_POINT layer; the feature set is chart feature coverage and does not imply nationwide caution-area coverage.",
+    "rights": "Rights and attribution terms await review.",
+    "schema": "Raw native schema retained; downstream contract approval pending.",
+    "release": "No acceptance, release, merge, closure or production publication claimed."
+  }
+}
