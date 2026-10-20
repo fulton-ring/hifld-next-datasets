@@ -1,4 +1,5 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,9 +10,28 @@ from dagster_hifld.assets.usace_waterway_lines import (
     usace_waterway_lines_draft_schedule,
 )
 from dagster_hifld.sources import usace_waterway_lines as source
+from dagster_hifld.sources.arcgis_filegdb import stage_filegdb_archive
+from dagster_hifld.resources import StagingStorageResource
 
 
 class UsaceWaterwayLinesContractTests(unittest.TestCase):
+    def test_filegdb_archive_descriptor_uses_canonical_layout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); archive=root/'source.zip'; archive.write_bytes(b'zip bytes')
+            gdb=root/'gdb'; gdb.mkdir(); (gdb/'a00000001.gdbtable').write_bytes(b'part')
+            storage=StagingStorageResource(local_dir=str(root/'staging'))
+            objects=stage_filegdb_archive(storage,'dataset/file/version',archive,gdb,'source.gdb')
+            self.assertEqual(objects[0]['path'],'file_geodatabase/source_filegdb.zip')
+            archive_sha=objects[0]['sha256']
+            descriptor=next(x for x in objects if x['sha256']==archive_sha and x['bytes']==len(b'zip bytes'))
+            self.assertEqual(descriptor['path'],'file_geodatabase/source_filegdb.zip')
+
+    def test_candidate_cache_key_is_stable_and_processing_identity_is_versioned(self):
+        base=source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'one'})
+        self.assertEqual(base,source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'one'}))
+        self.assertNotEqual(base,source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'two'}))
+        self.assertEqual(source._construction_key(base),f'_construction-state/{source.DATASET_SLUG}/{source.FILE_SLUG}/{base}.json')
+
     def _metadata(self):
         layer_fields=[]
         for name in source.EXPECTED_FIELDS:
