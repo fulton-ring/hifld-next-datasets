@@ -1,65 +1,97 @@
-"""Ingest USACE IENC Pipeline Areas with source drift checks."""
+"""Stopped draft-refresh asset for the official USACE IENC PIPE_AREA layer."""
 
-from __future__ import annotations
-
-import json
-
-from dagster import AssetKey, MetadataValue, asset
+from dagster import (
+    AssetCheckResult,
+    AssetKey,
+    AssetSelection,
+    Config,
+    DefaultScheduleStatus,
+    ScheduleDefinition,
+    asset,
+    asset_check,
+    define_asset_job,
+)
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.usace_pipeline_areas import extract_pipeline_areas
+from dagster_hifld.sources.usace_pipeline_areas import (
+    DATASET_SLUG,
+    EXPECTED_COUNT,
+    FILE_SLUG,
+    capture_usace_pipeline_areas,
+)
 
-_DATASET_SLUG = "pipeline-areas-usace-ienc"
-_FILE_SLUG = "pipeline-areas-usace-ienc"
+
+class UsacePipelineAreasConfig(Config):
+    capture_directory: str = ""
 
 
 @asset(
-    key=AssetKey(["ingest", _DATASET_SLUG, _FILE_SLUG]),
+    key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]),
     group_name="usace",
     compute_kind="http",
     description=(
-        "USACE Inland Electronic Navigational Chart Pipeline Areas. Captures the "
-        "complete reviewed 112-feature PIPE_AREA layer from the USACE AGC IENC "
-        "master service, retaining native OBJECTID, attributes, and polygon "
-        "geometry. HIFLD snapshot equivalence and source survey currency remain "
-        "unverified; source drift is gated."
+        "Official USDOT BTS-linked USACE IENC PIPE_AREA MapServer layer 82 "
+        "(112 source features observed). Complete inland-chart feature class; "
+        "unapproved faithful candidate. Historical HIFLD continuity, pipeline "
+        "survey currency, nationwide coverage, rights and schema contract remain pending."
     ),
 )
-def usace_pipeline_areas_usace_ienc(context, staging_storage: StagingStorageResource) -> dict:
-    geojson_bytes, receipt = extract_pipeline_areas()
-    version = build_version_id(context)
-    prefix = staging_storage.build_target_location(
-        _DATASET_SLUG, _FILE_SLUG, version, ""
-    ).rstrip("/")
-    raw_key = f"{prefix}/raw/source.geojson"
-    geojson_key = f"{prefix}/geojson/source.geojson"
-    receipt_key = f"{prefix}/metadata/source_receipt.json"
-    staging_storage.write_key(raw_key, geojson_bytes)
-    staging_storage.write_key(geojson_key, geojson_bytes)
-    receipt["raw_object"] = raw_key
-    receipt["geojson_object"] = geojson_key
-    staging_storage.write_key(
-        receipt_key,
-        json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8"),
+def usace_pipeline_areas_usace_ienc(
+    context,
+    config: UsacePipelineAreasConfig,
+    staging_storage: StagingStorageResource,
+) -> dict:
+    result = capture_usace_pipeline_areas(
+        staging_storage,
+        version=build_version_id(context),
+        capture_directory=config.capture_directory or None,
     )
-    context.add_output_metadata(
-        {
-            "source_item_id": MetadataValue.text(str(receipt["source_item_id"])),
-            "feature_count": MetadataValue.int(int(receipt["feature_count"])),
-            "objectids_sha256": MetadataValue.text(str(receipt["objectids_sha256"])),
-            "geojson_sha256": MetadataValue.text(str(receipt["geojson_sha256"])),
-            "raw_object": MetadataValue.text(raw_key),
-            "receipt_object": MetadataValue.text(receipt_key),
-        }
+    context.instance.add_dynamic_partitions(
+        PUBLISH_PARTITION_NAME,
+        [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])],
     )
-    return {
-        "dataset_slug": _DATASET_SLUG,
-        "file_slug": _FILE_SLUG,
-        "version": version,
-        "feature_count": receipt["feature_count"],
-        "geojson_sha256": receipt["geojson_sha256"],
-        "geojson_object": geojson_key,
-        "raw_object": raw_key,
-        "receipt_object": receipt_key,
-    }
+    context.add_output_metadata(result)
+    return result
+
+
+@asset_check(asset=usace_pipeline_areas_usace_ienc, blocking=True)
+def usace_pipeline_areas_complete(candidate: dict) -> AssetCheckResult:
+    passed = (
+        candidate.get("feature_count") == EXPECTED_COUNT
+        and candidate.get("source_population_complete") is True
+    )
+    return AssetCheckResult(
+        passed=passed,
+        metadata={
+            "complete_source_population": candidate.get("feature_count", 0),
+            "source_id_sha256": candidate.get("source_id_sha256", "missing"),
+            "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
+            "source_capture_evidence_sha256": candidate.get("source_capture_sha256", "missing"),
+            "source_coverage_scope": candidate.get("source_coverage_scope", "missing"),
+            "drift_guard": candidate.get("drift_guard", "missing"),
+            "baseline_comparison_accepted": False,
+            "source_release_accepted": False,
+            "source_freshness_accepted": False,
+            "schema_contract_accepted": False,
+            "id_contract_accepted": False,
+            "coverage_accepted": False,
+            "rights_accepted": False,
+            "mapping_approved": False,
+            "release_accepted": False,
+        },
+    )
+
+
+usace_pipeline_areas_draft_job = define_asset_job(
+    "usace_pipeline_areas_draft_refresh",
+    selection=AssetSelection.assets(usace_pipeline_areas_usace_ienc),
+)
+usace_pipeline_areas_draft_schedule = ScheduleDefinition(
+    name="usace_pipeline_areas_draft_refresh_schedule",
+    job=usace_pipeline_areas_draft_job,
+    cron_schedule="0 8 1,15 * *",
+    execution_timezone="America/New_York",
+    default_status=DefaultScheduleStatus.STOPPED,
+)
