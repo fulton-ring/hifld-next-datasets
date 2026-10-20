@@ -18,3 +18,8 @@ No GitHub issue or PR was modified by ledger recovery. No source work, merge, cl
 
 
 Coordinator update (2026-10-20): workcard #265 is active; workcard #263 is dataset #3 and worker3 is assigned next workcard #266; workcard #264 is dataset #4 and worker3 is assigned next workcard #267 if #264 is complete. The coordinator reports new #417 run evidence and a pending root fix on PR #529; exact run IDs and PR head were not supplied in this handoff and are not asserted here. Earlier assignments #261–264 remain as recorded above.
+
+
+New recovery detail: issue #3 has source-evidence branch `codex/cloud-dataset-263` at `c0817be` and comments `6282368412`, `6282381862`, `6282392275`. It adds source metadata/README only. The source count/roster was observed, but the official national GDB GET returned HTTP 403; estimated transfer size is extrapolative and must not be called measured. A complete extraction/materialization, exact crosswalk/archive/baseline and source/rights contract remain blocked.
+
+Issue #417’s latest public evidence is comment `6282335069`: 22 focused verification tests passed; synthetic Dagster verify/promote run `23663675-bfd2-4cfa-8ff2-c9aa35952259` passed, and staged-byte drift run `a7c4751b-eec6-4bae-9f65-ab24805b817e` failed closed, preserving 14 accepted fixture objects and candidate evidence. Synthetic mechanics only. PR #529 is open and draft at `9c9ad0f79af0c55da69f1bac8f1decb4bb0cd40a`; coordinator reports a root fix pending.

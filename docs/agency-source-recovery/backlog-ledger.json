@@ -23,7 +23,14 @@
     "url": "https://github.com/fulton-ring/hifld-next-datasets/issues/417",
     "status": "shared verifier exact-head PASS remains recorded; dataset-specific decisions remain external blockers",
     "head": "4dfbe33fdd5c919e6ed7e817efee4eedba95d345",
-    "evidence": "issue comment 6272517360 and latest comment 6282335069; 22 focused tests and synthetic verifier/promote fail-closed replay recorded; no dataset approvals"
+    "evidence": "issue comment 6272517360 and latest comment 6282335069; 22 focused tests and synthetic verifier/promote fail-closed replay recorded; no dataset approvals",
+    "latest_comment": 6282335069,
+    "focused_test_result": "22 test_full_verification cases passed in 2.211s",
+    "dagster_runs": {
+      "accepted_fixture_verify_promote": "23663675-bfd2-4cfa-8ff2-c9aa35952259",
+      "unapproved_staged_byte_drift_fail_closed": "a7c4751b-eec6-4bae-9f65-ab24805b817e"
+    },
+    "impact": "Synthetic mechanics only; preserved 14 accepted fixture objects and candidate evidence; no real dataset baseline acceptance."
   },
   "priority_cards": {
     "#261": "worker allocation: dataset #11 (as coordinator reported)",
@@ -75,13 +82,24 @@
         "issue comment 6269945860; public PR body/review; runtime captures unavailable in current environment"
       ],
       "blocker_type": "external_decision_or_source_evidence",
-      "status_note": "draft_pr_reviewed_exact_head; external source/compatibility decisions pending",
+      "status_note": "PR #420 independently reviewed exact head; subsequent source-evidence branch c0817be adds research metadata only, with complete extraction still blocked; exact crosswalk/archive/baseline/contract/rights pending",
       "live_issue_updated_at": "2026-10-19T14:42:48Z",
       "live_issue_created_at": "2026-10-19T01:56:09Z",
       "live_issue_comment_count": 17,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "local_or_current_branch_evidence": {
+        "branch": "codex/cloud-dataset-263",
+        "commit": "c0817be",
+        "scope": "source.json and README only; no pipeline or raw full data",
+        "issue_comments": [
+          6282368412,
+          6282381862,
+          6282392275
+        ],
+        "findings": "USGS PAD-US Manager Name service, item metadata cites PAD-US 4.1 (2025) DOI; 655335 features/37 fields/polygon WKID 102100. Feature service has count and complete OBJECTID roster. ScienceBase national GDB item 652d4fc5d34e44db0e2ee45e GET returned HTTP 403, so package size/content unknown. 100 polygons were 1.65 MB; 2k-page response about 64 MB; 21 GB is extrapolation only. DataLumos/crosswalk challenge 403. No complete 655k extraction/materialization. Blocker is accessible official package/feasible bounded full run and crosswalk/archive/baseline/contract/rights."
+      }
     },
     {
       "issue": 4,
@@ -10177,7 +10195,14 @@
       "workcard_264": "dataset issue #4; worker3 next workcard 267 if workcard 264 is complete",
       "workcard_265": "active"
     },
-    "issue_417": "new run evidence reported by coordinator; pending incorporation of exact run IDs/summary",
-    "pr_529": "root fix pending; state and exact head not independently fetched in this update"
+    "issue_417": "Public issue comment 6282335069 reports 22 focused tests passed in 2.211s; synthetic verify/promote 23663675-bfd2-4cfa-8ff2-c9aa35952259 and staged-byte drift fail-closed a7c4751b-eec6-4bae-9f65-ab24805b817e; not real dataset acceptance.",
+    "pr_529": {
+      "state": "open",
+      "draft": true,
+      "head_branch": "codex/cloud-dataset-257",
+      "head_sha": "9c9ad0f79af0c55da69f1bac8f1decb4bb0cd40a",
+      "updated_at": "2026-10-20T03:05:16Z",
+      "coordinator_note": "root fix pending; no newer exact-head state supplied"
+    }
   }
 }
