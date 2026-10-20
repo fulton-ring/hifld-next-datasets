@@ -108,7 +108,7 @@
     "release": false
   },
   "capture_evidence": {
-    "captured_at": "2026-10-20T03:33:20.366171+00:00",
+    "captured_at": "2026-10-20T03:33:18.841886+00:00",
     "complete": true,
     "capture_directory": "/workspace/work/273/work/lifecycle/captures/v20261020T033315Z-a3ba435efe4c4fefacbea0bb7951f45e",
     "requests": 14,
@@ -122,16 +122,17 @@
     "geometry_valid_count": 607,
     "geometry_empty_count": 0,
     "geometry_invalid_count": 0,
-    "feature_id_duplicates_are_preserved": true
+    "feature_id_duplicate_rows": 1,
+    "feature_id_duplicates_preserved": true
   },
   "materialization_evidence": {
-    "code_head": "2b922c1",
-    "source_run_id": "6e02f6e2-8252-4e07-ace6-1ac8621a195d",
-    "catalog_run_id": "7dd30f8a-e034-4656-a9cf-379cc93e93d0",
-    "post_catalog_cache_replay_run_id": "954fe389-5554-4d6f-8ae3-8438ae00cadb",
+    "processing_code_head": "361bb97",
+    "source_run_id": "a5a28eef-3462-45a5-894a-dc0b3f055b3d",
+    "catalog_run_id": "7d26688a-76ba-469b-ad89-3cff7373879a",
+    "post_catalog_cache_replay_run_id": "c57ff54f-5954-4676-9803-a43f6224033a",
     "post_catalog_cache_replay_reused": true,
-    "candidate_version": "v893e98d4adcfc950ecfb9bc8e46c8c02",
-    "candidate_prefix": "pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/v893e98d4adcfc950ecfb9bc8e46c8c02",
+    "candidate_version": "va5b5ff283db78ffbac3d09185074fa1c",
+    "candidate_prefix": "pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/va5b5ff283db78ffbac3d09185074fa1c",
     "geoparquet_sha256": "88c6f3fdf05847d0122f1eaf948ea3f8821a38ec7e0270a8cb06ad84cd299c2f",
     "geoparquet_rows": 607,
     "geoparquet_physical_types": {
@@ -148,26 +149,26 @@
       "authority": "EPSG",
       "code": 4326
     },
-    "source_attribute_values_identical": true,
-    "source_native_polygon_wkb_identical": true,
+    "all_native_attribute_values_identical": true,
+    "native_polygon_wkb_identical_after_esri_conversion": true,
     "catalog_quality": {
-      "quality_check_passed": true,
+      "passed": true,
       "scope": "all_rows",
       "feature_count": 607,
       "geometry_type": "Polygon",
-      "null": 0,
-      "empty": 0,
-      "invalid": 0,
-      "unparseable": 0
+      "null_geometries": 0,
+      "empty_geometries": 0,
+      "invalid_geometries": 0,
+      "unparseable_geometries": 0
     },
-    "verifier_run_id": "2c67f108-b902-410c-a1f6-783defc68821",
-    "verifier_refusal": "dagster_hifld.release_approval.ReleaseApprovalError: missing_or_ambiguous_exact_object_approval:pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/v893e98d4adcfc950ecfb9bc8e46c8c02/geoparquet/pontoon-areas-usace-ienc.parquet",
+    "verifier_run_id": "3c1af18b-c501-4c31-86ee-b90e72d5f91b",
+    "verifier_success": false,
+    "verifier_refusal_reason": "dagster_hifld.release_approval.ReleaseApprovalError: missing_or_ambiguous_exact_object_approval:pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/va5b5ff283db78ffbac3d09185074fa1c/geoparquet/pontoon-areas-usace-ienc.parquet",
     "approval_registry_empty": true,
-    "approval_registry_path": "/workspace/work/273/work/lifecycle/approval-registry.json",
     "approval_registry_outside_source_and_published_roots": true,
     "published_inventory_unchanged": true,
-    "published_fixture_file_count": 1,
-    "refresh_schedule": "STOPPED",
+    "published_inventory_count": 1,
+    "schedule": "STOPPED",
     "production_publication": false
   },
   "official_layer_item": {
