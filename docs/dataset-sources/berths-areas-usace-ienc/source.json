@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "inventory_id": "berths-areas-usace-ienc",
+  "dataset_slug": "berths-areas-usace-ienc",
+  "file_slug": "berths-areas-usace-ienc",
+  "producer": "US Army Corps of Engineers, Army Geospatial Center (USACE IENC)",
+  "distributor": {
+    "name": "US Department of Transportation, Bureau of Transportation Statistics",
+    "item_id": "3607d485a9854d6fa458bf507058ceae",
+    "item_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json"
+  },
+  "source": {
+    "service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+    "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/BERTHS_AREA/MapServer",
+    "layer_id": 98,
+    "layer_name": "BERTHS_AREA",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "copyright_text": "USACE IENC",
+    "data_release_date": null,
+    "data_release_date_reason": "The BTS IENC item and exact layer metadata do not state a release date for this extracted layer. Per-feature Source_Date values are source attributes, not a dataset release date.",
+    "currentness_status": "Unapproved. BTS describes bi-monthly IENC updates, but the release/currentness of this exact layer snapshot has not been established."
+  },
+  "observed_snapshot": {
+    "captured_on": "2026-10-20",
+    "count_before_and_after": 1108,
+    "id_field": "OBJECTID",
+    "sorted_id_roster_sha256": "601df26e076232404b0e22fd1afacd6ca6461064107ae1ce4b33d1f92b2cfbd5",
+    "field_schema_sha256": "55fe5000eb9aacd69e612211f48b5cf5532cee536f1080901d177e5842a0751c",
+    "record_sha256": "a6437ee21d5a419653eb08ec59a6b938faf18fa5e05c803940e67b104f5381fb",
+    "geometry_sha256": "8a17537ea5be40535600a98fd1d9cedab85fac9a56ad57528e8e775ba3590539",
+    "coverage_extent": {
+      "xmin": -94.33752259999994,
+      "ymin": 29.727434000000073,
+      "xmax": -79.83875189999998,
+      "ymax": 45.02651950000006
+    },
+    "feature_id_unique_count": 1098,
+    "feature_id_duplicates": 10,
+    "complete_refresh_capture": {
+      "path": "/workspace/work/hifld-coordinator/21/captures_live",
+      "capture_manifest_sha256": "6a453496bee82a33f73b61ab2633e20f06e83b7896d6b6a0561ddb2dbf9867f4",
+      "capture_evidence_sha256": "ece064b2c76313c927f34eea4b307e64d1314adcf50c43984bdb8f0f1ff93ce2",
+      "initial_dagster_run_id": "90927f11-b791-4649-98aa-64aba4b8b0cd",
+      "cache_replay_run_id": "100ce7b5-b0aa-4fbc-b5a2-184df78c360e",
+      "catalog_run_id": "eee8e122-f0fa-4853-b317-2c1fcdf45684",
+      "candidate_version": "v47f7232144e8944cb7555d682ef148b4",
+      "candidate_geoparquet_sha256": "ce272b14b0a1e3e7748f97a8804f2dc0acdc2592573c6dcf0433c42825fe4fb9",
+      "release_gate_refusal": "missing_independent_release_approval_registry",
+      "isolated_published_root_inventory_before_and_after": {}
+    },
+    "exploratory_query_capture": "/workspace/work/hifld-coordinator/21/research/features.body"
+  },
+  "candidate": {
+    "format": "GeoParquet",
+    "attributes": "All declared non-geometry fields retained, including OBJECTID and non-unique Feature_ID.",
+    "geometry": "Esri rings encoded directly as WKB while preserving all XY vertices, ring order, and winding; no reprojection, repair, reorientation, simplification, or extra output format generation.",
+    "promotion_allowed": false,
+    "source_accepted": false,
+    "release_accepted": false,
+    "baseline_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false
+  },
+  "pending_review": [
+    "Exact historical HIFLD baseline and crosswalk",
+    "Currentness and source edition acceptance",
+    "Reuse rights and attribution acceptance",
+    "Physical schema and identifier mapping",
+    "Coverage acceptance",
+    "Release approval"
+  ]
+}
