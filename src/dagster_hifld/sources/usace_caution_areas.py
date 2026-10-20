@@ -318,7 +318,7 @@ def capture_usace_caution_areas(storage: StagingStorageResource, *, version: str
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"], "inputs": inputs,
         "transformations": [{"operation": "Esri native point XY to GeoParquet WKB candidate", "parameters": {
-            "source_fields": "all declared attributes retained in source order and declared types; null-only Feature_ID remains UTF-8 string",
+            "source_fields": "all declared attributes retained in source order and declared types, including Feature_ID as UTF-8 string",
             "source_ids": "OBJECTID and Feature_ID retained unchanged, including nulls", "source_crs": "EPSG:4326",
             "geometry": "native XY coordinates preserved; no reprojection, repair, or simplification",
             "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",

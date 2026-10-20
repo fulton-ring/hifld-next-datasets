@@ -37,7 +37,7 @@ def _captures():
             rows.append({"attributes": {"OBJECTID": oid, "Object_Name": f"Caution {oid}",
                 "Periodic_Date_Start": None, "Periodic_Date_End": None, "Information": "Observed",
                 "Scale_Minimum": 60000, "Source_Date": "20261020", "Source_Indication": "USACE",
-                "Source_Dataset": "IENC", "Feature_ID": None},
+                "Source_Dataset": "IENC", "Feature_ID": f"U3 {oid:08d}"},
                 "geometry": {"x": -90.0 + oid / 100, "y": 38.0 + oid / 100,
                              "spatialReference": {"wkid": 4326, "latestWkid": 4326}}})
         docs[f"page_{idx:03d}"] = {"features": rows, "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
@@ -68,7 +68,8 @@ class CautionAreaTests(unittest.TestCase):
         data = pq.read_table(io.BytesIO(source._parquet_bytes(fields, features)))
         self.assertTrue(data.schema.field("Scale_Minimum").type.equals(pa.int32()))
         self.assertTrue(data.schema.field("Feature_ID").type.equals(pa.string()))
-        self.assertEqual(data["Feature_ID"].null_count, 36)
+        self.assertEqual(data["Feature_ID"].null_count, 0)
+        self.assertEqual(data["Feature_ID"][0].as_py(), "U3 00000001")
         point = from_wkb(data["geometry"][0].as_py())
         self.assertEqual(point.geom_type, "Point")
         self.assertEqual((point.x, point.y), (features[0]["geometry"]["x"], features[0]["geometry"]["y"]))
