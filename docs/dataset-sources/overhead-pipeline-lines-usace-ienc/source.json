@@ -1,0 +1,94 @@
+{
+  "acceptance": {
+    "baseline": false,
+    "coverage": false,
+    "id_contract": false,
+    "mapping": false,
+    "release": false,
+    "rights": false,
+    "schema_contract": false,
+    "source_freshness": false,
+    "source_release": false
+  },
+  "crosswalk": {
+    "match_status": "unverified",
+    "reason": "DataLumos access returned HTTP 403 during earlier research; no mapping accepted",
+    "reference": "https://doi.org/10.3886/E241367V1"
+  },
+  "dataset_id": "overhead-pipeline-lines-usace-ienc",
+  "extraction": {
+    "all_response_body_and_wire_hashes": "retained in local capture manifest and adapter candidate raw objects",
+    "capture_directory": "/tmp/hifld-native-reconstruction/261/captures/v20261020T030424Z-4a3608a339cb4cb4964e3165d272384f",
+    "geometry": "Polyline XY, EPSG:4326",
+    "id_field": "OBJECTID",
+    "id_range": [
+      1,
+      92
+    ],
+    "id_sha256": "220aadc856da8f05136dac0a5d7f57dc74c25405f08c98ec94380a29ebd2d858",
+    "observed_at": "2026-10-20T03:04:27.237779+00:00",
+    "pagination": "1 bounded ObjectID query; before/after count and ID census match",
+    "receipt_count": 11,
+    "record_sha256": "e4bf44b0a94597279559e85ba42717c8928aebbfaff30b76dc7d9da9b22c4b7c",
+    "rows": 92,
+    "schema_sha256": "e5cc68a492b0033f71cb83ea72fadc5c2aa8936e6f8e3cf5351add7573892546",
+    "source_capture_evidence_sha256": "9aff4f2d19ffab977f213903aa28c17b00a28aaefd1a58ba6efd031e66a67cb5",
+    "transfer_limit": 2000
+  },
+  "historical_comparison": {
+    "candidate": "canonical v1.0.0 GeoParquet",
+    "geometries_differ": 92,
+    "interpretation": "changed edition; not continuity proof; no mapping or compatibility acceptance",
+    "rows": 92,
+    "shared_attributes_differ": "9 of 12",
+    "source_id_field_absent": "Feature_ID absent from historical table"
+  },
+  "inventory_archive": {
+    "modified": "2025-04-08",
+    "role": "historical HIFLD archive; not current source release date",
+    "url": "https://www.datalumos.org/datalumos/project/240565/version/V1/view"
+  },
+  "proposed_raw_contract": {
+    "fields": [
+      "OBJECTID",
+      "Category_of_Pipeline",
+      "Horizontal_Units",
+      "Object_Name",
+      "Product",
+      "Vertical_Clearance",
+      "Vertical_Datum",
+      "Waterway_Distance",
+      "Information",
+      "Scale_Minimum",
+      "Source_Date",
+      "Source_Indication",
+      "Source_Dataset",
+      "Feature_ID"
+    ],
+    "generate_substitute_ids": false,
+    "geometry": "EPSG:4326 MultiLineString preserving XY path and vertex order",
+    "preserve_every_raw_identifier": true
+  },
+  "registered_runs": {
+    "catalog": "7360a261-2830-4129-b527-d970b84ec127",
+    "catalog_quality_passed": true,
+    "published_output_written": false,
+    "source": "ddb0b6f4-13a1-4174-a60d-9902fad1b3e0"
+  },
+  "source": {
+    "delegation_evidence": {
+      "bts_description": "IENC dataset updated bi-monthly by USACE/AGC; links official USACE IENC Feature Classes services and master geodatabase",
+      "bts_item_url": "https://www.arcgis.com/home/item.html?id=3607d485a9854d6fa458bf507058ceae",
+      "bts_owner": "USDOT_BTS",
+      "layer_id": 44,
+      "layer_name": "OVERHEAD_PIPELINE_LINE",
+      "release_date": null,
+      "release_date_reason": "BTS item describes the overall twice-monthly delivery cadence, not this layer release date.",
+      "service_copyright": "USACE IENC",
+      "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/OVERHEAD_PIPELINE_LINE/MapServer"
+    },
+    "distributor": "USDOT Bureau of Transportation Statistics (USDOT_BTS)",
+    "producer": "US Army Corps of Engineers / Army Geospatial Center"
+  },
+  "title": "Overhead Pipeline Lines (USACE IENC)"
+}
