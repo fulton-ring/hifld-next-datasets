@@ -16,8 +16,10 @@ from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facil
 from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
+from dagster_hifld.assets.fdic_locations import fdic_locations_official
 
 hifld_ingest_assets = [
+    fdic_locations_official,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     *census_blocks_2020_ingest_assets,
