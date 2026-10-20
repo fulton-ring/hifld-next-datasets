@@ -116,6 +116,17 @@ def _verify_cached_candidate(storage,prefix,state_key,version,fingerprint,identi
             raise ValueError("cached_filegdb_original_capture_changed:"+name)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
 
+def _reuse_first_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,native_objects,_fresh_receipts):
+    """Return a verified first candidate before fresh receipts can rewrite it."""
+    original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload",{})
+    receipts=original.get("capture_receipts")
+    objects=original.get("objects")
+    if (original.get("processing_identity")!=identity or original.get("archive_sha256")!=archive_sha or
+        original.get("native_objects")!=native_objects or not isinstance(receipts,dict) or not isinstance(objects,dict)):
+        raise ValueError("cached_filegdb_first_construction_identity_drift")
+    _verify_cached_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,objects,receipts)
+    return original
+
 def _validate_before(bts,item,service,layer,count,ids):
     if bts.get("id")!=BTS_ITEM_ID or bts.get("owner")!="USDOT_BTS" or (bts.get("url") or "").casefold()!=LAYER_URL.casefold():raise ValueError("BTS_official_item_identity_or_layer_link_drift")
     if item.get("id")!=USACE_SERVICE_ITEM_ID or item.get("owner")!="usace_iwr_cac" or (item.get("url") or "").rstrip("/").casefold()!=SERVICE_URL.casefold():raise ValueError("USACE_actual_service_owner_or_item_drift")
@@ -171,11 +182,10 @@ def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_direct
     replayed=storage.object_snapshot(state_key) is not None
     receipts={k:r for k,(_,r) in sorted(captured.items())}
     if replayed:
-        original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload",{})
-        if (original.get("processing_identity")!=identity or original.get("archive_sha256")!=archive_sha or
-            original.get("native_objects")!=objects or not isinstance(original.get("capture_receipts"),dict)):
-            raise ValueError("cached_filegdb_first_construction_identity_drift")
-        receipts=original["capture_receipts"]
+        original=_reuse_first_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,objects,receipts)
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"candidate_ready":True,"reused":True,
+          "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"native_Z_M_and_BLOB_preserved":True,"source_null_geometry_count":integrity["null_geometry_count"],
+          "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     if not replayed:
         for name,(body,_) in captured.items():
             if name!="filegdb_export":write_immutable(storage,f"{prefix}/raw/{name}.body",body)
