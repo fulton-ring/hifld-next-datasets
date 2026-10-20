@@ -291,7 +291,13 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         "retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],
         "wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"release_date":None,
         "release_date_unknown_reason":"The service and official distribution item do not publish a release date for the captured layer.",
-        "license":"Rights review pending.","attribution":"USACE IENC; final attribution review pending."} for n,r in sorted(receipts.items())]
+        "license":"Rights review pending.","attribution":"USACE IENC; final attribution review pending.",
+        **({"distributor":"USDOT Bureau of Transportation Statistics (BTS)","delegation_evidence":{
+            "bts_item_url":BTS_ITEM_URL,"bts_item_owner":"USDOT_BTS","item_linked_feature_classes_service":BTS_FEATURE_CLASSES_URL,
+            "item_linked_master_geodatabase":"https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+            "official_master_service_directory":SERVICE_DIRECTORY_URL,
+            "relationship_note":"BTS lists the Feature_Classes endpoint and master GDB; the exact MapServer route captured here is separately listed in USACE's ArcGIS directory, but direct link equivalence is unverified."}}
+            if n=="bts_item" else {})} for n,r in sorted(receipts.items())]
     manifest={"schema_version":1,"approved":False,"title":"Building Locations (USACE IENC)",
         "description":"Complete current BUILDING_SINGLE_POINT feature layer capture; candidate only; inland chart coverage is not nationwide.",
         "publisher":PUBLISHER,"agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"license":None,
