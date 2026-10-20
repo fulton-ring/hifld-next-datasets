@@ -16,7 +16,13 @@
     "issue_states": "All 415 dataset issues #2-416 individually fetched from GitHub on 2026-10-20; current state/open status and metadata recorded. Closed issue search had returned empty.",
     "prs_returned": 114,
     "issue_fetches": 415,
-    "prs_with_high_confidence_issue_association": 78
+    "prs_with_high_confidence_issue_association": 78,
+    "open_issue_work_progress": {
+      "total_dataset_issues": 415,
+      "open_pr_associated": 95,
+      "no_open_pr_in_recovered_catalog": 320,
+      "classification": "The 320 are unworked/not blocked by default; absence of a recovered open PR is not evidence of an external blocker."
+    }
   },
   "coordination_issue_417": {
     "issue": 417,
@@ -82,24 +88,13 @@
         "issue comment 6269945860; public PR body/review; runtime captures unavailable in current environment"
       ],
       "blocker_type": "external_decision_or_source_evidence",
-      "status_note": "PR #420 independently reviewed exact head; subsequent source-evidence branch c0817be adds research metadata only, with complete extraction still blocked; exact crosswalk/archive/baseline/contract/rights pending",
+      "status_note": "Existing draft PR #420 exact-head review and historical source evidence are recorded; this is a distinct dataset from PAD-US Manager Name issue #263.",
       "live_issue_updated_at": "2026-10-19T14:42:48Z",
       "live_issue_created_at": "2026-10-19T01:56:09Z",
       "live_issue_comment_count": 17,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "local_or_current_branch_evidence": {
-        "branch": "codex/cloud-dataset-263",
-        "commit": "c0817be",
-        "scope": "source.json and README only; no pipeline or raw full data",
-        "issue_comments": [
-          6282368412,
-          6282381862,
-          6282392275
-        ],
-        "findings": "USGS PAD-US Manager Name service, item metadata cites PAD-US 4.1 (2025) DOI; 655335 features/37 fields/polygon WKID 102100. Feature service has count and complete OBJECTID roster. ScienceBase national GDB item 652d4fc5d34e44db0e2ee45e GET returned HTTP 403, so package size/content unknown. 100 polygons were 1.65 MB; 2k-page response about 64 MB; 21 GB is extrapolation only. DataLumos/crosswalk challenge 403. No complete 655k extraction/materialization. Blocker is accessible official package/feasible bounded full run and crosswalk/archive/baseline/contract/rights."
-      }
+      "observed_open_prs": []
     },
     {
       "issue": 4,
@@ -5927,8 +5922,8 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
+      "current_pr": 531,
+      "reviewed_head": "4be341a",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-20T02:05:05Z",
@@ -5936,7 +5931,20 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [
+        {
+          "pr": 531,
+          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/531",
+          "title": "Draft pipeline: overhead pipeline lines (#261)",
+          "state": "open",
+          "head_sha_claim_in_body": "4be341a",
+          "review_evidence_status": "not_recovered_in_ledger",
+          "association_confidence": 1.0
+        }
+      ],
+      "work_status": "active_draft_pipeline",
+      "assigned_worker": "dataset_11",
+      "status_note": "Overhead pipeline lines; active worker dataset_11. PR #531 reported head 4be341a."
     },
     {
       "issue": 262,
@@ -5955,7 +5963,10 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "work_status": "active_draft_pipeline",
+      "assigned_worker": "dataset_10",
+      "status_note": "NOAA Overview; active worker dataset_10."
     },
     {
       "issue": 263,
@@ -5974,7 +5985,21 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "work_status": "research_only",
+      "assigned_worker": "dataset_3",
+      "status_note": "PAD-US Manager Name. Research branch codex/cloud-dataset-263 at c0817be adds source.json/README only; no pipeline or complete raw data. Official national GDB ScienceBase item 652d4fc5d34e44db0e2ee45e GET returned HTTP 403; archive/crosswalk also challenged. No complete extraction/materialization. The 21 GB estimate is extrapolative, not measured. Blocked on accessible official package/feasible bounded full run, crosswalk/archive/baseline, contract/rights.",
+      "local_or_current_branch_evidence": {
+        "branch": "codex/cloud-dataset-263",
+        "commit": "c0817be",
+        "scope": "source.json and README only; no pipeline or raw full data",
+        "issue_comments": [
+          6282368412,
+          6282381862,
+          6282392275
+        ],
+        "findings": "Official service title matches PAD-US Manager Name; USGS org owner; item metadata cites 2025 PAD-US 4.1 DOI; 655335 features, 37 fields, polygon WKID 102100. Feature service supplies count and full OBJECTID roster. ScienceBase national GDB GET returned HTTP 403, so package size/contents unknown. 100 polygons were 1.65 MB and 2000-row page about 64 MB; 21 GB is extrapolation only. DataLumos/crosswalk challenge 403. No complete extraction/materialization."
+      }
     },
     {
       "issue": 264,
@@ -5993,7 +6018,10 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "work_status": "research_only",
+      "assigned_worker": "dataset_4",
+      "status_note": "PAD-US Protection Mechanism. Compact source research commit ac291c8c58b00399af36b0c9c581fffb3db2a764; issue note 6282401301. No full capture, candidate, or implementation claim."
     },
     {
       "issue": 265,
@@ -6003,8 +6031,8 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
+      "current_pr": 532,
+      "reviewed_head": "279a65961c41848170afc041109713f15bf319c3",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:14:03Z",
@@ -6012,7 +6040,20 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [
+        {
+          "pr": 532,
+          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/532",
+          "title": "Research: FCC ULS facilities (#265)",
+          "state": "open",
+          "head_sha_claim_in_body": "279a65961c41848170afc041109713f15bf319c3",
+          "review_evidence_status": "research-only; review evidence not recovered",
+          "association_confidence": 1.0
+        }
+      ],
+      "work_status": "research_only_draft_pr",
+      "assigned_worker": "dataset_265",
+      "status_note": "FCC ULS research PR #532. FCC candidate ZIPs/docs and data.fcc.gov license-view returned HTTP 403 with envoy/x-reference-error on 2026-10-20; access denial, not dead-source evidence. ULS schema/join/filter/release markers remain unverified. HIFLD Esri copy candidate extraction completed (6541 rows/4 pages/FID unique) but is not authority. Research only; no archive-refresh ingest."
     },
     {
       "issue": 266,
@@ -8927,6 +8968,21 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": []
+    },
+    {
+      "issue": 266,
+      "dataset_id": "current-unknown",
+      "title": "Source and pipeline: Dataset issue #266",
+      "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/266",
+      "live_issue_state": "open",
+      "work_status": "research_only",
+      "assigned_worker": "dataset_3",
+      "current_pr": null,
+      "reviewed_head": "f341822",
+      "status_note": "Branch codex/cloud-dataset-266 at f341822; compact research docs only. HIFLD-labelled ArcGIS item 9e28c38204604403a09d12247852351e owner HSEMA_PPD created 2023; service HTTP200 ArcGIS application error 400 Invalid URL. Third-party maps_ft item 4498e33c842146c0bbdd6ba58a09d98a advertises 60 peak shaver + 41 satellite facilities; no official delegation/lineage/release. DataLumos/crosswalk 403. No maintained DOE/ORNL source found in scoped search; do not claim none exists. No complete extraction or adapter. External source/lineage/date and contract decision needed.",
+      "evidence_refs": [
+        "issue comment 6282411250"
+      ]
     }
   ],
   "open_pull_requests": [
@@ -10169,9 +10225,10 @@
       "state": "open",
       "dataset_issue_candidate": 257,
       "association_confidence": 1,
-      "head_sha_claim_in_body": null,
-      "review_evidence_status": "not_in_search_payload",
-      "updated_at": null
+      "head_sha_claim_in_body": "39f8488",
+      "review_evidence_status": "root fix pending per coordinator",
+      "updated_at": null,
+      "latest_head_from_coordinator": "39f8488"
     },
     {
       "pr": 530,
@@ -10182,27 +10239,51 @@
       "association_confidence": 1,
       "head_sha_claim_in_body": "1d5f39e425ebfc7554b85bd42dd6263afebffaa3",
       "review_evidence_status": "head_claim_only",
-      "updated_at": null
+      "updated_at": null,
+      "latest_head_from_coordinator": "1d5f39e425ebfc7554b85bd42dd6263afebffaa3"
+    },
+    {
+      "pr": 531,
+      "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/531",
+      "title": "Draft pipeline: overhead pipeline lines (#261)",
+      "state": "open",
+      "dataset_issue_candidate": 261,
+      "association_confidence": 1,
+      "head_sha_claim_in_body": "4be341a",
+      "review_evidence_status": "not_recovered_in_ledger"
+    },
+    {
+      "pr": 532,
+      "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/532",
+      "title": "Research: FCC ULS facilities (#265)",
+      "state": "open",
+      "dataset_issue_candidate": 265,
+      "association_confidence": 1,
+      "head_sha_claim_in_body": "279a65961c41848170afc041109713f15bf319c3",
+      "review_evidence_status": "research-only; review evidence not recovered"
     }
   ],
   "current_coordination_update": {
     "recorded_utc_date": "2026-10-20",
-    "source": "coordinator message; not independently verified from issue/PR comments",
-    "assignments": {
-      "workcard_261": "dataset issue #11",
-      "workcard_262": "dataset issue #10",
-      "workcard_263": "dataset issue #3; worker3 next workcard 266",
-      "workcard_264": "dataset issue #4; worker3 next workcard 267 if workcard 264 is complete",
-      "workcard_265": "active"
+    "source": "coordinator and dataset worker reports, with PR/issue references where available",
+    "dataset_issue_assignments": {
+      "261": "dataset_11; PR531 head 4be341a",
+      "262": "dataset_10; NOAA Overview",
+      "263": "dataset_3; PAD-US Manager Name research commit c0817be; official package access blocked",
+      "264": "dataset_4; PAD-US Protection Mechanism research commit ac291c8c58b00399af36b0c9c581fffb3db2a764",
+      "265": "dataset_265; research PR532 head 279a65961c41848170afc041109713f15bf319c3; FCC source access blocked",
+      "266": "worker dataset_3; branch codex/cloud-dataset-266 commit f341822; research only, source/lineage unresolved",
+      "267": "next dataset_4",
+      "268": "next dataset_11",
+      "269": "next dataset_265"
     },
-    "issue_417": "Public issue comment 6282335069 reports 22 focused tests passed in 2.211s; synthetic verify/promote 23663675-bfd2-4cfa-8ff2-c9aa35952259 and staged-byte drift fail-closed a7c4751b-eec6-4bae-9f65-ab24805b817e; not real dataset acceptance.",
+    "issue_417": "comment 6282335069: 22 focused tests, synthetic Dagster runs 23663675-bfd2-4cfa-8ff2-c9aa35952259 and a7c4751b-eec6-4bae-9f65-ab24805b817e; synthetic only",
     "pr_529": {
       "state": "open",
       "draft": true,
       "head_branch": "codex/cloud-dataset-257",
-      "head_sha": "9c9ad0f79af0c55da69f1bac8f1decb4bb0cd40a",
-      "updated_at": "2026-10-20T03:05:16Z",
-      "coordinator_note": "root fix pending; no newer exact-head state supplied"
+      "head_sha": "39f8488",
+      "coordinator_note": "root fix pending"
     }
   }
 }
