@@ -114,7 +114,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                   for layer in service.get("layers", [])]
     if (service.get("mapName") != "OVERHEAD_PIPELINE_LINE" or service.get("copyrightText") != "USACE IENC"
             or advertised != [(LAYER_ID, "OVERHEAD_PIPELINE_LINE", "esriGeometryPolyline")]):
-        raise ValueError("official_overhead_cable_service_drift")
+        raise ValueError("official_overhead_pipeline_service_drift")
     layer = docs["layer_before"]
     if layer.get("fields") != EXPECTED_FIELD_DECLARATIONS:
         raise ValueError("source_field_schema_drift")
