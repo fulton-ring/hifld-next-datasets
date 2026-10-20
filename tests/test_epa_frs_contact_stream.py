@@ -127,13 +127,13 @@ class EPAFRSContactStreamTests(unittest.TestCase):
             with tarfile.open(archive_path, "w") as archive:
                 for index in range(2845):
                     name = f"page_{index:05d}" if index < 2728 else f"metadata_{index - 2728:04d}"
-                    wire = b"wire fixture"
+                    wire = gzip.compress(b"x")
                     receipt = {
                         "name": name, "method": "GET",
                         "url": f"https://source.example.test/27/query?response={index}",
                         "final_url": f"https://source.example.test/27/query?response={index}",
                         "query": {"f": "json", "resultOffset": index * 2000},
-                        "status": 200, "content_encoding": "identity",
+                        "status": 200, "content_encoding": "gzip",
                         "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
                         "decoded_bytes": 1, "decoded_sha256": hashlib.sha256(b"x").hexdigest(),
                         "complete_body": True,
@@ -148,7 +148,7 @@ class EPAFRSContactStreamTests(unittest.TestCase):
             index = compact_capture_receipt_index(receipts, archive_path)
             self.assertEqual(index["receipt_count"], 2845)
             self.assertEqual(index["page_count"], 2728)
-            self.assertEqual(index["wire_bytes"], 2845 * len(b"wire fixture"))
+            self.assertEqual(index["wire_bytes"], 2845 * len(gzip.compress(b"x")))
             payload = {
                 "processing_identity": {"code_commit": "a" * 40,
                                         "files": {f"src/file-{n}.py": "b" * 64 for n in range(100)}},

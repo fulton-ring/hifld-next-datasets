@@ -11,7 +11,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from dagster import (AssetCheckResult, AssetKey, AssetSelection,
+import pyarrow as pa
+import pyarrow.parquet as pq
+from dagster import (AssetCheckResult, AssetKey, AssetSelection, Field,
                      DefaultScheduleStatus, ScheduleDefinition, asset, asset_check,
                      define_asset_job)
 
@@ -21,6 +23,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, write_immutable,
 )
+from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.sources.epa_frs_contact_stream import (
     EXPECTED_ROWS, SERVICE_URL, TABLE_NAME, TABLE_URL, capture_to_parquet, canonical,
     compact_capture_receipt_index,
@@ -99,6 +102,217 @@ def _quarantine(storage: StagingStorageResource, capture_root: Path, *, reason: 
     return prefix
 
 
+def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str,
+                                identity: dict[str, object]) -> dict[str, object]:
+    """Seal an exact complete retained capture under this code identity, offline.
+
+    This path is intentionally explicit in asset config. It verifies source
+    receipts, object snapshots, the Parquet footer, and completeness metadata;
+    the source observation timestamp and receipt bytes remain unchanged.
+    """
+    expected_prefix = f"{DATASET_SLUG}/{FILE_SLUG}/"
+    if (not old_prefix.startswith(expected_prefix) or "/" in old_prefix[len(expected_prefix):]
+            or not old_prefix[len(expected_prefix):].startswith("v")):
+        raise ValueError("resume_candidate_prefix_invalid")
+    names = (
+        "raw/source-wire-capture.tar", f"unknown/{FILE_SLUG}.parquet",
+        "metadata/source_id_roster_summary.json", "metadata/source_capture.json",
+        "metadata/source_manifest.json", "metadata/source_audit.json",
+        "metadata/processing_identity.json", "metadata/candidate_ready.json",
+    )
+    expected_keys = {f"{old_prefix}/{name}" for name in names}
+    if set(storage.list_prefix(old_prefix)) != expected_keys:
+        raise ValueError("resume_candidate_storage_roster_changed")
+    snapshots = {}
+    for name in names:
+        key = f"{old_prefix}/{name}"
+        snapshot = storage.object_snapshot(key)
+        if snapshot is None:
+            raise ValueError("resume_candidate_object_missing")
+        sha = storage.sha256_key(key)
+        if storage.object_snapshot(key) != snapshot:
+            raise ValueError("resume_candidate_object_changed_during_verify")
+        snapshots[name] = {"bytes": snapshot.size, "sha256": sha}
+
+    capture = json.loads(storage.read_key(f"{old_prefix}/metadata/source_capture.json"))
+    ready = json.loads(storage.read_key(f"{old_prefix}/metadata/candidate_ready.json"))
+    roster = json.loads(storage.read_key(f"{old_prefix}/metadata/source_id_roster_summary.json"))
+    old_identity = json.loads(storage.read_key(f"{old_prefix}/metadata/processing_identity.json"))
+    if (not capture.get("captured_at") or capture.get("source_complete") is False
+            or capture.get("row_count") != EXPECTED_ROWS
+            or capture.get("source_count_before") != EXPECTED_ROWS
+            or capture.get("source_count_after") != EXPECTED_ROWS
+            or capture.get("id_count_before") != EXPECTED_ROWS
+            or capture.get("id_count_after") != EXPECTED_ROWS
+            or capture.get("id_roster_equal_before_after") is not True
+            or capture.get("captured_ids_match_roster") is not True
+            or capture.get("source_release_date") is not None
+            or ready.get("approved") is not False
+            or ready.get("version") != old_prefix.rsplit("/", 1)[-1]
+            or ready.get("source_record_sha256") != capture.get("source_record_sha256")
+            or ready.get("source_schema_sha256") != capture.get("source_schema_sha256")
+            or ready.get("objects") != {f"unknown/{FILE_SLUG}.parquet":
+                snapshots[f"unknown/{FILE_SLUG}.parquet"]}
+            or roster != {"count": EXPECTED_ROWS, "sha256": capture.get("source_ids_sha256"), "complete": True}
+            or not isinstance(old_identity, dict)):
+        raise ValueError("resume_candidate_completeness_witness_invalid")
+
+    capture_root = Path(tempfile.mkdtemp(prefix="frs-contact-resume-", dir="/tmp"))
+    try:
+        archive_path = capture_root / "source-wire-capture.tar"
+        parquet_path = capture_root / f"{FILE_SLUG}.parquet"
+        storage.download_key_to(f"{old_prefix}/raw/source-wire-capture.tar", archive_path)
+        storage.download_key_to(f"{old_prefix}/unknown/{FILE_SLUG}.parquet", parquet_path)
+        receipts = []
+        with tarfile.open(archive_path, "r:") as archive:
+            for member in archive.getmembers():
+                if member.name.endswith(".receipt.json"):
+                    stream = archive.extractfile(member)
+                    if stream is None:
+                        raise ValueError("resume_candidate_receipt_missing")
+                    receipts.append(json.loads(stream.read()))
+        capture_index = compact_capture_receipt_index(receipts, archive_path)
+        if (capture_index["receipt_count"] != capture.get("response_count")
+                or capture_index["page_count"] != capture.get("page_count")
+                or capture_index["page_count"] <= 0):
+            raise ValueError("resume_candidate_receipt_summary_changed")
+        parquet = pq.ParquetFile(parquet_path)
+        if (parquet.metadata.num_rows != EXPECTED_ROWS
+                or tuple(parquet.schema_arrow.names) != EXPECTED_FIELDS
+                or parquet.schema_arrow.field("OBJECTID").type != pa.int64()
+                or any(parquet.schema_arrow.field(name).type != pa.string()
+                       for name in EXPECTED_FIELDS[1:])):
+            raise ValueError("resume_candidate_parquet_schema_or_count_changed")
+
+        version = content_derived_version(capture["source_record_sha256"],
+            hashlib.sha256(b"nonspatial").hexdigest(), capture["source_schema_sha256"], identity)
+        prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+        output_keys = {f"{prefix}/{name}" for name in names}
+        if set(storage.list_prefix(prefix)) - output_keys:
+            raise ValueError("resume_candidate_output_roster_changed")
+        objects = {}
+        replaced_metadata = {"metadata/candidate_ready.json", "metadata/processing_identity.json"}
+        for name in names:
+            if name in replaced_metadata:
+                continue
+            destination_key = f"{prefix}/{name}"
+            source_key = f"{old_prefix}/{name}"
+            if storage.object_snapshot(destination_key) is None:
+                storage.copy_key_to(storage, source_key, destination_key)
+            source_after = storage.object_snapshot(source_key)
+            if (source_after is None or source_after.size != snapshots[name]["bytes"]
+                    or storage.sha256_key(source_key) != snapshots[name]["sha256"]
+                    or storage.object_snapshot(source_key) != source_after):
+                raise ValueError("resume_candidate_source_snapshot_changed")
+            destination = storage.object_snapshot(destination_key)
+            if (destination is None or destination.size != snapshots[name]["bytes"]
+                    or storage.sha256_key(destination_key) != snapshots[name]["sha256"]
+                    or storage.object_snapshot(destination_key) != destination):
+                raise ValueError("resume_candidate_copied_object_integrity_failed")
+            objects[name] = snapshots[name]
+        ready_key = f"{prefix}/metadata/candidate_ready.json"
+        ready_body = canonical({**ready, "version": version}) + b"\n"
+        objects["metadata/candidate_ready.json"] = {
+            "bytes": len(ready_body), "sha256": hashlib.sha256(ready_body).hexdigest()}
+        write_immutable(storage, ready_key, ready_body)
+        # New construction identity is separate from the original observation.
+        identity_body = canonical(identity) + b"\n"
+        objects["metadata/processing_identity.json"] = {
+            "bytes": len(identity_body), "sha256": hashlib.sha256(identity_body).hexdigest()}
+        write_immutable(storage, f"{prefix}/metadata/processing_identity.json", identity_body)
+        if set(storage.list_prefix(prefix)) != output_keys:
+            raise ValueError("resume_candidate_output_roster_changed")
+        payload = {"processing_identity": identity,
+                   "source_record_sha256": capture["source_record_sha256"],
+                   "source_schema_sha256": capture["source_schema_sha256"],
+                   "capture_receipts": capture_index, "objects": objects}
+        fingerprint = hashlib.sha256(canonical(payload)).hexdigest()
+        seal_ready_candidate(storage, f"_construction-state/{DATASET_SLUG}/{version}.json",
+                             version, fingerprint, payload)
+        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+                "row_count": EXPECTED_ROWS, "source_record_sha256": capture["source_record_sha256"],
+                "source_schema_sha256": capture["source_schema_sha256"],
+                "source_ids_sha256": capture["source_ids_sha256"],
+                "native_fields": list(EXPECTED_FIELDS), "source_vintage": None,
+                "captured_at": capture["captured_at"], "refresh_status": "STOPPED",
+                "drift_reasons": ["source_release_date_unknown", "license_unverified",
+                                   "historical_published_membership_not_yet_compared"],
+                "parquet_key": f"{prefix}/unknown/{FILE_SLUG}.parquet",
+                "candidate_ready": ready_key, "reused": False, "resumed_offline": True,
+                "release_accepted": False}
+    finally:
+        shutil.rmtree(capture_root, ignore_errors=True)
+
+
+def _reuse_existing_contact_candidate(storage: StagingStorageResource, repo_root: Path,
+                                      prefix: str, version: str, identity: dict[str, object],
+                                      observed: dict[str, object],
+                                      capture_index: dict[str, object]) -> dict[str, object] | None:
+    """Strictly reuse the first sealed candidate after a same-content observation."""
+    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    state_snapshot = storage.object_snapshot(state_key)
+    if state_snapshot is None:
+        return None
+    state_body = storage.read_key(state_key)
+    state_header = json.loads(state_body)
+    state = json.loads(load_first_construction(storage, state_key, version,
+                                               state_header["processing_fingerprint"]))
+    if storage.object_snapshot(state_key) != state_snapshot:
+        raise ValueError("cached_contact_candidate_state_changed")
+    payload = state.get("payload")
+    if (not isinstance(payload, dict) or payload.get("processing_identity") != identity
+            or payload.get("source_record_sha256") != observed.get("source_record_sha256")
+            or payload.get("source_schema_sha256") != observed.get("source_schema_sha256")
+            or payload.get("capture_receipts") != capture_index
+            or not isinstance(payload.get("objects"), dict)):
+        raise ValueError("cached_contact_candidate_identity_or_source_changed")
+    objects = payload["objects"]
+    expected = {f"{prefix}/{name}" for name in objects}
+    derived = {"metadata/quality_manifest.json", "metadata/data_dictionary.json",
+               "metadata/resolved_provenance.json", "metadata/source/quality_manifest.json",
+               "metadata/source/data_dictionary.json"}
+    manifest_descriptor = objects.get("metadata/source_manifest.json")
+    snapshots = set()
+    if manifest_descriptor:
+        snapshots = {"metadata/source/source_manifest.json",
+                     f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json"}
+    allowed = expected | {f"{prefix}/{name}" for name in derived | snapshots}
+    actual = set(storage.list_prefix(prefix))
+    if not expected <= actual or actual - allowed:
+        raise ValueError("cached_contact_candidate_storage_roster_changed")
+    for name, descriptor in objects.items():
+        key = f"{prefix}/{name}"
+        snap = storage.object_snapshot(key)
+        if (snap is None or descriptor != {"bytes": snap.size, "sha256": storage.sha256_key(key)}
+                or storage.object_snapshot(key) != snap):
+            raise ValueError("cached_contact_candidate_object_changed")
+    for name in snapshots:
+        key = f"{prefix}/{name}"
+        if key in actual:
+            snap = storage.object_snapshot(key)
+            if (snap is None or manifest_descriptor != {"bytes": snap.size,
+                    "sha256": storage.sha256_key(key)} or storage.object_snapshot(key) != snap):
+                raise ValueError("cached_contact_candidate_catalog_snapshot_changed")
+    manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_capture.json"))
+    if (manifest.get("source_ids_sha256") != observed.get("source_ids_sha256")
+            or manifest.get("row_count") != observed.get("row_count")):
+        raise ValueError("cached_contact_candidate_observation_changed")
+    from dagster_hifld.construction_provenance import validate_construction_code_identity
+    validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"])
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+            "row_count": observed["row_count"],
+            "source_record_sha256": observed["source_record_sha256"],
+            "source_schema_sha256": observed["source_schema_sha256"],
+            "source_ids_sha256": observed["source_ids_sha256"],
+            "native_fields": list(EXPECTED_FIELDS), "source_vintage": None,
+            "captured_at": manifest["captured_at"], "refresh_status": "STOPPED",
+            "drift_reasons": ["source_release_date_unknown", "license_unverified",
+                               "historical_published_membership_not_yet_compared"],
+            "parquet_key": f"{prefix}/unknown/{FILE_SLUG}.parquet",
+            "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
+            "reused": True, "release_accepted": False}
+
+
 def capture_epa_frs_contact(staging_storage: StagingStorageResource) -> dict[str, object]:
     """Read EPA pages with bounded heap and preserve compressed wire responses."""
     repo_root = Path(__file__).parents[3]
@@ -136,6 +350,10 @@ def capture_epa_frs_contact(staging_storage: StagingStorageResource) -> dict[str
                                      "decoded_bytes": receipt["decoded_bytes"],
                                      "decoded_sha256": receipt["decoded_sha256"]})
         capture_index = compact_capture_receipt_index(metadata_receipts + page_receipts, raw_tar)
+        cached = _reuse_existing_contact_candidate(staging_storage, repo_root, prefix, version,
+                                                  identity, observed, capture_index)
+        if cached is not None:
+            return cached
         objects[f"raw/source-wire-capture.tar"] = _upload_immutable_file(
             staging_storage, raw_tar, f"{prefix}/raw/source-wire-capture.tar")
         objects[f"unknown/{FILE_SLUG}.parquet"] = _upload_immutable_file(
@@ -231,9 +449,16 @@ def capture_epa_frs_contact(staging_storage: StagingStorageResource) -> dict[str
 
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="epa", compute_kind="http",
+       config_schema={"resume_candidate": Field(str, default_value="")},
        description="EPA FRS interest-contact table; full native contact values are preserved in a stopped draft pending release-date, rights, and compatibility review.")
 def epa_frs_interest_contact(context, staging_storage: StagingStorageResource) -> dict[str, object]:
-    result = capture_epa_frs_contact(staging_storage)
+    resume_candidate = context.op_execution_context.op_config.get("resume_candidate", "")
+    if resume_candidate:
+        repo_root = Path(__file__).parents[3]
+        result = _recover_retained_candidate(staging_storage, resume_candidate,
+                                             processing_identity(repo_root))
+    else:
+        result = capture_epa_frs_contact(staging_storage)
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,
         [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, str(result["version"]))])
     context.add_output_metadata(result)

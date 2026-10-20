@@ -5,6 +5,7 @@ import hashlib
 import json
 import sqlite3
 import tarfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
@@ -101,6 +102,32 @@ def compact_capture_receipt_index(receipts: Iterable[Mapping[str, Any]], archive
                         or body_hash.hexdigest() != receipt.get("wire_sha256")
                         or receipt_body != canonical(dict(receipt)) + b"\n"):
                     raise EPAFRSContactCaptureError("source_wire_archive_receipt_mismatch")
+                encoding = str(receipt.get("content_encoding", "identity")).lower().strip()
+                if encoding not in {"gzip", "identity"}:
+                    raise EPAFRSContactCaptureError("source_wire_archive_encoding_unsupported")
+                decoder = zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip" else None
+                decoded_hash = hashlib.sha256()
+                decoded_size = 0
+                wire_member = archive.extractfile(wire_name)
+                if wire_member is None:
+                    raise EPAFRSContactCaptureError("source_wire_archive_member_missing")
+                for chunk in iter(lambda: wire_member.read(64 * 1024), b""):
+                    decoded = (decoder.decompress(chunk, MAX_RESPONSE_BYTES + 1 - decoded_size)
+                               if decoder is not None else chunk)
+                    decoded_hash.update(decoded)
+                    decoded_size += len(decoded)
+                    if (decoded_size > MAX_RESPONSE_BYTES
+                            or (decoder is not None and decoder.unconsumed_tail)):
+                        raise EPAFRSContactCaptureError("source_wire_archive_decoded_bound_exceeded")
+                tail = decoder.flush(MAX_RESPONSE_BYTES + 1 - decoded_size) if decoder is not None else b""
+                decoded_hash.update(tail)
+                decoded_size += len(tail)
+                if (decoded_size > MAX_RESPONSE_BYTES
+                        or (decoder is not None and (not decoder.eof or decoder.unused_data
+                                                     or decoder.unconsumed_tail))
+                        or decoded_size != receipt.get("decoded_bytes")
+                        or decoded_hash.hexdigest() != receipt.get("decoded_sha256")):
+                    raise EPAFRSContactCaptureError("source_wire_archive_decoded_receipt_mismatch")
                 digest.update(canonical(dict(receipt)))
                 digest.update(b"\n")
                 wire_bytes += int(receipt["wire_bytes"])
