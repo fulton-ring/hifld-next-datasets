@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from dagster import DefaultScheduleStatus
+from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete, usace_overhead_cables_draft_schedule,
@@ -61,6 +62,51 @@ class UsaceOverheadCablesTests(unittest.TestCase):
 
     def _captures(self, docs):
         return {name: (_canonical(value), {"status": 200}) for name, value in docs.items()}
+
+    def _capture_directory(self, root: Path):
+        root.mkdir()
+        expected_urls=dict(source._capture_roster(source.EXPECTED_IDS))
+        receipts={}
+        for name,doc in self._documents().items():
+            body=_canonical(doc)
+            (root/f"{name}.body").write_bytes(body)
+            (root/f"{name}.wire").write_bytes(body)
+            receipt={"method":"GET","url":expected_urls[name],"final_url":expected_urls[name],
+                     "observed_at":"2026-10-20T00:00:00Z","status":200,"complete_body":True,
+                     "wire_bytes":len(body),"wire_sha256":source._sha(body),"bytes":len(body),
+                     "sha256":source._sha(body),"content_encoding":"identity",
+                     "content_length":len(body),"error_code":None}
+            (root/f"{name}.receipt.json").write_bytes(_canonical(receipt)+b"\n")
+            receipts[name]=receipt
+        (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":receipts,
+            "artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+
+    def _repin_receipt_manifest(self, root: Path, name: str, mutation):
+        path=root/f"{name}.receipt.json"
+        receipt=json.loads(path.read_bytes())
+        mutation(receipt)
+        path.write_bytes(_canonical(receipt)+b"\n")
+        manifest=json.loads((root/"capture_manifest.json").read_bytes())
+        manifest["receipts"][name]=receipt
+        manifest["artifact_roster"]=capture_roster_digests(root,exclude={"capture_manifest.json"})
+        (root/"capture_manifest.json").write_bytes(_canonical(manifest)+b"\n")
+
+    def test_retained_capture_rejects_re_pinned_wrong_origin_query_and_method(self):
+        cases=[
+            ("origin", lambda r: (r.update(url=r["url"].replace("ienccloud.us", "attacker.example"),
+                                           final_url=r["final_url"].replace("ienccloud.us", "attacker.example")))),
+            ("query", lambda r: (r.update(url=r["url"]+"&unexpected=1", final_url=r["final_url"]+"&unexpected=1"))),
+            ("method", lambda r: r.update(method="POST")),
+        ]
+        for name,mutate in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/"capture";self._capture_directory(root)
+                self._repin_receipt_manifest(root,"page_000",mutate)
+                manifest=json.loads((root/"capture_manifest.json").read_bytes())
+                self.assertEqual(manifest["receipts"]["page_000"],json.loads((root/"page_000.receipt.json").read_bytes()))
+                self.assertEqual(manifest["artifact_roster"],capture_roster_digests(root,exclude={"capture_manifest.json"}))
+                with self.assertRaisesRegex(ValueError,"retained_capture_request_identity_mismatch:page_000"):
+                    source._read_replay(root)
 
     def test_full_population_schema_ids_and_native_xy_are_validated(self):
         fields, features, audit = source._validate(self._captures(self._documents()))
