@@ -313,13 +313,21 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
         raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(base).free < 300_000_000: raise ValueError("disk_floor_before_acquisition")
-    root=Path(capture_directory).absolute() if capture_directory else Path("/tmp/hifld-native-reconstruction/6/captures")/(version+"-"+uuid4().hex)
+    requested=Path(capture_directory).absolute() if capture_directory else None
+    replay=bool(requested and (requested/"capture_manifest.json").exists())
+    if replay:
+        root=requested
+    elif requested:
+        if any(requested.glob("*.body")) or any(requested.glob("*.wire")) or any(requested.glob("*.receipt.json")):
+            raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
+        root=requested/(version+"-"+uuid4().hex)
+    else:
+        root=Path("/tmp/hifld-native-reconstruction/6/captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
     captures={}
     try:
-        replay=bool(capture_directory)
         if replay:
             retained_manifest=json.loads((root/"capture_manifest.json").read_bytes())
             if retained_manifest.get("complete") is not True or not isinstance(retained_manifest.get("receipts"),dict):
