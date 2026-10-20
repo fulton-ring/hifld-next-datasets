@@ -167,7 +167,8 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             if not isinstance(artifact_roster,dict):
                 raise ValueError("retained_capture_artifact_roster_missing")
             validate_capture_roster(root, set(artifact_roster) | {"capture_manifest.json"})
-            validate_capture_roster(root, artifact_roster)
+            if capture_roster_digests(root,exclude={"capture_manifest.json"}) != artifact_roster:
+                raise ValueError("retained_capture_artifact_roster_mismatch")
             ids_body,ids_receipt=_load_replay(root,"ids_before")
             ids=json.loads(ids_body).get("objectIds")
             if not isinstance(ids,list): raise ValueError("retained_id_seed_invalid")
