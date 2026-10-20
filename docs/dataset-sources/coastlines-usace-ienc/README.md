@@ -15,22 +15,22 @@ can be significantly inaccurate. This supports official distribution and
 publisher cadence. The item’s portal-modified timestamp is not a release date
 for this layer.
 
-Anonymous metadata checks on 2026-10-20 found an ArcGIS polyline layer in
-EPSG:4326 with eight declared fields, a 2,000-record maximum, 22,819 records,
-and 22,819 unique OBJECTIDs from 1 through 22,819. The exact IDs-only response
-and its request receipt are retained with the source record. A ten-feature
-sample returned 52,122 bytes; a rough extrapolation suggests about 119 MB of
-JSON before overhead. The proposed 450 MB acquisition limit leaves headroom,
-but this estimate is not a full-transfer measurement. No feature-wide capture
-or row-level comparison has been performed.
+The complete registered source capture on 2026-10-20 retained 22,819 records
+in 12 offset pages. All 23 requests had complete HTTP 200 responses; before
+and after counts and ID rosters matched exactly. The full transfer was
+135,330,690 decoded/wire bytes across metadata, rosters and feature pages,
+within the 450 MB streaming capture ceiling. Raw responses, receipts, page
+limits and CRS metadata are retained in the capture manifest. The final
+corrected-head source run replayed the retained capture without a live request.
 
 The layer covers inland chart waterways (observed extent about 29.68–45.14°N,
-79.47–96.67°W); it does not represent the national coastline. OBJECTID must
-not be assumed stable between releases. `Feature_ID` is present, but its
-nullability, uniqueness and cross-release continuity have not been measured.
-The service exposes no dated release field. These facts leave source freshness,
-historical continuity, identifiers, coverage approval, rights and the
-published schema contract open.
+79.47–96.67°W); it does not represent the national coastline. The complete
+candidate preserves all seven attributes and every line coordinate exactly
+from captured responses. OBJECTID must not be assumed stable between releases.
+`Feature_ID` has 22,571 distinct non-null values across 22,819 records and is
+not treated as a unique key. The service exposes no dated release field.
+Source freshness, historical continuity, identifiers, coverage approval,
+rights and the published schema contract remain open.
 
 The source-specific Dagster draft captures every paginated response with exact
 wire/body receipts, validates the full before/after source ID roster and schema,
