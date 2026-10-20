@@ -13,7 +13,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.arcgis_filegdb import canonical_json, capture_filegdb_replica, extract_filegdb, sha256, stage_filegdb_archive, verify_staged_filegdb
+from dagster_hifld.sources.arcgis_filegdb import canonical_json, capture_filegdb_replica, extract_filegdb, sha256, stage_filegdb_archive, verify_extracted_filegdb_cache, verify_staged_filegdb
 from dagster_hifld.sources.epa_frs_common import write_immutable
 from dagster_hifld.validation import sha256_file
 DATASET_SLUG="navigable-waterway-network-lines"; FILE_SLUG=DATASET_SLUG
@@ -90,7 +90,8 @@ def _verify_cached_candidate(storage,prefix,state_key,version,fingerprint,identi
     snapshots={"metadata/source/source_manifest.json","metadata/source/data_dictionary.json",
                "metadata/source/quality_manifest.json"}
     if manifest:snapshots.add(f"metadata/source/version_{manifest['sha256']}_source_manifest.json")
-    allowed=expected_keys|{f"{prefix}/{name}" for name in derived|snapshots}
+    extracted_expected=verify_extracted_filegdb_cache(storage,prefix,[{"path":name,**descriptor} for name,descriptor in objects.items()])
+    allowed=expected_keys|{f"{prefix}/{name}" for name in derived|snapshots}|set(extracted_expected)
     actual=set(storage.list_prefix(prefix))
     if not expected_keys<=actual or actual-allowed:raise ValueError("cached_filegdb_candidate_storage_roster_changed")
     for name in snapshots & {k[len(prefix)+1:] for k in actual}:

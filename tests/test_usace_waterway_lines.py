@@ -1,4 +1,5 @@
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from dagster_hifld.assets.usace_waterway_lines import (
     usace_waterway_lines_draft_schedule,
 )
 from dagster_hifld.sources import usace_waterway_lines as source
-from dagster_hifld.sources.arcgis_filegdb import stage_filegdb_archive
+from dagster_hifld.sources.arcgis_filegdb import stage_filegdb_archive, verify_extracted_filegdb_cache
 from dagster_hifld.resources import StagingStorageResource
 
 
@@ -31,6 +32,21 @@ class UsaceWaterwayLinesContractTests(unittest.TestCase):
         self.assertEqual(base,source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'one'}))
         self.assertNotEqual(base,source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'two'}))
         self.assertEqual(source._construction_key(base),f'_construction-state/{source.DATASET_SLUG}/{source.FILE_SLUG}/{base}.json')
+
+    def test_catalog_extracted_filegdb_cache_requires_exact_native_mirror(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);archive=root/'source.zip';archive.write_bytes(b'zip')
+            gdb=root/'gdb';gdb.mkdir();(gdb/'table.gdbtable').write_bytes(b'native table')
+            storage=StagingStorageResource(local_dir=str(root/'staging'))
+            objects=stage_filegdb_archive(storage,'dataset/file/version',archive,gdb,'source.gdb')
+            canonical=Path(storage.local_dir)/'dataset/file/version/file_geodatabase/source.gdb'
+            extracted=Path(storage.local_dir)/'dataset/file/version/file_geodatabase/.extracted/source_filegdb/source.gdb'
+            shutil.copytree(canonical,extracted)
+            mirror=verify_extracted_filegdb_cache(storage,'dataset/file/version',objects)
+            self.assertEqual(len(mirror),1)
+            (extracted/'unexpected.bin').write_bytes(b'extra')
+            with self.assertRaisesRegex(ValueError,'extracted_cache_roster_changed'):
+                verify_extracted_filegdb_cache(storage,'dataset/file/version',objects)
 
     def _metadata(self):
         layer_fields=[]
