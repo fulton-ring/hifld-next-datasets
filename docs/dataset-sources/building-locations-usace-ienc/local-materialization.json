@@ -1,0 +1,54 @@
+{
+  "captured_at_utc": "2026-10-20T03:34:06Z",
+  "source": "USACE IENC Master MapServer layer 5 BUILDING_SINGLE_POINT",
+  "capture_directory": "pipeline-captures/v20261020T033406Z/82c6db3b843f4b5c92fa72697b2b6bde",
+  "capture_evidence_sha256": "8cfc4e7095748337f3056e4e92bf04d9aee71b7c248f45af9177758214dfa4dd",
+  "dagster_runs": {
+    "source_extraction": {
+      "run_id": "c1cb6e04-edab-43a5-939d-3d7c8db34883",
+      "success": true
+    },
+    "immutable_cache_replay": {
+      "run_id": "863cfd9b-9f74-4abe-aedf-b1c853473561",
+      "success": true
+    },
+    "catalog_and_quality": {
+      "run_id": "e8ac0cd5-e69e-4e29-9e43-e8b6f2ee6fa7",
+      "success": true
+    },
+    "release_verification": {
+      "run_id": "1c6158bf-d1bf-4dda-b974-40e690302422",
+      "success": false,
+      "refusal": "missing_or_ambiguous_exact_object_approval"
+    }
+  },
+  "candidate": {
+    "version": "v3e88b53ee70c4c0297e87d7a7029f83e",
+    "feature_count": 892,
+    "source_id_sha256": "683cd4972133d31f7ac111fa459a538c1ccbc59c38838a65bb6d8d850f73bff0",
+    "source_schema_sha256": "4035cbde0e95aa48fbc54ca27f978577d5b981c1e328efdd98d0566d4558528e",
+    "geoparquet_sha256": "7a5669f37ca34ff3be770da6ff579fdf27ace0aa49af490df766948450f52edc",
+    "geoparquet_rows": 892,
+    "native_crs": "EPSG:4326"
+  },
+  "negative_gate": {
+    "approval_registry": "empty isolated local registry",
+    "published_inventory_before_equals_after": true,
+    "published_inventory_sentinel_sha256": "d12d62b33529f2340f01d50b59d9571d6409a190301db8ea23bf7624a9fbbd60"
+  },
+  "decisions_pending": [
+    "exact producer/distributor linkage for this MapServer route",
+    "source edition/release date and freshness",
+    "HIFLD/DataLumos-to-IENC crosswalk and field mapping approval",
+    "baseline and geographic coverage acceptance",
+    "rights determination and exact-object release approval"
+  ],
+  "quality": {
+    "scope": "all_rows",
+    "passed": true,
+    "geometry_type": "Point",
+    "invalid_geometry_count": 0,
+    "null_geometry_count": 0,
+    "empty_geometry_count": 0
+  }
+}
