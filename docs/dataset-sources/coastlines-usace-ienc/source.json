@@ -1,0 +1,132 @@
+{
+  "dataset": "Coastlines (USACE IENC)",
+  "inventory_id": 37,
+  "dataset_slug": "coastlines-usace-ienc",
+  "file_slug": "coastlines-usace-ienc",
+  "inventory_archive_url": "https://www.datalumos.org/datalumos/project/238945/version/V1/view",
+  "archive_version": "V1",
+  "archive_inventory_modification_date": "2025-04-08",
+  "archive_modification_date_is_source_release": false,
+  "producer": "US Army Corps of Engineers, Army Geospatial Center (asserted by IENC service copyright and product metadata; agency ownership/delegation not fully independently established)",
+  "publisher": "USACE IENCCloud service, with explicit distribution documented by public USDOT BTS item owned by USDOT_BTS (BTS item ID 3607d485a9854d6fa458bf507058ceae).",
+  "source_role": "producer publication, distribution link documented by USDOT BTS; USACE hosting/lineage is explicit; chart data limitations noted by BTS.",
+  "official_landing": "https://ienccloud.us/",
+  "service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33",
+  "layer_id": 33,
+  "layer_name": "COASTLINE_LINE",
+  "source_check_timestamp": "2026-10-20T03:25:57.142869+00:00",
+  "source_release_date": null,
+  "source_release_date_note": "Service/layer metadata contains no dated source release or edit timestamp. Fetch date is not a release date.",
+  "service_metadata_observation": {
+    "http_status": 200,
+    "service_directory_service_count": 100,
+    "layer_type": "Feature Layer",
+    "geometry_type": "esriGeometryPolyline",
+    "spatial_reference": "EPSG:4326",
+    "max_record_count": 2000,
+    "capabilities": "Map,Query,Data",
+    "has_metadata": true
+  },
+  "observed_count": 22819,
+  "count_endpoint": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33/query?where=1%3D1&returnCountOnly=true&f=json",
+  "observed_id_population": "22819 unique IDs, exactly 1 through 22819",
+  "observed_objectids_sha256_canonical_json": "363bf4b58dfbae112710b7e33a52c6fe9f6aca2862b0e548728f65900c213827",
+  "ids_are_objectid_only": true,
+  "stable_cross_release_identifier_evidence": false,
+  "source_fields": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID"
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry"
+    },
+    {
+      "name": "Category_of_Coastline",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Scale_Minimum",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Date",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Indication",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Dataset",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Feature_ID",
+      "type": "esriFieldTypeString",
+      "length": 254
+    }
+  ],
+  "native_identifiers": {
+    "OBJECTID": "integer OID; must not be assumed stable across releases",
+    "Feature_ID": "string; nullability, uniqueness and continuity not yet assessed"
+  },
+  "coverage_observation": "Layer extent approximately (-96.67,29.68) to (-79.47,45.14), matching an inland-waterway subset, not national coastline coverage.",
+  "resource_assessment": {
+    "sample_request": "10 first OBJECTID-ordered features with all attributes/geometry",
+    "sample_http_bytes": 52122,
+    "sample_json_bytes_per_feature": 5212.2,
+    "rough_full_transfer_bytes_extrapolated": 119011351,
+    "estimated_with_3x_headroom_bytes": 357034053,
+    "max_planned_capture_budget_bytes": 450000000,
+    "note": "Estimate is coarse and first-page biased; no full feature extraction has been performed."
+  },
+  "archive_relationship": "unresolved; DataLumos V1 is historical archive. Archived raw feature data has not been retrieved or compared, so exact continuation/successor/partial substitute is undetermined.",
+  "cadence": "unknown from observed metadata; no schedule proposed until publisher cadence is sourced.",
+  "pagination": "ArcGIS supports pagination; maxRecordCount=2000; 22,819 count and IDs-only census observed. Need full before/after census and bounded complete pagination during implementation.",
+  "capture_policy": "Not implemented yet. Retain exact HTTP wire/body/receipt for service, layer, count, ID roster and every paginated data response; quarantine incomplete/truncated responses.",
+  "acceptance": {
+    "historical_baseline": false,
+    "publisher_authority": false,
+    "release_date_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "release": false
+  },
+  "blockers": [
+    "No maintainer-approved raw/published schema contract exists.",
+    "No archived HIFLD source bytes or row-level baseline comparison yet.",
+    "Current service metadata lacks a real source release date.",
+    "Cross-release stability of Feature_ID and OBJECTID not yet measured.",
+    "The BTS explicit distribution/delegation record was not captured in this source audit.",
+    "Sample extrapolation is not a completed extraction or completeness proof."
+  ],
+  "evidence_as_of": "2026-10-20",
+  "bts_item_id": "3607d485a9854d6fa458bf507058ceae",
+  "bts_item_owner": "USDOT_BTS",
+  "bts_item_type": "PDF",
+  "bts_item_modified_portal_epoch_ms": 1792419532000,
+  "bts_update_claim": "USACE/AGC updates bi-monthly; partial deliveries occur on the 1st and 15th business days; this is an update cadence, not an observed release date for this layer.",
+  "bts_item_urls": {
+    "item": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "official_gdb": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+    "feature_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
+  },
+  "anonymous_metadata_capture": {
+    "manifest": "research-capture.json",
+    "request_count": 6,
+    "feature_data_downloaded": false,
+    "id_roster_bytes": 125854,
+    "id_roster_response_sha256": "92e30b1c3ed354356c42518b4caa824bde088391fbcfefe1299837fb0846b8bf"
+  }
+}

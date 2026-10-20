@@ -1,0 +1,67 @@
+{
+  "captured_at": "2026-10-20T03:25:57.142869+00:00",
+  "anonymous": true,
+  "feature_data_downloaded": false,
+  "requests": {
+    "bts_item": {
+      "method": "GET",
+      "url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+      "final_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+      "status": 200,
+      "complete_body": true,
+      "bytes": 5576,
+      "sha256": "a0db815390a69371cb90343dd50481e2061b173eae762ace210c7e7b8f6077b4",
+      "observed_at": "2026-10-20T03:25:57.303175+00:00"
+    },
+    "service_directory": {
+      "method": "GET",
+      "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+      "final_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+      "status": 200,
+      "complete_body": true,
+      "bytes": 8518,
+      "sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb",
+      "observed_at": "2026-10-20T03:25:57.536799+00:00"
+    },
+    "service": {
+      "method": "GET",
+      "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer?f=pjson",
+      "final_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer?f=pjson",
+      "status": 200,
+      "complete_body": true,
+      "bytes": 5659,
+      "sha256": "b4e2b708ecb9886128fba5631aa398f42296a347a2fd53d0268eef79f6833fac",
+      "observed_at": "2026-10-20T03:25:57.715981+00:00"
+    },
+    "layer": {
+      "method": "GET",
+      "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33?f=pjson",
+      "final_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33?f=pjson",
+      "status": 200,
+      "complete_body": true,
+      "bytes": 5526,
+      "sha256": "7ad9e25b4181f6a8b0c8fff80e89a251c8a2500a130e30222d578ea6484768bf",
+      "observed_at": "2026-10-20T03:25:57.790245+00:00"
+    },
+    "count": {
+      "method": "GET",
+      "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33/query?where=1%3D1&returnCountOnly=true&f=json",
+      "final_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33/query?where=1%3D1&returnCountOnly=true&f=json",
+      "status": 200,
+      "complete_body": true,
+      "bytes": 15,
+      "sha256": "4341f8daab319dd3e18291bf6121976d82569c3871e9ad0dba54c4dbea35a380",
+      "observed_at": "2026-10-20T03:25:58.100010+00:00"
+    },
+    "ids": {
+      "method": "GET",
+      "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33/query?where=1%3D1&outFields=OBJECTID&returnGeometry=false&returnIdsOnly=true&f=json",
+      "final_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33/query?where=1%3D1&outFields=OBJECTID&returnGeometry=false&returnIdsOnly=true&f=json",
+      "status": 200,
+      "complete_body": true,
+      "bytes": 125854,
+      "sha256": "92e30b1c3ed354356c42518b4caa824bde088391fbcfefe1299837fb0846b8bf",
+      "observed_at": "2026-10-20T03:25:58.626669+00:00"
+    }
+  }
+}
