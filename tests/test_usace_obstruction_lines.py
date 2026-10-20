@@ -55,11 +55,12 @@ class UsaceObstructionLinesTests(unittest.TestCase):
     def _capture_directory(self, root: Path):
         docs=self._documents()
         receipts={}
+        expected_urls=dict(source._capture_urls(source.EXPECTED_IDS))
         for name,doc in docs.items():
             body=_canonical(doc)
             (root/f"{name}.body").write_bytes(body)
             (root/f"{name}.wire").write_bytes(body)
-            receipt={"method":"GET","url":f"https://example.test/{name}","final_url":f"https://example.test/{name}",
+            receipt={"method":"GET","url":expected_urls[name],"final_url":expected_urls[name],
                      "observed_at":"2026-10-20T00:00:00Z","status":200,"complete_body":True,
                      "wire_bytes":len(body),"wire_sha256":source._sha(body),"bytes":len(body),"sha256":source._sha(body),
                      "content_encoding":"identity","content_length":len(body),"error_code":None}
@@ -67,6 +68,33 @@ class UsaceObstructionLinesTests(unittest.TestCase):
             receipts[name]=receipt
         (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":receipts,
             "artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+
+    def _repin_receipt_manifest(self, root: Path, name: str, mutation):
+        path=root/f"{name}.receipt.json"
+        receipt=json.loads(path.read_bytes())
+        mutation(receipt)
+        path.write_bytes(_canonical(receipt)+b"\n")
+        manifest=json.loads((root/"capture_manifest.json").read_bytes())
+        manifest["receipts"][name]=receipt
+        manifest["artifact_roster"]=capture_roster_digests(root,exclude={"capture_manifest.json"})
+        (root/"capture_manifest.json").write_bytes(_canonical(manifest)+b"\n")
+
+    def test_retained_capture_rejects_re_pinned_wrong_origin_query_and_method(self):
+        cases=[
+            ("origin", lambda r: r.update(url=r["url"].replace("ienccloud.us", "attacker.example"),
+                                           final_url=r["final_url"].replace("ienccloud.us", "attacker.example"))),
+            ("query", lambda r: r.update(url=r["url"]+"&unexpected=1", final_url=r["final_url"]+"&unexpected=1")),
+            ("method", lambda r: r.update(method="POST")),
+        ]
+        for name,mutate in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/"capture";root.mkdir();self._capture_directory(root)
+                self._repin_receipt_manifest(root,"features",mutate)
+                manifest=json.loads((root/"capture_manifest.json").read_bytes())
+                self.assertEqual(manifest["receipts"]["features"],json.loads((root/"features.receipt.json").read_bytes()))
+                self.assertEqual(manifest["artifact_roster"],capture_roster_digests(root,exclude={"capture_manifest.json"}))
+                with self.assertRaisesRegex(ValueError,"retained_capture_request_identity_mismatch:features"):
+                    source._read_replay(root)
 
     def test_live_contract_fields_ids_coordinates_and_attributes_are_complete(self):
         captures={name:(_canonical(doc),{"status":200}) for name,doc in self._documents().items()}
