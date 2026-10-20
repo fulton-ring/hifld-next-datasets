@@ -206,6 +206,19 @@ def _identity_hash(captures,root):
     return _sha(_canonical(roster)),roster
 
 
+def _preserve_original_receipts(captures, original_receipts, root):
+    if not isinstance(original_receipts,dict) or set(original_receipts)!=set(captures):
+        raise ValueError("cached_original_receipt_roster_changed")
+    for name,(body,_receipt) in captures.items():
+        current_body,wire,current_receipt=_load_capture(root,name); sealed=original_receipts[name]
+        if any(current_receipt.get(field)!=sealed.get(field) for field in
+               ("complete_body","status","bytes","sha256","wire_bytes","wire_sha256")):
+            raise ValueError("cached_source_capture_content_changed:"+name)
+        if body!=current_body or len(wire)!=sealed.get("wire_bytes") or _sha(wire)!=sealed.get("wire_sha256"):
+            raise ValueError("cached_source_capture_content_changed:"+name)
+    return original_receipts
+
+
 def capture_plate_boundaries(storage:StagingStorageResource,*,version:str,capture_directory:str|None=None)->dict[str,object]:
     if (not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource)
         or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix): raise ValueError("explicit_isolated_local_staging_required")
@@ -266,19 +279,11 @@ def capture_plate_boundaries(storage:StagingStorageResource,*,version:str,captur
     original_payload=None
     if storage.object_snapshot(state_key) is not None:
         original_payload=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload")
-        original_receipts=original_payload.get("capture_receipts") if isinstance(original_payload,dict) else None
-        if not isinstance(original_receipts,dict) or set(original_receipts)!=set(captures): raise ValueError("cached_original_receipt_roster_changed")
-        for name,(body,_receipt) in captures.items():
-            _body,wire,current_receipt=_load_capture(root,name); sealed=original_receipts[name]
-            if any(current_receipt.get(field)!=sealed.get(field) for field in ("complete_body","status","bytes","sha256","wire_bytes","wire_sha256")):
-                raise ValueError("cached_source_capture_content_changed:"+name)
-            if body!=_body or len(wire)!=sealed.get("wire_bytes") or _sha(wire)!=sealed.get("wire_sha256"):
-                raise ValueError("cached_source_capture_content_changed:"+name)
+        receipts=_preserve_original_receipts(captures,original_payload.get("capture_receipts") if isinstance(original_payload,dict) else None,root)
     audit.update({"source_capture_evidence_sha256":capture_hash,"source_capture_evidence":capture_identity,"source_population_complete":True,
         "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"baseline_accepted":False})
-    receipts=(original_payload["capture_receipts"] if original_payload is not None
-              else {n:r for n,(_b,r) in sorted(captures.items())})
+    if original_payload is None: receipts={n:r for n,(_b,r) in sorted(captures.items())}
     inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication",
         "canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],
         "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],

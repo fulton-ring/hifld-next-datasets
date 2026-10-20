@@ -1,13 +1,16 @@
 """Native fidelity, drift, and approval tests for the USGS plate capture."""
 import hashlib
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
 from dagster_hifld.sources import plate_boundaries as source
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
 def canonical(value):
@@ -74,6 +77,27 @@ class PlateBoundariesSourceTests(unittest.TestCase):
         docs["layer_after"] = docs["layer_before"]
         with self.assertRaisesRegex(ValueError, "source_layer_schema_or_limit_drift"):
             self.validate_fixture(docs)
+
+    def test_cache_replay_keeps_original_receipt_when_observation_time_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); body=b'{"features":[]}'; wire=body
+            (root/'page.body').write_bytes(body); (root/'page.wire').write_bytes(wire)
+            digest=hashlib.sha256(body).hexdigest()
+            sealed={"page":{"complete_body":True,"status":200,"bytes":len(body),"sha256":digest,
+                "wire_bytes":len(wire),"wire_sha256":digest,"observed_at":"2026-01-01T00:00:00Z"}}
+            current={"page":(body,{**sealed['page'],"observed_at":"2026-01-02T00:00:00Z"})}
+            (root/'page.receipt.json').write_text(json.dumps(current['page'][1]))
+            self.assertEqual(source._preserve_original_receipts(current,sealed,root),sealed)
+            (root/'page.body').write_bytes(b"changed")
+            with self.assertRaises(ValueError):
+                source._preserve_original_receipts(current,sealed,root)
+
+    def test_capture_rejects_remote_or_published_storage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError,"explicit_isolated_local_staging_required"):
+                source.capture_plate_boundaries(StagingStorageResource(bucket="bucket",use_local=False,local_dir=tmp),version="v1")
+            with self.assertRaisesRegex(ValueError,"explicit_isolated_local_staging_required"):
+                source.capture_plate_boundaries(PublishedStorageResource(use_local=True,local_dir=tmp),version="v1")
 
     def test_conflicting_wkid_declarations_fail_closed(self):
         _ids, docs = self.fixture()
