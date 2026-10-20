@@ -32,9 +32,17 @@ The service exposes no dated release field. These facts leave source freshness,
 historical continuity, identifiers, coverage approval, rights and the
 published schema contract open.
 
-No ingest implementation is included because issue #37 requires an approved
-raw/published contract and a source-to-archive compatibility decision before
-implementation. The source record preserves the exact URLs, source declarations,
-metadata/ID census receipts, limitations and outstanding gates. The card should
-remain in Source research until maintainers provide or approve the contract and
-the archive baseline can be compared.
+The source-specific Dagster draft captures every paginated response with exact
+wire/body receipts, validates the full before/after source ID roster and schema,
+preserves all native attributes and line coordinates, and stages a GeoParquet
+candidate. The registered catalog and quality check run on this candidate.
+Historical baseline, freshness, schema, ID, coverage, rights and release gates
+remain false; the stopped schedule and exact-approval verifier prevent release.
+`Feature_ID` contains 22,571 distinct non-null values across 22,819 records, so
+the source field is retained without treating it as a unique key.
+
+Full local evidence, output comparisons, run IDs and the fail-closed verification
+result are recorded in [runtime-evidence.md](runtime-evidence.md). The exact
+metadata/capture checksums are in [source.json](source.json) and
+[capture_manifest.json](capture_manifest.json). No accepted release or
+production publication is implied.
