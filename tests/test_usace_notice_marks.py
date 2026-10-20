@@ -124,6 +124,62 @@ class UsaceNoticeMarksTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "retained_capture_roster_digest_mismatch|capture_roster_mismatch"):
                     marks.capture_usace_notice_marks(storage, version="vfixture", capture_directory=str(capture_root))
 
+    def test_raw_evidence_change_with_same_rows_gets_new_candidate_identity(self):
+        _fields, captures = self._captures()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+
+            def write_capture(directory: Path, *, reformat_page: bool):
+                directory.mkdir()
+                receipts = {}
+                for name, (original, _unused) in captures.items():
+                    body = original
+                    if reformat_page and name == "page_000":
+                        body = json.dumps(json.loads(body), indent=2).encode()
+                    wire = body
+                    (directory / f"{name}.body").write_bytes(body)
+                    (directory / f"{name}.wire").write_bytes(wire)
+                    url = marks.LAYER_URL + "?f=pjson"
+                    receipt = {"method":"GET","url":url,"final_url":url,
+                               "observed_at":"2026-10-20T00:00:00Z","status":200,"complete_body":True,
+                               "bytes":len(body),"sha256":marks._sha(body),"wire_bytes":len(wire),
+                               "wire_sha256":marks._sha(wire),"content_encoding":"identity",
+                               "content_length":len(wire),"error_code":None,"error_type":None}
+                    (directory / f"{name}.receipt.json").write_bytes(marks._canonical(receipt)+b"\n")
+                    receipts[name] = receipt
+                roster = capture_roster_digests(directory)
+                (directory / "capture_manifest.json").write_bytes(marks._canonical({
+                    "complete":True,"receipts":receipts,"artifact_roster":roster})+b"\n")
+
+            first_capture, second_capture = root / "first", root / "second"
+            write_capture(first_capture, reformat_page=False)
+            write_capture(second_capture, reformat_page=True)
+            with patch.object(marks, "EXPECTED_COUNT", 2), patch.object(marks, "PAGE_SIZE", 1), \
+                 patch.object(marks, "_fetch_retry", side_effect=AssertionError("replay must be offline")):
+                first = marks.capture_usace_notice_marks(storage, version="vraw-a", capture_directory=str(first_capture))
+                second = marks.capture_usace_notice_marks(storage, version="vraw-b", capture_directory=str(second_capture))
+                # Receipt timestamps do not affect evidence identity; the sealed
+                # first receipts remain authoritative when the source bytes match.
+                receipts = {}
+                for path in second_capture.glob("*.receipt.json"):
+                    receipt = json.loads(path.read_bytes())
+                    receipt["observed_at"] = "2026-10-21T00:00:00Z"
+                    path.write_bytes(marks._canonical(receipt)+b"\n")
+                    receipts[path.name.removesuffix(".receipt.json")] = receipt
+                roster = capture_roster_digests(second_capture, exclude={"capture_manifest.json"})
+                (second_capture / "capture_manifest.json").write_bytes(marks._canonical({
+                    "complete":True,"receipts":receipts,"artifact_roster":roster})+b"\n")
+                third = marks.capture_usace_notice_marks(storage, version="vraw-c", capture_directory=str(second_capture))
+            self.assertNotEqual(first["version"], second["version"])
+            self.assertEqual(second["version"], third["version"])
+            self.assertTrue(third["reused"])
+            first_audit = json.loads(storage.read_key(f"{marks.DATASET_SLUG}/{marks.FILE_SLUG}/{first['version']}/metadata/source_audit.json"))
+            second_audit = json.loads(storage.read_key(f"{marks.DATASET_SLUG}/{marks.FILE_SLUG}/{second['version']}/metadata/source_audit.json"))
+            self.assertEqual(first_audit["source_record_sha256"], second_audit["source_record_sha256"])
+            self.assertEqual(first_audit["source_geometry_sha256"], second_audit["source_geometry_sha256"])
+            self.assertNotEqual(first_audit["source_capture_sha256"], second_audit["source_capture_sha256"])
+
     def test_incomplete_acquisition_is_manifested_and_quarantined(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "capture"
