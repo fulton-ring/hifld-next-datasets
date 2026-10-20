@@ -17,6 +17,7 @@ from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace_waterway_lines import usace_navigable_waterway_network_lines
+from dagster_hifld.assets.usace_waterway_nodes import usace_waterway_network_nodes
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 
 hifld_ingest_assets = [
@@ -32,5 +33,6 @@ hifld_ingest_assets = [
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
     usace_navigable_waterway_network_lines,
+    usace_waterway_network_nodes,
     epa_frs_eia_860_power_generation_facilities_by_source,
 ]
