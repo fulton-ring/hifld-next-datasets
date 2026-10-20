@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "inventory_id": "pontoon-areas-usace-ienc",
+  "title": "Pontoon Areas (USACE IENC)",
+  "agency": "U.S. Army Corps of Engineers",
+  "publisher": "USACE Army Geospatial Center (IENC); the parent IENC item is cataloged by USDOT BTS",
+  "crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "hifld_inventory_row": "pontoon-areas-usace-ienc, Pontoon Areas (USACE IENC)",
+    "archive_url": "https://www.datalumos.org/datalumos/project/239792/version/V1/view",
+    "archive_source_modified": "2025-04-08",
+    "archive_source_date": "2018-04-16",
+    "archive_role": "Historical HIFLD/DataLumos copy; portal modification date is not a current producer release date.",
+    "historical_id_and_geometry_match": "Not established; DataLumos page currently returned HTTP 403, and no historical file bytes were recovered in this run."
+  },
+  "source_relationship": "The USDOT BTS IENC item explicitly links USACE/AGC IENC bi-monthly distribution, the complete master geodatabase, and the official IENC Feature Classes service. The exact PONTOON_AREA layer is published by USACE IENC / AGC. This supports an official distribution path; exact continuity with the historical HIFLD/DataLumos entry is not established.",
+  "bts_item": {
+    "id": "3607d485a9854d6fa458bf507058ceae",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "url": "https://www.arcgis.com/home/item.html?id=3607d485a9854d6fa458bf507058ceae",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "claims": "USACE/AGC updates IENC bi-monthly; links official Feature Classes service and master file geodatabase; warns chart-derived data may contain inaccuracies."
+  },
+  "official_landing": "https://ienccloud.us/",
+  "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73",
+  "master_geodatabase_url": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+  "observed": {
+    "layer_id": 73,
+    "layer_name": "PONTOON_AREA",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "feature_count": 607,
+    "native_OBJECTID": "607 integer IDs, 1 through 607",
+    "native_OBJECTID_sha256_canonical_json": "58a5e4ae968b986b58149fcbb1bd7f90d5efe35aae32efd0ca9a0ccdbf33939b",
+    "fields": [
+      {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+      {"name": "SHAPE", "type": "esriFieldTypeGeometry"},
+      {"name": "Object_Name", "type": "esriFieldTypeString", "length": 254},
+      {"name": "Information", "type": "esriFieldTypeString", "length": 254},
+      {"name": "Source_Date", "type": "esriFieldTypeString", "length": 254},
+      {"name": "Source_Indication", "type": "esriFieldTypeString", "length": 254},
+      {"name": "Source_Dataset", "type": "esriFieldTypeString", "length": 254},
+      {"name": "Feature_ID", "type": "esriFieldTypeString", "length": 254}
+    ],
+    "layer_extent": {"xmin": -96.13541759999998, "ymin": 33.97566980000005, "xmax": -79.87675289999999, "ymax": 44.570524000000034},
+    "source_release_date": null,
+    "release_date_unknown_reason": "The layer declares no source edition or release date. BTS describes parent IENC updates as bi-monthly; that cadence does not date this layer snapshot."
+  },
+  "capture_policy": "Retain decoded ESRI JSON response bodies, exact HTTP wire bodies, request receipts, native IDs, field declarations, attributes, rings and coordinate order. Candidate GeoParquet preserves declared source field types and native EPSG:4326 geometry without reprojection or repair.",
+  "completeness_policy": "Check source directory and layer identity, all declared field names/types, CRS representations, pinned layer extent, independent count/ID rosters before and after extraction, all explicit-ID pages, native attribute types, geometry structure/ordinates/validity and complete feature ID roster. Quarantine incomplete captures and drift.",
+  "coverage_scope": "Complete observed IENC PONTOON_AREA chart feature class for inland navigation coverage. Not a national census of pontoons or all navigable-waterway structures.",
+  "proposed_contract": {
+    "status": "Draft only; maintainer approval required.",
+    "native_identifier": "OBJECTID integer, unchanged; Feature_ID string, unchanged including source duplicates if any.",
+    "attributes": "Preserve all 6 non-geometry source attributes and values; no silent drop or mapping.",
+    "geometry": "Polygon in EPSG:4326, all source rings and coordinates unchanged.",
+    "unexpected_source_drift": "Quarantine and request maintainer review."
+  },
+  "approval": {
+    "historical_baseline_and_continuity": false,
+    "source_release_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "attribution": false,
+    "release": false
+  }
+}
