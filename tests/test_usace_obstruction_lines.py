@@ -93,6 +93,8 @@ class UsaceObstructionLinesTests(unittest.TestCase):
         mutations = [
             ("layer wkid/latestWkid contradiction", lambda d: d["layer_before"].update(
                 spatialReference={"wkid":3857,"latestWkid":4326})),
+            ("layer extent CRS contradiction", lambda d: d["layer_before"]["extent"].update(
+                spatialReference={"wkid":3857})),
             ("page CRS drift", lambda d: d["features"].update(
                 spatialReference={"wkid":3857,"latestWkid":3857})),
             ("feature CRS drift", lambda d: d["features"]["features"][0]["geometry"].update(

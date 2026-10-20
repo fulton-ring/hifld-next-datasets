@@ -203,6 +203,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             or {key:layer.get("extent",{}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
         raise ValueError("source_layer_geometry_crs_or_page_limit_drift")
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
+    extent = layer.get("extent", {})
+    if "spatialReference" in extent:
+        _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
     # ArcGIS does not declare hasZ/hasM on this layer. Every retained source
     # vertex is checked below to be exactly XY; no ordinate is discarded.
     if docs["layer_after"] != layer:
