@@ -20,6 +20,7 @@ from dagster_hifld.assets.usace import (
     usace_navigation_marks_areas_usace_ienc,
 )
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
+from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 
 hifld_ingest_assets = [
@@ -36,5 +37,6 @@ hifld_ingest_assets = [
     usace_administrative_areas_usace_ienc,
     usace_navigation_marks_areas_usace_ienc,
     usace_obstruction_lines_usace_ienc,
+    usace_overhead_cables_usace_ienc,
     epa_frs_eia_860_power_generation_facilities_by_source,
 ]
