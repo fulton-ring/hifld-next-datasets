@@ -1,0 +1,53 @@
+{
+  "dataset_slug": "building-locations-usace-ienc",
+  "source_layer": {
+    "name": "BUILDING_SINGLE_POINT",
+    "id": 5,
+    "service_url": "https://ienccloud.us/arcgis/rest/services/IENC/USACE_IENC_Master_Service/MapServer",
+    "directory_url": "https://ienccloud.us/arcgis/rest/services/IENC?f=pjson",
+    "producer_claim": "US Army Corps of Engineers IENC service, based on official USACE-hosted service directory",
+    "actual_publisher_account": "Unresolved for the exact MapServer route",
+    "observed_crs": "EPSG:4326",
+    "observed_count": 892,
+    "observed_ids": "OBJECTID 1 through 892; Feature_ID values retained verbatim",
+    "observed_extent_xy": [-96.41946399999995, 29.69832880000007, -79.51543889999994, 45.106480600000054],
+    "release_date": null,
+    "release_date_status": "No edition or release date present in source metadata; fetch date is not release date"
+  },
+  "related_distribution_evidence": {
+    "item_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "update_statement": "Bi-monthly updates",
+    "linked_services": [
+      "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
+    ],
+    "assessment": "Related BTS distribution evidence exists, but metadata does not establish that the linked service is this exact USACE_IENC_Master_Service MapServer route. No exact delegation assertion is made."
+  },
+  "historical_inventory": {
+    "archive_url": "https://www.datalumos.org/datalumos/project/238828/version/V1/view",
+    "archive_modification_date": "2025-04-08",
+    "relationship": "Historical HIFLD/DataLumos lineage; no verified crosswalk to the current IENC layer and not treated as a current release or baseline."
+  },
+  "crosswalk": {
+    "dhs_crosswalk": "https://doi.org/10.3886/E241367V1",
+    "result": "Unresolved; no verified match or unmatched determination recorded yet."
+  },
+  "proposed_raw_schema": [
+    {"name": "OBJECTID", "type": "integer"},
+    {"name": "Visually_Conspicuous", "type": "string", "length": 254},
+    {"name": "Building_Function", "type": "string", "length": 254},
+    {"name": "Object_Name", "type": "string", "length": 254},
+    {"name": "Condition", "type": "string", "length": 254},
+    {"name": "Information", "type": "string", "length": 254},
+    {"name": "Scale_Minimum", "type": "integer"},
+    {"name": "Source_Date", "type": "string", "length": 254},
+    {"name": "Source_Indication", "type": "string", "length": 254},
+    {"name": "Source_Dataset", "type": "string", "length": 254},
+    {"name": "Feature_ID", "type": "string", "length": 254},
+    {"name": "SHAPE", "type": "Point", "crs": "EPSG:4326"}
+  ],
+  "contract_status": "Proposed observation only; maintainer schema, ID, field mapping, compatibility and release approvals are outstanding.",
+  "coverage_assessment": "The layer extent is inland IENC chart coverage and is not a nationwide building inventory. National coverage is not claimed.",
+  "freshness_rights_and_release_status": "Unapproved; refresh schedule stopped and publication blocked pending source lineage, edition/date, rights, baseline/crosswalk and exact-object approval."
+}
