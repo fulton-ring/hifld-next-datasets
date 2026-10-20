@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "inventory_id": "plate-boundaries",
+  "title": "Plate Boundaries",
+  "agency": "U.S. Geological Survey",
+  "source_relationship": "official producer-hosted service; current service lineage is attributed to published legacy scientific models, with successor status against the HIFLD 2024 capture unresolved",
+  "source_url": "https://earthquake.usgs.gov/arcgis/rest/services/eq/map_plateboundaries/MapServer/1",
+  "query_url": "https://earthquake.usgs.gov/arcgis/rest/services/eq/map_plateboundaries/MapServer/1/query",
+  "historical_crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "relationship": "DHS crosswalk points to historical HIFLD layer; exact record-level match not established"
+  },
+  "historical_archive": {
+    "repository": "DataLumos / ICPSR",
+    "study_id": "240544",
+    "url": "https://www.datalumos.org/datalumos/project/240544/version/V1/view",
+    "source_period": "2024-08-27",
+    "archive_published": "2025-11-22",
+    "archive_note": "Archived from HIFLD Open, deactivated 2025-08-26; not a current release"
+  },
+  "upstream_lineage": [
+    "USGS Seismicity of the Earth Map Series",
+    "Bird, 2003, An updated digital model of plate boundaries, doi:10.1029/2001GC000252",
+    "DeMets, Gordon and Argus, 2010, Geologically current plate motions, doi:10.1111/j.1365-246X.2009.04491.x"
+  ],
+  "service": {
+    "layer_id": 1,
+    "layer_name": "Plates",
+    "geometry_type": "esriGeometryPolyline",
+    "native_crs": "EPSG:3857",
+    "max_record_count": 1000,
+    "supports_pagination": true,
+    "feature_count_observed_2026-10-20": 1175,
+    "extent_epsg3857": {"xmin": -20037507.067161843, "ymin": -9921601.01373757, "xmax": 20037507.067161843, "ymax": 22830719.838254996},
+    "native_id": "OBJECTID",
+    "native_id_count": 1175,
+    "native_id_min": 1,
+    "native_id_max": 1181,
+    "fields": [
+      {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+      {"name": "Shape", "type": "esriFieldTypeGeometry"},
+      {"name": "NAME", "type": "esriFieldTypeString", "length": 200},
+      {"name": "LABEL", "type": "esriFieldTypeString", "length": 50},
+      {"name": "Shape_Length", "type": "esriFieldTypeDouble"}
+    ],
+    "observed_null_counts_2026-10-20": {"NAME": 3, "LABEL": 0, "Shape_Length": 0}
+  },
+  "capture_2026-10-20": {
+    "method": "12 requests by explicit objectIds in batches of 100; count and IDs checked before/after; response GeoJSON requested in EPSG:4326",
+    "response_features": 1175,
+    "response_bytes": 459008,
+    "response_sha256": "055985e165f52052bd6e4b72808a2fc3e46c4d48acbb36532f144a67bfdf696f",
+    "completeness": "complete for the live service roster; not proof of HIFLD archive equality or current scientific edition",
+    "single_request_limit": "one geometry query returned 1000 rows; 500-ID request returned HTTP 413; 100-ID batches succeeded",
+    "release_date": null,
+    "release_date_unknown_reason": "USGS service does not declare a source release date or current model edition."
+  },
+  "proposed_schema_contract": {
+    "status": "draft; maintainer approval required",
+    "preserve_all_declared_attributes": true,
+    "preserve_native_id": "OBJECTID, unchanged",
+    "geometry": "full polyline; no simplification or repair; native EPSG:3857 recorded; query response EPSG:4326 explicitly recorded",
+    "unexpected_fields_or_types": "quarantine for review"
+  },
+  "approval": {
+    "source_acceptance": false,
+    "baseline_acceptance": false,
+    "source_vintage_acceptance": false,
+    "schema_contract_acceptance": false,
+    "id_contract_acceptance": false,
+    "coverage_acceptance": false,
+    "rights_acceptance": false,
+    "release_acceptance": false
+  }
+}
