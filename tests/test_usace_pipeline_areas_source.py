@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import copy
 import unittest
 
 import pyarrow.parquet as pq
@@ -134,6 +135,46 @@ class UsacePipelineAreasSourceTest(unittest.TestCase):
         docs["bts_item"]["owner"] = "unverified"
         with self.assertRaisesRegex(ValueError, "bts_ienc_item_identity_drift"):
             _validate(_captures(docs))
+
+    def test_conflicting_layer_wkids_fail_closed(self) -> None:
+        docs = _docs()
+        docs["layer_before"]["spatialReference"] = {"wkid": 3857, "latestWkid": 4326}
+        docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+        with self.assertRaisesRegex(ValueError, "source_layer_crs_drift"):
+            _validate(_captures(docs))
+
+    def test_extent_and_feature_crs_overrides_fail_closed(self) -> None:
+        for location, label in (("extent", "source_layer_extent"), ("feature", "source_feature")):
+            with self.subTest(location=location):
+                docs = _docs()
+                if location == "extent":
+                    docs["layer_before"]["extent"] = {"spatialReference": {"wkid": 4269}}
+                    docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+                else:
+                    docs["page_000"]["features"][0]["geometry"]["spatialReference"] = {
+                        "wkid": 3857,
+                        "latestWkid": 4326,
+                    }
+                with self.assertRaisesRegex(ValueError, label + "_crs_drift"):
+                    _validate(_captures(docs))
+
+    def test_page_crs_conflict_fails_closed(self) -> None:
+        docs = _docs()
+        docs["page_000"]["spatialReference"] = {"wkid": 4269, "latestWkid": 4326}
+        with self.assertRaisesRegex(ValueError, "source_page_crs_drift"):
+            _validate(_captures(docs))
+
+    def test_layer_after_crs_or_extent_change_fails_closed(self) -> None:
+        for key, value in (
+            ("spatialReference", {"latestWkid": 4269}),
+            ("extent", {"xmin": -1, "ymin": -1, "xmax": 2, "ymax": 2}),
+        ):
+            with self.subTest(key=key):
+                docs = _docs()
+                docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+                docs["layer_after"][key] = value
+                with self.assertRaisesRegex(ValueError, "source_layer_changed_during_capture"):
+                    _validate(_captures(docs))
 
 
 if __name__ == "__main__":

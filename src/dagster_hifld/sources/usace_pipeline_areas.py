@@ -19,6 +19,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
+from pyproj import CRS
 from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -62,6 +63,35 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length":254} if kind == "esriFieldTypeString" else {})}
     for name,kind in EXPECTED_FIELDS
 ]
+SOURCE_CRS = CRS.from_epsg(4326)
+
+
+def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
+    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    found = False
+    for key in ("wkid", "latestWkid"):
+        if key in value:
+            wkid = value[key]
+            if type(wkid) is not int or wkid != 4326:
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    for key in ("wkt", "wkt2"):
+        if key in value:
+            wkt = value[key]
+            if not isinstance(wkt, str) or not wkt.strip():
+                raise ValueError(f"{label}_crs_drift")
+            try:
+                parsed = CRS.from_wkt(wkt)
+            except Exception as exc:
+                raise ValueError(f"{label}_crs_drift") from exc
+            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    if required and not found:
+        raise ValueError(f"{label}_crs_drift")
+    return found
 
 
 def _canonical(value: object) -> bytes:
@@ -289,6 +319,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     if docs["service_after"] != service:
         raise ValueError("source_service_changed_during_capture")
     layer = docs["layer_before"]
+    if docs["layer_after"] != layer:
+        raise ValueError("source_layer_changed_during_capture")
     fields = layer.get("fields")
     projected=[{key:f[key] for key in ("name","type","alias","length","domain","nullable") if key in f}
                for f in fields] if isinstance(fields,list) else None
@@ -299,8 +331,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     if (layer.get("spatialReference",{}).get("latestWkid") != 4326
             or layer.get("maxRecordCount") != 2000):
         raise ValueError("source_spatial_reference_or_page_limit_drift")
-    if docs["layer_after"].get("fields") != fields or docs["layer_after"].get("geometryType") != "esriGeometryPolygon":
-        raise ValueError("source_schema_changed_during_capture")
+    _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
+    extent = layer.get("extent", {})
+    if "spatialReference" in extent:
+        _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
     if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
         raise ValueError("source_count_drift")
     before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
@@ -316,8 +350,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         page=docs[name]
         if "error" in page or page.get("exceededTransferLimit") is True:
             raise ValueError("source_page_error_or_truncation")
-        if page.get("spatialReference",{}).get("latestWkid") != 4326:
-            raise ValueError("source_page_spatial_reference_drift")
+        _validate_spatial_reference(page.get("spatialReference"), "source_page")
         rows=page.get("features")
         if not isinstance(rows,list): raise ValueError("source_page_features_missing")
         features.extend(rows)
@@ -333,9 +366,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         if set(geom)-{"rings","hasZ","hasM","spatialReference"}:
             raise ValueError("unexpected_source_geometry_ordinates")
         geometry_reference=geom.get("spatialReference")
-        if (geometry_reference is not None
-                and geometry_reference.get("latestWkid", geometry_reference.get("wkid")) != 4326):
-            raise ValueError("source_feature_spatial_reference_drift")
+        if geometry_reference is not None:
+            _validate_spatial_reference(geometry_reference, "source_feature")
         for name,kind in EXPECTED_FIELDS:
             if name == "SHAPE":
                 continue
@@ -485,7 +517,26 @@ def capture_usace_pipeline_areas(storage: StagingStorageResource, *, version: st
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for name,(_body,receipt) in sorted(captures.items())]
+    inputs=[{"input_id":name,
+             "producer":"USDOT Bureau of Transportation Statistics (BTS)" if name == "bts_item" else PUBLISHER,
+             "host":urlsplit(receipt["url"]).hostname,
+             "role":"official_distributor" if name == "bts_item" else "producer_publication",
+             "canonical_url":BTS_ITEM_URL if name == "bts_item" else LAYER_URL,
+             "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],
+             "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],
+             "bytes":receipt["bytes"],"sha256":receipt["sha256"],
+             "wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
+             "license":"Unresolved; rights review pending.",
+             "attribution":"USACE IENC; rights review pending.",
+             "release_date":None,
+             "release_date_unknown_reason":"The BTS item describes bi-monthly updates but does not provide a release date for this extracted layer snapshot.",
+             **({"distributor":"USACE IENC Feature Classes service",
+                 "delegation_evidence":{"bts_item_url":BTS_ITEM_URL,
+                 "bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS",
+                 "official_service_directory":SERVICE_DIRECTORY_URL,
+                 "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"}}
+                if name == "bts_item" else {})}
+            for name,(_body,receipt) in sorted(captures.items())]
     manifest={"schema_version":1,"approved":False,"title":"Pipeline Areas (USACE IENC)","description":"Complete official USACE IENC PIPE_AREA feature class; unapproved faithful candidate. Inland chart coverage only; HIFLD historical equivalence and nationwide pipeline completeness are not asserted.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers, Army Geospatial Center","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID (integer) and Feature_ID (string) values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, historical baseline, ID/schema/coverage and rights decisions remain pending"}}],"lineage":"USDOT BTS item 3607d485a9854d6fa458bf507058ceae documents bi-monthly USACE/AGC IENC updates and links the official IENCCloud feature-class service and master file geodatabase. This candidate is the exact published PIPE_AREA layer, not the entire IENC archive.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified polygon rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/pipeline-areas-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No approved schema/compatibility contract.","pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"PIPE_AREA","official_source_item":"USDOT_BTS 3607d485a9854d6fa458bf507058ceae","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
