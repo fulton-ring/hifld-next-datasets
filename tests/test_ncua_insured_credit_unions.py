@@ -18,6 +18,7 @@ from dagster_hifld.sources.ncua_insured_credit_unions import (
     _deterministic_capture_archive,
     _canonical,
     _load_retained_capture,
+    _provenance_inputs,
     _verify_and_reuse_cached_candidate,
     _xlsx_charter_numbers,
     ACTIVE_LANDING,
@@ -26,6 +27,7 @@ from dagster_hifld.sources.ncua_insured_credit_unions import (
     LOCATOR_VERSION_URL,
     LOCATOR_SEARCH_URL,
 )
+from dagster_hifld.release_approval import validate_release_provenance
 
 
 def _feature(charter: int, site: int) -> dict:
@@ -230,3 +232,18 @@ class NcuaCandidateTests(unittest.TestCase):
     verify.assert_called_once()
     self.assertTrue(result["capture_complete"])
     self.assertTrue(result["reused"])
+
+ def test_response_collection_provenance_stays_within_catalog_layer_limit(self):
+    with tempfile.TemporaryDirectory() as temp:
+        root = _retained_fixture(Path(temp) / "compact")
+        captures, *_ = _load_retained_capture(root)
+        metadata = {"schema_version": 1, "processor": "HIFLD Next",
+            "inputs": _provenance_inputs(captures), "transformations": [{"operation": "candidate", "parameters": {}}],
+            "code_commit": "1" * 40,
+            "literal_geojson_catalog": {"schema_version": 1, "path": "geojson/test.geojson", "bytes": 1, "sha256": "0" * 64},
+            "unsupported_output_formats": {"geopackage": "No approved schema."}}
+        validate_release_provenance(metadata)
+        self.assertLess(len(_canonical(metadata)), 2 * 1024 * 1024)
+        collection = next(x for x in metadata["inputs"] if x["input_id"] == "locator_response_collection")
+        self.assertEqual(collection["response_count"], 2)
+        self.assertEqual(collection["query_count"], 2)

@@ -581,6 +581,43 @@ def _deterministic_capture_archive(capture_root: Path) -> bytes:
     return bundle
 
 
+def _provenance_inputs(captures: Mapping[str,tuple[bytes,Mapping[str,object]]]) -> list[dict[str,object]]:
+    """Keep the manifest compact while pinning every Locator response collection."""
+    attribution="National Credit Union Administration first-party public data; attribution and reuse terms remain under review."
+    license_text="NCUA public source; license terms not verified in this research."
+    unknown="The producer response does not provide an independently verified publication timestamp; quarterly cycle is effective date only."
+    inputs=[]
+    locator=[]
+    locator_aux={"locator_cycle_before","locator_app_version_before","locator_cycle_after","locator_app_version_after"}
+    for name,(body,receipt) in sorted(captures.items()):
+        if name.startswith("locator_") and name not in locator_aux:
+            locator.append({"input_id":name,"method":receipt["method"],"url":receipt["url"],
+                "request":receipt["request"],"observed_at":receipt["observed_at"],"status":receipt["status"],
+                "bytes":receipt["bytes"],"sha256":receipt["sha256"],
+                "wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"]})
+            continue
+        active=name.startswith("active_") or name=="official_active_roster_landing"
+        canonical=LOCATOR_ROOT if name.startswith("locator_") else ACTIVE_LANDING if active else QUARTERLY_LANDING
+        host="mapping.ncua.gov" if name.startswith("locator_") else "ncua.gov"
+        inputs.append({"input_id":name,"producer":AGENCY,"host":host,"role":"producer_publication",
+            "canonical_url":canonical,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],
+            "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],
+            "sha256":receipt["sha256"],"wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
+            "release_date":None,"release_date_unknown_reason":unknown,"license":license_text,"attribution":attribution})
+    if not locator: raise ValueError("locator_response_collection_missing")
+    collection_sha=_sha(_canonical(locator))
+    earliest=min(str(receipt["observed_at"]) for name,(_,receipt) in captures.items() if name.startswith("locator_") and name not in locator_aux)
+    inputs.append({"input_id":"locator_response_collection","producer":AGENCY,"host":"mapping.ncua.gov",
+        "role":"producer_publication","canonical_url":LOCATOR_ROOT,"retrieval_url":LOCATOR_SEARCH_URL,
+        "observed_final_url":LOCATOR_SEARCH_URL,"retrieved_at":earliest,
+        "http_status":200,"bytes":sum(int(x["bytes"]) for x in locator),"sha256":collection_sha,
+        "wire_bytes":sum(int(x["wire_bytes"]) for x in locator),"wire_sha256":collection_sha,
+        "response_count":len(locator),"query_count":len({str(x["request"]["searchText"]) for x in locator}),
+        "sha256_kind":"canonical_response_receipt_inventory",
+        "release_date":None,"release_date_unknown_reason":unknown,"license":license_text,"attribution":attribution})
+    return inputs
+
+
 def capture_ncua_candidate(storage: StagingStorageResource, *, version: str,
                            capture_directory: str | None = None) -> dict[str,object]:
     """Capture current official roster, quarterly branch companion and Locator points."""
@@ -633,16 +670,7 @@ def capture_ncua_candidate(storage: StagingStorageResource, *, version: str,
         "description":(f"Draft first-party NCUA Locator point capture queried for every charter in the official active federally insured credit union roster. The separate current quarterly branch file is preserved in full; {audit['active_quarterly_branch_ids_missing_from_locator']} active-roster branch IDs are absent from Locator, {audit['locator_ids_not_in_active_quarterly_branch_table']} Locator IDs are absent from that active branch table, and {audit['overlapping_ids_with_checked_attribute_differences']} overlapping IDs have checked value differences. This candidate does not claim complete quarterly-branch coverage or approved equivalence to the historical HIFLD item."),
         "publisher":AGENCY,"agency":AGENCY,"source_url":LOCATOR_ROOT,"license":None,
         "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-        "inputs":[{"input_id":name,"producer":AGENCY,"host":"mapping.ncua.gov" if name.startswith("locator_") else "ncua.gov",
-            "role":"producer_publication","canonical_url":LOCATOR_ROOT if name.startswith("locator_") else (ACTIVE_LANDING if name.startswith("active_") or name=="official_active_roster_landing" else QUARTERLY_LANDING),
-            "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],
-            "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
-            "wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
-            "release_date":None,
-            "release_date_unknown_reason":"The producer response does not provide an independently verified publication timestamp; the quarterly cycle date is recorded separately as an effective date."}
-            | {"license":"NCUA public source; license terms not verified in this research.",
-               "attribution":"National Credit Union Administration first-party public data; attribution and reuse terms remain under review."}
-            for name,(_,receipt) in sorted(captures.items())],
+        "inputs":_provenance_inputs(captures),
         "lineage":"The live search endpoint is called by the NCUA mapping.ncua.gov client; its frontend JavaScript declares the POST route /api/Search/GetSearchLocations and sends charter, skip, take, and sort parameters. Coordinates come directly from the returned addressLatitude/addressLongitude values. The official NCUA active-credit-union roster seeds one full query per charter. The official NCUA quarterly branch ZIP is retained as a separate full-coverage companion and compared using CU_NUMBER + SiteId without replacing either source's values.",
         "transformations":[{"operation":"native_NCUA_Locator_JSON_to_GeoJSON_candidate","parameters":{"fields":"all 34 response keys preserved in producer order and native JSON value types; geometry is Point coordinates copied from source addressLongitude/addressLatitude","ids":"preserve creditUnionNumber, siteId, and siteIdAndCUNumber exactly; no generated identifier","quarterly_companion":"full ZIP preserved as a source capture; not joined into point properties","candidate_status":"unapproved; complete quarterly-branch companion parity and historical successor equivalence unresolved"}}],
         "literal_geojson_catalog":{"schema_version":1,"path":f"geojson/{source_name}","bytes":len(geojson_body),"sha256":_sha(geojson_body)},
