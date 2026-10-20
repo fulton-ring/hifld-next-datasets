@@ -6064,15 +6064,20 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
+      "reviewed_head": "f341822",
+      "evidence_refs": [
+        "issue comment 6282411250"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:14:07Z",
       "live_issue_created_at": "2026-10-19T02:14:07Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "work_status": "research_only",
+      "assigned_worker": "dataset_3",
+      "status_note": "Branch codex/cloud-dataset-266 at f341822; compact research docs only. HIFLD-labelled ArcGIS item 9e28c38204604403a09d12247852351e owner HSEMA_PPD created 2023; service HTTP200 ArcGIS application error 400 Invalid URL. Third-party maps_ft item 4498e33c842146c0bbdd6ba58a09d98a advertises 60 peak shaver + 41 satellite facilities; no official delegation/lineage/release. DataLumos/crosswalk 403. No maintained DOE/ORNL source found in scoped search; do not claim none exists. No complete extraction or adapter. External source/lineage/date and contract decision needed."
     },
     {
       "issue": 267,
@@ -8968,21 +8973,6 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": []
-    },
-    {
-      "issue": 266,
-      "dataset_id": "current-unknown",
-      "title": "Source and pipeline: Dataset issue #266",
-      "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/266",
-      "live_issue_state": "open",
-      "work_status": "research_only",
-      "assigned_worker": "dataset_3",
-      "current_pr": null,
-      "reviewed_head": "f341822",
-      "status_note": "Branch codex/cloud-dataset-266 at f341822; compact research docs only. HIFLD-labelled ArcGIS item 9e28c38204604403a09d12247852351e owner HSEMA_PPD created 2023; service HTTP200 ArcGIS application error 400 Invalid URL. Third-party maps_ft item 4498e33c842146c0bbdd6ba58a09d98a advertises 60 peak shaver + 41 satellite facilities; no official delegation/lineage/release. DataLumos/crosswalk 403. No maintained DOE/ORNL source found in scoped search; do not claim none exists. No complete extraction or adapter. External source/lineage/date and contract decision needed.",
-      "evidence_refs": [
-        "issue comment 6282411250"
-      ]
     }
   ],
   "open_pull_requests": [
