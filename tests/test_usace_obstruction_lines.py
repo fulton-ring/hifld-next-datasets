@@ -89,6 +89,26 @@ class UsaceObstructionLinesTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"source_xy_ordinate_contract_drift"):
             source._validate({n:(_canonical(v),{}) for n,v in docs.items()})
 
+    def test_layer_page_and_explicit_feature_crs_reject_ambiguous_or_contradictory_values(self):
+        mutations = [
+            ("layer wkid/latestWkid contradiction", lambda d: d["layer_before"].update(
+                spatialReference={"wkid":3857,"latestWkid":4326})),
+            ("page CRS drift", lambda d: d["features"].update(
+                spatialReference={"wkid":3857,"latestWkid":3857})),
+            ("feature CRS drift", lambda d: d["features"]["features"][0]["geometry"].update(
+                spatialReference={"wkid":3857})),
+            ("feature wkid/latestWkid contradiction", lambda d: d["features"]["features"][0]["geometry"].update(
+                spatialReference={"wkid":3857,"latestWkid":4326})),
+            ("feature WKT contradiction", lambda d: d["features"]["features"][0]["geometry"].update(
+                spatialReference={"latestWkid":4326,"wkt":source.CRS.from_epsg(3857).to_wkt()})),
+        ]
+        for label, mutate in mutations:
+            with self.subTest(label=label):
+                docs=json.loads(json.dumps(self._documents()))
+                mutate(docs)
+                with self.assertRaisesRegex(ValueError,"crs_drift"):
+                    source._validate({name:(_canonical(value),{}) for name,value in docs.items()})
+
     def test_fresh_same_source_reuses_first_manifest_and_receipts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/"capture";root.mkdir();self._capture_directory(root)

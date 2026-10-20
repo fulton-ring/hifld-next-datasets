@@ -14,6 +14,7 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
+from pyproj import CRS
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -64,6 +65,40 @@ EXPECTED_FIELD_DECLARATIONS = [
     {"name":"Feature_ID","type":"esriFieldTypeString","alias":"Feature_ID","length":256,"domain":None},
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
+SOURCE_CRS = CRS.from_epsg(4326)
+
+
+def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
+    """Validate every advertised ArcGIS CRS representation without guessing.
+
+    ArcGIS may return either/both WKID properties and optional WKT strings.
+    All present representations must identify EPSG:4326; missing feature-level
+    spatial references inherit only after their page CRS has been validated.
+    """
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    found = False
+    for key in ("wkid", "latestWkid"):
+        if key in value:
+            wkid = value[key]
+            if type(wkid) is not int or wkid != 4326:
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    for key in ("wkt", "wkt2"):
+        if key in value:
+            wkt = value[key]
+            if not isinstance(wkt, str) or not wkt.strip():
+                raise ValueError(f"{label}_crs_drift")
+            try:
+                parsed = CRS.from_wkt(wkt)
+            except Exception as exc:
+                raise ValueError(f"{label}_crs_drift") from exc
+            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    if required and not found:
+        raise ValueError(f"{label}_crs_drift")
+    return found
 
 
 def _canonical(value: object) -> bytes:
@@ -164,10 +199,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         raise ValueError("source_field_schema_drift")
     if (layer.get("id") != LAYER_ID or layer.get("name") != "OBSTRUCTION_LINE"
             or layer.get("geometryType") != "esriGeometryPolyline"
-            or layer.get("spatialReference", {}).get("latestWkid") != 4326
             or layer.get("maxRecordCount") != 2000
             or {key:layer.get("extent",{}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
         raise ValueError("source_layer_geometry_crs_or_page_limit_drift")
+    _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
     # ArcGIS does not declare hasZ/hasM on this layer. Every retained source
     # vertex is checked below to be exactly XY; no ordinate is discarded.
     if docs["layer_after"] != layer:
@@ -181,8 +216,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     page = docs["features"]
     if "error" in page or page.get("exceededTransferLimit") is True:
         raise ValueError("source_feature_query_error_or_truncation")
-    if page.get("spatialReference", {}).get("latestWkid") != 4326:
-        raise ValueError("source_feature_query_crs_drift")
+    _validate_spatial_reference(page.get("spatialReference"), "source_feature_query")
     features = page.get("features")
     if not isinstance(features, list) or len(features) != EXPECTED_COUNT:
         raise ValueError("source_feature_population_incomplete")
@@ -208,9 +242,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if oid not in EXPECTED_IDS:
             raise ValueError("source_oid_roster_drift")
         ids.append(oid)
-        if (not isinstance(geometry, dict) or set(geometry) - {"paths", "spatialReference"}
-                or geometry.get("spatialReference", {}).get("latestWkid", 4326) != 4326):
+        if not isinstance(geometry, dict) or set(geometry) - {"paths", "spatialReference"}:
             raise ValueError("source_polyline_geometry_structure_drift")
+        if "spatialReference" in geometry:
+            _validate_spatial_reference(geometry["spatialReference"], "source_feature_geometry")
         paths = geometry.get("paths")
         if not isinstance(paths, list) or not paths:
             raise ValueError("source_polyline_paths_missing")
@@ -233,7 +268,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "source_geometry_type": "esriGeometryPolyline", "source_wkid": 4326, "source_vertex_count": vertex_count,
         "source_extent": layer["extent"],
         "source_coverage_scope": "Complete current OBSTRUCTION_LINE feature class returned by the official IENC service; observed Ohio and Tennessee River area only, not national coverage.",
-        "drift_guard": "Exact BTS item/service link, advertised service/layer identity, declared field roster/types, CRS, count, before/after IDs, complete returned attributes and XY paths are checked.",
+        "drift_guard": "Exact BTS item/service link, advertised service/layer identity, declared field roster/types, every present layer/page/feature wkid, latestWkid and WKT/WKT2 CRS representation, count, before/after IDs, complete returned attributes and XY paths are checked.",
     }
     return fields, features, audit
 
