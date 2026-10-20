@@ -11,7 +11,7 @@
       416
     ],
     "live_issue_states_verified": "#2-101 open via GitHub search; closed issue search returned empty; #102-416 not individually paged/rechecked",
-    "pr_search": "100 most recently created open PRs; evidence not exhaustive",
+    "pr_search": "100 most recently created open PRs; evidence not exhaustive; oldest and newest 100-result windows inspected, plus open PRs created 2026-10-20 (12 results); 2026-10-19 remains capped at 100, leaving a middle window unrecovered because connector offers no pagination cursor.",
     "durable_local_runtime_evidence": "not present after cloud replacement; do not infer historical evidence absent from GitHub comments/PR bodies"
   },
   "coordination_issue_417": {
@@ -145,10 +145,15 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open_verified",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence"
+      "current_pr": 425,
+      "reviewed_head": "62c8524e279ea5606a8aa2b074e90a0a064ec2c3",
+      "evidence_refs": [
+        "issue comment 6280670840; PR #425 exact-head bounded review 5579490683",
+        "72-feature retained-capture candidate and fail-closed verifier run d8606a87-280c-4ebd-8a71-bc2c59eb916f",
+        "full five-format pinned baseline comparison is prior evidence; not rerun for final code-only delta"
+      ],
+      "blocker_type": "external_decision_or_source_evidence",
+      "status_note": "draft implementation PR; offline captured-candidate replay passed and exact-head bounded review COMMENT PASS; authority/baseline/contract/release decisions pending"
     },
     {
       "issue": 10,
