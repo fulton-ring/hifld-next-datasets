@@ -248,9 +248,18 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
             _record_incomplete(root,captures,version,exc)
         raise
     parquet = lights_geoparquet(fields, features)
-    source_hash = _sha(_canonical({k: _sha(v[0]) for k, v in sorted(captures.items())}))
+    source_evidence = {
+        name: {
+            "body_sha256": _sha(body),
+            "wire_sha256": _sha((root / f"{name}.wire").read_bytes()),
+        }
+        for name, (body, _receipt) in sorted(captures.items())
+    }
+    source_hash = _sha(_canonical(source_evidence))
     identity = processing_identity(Path(__file__).parents[3])
-    version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"], audit["source_schema_sha256"], identity)
+    candidate_identity = {"processing_identity": identity, "source_evidence_sha256": source_hash}
+    version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
+                                     audit["source_schema_sha256"], candidate_identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     audit.update({"source_capture_sha256":source_hash, "source_release_accepted":False,
                   "source_freshness_accepted":False, "schema_contract_accepted":False,
@@ -283,7 +292,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
         outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
     descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    fingerprint = _sha(_canonical(identity))
+    fingerprint = _sha(_canonical(candidate_identity))
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     receipts = {name:receipt for name,(_body,receipt) in captures.items()}
     if storage.object_snapshot(state_key) is not None:
