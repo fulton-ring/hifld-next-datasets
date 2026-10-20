@@ -138,11 +138,19 @@ class NaturalGasTradingHubsCandidateTests(unittest.TestCase):
                 self.assertEqual(
                     hubs._read_json_receipt(root / "source_head.receipt.json")["status"], 503
                 )
-                with patch.object(hubs.httpx, "Client", side_effect=AssertionError("retry refetched")):
-                    _body, _receipt, _head, replay_root = hubs._acquire_capture(
-                        root, allow_live_retry=True
-                    )
-                self.assertEqual(replay_root, recovered_root)
+                fresh_body, fresh_receipt, _fresh_head, fresh_root = hubs._acquire_capture(
+                    root, allow_live_retry=True
+                )
+                self.assertEqual(fresh_root, Path(temp) / "attempt.attempt-0002")
+                self.assertEqual(fresh_body, body)
+                self.assertNotEqual(fresh_receipt["observed_at"], _receipt["observed_at"])
+                reused_body, reused_receipt, _reused_head, reused_root = hubs._reuse_original_capture(
+                    root, fresh_root, fresh_body
+                )
+                self.assertEqual(reused_body, body)
+                self.assertEqual(reused_root, recovered_root)
+                self.assertEqual(reused_receipt["observed_at"], _receipt["observed_at"])
+                self.assertTrue((fresh_root / "eia_source_zip.receipt.json").is_file())
 
 
 if __name__ == "__main__":
