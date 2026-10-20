@@ -22,11 +22,70 @@
   "official_source_status": {
     "producer": "Oak Ridge National Laboratory (per inventory)",
     "publisher": "Department of Energy (per inventory)",
-    "maintained_producer_feed": "not found in bounded source checks",
+    "maintained_producer_feed": "no exact title-matched DOE/ORNL feed found; PHMSA and FERC maintain partial related records",
     "release_date": null,
     "lineage": "unresolved",
-    "conclusion": "No evidence currently ties an accessible maintained DOE/ORNL source to this exact HIFLD inventory item. This scoped finding does not establish that no such source exists."
+    "conclusion": "Accessible maintained PHMSA/FERC records have relevant classifications or subsets, but do not supply the complete target population and exact point geometry. No evidence currently ties a maintained DOE/ORNL source to this exact HIFLD inventory item. This scoped finding does not establish that no such source exists."
   },
+  "official_related_records": [
+    {
+      "classification": "maintained official PHMSA annual LNG report data; partial semantic candidate, not a full spatial replacement",
+      "landing_page": "https://www.phmsa.dot.gov/data-and-statistics/pipeline/gas-distribution-gas-gathering-gas-transmission-hazardous-liquids",
+      "bulk_download_url": "https://www.phmsa.dot.gov/sites/phmsa.dot.gov/files/data_statistics/pipeline/annual_liquefied_natural_gas_2010_present.zip",
+      "landing_page_claims": "Annual report ZIP files update monthly as operator supplemental reports arrive; LNG annual data is a separate related download.",
+      "observed_utc": "2026-10-20",
+      "http_status": 200,
+      "zip_bytes": 2358119,
+      "zip_sha256": "69a8283274b89310099807781c1e22ed2c1115c4d55026962ee1da9f8788bcbf",
+      "zip_members": 54,
+      "current_year_part_b": "LNG AR 2025 Part B.csv",
+      "datafile_as_of": "2026-10-01",
+      "rows": 309,
+      "rows_with_type_peak_shaving": 70,
+      "rows_with_type_satellite": 32,
+      "fields_present": [
+        "LNG_FACILITY_ID",
+        "FACILITY_NAME",
+        "UNIT_ID",
+        "NPMS_LNG_ID",
+        "FACILITY_STATE",
+        "FACILITY_ZIP_CODE",
+        "FACILITY_STATUS",
+        "TYPE_OF_FACILITY"
+      ],
+      "location_fields_absent": [
+        "latitude",
+        "longitude",
+        "street address",
+        "city",
+        "coordinates"
+      ],
+      "scope_limits": "LNG facility annual-report records; does not supply the LPG/propane facilities in the HIFLD definition, does not establish equivalence with the 2022 inventory baseline, and has no point geometry. Some NPMS_LNG_ID values are blank.",
+      "location_policy_evidence": "PHMSA's 2026 Federal Register proposal states that it currently proposes adding LNG plant latitude/longitude to annual reporting and later eliminating duplicate NPMS location submissions. Current annual bulk rows therefore cannot be treated as coordinate-bearing data.",
+      "links": [
+        "https://www.phmsa.dot.gov/data-and-statistics/pipeline/liquefied-natural-gas-lng-facilities-and-total-storage-capacities",
+        "https://www.federalregister.gov/d/2026-12315",
+        "https://www.phmsa.dot.gov/data-and-statistics/pipeline/pipeline-mileage-and-facilities"
+      ]
+    },
+    {
+      "classification": "official FERC jurisdictional subset, not a complete inventory",
+      "landing_page": "https://www.ferc.gov/media/ferc-jurisdictional-peakshavers-10",
+      "document_url": "https://www.ferc.gov/sites/default/files/2026-10/LNG%20Maps%20for%20the%20Web%20%282026-10-05%29%20-%20Peakshavers.pdf",
+      "document_date": "2026-10-05",
+      "observed_utc": "2026-10-20",
+      "http_status": 200,
+      "document_bytes": 192604,
+      "document_sha256": "9537b5a2d3e5797182bd2dc41789e2b8a27e53d6d843ddc0c84b20369b8020d0",
+      "listed_facilities": {
+        "existing": 12,
+        "under_construction": 1,
+        "proposed": 1
+      },
+      "location_fields": "company and city/state text plus map placement; no exact coordinate table",
+      "scope_limits": "FERC jurisdictional facilities only; does not establish comprehensive ORNL/HIFLD coverage, including non-FERC facilities or propane facilities."
+    }
+  ],
   "candidates": [
     {
       "classification": "historical HIFLD-labelled ArcGIS copy; not a maintained producer feed",
@@ -40,7 +99,11 @@
       "service_url": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Peak_Shaving_Facilities_gdb/FeatureServer/0",
       "item_snippet": "This feature class/shapefile contains Peak Shaving Plants for the Homeland Infrastructure Foundation-Level (HIFLD) Database.",
       "access": "public",
-      "observed_service_response": {"http_status": 200,"response_bytes": 72,"service_error": "HTTP 400 Invalid URL"},
+      "observed_service_response": {
+        "http_status": 200,
+        "response_bytes": 72,
+        "service_error": "HTTP 400 Invalid URL"
+      },
       "use": "historical reference only; do not refresh from this URL or assume its features are current"
     },
     {
@@ -74,6 +137,8 @@
   },
   "decisions_required": [
     "Confirm an accessible DOE/ORNL producer source, source owner, release date, and lineage to this exact inventory entry; or explicitly record no maintained feed after the publisher's review.",
+    "Provide authoritative geospatial locations for the LNG and LPG/propane facility population in scope. PHMSA bulk annual records identify LNG facilities and types but omit coordinates; PHMSA says coordinates are only proposed in future forms, while public NPMS access is restricted. FERC lists a jurisdictional subset with city/state text only.",
+    "Confirm whether the target is intended to include PHMSA-classified Peak Shaving only, Satellite LNG facilities, propane-air plants, or other facilities, and provide the accepted 2022 baseline/crosswalk mapping.",
     "If a third-party candidate is proposed, provide explicit delegation or upstream source evidence and approve its relationship to the historical HIFLD item.",
     "Approve the source and published ID, schema, geometry, rights, refresh, and compatibility contract before implementation or promotion."
   ]
