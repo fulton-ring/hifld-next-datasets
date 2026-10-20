@@ -1,6 +1,10 @@
 import io
+import hashlib
+import json
+import tempfile
 import unittest
 import zipfile
+from pathlib import Path
 from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus
@@ -19,6 +23,7 @@ from dagster_hifld.sources.census_primary_roads import (
     _capture,
     _inspect_archive,
 )
+from dagster_hifld.resources import StagingStorageResource
 
 
 class CensusPrimaryRoadsTests(unittest.TestCase):
@@ -41,17 +46,40 @@ class CensusPrimaryRoadsTests(unittest.TestCase):
         self.assertFalse(census_primary_roads_source_complete(candidate).passed)
 
     def test_archive_capture_rejects_changed_url_or_bytes(self):
-        with patch(
-            "dagster_hifld.sources.census_primary_roads.capture_get",
-            return_value=(b"not the pinned Census archive", {
+        body = b"not the pinned Census archive"
+        wire = b"wire bytes for changed archive"
+        receipt = {
                 "method": "GET", "url": SOURCE_URL, "final_url": SOURCE_URL,
-                "status": 200, "complete_body": True, "bytes": 27,
-                "sha256": "0" * 64, "content_encoding": "identity",
-                "wire_bytes": 27, "wire_sha256": "0" * 64,
-            }),
-        ):
-            with self.assertRaisesRegex(ValueError, "official_tiger_archive_identity_or_release_drift"):
-                _capture(None)
+                "status": 200, "complete_body": True, "bytes": len(body),
+                "sha256": hashlib.sha256(body).hexdigest(), "content_encoding": "identity",
+                "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
+                "content_length": len(body), "observed_at": "2026-10-20T00:00:00+00:00",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
+
+            def changed_capture(_client, _url, root, _name, **_kwargs):
+                root.mkdir(parents=True, exist_ok=True)
+                (root / "source.body").write_bytes(body)
+                (root / "source.wire").write_bytes(wire)
+                (root / "source.receipt.json").write_text(json.dumps(receipt))
+                return body, receipt
+
+            with patch("dagster_hifld.sources.census_primary_roads.capture_get", side_effect=changed_capture):
+                with self.assertRaisesRegex(ValueError, "official_tiger_archive_identity_or_release_drift"):
+                    _capture(None, storage, "vtest")
+
+            keys = storage.list_prefix("_quarantine/primary-roads-2")
+            self.assertEqual(len(keys), 4)
+            body_key = next(key for key in keys if key.endswith("/raw/source.body"))
+            wire_key = next(key for key in keys if key.endswith("/raw/source.wire"))
+            receipt_key = next(key for key in keys if key.endswith("/raw/source.receipt.json"))
+            failure_key = next(key for key in keys if key.endswith("/metadata/failure.json"))
+            self.assertEqual(storage.read_key(body_key), body)
+            self.assertEqual(storage.read_key(wire_key), wire)
+            saved_receipt = json.loads(storage.read_key(receipt_key))
+            self.assertEqual(saved_receipt, receipt)
+            self.assertEqual(json.loads(storage.read_key(failure_key))["reason_code"], "official_tiger_archive_identity_or_release_drift")
 
     def test_archive_member_roster_drift_is_rejected_before_extract(self):
         sink = io.BytesIO()

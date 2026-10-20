@@ -14,7 +14,11 @@ import httpx
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import capture_get, write_immutable
+from dagster_hifld.sources.epa_frs_common import (
+    capture_get,
+    quarantine_incomplete_capture,
+    write_immutable,
+)
 
 DATASET_SLUG = "primary-roads-2"
 FILE_SLUG = DATASET_SLUG
@@ -49,44 +53,101 @@ def candidate_version() -> str:
     return "v" + _sha(identity)[:32]
 
 
-def _capture(capture_directory: str | Path | None) -> tuple[bytes, dict[str, object]]:
-    if capture_directory is None:
-        with tempfile.TemporaryDirectory(prefix="census-primary-roads-capture-") as tmp:
-            with httpx.Client(timeout=httpx.Timeout(180.0, connect=20.0), follow_redirects=False) as client:
-                body, receipt = capture_get(client, SOURCE_URL, Path(tmp), "source", max_bytes=MAX_SOURCE_BYTES)
-    else:
-        root = Path(capture_directory)
-        if root.is_symlink() or not root.is_dir():
-            raise ValueError("source_capture_directory_invalid")
-        if {p.name for p in root.iterdir()} != CAPTURE_FILES:
-            raise ValueError("source_capture_roster_mismatch")
-        body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
-        if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
-            raise ValueError("source_capture_nonregular_file")
-        body = body_path.read_bytes()
-        wire = wire_path.read_bytes()
+def _quarantine_attempt(
+    storage: StagingStorageResource,
+    capture_root: Path,
+    version: str,
+    reason_code: str,
+) -> str:
+    """Retain all response bytes and a receipt before rejecting a bad capture."""
+    body_path = capture_root / "source.body"
+    wire_path = capture_root / "source.wire"
+    receipt_path = capture_root / "source.receipt.json"
+    body = body_path.read_bytes() if body_path.is_file() else b""
+    wire = wire_path.read_bytes() if wire_path.is_file() else b""
+    body_path.write_bytes(body)
+    wire_path.write_bytes(wire)
+    try:
         receipt = json.loads(receipt_path.read_text("utf-8"))
+        if not isinstance(receipt, dict):
+            raise ValueError("receipt_not_object")
+    except (OSError, ValueError):
+        receipt = {
+            "method": "GET",
+            "url": SOURCE_URL,
+            "final_url": None,
+            "status": None,
+            "observed_at": None,
+            "complete_body": False,
+            "bytes": len(body),
+            "sha256": _sha(body),
+            "wire_bytes": len(wire),
+            "wire_sha256": _sha(wire),
+            "error_code": reason_code,
+        }
+        receipt_path.write_bytes(_canonical(receipt) + b"\n")
+    # The shared helper also writes a failure marker and refuses non-staging
+    # destinations, keeping unrecognized source bytes out of catalog paths.
+    return quarantine_incomplete_capture(
+        storage, capture_root, DATASET_SLUG, version,
+        {"source": (body, receipt)}, reason_code,
+    )
+
+
+def _capture(
+    capture_directory: str | Path | None,
+    staging_storage: StagingStorageResource,
+    version: str,
+) -> tuple[bytes, dict[str, object]]:
+    temporary = tempfile.TemporaryDirectory(prefix="census-primary-roads-capture-") if capture_directory is None else None
+    root = Path(temporary.name) if temporary is not None else Path(capture_directory)
+    try:
+        if temporary is None:
+            if root.is_symlink() or not root.is_dir():
+                raise ValueError("source_capture_directory_invalid")
+            if {p.name for p in root.iterdir()} != CAPTURE_FILES:
+                raise ValueError("source_capture_roster_mismatch")
+            body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
+            if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
+                raise ValueError("source_capture_nonregular_file")
+            body = body_path.read_bytes()
+            wire = wire_path.read_bytes()
+            receipt = json.loads(receipt_path.read_text("utf-8"))
+            if (
+                receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
+                or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
+                or receipt.get("complete_body") is not True
+                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+                or receipt.get("content_encoding") != "identity"
+            ):
+                raise ValueError("source_capture_receipt_identity_mismatch")
+        else:
+            try:
+                with httpx.Client(timeout=httpx.Timeout(180.0, connect=20.0), follow_redirects=False) as client:
+                    body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
+            except Exception as exc:
+                quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
+                raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
+
         if (
             receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
             or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-            or receipt.get("complete_body") is not True
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+            or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
+            or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
             or receipt.get("content_encoding") != "identity"
+            or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
+            or receipt.get("content_length") not in (None, EXPECTED_BYTES)
+            or _sha(body) != EXPECTED_SHA256
         ):
-            raise ValueError("source_capture_receipt_identity_mismatch")
-    if (
-        receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-        or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-        or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
-        or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
-        or receipt.get("content_encoding") != "identity"
-        or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
-        or receipt.get("content_length") not in (None, EXPECTED_BYTES)
-        or _sha(body) != EXPECTED_SHA256
-    ):
-        raise ValueError("official_tiger_archive_identity_or_release_drift")
-    return body, receipt
+            quarantine = _quarantine_attempt(
+                staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
+            )
+            raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
+        return body, receipt
+    finally:
+        if temporary is not None:
+            temporary.cleanup()
 
 
 def _inspect_archive(body: bytes) -> dict[str, object]:
@@ -144,7 +205,7 @@ def capture_census_primary_roads(
     staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
 ) -> dict[str, object]:
     """Capture one exact official annual zip and stage it immutably for catalog."""
-    body, receipt = _capture(capture_directory)
+    body, receipt = _capture(capture_directory, staging_storage, version)
     audit = _inspect_archive(body)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     archive_key = f"{prefix}/shapefile/{SOURCE_FILE}"
