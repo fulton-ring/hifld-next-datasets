@@ -1,0 +1,179 @@
+{
+  "dataset": "Coastlines (USACE IENC)",
+  "inventory_id": 37,
+  "dataset_slug": "coastlines-usace-ienc",
+  "file_slug": "coastlines-usace-ienc",
+  "inventory_archive_url": "https://www.datalumos.org/datalumos/project/238945/version/V1/view",
+  "archive_version": "V1",
+  "archive_inventory_modification_date": "2025-04-08",
+  "archive_modification_date_is_source_release": false,
+  "producer": "US Army Corps of Engineers, Army Geospatial Center (asserted by IENC service copyright and product metadata; agency ownership/delegation not fully independently established)",
+  "publisher": "USACE IENCCloud service, with explicit distribution documented by public USDOT BTS item owned by USDOT_BTS (BTS item ID 3607d485a9854d6fa458bf507058ceae).",
+  "source_role": "producer publication, distribution link documented by USDOT BTS; USACE hosting/lineage is explicit; chart data limitations noted by BTS.",
+  "official_landing": "https://ienccloud.us/",
+  "service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33",
+  "layer_id": 33,
+  "layer_name": "COASTLINE_LINE",
+  "source_check_timestamp": "2026-10-20T03:31:16.406831+00:00",
+  "source_release_date": null,
+  "source_release_date_note": "Service/layer metadata contains no dated source release or edit timestamp. Fetch date is not a release date.",
+  "service_metadata_observation": {
+    "http_status": 200,
+    "service_directory_service_count": 100,
+    "layer_type": "Feature Layer",
+    "geometry_type": "esriGeometryPolyline",
+    "spatial_reference": "EPSG:4326",
+    "max_record_count": 2000,
+    "capabilities": "Map,Query,Data",
+    "has_metadata": true
+  },
+  "observed_count": 22819,
+  "count_endpoint": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33/query?where=1%3D1&returnCountOnly=true&f=json",
+  "observed_id_population": "22819 unique IDs, exactly 1 through 22819",
+  "observed_objectids_sha256_canonical_json": "363bf4b58dfbae112710b7e33a52c6fe9f6aca2862b0e548728f65900c213827",
+  "ids_are_objectid_only": true,
+  "stable_cross_release_identifier_evidence": false,
+  "source_fields": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID"
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry"
+    },
+    {
+      "name": "Category_of_Coastline",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Scale_Minimum",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Date",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Indication",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Dataset",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Feature_ID",
+      "type": "esriFieldTypeString",
+      "length": 254
+    }
+  ],
+  "native_identifiers": {
+    "OBJECTID": "integer OID; must not be assumed stable across releases",
+    "Feature_ID": "string; nullability, uniqueness and continuity not yet assessed"
+  },
+  "coverage_observation": "Layer extent approximately (-96.67,29.68) to (-79.47,45.14), matching an inland-waterway subset, not national coastline coverage.",
+  "resource_assessment": {
+    "observed_full_capture_bytes": 134916648,
+    "observed_metadata_and_id_roster_bytes": 414042,
+    "max_planned_capture_budget_bytes": 450000000,
+    "capture_succeeded_with_bounded_streaming": true,
+    "note": "Actual full transfer required 134,916,648 decoded/wire bytes across 12 offset pages; no projected sample estimate is used."
+  },
+  "archive_relationship": "unresolved; DataLumos V1 is historical archive. Archived raw feature data has not been retrieved or compared, so exact continuation/successor/partial substitute is undetermined.",
+  "cadence": "BTS item declares bi-monthly updates with partial deliveries on the 1st and 15th business days; this does not establish this layer snapshot’s release date.",
+  "pagination": "Complete offset paging validated: 22,819 rows in 12 pages; all feature responses and service/layer metadata retained; exact before/after counts and OBJECTID rosters matched.",
+  "capture_policy": "Implemented: retain exact HTTP wire/decoded body and receipt per request, bounded streaming with quarantine for failed attempts, and sealed replay validation.",
+  "acceptance": {
+    "historical_baseline": false,
+    "publisher_authority": true,
+    "source_release_date_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "release": false
+  },
+  "blockers": [
+    "The DataLumos V1 archived feature data was not retrievable, so historical field/row/geometry continuity remains unverified.",
+    "No approved published schema or ID contract exists; candidate remains draft-only.",
+    "The official layer provides no dated release field, so current release date and freshness remain unverified despite the publisher-declared bi-monthly cadence.",
+    "Feature_ID is not unique in the observed release (22,571 distinct non-null values across 22,819 rows); OBJECTID is unique only in the captured snapshot and is not assumed stable across releases.",
+    "Coverage approval and chart-data rights decision remain pending."
+  ],
+  "evidence_as_of": "2026-10-20",
+  "bts_item_id": "3607d485a9854d6fa458bf507058ceae",
+  "bts_item_owner": "USDOT_BTS",
+  "bts_item_type": "PDF",
+  "bts_item_modified_portal_epoch_ms": 1792419532000,
+  "bts_update_claim": "USACE/AGC updates bi-monthly; partial deliveries occur on the 1st and 15th business days; this is an update cadence, not an observed release date for this layer.",
+  "bts_item_urls": {
+    "item": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "official_gdb": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+    "feature_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
+  },
+  "anonymous_metadata_capture": {
+    "manifest": "research-capture.json",
+    "request_count": 6,
+    "feature_data_downloaded": false,
+    "id_roster_bytes": 125854,
+    "id_roster_response_sha256": "92e30b1c3ed354356c42518b4caa824bde088391fbcfefe1299837fb0846b8bf"
+  },
+  "capture_evidence": {
+    "captured_at": "2026-10-20T03:31:16.406831+00:00",
+    "capture_directory": "/tmp/hifld-native-reconstruction/37/captures/v20261020T032917Z-72d36bd549604d7bbaea901e50773543",
+    "complete": true,
+    "request_count": 23,
+    "pages": 12,
+    "full_page_decoded_bytes": 134916648,
+    "full_page_wire_bytes": 134916648,
+    "source_feature_count": 22819,
+    "source_vertex_count": 3159989,
+    "source_record_sha256": "801d71fcddf4132540001657e16c7eebc7af5be7d3b42d7a36a656feea73f4ec",
+    "source_geometry_sha256": "43b9fc2717215ddc0050909ff5e5e66eb872feb977a2a97ed803e6745707d70c",
+    "source_schema_sha256": "3218ffb0204e6f9606e3e2264e0c90b77a3784ba6be44f424f102c182b942eef",
+    "source_capture_sha256": "d3ac6bdfd3a06efcd09629762dbe77ce3412b6c07b31f29b07a5799aba9546c5",
+    "source_id_sha256": "363bf4b58dfbae112710b7e33a52c6fe9f6aca2862b0e548728f65900c213827",
+    "all_22_819_ids_match_before_after": true,
+    "page_response_completeness_checked": true,
+    "exact_http_wire_and_decoded_bodies_retained": true,
+    "capture_manifest": "capture_manifest.json"
+  },
+  "materialization_evidence": {
+    "source_asset_run_id": "c45a291d-71ff-4512-acea-867c63b7ae15",
+    "catalog_and_quality_run_id": "a6ef86e8-193d-46a2-83d4-119482c1957e",
+    "verify_graph_run_id": "fc845b68-732e-415f-9301-8e0f58bd6802",
+    "candidate_version": "v5b02e3a7a13c98637fde3fb05f2c9d1e",
+    "catalog_quality_passed": true,
+    "catalog_feature_count": 22819,
+    "catalog_geometry_type": "LineString",
+    "catalog_invalid_geometry_count": 0,
+    "catalog_null_geometry_count": 0,
+    "candidate_geoparquet_bytes": 43244414,
+    "candidate_geoparquet_sha256": "bca10b43c241e03d3b773cbf4939dd2e914b4a361d0e0c84e318094c1b094f46",
+    "native_attributes_all_identical": true,
+    "native_polyline_coordinates_all_identical": true,
+    "cache_replay_reused_candidate": true,
+    "verify_refusal": "missing_or_ambiguous_exact_object_approval:coastlines-usace-ienc/coastlines-usace-ienc/v5b02e3a7a13c98637fde3fb05f2c9d1e/geoparquet/coastlines-usace-ienc.parquet",
+    "approval_registry": "empty at /tmp/hifld-37-approvals.json, outside staging and published roots",
+    "published_fixture_inventory_count": 1,
+    "published_fixture_inventory_unchanged": true,
+    "published_fixture_sha256": "3a0e9a2f6458401a0d7042306e17ab1ec90be6347c10aada1541081c12238f98",
+    "published_target_root": "/tmp/hifld-37-published",
+    "refresh_schedule": "STOPPED",
+    "source_and_blocking_completeness_check_run_id": "c45a291d-71ff-4512-acea-867c63b7ae15",
+    "source_and_blocking_check_success": true,
+    "prior_candidate_version": "v2424ae7f41fd06d8de16d5fa071f6f0f",
+    "release_refusal_run_id": "fc845b68-732e-415f-9301-8e0f58bd6802",
+    "source_cache_replay_after_fix": "Not separately rerun; final registered source run validated the retained capture and wrote/sealed candidate version.",
+    "prior_candidate_cache_replay_run_id": "feb511bc-8703-4f74-b459-28caf8b992de",
+    "prior_candidate_verify_graph_run_id": "e41c0476-97bf-4c8d-a7e3-3e2de35ad1e4"
+  }
+}
