@@ -8,6 +8,7 @@ from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
+    noaa_maritime_limits_overview,
 )
 from dagster_hifld.assets.census_bureau import census_bureau_aiannh_areas
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
@@ -29,6 +30,7 @@ hifld_ingest_assets = [
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
+    noaa_maritime_limits_overview,
     red_cross_american_red_cross_divisions,
     faa_airspace_boundaries,
     faa_aviation_facilities,
