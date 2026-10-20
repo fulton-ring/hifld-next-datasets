@@ -7,13 +7,13 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 import httpx
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import canonical_construction_bundle, seal_first_construction
+from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.arcgis_filegdb import canonical_json, capture_filegdb_replica, extract_filegdb, sha256, stage_filegdb_archive, verify_staged_filegdb
+from dagster_hifld.sources.arcgis_filegdb import canonical_json, capture_filegdb_replica, extract_filegdb, sha256, stage_filegdb_archive, verify_extracted_filegdb_cache, verify_staged_filegdb
 from dagster_hifld.sources.epa_frs_common import write_immutable
 from dagster_hifld.validation import sha256_file
 DATASET_SLUG="navigable-waterway-network-lines"; FILE_SLUG=DATASET_SLUG
@@ -71,6 +71,62 @@ def _identity():
     files.update({x:sha256_file(root/x) for x in ("pyproject.toml","uv.lock")})
     return {"code_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=root,text=True).strip(),"files":files,"python":os.sys.version.split()[0]}
 
+def _candidate_version(archive_sha,fields,ids,identity):
+    return "v"+hashlib.sha256(canonical_json({"archive":archive_sha,"schema":fields,"ids":ids,"identity":identity})).hexdigest()[:32]
+
+def _construction_key(version):
+    return f"_construction-state/{DATASET_SLUG}/{FILE_SLUG}/{version}.json"
+
+def _verify_cached_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,objects,receipts):
+    bundle=json.loads(load_first_construction(storage,state_key,version,fingerprint));payload=bundle.get("payload")
+    if (not isinstance(payload,dict) or payload.get("processing_identity")!=identity or
+        payload.get("archive_sha256")!=archive_sha or payload.get("objects")!=objects or
+        payload.get("capture_receipts")!=receipts):
+        raise ValueError("cached_filegdb_first_construction_identity_drift")
+    expected_keys={f"{prefix}/{name}" for name in objects}
+    derived={"metadata/quality_manifest.json","metadata/data_dictionary.json","metadata/resolved_provenance.json",
+             "metadata/source/quality_manifest.json","metadata/source/data_dictionary.json"}
+    manifest=objects.get("metadata/source_manifest.json")
+    snapshots={"metadata/source/source_manifest.json","metadata/source/data_dictionary.json",
+               "metadata/source/quality_manifest.json"}
+    if manifest:snapshots.add(f"metadata/source/version_{manifest['sha256']}_source_manifest.json")
+    extracted_expected=verify_extracted_filegdb_cache(storage,prefix,[{"path":name,**descriptor} for name,descriptor in objects.items()])
+    allowed=expected_keys|{f"{prefix}/{name}" for name in derived|snapshots}|set(extracted_expected)
+    actual=set(storage.list_prefix(prefix))
+    if not expected_keys<=actual or actual-allowed:raise ValueError("cached_filegdb_candidate_storage_roster_changed")
+    for name in snapshots & {k[len(prefix)+1:] for k in actual}:
+        key=f"{prefix}/{name}";snap=storage.object_snapshot(key)
+        if name.endswith("source_manifest.json"):
+            descriptor=manifest
+        else:
+            source_name=name.removeprefix("metadata/source/")
+            primary=storage.object_snapshot(f"{prefix}/metadata/{source_name}")
+            descriptor=({"bytes":primary.size,"sha256":storage.sha256_key(f"{prefix}/metadata/{source_name}")}
+                        if primary is not None else None)
+        if snap is None or descriptor!={"bytes":snap.size,"sha256":storage.sha256_key(key)} or storage.object_snapshot(key)!=snap:
+            raise ValueError("cached_filegdb_catalog_source_snapshot_changed:"+name)
+    for name,descriptor in objects.items():
+        key=f"{prefix}/{name}";snap=storage.object_snapshot(key)
+        if snap is None or descriptor!={"bytes":snap.size,"sha256":storage.sha256_key(key)} or storage.object_snapshot(key)!=snap:
+            raise ValueError("cached_filegdb_candidate_object_integrity_failed:"+name)
+    for name,receipt in receipts.items():
+        if name=="filegdb_export":continue
+        body=storage.read_key(f"{prefix}/raw/{name}.body")
+        if receipt.get("bytes")!=len(body) or receipt.get("sha256")!=sha256(body):
+            raise ValueError("cached_filegdb_original_capture_changed:"+name)
+    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+
+def _reuse_first_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,native_objects,_fresh_receipts):
+    """Return a verified first candidate before fresh receipts can rewrite it."""
+    original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload",{})
+    receipts=original.get("capture_receipts")
+    objects=original.get("objects")
+    if (original.get("processing_identity")!=identity or original.get("archive_sha256")!=archive_sha or
+        original.get("native_objects")!=native_objects or not isinstance(receipts,dict) or not isinstance(objects,dict)):
+        raise ValueError("cached_filegdb_first_construction_identity_drift")
+    _verify_cached_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,objects,receipts)
+    return original
+
 def _validate_before(bts,item,service,layer,count,ids):
     if bts.get("id")!=BTS_ITEM_ID or bts.get("owner")!="USDOT_BTS" or (bts.get("url") or "").casefold()!=LAYER_URL.casefold():raise ValueError("BTS_official_item_identity_or_layer_link_drift")
     if item.get("id")!=USACE_SERVICE_ITEM_ID or item.get("owner")!="usace_iwr_cac" or (item.get("url") or "").rstrip("/").casefold()!=SERVICE_URL.casefold():raise ValueError("USACE_actual_service_owner_or_item_drift")
@@ -114,26 +170,22 @@ def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_direct
     fields,ids=_validate_before(docs["bts_item"],docs["usace_item"],docs["service_before"],docs["layer_before"],docs["count_before"],docs["ids_before"])
     after={k:json.loads(v[0]) for k,v in captured.items() if k.endswith("_after")}
     if after["layer_after"]!=docs["layer_before"] or after["count_after"].get("count")!=EXPECTED_COUNT or sorted(after["ids_after"].get("objectIds",[]))!=ids:raise ValueError("USACE_source_changed_during_capture")
-    archive_sha=archive_receipt["sha256"];version="v"+hashlib.sha256(canonical_json({"archive":archive_sha,"schema":fields,"ids":ids})).hexdigest()[:32]
+    archive_sha=archive_receipt["sha256"];identity=_identity();version=_candidate_version(archive_sha,fields,ids,identity)
     import tempfile
     with tempfile.TemporaryDirectory(prefix="hifld-178-",dir="/tmp") as scratch:
         gdb,gdb_root,integrity=extract_filegdb(archive_path,Path(scratch),expected_layer="Waterway_Network",
           expected_property_names=[x for x in EXPECTED_FIELDS if x not in {"OBJECTID","Shape__Length"}]+["SHAPE_Length"],expected_count=EXPECTED_COUNT,expected_ids=ids,expected_zm=True,binary_fields=("SE_ANNO_CAD_DATA",))
         prefix=f"{DATASET_SLUG}/{FILE_SLUG}/{version}";objects=stage_filegdb_archive(storage,prefix,archive_path,gdb,gdb_root)
-    archive_descriptor=next(x for x in objects if x["path"]=="raw/source_filegdb.zip");receipts={k:r for k,(_,r) in sorted(captured.items())}
-    identity=_identity();fingerprint=hashlib.sha256(canonical_json({"version":version,"identity":identity,"objects":objects})).hexdigest()
-    state_key=f"_construction-state/{DATASET_SLUG}/{FILE_SLUG}/{version}/{fingerprint}.json"
-    payload={"processing_identity":identity,"archive_sha256":archive_sha,"objects":objects,"capture_receipts":receipts}
-    bundle=canonical_construction_bundle(version,fingerprint,payload)
-    sealed=seal_first_construction(storage,state_key,version,fingerprint,bundle)
-    replayed=sealed!=bundle
+    archive_descriptor=next(x for x in objects if x["sha256"]==archive_sha and x["bytes"]==archive_receipt["bytes"])
+    fingerprint=hashlib.sha256(canonical_json({"version":version,"identity":identity,"native_objects":objects})).hexdigest()
+    state_key=_construction_key(version)
+    replayed=storage.object_snapshot(state_key) is not None
+    receipts={k:r for k,(_,r) in sorted(captured.items())}
     if replayed:
-        original=json.loads(sealed).get("payload",{})
-        if any(original.get(key)!=payload[key] for key in ("processing_identity","archive_sha256","objects")):
-            raise ValueError("cached_filegdb_first_construction_identity_drift")
-        validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-        receipts=original.get("capture_receipts")
-        if not isinstance(receipts,dict):raise ValueError("cached_filegdb_original_receipts_missing")
+        original=_reuse_first_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,objects,receipts)
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"candidate_ready":True,"reused":True,
+          "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"native_Z_M_and_BLOB_preserved":True,"source_null_geometry_count":integrity["null_geometry_count"],
+          "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     if not replayed:
         for name,(body,_) in captured.items():
             if name!="filegdb_export":write_immutable(storage,f"{prefix}/raw/{name}.body",body)
@@ -157,6 +209,20 @@ def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_direct
       "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"source_hasZ":True,"source_hasM":True,**integrity,"staged_filegdb_integrity":integrity_after,
       "source_release_date":None,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"baseline_accepted":False,"capture_receipts":receipts}
     write_immutable(storage,f"{prefix}/metadata/source_audit.json",canonical_json(audit)+b"\n")
+    candidate_objects={x["path"]:{"bytes":x["bytes"],"sha256":x["sha256"]} for x in objects}
+    for name,(body,_) in captured.items():
+        if name!="filegdb_export":candidate_objects[f"raw/{name}.body"]={"bytes":len(body),"sha256":sha256(body)}
+    for name in ("metadata/source_manifest.json","metadata/source_audit.json"):
+        body=storage.read_key(f"{prefix}/{name}");candidate_objects[name]={"bytes":len(body),"sha256":sha256(body)}
+    payload={"processing_identity":identity,"archive_sha256":archive_sha,"native_objects":objects,
+             "objects":candidate_objects,"capture_receipts":receipts}
+    bundle=canonical_construction_bundle(version,fingerprint,payload)
+    if replayed:
+        _verify_cached_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,candidate_objects,receipts)
+        seal_first_construction(storage,state_key,version,fingerprint,bundle)
+    else:
+        seal_first_construction(storage,state_key,version,fingerprint,bundle)
+        validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"candidate_ready":True,"reused":replayed,
       "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"native_Z_M_and_BLOB_preserved":True,"source_null_geometry_count":integrity["null_geometry_count"],
       "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

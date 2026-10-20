@@ -1,6 +1,9 @@
 import json
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus
 
@@ -9,9 +12,84 @@ from dagster_hifld.assets.usace_waterway_lines import (
     usace_waterway_lines_draft_schedule,
 )
 from dagster_hifld.sources import usace_waterway_lines as source
+from dagster_hifld.sources.arcgis_filegdb import stage_filegdb_archive, verify_extracted_filegdb_cache
+from dagster_hifld.construction_state import canonical_construction_bundle, seal_first_construction
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import write_immutable
 
 
 class UsaceWaterwayLinesContractTests(unittest.TestCase):
+    def test_filegdb_archive_descriptor_uses_canonical_layout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); archive=root/'source.zip'; archive.write_bytes(b'zip bytes')
+            gdb=root/'gdb'; gdb.mkdir(); (gdb/'a00000001.gdbtable').write_bytes(b'part')
+            storage=StagingStorageResource(local_dir=str(root/'staging'))
+            objects=stage_filegdb_archive(storage,'dataset/file/version',archive,gdb,'source.gdb')
+            self.assertEqual(objects[0]['path'],'file_geodatabase/source_filegdb.zip')
+            archive_sha=objects[0]['sha256']
+            descriptor=next(x for x in objects if x['sha256']==archive_sha and x['bytes']==len(b'zip bytes'))
+            self.assertEqual(descriptor['path'],'file_geodatabase/source_filegdb.zip')
+
+    def test_candidate_cache_key_is_stable_and_processing_identity_is_versioned(self):
+        base=source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'one'})
+        self.assertEqual(base,source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'one'}))
+        self.assertNotEqual(base,source._candidate_version('a'*64,['OBJECTID'],[1],{'code':'two'}))
+        self.assertEqual(source._construction_key(base),f'_construction-state/{source.DATASET_SLUG}/{source.FILE_SLUG}/{base}.json')
+
+    def test_catalog_extracted_filegdb_cache_requires_exact_native_mirror(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);archive=root/'source.zip';archive.write_bytes(b'zip')
+            gdb=root/'gdb';gdb.mkdir();(gdb/'table.gdbtable').write_bytes(b'native table')
+            storage=StagingStorageResource(local_dir=str(root/'staging'))
+            objects=stage_filegdb_archive(storage,'dataset/file/version',archive,gdb,'source.gdb')
+            canonical=Path(storage.local_dir)/'dataset/file/version/file_geodatabase/source.gdb'
+            extracted=Path(storage.local_dir)/'dataset/file/version/file_geodatabase/.extracted/source_filegdb/source.gdb'
+            shutil.copytree(canonical,extracted)
+            mirror=verify_extracted_filegdb_cache(storage,'dataset/file/version',objects)
+            self.assertEqual(len(mirror),1)
+            (extracted/'unexpected.bin').write_bytes(b'extra')
+            with self.assertRaisesRegex(ValueError,'extracted_cache_roster_changed'):
+                verify_extracted_filegdb_cache(storage,'dataset/file/version',objects)
+
+    def test_fresh_same_bytes_reuses_first_manifest_receipts_and_code_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); archive=root/'source.zip'; archive.write_bytes(b'unchanged native bytes')
+            gdb=root/'source.gdb'; gdb.mkdir(); (gdb/'table.gdbtable').write_bytes(b'native table')
+            storage=StagingStorageResource(local_dir=str(root/'staging'))
+            version='v'+('a'*32); prefix=f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{version}"
+            native=stage_filegdb_archive(storage,prefix,archive,gdb,'source.gdb')
+            archive_sha=source.sha256(archive.read_bytes())
+            first_receipt={"url":"https://example.test/layer","bytes":4,"sha256":source.sha256(b"json"),"observed_at":"2026-10-19T00:00:00Z"}
+            receipt_name="layer_before"
+            write_immutable(storage,f"{prefix}/raw/{receipt_name}.body",b"json")
+            manifest={"inputs":[{"retrieved_at":first_receipt["observed_at"],"sha256":first_receipt["sha256"]}],"code_commit":"first-code"}
+            audit={"capture_receipts":{receipt_name:first_receipt}}
+            manifest_bytes=source.canonical_json(manifest)+b"\n"; audit_bytes=source.canonical_json(audit)+b"\n"
+            write_immutable(storage,f"{prefix}/metadata/source_manifest.json",manifest_bytes)
+            write_immutable(storage,f"{prefix}/metadata/source_audit.json",audit_bytes)
+            candidate_objects={x["path"]:{"bytes":x["bytes"],"sha256":x["sha256"]} for x in native}
+            candidate_objects[f"raw/{receipt_name}.body"]={"bytes":4,"sha256":source.sha256(b"json")}
+            candidate_objects["metadata/source_manifest.json"]={"bytes":len(manifest_bytes),"sha256":source.sha256(manifest_bytes)}
+            candidate_objects["metadata/source_audit.json"]={"bytes":len(audit_bytes),"sha256":source.sha256(audit_bytes)}
+            identity={"code_commit":"first-code","files":{},"python":"3.11"}
+            fingerprint=source.sha256(source.canonical_json({"version":version,"identity":identity,"native_objects":native}))
+            payload={"processing_identity":identity,"archive_sha256":archive_sha,"native_objects":native,
+                     "objects":candidate_objects,"capture_receipts":{receipt_name:first_receipt}}
+            state_key=source._construction_key(version)
+            bundle=canonical_construction_bundle(version,fingerprint,payload)
+            seal_first_construction(storage,state_key,version,fingerprint,bundle)
+            fresh_receipt={**first_receipt,"observed_at":"2026-10-20T00:00:00Z"}
+            before={key:storage.read_key(f"{prefix}/{key}") for key in ("metadata/source_manifest.json","metadata/source_audit.json")}
+            with patch.object(source,"validate_construction_code_identity"):
+                reused=source._reuse_first_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,native,{receipt_name:fresh_receipt})
+            after={key:storage.read_key(f"{prefix}/{key}") for key in before}
+            self.assertEqual(reused["capture_receipts"],{receipt_name:first_receipt})
+            self.assertEqual(reused["processing_identity"],identity)
+            self.assertEqual(before,after)
+            self.assertEqual(json.loads(after["metadata/source_manifest.json"]),manifest)
+            self.assertEqual(json.loads(after["metadata/source_manifest.json"])["code_commit"],"first-code")
+            self.assertEqual(json.loads(after["metadata/source_audit.json"]),audit)
+
     def _metadata(self):
         layer_fields=[]
         for name in source.EXPECTED_FIELDS:

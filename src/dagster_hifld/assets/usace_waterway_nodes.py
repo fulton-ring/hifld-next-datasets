@@ -17,6 +17,9 @@ from dagster_hifld.sources.usace_waterway_nodes import (
 
 class UsaceWaterwayNodesConfig(Config):
     capture_directory: str = ""
+    offline_replay: bool = False
+    retained_input_directory: str = ""
+    expected_cache_version: str = ""
 
 
 @asset(
@@ -33,7 +36,11 @@ def usace_waterway_network_nodes(
     context, config: UsaceWaterwayNodesConfig, staging_storage: StagingStorageResource,
 ) -> dict[str, object]:
     candidate = capture_usace_waterway_nodes(
-        staging_storage, capture_directory=config.capture_directory or None,
+        staging_storage,
+        capture_directory=config.capture_directory or None,
+        offline_replay=config.offline_replay,
+        retained_input_directory=config.retained_input_directory or None,
+        expected_cache_version=config.expected_cache_version or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,

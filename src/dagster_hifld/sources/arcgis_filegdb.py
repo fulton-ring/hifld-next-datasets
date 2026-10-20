@@ -1,7 +1,7 @@
 """Bounded ArcGIS Extract/FileGDB acquisition and immutable replay helpers."""
 from __future__ import annotations
 
-import hashlib, json, shutil, subprocess, zipfile
+import hashlib, json, os, shutil, stat, subprocess, zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
@@ -124,7 +124,7 @@ def extract_filegdb(archive_path: Path, work_dir: Path, *, expected_layer: str,
                          "binary_fields":sorted(binary),"gdal_layer_summary":info.split("\n",1)[-1].strip()}
 
 def stage_filegdb_archive(storage: StagingStorageResource,prefix:str,archive_path:Path,gdb_path:Path,gdb_root:str,
-                          *,archive_rel:str="raw/source_filegdb.zip") -> list[dict[str,Any]]:
+                          *,archive_rel:str="file_geodatabase/source_filegdb.zip") -> list[dict[str,Any]]:
     """Store original ZIP and all extracted GDB parts immutably."""
     if not isinstance(storage,StagingStorageResource): raise ValueError("staging_storage_required")
     rel=PurePosixPath(archive_rel)
@@ -140,14 +140,15 @@ def stage_filegdb_archive(storage: StagingStorageResource,prefix:str,archive_pat
 def verify_staged_filegdb(storage:StagingStorageResource,prefix:str,objects:list[dict[str,Any]]) -> dict[str,Any]:
     """Verify exact immutable object roster and bytes after catalog writes."""
     expected={storage._ensure_prefixed(f"{prefix}/{x['path']}"):x for x in objects}
-    archive_key=storage._ensure_prefixed(f"{prefix}/raw/source_filegdb.zip")
+    filegdb_prefix=storage._ensure_prefixed(f"{prefix}/file_geodatabase")
+    archives=[key for key in expected if key.startswith(filegdb_prefix+"/") and key.lower().endswith(".zip")]
     gdb_roots={key.split("/file_geodatabase/",1)[1].split("/",1)[0]
-               for key in expected if "/file_geodatabase/" in key}
-    if len(gdb_roots)!=1 or archive_key not in expected:
+               for key in expected if key.startswith(filegdb_prefix+"/") and not key.lower().endswith(".zip")}
+    if len(gdb_roots)!=1 or len(archives)!=1:
         raise ValueError("cached_filegdb_expected_inventory_invalid")
+    archive_key=archives[0]
     gdb_prefix=storage._ensure_prefixed(f"{prefix}/file_geodatabase/{next(iter(gdb_roots))}")
     candidates=set(storage.list_prefix(f"{prefix}/file_geodatabase"))
-    candidates.update(key for key in storage.list_prefix(f"{prefix}/raw") if key==archive_key)
     actual={key for key in candidates if key==archive_key or key.startswith(gdb_prefix+"/")}
     wanted={key for key in expected if key==archive_key or key.startswith(gdb_prefix+"/")}
     if actual!=wanted: raise ValueError("cached_filegdb_candidate_roster_drift")
@@ -156,3 +157,52 @@ def verify_staged_filegdb(storage:StagingStorageResource,prefix:str,objects:list
         if snap is None or snap.size!=item["bytes"] or storage.sha256_key(key)!=item["sha256"] or storage.object_snapshot(key)!=snap:
             raise ValueError("cached_filegdb_candidate_object_drift")
     return {"object_count":len(expected),"bytes":sum(x["bytes"] for x in objects),"sha256":sha256(canonical_json(objects))}
+
+def verify_extracted_filegdb_cache(storage:StagingStorageResource,prefix:str,objects:list[dict[str,Any]]) -> dict[str,dict[str,Any]]:
+    """Accept only an exact byte-for-byte local catalog extraction of the staged GDB."""
+    if not isinstance(storage,StagingStorageResource) or not storage.use_local or storage.bucket or not storage.local_dir:
+        raise ValueError("local_filegdb_extraction_cache_requires_local_staging")
+    gdb_objects={x["path"]:x for x in objects if x["path"].startswith("file_geodatabase/") and not x["path"].lower().endswith(".zip")}
+    roots={name.split("/",2)[1] for name in gdb_objects}
+    if len(roots)!=1:raise ValueError("cached_filegdb_expected_inventory_invalid")
+    gdb_root=next(iter(roots));logical_prefix=storage._ensure_prefixed(prefix).rstrip("/")
+    relative=f"{logical_prefix}/file_geodatabase/.extracted/source_filegdb/{gdb_root}"
+    root=Path(storage.local_dir).absolute()
+    target=root/relative
+    for part in (root,*root.parents):
+        if part.is_symlink():raise ValueError("cached_filegdb_extracted_cache_symlink")
+    current=root
+    for part in Path(relative).parts:
+        current=current/part
+        if current.is_symlink():raise ValueError("cached_filegdb_extracted_cache_symlink")
+    if not target.exists():return {}
+    expected={name.split(f"file_geodatabase/{gdb_root}/",1)[1]:{"bytes":descriptor["bytes"],"sha256":descriptor["sha256"]}
+              for name,descriptor in gdb_objects.items()}
+    actual=set()
+    for directory,dirs,files in os.walk(target,followlinks=False):
+        base=Path(directory)
+        for name in dirs:
+            mode=(base/name).lstat().st_mode
+            if not stat.S_ISDIR(mode):raise ValueError("cached_filegdb_extracted_cache_nonregular")
+        for name in files:
+            path=base/name;mode=path.lstat().st_mode
+            if not stat.S_ISREG(mode):raise ValueError("cached_filegdb_extracted_cache_nonregular")
+            actual.add(path.relative_to(target).as_posix())
+    if actual!=set(expected):raise ValueError("cached_filegdb_extracted_cache_roster_changed")
+    result={}
+    for name,descriptor in expected.items():
+        path=target/name
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+        try:
+            before=os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode):raise ValueError("cached_filegdb_extracted_cache_nonregular")
+            digest=hashlib.sha256();size=0
+            with os.fdopen(fd,"rb",closefd=False) as stream:
+                while block:=stream.read(1024*1024):digest.update(block);size+=len(block)
+            after=os.fstat(fd)
+            if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):
+                raise ValueError("cached_filegdb_extracted_cache_changed_during_read")
+            if descriptor!={"bytes":size,"sha256":digest.hexdigest()}:raise ValueError("cached_filegdb_extracted_cache_integrity_failed:"+name)
+        finally:os.close(fd)
+        result[f"{logical_prefix}/file_geodatabase/.extracted/source_filegdb/{gdb_root}/{name}"]=descriptor
+    return result
