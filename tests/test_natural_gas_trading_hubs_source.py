@@ -152,6 +152,42 @@ class NaturalGasTradingHubsCandidateTests(unittest.TestCase):
                 self.assertEqual(reused_receipt["observed_at"], _receipt["observed_at"])
                 self.assertTrue((fresh_root / "eia_source_zip.receipt.json").is_file())
 
+                class PartialGetClient:
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *_args):
+                        return False
+
+                    @contextmanager
+                    def stream(self, method, _url, **_kwargs):
+                        if method == "HEAD":
+                            response = httpx.Response(200, headers={
+                                "last-modified": modified, "content-length": str(len(body)),
+                            }, request=httpx.Request(method, request_url))
+                        else:
+                            partial = b"partial GET bytes"
+                            response = httpx.Response(503, headers={
+                                "content-length": str(len(partial)), "content-encoding": "identity",
+                            }, stream=httpx.ByteStream(partial), request=httpx.Request(method, request_url))
+                        yield response
+
+                partial_root = Path(temp) / "partial-get"
+                with patch.object(hubs.httpx, "Client", return_value=PartialGetClient()):
+                    with self.assertRaisesRegex(ValueError, "incomplete_source_capture"):
+                        hubs._acquire_capture(partial_root, allow_live_retry=True)
+                partial_manifest = hubs._read_json_receipt(partial_root / "capture_manifest.json")
+                self.assertIn("eia_source_zip.body", partial_manifest["retained_files"])
+                self.assertIn("eia_source_zip.wire", partial_manifest["retained_files"])
+                self.assertIn("eia_source_zip.receipt.json", partial_manifest["retained_files"])
+                self.assertTrue(hubs._incomplete_capture_is_retryable(partial_root, partial_manifest))
+                retained_body = (partial_root / "eia_source_zip.body").read_bytes()
+                (partial_root / "eia_source_zip.body").write_bytes(retained_body + b"changed")
+                self.assertFalse(hubs._incomplete_capture_is_retryable(partial_root, partial_manifest))
+                (partial_root / "eia_source_zip.body").write_bytes(retained_body)
+                (partial_root / "unexpected.extra").write_bytes(b"extra")
+                self.assertFalse(hubs._incomplete_capture_is_retryable(partial_root, partial_manifest))
+
 
 if __name__ == "__main__":
     unittest.main()

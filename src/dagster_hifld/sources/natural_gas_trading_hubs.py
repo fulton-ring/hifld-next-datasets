@@ -177,6 +177,43 @@ def _load_retained_capture(root: Path) -> tuple[bytes, dict[str, object], dict[s
     return body, receipt, head
 
 
+def _capture_file_roster(root: Path) -> dict[str, dict[str, object]]:
+    """Pin each regular retained artifact in an incomplete-attempt marker."""
+    roster: dict[str, dict[str, object]] = {}
+    for path in sorted(root.iterdir()):
+        if path.name == "capture_manifest.json" or path.is_symlink() or not path.is_file():
+            continue
+        body = path.read_bytes()
+        roster[path.name] = {"bytes": len(body), "sha256": _sha(body)}
+    return roster
+
+
+def _retained_file_roster_matches(root: Path, expected: object) -> bool:
+    if not isinstance(expected, dict):
+        return False
+    try:
+        actual_names = set()
+        actual: dict[str, dict[str, object]] = {}
+        for path in root.iterdir():
+            if path.name == "capture_manifest.json":
+                continue
+            if path.is_symlink() or not path.is_file():
+                return False
+            body = path.read_bytes()
+            actual_names.add(path.name)
+            actual[path.name] = {"bytes": len(body), "sha256": _sha(body)}
+        if actual_names != set(expected):
+            return False
+        for name, descriptor in expected.items():
+            if (not isinstance(name, str) or not isinstance(descriptor, dict)
+                    or type(descriptor.get("bytes")) is not int
+                    or not isinstance(descriptor.get("sha256"), str)):
+                return False
+        return actual == expected
+    except OSError:
+        return False
+
+
 def _incomplete_capture_is_retryable(root: Path, manifest: dict[str, object]) -> bool:
     """Recognize only a canonical failed attempt, never a complete/tampered seal."""
     if (manifest.get("complete") is not False
@@ -188,6 +225,8 @@ def _incomplete_capture_is_retryable(root: Path, manifest: dict[str, object]) ->
         return False
     try:
         _validate_observed_at(manifest.get("captured_at"))
+        if not _retained_file_roster_matches(root, manifest.get("retained_files")):
+            return False
         head_path = root / "source_head.receipt.json"
         recorded_head_hash = manifest.get("source_head_receipt_sha256")
         return recorded_head_hash is None or (
@@ -310,6 +349,7 @@ def _acquire_capture(root: Path, *, allow_live_retry: bool = False) -> tuple[byt
                 "error_code": type(exc).__name__,
                 "source_head_receipt_sha256": (_sha((root / "source_head.receipt.json").read_bytes())
                                                 if (root / "source_head.receipt.json").is_file() else None),
+                "retained_files": _capture_file_roster(root),
                 "receipts": failed_receipts,
             }) + b"\n")
         raise
