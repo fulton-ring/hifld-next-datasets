@@ -1,0 +1,80 @@
+{
+  "inventory_id": "peak-shaving-facilities",
+  "inventory_title": "Peak Shaving Facilities",
+  "inventory_agency": "Department of Energy",
+  "inventory_publisher": "Oak Ridge National Laboratory",
+  "inventory_archive": {
+    "url": "https://www.datalumos.org/datalumos/project/240568/version/V1/view",
+    "inventory_date_issued": "2022-10-06",
+    "inventory_modified": "2024-12-12",
+    "observed_utc": "2026-10-20",
+    "http_status": 403,
+    "response_bytes": 6157,
+    "classification": "historical archive endpoint returned a web challenge; its archived bytes and lineage were not inspected"
+  },
+  "crosswalk": {
+    "url": "https://doi.org/10.3886/E241367V1",
+    "observed_utc": "2026-10-20",
+    "http_status": 403,
+    "response_bytes": 6157,
+    "classification": "web challenge; exact DHS crosswalk relationship remains unresolved"
+  },
+  "official_source_status": {
+    "producer": "Oak Ridge National Laboratory (per inventory)",
+    "publisher": "Department of Energy (per inventory)",
+    "maintained_producer_feed": "not found in bounded source checks",
+    "release_date": null,
+    "lineage": "unresolved",
+    "conclusion": "No evidence currently ties an accessible maintained DOE/ORNL source to this exact HIFLD inventory item. This scoped finding does not establish that no such source exists."
+  },
+  "candidates": [
+    {
+      "classification": "historical HIFLD-labelled ArcGIS copy; not a maintained producer feed",
+      "item_id": "9e28c38204604403a09d12247852351e",
+      "title": "Peak Shaving Facilities (HIFLD)",
+      "owner": "HSEMA_PPD",
+      "owner_type": "non-producer ArcGIS account",
+      "item_created_utc": "2023-02-08T02:25:08Z",
+      "item_modified_utc": "2023-02-08T02:25:59Z",
+      "item_url": "https://www.arcgis.com/home/item.html?id=9e28c38204604403a09d12247852351e",
+      "service_url": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Peak_Shaving_Facilities_gdb/FeatureServer/0",
+      "item_snippet": "This feature class/shapefile contains Peak Shaving Plants for the Homeland Infrastructure Foundation-Level (HIFLD) Database.",
+      "access": "public",
+      "observed_service_response": {"http_status": 200,"response_bytes": 72,"service_error": "HTTP 400 Invalid URL"},
+      "use": "historical reference only; do not refresh from this URL or assume its features are current"
+    },
+    {
+      "classification": "third-party ArcGIS candidate; fallback only; authority and lineage unresolved",
+      "item_id": "4498e33c842146c0bbdd6ba58a09d98a",
+      "title": "US Peak Shaving Facilities",
+      "owner": "maps_ft",
+      "item_created_utc": "2014-01-13T20:29:30Z",
+      "item_modified_utc": "2025-06-20T20:08:29Z",
+      "item_url": "https://www.arcgis.com/home/item.html?id=4498e33c842146c0bbdd6ba58a09d98a",
+      "service_url": "https://services.arcgis.com/jDGuO8tYggdCCnUJ/arcgis/rest/services/North_American_Peak_Shaving_Facilities/FeatureServer",
+      "item_snippet": "This is an inventory of the 60 Peak Shaver and 41 Satellite US Peak Shaving facilities.",
+      "release_date": null,
+      "delegation_or_upstream_lineage": "not established",
+      "use": "keep separate as a fallback candidate; do not treat an ArcGIS modified timestamp as source freshness or official authority"
+    }
+  ],
+  "schema_contract": {
+    "status": "unresolved; no complete source or accepted baseline",
+    "source_fields": null,
+    "source_ids": null,
+    "geometry": null,
+    "policy": "Do not generate substitute IDs, silently map fields, or publish a third-party copy without an approved compatibility plan."
+  },
+  "evidence_hashes": {
+    "hifld_item_metadata_sha256": "babf0c67dd7f45ce06896f2fee45476996929a044c62f900bdd873f52aa3f786",
+    "hifld_invalid_service_response_sha256": "a31ec94cbca0664060fef65c5c6de06caf02ae57d608b0197d13ee404fc7cf5b",
+    "third_party_item_metadata_sha256": "97b0aa6819ce46426d6db6701745b73af62a74a4655a56efa3fe62e6c612265b",
+    "datalumos_challenge_sha256": "176709121a7c73fca989050dedf0c402c090682adf03aac685490171e21070c5",
+    "crosswalk_challenge_sha256": "8c7fe1555b848e1dfbaf0ee57c97037bcfe64cc82120c6a93ef4815988b400f8"
+  },
+  "decisions_required": [
+    "Confirm an accessible DOE/ORNL producer source, source owner, release date, and lineage to this exact inventory entry; or explicitly record no maintained feed after the publisher's review.",
+    "If a third-party candidate is proposed, provide explicit delegation or upstream source evidence and approve its relationship to the historical HIFLD item.",
+    "Approve the source and published ID, schema, geometry, rights, refresh, and compatibility contract before implementation or promotion."
+  ]
+}
