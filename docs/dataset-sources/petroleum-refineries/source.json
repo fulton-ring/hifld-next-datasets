@@ -68,17 +68,18 @@
     }
   ],
   "proposed_contract": {
-    "status": "not approved; implementation blocked pending maintained geospatial source and lineage decision",
-    "rule": "Preserve all raw source fields, identifiers, physical types, values, geometry and coverage. Do not infer substitute IDs, enrich or join current EIA capacity rows to historical locations, or silently drop schema drift."
+    "status": "historical candidate adapter implemented; publication/currentness and all contracts remain unapproved",
+    "rule": "Preserve the exact raw EIA ZIP, every source field, OBJECTID, site_id, physical type, value, geometry and coverage. Do not infer substitute IDs, enrich or join current EIA capacity rows to historical locations, or silently drop schema drift. Changed upstream bytes or release metadata require a new review before capture."
   },
   "decision": {
     "maintained_public_geospatial_source_verified": false,
+    "historical_adapter_available": true,
     "archive_refresh_pipeline_appropriate": false,
     "baseline_accepted": false,
     "schema_contract_accepted": false,
     "id_contract_accepted": false,
     "coverage_accepted": false,
     "release_accepted": false,
-    "status": "blocked_source_research"
+    "status": "historical_draft_only"
   }
 }
