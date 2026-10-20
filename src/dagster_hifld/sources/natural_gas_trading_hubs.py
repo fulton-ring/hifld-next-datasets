@@ -177,12 +177,84 @@ def _load_retained_capture(root: Path) -> tuple[bytes, dict[str, object], dict[s
     return body, receipt, head
 
 
-def _acquire_capture(root: Path) -> tuple[bytes, dict[str, object], dict[str, object]]:
+def _capture_attempt_directory(root: Path, *, allow_live_retry: bool) -> Path:
+    """Choose a retained attempt without replacing failed or valid evidence."""
+    if not allow_live_retry:
+        return root
+    if root.exists():
+        if root.is_symlink() or not root.is_dir():
+            return root
+        try:
+            base_manifest = _read_json_receipt(root / "capture_manifest.json")
+        except (OSError, ValueError, NotADirectoryError):
+            return root
+        if base_manifest.get("complete") is not False:
+            return root
+        if (not isinstance(base_manifest.get("error_code"), str)
+                or not base_manifest.get("error_code")
+                or any(field in base_manifest for field in (
+                    "source_feature_count", "source_record_sha256", "source_geometry_sha256",
+                ))):
+            return root
+        try:
+            _validate_observed_at(base_manifest.get("captured_at"))
+            head_path = root / "source_head.receipt.json"
+            recorded_head_hash = base_manifest.get("source_head_receipt_sha256")
+            if recorded_head_hash is not None and (
+                not head_path.is_file() or _sha(head_path.read_bytes()) != recorded_head_hash
+            ):
+                return root
+        except (OSError, ValueError):
+            return root
+    attempts = sorted(root.parent.glob(f"{root.name}.attempt-*"))
+    candidates = ([root] if root.exists() else []) + attempts
+    if not candidates:
+        return root
+
+    latest = candidates[-1]
+    if latest.is_symlink() or not latest.is_dir():
+        return latest
+    # Only our canonical, explicit incomplete marker permits a new live attempt.
+    # Any malformed/tampered bundle is returned for strict replay to reject.
+    try:
+        manifest_path = latest / "capture_manifest.json"
+        manifest = _read_json_receipt(manifest_path)
+    except (OSError, ValueError, NotADirectoryError):
+        return latest
+    if (manifest.get("complete") is not False
+            or not isinstance(manifest.get("error_code"), str)
+            or not manifest.get("error_code")
+            or any(field in manifest for field in (
+                "source_feature_count", "source_record_sha256", "source_geometry_sha256",
+            ))):
+        return latest
+    try:
+        _validate_observed_at(manifest.get("captured_at"))
+        head_path = latest / "source_head.receipt.json"
+        recorded_head_hash = manifest.get("source_head_receipt_sha256")
+        if recorded_head_hash is not None and (
+            not head_path.is_file() or _sha(head_path.read_bytes()) != recorded_head_hash
+        ):
+            return latest
+    except (OSError, ValueError):
+        return latest
+    next_number = 1
+    for attempt in attempts:
+        suffix = attempt.name.removeprefix(f"{root.name}.attempt-")
+        if suffix.isdigit():
+            next_number = max(next_number, int(suffix) + 1)
+    return root.parent / f"{root.name}.attempt-{next_number:04d}"
+
+
+def _acquire_capture(root: Path, *, allow_live_retry: bool = False) -> tuple[bytes, dict[str, object], dict[str, object], Path]:
+    root = _capture_attempt_directory(root, allow_live_retry=allow_live_retry)
     root.parent.mkdir(parents=True, exist_ok=True)
     if root.exists():
-        return _load_retained_capture(root)
+        body, receipt, head = _load_retained_capture(root)
+        return body, receipt, head, root
     root.mkdir(parents=False, exist_ok=False)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    head_receipt: dict[str, object] | None = None
     try:
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent": "hifld-next-datasets/natural-gas-trading-hubs-draft"}) as client:
@@ -191,11 +263,11 @@ def _acquire_capture(root: Path) -> tuple[bytes, dict[str, object], dict[str, ob
                                 "last_modified": response.headers.get("last-modified"),
                                 "content_length": response.headers.get("content-length"),
                                 "observed_at": datetime.now(timezone.utc).isoformat()}
+            (root / "source_head.receipt.json").write_bytes(_canonical(head_receipt) + b"\n")
             if (head_receipt["status"] != 200 or head_receipt["url"] != SOURCE_URL
                     or head_receipt["last_modified"] != SOURCE_HTTP_LAST_MODIFIED
                     or head_receipt["content_length"] != str(EXPECTED_ZIP_BYTES)):
                 raise ValueError("official_source_http_metadata_drift")
-            (root / "source_head.receipt.json").write_bytes(_canonical(head_receipt) + b"\n")
             body, receipt = _capture_get(client, SOURCE_URL, root, "eia_source_zip")
             captures["eia_source_zip"] = (body, receipt)
         records, audit = _read_official_archive(body)
@@ -206,13 +278,23 @@ def _acquire_capture(root: Path) -> tuple[bytes, dict[str, object], dict[str, ob
             "source_head_receipt_sha256": _sha((root / "source_head.receipt.json").read_bytes()),
             "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         }) + b"\n")
-        return _load_retained_capture(root)
+        body, receipt, head = _load_retained_capture(root)
+        return body, receipt, head, root
     except Exception as exc:
         if not (root / "capture_manifest.json").exists():
+            failed_receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+            failed_get_receipt = root / "eia_source_zip.receipt.json"
+            if failed_get_receipt.is_file():
+                try:
+                    failed_receipts["eia_source_zip"] = _read_json_receipt(failed_get_receipt)
+                except (OSError, ValueError):
+                    pass
             (root / "capture_manifest.json").write_bytes(_canonical({
                 "captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                 "error_code": type(exc).__name__,
-                "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+                "source_head_receipt_sha256": (_sha((root / "source_head.receipt.json").read_bytes())
+                                                if (root / "source_head.receipt.json").is_file() else None),
+                "receipts": failed_receipts,
             }) + b"\n")
         raise
 
@@ -332,7 +414,9 @@ def capture_natural_gas_trading_hubs(storage: StagingStorageResource, *, version
     ).absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
-    body, receipt, head_receipt = _acquire_capture(capture_root)
+    body, receipt, head_receipt, capture_root = _acquire_capture(
+        capture_root, allow_live_retry=capture_directory is None
+    )
     captures = {"eia_source_zip": (body, receipt)}
     records, audit = _read_official_archive(body)
     capture_manifest = _read_json_receipt(capture_root / "capture_manifest.json")
