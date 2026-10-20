@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "inventory_id": "petroleum-product-terminals",
+  "status": "blocked_source_lineage",
+  "research_date": "2026-10-20",
+  "inventory": {
+    "title": "Petroleum Product Terminals",
+    "agency": "Department of Energy",
+    "office": "Energy Information Administration",
+    "publisher": null,
+    "archive_url": "https://www.datalumos.org/datalumos/project/240512/version/V1/view",
+    "inventory_date_issued": "2024-06-25",
+    "inventory_date_modified": "2025-06-05"
+  },
+  "lineage": {
+    "attribute_source": "EIA Form EIA-815, Monthly Bulk Terminal and Blender Report",
+    "location_source": "Approximate locations researched from public federal, company, and imagery sources per archived dataset description",
+    "maintained_geospatial_producer_feed_verified": false,
+    "dhs_crosswalk_match_verified": false,
+    "source_release_date": null,
+    "freshness_verified": false
+  },
+  "candidates": [
+    {
+      "kind": "historical_archive",
+      "url": "https://www.datalumos.org/datalumos/project/240512/version/V1/view",
+      "observed_formats": ["FileGDB", "GeoJSON", "GeoPackage", "Shapefile"],
+      "observed_derivative_timestamp": "2025-11-21",
+      "authoritative_current_feed": false
+    },
+    {
+      "kind": "third_party_arcgis_copy",
+      "url": "https://services8.arcgis.com/XLNdV9JX2tH1BT1x/arcgis/rest/services/PetroleumProduct_Terminals_US_EIA/FeatureServer/14",
+      "item_owner": "AirAllianceHouston",
+      "data_last_edit": "2022-09-07",
+      "feature_count": 1474,
+      "spatial_reference": "EPSG:4269",
+      "authoritative_current_feed": false
+    },
+    {
+      "kind": "historical_eia_map",
+      "url": "https://www.eia.gov/todayinenergy/detail.php?id=13611",
+      "publication_date": "2013-10-31",
+      "described_population": 1400,
+      "authoritative_current_feed": false
+    },
+    {
+      "kind": "eia_atlas_lead_unretrievable",
+      "url": "https://atlas.eia.gov/datasets/c3c2e337bee54706a3564b8889b8848d_36/explore",
+      "source_date_cited_by_third_party": "2024",
+      "observed_http_status": 404,
+      "arcgis_item_api_status": 403,
+      "authoritative_current_feed": false
+    },
+    {
+      "kind": "historical_argonne_metadata",
+      "url": "https://gem.anl.gov/tool/layers/terminal_pol/versions/1/metadata.pdf",
+      "metadata_last_update": "2020-03-25",
+      "described_population": 2341,
+      "authoritative_current_feed": false
+    }
+  ],
+  "proposed_contract": {
+    "approved": false,
+    "source_field_roster_verified": false,
+    "published_field_roster_verified": false,
+    "ids_verified": false,
+    "physical_types_verified": false,
+    "geometry_and_crs_verified": false,
+    "coverage_verified": false,
+    "rights_verified": false,
+    "mapping": null
+  },
+  "release_gates": {
+    "source_accepted": false,
+    "baseline_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "release_accepted": false
+  },
+  "decision_needed": "Identify a maintained producer/delegated geospatial publication for this exact product, or approve a specifically scoped historical reconstruction."
+}
