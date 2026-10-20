@@ -32,35 +32,85 @@
     "max_record_count": 1000,
     "supports_pagination": true,
     "feature_count_observed_2026-10-20": 1175,
-    "extent_epsg3857": {"xmin": -20037507.067161843, "ymin": -9921601.01373757, "xmax": 20037507.067161843, "ymax": 22830719.838254996},
+    "extent_epsg3857": {
+      "xmin": -20037507.067161843,
+      "ymin": -9921601.01373757,
+      "xmax": 20037507.067161843,
+      "ymax": 22830719.838254996
+    },
     "native_id": "OBJECTID",
     "native_id_count": 1175,
     "native_id_min": 1,
     "native_id_max": 1181,
     "fields": [
-      {"name": "OBJECTID", "type": "esriFieldTypeOID"},
-      {"name": "Shape", "type": "esriFieldTypeGeometry"},
-      {"name": "NAME", "type": "esriFieldTypeString", "length": 200},
-      {"name": "LABEL", "type": "esriFieldTypeString", "length": 50},
-      {"name": "Shape_Length", "type": "esriFieldTypeDouble"}
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "name": "Shape",
+        "type": "esriFieldTypeGeometry"
+      },
+      {
+        "name": "NAME",
+        "type": "esriFieldTypeString",
+        "length": 200
+      },
+      {
+        "name": "LABEL",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "Shape_Length",
+        "type": "esriFieldTypeDouble"
+      }
     ],
-    "observed_null_counts_2026-10-20": {"NAME": 3, "LABEL": 0, "Shape_Length": 0}
+    "observed_null_counts_2026-10-20": {
+      "NAME": 3,
+      "LABEL": 0,
+      "Shape_Length": 0
+    },
+    "capture_native_2026-10-20": {
+      "method": "20 GET captures: service/layer metadata, before/after counts and ID rosters, and twelve explicit-ID geometry pages of at most 100 each; f=json native response with no outSR",
+      "response_features": 1175,
+      "native_id_sha256": "16439bcc2d7b9a12e48447a351cd4d769a8e1ad0b4776ae59c2c4963b9b6b8e0",
+      "record_sha256": "600deffe635063109d79fed48fc8ca8be75dfe90044e6cc44c85a9653c11a34d",
+      "geometry_sha256": "e3f46dbac468a045fe0f3eae7be93689c821b9b26132d80042f945577993bf2b",
+      "schema_sha256": "d4e8f1204397fab90194ad25e831c4e6065fa01eee0053caf7ddd6509b751df2",
+      "receipt_roster_sha256": "19008369aeb796f0d86a36961e94f01f6f4d51df6d79ca1f901c98c8b07c9772",
+      "native_xy_bounds": [
+        -20037507.06717919,
+        -9921601.01373757,
+        20037507.06717921,
+        22830719.838255227
+      ],
+      "native_vertex_count": 5688,
+      "attributes_null_counts": {
+        "NAME": 3,
+        "LABEL": 0,
+        "Shape_Length": 0
+      },
+      "completeness": "complete for the observed live service roster; source edition, HIFLD archive equivalence, rights and release decisions are unresolved"
+    }
   },
   "capture_2026-10-20": {
-    "method": "12 requests by explicit objectIds in batches of 100; count and IDs checked before/after; response GeoJSON requested in EPSG:4326",
+    "method": "12 f=json requests by explicit objectIds in batches of 100; count and native ID roster checked before and after; no outSR override",
     "response_features": 1175,
-    "response_bytes": 459008,
-    "response_sha256": "055985e165f52052bd6e4b72808a2fc3e46c4d48acbb36532f144a67bfdf696f",
-    "completeness": "complete for the live service roster; not proof of HIFLD archive equality or current scientific edition",
-    "single_request_limit": "one geometry query returned 1000 rows; 500-ID request returned HTTP 413; 100-ID batches succeeded",
+    "response_bytes": null,
+    "response_sha256": null,
+    "completeness": "complete native service roster, not proof of HIFLD archive equality or a newly issued scientific edition",
+    "single_request_limit": "Max record count is 1000; a 500-ID request returned HTTP 413; 100-ID batches succeeded",
     "release_date": null,
-    "release_date_unknown_reason": "USGS service does not declare a source release date or current model edition."
+    "release_date_unknown_reason": "USGS service does not declare a source release date or current model edition.",
+    "source_record_sha256": "600deffe635063109d79fed48fc8ca8be75dfe90044e6cc44c85a9653c11a34d",
+    "native_geometry_sha256": "e3f46dbac468a045fe0f3eae7be93689c821b9b26132d80042f945577993bf2b"
   },
   "proposed_schema_contract": {
     "status": "draft; maintainer approval required",
     "preserve_all_declared_attributes": true,
     "preserve_native_id": "OBJECTID, unchanged",
-    "geometry": "full polyline; no simplification or repair; native EPSG:3857 recorded; query response EPSG:4326 explicitly recorded",
+    "geometry": "full native polyline in EPSG:3857; all XY paths retained without reprojection, repair, or simplification",
     "unexpected_fields_or_types": "quarantine for review"
   },
   "approval": {
@@ -72,5 +122,14 @@
     "coverage_acceptance": false,
     "rights_acceptance": false,
     "release_acceptance": false
+  },
+  "pipeline_implementation": {
+    "candidate_version": "v1f1e7833150b12c232f7c16f0575d24f",
+    "candidate_prefix": "plate-boundaries/plate-boundaries/v1f1e7833150b12c232f7c16f0575d24f",
+    "output": "geoparquet/plate-boundaries.parquet",
+    "output_sha256": "528aefd76705d66e2d1abd3153052cb63726a3b7433f8dadfdbc7215635d3492",
+    "dagster_schedule": "defined and stopped",
+    "local_materialization_evidence": "local-materialization.json",
+    "release": "candidate remains unapproved; exact-object release verifier refuses absent approval"
   }
 }
