@@ -21,7 +21,7 @@ class UsaceOverheadPipelineLinesConfig(Config):
     group_name="usace",
     compute_kind="http",
     description=(
-        "Official USACE IENC OVERHEAD_CABLE_LINE MapServer layer 43 (1,631 rows observed). "
+        "Official USACE IENC OVERHEAD_PIPELINE_LINE MapServer layer 44 (92 rows observed). "
         "Unapproved faithful candidate; source, baseline, contract, coverage, rights, and release decisions remain pending."
     ),
 )

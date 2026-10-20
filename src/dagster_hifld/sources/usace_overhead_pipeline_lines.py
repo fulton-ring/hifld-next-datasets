@@ -84,11 +84,15 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
+    expected_urls = dict(_capture_roster(EXPECTED_IDS))
     captures = {}
     for name in sorted(CAPTURE_NAMES):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
+                or receipt.get("final_url") != expected_urls[name]):
+            raise ValueError("retained_capture_request_identity_mismatch:" + name)
         captures[name] = (body, receipt)
     return captures
 

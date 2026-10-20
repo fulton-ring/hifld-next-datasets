@@ -11,6 +11,7 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import (
 )
 from dagster_hifld.sources import usace_overhead_pipeline_lines as source
 from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.http_capture import capture_roster_digests
 
 
 class UsaceOverheadPipelineLinesTests(unittest.TestCase):
@@ -92,6 +93,42 @@ class UsaceOverheadPipelineLinesTests(unittest.TestCase):
             storage = source.StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
             with self.assertRaisesRegex(ValueError, "unsafe_capture_version"):
                 source.capture_usace_overhead_pipeline_lines(storage, version="../outside")
+
+    def test_replay_rejects_tampered_method_origin_or_query_after_manifest_repin(self):
+        mutations = {
+            "method": lambda receipt: receipt.update(method="POST"),
+            "origin": lambda receipt: receipt.update(url=receipt["url"].replace("https://ienccloud.us", "https://example.invalid"),
+                                                        final_url=receipt["final_url"].replace("https://ienccloud.us", "https://example.invalid")),
+            "query": lambda receipt: receipt.update(url=receipt["url"] + "&unexpected=1",
+                                                        final_url=receipt["final_url"] + "&unexpected=1"),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "capture"
+                root.mkdir()
+                expected_urls = dict(source._capture_roster(source.EXPECTED_IDS))
+                receipts = {}
+                for name, url in expected_urls.items():
+                    body = b"{}"
+                    wire = body
+                    receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": "2026-10-20T00:00:00Z",
+                               "status": 200, "complete_body": True, "bytes": len(body), "sha256": source._sha(body),
+                               "wire_bytes": len(wire), "wire_sha256": source._sha(wire)}
+                    (root / f"{name}.body").write_bytes(body)
+                    (root / f"{name}.wire").write_bytes(wire)
+                    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+                    receipts[name] = receipt
+                manifest_path = root / "capture_manifest.json"
+                receipt_path = root / "page_000.receipt.json"
+                receipt = receipts["page_000"]
+                mutate(receipt)
+                receipt_path.write_bytes(_canonical(receipt) + b"\n")
+                receipts["page_000"] = receipt
+                manifest = {"complete": True, "receipts": receipts}
+                manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
+                manifest_path.write_bytes(_canonical(manifest) + b"\n")
+                with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
+                    source._read_replay(root)
 
 
 if __name__ == "__main__":
