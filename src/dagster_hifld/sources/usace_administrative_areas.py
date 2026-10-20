@@ -38,8 +38,9 @@ FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/ADMINISTRATIVE_AREA/MapServer/56"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
 EXPECTED_COUNT = 2966
-PAGE_SIZE = 1000
+PAGE_SIZE = 250
 MAX_BODY_BYTES = 48_000_000
+MAX_CAPTURE_BYTES = 450_000_000
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
     ("Jurisdiction", "esriFieldTypeString"), ("Nationality", "esriFieldTypeString"),
@@ -64,23 +65,28 @@ def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
-def _fetch(client: httpx.Client, url: str, root: Path, name: str):
+def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
     root.mkdir(parents=True, exist_ok=True)
     body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
     for path in (body_path, wire_path):
         path.unlink(missing_ok=True)
     hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
     sizes = {"body": 0, "wire": 0}
+    budget_start=budget[0]
     observed = datetime.now(timezone.utc).isoformat()
     def retain(path, kind):
         def write(chunk):
             with path.open("ab") as stream:
                 stream.write(chunk)
             hashes[kind].update(chunk); sizes[kind] += len(chunk)
+            budget[0]=budget_start+sizes["wire"]+sizes["body"]
         return write
+    def reserve(progress):
+        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
+            raise ValueError("source_capture_budget_exceeded")
     with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
         result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-            max_decoded_bytes=MAX_BODY_BYTES, reserve=lambda _p: None,
+            max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
             retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
         final_url = str(response.url)
     receipt = {"method":"GET", "url":url, "final_url":final_url, "observed_at":observed,
@@ -98,13 +104,13 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str):
     return body, receipt
 
 
-def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str):
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
     """Retry one transient transport/incomplete read, retaining every attempt."""
     last = None
     for attempt in range(2):
         attempt_name=f"{name}.attempt{attempt+1}"
         try:
-            body,receipt=_fetch(client,url,root,attempt_name)
+            body,receipt=_fetch(client,url,root,attempt_name,budget)
             for suffix in ("body","wire","receipt.json"):
                 (root/f"{attempt_name}.{suffix}").replace(root/f"{name}.{suffix}")
             return body,receipt
@@ -353,12 +359,16 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
                     or receipt.get("wire_bytes")!=len(attempt_wire) or receipt.get("wire_sha256")!=_sha(attempt_wire)):
                     raise ValueError("retained_failed_attempt_bytes_changed:"+name)
         else:
+            budget_root=requested if requested else root.parent
+            existing_bytes=sum(p.stat().st_size for p in budget_root.rglob("*") if p.is_file() and p.suffix in {".body",".wire"})
+            capture_budget=[existing_bytes]
+            if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed")
+                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
                 if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT: raise ValueError("source_seed_id_count_drift")
                 captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name)
+                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
