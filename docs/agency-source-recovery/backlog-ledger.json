@@ -6088,15 +6088,20 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
+      "reviewed_head": "97c062814a02b03c957ad6c6271c37d24144a0a7",
+      "evidence_refs": [
+        "issue comment 6282422441"
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:14:11Z",
       "live_issue_created_at": "2026-10-19T02:14:11Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": []
+      "observed_open_prs": [],
+      "work_status": "research_only",
+      "assigned_worker": "dataset_4",
+      "status_note": "Petroleum Product Terminals. Research-only branch codex/cloud-dataset-267 at 97c062814a02b03c957ad6c6271c37d24144a0a7; issue comment 6282422441. Lineage is split: EIA-815 attributes, approximate locations from varied public research; official EIA-815 is not a location feed. HIFLD archive/DataLumos V1 and third-party service differ; no maintained location feed or complete capture established. No adapter/materialization; approval flags false."
     },
     {
       "issue": 268,
@@ -10263,7 +10268,7 @@
       "264": "dataset_4; PAD-US Protection Mechanism research commit ac291c8c58b00399af36b0c9c581fffb3db2a764",
       "265": "dataset_265; research PR532 head 279a65961c41848170afc041109713f15bf319c3; FCC source access blocked",
       "266": "worker dataset_3; branch codex/cloud-dataset-266 commit f341822; research only, source/lineage unresolved",
-      "267": "next dataset_4",
+      "267": "worker dataset_4 active research; commit 97c062814a02b03c957ad6c6271c37d24144a0a7; EIA-815 is not a verified location feed",
       "268": "next dataset_11",
       "269": "next dataset_265"
     },
