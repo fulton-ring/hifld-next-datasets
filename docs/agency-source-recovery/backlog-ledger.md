@@ -1,0 +1,13 @@
+# Recovered agency-source backlog ledger
+
+Snapshot date: 2026-10-20. Machine-readable per-dataset records: `backlog-ledger.json`.
+
+The planning branch inventory contains 415 dataset records mapped to issues #2–416. Their old inventory fields all say source unverified and implementation needs source verification; those are planning defaults, not current issue states. GitHub search confirmed open issues #2–101, while a closed-issue search returned no results. The connector result cap prevented a complete live state scan for #102–416, so those records remain marked `not_rechecked` rather than assumed current. A search of the 100 newest open PRs is also a partial view, not a complete PR map.
+
+Cloud replacement removed the former runtime evidence directory. This ledger preserves public issue-comment and PR evidence references where recoverable and labels unavailable local evidence honestly. A PASS records only the scope stated in that comment, often documentation cleanup or independent review of a public head. It does not grant source authority, baseline, schema, compatibility, release, merge, or publication approval.
+
+Priority work #3, #4, #10 and #11 is already assigned to concurrent workers. Avoid duplicating it. Issue #417 is the shared verifier coordinator: exact head `4dfbe33fdd5c919e6ed7e817efee4eedba95d345` has an existing independent exact-head PASS (comment 6272517360); a resumed record reports 22 focused tests and a synthetic fail-closed verification/promotion replay (comment 6282335069). This proves verifier mechanics, not acceptance of any real dataset baseline.
+
+For nearby cards, #5 has a reviewed README cleanup PR #424, but its candidate remains 13 Pennsylvania facilities with national coverage unverified. #6 and #7 have cleanup reviews only, with source authority/migration and legacy-versus-successor decisions pending. #8 has a cleanup-reviewed PR #426 and recorded focused results, while source/edition/contract decisions remain open. #12 has cleanup PR #429 but retains a 56-state historical product versus 226-chapter successor choice. #13 needs exact producer delegation and effective-edition evidence. #14 retains source/vintage/rights/compatibility decisions. #15 is explicitly Blocked / Needs decision / Potential breaking change. I could not recover issue #9 comments due a connector protocol error, so it is not responsibly classed as the next eligible card yet.
+
+Next selection should come from a fresh issue/comment and PR review of #9 and other unassigned open cards: distinguish an evidence gap that a worker can resolve from an external decision blocker, and record the exact PR head and current reviewed scope before dispatch. No issue or PR was changed by this recovery.
