@@ -55,10 +55,12 @@ def usace_airport_area_complete(candidate: dict) -> AssetCheckResult:
 def usace_airport_area_quality(candidate: dict) -> AssetCheckResult:
     passed = (candidate.get("source_population_complete") is True
               and candidate.get("source_null_geometry_count") == 0
+              and candidate.get("source_empty_geometry_count") == 0
               and candidate.get("source_invalid_geometry_count") == 0
               and bool(candidate.get("source_schema_sha256")))
     return AssetCheckResult(passed=passed, metadata={
         "null_geometries": candidate.get("source_null_geometry_count", "missing"),
+        "empty_geometries": candidate.get("source_empty_geometry_count", "missing"),
         "invalid_geometries": candidate.get("source_invalid_geometry_count", "missing"),
         "schema_contract_accepted": False,
         "id_contract_accepted": False,
@@ -66,11 +68,19 @@ def usace_airport_area_quality(candidate: dict) -> AssetCheckResult:
     })
 
 
-@asset_check(asset=usace_airport_area_ienc, blocking=True)
+@asset_check(asset=usace_airport_area_ienc, blocking=False)
 def usace_airport_area_release(candidate: dict) -> AssetCheckResult:
+    """Report candidate approval state without blocking draft source research.
+
+    This candidate field is informational only; it cannot grant approval.
+    Promotion is gated exclusively by shared publish/verify, which requires an
+    independent exact-object release approval registry.
+    """
     accepted = candidate.get("release_accepted") is True
-    return AssetCheckResult(passed=not accepted, metadata={
-        "candidate_release_allowed": accepted,
+    return AssetCheckResult(passed=accepted, metadata={
+        "approval_status": "accepted" if accepted else "pending",
+        "candidate_claimed_release_accepted": accepted,
+        "promotion_enforced_by": "publish/verify independent exact-object approval registry",
         "source_release_accepted": candidate.get("source_release_accepted", False),
         "rights_accepted": candidate.get("rights_accepted", False),
         "mapping_approved": candidate.get("mapping_approved", False),
