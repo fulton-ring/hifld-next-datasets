@@ -1,0 +1,81 @@
+{
+  "inventory_id": "paging-transmission-towers",
+  "inventory_title": "Paging Transmission Towers",
+  "inventory_publisher": "Federal Communications Commission (FCC)",
+  "inventory_archive": {
+    "url": "https://www.datalumos.org/datalumos/project/240567/version/V1/view",
+    "archive_modified_date": "2024-07-06",
+    "date_meaning": "Inventory archive modification date; not a source release date",
+    "http_audit_2026_10_20": "HTTP 403 from this environment; endpoint access was denied and is not classified as dead"
+  },
+  "research_status": "source unresolved; draft-only; no ingest implementation",
+  "crosswalk": {
+    "dhs_crosswalk_doi": "https://doi.org/10.3886/E241367V1",
+    "prior_audit": "https://github.com/fulton-ring/agent-content-demos/issues/40#issuecomment-6253017620",
+    "match_status": "probable title/description match, exact crosswalk row not independently inspected in this run because DOI returned HTTP 403",
+    "related_audit_finding": "The prior audit reported that all 72 crosswalk REST links hosted by HIFLD were dead as of 2026-10-18. This dataset is represented by former HIFLD-hosted ArcGIS items; those item links are archive/mirror candidates, not evidence of a maintained producer feed."
+  },
+  "producer": {
+    "name": "Federal Communications Commission (FCC)",
+    "evidence": "HIFLD item metadata attributes this layer to FCC and says HIFLD hosted the data as received from the provider.",
+    "official_current_public_feed": null,
+    "official_feed_status": "not established",
+    "lineage_claim": "Inventory description says derived from the FCC Licensing Database; exact table/extract lineage and source release date are not established."
+  },
+  "candidates": [
+    {
+      "role": "Esri-hosted HIFLD-labeled copy; authority unresolved",
+      "owner": "tqd32886_USG",
+      "item_id": "50887498d8ac41d7ac9c65790706c615",
+      "item_url": "https://www.arcgis.com/home/item.html?id=50887498d8ac41d7ac9c65790706c615",
+      "item_metadata_url": "https://www.arcgis.com/sharing/rest/content/items/50887498d8ac41d7ac9c65790706c615?f=json",
+      "service_url": "https://services2.arcgis.com/PYn6bWCjT6bhw1z3/arcgis/rest/services/HIFLD_Paging_Transmission_Towers/FeatureServer",
+      "layer_url": "https://services2.arcgis.com/PYn6bWCjT6bhw1z3/arcgis/rest/services/HIFLD_Paging_Transmission_Towers/FeatureServer/0",
+      "published_release_date": null,
+      "portal_created_modified_dates": "Portal metadata reports created 2026-08-24T23:19:55Z and modified 2026-08-24T23:20:24Z; service edit time is 2026-08-24T23:20:17Z. These describe the Esri-hosted item/service, not a dataset release date.",
+      "authority_assessment": "Item metadata names FCC as accessInformation and says data/details are hosted by HIFLD as received. The item owner is not an identified FCC account; no delegation evidence or source-side publication link was found. Treat as an unverified HIFLD copy, not a maintained FCC feed."
+    },
+    {
+      "role": "HIFLD Open residual copy under Oregon OEM account; historical/community mirror",
+      "owner": "Oregon_OEM",
+      "item_id": "059c1852661443549e60e26190484ae2",
+      "service_url": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Paging_Transmission_Towers/FeatureServer",
+      "item_metadata_url": "https://www.arcgis.com/sharing/rest/content/items/059c1852661443549e60e26190484ae2?f=json",
+      "portal_modified_date": "2024-10-10 (ArcGIS item metadata)",
+      "authority_assessment": "Description identifies FCC as original data source and HIFLD as host. The item is owned by Oregon OEM, not FCC; it is a mirror, and its old HIFLD service URL returns ArcGIS Invalid URL in this audit."
+    }
+  ],
+  "audit": {
+    "retrieved_at_utc": "2026-10-20T03:05:32Z/2026-10-20T03:05:43Z",
+    "runtime_evidence_directory": "runtime/ (untracked; raw JSON responses, paginated feature pages, SHA-256 hashes)",
+    "candidate_service_observations": {
+      "geometry_type": "esriGeometryPoint",
+      "spatial_reference": "Web Mercator service extent; query supports output spatial reference 4326",
+      "feature_count": 6541,
+      "extraction": "4 pages at result offsets 0, 2000, 4000, 6000; all 6541 records returned; 6541 unique FID values; no null FID; first 3 pages indicated transfer limit and the last page did not",
+      "max_record_count": 2000,
+      "pagination_supported": true,
+      "schema": "28 fields in runtime/arcgis_layer.json; FID is the service ObjectID. UniqSysID is nullable esriFieldTypeInteger, so it has not been accepted as a stable agency identity. Source/published value and type contract remains unapproved.",
+      "completeness_scope": "Complete relative to this ArcGIS service's reported count at retrieval time only; does not prove current FCC source coverage or equivalence to accepted HIFLD Next data."
+    },
+    "release_date": null,
+    "freshness_conclusion": "No source release date or refresh history was verified. A responding service, portal modified timestamp, or complete extraction is not proof of a current agency release.",
+    "blocker": "No maintained FCC publication or documented official delegation was established. The available live candidate is a HIFLD-labeled hosted copy with unresolved account authority and release lineage. Per issue #265, do not implement an archive-refresh pipeline or promote this candidate as an agency feed."
+  },
+  "proposed_raw_schema_contract": {
+    "status": "unapproved; schema snapshot for review only",
+    "preservation": "Preserve all 28 source columns with exact names, types, nullability, values, precision, and point geometry. Do not promote FID as an agency identifier or generate replacement IDs. Preserve UniqSysID exactly as nullable integer unless source-specific evidence establishes its contract.",
+    "drift_policy": "Any missing/renamed field, type/nullability change, new field, ID behavior change, count/coverage change, or geometry shift requires quarantine and maintainer review."
+  },
+  "published_contract": {
+    "status": "pending maintainer approval and accepted-baseline comparison",
+    "baseline": "No accepted HIFLD Next dataset/file/version and checksums verified in this source research.",
+    "release_gate": "Block catalog promotion/publication until approved raw and published schemas, identity rules, provenance, accepted baseline mapping, and compatibility/migration plan are recorded."
+  },
+  "refresh_and_idempotency": {
+    "cadence": null,
+    "idempotency_key": null,
+    "completeness_gate": "Unresolved until a maintained official/delegated endpoint and a stable agency identity/release marker are verified.",
+    "quarantine": "Do not replace an accepted release when a source is incomplete, unavailable, schema-drifted, or cannot be authenticated as the intended upstream. Retain the prior accepted release and candidate evidence."
+  }
+}
