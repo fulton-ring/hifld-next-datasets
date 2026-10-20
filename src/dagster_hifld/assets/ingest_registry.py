@@ -18,6 +18,7 @@ from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_fa
 from dagster_hifld.assets.usace import (
     usace_administrative_areas_usace_ienc,
     usace_navigation_marks_areas_usace_ienc,
+    usace_obstruction_areas_usace_ienc_2,
 )
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 
@@ -34,5 +35,6 @@ hifld_ingest_assets = [
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
     usace_navigation_marks_areas_usace_ienc,
+    usace_obstruction_areas_usace_ienc_2,
     epa_frs_eia_860_power_generation_facilities_by_source,
 ]
