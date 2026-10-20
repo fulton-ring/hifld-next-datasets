@@ -1,11 +1,15 @@
 import gzip
+import hashlib
+import io
 import json
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 import httpx
 import pyarrow.parquet as pq
+from dagster_hifld.construction_state import canonical_construction_bundle
 
 from dagster_hifld.sources.epa_frs_contact_stream import (
     EPAFRSContactCaptureError,
@@ -17,6 +21,8 @@ from dagster_hifld.sources.epa_frs_contact_stream import (
     TABLE_URL,
     PageResponse,
     capture_to_parquet,
+    canonical,
+    compact_capture_receipt_index,
     request_page,
 )
 
@@ -113,6 +119,47 @@ class EPAFRSContactStreamTests(unittest.TestCase):
                 request_page(client, "https://source.example.test/item", {}, max_bytes=8192)
         self.assertIn("source_compressed_response_incomplete", str(caught.exception))
         self.assertEqual(caught.exception.wire, incomplete_wire)
+
+    def test_compact_construction_index_binds_all_retained_receipts_under_size_limit(self):
+        receipts = []
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "responses.tar"
+            with tarfile.open(archive_path, "w") as archive:
+                for index in range(2845):
+                    name = f"page_{index:05d}" if index < 2728 else f"metadata_{index - 2728:04d}"
+                    wire = b"wire fixture"
+                    receipt = {
+                        "name": name, "method": "GET",
+                        "url": f"https://source.example.test/27/query?response={index}",
+                        "final_url": f"https://source.example.test/27/query?response={index}",
+                        "query": {"f": "json", "resultOffset": index * 2000},
+                        "status": 200, "content_encoding": "identity",
+                        "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
+                        "decoded_bytes": 1, "decoded_sha256": hashlib.sha256(b"x").hexdigest(),
+                        "complete_body": True,
+                    }
+                    receipts.append(receipt)
+                    for member_name, body in ((f"{name}.wire.gz", wire),
+                                              (f"{name}.receipt.json", canonical(receipt) + b"\n")):
+                        info = tarfile.TarInfo(member_name)
+                        info.size = len(body)
+                        archive.addfile(info, io.BytesIO(body))
+
+            index = compact_capture_receipt_index(receipts, archive_path)
+            self.assertEqual(index["receipt_count"], 2845)
+            self.assertEqual(index["page_count"], 2728)
+            self.assertEqual(index["wire_bytes"], 2845 * len(b"wire fixture"))
+            payload = {
+                "processing_identity": {"code_commit": "a" * 40,
+                                        "files": {f"src/file-{n}.py": "b" * 64 for n in range(100)}},
+                "source_record_sha256": "c" * 64,
+                "source_schema_sha256": "d" * 64,
+                "capture_receipts": index,
+                "objects": {"raw/source-wire-capture.tar": {"bytes": archive_path.stat().st_size,
+                                                               "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest()}},
+            }
+            body = canonical_construction_bundle("v1", "e" * 64, payload)
+            self.assertLess(len(body), 2 * 1024 * 1024)
 
 
 if __name__ == "__main__":

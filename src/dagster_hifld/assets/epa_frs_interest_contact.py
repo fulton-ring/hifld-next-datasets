@@ -23,6 +23,7 @@ from dagster_hifld.sources.epa_frs_common import (
 )
 from dagster_hifld.sources.epa_frs_contact_stream import (
     EXPECTED_ROWS, SERVICE_URL, TABLE_NAME, TABLE_URL, capture_to_parquet, canonical,
+    compact_capture_receipt_index,
 )
 
 
@@ -134,6 +135,7 @@ def capture_epa_frs_contact(staging_storage: StagingStorageResource) -> dict[str
                                      "wire_sha256": receipt["wire_sha256"],
                                      "decoded_bytes": receipt["decoded_bytes"],
                                      "decoded_sha256": receipt["decoded_sha256"]})
+        capture_index = compact_capture_receipt_index(metadata_receipts + page_receipts, raw_tar)
         objects[f"raw/source-wire-capture.tar"] = _upload_immutable_file(
             staging_storage, raw_tar, f"{prefix}/raw/source-wire-capture.tar")
         objects[f"unknown/{FILE_SLUG}.parquet"] = _upload_immutable_file(
@@ -207,7 +209,7 @@ def capture_epa_frs_contact(staging_storage: StagingStorageResource) -> dict[str
         payload = {"processing_identity": identity,
                    "source_record_sha256": observed["source_record_sha256"],
                    "source_schema_sha256": observed["source_schema_sha256"],
-                   "capture_receipts": {str(item["name"]): item for item in metadata_receipts + page_receipts},
+                   "capture_receipts": capture_index,
                    "objects": objects}
         fingerprint = hashlib.sha256(canonical(payload)).hexdigest()
         seal_ready_candidate(staging_storage, state_key, version, fingerprint, payload)

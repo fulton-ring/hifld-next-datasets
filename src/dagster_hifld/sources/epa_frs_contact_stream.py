@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
@@ -62,6 +63,58 @@ def canonical(value: object) -> bytes:
 def record_digest_update(digest, attributes: Mapping[str, Any]) -> None:
     digest.update(canonical(dict(attributes)))
     digest.update(b"\n")
+
+
+def compact_capture_receipt_index(receipts: Iterable[Mapping[str, Any]], archive_path: Path) -> dict[str, Any]:
+    """Validate a lossless response archive and summarize its full ordered receipts.
+
+    The archive retains every full query, URL, status, body hash, and wire hash;
+    capture time is bound by the separately sealed capture manifest. The
+    construction witness stores only this bounded root and totals, avoiding a
+    population-sized per-page receipt list there.
+    """
+    ordered = list(receipts)
+    digest = hashlib.sha256()
+    expected_members: list[str] = []
+    wire_bytes = decoded_bytes = page_count = 0
+    try:
+        with tarfile.open(archive_path, "r:") as archive:
+            members = archive.getmembers()
+            for receipt in ordered:
+                name = receipt.get("name")
+                if not isinstance(name, str) or receipt.get("complete_body") is not True:
+                    raise EPAFRSContactCaptureError("source_wire_archive_receipt_invalid")
+                wire_name = f"{name}.wire.gz"
+                receipt_name = f"{name}.receipt.json"
+                expected_members.extend((wire_name, receipt_name))
+                wire_member = archive.extractfile(wire_name)
+                receipt_member = archive.extractfile(receipt_name)
+                if wire_member is None or receipt_member is None:
+                    raise EPAFRSContactCaptureError("source_wire_archive_member_missing")
+                body_hash = hashlib.sha256()
+                body_size = 0
+                for chunk in iter(lambda: wire_member.read(1024 * 1024), b""):
+                    body_hash.update(chunk)
+                    body_size += len(chunk)
+                receipt_body = receipt_member.read()
+                if (body_size != receipt.get("wire_bytes")
+                        or body_hash.hexdigest() != receipt.get("wire_sha256")
+                        or receipt_body != canonical(dict(receipt)) + b"\n"):
+                    raise EPAFRSContactCaptureError("source_wire_archive_receipt_mismatch")
+                digest.update(canonical(dict(receipt)))
+                digest.update(b"\n")
+                wire_bytes += int(receipt["wire_bytes"])
+                decoded_bytes += int(receipt["decoded_bytes"])
+                page_count += name.startswith("page_")
+            if [member.name for member in members] != expected_members:
+                raise EPAFRSContactCaptureError("source_wire_archive_member_inventory_changed")
+    except (OSError, tarfile.TarError, KeyError, TypeError, ValueError) as exc:
+        if isinstance(exc, EPAFRSContactCaptureError):
+            raise
+        raise EPAFRSContactCaptureError("source_wire_archive_invalid") from exc
+    return {"receipt_count": len(ordered), "page_count": page_count,
+            "wire_bytes": wire_bytes, "decoded_bytes": decoded_bytes,
+            "ordered_receipts_sha256": digest.hexdigest()}
 
 
 @dataclass(frozen=True)
