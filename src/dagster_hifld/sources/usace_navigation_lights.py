@@ -138,7 +138,7 @@ def lights_geoparquet(fields: list[dict], features: list[dict]) -> bytes:
     schema = pa.schema([pa.field(f["name"], _arrow_type(f), nullable=f.get("nullable", True)) for f in attr_fields]
                        + [pa.field("geometry", pa.binary(), nullable=False)])
     metadata = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{
-        "encoding":"WKB", "geometry_types":["Point" + (" Z" if dimensions and next(iter(dimensions))[0] else "") + (" M" if dimensions and next(iter(dimensions))[1] else "")], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"spherical"}}}
+        "encoding":"WKB", "geometry_types":["Point" + (" Z" if dimensions and next(iter(dimensions))[0] else "") + (" M" if dimensions and next(iter(dimensions))[1] else "")], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar"}}}
     table = pa.Table.from_arrays(arrays, schema=schema.with_metadata({b"geo":_canonical(metadata)}))
     sink = pa.BufferOutputStream()
     pq.write_table(table, sink, compression="zstd", use_dictionary=False)
