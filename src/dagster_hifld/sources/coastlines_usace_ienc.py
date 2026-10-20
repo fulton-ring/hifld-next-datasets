@@ -212,8 +212,8 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
             ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
             ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
     for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds":",".join(map(str,page_ids)),
+        urls.append((f"page_{index:03d}", _query({"where":"1=1", "resultOffset":start,
+            "resultRecordCount":PAGE_SIZE,
             "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
             "outSR":"4326", "orderByFields":"OBJECTID ASC", "f":"json"})))
     urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
@@ -284,12 +284,16 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
-        if "error" in page or page.get("exceededTransferLimit") is True:
+        expected_page_size=min(PAGE_SIZE,EXPECTED_COUNT-len(features))
+        if "error" in page:
             raise ValueError("source_page_error_or_truncation")
         if page.get("spatialReference",{}).get("latestWkid") != 4326:
             raise ValueError("source_page_spatial_reference_drift")
         rows=page.get("features")
-        if not isinstance(rows,list): raise ValueError("source_page_features_missing")
+        if not isinstance(rows,list) or len(rows)!=expected_page_size:
+            raise ValueError("source_page_features_missing_or_incomplete")
+        if page.get("exceededTransferLimit") is True and len(rows)<expected_page_size:
+            raise ValueError("source_page_transfer_limit_truncated")
         features.extend(rows)
     expected_attrs=[f["name"] for f in fields if f["name"]!="SHAPE"]
     got=[]
