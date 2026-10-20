@@ -114,6 +114,48 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
     if (not old_prefix.startswith(expected_prefix) or "/" in old_prefix[len(expected_prefix):]
             or not old_prefix[len(expected_prefix):].startswith("v")):
         raise ValueError("resume_candidate_prefix_invalid")
+    capture = json.loads(storage.read_key(f"{old_prefix}/metadata/source_capture.json"))
+    ready = json.loads(storage.read_key(f"{old_prefix}/metadata/candidate_ready.json"))
+    roster = json.loads(storage.read_key(f"{old_prefix}/metadata/source_id_roster_summary.json"))
+    old_identity = json.loads(storage.read_key(f"{old_prefix}/metadata/processing_identity.json"))
+    if (not capture.get("captured_at") or capture.get("source_complete") is False
+            or capture.get("row_count") != EXPECTED_ROWS
+            or capture.get("source_count_before") != EXPECTED_ROWS
+            or capture.get("source_count_after") != EXPECTED_ROWS
+            or capture.get("id_count_before") != EXPECTED_ROWS
+            or capture.get("id_count_after") != EXPECTED_ROWS
+            or capture.get("id_roster_equal_before_after") is not True
+            or capture.get("captured_ids_match_roster") is not True
+            or capture.get("source_release_date") is not None
+            or ready.get("approved") is not False
+            or ready.get("version") != old_prefix.rsplit("/", 1)[-1]
+            or ready.get("source_record_sha256") != capture.get("source_record_sha256")
+            or ready.get("source_schema_sha256") != capture.get("source_schema_sha256")
+            or roster != {"count": EXPECTED_ROWS, "sha256": capture.get("source_ids_sha256"), "complete": True}
+            or not isinstance(old_identity, dict)):
+        raise ValueError("resume_candidate_completeness_witness_invalid")
+    version = content_derived_version(capture["source_record_sha256"],
+        hashlib.sha256(b"nonspatial").hexdigest(), capture["source_schema_sha256"], identity)
+    current_prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    if old_prefix == current_prefix:
+        # A previously sealed candidate is the receipt of its original
+        # successful observation. Reuse its first construction after catalog
+        # without reading or decoding the population-sized wire archive again.
+        state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+        state_header = json.loads(storage.read_key(state_key))
+        bundle = json.loads(load_first_construction(
+            storage, state_key, version, state_header["processing_fingerprint"]))
+        payload = bundle.get("payload")
+        if not isinstance(payload, dict) or not isinstance(payload.get("capture_receipts"), dict):
+            raise ValueError("resume_candidate_sealed_receipt_index_invalid")
+        result = _reuse_existing_contact_candidate(
+            storage, Path(__file__).parents[3], current_prefix, version, identity,
+            {key: capture[key] for key in ("row_count", "source_record_sha256",
+                                           "source_schema_sha256", "source_ids_sha256")},
+            payload["capture_receipts"])
+        if result is None:
+            raise ValueError("resume_candidate_sealed_state_missing")
+        return {**result, "resumed_offline": True}
     names = (
         "raw/source-wire-capture.tar", f"unknown/{FILE_SLUG}.parquet",
         "metadata/source_id_roster_summary.json", "metadata/source_capture.json",
@@ -134,27 +176,8 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
             raise ValueError("resume_candidate_object_changed_during_verify")
         snapshots[name] = {"bytes": snapshot.size, "sha256": sha}
 
-    capture = json.loads(storage.read_key(f"{old_prefix}/metadata/source_capture.json"))
-    ready = json.loads(storage.read_key(f"{old_prefix}/metadata/candidate_ready.json"))
-    roster = json.loads(storage.read_key(f"{old_prefix}/metadata/source_id_roster_summary.json"))
-    old_identity = json.loads(storage.read_key(f"{old_prefix}/metadata/processing_identity.json"))
-    if (not capture.get("captured_at") or capture.get("source_complete") is False
-            or capture.get("row_count") != EXPECTED_ROWS
-            or capture.get("source_count_before") != EXPECTED_ROWS
-            or capture.get("source_count_after") != EXPECTED_ROWS
-            or capture.get("id_count_before") != EXPECTED_ROWS
-            or capture.get("id_count_after") != EXPECTED_ROWS
-            or capture.get("id_roster_equal_before_after") is not True
-            or capture.get("captured_ids_match_roster") is not True
-            or capture.get("source_release_date") is not None
-            or ready.get("approved") is not False
-            or ready.get("version") != old_prefix.rsplit("/", 1)[-1]
-            or ready.get("source_record_sha256") != capture.get("source_record_sha256")
-            or ready.get("source_schema_sha256") != capture.get("source_schema_sha256")
-            or ready.get("objects") != {f"unknown/{FILE_SLUG}.parquet":
-                snapshots[f"unknown/{FILE_SLUG}.parquet"]}
-            or roster != {"count": EXPECTED_ROWS, "sha256": capture.get("source_ids_sha256"), "complete": True}
-            or not isinstance(old_identity, dict)):
+    if ready.get("objects") != {f"unknown/{FILE_SLUG}.parquet":
+                                  snapshots[f"unknown/{FILE_SLUG}.parquet"]}:
         raise ValueError("resume_candidate_completeness_witness_invalid")
 
     capture_root = Path(tempfile.mkdtemp(prefix="frs-contact-resume-", dir="/tmp"))

@@ -118,6 +118,21 @@ class EpaFrsContactRecoveryTests(unittest.TestCase):
             self.assertTrue(reused["reused"])
             self.assertEqual(reused["captured_at"], captured_at)
 
+            # Resuming from the now-sealed candidate after catalog uses its
+            # first construction directly and does not decode any retained page.
+            current_prefix = result["candidate_ready"].removesuffix("/metadata/candidate_ready.json")
+            with patch("dagster_hifld.assets.epa_frs_interest_contact.EXPECTED_ROWS", 2), \
+                    patch("dagster_hifld.assets.epa_frs_interest_contact.compact_capture_receipt_index",
+                          side_effect=AssertionError("sealed cache should not re-decode raw pages")), \
+                    patch("dagster_hifld.construction_provenance.validate_construction_code_identity"), \
+                    DagsterInstance.ephemeral() as instance:
+                context = build_asset_context(asset_config={"resume_candidate": current_prefix},
+                                              instance=instance)
+                cache_run = epa_frs_interest_contact(context, storage)
+            self.assertTrue(cache_run["reused"])
+            self.assertTrue(cache_run["resumed_offline"])
+            self.assertEqual(cache_run["captured_at"], captured_at)
+
             source_capture_key = result["candidate_ready"].replace("candidate_ready.json", "source_capture.json")
             Path(directory, source_capture_key).write_bytes(b'{"tampered":true}')
             with patch("dagster_hifld.construction_provenance.validate_construction_code_identity"):
