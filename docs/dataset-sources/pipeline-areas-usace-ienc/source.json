@@ -24,19 +24,68 @@
     "Feature_ID": "string, preserve verbatim"
   },
   "source_fields": [
-    {"name": "OBJECTID", "type": "esriFieldTypeOID"},
-    {"name": "SHAPE", "type": "esriFieldTypeGeometry"},
-    {"name": "Object_Name", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Product", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Restriction", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Status", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Category_of_Pipeline", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Information", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Scale_Minimum", "type": "esriFieldTypeInteger"},
-    {"name": "Source_Date", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Source_Indication", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Source_Dataset", "type": "esriFieldTypeString", "length": 254},
-    {"name": "Feature_ID", "type": "esriFieldTypeString", "length": 254}
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID"
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry"
+    },
+    {
+      "name": "Object_Name",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Product",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Restriction",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Status",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Category_of_Pipeline",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Information",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Scale_Minimum",
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "name": "Source_Date",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Indication",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Dataset",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Feature_ID",
+      "type": "esriFieldTypeString",
+      "length": 254
+    }
   ],
   "capture_policy": "Retain decoded ESRI JSON bodies, exact HTTP wire bodies, and request receipts; store the complete native schema/attributes and rings in a typed GeoParquet candidate without reprojection or geometry repair.",
   "completeness_policy": "Independently read count and ID roster before and after the full page capture; compare exact expected native ID set, field declarations, CRS and full feature roster; validate native attribute types, identifiers, polygon rings and geometry validity; reject drift and quarantine incomplete responses.",
@@ -51,5 +100,40 @@
     "coverage": false,
     "rights": false,
     "release": false
+  },
+  "capture_evidence": {
+    "captured_at": "2026-10-20T03:23:01.528108+00:00",
+    "capture_directory": "v20261020T032126Z-0eca34b46b5f495baf3dd8f980969c68",
+    "complete": true,
+    "request_count": 12,
+    "full_page_bytes": 265257,
+    "full_page_sha256": "7f37fbbd3339ce7e2b89920e30903b9cb680cf6871b2b713da14815bdc1ea69c",
+    "full_page_wire_sha256": "7f37fbbd3339ce7e2b89920e30903b9cb680cf6871b2b713da14815bdc1ea69c",
+    "source_record_sha256": "55bf5af7b11eea868d0a04ba1842905b67cb61ebd36a7e5a906c11d23d05f0c2",
+    "source_schema_sha256": "79acb49d582bbf1833177616c4d4ce27a0670acd0c0a2834b980799cce40e290",
+    "source_geometry_sha256": "1e838c725db02e5c1aec42ee933f82f2922e9f7a80b5ec8055dbfac75478fb6b"
+  },
+  "materialization_evidence": {
+    "source_run_id": "5be77e53-8a74-4902-b458-c3c29e4f4340",
+    "catalog_run_id": "96eba311-763b-4144-9079-a6e0b647e889",
+    "cache_replay_after_catalog_run_id": "6211224b-b081-45ca-aaba-bd2642b59546",
+    "candidate_version": "v95fbd5779da1ed66ca3577bbddc16de8",
+    "source_feature_count": 112,
+    "polygon_features_valid": 112,
+    "empty_or_invalid_features": 0,
+    "source_vertices": 5418,
+    "geoparquet_rows": 112,
+    "geoparquet_sha256": "10f87d0b94dec67b7eabb16a791cc571f12011de79d26a053347fad1c51fcbd3",
+    "geoparquet_bytes": 87823,
+    "native_properties_identical": true,
+    "native_polygon_coordinate_sequences_identical": true,
+    "catalog_geometry_type": "Polygon",
+    "catalog_invalid_geometry_count": 0,
+    "cache_replay_reused_candidate": true,
+    "verifier_refusal_run_id": "8bba85b7-ad64-4707-aac8-a8cc2799d759",
+    "verifier_refusal": "missing_or_ambiguous_exact_object_approval",
+    "approval_registry": "empty; outside staging and published roots",
+    "synthetic_published_sentinel_inventory_unchanged": true,
+    "refresh_schedule": "STOPPED"
   }
 }
