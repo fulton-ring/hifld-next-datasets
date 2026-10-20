@@ -33,6 +33,10 @@ from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
 )
+from dagster_hifld.assets.usace_caution_areas import (
+    usace_caution_areas_complete,
+    usace_caution_areas_draft_schedule,
+)
 from dagster_hifld.assets.usace_pile_locations import (
     usace_pile_locations_complete,
     usace_pile_locations_draft_schedule,
@@ -433,10 +437,10 @@ defs = Definitions(
     asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete,
                   usace_administrative_areas_complete, usace_navigation_marks_areas_complete,
                   usace_obstruction_lines_complete, usace_overhead_cables_complete,
-                  usace_pile_locations_complete],
+                  usace_pile_locations_complete, usace_caution_areas_complete],
     schedules=[epa_power_generation_draft_schedule, usace_administrative_areas_draft_schedule,
                usace_navigation_marks_areas_draft_schedule, usace_obstruction_lines_draft_schedule,
-               usace_overhead_cables_draft_schedule, usace_pile_locations_draft_schedule],
+               usace_overhead_cables_draft_schedule, usace_pile_locations_draft_schedule, usace_caution_areas_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
