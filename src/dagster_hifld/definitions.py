@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.crushed_stone import crushed_stone_preservation_job, crushed_stone_preservation_schedule
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -409,6 +410,8 @@ def _configured_sensors():
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
+    jobs=[crushed_stone_preservation_job],
+    schedules=[crushed_stone_preservation_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
