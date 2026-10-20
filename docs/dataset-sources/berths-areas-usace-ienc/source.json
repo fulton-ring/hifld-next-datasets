@@ -37,7 +37,19 @@
     },
     "feature_id_unique_count": 1098,
     "feature_id_duplicates": 10,
-    "complete_refresh_capture": "Created by the Dagster source asset; path recorded in run evidence outside Git. The retained exploratory query capture is /workspace/work/hifld-coordinator/21/research/features.body."
+    "complete_refresh_capture": {
+      "path": "/workspace/work/hifld-coordinator/21/captures_live",
+      "capture_manifest_sha256": "6a453496bee82a33f73b61ab2633e20f06e83b7896d6b6a0561ddb2dbf9867f4",
+      "capture_evidence_sha256": "ece064b2c76313c927f34eea4b307e64d1314adcf50c43984bdb8f0f1ff93ce2",
+      "initial_dagster_run_id": "90927f11-b791-4649-98aa-64aba4b8b0cd",
+      "cache_replay_run_id": "100ce7b5-b0aa-4fbc-b5a2-184df78c360e",
+      "catalog_run_id": "eee8e122-f0fa-4853-b317-2c1fcdf45684",
+      "candidate_version": "v47f7232144e8944cb7555d682ef148b4",
+      "candidate_geoparquet_sha256": "ce272b14b0a1e3e7748f97a8804f2dc0acdc2592573c6dcf0433c42825fe4fb9",
+      "release_gate_refusal": "missing_independent_release_approval_registry",
+      "isolated_published_root_inventory_before_and_after": {}
+    },
+    "exploratory_query_capture": "/workspace/work/hifld-coordinator/21/research/features.body"
   },
   "candidate": {
     "format": "GeoParquet",
