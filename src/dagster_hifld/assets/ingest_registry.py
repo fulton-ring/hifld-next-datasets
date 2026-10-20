@@ -23,6 +23,7 @@ from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines
 from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
+from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -41,4 +42,5 @@ hifld_ingest_assets = [
     usace_overhead_cables_usace_ienc,
     usace_pile_locations_usace_ienc,
     epa_frs_eia_860_power_generation_facilities_by_source,
+    eia_power_plants_historical,
 ]
