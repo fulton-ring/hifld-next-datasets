@@ -1,0 +1,79 @@
+{
+  "inventory_id": "pol-terminals-1",
+  "title": "POL Terminals",
+  "research_status": "blocked_pending_authoritative_source",
+  "researched_at": "2026-10-20",
+  "summary": "The surviving source evidence describes a historical ORNL/Argonne compilation distributed through HIFLD. The 2025 DHS crosswalk is the required route to a current producer or explicitly delegated distributor, but its record-level file could not be retrieved in this environment. No current authoritative producer feed or release cadence has been verified. Do not implement an archive-refresh pipeline or publish a candidate until the crosswalk row and source lineage are established.",
+  "crosswalk_match": {
+    "dataset": "HIFLD OPEN GIS Data Index and Crosswalk",
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "record_match": "unresolved",
+    "evidence": "The crosswalk landing metadata identifies DHS as depositor and says its August 2025 crosswalk links HIFLD layers to agency repositories and web mapping services. The crosswalk XLSX is listed there, but direct landing-page requests returned HTTP 403 from the environment's Envoy egress. The exact POL Terminals row and displayed/hyperlinked values could not therefore be inspected here. A prior research report says 72 crosswalk endpoints hosted by HIFLD were dead, but does not identify the POL row; this is not used as a row-level result."
+  },
+  "source_candidates": [
+    {
+      "name": "Historical HIFLD OPEN POL Terminals archive",
+      "role": "historical_archive",
+      "url": "https://www.datalumos.org/datalumos/project/239798/version/V1/view",
+      "lineage": "Inventory lists Oak Ridge National Laboratory as publisher and Department of Energy as agency. The archived FGDC metadata names Oak Ridge National Laboratory and Argonne National Laboratory as originators and describes an assembled point dataset. The archival time period is 2021-11-08 through 2024-10-11; this is not evidence of a current source release.",
+      "observed_access": "Direct HTTP HEAD returned 403 with text/html from Envoy on 2026-10-20. This is an environment access failure, not evidence that the archive or upstream is dead.",
+      "machine_download": null,
+      "decision": "Do not treat as a maintained source or schedule refreshes from this archive."
+    },
+    {
+      "name": "DHS HIFLD OPEN GIS Data Index and Crosswalk",
+      "role": "source-discovery_authority",
+      "url": "https://www.datalumos.org/datalumos/project/241367/version/V1/view",
+      "reported_files": [
+        "hifld_open_crosswalk_geoplatform.xlsx",
+        "hifld_open_datalumos_index.xlsx"
+      ],
+      "lineage": "The landing record identifies DHS as principal investigator and says the August 2025 crosswalk links layers to repositories and web mapping services of the agencies that originally created them. ICPSR/DataLumos is the distributor, not the original source producer.",
+      "observed_access": "Direct HTTP HEAD returned 403 with text/html from Envoy on 2026-10-20. Web search exposed the landing metadata and filenames, but not the POL Terminals row or hyperlink targets.",
+      "machine_download": null,
+      "decision": "Exact row and endpoint remain unresolved; do not infer a source from title similarity or secondary copies."
+    },
+    {
+      "name": "PASDA HIFLD_FEMA MapServer layer 126",
+      "role": "third_party_mirror_candidate",
+      "url": "https://maps.pasda.psu.edu/ArcGIS/rest/services/pasda/HIFLD_FEMA/MapServer/126",
+      "observed_access": "Metadata endpoint returned HTTP 200 containing ArcGIS error code 500, message 'Service pasda/HIFLD_FEMA/MapServer not started', on 2026-10-20. Search-indexed layer metadata identifies a POL_Terminals point layer, but PASDA is a secondary distributor and this current response provides no extractable features.",
+      "machine_download": null,
+      "decision": "Not an authoritative source and not usable in this probe."
+    },
+    {
+      "name": "Source Cooperative SeerAI HIFLD Parquet path",
+      "role": "third_party_mirror_candidate",
+      "url": "https://source.coop/seerai/hifld/pol-terminals/pol-terminals/pol-terminals.parquet",
+      "observed_access": "The route returned HTTP 200 HTML for the Source Cooperative web application (content-type text/html), not Parquet bytes. It is a third-party HIFLD distribution and no official delegation or source update cadence was verified.",
+      "machine_download": null,
+      "decision": "Do not use as a producer feed."
+    },
+    {
+      "name": "Catalog.data.gov Petroleum Terminals metadata record",
+      "role": "historical_hifld_metadata",
+      "url": "https://catalog.data.gov/dataset/petroleum-terminals",
+      "reported_last_dataset_update": "2022-10-24",
+      "lineage": "The catalog record identifies HIFLD/DHS as publisher and describes HIFLD geospatial datasets. It is metadata for the HIFLD record, not an identified ORNL/Argonne refresh endpoint.",
+      "decision": "Historical catalog evidence only."
+    }
+  ],
+  "producer_and_lineage": {
+    "inventory_publisher": "Oak Ridge National Laboratory",
+    "inventory_agency": "Department of Energy",
+    "archived_metadata_originators": [
+      "Oak Ridge National Laboratory",
+      "Argonne National Laboratory"
+    ],
+    "archived_metadata_date": "2021-07-09",
+    "archived_metadata_note": "The archived FGDC record says fields were populated from sources identified in each row's SOURCE field and other open sources. This indicates a curated multi-source compilation, not a single independently identified upstream register.",
+    "official_producer_or_delegated_distributor": "unverified",
+    "current_release_date_and_cadence": "unverified"
+  },
+  "release_gate": {
+    "contract": "No maintainer-approved raw/published schema and ID contract is present.",
+    "baseline": "No accepted baseline mapping or compatibility decision is present.",
+    "implementation": "No ingest asset or refresh schedule is proposed because the maintained producer feed and exact crosswalk endpoint have not been verified.",
+    "next_evidence_needed": "Retrieve both original crosswalk XLSX files, retain their SHA-256 hashes, inspect the exact POL Terminals row and hyperlink targets, then probe only the resulting producer/delegated endpoint and compare full schema, IDs, geometry, completeness, and release metadata with the archive."
+  }
+}
