@@ -1,24 +1,37 @@
-# Recovered agency-source backlog ledger
+# Dataset reconstruction backlog ledger
 
-Snapshot date: 2026-10-20. Machine-readable per-dataset records and open PR catalog: `backlog-ledger.json`.
+This ledger tracks all415dataset issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. All415issue states were fetched; none were closed by this work.
 
-All 415 dataset issues #2–416 were individually fetched from GitHub; all are open. The ledger records current issue metadata and recovered PR associations. Of these, 95 have an associated open PR in the recovered catalog. The other 320 are classified as unworked in that catalog, not blocked. Absence of a PR or current evidence does not establish an external blocker.
+Existing priority PRs #420/#3, #419/#4, #427/#10 and #428/#11 were recovered with their prior exact-head reviews and runtime evidence. They were not rebuilt. Shared verifier #417 was resumed at reviewed4dfbe33:22focused tests passed; synthetic verify/promote run23663675-bfd2-4cfa-8ff2-c9aa35952259 succeeded and staged-drift runa7c4751b-eec6-4bae-9f65-ab24805b817e refused promotion, preserving14fixture objects. Synthetic mechanics do not approve real dataset baselines.
 
-The 114 initial open PRs were recovered by creation-time partitions. PR #531/#261 and #532/#265 were added from current worker reports. The API search does not expose exact branch state for every PR; SHA mentions in PR bodies are claims, not independent review evidence. Retain exact-head review references only where linked in issue comments. Runtime artifacts removed during cloud replacement remain historical claims where no local copy exists.
+The recent checkpoint below distinguishes completed reviewed drafts, review revisions, active work and evidenced external blockers. A docs-only research branch does not complete a feasible pipeline. Missing baseline/contract approval permits draft implementation and local testing; it blocks release. Other issue records still need triage or reconciliation of prior work; they are not silently classified as blocked.
 
-Issue numbers are dataset issue numbers. Current active work: #261 is overhead pipeline lines (worker dataset_11, PR #531, reported head `4be341a`); #262 is NOAA Overview (worker dataset_10); #263 is PAD-US Manager Name (worker dataset_3, research commit `c0817be`); #264 is PAD-US Protection Mechanism (worker dataset_4, research commit `ac291c8c58b00399af36b0c9c581fffb3db2a764`); #265 is FCC ULS research (PR #532, head `279a65961c41848170afc041109713f15bf319c3`). Issue #266 is now with worker dataset_3. Its branch `codex/cloud-dataset-266` at `f341822` contains research documentation only. The HIFLD-labelled service returns an ArcGIS application error, while the alternate maps_ft item is third-party with no established delegation or release lineage; DataLumos/crosswalk returned 403. This does not establish that no official source exists. Issue #267 is now active research by worker dataset_4 at commit `97c062814a02b03c957ad6c6271c37d24144a0a7`; issue comment `6282422441` records the split EIA-815 attribute and approximate-location lineage, with no verified maintained location feed or complete capture. Next assignments are #268 to worker dataset_11 and #269 to worker dataset_265.
+| Dataset issue | Draft PR | Current state | Head |
+| --- | --- | --- | --- |
+| #21 | #539 | pipeline_review_pending | 61cbdd6c |
+| #25 | — | in_progress |  |
+| #27 | #540 | pipeline_review_pending | 9d3b1d52 |
+| #37 | — | in_progress |  |
+| #253 | #527 | reviewed_draft_prior_runtime | 1c6e403b |
+| #257 | #529 | reviewed_locally_verified_draft | 39f84887 |
+| #260 | #530 | reviewed_draft_prior_runtime | 126dae20 |
+| #261 | #531 | reviewed_locally_verified_draft | 750c43c5 |
+| #262 | #535 | reviewed_locally_verified_draft | 3dbecf38 |
+| #263 | — | external_source_access_resource_decision |  |
+| #264 | — | external_source_access_resource_decision |  |
+| #265 | #532 | external_source_access_decision | 279a6596 |
+| #266 | — | external_scope_geometry_decision |  |
+| #267 | — | external_source_lineage_decision |  |
+| #268 | #534 | reviewed_locally_verified_historical_draft | f1e6e659 |
+| #269 | #537 | reviewed_locally_verified_draft | d1ddc072 |
+| #270 | #538 | review_changes_in_progress | 3aa50bff |
+| #271 | #536 | review_changes_in_progress | 7472fa8c |
+| #272 | — | in_progress |  |
+| #273 | — | in_progress |  |
+| #274 | — | in_progress |  |
 
-For #263, source metadata reports 655,335 features and a complete OBJECTID roster, but there is no complete extraction. The official national GDB request returned HTTP 403; its size and contents are unknown. The 21 GB estimate is extrapolative, not measured. DataLumos/crosswalk access is also denied. #264 has research notes only, with no full capture, candidate, or implementation. For #265, FCC sources returned HTTP 403 with envoy `x-reference-error`; this is an access blocker, not evidence that the source is dead. An extracted HIFLD Esri copy is only a mirror candidate.
+Current-head code review and actual runtime scope are separate fields. Documentation or narrowly scoped capture/validation fixes after a recorded graph do not fabricate new run IDs; the ledger preserves the run's real commit and the final review's exact commit. Public historical runtime claims whose raw artifacts vanished in Cloud replacement remain labeled as such.
 
-Issue #417’s latest public comment is `6282335069`: 22 focused verification tests passed, synthetic verify/promote run `23663675-bfd2-4cfa-8ff2-c9aa35952259` passed, and staged-byte drift run `a7c4751b-eec6-4bae-9f65-ab24805b817e` failed closed, preserving 14 accepted fixtures and candidate evidence. These are synthetic mechanics, not real dataset baseline approval.
+New raw captures and packets are preserved locally. A compact checksummed evidence archive is prepared; a durable artifact-destination question is pending because the configured downloadable-output path is unavailable in this Cloud. Code and this ledger are already remote on their existing branches/PRs. No production data was published.
 
-PR #529 remains open/draft; coordinator reports a root fix pending at reported head `39f8488`. Dataset approvals, source authority/currentness, baseline, schema, rights and release decisions remain separate per issue. No issue/PR closure, merge, or production publication is claimed.
-
-
-Issue #267 research status: EIA-815 provides attributes but is not itself a location feed; candidate locations come from varied public research. Existing HIFLD archive/DataLumos and a third-party service differ, and no complete capture/adapter is claimed.
-
-Latest coordinator recovery (2026-10-20): PR #527/#253 exact head `1c6e403ba8e898e22802cdac839aa7cfd2a25d58` and PR #530/#260 exact head `126dae201632ddcc911881a138d0c88af753fcd0` both received scoped code-guard PASS reviews (comments `5580349669` and `5580350035`). These reviews cover the receipt URL/method guard only; they are not new full-graph reviews. PR #529 BSEE exact head `39f848879d39909510ac443798716e26d13d3d4d` was independently reviewed at comment `6282407482`; recorded source/catalog/cache/verifier runs remain approval-gated, with 7,317 rows and published fixture preserved on missing approval. Issue #261’s exact-head review passed at comment `5580351370`; all 92 rows x 14 attributes/XY path sequences were compared, and the verifier refused absent approval without changing the published inventory.
-
-Issue #271 is Plate Boundaries (USGS), not petroleum terminals. Draft PR #536 at `7472fa8cbe4158269d4130c2215253b8e162ed53` records complete 1,175-ID extraction/materialization and 7 focused tests; archive equivalence/current edition, schema/ID/baseline, rights, coverage and release decisions remain pending. The ledger now has 98 issue-associated open PRs in the recovered catalog; 317 have no open PR in that catalog and are classified unworked, not blocked.
-
-Issue #27, Caution Area Locations USACE IENC, is active source research. It had no prior PR/comments per the coordinator’s check. An existing cached official service directory is at `/workspace/work/hifld-coordinator/21/research/service_directory.body`; exact layer name/ID still needs discovery. A repository-level blocker also exists: configured HIFLD_PROJECT_TOKEN access to organization Projects v2 is unavailable through the integration and the Actions variable probe returned 403. This blocks project/workflow access only, not dataset source availability.
+The configured GitHub integration cannot read organization Projects v2 or repository Actions variables (actual403/forbidden responses). This blocks Project-board access, not dataset sources. Work continues using the issue/PR ledger. No merge, issue closure, contract approval or production publication is authorized or performed.
