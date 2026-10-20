@@ -721,7 +721,7 @@
         {
           "pr": 435,
           "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/435",
-          "title": "Draft: reconstruct complete IBC Canada–US border with provenance and release gates",
+          "title": "Draft: reconstruct complete IBC Canada\u2013US border with provenance and release gates",
           "head_sha_claim_in_body": "52e479e0a2c81325b61bcd2ac36c6dda15c8e9bb",
           "review_evidence_status": "head_claim_only",
           "association_confidence": 1
@@ -2373,7 +2373,7 @@
     {
       "issue": 95,
       "dataset_id": "formerly-used-defense-sites-division-boundaries",
-      "title": "Formerly Used Defense Sites (FUDS) Program Division Boundaries",
+      "title": "Formerly Used Defense Sites (FUDS)\u00a0Program Division Boundaries",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/95",
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
@@ -9113,7 +9113,7 @@
     {
       "pr": 435,
       "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/435",
-      "title": "Draft: reconstruct complete IBC Canada–US border with provenance and release gates",
+      "title": "Draft: reconstruct complete IBC Canada\u2013US border with provenance and release gates",
       "state": "open",
       "dataset_issue_candidate": 26,
       "association_confidence": 1,
@@ -10166,5 +10166,18 @@
       "review_evidence_status": "head_claim_only",
       "updated_at": null
     }
-  ]
+  ],
+  "current_coordination_update": {
+    "recorded_utc_date": "2026-10-20",
+    "source": "coordinator message; not independently verified from issue/PR comments",
+    "assignments": {
+      "workcard_261": "dataset issue #11",
+      "workcard_262": "dataset issue #10",
+      "workcard_263": "dataset issue #3; worker3 next workcard 266",
+      "workcard_264": "dataset issue #4; worker3 next workcard 267 if workcard 264 is complete",
+      "workcard_265": "active"
+    },
+    "issue_417": "new run evidence reported by coordinator; pending incorporation of exact run IDs/summary",
+    "pr_529": "root fix pending; state and exact head not independently fetched in this update"
+  }
 }
