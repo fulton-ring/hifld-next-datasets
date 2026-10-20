@@ -13,6 +13,10 @@
     "metadata_record": "https://www.fisheries.noaa.gov/inport/item/39963",
     "advertised_service_version": "4.1",
     "advertised_revision_date": "2013-09-13",
+    "pinned_mapserver_edition_markers": {
+      "documentInfo.Title": "U.S. Maritime Limits and Boundaries (version 4.1)",
+      "serviceDescription_prefix": "(Version 4.1, 9/13/2013)"
+    },
     "data_timeframe": "2002-2015",
     "currentness_status": "unapproved; NOAA InPort notes an update is forthcoming"
   },

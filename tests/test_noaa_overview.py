@@ -6,7 +6,10 @@ import pyarrow as pa
 
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.noaa import noaa_maritime_limits_overview, noaa_overview_draft_refresh_schedule
-from dagster_hifld.noaa_overview import _local_only, _table_and_geometries, validate_snapshot
+from dagster_hifld.noaa_overview import (
+    EXPECTED_SERVICE_DESCRIPTION_PREFIX, EXPECTED_SERVICE_TITLE, _local_only,
+    _table_and_geometries, _validate_service_edition, validate_snapshot,
+)
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
@@ -62,6 +65,35 @@ class NoaaOverviewValidationTests(unittest.TestCase):
         self.features["fields"] = [{"name": "OID", "type": "esriFieldTypeOID"}]
         with self.assertRaisesRegex(ValueError, "schema or field-order drift"):
             self.validate()
+
+    def test_conflicting_source_crs_representations_are_rejected(self):
+        self.features["spatialReference"] = {"wkid": 4326, "latestWkid": 3857}
+        with self.assertRaisesRegex(ValueError, "feature response CRS code drift"):
+            self.validate()
+        self.features["spatialReference"] = {"wkid": 4326, "latestWkid": 4326}
+        self.features["features"][0]["geometry"]["spatialReference"] = {"wkid": 3857}
+        with self.assertRaisesRegex(ValueError, "feature geometry CRS code drift"):
+            self.validate()
+
+    def test_only_native_finite_xy_coordinates_are_accepted(self):
+        point = self.features["features"][0]["geometry"]["paths"][0][0]
+        self.features["features"][0]["geometry"]["paths"][0][0] = [point[0], point[1], 7]
+        with self.assertRaisesRegex(ValueError, "not finite native XY"):
+            self.validate()
+        self.features["features"][0]["geometry"]["paths"][0][0] = point
+        self.features["features"][0]["geometry"]["hasM"] = True
+        with self.assertRaisesRegex(ValueError, "hasM geometry"):
+            self.validate()
+
+    def test_service_version_and_release_marker_are_pinned(self):
+        service = {
+            "documentInfo": {"Title": EXPECTED_SERVICE_TITLE},
+            "serviceDescription": EXPECTED_SERVICE_DESCRIPTION_PREFIX + " more producer description",
+        }
+        _validate_service_edition(service)
+        service["documentInfo"]["Title"] = "U.S. Maritime Limits and Boundaries (version 5.0)"
+        with self.assertRaisesRegex(ValueError, "published service edition changed"):
+            _validate_service_edition(service)
 
     def test_physical_types_nulls_whitespace_and_source_geometry_survive_table_build(self):
         fields = [

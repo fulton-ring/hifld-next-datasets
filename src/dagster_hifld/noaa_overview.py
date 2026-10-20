@@ -32,6 +32,8 @@ ZIP_URL = "https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoun
 MAX_BYTES = 100 * 1024 * 1024
 MAX_RECORD_COUNT = 1000
 EXPECTED_COUNT = 260
+EXPECTED_SERVICE_TITLE = "U.S. Maritime Limits and Boundaries (version 4.1)"
+EXPECTED_SERVICE_DESCRIPTION_PREFIX = "(Version 4.1, 9/13/2013)"
 EXPECTED_IDS_SHA256 = "ff1a9250b4f0b618e83644fc3f7057fccb141fc0e95725d6cec2ee149fad8006"
 EXPECTED_FIELDS = (
     ("OBJECTID", "esriFieldTypeOID", None),
@@ -225,6 +227,41 @@ def _field_signature(fields: list[dict]) -> list[tuple]:
     return [(field.get("name"), field.get("type"), field.get("length")) for field in fields]
 
 
+def _validate_service_edition(service: dict) -> None:
+    """Pin the published NOAA edition marker, not merely the layer name."""
+    title = service.get("documentInfo", {}).get("Title")
+    description = service.get("serviceDescription")
+    if title != EXPECTED_SERVICE_TITLE or not isinstance(description, str) or not description.startswith(
+        EXPECTED_SERVICE_DESCRIPTION_PREFIX
+    ):
+        raise ValueError("NOAA Overview published service edition changed; review required")
+
+
+def _validate_native_crs(value: object, label: str) -> None:
+    """Require every declared ArcGIS CRS representation to mean EPSG:4326."""
+    if not isinstance(value, dict):
+        raise ValueError(f"NOAA Overview {label} CRS missing or invalid")
+    codes = []
+    for name in ("wkid", "latestWkid"):
+        code = value.get(name)
+        if code is not None:
+            if type(code) is not int or code != 4326:
+                raise ValueError(f"NOAA Overview {label} CRS code drift: {name}")
+            codes.append(code)
+    if len(set(codes)) > 1:
+        raise ValueError(f"NOAA Overview {label} CRS representations conflict")
+    wkt = value.get("wkt")
+    if wkt is not None:
+        try:
+            matches = CRS.from_wkt(wkt).equals(CRS.from_epsg(4326))
+        except Exception as exc:
+            raise ValueError(f"NOAA Overview {label} CRS WKT invalid") from exc
+        if not matches:
+            raise ValueError(f"NOAA Overview {label} CRS WKT conflicts with EPSG:4326")
+    if not codes and wkt is None:
+        raise ValueError(f"NOAA Overview {label} CRS representation missing")
+
+
 def validate_snapshot(count: int, ids: list[int], features: dict, page_end: dict,
                       count_after: int, ids_after: list[int], *,
                       expected_count: int = EXPECTED_COUNT,
@@ -258,18 +295,28 @@ def validate_snapshot(count: int, ids: list[int], features: dict, page_end: dict
         raise ValueError("NOAA Overview feature IDs are missing, duplicated or mismatched")
     if features.get("geometryType") != "esriGeometryPolyline":
         raise ValueError("NOAA Overview geometry type drift")
-    sr = features.get("spatialReference", {})
-    if sr.get("latestWkid", sr.get("wkid")) != 4326:
-        raise ValueError("NOAA Overview native CRS drift")
+    _validate_native_crs(features.get("spatialReference"), "feature response")
     for feature in rows:
         attrs, geometry = feature.get("attributes"), feature.get("geometry")
         if not isinstance(attrs, dict) or set(attrs) != {field[0] for field in expected_fields}:
             raise ValueError("NOAA Overview source row column drift")
         if not isinstance(geometry, dict) or not isinstance(geometry.get("paths"), list) or not geometry["paths"]:
             raise ValueError("NOAA Overview null/empty source geometry")
+        for flag in ("hasZ", "hasM"):
+            if flag in geometry and type(geometry[flag]) is not bool:
+                raise ValueError(f"NOAA Overview geometry {flag} flag invalid")
+            if geometry.get(flag, False):
+                raise ValueError(f"NOAA Overview {flag} geometry requires review")
+        if "spatialReference" in geometry:
+            _validate_native_crs(geometry["spatialReference"], "feature geometry")
         for path in geometry["paths"]:
-            if len(path) < 2 or any(len(pt) < 2 or any(not math.isfinite(float(v)) for v in pt[:2]) for pt in path):
-                raise ValueError("NOAA Overview malformed/nonfinite path")
+            if not isinstance(path, list) or len(path) < 2:
+                raise ValueError("NOAA Overview malformed path")
+            for point in path:
+                if (not isinstance(point, list) or len(point) != 2
+                        or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                               or not math.isfinite(float(v)) for v in point)):
+                    raise ValueError("NOAA Overview coordinate is not finite native XY")
     return rows
 
 
@@ -353,6 +400,8 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
             raise ValueError(f"NOAA Overview requested/final source URL drift: {name}")
     service, count_data, id_data, feature_data, page_end, after_count, after_ids = (
         _loads(bodies[name]) for name in names)
+    _validate_service_edition(service)
+    _validate_native_crs(service.get("spatialReference"), "service")
     if not any(layer.get("id") == 0 and layer.get("name") == "Overview" for layer in service.get("layers", [])):
         raise ValueError("NOAA Overview MapServer no longer advertises layer 0 as Overview")
     if "error" in count_data or "error" in id_data or "error" in feature_data or "error" in page_end:
@@ -400,7 +449,7 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
         "complete": True, "feature_count": len(rows), "expected_id_roster_sha256": EXPECTED_IDS_SHA256,
         "source_fields": feature_data["fields"], "candidate_columns": table.column_names,
         "source_native_crs": feature_data["spatialReference"], "candidate_geometry_crs": "EPSG:4326",
-        "source_release_date": "2013-09-13", "source_release_date_basis": "NOAA service advertises Version 4.1 revised 2013-09-13; capture time is separate",
+        "source_release_date": "2013-09-13", "source_release_date_basis": "Pinned NOAA service marker: documentInfo.Title version 4.1 and serviceDescription '(Version 4.1, 9/13/2013)'; capture time is separate",
         "source_feature_publication_dates_ms": {"minimum": min(date_values), "maximum": max(date_values)},
         "captured_at": receipts["features"]["checked_at"], "candidate_sha256": hashlib.sha256(gpkg).hexdigest(),
         "raw_source_sha256": {name: receipts[name]["sha256"] for name in names},
