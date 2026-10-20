@@ -24,6 +24,8 @@ from dagster_hifld.assets.usace import (
     usace_administrative_areas_draft_schedule,
     usace_navigation_lights_complete,
     usace_navigation_lights_draft_schedule,
+    usace_obstruction_locations_complete,
+    usace_obstruction_locations_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -419,9 +421,10 @@ def _configured_sensors():
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete,
-                  usace_administrative_areas_complete, usace_navigation_lights_complete],
+                  usace_administrative_areas_complete, usace_navigation_lights_complete,
+                  usace_obstruction_locations_complete],
     schedules=[epa_power_generation_draft_schedule, usace_administrative_areas_draft_schedule,
-               usace_navigation_lights_draft_schedule],
+               usace_navigation_lights_draft_schedule, usace_obstruction_locations_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
