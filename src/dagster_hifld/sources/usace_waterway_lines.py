@@ -48,6 +48,24 @@ def _capture(client,url,directory,name):
     if not result.complete or result.status_code!=200 or len(body)!=n or sha256(body)!=receipt["sha256"]:raise ValueError("incomplete_source_capture:"+name)
     return body,receipt
 
+def _replay_capture(root):
+    """Load a completed capture directory after rechecking every body receipt."""
+    names=("bts_item","usace_item","service_before","layer_before","count_before","ids_before",
+           "layer_after","count_after","ids_after","replica_submission","filegdb_export")
+    captured={}
+    for name in names:
+        body_path=root/f"{name}.body";wire_path=root/f"{name}.wire";receipt_path=root/f"{name}.receipt.json"
+        if not body_path.is_file() or not receipt_path.is_file():raise ValueError("source_capture_replay_incomplete:"+name)
+        body=body_path.read_bytes();receipt=json.loads(receipt_path.read_text())
+        if receipt.get("bytes")!=len(body) or receipt.get("sha256")!=sha256(body):raise ValueError("source_capture_replay_body_drift:"+name)
+        if name not in ("replica_submission",) and receipt.get("complete_body") is not True:raise ValueError("source_capture_replay_body_incomplete:"+name)
+        if name not in ("replica_submission",) and (not wire_path.is_file() or receipt.get("wire_bytes")!=wire_path.stat().st_size or receipt.get("wire_sha256")!=sha256(wire_path.read_bytes())):
+            raise ValueError("source_capture_replay_wire_drift:"+name)
+        captured[name]=(body,receipt)
+    if captured["replica_submission"][1].get("status")!=200 or captured["filegdb_export"][1].get("status")!=200:
+        raise ValueError("source_capture_replay_failed_http_status")
+    return captured
+
 def _identity():
     root=Path(__file__).parents[3];files={str(p.relative_to(root)):sha256_file(p) for p in sorted(root.joinpath("src/dagster_hifld").rglob("*.py"))}
     files.update({x:sha256_file(root/x) for x in ("pyproject.toml","uv.lock")})
@@ -76,14 +94,24 @@ def _validate_before(bts,item,service,layer,count,ids):
 def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_directory:str|None=None)->dict:
     """Capture one complete, native, unapproved FileGDB source candidate."""
     if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:raise ValueError("explicit_local_staging_resource_required")
-    root=Path(capture_directory or "/tmp/hifld-native-reconstruction/178/captures")/uuid4().hex;root.mkdir(parents=True,exist_ok=False);captured={}
+    capture_base=Path(capture_directory or "/tmp/hifld-native-reconstruction/178/captures").absolute()
+    if (capture_base/"layer_before.receipt.json").is_file():
+        root=capture_base;captured=_replay_capture(root)
+    else:
+        root=capture_base/uuid4().hex;root.mkdir(parents=True,exist_ok=False);captured={}
     urls={"bts_item":BTS_ITEM_URL,"usace_item":USACE_ITEM_URL,"service_before":SERVICE_URL+"?f=json","layer_before":LAYER_URL+"?f=json","count_before":COUNT_URL,"ids_before":IDS_URL}
-    with httpx.Client(follow_redirects=True,timeout=60,headers={"User-Agent":"hifld-next-datasets/usace-waterway-draft"}) as client:
-        for name,url in urls.items():captured[name]=_capture(client,url,root,name)
-        docs={k:json.loads(v[0]) for k,v in captured.items()};fields,ids=_validate_before(docs["bts_item"],docs["usace_item"],docs["service_before"],docs["layer_before"],docs["count_before"],docs["ids_before"])
-        archive_path,archive_receipt,replica_doc,submission_receipt=capture_filegdb_replica(client,SERVICE_URL,LAYER_ID,f"hifld-178-{uuid4().hex}",root)
-        captured["replica_submission"]=((root/"replica_submission.body").read_bytes(),submission_receipt);captured["filegdb_export"]=(archive_path.read_bytes(),archive_receipt)
-        for name,url in (("layer_after",urls["layer_before"]),("count_after",COUNT_URL),("ids_after",IDS_URL)):captured[name]=_capture(client,url,root,name)
+    if not captured:
+        with httpx.Client(follow_redirects=True,timeout=60,headers={"User-Agent":"hifld-next-datasets/usace-waterway-draft"}) as client:
+            for name,url in urls.items():captured[name]=_capture(client,url,root,name)
+            docs={k:json.loads(v[0]) for k,v in captured.items()};fields,ids=_validate_before(docs["bts_item"],docs["usace_item"],docs["service_before"],docs["layer_before"],docs["count_before"],docs["ids_before"])
+            archive_path,archive_receipt,replica_doc,submission_receipt=capture_filegdb_replica(client,SERVICE_URL,LAYER_ID,f"hifld-178-{uuid4().hex}",root)
+            captured["replica_submission"]=((root/"replica_submission.body").read_bytes(),submission_receipt);captured["filegdb_export"]=(archive_path.read_bytes(),archive_receipt)
+            for name,url in (("layer_after",urls["layer_before"]),("count_after",COUNT_URL),("ids_after",IDS_URL)):captured[name]=_capture(client,url,root,name)
+    else:
+        archive_path=root/"filegdb_export.body";archive_receipt=captured["filegdb_export"][1]
+        replica_doc=json.loads(captured["replica_submission"][0]);submission_receipt=captured["replica_submission"][1]
+    docs={k:json.loads(v[0]) for k,v in captured.items() if k not in ("replica_submission","filegdb_export")}
+    fields,ids=_validate_before(docs["bts_item"],docs["usace_item"],docs["service_before"],docs["layer_before"],docs["count_before"],docs["ids_before"])
     after={k:json.loads(v[0]) for k,v in captured.items() if k.endswith("_after")}
     if after["layer_after"]!=docs["layer_before"] or after["count_after"].get("count")!=EXPECTED_COUNT or sorted(after["ids_after"].get("objectIds",[]))!=ids:raise ValueError("USACE_source_changed_during_capture")
     archive_sha=archive_receipt["sha256"];version="v"+hashlib.sha256(canonical_json({"archive":archive_sha,"schema":fields,"ids":ids})).hexdigest()[:32]
@@ -115,6 +143,9 @@ def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_direct
       "source_url":LAYER_URL,"license":"Unknown; rights review pending.","source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":_identity()["code_commit"],
       "inputs":[{"input_id":name,"producer":"BTS NTAD / USACE hosted Feature Service","host":urlsplit(r["url"]).hostname,"role":"official_distributor","canonical_url":LAYER_URL,
          "retrieval_url":r["url"],"observed_final_host":r.get("final_host"),"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],
+         "delegation_evidence":{"bts_catalog_item_url":BTS_ITEM_URL,"bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS","bts_item_layer_link":LAYER_URL,
+           "usace_service_item_url":USACE_ITEM_URL,"usace_service_item_id":USACE_SERVICE_ITEM_ID,"usace_service_item_owner":"usace_iwr_cac",
+           "basis":"Captured BTS item identifies the official NTAD record and links this exact USACE Feature Service layer; the linked service item identifies its owner."},
          "release_date":None,"release_date_unknown_reason":"Portal/service edit timestamps do not establish a named source release date.","license":"Unknown; rights review pending.","attribution":"Provisional attribution is recorded in BTS/USACE portal metadata; rights and attribution review remain pending."} for name,(_,r) in sorted(captured.items())],
       "transformations":[{"operation":"ArcGIS syncModel=none FileGDB export; exact layer 1; no geometry or attribute conversion","parameters":{"source_fields":len(fields),"source_CRS":"EPSG:4269","hasZ":True,"hasM":True,"blob_field":"SE_ANNO_CAD_DATA","feature_count":EXPECTED_COUNT,"archive_sha256":archive_sha,"candidate_status":"unapproved"}}],
       "lineage":"BTS NTAD item 06037f2b23ff401aa1d379c2632a58f6 links layer 1. Service item ace7645d305647448a84492a3b909d48 is owned by usace_iwr_cac. BTS describes the network as periodically updated by USACE and jointly created for BTS, USACE, Census, and USCG. Item and data edit timestamps do not establish a source release date.",
