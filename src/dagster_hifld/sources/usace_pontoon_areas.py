@@ -420,7 +420,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "source_vertex_count":vertices,"geometry_valid_count":geometry_valid,
         "geometry_empty_count":geometry_empty,"geometry_invalid_count":len(features)-geometry_valid-geometry_empty,
         "source_coverage_scope":"Complete current official IENC PONTOON_AREA feature class; inland chart coverage only, not a claim of all pontoon features nationwide.",
-        "drift_guard":"BTS 3607d485a9854d6fa458bf507058ceae distribution/delegation link, official service-directory membership, service/layer identity, field names/types, CRS, page errors, and before/after exact ID roster are checked."}
+        "drift_guard":"BTS 3607d485a9854d6fa458bf507058ceae distribution/delegation link, official service-directory membership, service/layer identity, field names/types, CRS, pinned layer extent, page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
 
 
 def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:

@@ -114,6 +114,17 @@ class UsacePontoonAreasSourceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_string_value_type_drift"):
             _validate(_captures(docs))
 
+    def test_duplicate_feature_ids_are_retained_without_synthesizing_replacements(self) -> None:
+        docs = _docs()
+        docs["page_000"]["features"][1]["attributes"]["Feature_ID"] = \
+            docs["page_000"]["features"][0]["attributes"]["Feature_ID"]
+        _fields, features, audit = _validate(_captures(docs))
+        self.assertEqual(audit["feature_id_duplicate_count"], 1)
+        self.assertEqual(
+            features[1]["attributes"]["Feature_ID"],
+            features[0]["attributes"]["Feature_ID"],
+        )
+
     def test_unexpected_column_fails_closed(self) -> None:
         docs = _docs()
         docs["layer_before"]["fields"] = docs["layer_before"]["fields"] + [

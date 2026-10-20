@@ -34,8 +34,8 @@ class UsacePontoonAreasConfig(Config):
     description=(
         "Official USDOT BTS-linked USACE IENC PONTOON_AREA MapServer layer 73 "
         "(607 source features observed). Complete inland-chart feature class; "
-        "unapproved faithful candidate. Historical HIFLD continuity, pipeline "
-        "survey currency, nationwide coverage, rights and schema contract remain pending."
+        "unapproved faithful candidate. Historical HIFLD continuity, source vintage, "
+        "nationwide pontoon coverage, rights and schema contract remain pending."
     ),
 )
 def usace_pontoon_areas_usace_ienc(
