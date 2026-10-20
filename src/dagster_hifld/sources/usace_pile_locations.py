@@ -10,7 +10,6 @@ from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
-from shapely import from_wkb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -43,7 +42,6 @@ EXPECTED_COUNT = 3010
 EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 EXPECTED_ID_SHA256 = "d298d76237b21d1c44a7c23e412cf67234db786f62a537f7bcd9e5487f6c6beb"
 PAGE_SIZE = 250
-MAX_CAPTURE_BYTES = 192_000_000
 EXPECTED_FIELD_DECLARATIONS = [{'name': 'OBJECTID', 'type': 'esriFieldTypeOID', 'alias': 'OBJECTID', 'domain': None}, {'name': 'SHAPE', 'type': 'esriFieldTypeGeometry', 'alias': 'SHAPE', 'domain': None}, {'name': 'Object_Name', 'type': 'esriFieldTypeString', 'alias': 'Object_Name', 'length': 254, 'domain': None}, {'name': 'Information', 'type': 'esriFieldTypeString', 'alias': 'Information', 'length': 254, 'domain': None}, {'name': 'Condition', 'type': 'esriFieldTypeString', 'alias': 'Condition', 'length': 254, 'domain': None}, {'name': 'Scale_Minimum', 'type': 'esriFieldTypeInteger', 'alias': 'Scale_Minimum', 'domain': None}, {'name': 'Source_Date', 'type': 'esriFieldTypeString', 'alias': 'Source_Date', 'length': 254, 'domain': None}, {'name': 'Source_Indication', 'type': 'esriFieldTypeString', 'alias': 'Source_Indication', 'length': 254, 'domain': None}, {'name': 'Source_Dataset', 'type': 'esriFieldTypeString', 'alias': 'Source_Dataset', 'length': 254, 'domain': None}, {'name': 'Festure_ID', 'type': 'esriFieldTypeString', 'alias': 'Festure_ID', 'length': 254, 'domain': None}]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 EXPECTED_EXTENT = {"xmin": -96.09706959999994, "ymin": 29.720565200000067, "xmax": -79.47503019999994, "ymax": 45.12797000000006}
@@ -73,6 +71,12 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     return urls
 
 
+def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
+    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
+            or receipt.get("final_url") != expected_url):
+        raise ValueError("retained_capture_request_identity_mismatch:" + name)
+
+
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
@@ -86,11 +90,13 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
+    expected_urls = dict(_capture_roster(EXPECTED_IDS))
     captures = {}
     for name in sorted(CAPTURE_NAMES):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        _validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
@@ -125,6 +131,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
         raise ValueError("source_layer_identity_extent_or_limit_drift")
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
+    extent_reference = layer.get("extent", {}).get("spatialReference")
+    if extent_reference is not None:
+        _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
     count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
@@ -170,7 +179,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     features.sort(key=lambda r:r["attributes"]["OBJECTID"])
     coordinates=[[r["attributes"]["OBJECTID"],r["geometry"]["x"],r["geometry"]["y"]] for r in features]
     bounds=[min(p[1] for p in coordinates),min(p[2] for p in coordinates),max(p[1] for p in coordinates),max(p[2] for p in coordinates)]
-    audit={"source_feature_count":len(features),"source_id_sha256":_sha(_canonical(ids),),"source_id_min":min(ids),"source_id_max":max(ids),
+    audit={"source_feature_count":len(features),"source_id_sha256":_sha(_canonical(ids)),"source_id_min":min(ids),"source_id_max":max(ids),
       "source_schema_sha256":_sha(_canonical(layer["fields"])),"source_record_sha256":_sha(_canonical([r["attributes"] for r in features])),
       "source_geometry_sha256":_sha(_canonical(coordinates)),"source_geometry_type":"esriGeometryPoint","source_wkid":4326,
       "source_vertex_count":len(features),"geometry_valid_count":geometry_valid,"geometry_empty_count":geometry_empty,"geometry_invalid_count":0,

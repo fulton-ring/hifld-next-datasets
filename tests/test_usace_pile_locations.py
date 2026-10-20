@@ -4,8 +4,13 @@ import unittest
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
+from dagster import DefaultScheduleStatus
 
 from dagster_hifld.sources import usace_pile_locations as source
+from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+from dagster_hifld.assets.usace_pile_locations import (
+    usace_pile_locations_complete, usace_pile_locations_draft_schedule, usace_pile_locations_usace_ienc,
+)
 
 
 def _capture_docs(count=source.EXPECTED_COUNT):
@@ -41,6 +46,21 @@ def _capture_docs(count=source.EXPECTED_COUNT):
 
 
 class PileLocationsTests(unittest.TestCase):
+    def test_registered_stopped_draft_and_unapproved_release_gate(self):
+        self.assertIn(usace_pile_locations_usace_ienc, hifld_ingest_assets)
+        self.assertEqual(usace_pile_locations_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
+        check=usace_pile_locations_complete({"feature_count":source.EXPECTED_COUNT,"source_population_complete":True})
+        self.assertTrue(check.passed)
+        self.assertFalse(check.metadata["release_accepted"].value)
+
+    def test_retained_capture_is_bound_to_exact_named_get_request(self):
+        name,url=source._capture_roster(source.EXPECTED_IDS)[0]
+        receipt={"method":"GET","url":url,"final_url":url}
+        source._validate_capture_request_identity(name,receipt,url)
+        receipt["final_url"]="https://example.invalid/wrong"
+        with self.assertRaisesRegex(ValueError,"retained_capture_request_identity_mismatch"):
+            source._validate_capture_request_identity(name,receipt,url)
+
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
         self.assertEqual(len(features), source.EXPECTED_COUNT)
