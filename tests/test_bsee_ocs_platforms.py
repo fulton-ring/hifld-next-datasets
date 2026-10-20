@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import tempfile
+import hashlib
+import json
 import unittest
 import zipfile
 from contextlib import contextmanager
@@ -13,7 +15,7 @@ import fiona
 import pandas as pd
 from shapely.geometry import Point
 
-from dagster_hifld.sources.bsee_ocs_platforms import _candidate_version, _validate_capture
+from dagster_hifld.sources.bsee_ocs_platforms import SOURCE_URL, _candidate_version, _read_capture, _validate_capture
 
 
 class BseeOcsPlatformsTests(unittest.TestCase):
@@ -65,6 +67,39 @@ class BseeOcsPlatformsTests(unittest.TestCase):
         self.assertEqual(_candidate_version(records,schema,first,identity),_candidate_version(records,schema,same,identity))
         self.assertNotEqual(_candidate_version(records,schema,first,identity),_candidate_version(records,schema,changed_wire,identity))
         self.assertNotEqual(_candidate_version(records,schema,first,identity),_candidate_version(records,schema,changed_body,identity))
+
+    def test_replay_receipt_requires_exact_named_get_origin(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            body = b"retained source bytes"
+            digest = hashlib.sha256(body).hexdigest()
+            for suffix in ("body", "wire"):
+                (root / f"platform.{suffix}").write_bytes(body)
+            receipt = {"method": "GET", "status": 200, "complete_body": True,
+                       "bytes": len(body), "sha256": digest, "wire_bytes": len(body),
+                       "wire_sha256": digest, "url": SOURCE_URL, "final_url": SOURCE_URL}
+            path = root / "platform.receipt.json"
+            path.write_text(json.dumps(receipt))
+            self.assertEqual(_read_capture("platform", root)[0], body)
+            for changes in ({"url": "https://example.org/mirror.zip", "final_url": "https://example.org/mirror.zip"},
+                            {"method": "POST"}, {"final_url": "https://example.org/redirect.zip"}):
+                with self.subTest(changes=changes):
+                    path.write_text(json.dumps({**receipt, **changes}))
+                    with self.assertRaisesRegex(ValueError, "source_capture_receipt_or_bytes_invalid"):
+                        _read_capture("platform", root)
+            with self.assertRaisesRegex(ValueError, "unexpected_source_capture_name"):
+                _read_capture("unknown", root)
+
+    def test_nonfinite_point_is_rejected_before_zero_invalid_audit(self):
+        with self.fixture() as captures, patch("dagster_hifld.sources.bsee_ocs_platforms.EXPECTED_COUNT", 1):
+            frame, _ = _validate_capture(captures)
+            for coordinate in (float("inf"), float("nan")):
+                with self.subTest(coordinate=coordinate):
+                    invalid = frame.copy()
+                    invalid.geometry = [Point(coordinate, 28)]
+                    with patch("dagster_hifld.sources.bsee_ocs_platforms.gpd.read_file", return_value=invalid):
+                        with self.assertRaisesRegex(ValueError, "source_invalid_or_nonfinite_geometry"):
+                            _validate_capture(captures)
 
 
 if __name__ == "__main__":

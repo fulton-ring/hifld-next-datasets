@@ -70,13 +70,19 @@ def _candidate_version(record_sha256: str, schema_sha256: str, evidence: Mapping
 
 
 def _read_capture(name: str, root: Path) -> tuple[bytes, dict[str, object]]:
+    expected_urls = {"mapping_page": MAPPING_URL, "platform_metadata": METADATA_URL, "platform": SOURCE_URL}
+    if name not in expected_urls:
+        raise ValueError("unexpected_source_capture_name:" + name)
     body_path, wire_path, receipt_path = (root / f"{name}.body", root / f"{name}.wire", root / f"{name}.receipt.json")
+    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
+        raise ValueError("source_capture_symlink_rejected:" + name)
     body, wire = body_path.read_bytes(), wire_path.read_bytes()
     receipt = json.loads(receipt_path.read_bytes())
     if (receipt.get("status") != 200 or receipt.get("complete_body") is not True
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
             or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-            or receipt.get("url") is None or receipt.get("final_url") != receipt.get("url")):
+            or receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
+            or receipt.get("final_url") != expected_urls[name]):
         raise ValueError("source_capture_receipt_or_bytes_invalid:" + name)
     return body, receipt
 
@@ -133,6 +139,8 @@ def _validate_capture(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
         raise ValueError("source_count_or_crs_drift")
     if frame.geometry.isna().any() or frame.geometry.is_empty.any() or set(frame.geom_type) != {"Point"}:
         raise ValueError("source_geometry_population_or_type_drift")
+    if not frame.geometry.is_valid.all():
+        raise ValueError("source_invalid_or_nonfinite_geometry")
     if frame["STRUCTURE_"].isna().any() or frame["COMPLEX_ID"].isna().any():
         raise ValueError("source_native_identifier_nulls")
     if frame[["COMPLEX_ID", "STRUCTURE_"]].drop_duplicates().shape[0] != EXPECTED_COUNT:
