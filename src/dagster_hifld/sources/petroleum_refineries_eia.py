@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlsplit
+from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
 import httpx
@@ -71,7 +72,7 @@ def _json(data: object) -> bytes:
 
 
 def _capture(directory: Path | None) -> tuple[bytes, dict, Path]:
-    root = directory or Path("/tmp/hifld-native-reconstruction/268/captures/2021-eia")
+    root = directory or (Path("/tmp/hifld-native-reconstruction/268/captures") / f"2021-eia-{uuid4().hex}")
     if root.is_symlink() or any(parent.is_symlink() for parent in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)
@@ -246,10 +247,31 @@ def capture_petroleum_refineries_eia(storage: StagingStorageResource, *, capture
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     identity_fingerprint = _sha(_json(identity))
     expected_objects = {name: {"bytes": len(content), "sha256": _sha(content)} for name, content in outputs.items()}
+    reused = False
     if storage.object_snapshot(state_key) is not None:
+        original = json.loads(load_first_construction(storage, state_key, version, identity_fingerprint)).get("payload")
+        if (not isinstance(original, dict) or original.get("processing_identity") != identity
+                or original.get("source_record_sha256") != audit["source_record_sha256"]
+                or original.get("source_schema_sha256") != audit["source_schema_sha256"]
+                or not isinstance(original.get("capture_receipts"), dict)
+                or set(original["capture_receipts"]) != {"source_zip"}
+                or not isinstance(original.get("objects"), dict)):
+            raise ValueError("cached_first_candidate_identity_or_source_changed")
+        original_receipt = original["capture_receipts"]["source_zip"]
+        if (original_receipt.get("method") != "GET" or original_receipt.get("url") != SOURCE_URL
+                or original_receipt.get("final_url") != SOURCE_URL or original_receipt.get("status") != 200
+                or original_receipt.get("complete_body") is not True
+                or original_receipt.get("bytes") != SOURCE_ZIP_BYTES
+                or original_receipt.get("sha256") != SOURCE_ZIP_SHA256
+                or original_receipt.get("last_modified") != SOURCE_LAST_MODIFIED):
+            raise ValueError("cached_original_source_receipt_changed")
+        original_objects = original["objects"]
+        if original_objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != expected_objects.get(f"geoparquet/{DATASET_SLUG}.parquet"):
+            raise ValueError("cached_native_candidate_changed")
         verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
             identity_fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"],
-            expected_objects, {"source_zip": receipt})
+            original_objects, original["capture_receipts"])
+        reused = True
     else:
         for name, content in outputs.items():
             write_immutable(storage, f"{prefix}/{name}", content)
@@ -261,4 +283,4 @@ def capture_petroleum_refineries_eia(storage: StagingStorageResource, *, capture
         "source_population_complete": True, "source_vintage": SOURCE_VINTAGE, "historical_only": True,
         "source_ids_sha256": audit["source_ids_sha256"], "source_record_sha256": audit["source_record_sha256"],
         "source_capture_evidence_sha256": _sha(body), "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
-        "release_accepted": False, "freshness_accepted": False, "capture_directory": str(root)}
+        "release_accepted": False, "freshness_accepted": False, "reused": reused, "capture_directory": str(root)}

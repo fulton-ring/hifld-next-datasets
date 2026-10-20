@@ -2,6 +2,7 @@ import unittest
 import hashlib
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus
 from dagster_hifld.assets import hifld_dataset_assets
@@ -83,6 +84,38 @@ class PetroleumRefineriesEiaTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed"):
                 verify_cached_candidate(storage, repo, state_key, prefix, version, fingerprint, identity,
                     "a" * 64, "b" * 64, objects, {"source_zip": receipt})
+
+    def test_timestamp_only_replay_reuses_first_receipt_and_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            root.mkdir()
+            body = b"pinned synthetic ZIP bytes"
+            digest = hashlib.sha256(body).hexdigest()
+            (root / "source_zip.wire").write_bytes(body)
+            audit = {"feature_count": 130, "source_record_sha256": "a" * 64,
+                     "source_schema_sha256": "b" * 64, "source_ids_sha256": "c" * 64}
+            receipts = iter(("2026-10-20T01:00:00+00:00", "2026-10-20T02:00:00+00:00"))
+
+            def capture(_directory):
+                return body, {"method": "GET", "url": source.SOURCE_URL, "final_url": source.SOURCE_URL,
+                    "observed_at": next(receipts), "status": 200, "complete_body": True,
+                    "bytes": len(body), "sha256": digest,
+                    "wire_bytes": len(body), "wire_sha256": digest,
+                    "last_modified": source.SOURCE_LAST_MODIFIED}, root
+
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
+            with patch.object(source, "_capture", side_effect=capture), \
+                 patch.object(source, "_read_archive", return_value=([], audit)), \
+                 patch.object(source, "_parquet", return_value=b"stable candidate parquet"), \
+                 patch.object(source, "SOURCE_ZIP_BYTES", len(body)), \
+                 patch.object(source, "SOURCE_ZIP_SHA256", digest):
+                first = source.capture_petroleum_refineries_eia(storage)
+                prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{first['version']}"
+                receipt_before = storage.read_key(f"{prefix}/raw/source_zip.receipt.json")
+                second = source.capture_petroleum_refineries_eia(storage)
+            self.assertTrue(second["reused"])
+            self.assertEqual(first["version"], second["version"])
+            self.assertEqual(storage.read_key(f"{prefix}/raw/source_zip.receipt.json"), receipt_before)
 
 
 if __name__ == "__main__":
