@@ -58,11 +58,19 @@ class FakeAPI:
 
 
 class BoardDispatchTests(unittest.TestCase):
-    def test_exhausted_allowance_and_active_slots_do_not_dispatch(self):
-        for runs in ([run(n) for n in range(6)], [run(1, status='queued'), run(2, status='in_progress')]):
-            api = FakeAPI(runs)
-            self.assertEqual(dispatch.dispatch_cards([card()], api, now=NOW), [])
-            self.assertEqual(api.posts, [])
+    def test_review_slots_are_independent_of_six_busy_workers(self):
+        busy = [run(n, role='implementation', issue=900+n, status='in_progress') for n in range(6)]
+        api = FakeAPI(busy)
+        self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW)), 1)
+        busy += [run(10+n, issue=950+n, status='queued') for n in range(2)]
+        api = FakeAPI(busy)
+        self.assertEqual(dispatch.dispatch_cards([card()], api, now=NOW), [])
+
+    def test_full_review_pool_does_not_block_ready_implementations(self):
+        api = FakeAPI([run(n, issue=900+n, status='in_progress') for n in range(2)], pr=False)
+        api.current_status = 'Ready'
+        selected = dispatch.dispatch_cards([card(), card(363, 'Ready')], api, now=NOW)
+        self.assertEqual([(x['role'], x['issue']) for x in selected], [('implementation', '363')])
 
     def test_review_uses_exact_head_and_existing_base(self):
         api = FakeAPI()
@@ -104,7 +112,7 @@ class BoardDispatchTests(unittest.TestCase):
         api = FakeAPI(pr=False)
         self.assertEqual(dispatch.dispatch_cards([card()], api, now=NOW), [])
 
-    def test_at_most_two_dispatches_even_when_github_ledger_is_delayed(self):
+    def test_review_reservations_bound_delayed_github_ledger(self):
         api = FakeAPI()
         self.assertEqual(len(dispatch.dispatch_cards([card(x) for x in range(1, 100)], api, now=NOW)), 2)
         self.assertEqual(len(api.posts), 2)
@@ -117,16 +125,21 @@ class BoardDispatchTests(unittest.TestCase):
         self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW, dry_run=True)), 1)
         self.assertEqual(api.posts, [])
 
-    def test_rerun_attempts_count_and_old_runs_age_out(self):
-        runs = [run(1), run(2)]
-        runs[0]['run_attempt'] = 5
-        self.assertEqual(dispatch.capacity(runs, NOW), 0)
-        runs[0]['updated_at'] = '2026-10-19T04:00:00Z'
-        self.assertEqual(dispatch.capacity(runs, NOW), 2)
+    def test_completed_attempts_do_not_consume_concurrency(self):
+        api = FakeAPI([run(n, issue=900+n) for n in range(99)])
+        self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW)), 1)
 
-    def test_one_remaining_attempt_admits_only_one_card(self):
-        api = FakeAPI([run(n, issue=900 + n) for n in range(5)])
-        self.assertEqual(len(dispatch.dispatch_cards([card(1), card(2)], api, now=NOW)), 1)
+    def test_six_implementation_reservations_bound_delayed_ledger(self):
+        api = FakeAPI(pr=False)
+        api.current_status = 'Ready'
+        selected = dispatch.dispatch_cards([card(n, 'Ready') for n in range(1, 20)], api, now=NOW)
+        self.assertEqual(len(selected), 6)
+        self.assertTrue(all(x['role'] == 'implementation' for x in selected))
+
+    def test_worker_slots_remain_full_when_both_review_slots_are_free(self):
+        api = FakeAPI([run(n, role='implementation', issue=900+n, status='queued') for n in range(6)], pr=False)
+        api.current_status = 'Ready'
+        self.assertEqual(dispatch.dispatch_cards([card(363, 'Ready')], api, now=NOW), [])
 
     def test_fork_pr_cannot_be_sent_to_review(self):
         class ForkAPI(FakeAPI):
@@ -173,19 +186,19 @@ class BoardDispatchTests(unittest.TestCase):
     def test_unknown_active_legacy_run_fails_closed(self):
         legacy = run(status='in_progress')
         legacy['display_title'] = 'GKE agent pilot'
-        self.assertEqual(dispatch.capacity([legacy], NOW), 0)
+        self.assertEqual(dispatch.capacity([legacy], 'review'), 0)
 
-    def test_board_query_excludes_shared_gates_closed_and_foreign_cards(self):
-        def item(number, body='<!-- hifld-dataset:example -->', state='OPEN', repo=dispatch.REPO):
-            return {'id': str(number), 'status': {'name': 'Review'}, 'content': {
+    def test_board_query_admits_shared_gate_only_for_independent_review(self):
+        def item(number, body='<!-- hifld-dataset:example -->', state='OPEN', repo=dispatch.REPO, lane='Review'):
+            return {'id': str(number), 'status': {'name': lane}, 'content': {
                 'number': number, 'body': body, 'state': state, 'repository': {'nameWithOwner': repo},
                 'labels': {'totalCount': 0, 'nodes': []}}}
         def api(kind, path, data=None):
             if data['query'] == dispatch.FIELDS:
                 return {'data': {'organization': {'projectV2': {'id': 'P'}}}}
             return {'data': {'node': {'items': {'pageInfo': {'hasNextPage': False}, 'nodes': [
-                item(282), item(417, body='Shared acceptance gate'), item(3, state='CLOSED'), item(4, repo='stranger/fork')]}}}}
-        self.assertEqual([c['number'] for c in dispatch.cards(api)], [282])
+                item(282), item(417, body='Shared acceptance gate'), item(417, body='Shared gate', lane='Ready'), item(500, body='Unrelated issue'), item(3, state='CLOSED'), item(4, repo='stranger/fork')]}}}}
+        self.assertEqual([c['number'] for c in dispatch.cards(api)], [282, 417])
 
     def test_public_mention_is_not_a_trusted_pr_association(self):
         class MentionAPI(FakeAPI):
