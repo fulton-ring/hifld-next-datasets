@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import os
 import tempfile
 import unittest
 import zipfile
@@ -15,6 +16,7 @@ import shapely
 from pyproj import CRS
 from shapely.geometry import MultiPolygon, Polygon
 
+from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILE_PAIRS
 from dagster_hifld.assets.us_state_boundaries import us_state_boundaries_source_complete
 from dagster_hifld.resources import StagingStorageResource
@@ -34,6 +36,29 @@ from dagster_hifld.sources.us_state_boundaries import (
     _inspect_archive_data,
     candidate_version,
 )
+
+
+class RegistrationTests(unittest.TestCase):
+    def test_explicit_source_check_job_and_stopped_schedule_are_wired(self):
+        with patch.dict(os.environ, {"HIFLD_SHADOW_MANUAL_ONLY": "1"}):
+            from dagster_hifld.definitions import defs
+
+            graph = defs.resolve_asset_graph()
+            keys = {tuple(key.path) for key in graph.get_all_asset_keys()}
+            self.assertIn(("ingest", DATASET_SLUG, FILE_SLUG), keys)
+            self.assertIn(("publish", "catalog"), keys)
+            self.assertIn(("publish", "promote"), keys)
+            from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+
+            self.assertEqual(
+                sum(any(tuple(key.path) == ("ingest", DATASET_SLUG, FILE_SLUG) for key in asset.keys)
+                    for asset in hifld_ingest_assets),
+                1,
+            )
+            self.assertIsNotNone(defs.resolve_job_def("us_state_boundaries_draft_refresh"))
+            from dagster_hifld.assets.us_state_boundaries import us_state_boundaries_draft_schedule
+
+            self.assertEqual(us_state_boundaries_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
 
 
 def canonical(value):
