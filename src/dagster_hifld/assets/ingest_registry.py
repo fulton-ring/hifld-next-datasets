@@ -60,6 +60,7 @@ from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.census_designated_places import census_designated_places
 from dagster_hifld.assets.colleges_universities import nces_colleges_universities
 from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
+from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
 
 hifld_ingest_assets = [
     nces_colleges_universities,
@@ -116,4 +117,5 @@ hifld_ingest_assets = [
     census_designated_places,
     ornl_campus_historical_preservation,
     census_combined_statistical_areas,
+    census_consolidated_cities,
 ]
