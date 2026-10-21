@@ -182,6 +182,11 @@ from dagster_hifld.assets.census_primary_roads import (
     census_primary_roads_source_complete,
     census_primary_roads_draft_schedule,
 )
+from dagster_hifld.assets.census_tracts import (
+    census_tracts_source_complete,
+    census_tracts_draft_job,
+    census_tracts_draft_schedule,
+)
 from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
@@ -593,6 +598,7 @@ defs = Definitions(
         gcca_warehouses_geometry_complete,
         red_cross_headquarters_source_population,
         census_primary_roads_source_complete,
+        census_tracts_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
@@ -621,6 +627,7 @@ defs = Definitions(
     ],
     jobs=[
         usgs_aquifers_draft_refresh_job,
+        census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
@@ -661,6 +668,7 @@ defs = Definitions(
         usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
         census_primary_roads_draft_schedule,
+        census_tracts_draft_schedule,
         usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
