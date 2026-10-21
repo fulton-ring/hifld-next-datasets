@@ -20,7 +20,10 @@ from dagster_hifld.sources.epa_rcra_tsd import (
 )
 from dagster_hifld.definitions import defs
 from dagster import AssetKey
+from dagster_hifld.catalog import summarize_staged_catalog
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 import dagster_hifld.sources.epa_rcra_tsd as rcra
 import dagster_hifld.sources.epa_frs_common as frs_common
 
@@ -143,15 +146,29 @@ class EpaRcraTsdTests(unittest.TestCase):
                 prefix = first["candidate_ready"].split("/metadata/", 1)[0]
                 sealed_manifest = storage.read_key(prefix + "/metadata/source_manifest.json")
                 manifest_sha = hashlib.sha256(sealed_manifest).hexdigest()
+                dataset_slug, file_slug, candidate_version = prefix.split("/")
+                source_metadata = load_resolved_source_manifest(
+                    storage, dataset_slug, file_slug, candidate_version
+                ).metadata
+                summary = summarize_staged_catalog(
+                    storage, dataset_slug, file_slug, candidate_version, dataset_slug,
+                    source_metadata=source_metadata,
+                )
+                quality = json.dumps(summary.quality_manifest, sort_keys=True, separators=(",", ":")).encode()
+                dictionary = json.dumps(summary.data_dictionary, sort_keys=True, separators=(",", ":")).encode()
                 derived = {
-                    "metadata/quality_manifest.json": b'{"quality_check_passed":false}',
-                    "metadata/data_dictionary.json": b'{"fixture":true}',
-                    "metadata/resolved_provenance.json": b'{"fixture":true}',
-                    "metadata/source/quality_manifest.json": b'{"fixture":true}',
-                    "metadata/source/data_dictionary.json": b'{"fixture":true}',
+                    "metadata/quality_manifest.json": quality,
+                    "metadata/data_dictionary.json": dictionary,
+                    "metadata/source/quality_manifest.json": quality,
+                    "metadata/source/data_dictionary.json": dictionary,
                     "metadata/source/source_manifest.json": sealed_manifest,
                     f"metadata/source/version_{manifest_sha}_source_manifest.json": sealed_manifest,
                 }
+                projection = provenance_projection(source_metadata)
+                if projection is not None:
+                    derived["metadata/resolved_provenance.json"] = json.dumps(
+                        projection, sort_keys=True, separators=(",", ":")
+                    ).encode()
                 for name, body in derived.items():
                     rcra.write_immutable(storage, prefix + "/" + name, body)
                 second = rcra.capture_epa_rcra_tsd(storage, version="fixture-run-2", capture_directory=str(root / "captures"))
