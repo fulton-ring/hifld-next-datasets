@@ -31,6 +31,10 @@ from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
 )
+from dagster_hifld.assets.fuel_stations import (
+    fuel_stations_draft_refresh_job,
+    fuel_stations_draft_refresh_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -430,12 +434,14 @@ defs = Definitions(
         noaa_eez_draft_refresh_job,
         noaa_contiguous_draft_refresh_job,
         pylon_locations_draft_refresh_job,
+        fuel_stations_draft_refresh_job,
     ],
     schedules=[
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
         noaa_contiguous_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
+        fuel_stations_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
