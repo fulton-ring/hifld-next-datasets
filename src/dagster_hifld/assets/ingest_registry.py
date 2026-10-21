@@ -55,8 +55,10 @@ from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.census_designated_places import census_designated_places
+from dagster_hifld.assets.construction_minerals import construction_minerals_preservation_candidate
 
 hifld_ingest_assets = [
+    construction_minerals_preservation_candidate,
     usgs_aquifers,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,

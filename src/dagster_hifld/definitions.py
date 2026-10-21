@@ -261,6 +261,11 @@ from dagster_hifld.assets.census_designated_places import (
     cdp_source_integrity_schedule,
 )
 
+from dagster_hifld.assets.construction_minerals import (
+    construction_minerals_draft_job,
+    construction_minerals_draft_schedule,
+)
+
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -730,6 +735,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
+        construction_minerals_draft_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -778,6 +784,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
+        construction_minerals_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
