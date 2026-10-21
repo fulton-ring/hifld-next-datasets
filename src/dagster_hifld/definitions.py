@@ -55,6 +55,10 @@ from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_draft_schedule,
     usace_caution_areas_draft_job,
 )
+from dagster_hifld.assets.usace import (
+    usace_navigation_marks_areas_complete,
+    usace_navigation_marks_areas_draft_schedule,
+)
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
@@ -484,6 +488,7 @@ defs = Definitions(
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
+        usace_navigation_marks_areas_complete,
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
         usace_caution_areas_complete,
@@ -515,6 +520,7 @@ defs = Definitions(
         recommended_tracks_draft_schedule,
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
+        usace_navigation_marks_areas_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,

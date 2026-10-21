@@ -17,7 +17,10 @@ from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facil
 from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
-from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
+from dagster_hifld.assets.usace import (
+    usace_administrative_areas_usace_ienc,
+    usace_navigation_marks_areas_usace_ienc,
+)
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.quaternary_fault_lines import quaternary_fault_lines_usgs
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
@@ -44,6 +47,7 @@ hifld_ingest_assets = [
     bts_alternative_fueling_stations,
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
+    usace_navigation_marks_areas_usace_ienc,
     usace_berths_areas_usace_ienc,
     quaternary_fault_lines_usgs,
     usace_pylon_areas_usace_ienc,
