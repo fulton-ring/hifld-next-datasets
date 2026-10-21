@@ -15,6 +15,9 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.arc_regions import (
+    arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
+)
 from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_job,
     aiannh_source_integrity_refresh_schedule,
@@ -581,6 +584,7 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[
         *hifld_asset_checks,
+        arc_regions_full_quality,
         eia_power_plants_complete,
         gcca_warehouses_geometry_complete,
         red_cross_headquarters_source_population,
@@ -642,6 +646,7 @@ defs = Definitions(
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
+        arc_regions_draft_job,
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
         usace_airport_area_draft_job,
@@ -681,6 +686,7 @@ defs = Definitions(
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
+        arc_regions_draft_schedule,
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
