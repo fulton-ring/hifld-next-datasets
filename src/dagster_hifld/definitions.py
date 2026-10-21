@@ -16,6 +16,12 @@ from dagster import (
 
 from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
+from dagster_hifld.assets.epa_disaster_debris import (
+    epa_disaster_debris_complete,
+    epa_disaster_debris_draft_job,
+    epa_disaster_debris_draft_schedule,
+    epa_disaster_debris_recovery_data,
+)
 from dagster_hifld.assets.crushed_stone import (
     crushed_stone_preservation_job,
     crushed_stone_preservation_schedule,
@@ -185,6 +191,12 @@ from dagster_hifld.assets.us_county_boundaries import (
     us_county_boundaries_source_complete,
 )
 
+from dagster_hifld.assets.us_state_boundaries import (
+    us_state_boundaries_draft_job,
+    us_state_boundaries_draft_schedule,
+    us_state_boundaries_source_complete,
+)
+
 from dagster_hifld.assets.coastlines_usace_ienc import (
     coastlines_usace_ienc_complete,
     coastlines_usace_ienc_draft_job,
@@ -207,6 +219,19 @@ from dagster_hifld.assets.usace_data_coverage_areas import (
     usace_data_coverage_areas_complete,
     usace_data_coverage_areas_draft_job,
     usace_data_coverage_areas_draft_schedule,
+)
+from dagster_hifld.assets.electric_retail_service_territories import (
+    electric_retail_service_territories_population_complete,
+    electric_retail_service_territories_geometry_valid,
+    electric_retail_service_territories_release_pending,
+    electric_retail_service_territories_preservation_job,
+    electric_retail_service_territories_preservation_schedule,
+)
+
+from dagster_hifld.assets.epa_rmp_facilities import (
+    epa_emergency_response_rmp_facilities_complete,
+    epa_rmp_facilities_draft_job,
+    epa_rmp_facilities_draft_schedule,
 )
 
 from dagster_hifld.assets.usace_caution_areas import (
@@ -406,6 +431,16 @@ from dagster_hifld.assets.docks import (
     docks_source_population_complete,
     docks_source_geometry_quality,
     docks_release_acceptance_pending,
+)
+from dagster_hifld.assets.epa_facilities import (
+    epa_facilities_full_quality,
+    epa_facilities_draft_job,
+    epa_facilities_draft_schedule,
+)
+from dagster_hifld.assets.epa_facilities_labels import (
+    epa_facilities_labels_full_quality,
+    epa_facilities_labels_draft_job,
+    epa_facilities_labels_draft_schedule,
 )
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
@@ -781,9 +816,10 @@ def _configured_sensors():
 
 
 defs = Definitions(
-    assets=hifld_dataset_assets,
+    assets=[*hifld_dataset_assets, epa_disaster_debris_recovery_data],
     asset_checks=[
         *hifld_asset_checks,
+        epa_disaster_debris_complete,
         arc_regions_full_quality,
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
@@ -808,6 +844,7 @@ defs = Definitions(
         usace_berths_areas_complete,
         usace_dry_docks_complete,
         us_county_boundaries_source_complete,
+        us_state_boundaries_source_complete,
         usace_pontoon_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
@@ -832,12 +869,19 @@ defs = Definitions(
         usace_crane_locations_quality,
         usace_crane_locations_release,
         usace_data_coverage_areas_complete,
+        epa_emergency_response_rmp_facilities_complete,
         docks_source_population_complete,
         docks_source_geometry_quality,
         docks_release_acceptance_pending,
+        electric_retail_service_territories_population_complete,
+        electric_retail_service_territories_geometry_valid,
+        electric_retail_service_territories_release_pending,
+        epa_facilities_full_quality,
+        epa_facilities_labels_full_quality,
     ],
     jobs=[
         elsd_source_integrity_job,
+        epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
         census_tracts_draft_job,
@@ -878,6 +922,7 @@ defs = Definitions(
         usace_dumping_ground_areas_draft_job,
         nces_private_schools_draft_job,
         us_county_boundaries_draft_job,
+        us_state_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
         arc_regions_draft_job,
@@ -903,10 +948,15 @@ defs = Definitions(
         usace_crane_locations_draft_job,
         crushed_stone_preservation_job,
         usace_data_coverage_areas_draft_job,
+        epa_rmp_facilities_draft_job,
         docks_draft_job,
+        electric_retail_service_territories_preservation_job,
+        epa_facilities_draft_job,
+        epa_facilities_labels_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
+        epa_disaster_debris_draft_schedule,
         colleges_source_integrity_schedule,
         usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
@@ -935,6 +985,7 @@ defs = Definitions(
         usace_berths_areas_draft_schedule,
         usace_dry_docks_draft_schedule,
         us_county_boundaries_draft_schedule,
+        us_state_boundaries_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
@@ -976,8 +1027,12 @@ defs = Definitions(
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
         crushed_stone_preservation_schedule,
+        electric_retail_service_territories_preservation_schedule,
         usace_data_coverage_areas_draft_schedule,
+        epa_rmp_facilities_draft_schedule,
         docks_draft_schedule,
+        epa_facilities_draft_schedule,
+        epa_facilities_labels_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
