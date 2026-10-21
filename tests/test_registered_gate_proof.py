@@ -4,7 +4,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.verification.registered_gate_proof import validate_run_root
+from scripts.verification.registered_gate_proof import (
+    is_exact_approval_failure,
+    validate_run_root,
+)
 
 
 class RegisteredGateProofSafetyTests(unittest.TestCase):
@@ -30,6 +33,20 @@ class RegisteredGateProofSafetyTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "non-overlapping"):
                 validate_run_root(candidate / "run", candidate)
+
+    def test_approval_failure_requires_the_exact_missing_approval_reason(self):
+        self.assertTrue(is_exact_approval_failure({
+            "step_key": "publish__verify",
+            "error": "missing_or_ambiguous_exact_object_approval:object",
+        }))
+        self.assertFalse(is_exact_approval_failure({
+            "step_key": "publish__verify",
+            "error": "unrelated verification failure",
+        }))
+        self.assertFalse(is_exact_approval_failure({
+            "step_key": "publish__promote",
+            "error": "missing_or_ambiguous_exact_object_approval:object",
+        }))
 
 
 if __name__ == "__main__":

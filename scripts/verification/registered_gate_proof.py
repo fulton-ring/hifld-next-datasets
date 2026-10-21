@@ -24,6 +24,7 @@ from dagster_hifld.assets.publish import publish_version, verify_release
 from dagster_hifld.checks import publish_catalog_quality_manifest
 from dagster_hifld.definitions import defs as registered_defs
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.release_approval import verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
@@ -115,10 +116,19 @@ def step_started(case: dict[str, Any], suffix: str) -> bool:
     return any(step == suffix or step.endswith("__" + suffix) for step in case["step_starts"])
 
 
-def current_git_head() -> str:
+def is_exact_approval_failure(event: dict[str, Any]) -> bool:
+    verify_step = event["step_key"] == "verify" or event["step_key"].endswith("__verify")
+    return verify_step and "missing_or_ambiguous_exact_object_approval" in event.get("error", "")
+
+
+def harness_checkout_head() -> str:
+    """Return the checkout containing this script, never the caller's cwd head."""
+    script_directory = Path(__file__).resolve().parent
     try:
         return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+            ["git", "-C", str(script_directory), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         return "unavailable"
@@ -305,8 +315,7 @@ def main(argv: list[str] | None = None) -> int:
         raise AssertionError("promotion started despite empty approval registry")
     verify_failures = [
         event for event in approval_case["step_failures"]
-        if event["step_key"] == "verify" or event["step_key"].endswith("__verify")
-        and "missing_or_ambiguous_exact_object_approval" in event.get("error", "")
+        if is_exact_approval_failure(event)
     ]
     if len(verify_failures) != 1:
         raise AssertionError(f"verify did not fail specifically on absent exact approval: {verify_failures}")
@@ -321,7 +330,9 @@ def main(argv: list[str] | None = None) -> int:
         raise AssertionError("input candidate was modified")
     result = {
         "purpose": "registered gates only; no source or catalog materialization, acceptance, or production publication",
-        "code_head": current_git_head(),
+        "harness_checkout_head": harness_checkout_head(),
+        "harness_script_sha256": file_sha256(Path(__file__).resolve()),
+        "registered_pipeline_implementation_sha256": verifier_implementation_sha256(),
         "code_identity_scheme": source_manifest_data.get("code_identity_scheme"),
         "candidate": str(candidate),
         "staging_prefix": prefix,
@@ -344,7 +355,8 @@ def main(argv: list[str] | None = None) -> int:
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
         "proof": str(output),
-        "code_head": result["code_head"],
+        "harness_checkout_head": result["harness_checkout_head"],
+        "harness_script_sha256": result["harness_script_sha256"],
         "quality_failed_run_id": quality_case["run_id"],
         "empty_approval_run_id": approval_case["run_id"],
         "published_fixture_unchanged": result["published_fixture_unchanged"],
