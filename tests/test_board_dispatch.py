@@ -117,6 +117,21 @@ class BoardDispatchTests(unittest.TestCase):
         self.assertEqual(len(dispatch.dispatch_cards([card(x) for x in range(1, 100)], api, now=NOW)), 2)
         self.assertEqual(len(api.posts), 2)
 
+    def test_one_sweep_fills_both_role_pools_without_an_actions_backlog(self):
+        class MixedAPI(FakeAPI):
+            def __call__(self, kind, path, data=None):
+                result = super().__call__(kind, path, data)
+                if kind == 'board':
+                    number = result['data']['node']['content']['number']
+                    result['data']['node']['status']['name'] = 'Review' if number < 100 else 'Ready'
+                return result
+        api = MixedAPI()
+        board = [card(n) for n in range(1, 4)] + [card(n, 'Ready') for n in range(100, 110)]
+        selected = dispatch.dispatch_cards(board, api, now=NOW)
+        self.assertEqual(sum(t['role'] == 'review' for t in selected), 2)
+        self.assertEqual(sum(t['role'] == 'implementation' for t in selected), 6)
+        self.assertEqual(len(api.posts), 8)
+
     def test_lane_change_before_dispatch_and_dry_run_never_post(self):
         api = FakeAPI()
         api.current_status = 'Needs decision'
