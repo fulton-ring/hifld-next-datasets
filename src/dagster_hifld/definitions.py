@@ -25,6 +25,11 @@ from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_draft_job,
     eia_power_plants_draft_schedule,
 )
+from dagster_hifld.assets.gcca_warehouse_directory import (
+    gcca_warehouses_geometry_complete,
+    gcca_warehouses_draft_job,
+    gcca_warehouses_draft_schedule,
+)
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
@@ -540,6 +545,7 @@ defs = Definitions(
     asset_checks=[
         *hifld_asset_checks,
         eia_power_plants_complete,
+        gcca_warehouses_geometry_complete,
         census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
@@ -581,6 +587,7 @@ defs = Definitions(
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
+        gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
         usace_pile_locations_draft_job,
         usace_pipeline_areas_draft_job,
@@ -612,6 +619,7 @@ defs = Definitions(
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
+        gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_pipeline_areas_draft_schedule,
