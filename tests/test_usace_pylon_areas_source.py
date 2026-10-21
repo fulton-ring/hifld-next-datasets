@@ -188,7 +188,12 @@ class PackagedRuntimeIdentity(unittest.TestCase):
             self.assertEqual(identity["code_commit_kind"], "installed_processing_fingerprint_not_vcs_commit")
             self.assertTrue(str(identity["code_commit"]).startswith("installed-processing-sha256:"))
             self.assertNotIn("uv.lock", identity["files"])
+            self.assertEqual(identity["missing_processing_inputs"], ["uv.lock"])
             validate_processing_identity(root, identity)
+            (root / "uv.lock").write_text("# installed after initial capture\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "installed_processing_code_identity_changed"):
+                validate_processing_identity(root, identity)
+            (root / "uv.lock").unlink()
             (source / "pipeline.py").write_text("processor = 'changed'\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "installed_processing_code_identity_changed"):
                 validate_processing_identity(root, identity)

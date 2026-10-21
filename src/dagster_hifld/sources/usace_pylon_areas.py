@@ -523,6 +523,10 @@ def _processing_files(root: Path) -> dict[str, str]:
     return files
 
 
+def _missing_processing_inputs(root: Path) -> list[str]:
+    return [name for name in ("pyproject.toml", "uv.lock") if not (root / name).is_file()]
+
+
 def _runtime_versions() -> dict[str, str]:
     return {"python": platform.python_version(), "pyarrow": pa.__version__,
             "proj": pyproj.proj_version_str, "geos": shapely.geos_version_string}
@@ -569,6 +573,7 @@ def processing_identity(repo_root: Path) -> dict[str, object]:
         "builder_fingerprint": builder_fingerprint,
         "installed_pipeline_sha256": _sha(_canonical(dict(sorted(files.items())))),
         "working_tree_modified": working_tree_modified,
+        "missing_processing_inputs": _missing_processing_inputs(root),
         "files": files, "versions": versions,
     }
 
@@ -581,9 +586,11 @@ def validate_processing_identity(repo_root: Path, identity: Mapping[str, object]
     if identity.get("code_commit_kind") != "installed_processing_fingerprint_not_vcs_commit":
         raise ValueError("processing_code_identity_kind_invalid")
     observed_files = _processing_files(Path(repo_root).resolve())
+    missing_inputs = _missing_processing_inputs(Path(repo_root).resolve())
     versions = _runtime_versions()
     fingerprint = _installed_fingerprint(observed_files, versions)
-    if (observed_files != identity.get("files") or versions != identity.get("versions")
+    if (observed_files != identity.get("files") or missing_inputs != identity.get("missing_processing_inputs")
+            or versions != identity.get("versions")
             or identity.get("builder_fingerprint") != fingerprint
             or identity.get("code_commit") != "installed-processing-sha256:" + fingerprint
             or identity.get("installed_pipeline_sha256") != _sha(_canonical(dict(sorted(observed_files.items()))))):
