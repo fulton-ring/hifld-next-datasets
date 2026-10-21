@@ -2,6 +2,43 @@
 
 This ledger tracks all 415 dataset inventory issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. Earlier PR search counts are historical snapshots, not current open-PR counts. Issue #417 remains open; dataset issues remain open despite source PRs auto-merging by ancestry, and no production data was published.
 
+### Latest verified checkpoint — 2026-10-21 20:01 UTC
+
+All 415 inventory rows remain preserved. PR #624 for issue #53 merged exact source head `f93968b847a804552bddf0efa66f017327beec47` directly to main `afb6dc9f3baff9f5a809b55a5ace12126c167705` (tree `1ad6707f07eb85be554fadc884b04b14b07b6371`). Root review 5605449621 verified the 4,752 native points, attributes, WKB, source bytes, persistent gate evidence and unchanged populated fixture. Build-only job 119450725225 succeeded; publish was skipped. Main now has 64 registered schedules, all STOPPED.
+
+Issue #53 remains OPEN with a `move:needs-decision` request label. The Daymark candidate covers the observed regional service layer and does not establish nationwide completeness, historical succession, rights or release acceptance. It is not counted as accepted or published.
+
+This is a named-card update, not a fresh inventory census. The historical PR counts remain historical. No issue closure, schedule activation or production publication is claimed.
+
+Live API readback confirms the original source PRs #612/#616/#620/#622/#621/#624 are merged while dataset issues #46/#48/#50/#51/#52/#53 remain OPEN. Current `move:needs-decision` labels are present on #46/#50/#52 and absent on #48/#51/#53. The requested issue-comment/label REST batch was rejected by automatic review because it would post repository/review/CI metadata and mutate labels without specific authorization for that export; its rejection explicitly barred indirect retries. No comments or labels were written by this checkpoint; the remaining issue updates are pending. Issue #55 comment 6325192820 records concrete blockers; this checkpoint does not claim that its historical local archive was freshly verified.
+
+### Latest verified checkpoint — 2026-10-21 19:57 UTC
+
+All 415 inventory rows remain preserved. PR #623 merged exact integration head `eeeedfb38983c0fc45c55d1b9b890ff00bdffd34` (tree `c75ef35d3b51b77d83bca27b81b60e079425065d`) from base `658fc884d3dc6c504f4202a141c926eac6d0ef6b` to main as `4d3d5c27f9ac11036933eb1b04f4d68fc6ac6954`. Independent integration review 5605409998 verified all five source-head ancestors and all 27 source-owned blobs unchanged; only those blobs plus additive `ingest_registry.py` and `definitions.py` registrations changed. Build-only CI run 39665552929 / job 119449509562 succeeded and publish was skipped. Root verified 63 unique schedules, all STOPPED.
+
+Original source PRs #612/#46, #616/#48, #620/#50, #621/#52 and #622/#51 were automatically marked merged by ancestry through #623. Their exact reviewed heads and review IDs are in the JSON ledger. Issues #46/#48/#50/#51/#52 remain OPEN; Needs-decision request labels were applied, with current readback still showing labels on #46/#50/#51/#52 and empty on #48, consistent with one-shot sync consumption. Project Status was not directly queried. Earlier direct integrations #613/#323 and #618/#49 also remain open at the issue level with their code on main. The 63 schedule count includes #613/#618 and the five #623 pipelines.
+
+PR #619 merged the shared source-cache compatibility fix at main `658fc884d3dc6c504f4202a141c926eac6d0ef6b` (review 5605325702; build passed, publish skipped). It permits validated release metadata in cache reconciliation and does not complete shared issue #417.
+
+New PR #624/#53 Daymark Locations is open at `f93968b847a804552bddf0efa66f017327beec47`; exact-head review is pending. Its PR body records a 4,752-feature native candidate, source/catalog/post-refresh runs and refusal gates, but it is not integrated into main or counted in the 63 schedules. Issues #323/#49/#46/#48/#50/#51/#52 remain OPEN. No issue closure, source/rights/baseline/release acceptance, schedule activation or production publication is claimed. The historical 14:14 PR census remains historical; no fresh full census was performed.
+
+The row-derived `code_merged_issue_open_acceptance_gated` count is 50, separate from 63 current STOPPED schedules; neither count measures accepted or release-ready datasets. No new source capture, materialization, gate run or full-suite replay was performed for this integration checkpoint.
+
+### Latest verified checkpoint — 2026-10-21 18:44 UTC
+
+All 415 inventory rows remain preserved. Integration PR #617 merged exact reviewed head `6441681081dc4ed8be0813ef4576b6f1c4620f2e` from base `4a217faafe07778768b153be56b54302bea7e4c1` to main as `cff2b7aa7eb5b8f9e9463a7657ee65919e745e03`, tree `02005788bdf017c5e94364bc6ad2f3ada3d4c78a`. Root review 5604464822 passed and CI run 39653255446 / build job 119406811834 succeeded; publish was skipped. Root verified 18 source-owned blobs, all four exact source-head ancestors, and 56 unique schedules in the combined Definitions; all schedules remain STOPPED. This raises main registration from 52 to 56 and does not indicate feasibility, acceptance, or release capacity.
+
+The four source PRs are automatically merged through #617 ancestry: #608/#44 at `75b98beea63918806961cac37914ec66ff378520` (review 5604057611); #610/#42 at `0004a9dd7dc2dfdcff96cd9030d3f40261a79061` (reviews 5604250812 and limited docs delta 5604321038); #611/#45 at `3e54fc302740375e0d72a4e8c5bdb6fb70133a17` (review 5604258633); and #615/#47 at `b723024f743ad030549107c24485b6327aa4282c` (review 5604329638). The original source PRs are merged by ancestry, not manually closed. Issues #42, #44, #45 and #47 were individually read as OPEN and their `move:needs-decision` requests were applied. The later label readback still showed the label on #42/#47 and an empty label list on #44/#45, consistent with one-shot sync consumption; Projects Status was not queried. Older stacked PRs #453/#42 and #454/#45 remain open and noncanonical. The integration commit body’s #42 title typo was corrected by issue comment 6323716983: the source is Construction Minerals, not Coal Fields.
+
+| Issue | Canonical implementation | Remaining decision |
+| --- | --- | --- |
+| #42 Construction Minerals Operations | PR #610 integrated through #617; selected Stanford historical preservation package. | Original USGS endpoint returned 404. Historical continuity, rights, datum and acceptance remain unresolved. |
+| #44 Conveyor Areas | PR #608 integrated through #617; 269 native IDs, 12 non-geometry fields, EPSG:4326 source polygons. | Source acceptance, rights, continuity and release decisions remain pending. |
+| #45 County Subdivisions | PR #611 integrated through #617. | Source authority, edition, continuity, schema/IDs, rights and release acceptance remain pending. |
+| #47 Crane Locations | PR #615 integrated through #617; official IENC CRANES_POINT layer 8. | Source acceptance, rights, continuity and release decisions remain pending. |
+
+The row-derived `code_merged_issue_open_acceptance_gated` count is 43; it is separate from the 56 STOPPED schedules and is not a count of accepted or release-ready datasets. The 14:14 PR census and earlier counts remain historical; no fresh 415-row PR census was performed. The shared verification branch was non-force fast-forwarded after a zero-active-paid-job check, as recorded in `board-supervisor/shared-base-fast-forward-20261021T1830.json`. No new source capture/materialization/gate run, issue closure, source acceptance, release approval, schedule activation or production publication is claimed.
+
 ### Latest verified checkpoint — 2026-10-21 18:08 UTC
 
 All 415 inventory rows remain represented. Integration PR #609 merged exact head `995f41e5d69016ddab0872ba94c5a16a9f39a7f9` to main as `1d2aee5c37625481786ec4ec522e7220a25685a7` (tree `6cf03a3a055ceeee1866b738b3659c402d348d71`), from base `436d49e78f183f386079e414a12307a3b270e966`. Root review 5604078573 passed. CI run 39649066652 / build job 119392277916 succeeded; publish was skipped. Root independently verified seven reviewed source-head ancestors, 32 non-registration blobs, combined Definitions load and all 52 unique schedules STOPPED. PR #599 then merged from head `f32d89944f3e7dd09603ffc34a05f2bdf536e169` as current main `4f184eaa0020a71bb355a18bd70af64e7a95aea1` (tree `cd2a1f0d6ba136d2b88f1b09c570b5acb98672e6`), review 5604063783, build-only CI succeeded with publish skipped. This shared publish integration adds no schedule.
