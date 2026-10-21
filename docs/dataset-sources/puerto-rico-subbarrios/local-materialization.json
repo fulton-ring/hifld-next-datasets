@@ -1,37 +1,264 @@
 {
-  "schema_version": 1,
-  "script": "scripts/verification/puerto_rico_subbarrios_local.py",
-  "run_environment": "isolated local staging/published roots and fresh DAGSTER_HOME (telemetry disabled); no production storage touched",
-  "processing_code_sha256": "d1a869f34c3c32cfbfc0458bdbc9c691baa19a6b954a1fbd89e66576d0f71066",
-  "source_run": {
-    "job": "pr282_ingest",
-    "success": true,
-    "asset_check": "puerto_rico_subbarrios_source_complete",
-    "check_passed": true,
-    "capture_url": "https://www2.census.gov/geo/tiger/TIGER2023/SUBBARRIO/tl_2023_72_subbarrio.zip",
-    "staged_archive_sha256": "5358e982d49bc6a5c099e12d32220e756e05aff848f24ba89d862dd89d7b8d8a",
-    "candidate_version": "v74074ccd39489210150cc0991632d957",
-    "feature_count": 145,
-    "geometry_type_counts": {"Polygon": 143, "MultiPolygon": 2}
+  "clean_main_replay": {
+    "acceptance": {
+      "30_vs_31_subdivision_coverage_resolved": false,
+      "coverage_baseline_accepted": false,
+      "historical_hifld_continuity_accepted": false,
+      "id_contract_accepted": false,
+      "production_publication_performed": false,
+      "release_accepted": false,
+      "rights_accepted": false,
+      "schedule_status": "STOPPED",
+      "schema_contract_accepted": false,
+      "source_freshness_accepted": false,
+      "source_vintage_accepted": false
+    },
+    "code_commit": "d83a0264a9b185df4023cf3c54a6d115f4205405",
+    "date_utc": "2026-10-21",
+    "earlier_executor_limit_evidence": {
+      "finding": "The first broad catalog selection attempted PMTiles and failed because tippecanoe was absent. The source manifest was corrected to withhold PMTiles; the final registered run skipped the lossy output and completed catalog, GeoParquet, quality check, and approval refusal.",
+      "first_no_git_catalog_run_id": "2b21f0cf-9494-4c1e-8943-a35ee3bc52fb",
+      "first_no_git_run": "/workspace/work/282-clean-evidence/run.log",
+      "first_no_git_source_run_id": "3a6401b9-a448-466a-9089-f9353a5ccab8"
+    },
+    "full_native_parity": {
+      "all_wkb_exact": true,
+      "all_xy_coordinates_exact": true,
+      "attribute_fields": [
+        "STATEFP",
+        "COUNTYFP",
+        "COUSUBFP",
+        "SUBMCDFP",
+        "SUBMCDNS",
+        "GEOID",
+        "GEOIDFQ",
+        "NAME",
+        "NAMELSAD",
+        "LSAD",
+        "CLASSFP",
+        "MTFCC",
+        "FUNCSTAT",
+        "ALAND",
+        "AWATER",
+        "INTPTLAT",
+        "INTPTLON"
+      ],
+      "attribute_types": {
+        "ALAND": {
+          "canonical": "int64",
+          "parquet": "Int64",
+          "source": "int64",
+          "values_equal": true
+        },
+        "AWATER": {
+          "canonical": "int64",
+          "parquet": "Int64",
+          "source": "int64",
+          "values_equal": true
+        },
+        "CLASSFP": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "COUNTYFP": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "COUSUBFP": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "FUNCSTAT": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "GEOID": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "GEOIDFQ": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "INTPTLAT": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "INTPTLON": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "LSAD": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "MTFCC": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "NAME": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "NAMELSAD": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "STATEFP": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "SUBMCDFP": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        },
+        "SUBMCDNS": {
+          "canonical": "string",
+          "parquet": "string",
+          "source": "object",
+          "values_equal": true
+        }
+      },
+      "attribute_values_exact": true,
+      "geometry_type_counts": {
+        "MultiPolygon": 2,
+        "Polygon": 143
+      },
+      "geoparquet_file_sha256": "f35f2f6b94685c090fd4d950ff72400d8ff2ec4f0121e5cdf84e5d731ac8ebf2",
+      "geoparquet_geometry_sha256": "64a968ad421cdedaeda773ad3058a92826aeef7e716264fcda32027d7851ffaa",
+      "geoparquet_rows": 145,
+      "native_id_values_exact": true,
+      "parquet_epsg": 4269,
+      "passed": true,
+      "report_path": "/workspace/work/282-clean-evidence/final/native-parity.json",
+      "source_crs": "EPSG:4269",
+      "source_geometry_sha256": "64a968ad421cdedaeda773ad3058a92826aeef7e716264fcda32027d7851ffaa",
+      "source_rows": 145
+    },
+    "output_policy": {
+      "geopackage": "withheld by the registered source-manifest exclusion because source geometry types are mixed Polygon/MultiPolygon",
+      "geoparquet": "materialized from source-native rows and retained in staging",
+      "pmtiles": "withheld by the registered source-manifest exclusion because its lossy tile simplification/attribute policy is not approved"
+    },
+    "processing_code_identity_scheme": "sha256-packaged-dagster_hifld-py-v1",
+    "processing_code_sha256": "9b959680fcc9c6324282f19a3e0ce9eafa5065d024945fb90bbe72ce177cae65",
+    "registered_blocking_gate_runs": {
+      "evidence_path": "/workspace/work/282-clean-evidence/final/materialization-report.json",
+      "fixture_inventory_sha256": "338e147bdd18d6433b4e192bf4b0871725d6bc26d4c26dc964da25972a38da6a",
+      "gate_harness_path": "/workspace/work/282-clean-evidence/final/run_282_gate_proofs.py",
+      "inventory_before_after_identical": true,
+      "quality_manifest_false": {
+        "changed_only_quality_boolean": true,
+        "check_passed": false,
+        "promote_started": false,
+        "published_inventory_unchanged": true,
+        "run_id": "01ec92cf-b19f-4976-a833-03e69053f734",
+        "verify_started": false
+      },
+      "quality_valid_but_empty_approval_registry": {
+        "promote_started": false,
+        "published_inventory_unchanged": true,
+        "quality_check_passed": true,
+        "run_id": "ec199e4a-ef02-450e-b617-79ed272d9f36",
+        "verify_refused_empty_registry": true,
+        "verify_started": true
+      },
+      "same_populated_fixture_object_count": 20
+    },
+    "registered_dagster_runs": {
+      "candidate_prefix": "puerto-rico-subbarrios/puerto-rico-subbarrios/v851ec1f176c75312848b43135fbd3831",
+      "candidate_version": "v851ec1f176c75312848b43135fbd3831",
+      "catalog_and_formats_job": "282_registered_candidate_catalog_gate",
+      "catalog_and_formats_run_id": "4a4cce26-630c-4324-8b2a-7bc183f6c27f",
+      "catalog_quality_check_passed": true,
+      "persistent_home": "/workspace/work/282-clean-evidence/final/dagster-home",
+      "publish_promote_started": false,
+      "published_fixture_root": "/workspace/work/282-clean-evidence/final/candidate/published",
+      "source_check_passed": true,
+      "source_job": "puerto_rico_subbarrios_draft_refresh",
+      "source_run_id": "79c7678d-c4b6-4e50-870f-405f49541e9e",
+      "staging_root": "/workspace/work/282-clean-evidence/final/candidate/staging",
+      "verify_failed_with": "missing_independent_release_approval_registry"
+    },
+    "runtime_checkout": "copied package under /workspace/work/282-clean-evidence/no-git; no .git directory available to the Dagster process",
+    "source_capture": {
+      "body_bytes": 133211,
+      "body_path": "/workspace/work/282-clean-evidence/source-capture/source.body",
+      "body_sha256": "5358e982d49bc6a5c099e12d32220e756e05aff848f24ba89d862dd89d7b8d8a",
+      "complete_body": true,
+      "observed_at": "2026-10-21T14:53:20.609080+00:00",
+      "receipt_path": "/workspace/work/282-clean-evidence/source-capture/source.receipt.json",
+      "status": 200,
+      "url": "https://www2.census.gov/geo/tiger/TIGER2023/SUBBARRIO/tl_2023_72_subbarrio.zip",
+      "wire_bytes": 133211,
+      "wire_path": "/workspace/work/282-clean-evidence/source-capture/source.wire",
+      "wire_sha256": "5358e982d49bc6a5c099e12d32220e756e05aff848f24ba89d862dd89d7b8d8a"
+    }
   },
   "downstream_run": {
-    "job": "pr282_downstream",
     "catalog_materialized": true,
     "geopackage": "skipped: declared unsupported for this dataset (mixed Polygon/MultiPolygon; inherited chunked writer cannot declare a compatible geometry type)",
     "geoparquet_materialized": true,
+    "job": "pr282_downstream",
     "pmtiles_materialized": true,
+    "publish_promote": "selected but blocked by verify failure; not executed, not materialized",
     "shapefile_zip_materialized": true,
-    "verify_step": "publish__verify",
     "verify_outcome": "failed as required: ReleaseApprovalError missing_independent_release_approval_registry (empty approval registry; no promotion authorized)",
-    "publish_promote": "selected but blocked by verify failure; not executed, not materialized"
+    "verify_step": "publish__verify"
   },
-  "seeded_published_inventory_preserved": true,
+  "id_contract_accepted": false,
+  "processing_code_sha256": "d1a869f34c3c32cfbfc0458bdbc9c691baa19a6b954a1fbd89e66576d0f71066",
+  "production_publication_performed": false,
+  "run_environment": "isolated local staging/published roots and fresh DAGSTER_HOME (telemetry disabled); no production storage touched",
+  "schema_contract_accepted": false,
+  "schema_version": 1,
+  "script": "scripts/verification/puerto_rico_subbarrios_local.py",
   "seeded_objects": [
     "puerto-rico-subbarrios/puerto-rico-subbarrios/v20200101/shapefile/historical.txt",
     "other-dataset/other-file/v1/geoparquet/data.parquet"
   ],
+  "seeded_published_inventory_preserved": true,
   "source_release_accepted": false,
-  "schema_contract_accepted": false,
-  "id_contract_accepted": false,
-  "production_publication_performed": false
+  "source_run": {
+    "asset_check": "puerto_rico_subbarrios_source_complete",
+    "candidate_version": "v74074ccd39489210150cc0991632d957",
+    "capture_url": "https://www2.census.gov/geo/tiger/TIGER2023/SUBBARRIO/tl_2023_72_subbarrio.zip",
+    "check_passed": true,
+    "feature_count": 145,
+    "geometry_type_counts": {
+      "MultiPolygon": 2,
+      "Polygon": 143
+    },
+    "job": "pr282_ingest",
+    "staged_archive_sha256": "5358e982d49bc6a5c099e12d32220e756e05aff848f24ba89d862dd89d7b8d8a",
+    "success": true
+  }
 }
