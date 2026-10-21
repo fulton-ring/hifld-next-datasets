@@ -27,6 +27,11 @@ from dagster_hifld.assets.noaa import (
     noaa_eez_draft_refresh_job,
     noaa_eez_draft_weekly_schedule,
 )
+from dagster_hifld.assets.usace_pylon_areas import (
+    usace_pylon_areas_draft_job,
+    usace_pylon_areas_draft_schedule,
+    usace_pylon_areas_complete,
+)
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
@@ -51,6 +56,10 @@ from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
+)
+from dagster_hifld.assets.usace_pylon_areas import (
+    usace_pylon_areas_complete,
+    usace_pylon_areas_draft_schedule,
 )
 
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
@@ -428,15 +437,17 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=hifld_asset_checks,
+    asset_checks=[*hifld_asset_checks, usace_pylon_areas_complete],
     jobs=[
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
         noaa_contiguous_draft_refresh_job,
+        usace_pylon_areas_draft_job,
         pylon_locations_draft_refresh_job,
         fuel_stations_draft_refresh_job,
     ],
     schedules=[
+        usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
         noaa_contiguous_draft_refresh_schedule,
