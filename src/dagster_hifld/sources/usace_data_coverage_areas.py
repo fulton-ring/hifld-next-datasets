@@ -593,12 +593,12 @@ def capture_usace_data_coverage_areas(
             "reason_codes": ["historical_hifld_baseline_not_recovered", "schema_id_geometry_mapping_unapproved"],
             "acceptance": "not_established",
         }) + b"\n",
-        "raw/captures/capture-manifest.json": capture_manifest_bytes,
+        "raw/capture-manifest.json": capture_manifest_bytes,
     }
     for name, (body, receipt) in sorted(captures.items()):
-        outputs[f"raw/captures/{name}.body"] = body
-        outputs[f"raw/captures/{name}.wire"] = (root / f"{name}.wire").read_bytes()
-        outputs[f"raw/captures/{name}.receipt.json"] = _canonical(receipt) + b"\n"
+        outputs[f"raw/{name}.body"] = body
+        outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
+        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {
         "approved": False, "version": version,
         "source_population_complete": True,
@@ -626,7 +626,7 @@ def capture_usace_data_coverage_areas(
         if set(payload["capture_receipts"]) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name, (body, _receipt) in captures.items():
-            if storage.read_key(f"{prefix}/raw/captures/{name}.body") != body:
+            if storage.read_key(f"{prefix}/raw/{name}.body") != body:
                 raise ValueError("cached_source_bytes_changed:" + name)
         verify_cached_candidate(
             storage, Path(__file__).parents[3], state_key, prefix, version,
