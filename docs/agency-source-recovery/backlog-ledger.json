@@ -28,8 +28,8 @@
       "inventory_issues": 415,
       "issues_with_current_or_historical_pr_reference": 110,
       "external_decision_or_source_evidence_blocker_label": 13,
-      "needs_triage_no_recovered_pipeline_pr": 303,
-      "prior_pr_evidence_needs_reconciliation": 84,
+      "needs_triage_no_recovered_pipeline_pr": 300,
+      "prior_pr_evidence_needs_reconciliation": 83,
       "definitions": {
         "issues_with_current_or_historical_pr_reference": "Distinct issue records with current_pr, a row-level observed_open_prs association, or an explicitly recorded merged priority PR in latest_verified_checkpoint; includes research/tracking PRs and is not a count of open pipeline PRs.",
         "external_decision_or_source_evidence_blocker_label": "Rows whose blocker_type is external_decision_or_source_evidence. This is a ledger label, not a permanent source-impossibility finding.",
@@ -6034,7 +6034,7 @@
           "association_confidence": 1
         }
       ],
-      "status_note": "Open draft PR #527 at exact head 1c6e403ba8e898e22802cdac839aa7cfd2a25d58; independent scoped code-guard PASS comment 5580349669. No new full-graph replay.",
+      "status_note": "Open draft PR #527 at exact head 1c6e403ba8e898e22802cdac839aa7cfd2a25d58; independent scoped code-guard PASS comment 5580349669. No new full-graph replay. Integration note: PR #527 base 181 is not a main ancestor and carries 17 unreviewed main files; do not blindly retarget.",
       "current_head": "1c6e403ba8e898e22802cdac839aa7cfd2a25d58",
       "review_id": 5580349669,
       "status": "reviewed_draft_prior_runtime",
@@ -6297,7 +6297,7 @@
       ],
       "work_status": "active_draft_pipeline",
       "assigned_worker": "dataset_11",
-      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1–92, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED. Independent exact-head review PASS comment 5580351370. Current source run 5a53d090-d9c1-4194-a375-5442087c06cd, catalog 97364133-8105-4f6b-91f4-1ba5e7c9f520, cache 40c1f7c6-32e8-445c-822a-7455e47eb14a, verifier f6eab900-f66d-4d64-90fe-6ef06bfc1844; all 92 x 14 attributes and XY path sequences matched, verifier refused missing approval and preserved published inventory.",
+      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1–92, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED. Independent exact-head review PASS comment 5580351370. Current source run 5a53d090-d9c1-4194-a375-5442087c06cd, catalog 97364133-8105-4f6b-91f4-1ba5e7c9f520, cache 40c1f7c6-32e8-445c-822a-7455e47eb14a, verifier f6eab900-f66d-4d64-90fe-6ef06bfc1844; all 92 x 14 attributes and XY path sequences matched, verifier refused missing approval and preserved published inventory. Current narrow packaged-identity fix is in progress on the existing PR #531 branch; do not blindly retarget to main.",
       "local_or_current_branch_evidence": {
         "pr": 531,
         "head": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
@@ -6962,7 +6962,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "native_worker_assigned_evidence_pending",
+      "work_status": "native_worker_assigned",
+      "assigned_worker": "recover_284_native",
+      "status_note": "Native worker assigned; source/runtime evidence claim pending. This is not source approval or an external blocker."
     },
     {
       "issue": 286,
@@ -7042,7 +7045,9 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "needs_triage_no_recovered_pipeline_pr",
+      "work_status": "not_being_worked",
+      "status_note": "No worker assignment in the latest checkpoint."
     },
     {
       "issue": 290,
@@ -7062,7 +7067,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "native_eligibility_worker_claim_pending",
+      "work_status": "native_eligibility_recheck_claim_pending",
+      "assigned_worker": "shared_gate_fixes",
+      "status_note": "Worker reports official USACE IENC RECOMMENDED_TRACK_LINE layer 46, 666 features, EPSG:4326 polyline and 10 fields. No prior comments/PR/branch found. Verify the claim; BTS delegation succession is unapproved. Not a pipeline approval or external blocker."
     },
     {
       "issue": 291,
@@ -7402,7 +7410,8 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "in_progress_initial_ingest_catalog_final_replay_pending",
+      "status_note": "Worker reports ingest 73bc0e3a-739c-4ca7-b736-4021de8ab649 and catalog 87fd7f41-eca8-4b0c-9399-64a07a2349be: 481 original 2024 GDB MultiPolygon features, EPSG:4269, 10 attributes plus FID; web layer 472 rejected as partial route. Final committed replay/gates remain in progress, no reviewed PR; source approval pending."
     },
     {
       "issue": 308,
@@ -9737,7 +9746,7 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T13:43:31Z",
+    "recorded_at": "2026-10-21T13:52:19Z",
     "source": "latest coordinator-verified PR heads, merge SHAs, review comments, CI and run handoffs supplied for this checkpoint",
     "scope_note": "This updates work evidence only. All 415 inventory issues remain tracked; issue states are not changed. Issue #417 remains open. No release or publication is authorized.",
     "pr_421_shared_verifier": {
@@ -9845,12 +9854,11 @@
       }
     },
     "queue_guard": {
-      "observed_at": "2026-10-21T13:18:00Z",
-      "active_paid_jobs": 0,
-      "new_paid_admissions": "held",
-      "inference_guard": "<= $25/day unchanged; actual spend unknown; guard excludes GKE/Actions compute cost.",
-      "instructions": "Do not retry PR #548 cleanup, do not create new paid admissions during this hold, and preserve concurrency/budget controls.",
-      "note": "No additional paid queues. The superseded #283 review run was confirmed cancelled; no paid retry."
+      "observed_at": "2026-10-21T13:43:00Z",
+      "paid_runs": "All paid runs were reported completed or cancelled as of 13:43 UTC; the superseded #283 review run 39607933649 was confirmed cancelled.",
+      "new_paid_admissions": "paused while malformed handoff reporting is resolved; native work only",
+      "inference_guard": "<= $25/day unchanged; actual spend unknown; excludes GKE/Actions compute.",
+      "instructions": "No new paid queues or retries. Continue existing authorized native work and preserve concurrency/budget controls."
     },
     "actions": {
       "verified_code_merges_authorized": true,
@@ -9875,12 +9883,13 @@
       "shared_fix": {
         "pr_559": {
           "head": "83a0ee1106560b61a72f067a06cc0120c5e76ecd",
-          "state": "merged_foundation_ci_pass_root_verification_pending",
+          "state": "merged_foundation_ci_and_preview_verified",
           "merge_commit": "c096761eacf3f621d424771d9eeaa9868d862e4d",
           "root_review": 5600692808,
           "ci": "Docker build passed.",
           "tested_preview_tree": "314994ebead14d02100f197e1f16f6ad27a22144",
-          "notes": "Root verification of actual preview remains pending; do not count this as resolving every packaged-runtime blocker."
+          "actual_merged_tree_root_verified": true,
+          "notes": "The actual merged tree matches the reviewed preview. Root verified the tree; this foundation does not prove all older packaged-runtime blockers are resolved."
         },
         "pr_558": {
           "head": "856b9b9d1544fc9df26ae3c599dcc6246a86d577",
@@ -9889,12 +9898,55 @@
           "notes": "Independent review also passed. PR retains the #273 base and is not merged."
         }
       },
-      "routing": "The packaged-runtime construction-validator defect was found in #539/#540 reviews. Foundation PR #559 is merged, but actual preview root verification is pending and not all older Git-metadata blockers are proven resolved. EPA/IENC stack propagation is planned as the next `ienc_runtime_fix` task; do not duplicate fixes in #539/#540."
+      "routing": "The packaged-runtime construction-validator defect was found in #539/#540 reviews. PR #559 foundation is merged and root verified actual merged tree 314994ebead14d02100f197e1f16f6ad27a22144 matches the reviewed preview. PR #558 still retains the #273 base and is not merged. Not all older Git-metadata blockers are proven resolved; EPA/IENC stack propagation is planned next. The #261 fix is being made on existing PR #531 branch; no blind main retarget. Avoid duplicate fixes."
     },
     "issue_307_candidate": {
       "source": "Official Census ACS 2024 candidate layer 472",
-      "state": "in_progress_source_approval_pending_not_a_pipeline",
-      "notes": "Official Census ACS 2024 candidate layer 472; research is in progress, approval is pending, and there is no PR or pipeline yet."
+      "state": "in_progress_initial_ingest_catalog_final_replay_and_gates_ongoing_not_reviewed",
+      "runs": {
+        "ingest": "73bc0e3a-739c-4ca7-b736-4021de8ab649",
+        "catalog": "87fd7f41-eca8-4b0c-9399-64a07a2349be"
+      },
+      "worker_claim": "481 original GDB 2024 MultiPolygon features, EPSG:4269, 10 attributes plus FID; web layer 472 was rejected as a partial route.",
+      "review_status": "Final committed replay and gates remain ongoing; there is no reviewed PR yet. A Git-metadata review found no defect before final replay; worker is using the main-helper fix.",
+      "notes": "Source approval remains pending. Treat run/source details as worker claims pending final replay and review; do not count as a completed reviewed pipeline."
+    },
+    "native_work_checkpoint": {
+      "recorded_at": "2026-10-21T13:52:19Z",
+      "issue_261_pr_531": {
+        "state": "narrow packaged-identity fix in progress on existing PR branch",
+        "branch": "codex/cloud-dataset-261",
+        "notes": "Do not blindly retarget to main."
+      },
+      "issue_285": {
+        "dataset": "Quaternary Fault Lines",
+        "assigned_worker": "recover_284_native",
+        "state": "native worker assigned; evidence/claim pending"
+      },
+      "issue_290": {
+        "dataset": "Recommended Tracks",
+        "assigned_worker": "shared_gate_fixes",
+        "state": "eligibility/source claim pending",
+        "worker_claim": {
+          "layer": "RECOMMENDED_TRACK_LINE",
+          "layer_id": 46,
+          "features": 666,
+          "geometry": "EPSG:4326 Polyline",
+          "fields": 10,
+          "notes": "No existing comments, PR or branch were found; verify source claim before acceptance."
+        },
+        "notes": "BTS succession/delegation is unapproved. This is not a pipeline approval or external blocker."
+      },
+      "issue_289": {
+        "state": "not being worked",
+        "notes": "No worker assignment in this batch."
+      },
+      "issue_253_pr_527": {
+        "state": "base integration blocked",
+        "head_branch_base": "181",
+        "notes": "Base 181 is not a main ancestor and carries 17 unreviewed main files; do not blindly retarget."
+      },
+      "paid_work": "Native workers only; no additional paid runs/admissions while handoff issues are resolved."
     }
   },
   "pr_search_snapshot_records": [
