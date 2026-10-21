@@ -21,6 +21,7 @@ from dagster_hifld.assets.epa_large_scale import (
     epa_large_scale_source_integrity_schedule,
 )
 from dagster_hifld.assets.fema_regional_offices import fema_offices_draft_job, fema_offices_draft_schedule
+from dagster_hifld.assets.epa_sems import epa_sems_source_integrity_job, epa_sems_source_integrity_schedule
 from dagster_hifld.assets.epa_eez import (
     epa_eez_draft_job,
     epa_eez_draft_schedule,
@@ -942,6 +943,7 @@ defs = Definitions(
         epa_regions_draft_job,
         epa_small_scale_source_integrity_job,
         fema_offices_draft_job,
+        epa_sems_source_integrity_job,
         elsd_source_integrity_job,
         epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
@@ -1028,6 +1030,7 @@ defs = Definitions(
         epa_regions_draft_schedule,
         epa_small_scale_source_integrity_schedule,
         fema_offices_draft_schedule,
+        epa_sems_source_integrity_schedule,
         elsd_source_integrity_schedule,
         epa_disaster_debris_draft_schedule,
         colleges_source_integrity_schedule,

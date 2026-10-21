@@ -98,8 +98,11 @@ from dagster_hifld.assets.epa_eez import epa_eez
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 
+from dagster_hifld.assets.epa_sems import epa_sems_interests
+
 hifld_ingest_assets = [
     fema_regional_offices,
+    epa_sems_interests,
     epa_eez,
     epa_regions_with_eez,
     epa_large_scale_regions,
