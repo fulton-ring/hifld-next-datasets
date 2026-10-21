@@ -174,6 +174,12 @@ from dagster_hifld.assets.us_county_boundaries import (
     us_county_boundaries_source_complete,
 )
 
+from dagster_hifld.assets.us_state_boundaries import (
+    us_state_boundaries_draft_job,
+    us_state_boundaries_draft_schedule,
+    us_state_boundaries_source_complete,
+)
+
 from dagster_hifld.assets.coastlines_usace_ienc import (
     coastlines_usace_ienc_complete,
     coastlines_usace_ienc_draft_job,
@@ -777,6 +783,7 @@ defs = Definitions(
         usace_berths_areas_complete,
         usace_dry_docks_complete,
         us_county_boundaries_source_complete,
+        us_state_boundaries_source_complete,
         usace_pontoon_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
@@ -837,6 +844,7 @@ defs = Definitions(
         usace_data_quality_areas_draft_job,
         nces_private_schools_draft_job,
         us_county_boundaries_draft_job,
+        us_state_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
         arc_regions_draft_job,
@@ -891,6 +899,7 @@ defs = Definitions(
         usace_berths_areas_draft_schedule,
         usace_dry_docks_draft_schedule,
         us_county_boundaries_draft_schedule,
+        us_state_boundaries_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
