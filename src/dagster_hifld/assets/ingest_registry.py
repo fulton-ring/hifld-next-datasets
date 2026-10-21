@@ -23,6 +23,7 @@ from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines
 from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
+from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -41,4 +42,5 @@ hifld_ingest_assets = [
     usace_overhead_cables_usace_ienc,
     epa_frs_eia_860_power_generation_facilities_by_source,
     plate_boundaries_usgs,
+    puerto_rico_subbarrios_census,
 ]

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "script": "scripts/verification/puerto_rico_subbarrios_local.py",
+  "run_environment": "isolated local staging/published roots and fresh DAGSTER_HOME (telemetry disabled); no production storage touched",
+  "processing_code_sha256": "d1a869f34c3c32cfbfc0458bdbc9c691baa19a6b954a1fbd89e66576d0f71066",
+  "source_run": {
+    "job": "pr282_ingest",
+    "success": true,
+    "asset_check": "puerto_rico_subbarrios_source_complete",
+    "check_passed": true,
+    "capture_url": "https://www2.census.gov/geo/tiger/TIGER2023/SUBBARRIO/tl_2023_72_subbarrio.zip",
+    "staged_archive_sha256": "5358e982d49bc6a5c099e12d32220e756e05aff848f24ba89d862dd89d7b8d8a",
+    "candidate_version": "v74074ccd39489210150cc0991632d957",
+    "feature_count": 145,
+    "geometry_type_counts": {"Polygon": 143, "MultiPolygon": 2}
+  },
+  "downstream_run": {
+    "job": "pr282_downstream",
+    "catalog_materialized": true,
+    "geopackage": "skipped: declared unsupported for this dataset (mixed Polygon/MultiPolygon; inherited chunked writer cannot declare a compatible geometry type)",
+    "geoparquet_materialized": true,
+    "pmtiles_materialized": true,
+    "shapefile_zip_materialized": true,
+    "verify_step": "publish__verify",
+    "verify_outcome": "failed as required: ReleaseApprovalError missing_independent_release_approval_registry (empty approval registry; no promotion authorized)",
+    "publish_promote": "selected but blocked by verify failure; not executed, not materialized"
+  },
+  "seeded_published_inventory_preserved": true,
+  "seeded_objects": [
+    "puerto-rico-subbarrios/puerto-rico-subbarrios/v20200101/shapefile/historical.txt",
+    "other-dataset/other-file/v1/geoparquet/data.parquet"
+  ],
+  "source_release_accepted": false,
+  "schema_contract_accepted": false,
+  "id_contract_accepted": false,
+  "production_publication_performed": false
+}
