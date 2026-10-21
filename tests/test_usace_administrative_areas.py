@@ -14,7 +14,7 @@ import shapely
 
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.sources.usace_administrative_areas import (
-    EXPECTED_FIELD_DECLARATIONS, EXPECTED_FIELDS, _esri_polygon, _fetch_retry, _parquet_bytes, _validate,
+    EXPECTED_FIELD_DECLARATIONS, EXPECTED_FIELDS, PAGE_SIZE, _esri_polygon, _fetch_retry, _parquet_bytes, _validate,
 )
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 
@@ -119,8 +119,8 @@ class UsaceAdministrativeAreasTests(unittest.TestCase):
             features.append({"attributes":row,"geometry":{"rings":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]}})
         docs["ids_before"]["objectIds"]=list(range(2966));docs["ids_after"]["objectIds"]=list(range(2966))
         captures={name:(__import__("json").dumps(doc).encode(),{}) for name,doc in docs.items()}
-        for i in range(3):
-            captures[f"page_{i:03d}"]=(__import__("json").dumps({"spatialReference":{"latestWkid":4326},"features":features[i*1000:(i+1)*1000]}).encode(),{})
+        for i, start in enumerate(range(0, len(features), PAGE_SIZE)):
+            captures[f"page_{i:03d}"]=(__import__("json").dumps({"spatialReference":{"latestWkid":4326},"features":features[start:start+PAGE_SIZE]}).encode(),{})
         parsed_fields,parsed_features,audit=_validate(captures)
         self.assertEqual(parsed_fields,fields);self.assertEqual(len(parsed_features),2966)
         self.assertEqual(audit["source_feature_count"],2966)
