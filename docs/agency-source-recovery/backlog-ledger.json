@@ -108,29 +108,20 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 419,
-      "reviewed_head": "832a05c430eb056aa79cb0f590f1d1d2f3cc19e0",
+      "current_pr": null,
+      "reviewed_head": "6a37f2adec173dbf24e58bd6c94c7f92b69b61ea",
       "evidence_refs": [
         "issue comment 6270460991; PR comment 6270462328; complete fresh fetch blocked by HTTP 200/code 500 ids_after"
       ],
       "blocker_type": "external_decision_or_source_evidence",
-      "status_note": "PR #419 integration remains ongoing at recorded head 832a05c430eb056aa79cb0f590f1d1d2f3cc19e0; native integration is in progress.",
+      "status_note": "PR #419 merged as dd45ea532951121db7b38ee573d6b13a9052f38c after successful CI build; tested merged tree 1a9ef2b5195f72813a0ecc47004154e51debc0ef; root review 5600345800. Issue #4 remains open; no contract approval or publication implied.",
       "live_issue_updated_at": "2026-10-19T15:06:54Z",
       "live_issue_created_at": "2026-10-19T01:56:13Z",
       "live_issue_comment_count": 11,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 419,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/419",
-          "title": "Draft NOAA contiguous-zone pipeline with guarded native outputs",
-          "head_sha_claim_in_body": "832a05c430eb056aa79cb0f590f1d1d2f3cc19e0",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.6666666666666666
-        }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_stopped"
     },
     {
       "issue": 5,
@@ -340,7 +331,7 @@
         "issue comment 6271455848; source replay evidence is historical; 103,502 row full-source review retains prior scope"
       ],
       "blocker_type": "external_decision_or_source_evidence",
-      "status_note": "PR #428 remains open at eb6163b8e43933b1760fb23ee76b638734d0abe0 with packaged runtime fix, 41 tests and passing CI; waiting on #419 integration.",
+      "status_note": "PR #428 remains open at eb6163b8e43933b1760fb23ee76b638734d0abe0 with packaged runtime fix, 41 tests and passing CI. It had been waiting on #419; #419 has now merged, so recheck #428 integration against the merged tree.",
       "live_issue_updated_at": "2026-10-19T23:32:59Z",
       "live_issue_created_at": "2026-10-19T01:56:38Z",
       "live_issue_comment_count": 18,
@@ -6899,10 +6890,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "saved_review_recovery_scheduled",
+      "status": "active_narrow_fix_and_raw_recapture_review_pending",
       "worker_run_id": 39597542093,
       "dispatch_head": "c5d316320f3120dd1a5dc9f34151b03ff0b1377b",
-      "status_note": "Implementation run 39597542093 had a trusted-handoff failure but saved PR #556. Native review recovery is scheduled. Worker claims 6,440 polygons and runs 0660ddae-c588-438f-a846-64fc6c76a436, 3120875d-10d4-4a9e-b257-e3fc53d65dad, 028cf03e-93d6-45ca-b781-586c1c21aade, e726ff9a-f3b1-4a98-9334-a36fa465458b; raw GKE retention is unverified."
+      "status_note": "Saved PR #556 head e1bcef4fa76c8a3eb4705d152482d307707f11cf followed an implementation run 39597542093 with trusted-handoff failure. A packaged-runtime Git defect was found; narrow fix and local raw recapture are ongoing. Do not report a review pass. Worker claims 6,440 polygons and runs 0660ddae-c588-438f-a846-64fc6b76a436, 3120875d-10d4-4a9e-b257-e3fc53d65dad, 028cf03e-93d6-45ca-b781-586c1c21aade, e726ff9a-f3b1-4a98-9334-a36fa465458b; raw GKE retention is unverified."
     },
     {
       "issue": 284,
@@ -6912,8 +6903,8 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
+      "current_pr": 557,
+      "reviewed_head": "73c3ddf",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:15:31Z",
@@ -6922,10 +6913,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "native_recovery_active_no_saved_commit",
+      "status": "draft_pr_saved_worker_runs_reported_review_pending",
       "worker_run_id": 39599138325,
       "dispatch_head": "b57ff17ad49a2a8f84a29aaec12a52efbb3869c0",
-      "status_note": "Implementation run 39599138325 failed without a saved commit. Native recover_284_native is actively working."
+      "status_note": "Recovery produced draft PR #557; worker reports actual runs at head 73c3ddf. Independent verification remains pending."
     },
     {
       "issue": 285,
@@ -9720,7 +9711,7 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T13:18:00Z",
+    "recorded_at": "2026-10-21T13:22:52Z",
     "source": "latest coordinator-verified PR heads, merge SHAs, review comments, CI and run handoffs supplied for this checkpoint",
     "scope_note": "This updates work evidence only. All 415 inventory issues remain tracked; issue states are not changed. Issue #417 remains open. No release or publication is authorized.",
     "pr_421_shared_verifier": {
@@ -9739,9 +9730,12 @@
         "notes": "NOAA Overview; source issues #3 and #10 were verified OPEN. Schedules stopped; no approvals or publication."
       },
       "419_issue_4": {
-        "state": "open_integration_ongoing",
-        "head": "832a05c430eb056aa79cb0f590f1d1d2f3cc19e0",
-        "notes": "Native integration remains ongoing."
+        "state": "merged",
+        "head": "6a37f2adec173dbf24e58bd6c94c7f92b69b61ea",
+        "merge_commit": "dd45ea532951121db7b38ee573d6b13a9052f38c",
+        "tested_merged_tree": "1a9ef2b5195f72813a0ecc47004154e51debc0ef",
+        "root_review": 5600345800,
+        "notes": "CI build succeeded; native integration completed."
       },
       "427_issue_10": {
         "state": "merged",
@@ -9752,7 +9746,8 @@
       "428_issue_11": {
         "state": "open_waiting_for_419_integration",
         "head": "eb6163b8e43933b1760fb23ee76b638734d0abe0",
-        "checks": "Packaged runtime fix; 41 tests; CI passed."
+        "checks": "Packaged runtime fix; 41 tests; CI passed.",
+        "notes": "Packaged runtime fix; 41 tests and CI passed. Previously waiting on #419, which has now merged; recheck integration against the merged tree."
       }
     },
     "issue_25_tracking_replacement": {
@@ -9779,10 +9774,10 @@
         "blocker": "Parent #271 chain blocks merge."
       },
       "issue_283_pr_556": {
-        "state": "saved_review_recovery_scheduled",
-        "head": "e1bcef4fa76c8a3eb4705d152482d307707f11cf",
+        "state": "active_narrow_fix_and_raw_recapture; review_pending",
+        "saved_head": "e1bcef4fa76c8a3eb4705d152482d307707f11cf",
         "implementation_run": "39597542093",
-        "handoff": "Trusted handoff failed; native review recovery scheduled.",
+        "notes": "Trusted handoff failed. A packaged-runtime Git defect was found; narrow fix and local raw recapture are ongoing. Do not report a review pass.",
         "worker_claimed_polygon_count": 6440,
         "worker_claimed_run_ids": [
           "0660ddae-c588-438f-a846-64fc6b76a436",
@@ -9793,10 +9788,11 @@
         "raw_gke_retention": "unverified"
       },
       "issue_284": {
-        "state": "native_recovery_active",
+        "state": "draft_pr_saved_worker_runs_reported_review_pending",
         "implementation_run": "39599138325",
-        "saved_commit": null,
-        "notes": "Attempt failed with no saved commit; native recover_284_native is actively working."
+        "draft_pr": 557,
+        "reported_head": "73c3ddf",
+        "notes": "Recovery produced draft PR #557; worker reports actual runs at head 73c3ddf. Independent verification remains pending."
       }
     },
     "queue_guard": {

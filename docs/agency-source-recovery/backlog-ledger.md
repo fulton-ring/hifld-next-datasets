@@ -51,7 +51,7 @@ The user authorized the existing paid queues under the <=$25/day **inference** g
 Shared #417 is at `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0`, independently reviewed scoped fixes (review5599552229), with actual synthetic success `d054f1c6-2fe8-46f5-a332-47924cdcb9bc` and drift refusal `cd59e479-c18b-4647-aeaf-99f45e6644ad`. Baseline/configuration and unsupported arbitrary transformation accounting remain blocked; this does not complete #417. The branch advanced only after #283 pinned its original checkout. No merges, closures or production publication.
 
 
-## Latest verified checkpoint — 2026-10-21 13:18 UTC
+## Latest verified checkpoint — 2026-10-21 13:22 UTC
 
 The 415-issue inventory remains intact. Earlier PR counts are historical search snapshots and are not current open-PR totals.
 
@@ -60,12 +60,12 @@ The 415-issue inventory remains intact. Earlier PR counts are historical search 
 | Shared verifier #421 / issue #417 | Head `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0` merged as `df0e0c3db6c63015c8f98788c4f9f2b90e8991c3`; fail-closed scope is limited to literal GeoJSON. Issue #417 remains open. |
 | NOAA #420 / issue #3 | Head `0e05c81e1a2ce15e6cfdfa705ff82010971b5466`, merge `7f456f5d6d9c8d3ed2c7d0796b04f26537f38918`; tested merged tree `311609f286322807cbe11a43da3694966d9fa824`, root review 5600251607. Issues #3 and #10 remain OPEN; schedules stopped, no approvals or publication. |
 | FAA #427 / issue #10 | Head `4a20188d477412d1c4ad835db4f030fd52da9e0b`, merge `7c83fc66a14b51854ebe8911ffa5ead86d2529e8`; includes `uv.lock` runtime copy. |
-| NOAA #419 / issue #4 | Native integration remains ongoing. |
-| Fueling #428 / issue #11 | Head `eb6163b8e43933b1760fb23ee76b638734d0abe0`; packaged runtime fix, 41 tests and CI pass; waiting on #419 integration. |
+| NOAA #419 / issue #4 | Head `6a37f2adec173dbf24e58bd6c94c7f92b69b61ea`, merge `dd45ea532951121db7b38ee573d6b13a9052f38c`; CI build passed, merged tree `1a9ef2b5195f72813a0ecc47004154e51debc0ef`, root review 5600345800. Issue #4 remains open. |
+| Fueling #428 / issue #11 | Head `eb6163b8e43933b1760fb23ee76b638734d0abe0`; packaged runtime fix, 41 tests and CI pass; It had been waiting on #419; #419 has now merged, so recheck integration against the merged tree. |
 | Issue #25 | Replacement tracking PR #544. |
 | Roads #546 / issue #275 | Head `eb8448f77d19e37d798032f339b1f7f8b793ec86`; packaged hash fix, 14 tests; source/cache/catalog runs and root review 5599755431 are recorded. Parent #260 chain blocks merge. |
 | Subbarrios #548 / issue #282 | Head `502a00aedcc4d664b4fa2d772d0c6dfc449f28cf`; independent paid review passed despite cleanup failure run 39599895858. Do not retry. Parent #271 chain blocks merge. |
-| Pylon Areas #556 / issue #283 | Saved head `e1bcef4fa76c8a3eb4705d152482d307707f11cf` after run 39597542093 failed trusted handoff. Native review recovery is scheduled. Worker reports 6,440 polygons and four run IDs; raw GKE retention is unverified. |
-| Pylon Locations / issue #284 | Run 39599138325 failed without a saved commit; native recovery is active. |
+| Pylon Areas #556 / issue #283 | Saved PR #556 head `e1bcef4fa76c8a3eb4705d152482d307707f11cf` after run 39597542093 failed trusted handoff. A packaged-runtime Git defect was found; narrow fix and local raw recapture are ongoing, with review pending. Worker reports 6,440 polygons and four run IDs; raw GKE retention is unverified. |
+| Pylon Locations / issue #284 | Recovery produced draft PR #557; worker reports actual runs at head `73c3ddf`. Independent verification remains pending. |
 
 At 13:18 UTC there were no active paid jobs and new paid admissions were held. The `<= $25/day` inference guard is unchanged; actual spend is unknown and the guard excludes GKE/Actions compute. Verified code merges are authorized. Issue closure, release acceptance and production publication remain unauthorized.
