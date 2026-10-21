@@ -236,6 +236,13 @@ from dagster_hifld.assets.epa_rmp_facilities import (
     epa_rmp_facilities_draft_schedule,
 )
 
+from dagster_hifld.assets.epa_frs_sic_powerplants import (
+    epa_frs_sic_complete,
+    epa_frs_sic_draft_job,
+    epa_frs_sic_draft_schedule,
+    epa_frs_sic_published_membership_compatible,
+)
+
 from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_complete,
     usace_caution_areas_draft_schedule,
@@ -873,6 +880,8 @@ defs = Definitions(
         usace_crane_locations_release,
         usace_data_coverage_areas_complete,
         epa_emergency_response_rmp_facilities_complete,
+        epa_frs_sic_complete,
+        epa_frs_sic_published_membership_compatible,
         docks_source_population_complete,
         docks_source_geometry_quality,
         docks_release_acceptance_pending,
@@ -952,6 +961,7 @@ defs = Definitions(
         crushed_stone_preservation_job,
         usace_data_coverage_areas_draft_job,
         epa_rmp_facilities_draft_job,
+        epa_frs_sic_draft_job,
         docks_draft_job,
         electric_retail_service_territories_preservation_job,
         epa_facilities_draft_job,
@@ -1033,6 +1043,7 @@ defs = Definitions(
         electric_retail_service_territories_preservation_schedule,
         usace_data_coverage_areas_draft_schedule,
         epa_rmp_facilities_draft_schedule,
+        epa_frs_sic_draft_schedule,
         docks_draft_schedule,
         epa_facilities_draft_schedule,
         epa_facilities_labels_draft_schedule,
