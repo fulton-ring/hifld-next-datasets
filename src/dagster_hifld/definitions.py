@@ -261,6 +261,11 @@ from dagster_hifld.assets.census_designated_places import (
     cdp_source_integrity_schedule,
 )
 
+from dagster_hifld.assets.campus_preservation import (
+    campus_historical_full_quality,
+    ornl_campus_historical_integrity_schedule,
+    ornl_campus_historical_reconstruction_job,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -685,6 +690,7 @@ defs = Definitions(
         usace_airport_area_complete,
         usace_airport_area_quality,
         usace_airport_area_release,
+        campus_historical_full_quality,
     ],
     jobs=[
         usgs_aquifers_draft_refresh_job,
@@ -730,6 +736,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
+        ornl_campus_historical_reconstruction_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -770,6 +777,7 @@ defs = Definitions(
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
+        ornl_campus_historical_integrity_schedule,
         amtrak_draft_refresh_schedule,
         faa_aviation_draft_refresh_schedule,
         ibc_boundary_draft_refresh_schedule,
