@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -33,7 +34,11 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
-from dagster_hifld.sources.epa_frs_arcgis_table import ArcGISTableProfile, capture_table
+from dagster_hifld.sources.epa_frs_arcgis_table import (
+    ArcGISTableProfile,
+    capture_table,
+    validate_catalog_derivatives,
+)
 
 
 DATASET_SLUG = "epa-frs-eia-860-power-generation-facilities-naics-codes"
@@ -162,6 +167,35 @@ def _reuse_candidate(
         staging_storage, repo_root, state_key, prefix, version, fingerprint, identity,
         payload.get("source_record_sha256"), payload.get("source_schema_sha256"), objects, receipts,
     )
+    with tempfile.TemporaryDirectory(prefix="epa-naics-cache-check-") as temporary:
+        capture_root = Path(temporary)
+        for name in receipts:
+            for suffix in ("body", "wire", "receipt.json"):
+                source_key = f"{prefix}/raw/{name}.{suffix}"
+                (capture_root / f"{name}.{suffix}").write_bytes(staging_storage.read_key(source_key))
+        with httpx.Client(follow_redirects=False) as replay_client:
+            records, source_manifest, _ = capture_table(
+                replay_client, TABLE_PROFILE, capture_root, replay_captures=True
+            )
+        record_sha = hashlib.sha256(_canonical(records)).hexdigest()
+        schema_sha = hashlib.sha256(_canonical(source_manifest["fields"])).hexdigest()
+        if (record_sha != payload.get("source_record_sha256")
+                or schema_sha != payload.get("source_schema_sha256")):
+            raise EPAFRSNAICSError("cached_raw_source_no_longer_matches_candidate")
+        quality_key = f"{prefix}/metadata/quality_manifest.json"
+        dictionary_key = f"{prefix}/metadata/data_dictionary.json"
+        quality_snapshot = staging_storage.object_snapshot(quality_key)
+        dictionary_snapshot = staging_storage.object_snapshot(dictionary_key)
+        if (quality_snapshot is None) != (dictionary_snapshot is None):
+            raise EPAFRSNAICSError("cached_catalog_derivative_pair_incomplete")
+        if quality_snapshot is not None:
+            validate_catalog_derivatives(
+                TABLE_PROFILE,
+                records,
+                staging_storage.read_key(f"{prefix}/unknown/{FILE_SLUG}.parquet"),
+                staging_storage.read_key(quality_key),
+                staging_storage.read_key(dictionary_key),
+            )
     audit = json.loads(staging_storage.read_key(f"{prefix}/metadata/source_audit.json"))
     return {
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
