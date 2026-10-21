@@ -179,5 +179,7 @@ def capture_power_plants(storage:StagingStorageResource,*,version:str,capture_di
         if snap is None or snap.size!=len(b) or storage.sha256_key(key)!=_sha(b):raise ValueError("candidate_object_readback_failed:"+n)
         descriptors[n]={"bytes":len(b),"sha256":_sha(b)}
     seal_ready_candidate(storage,state,cv,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{"eia_zip":receipt},"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
+    )
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":cv,"feature_count":EXPECTED_COUNT,"source_population_complete":True,"source_id_sha256":ID_SHA,"source_schema_sha256":audit["source_schema_sha256"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":False,"source_capture_evidence_sha256":evidence_sha,"capture_directory":str(root),"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"release_accepted":False}

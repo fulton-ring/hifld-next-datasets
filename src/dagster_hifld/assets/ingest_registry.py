@@ -53,7 +53,6 @@ hifld_ingest_assets = [
     usace_recommended_tracks_ienc,
     usace_overhead_pipeline_lines_usace_ienc,
     usace_obstruction_lines_usace_ienc,
-<<<<<<< HEAD
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
