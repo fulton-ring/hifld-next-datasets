@@ -599,7 +599,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
     inputs=[{"input_id":name,
              "producer":"USDOT BTS public NTAD catalog" if name == "bts_item" else PUBLISHER,
              "host":urlsplit(receipt["url"]).hostname,
-             "role":"publisher_catalog" if name == "bts_item" else "producer_publication",
+             "role":"official_distributor" if name == "bts_item" else "producer_publication",
              "canonical_url":BTS_ITEM_URL if name == "bts_item" else LAYER_URL,
              "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],
              "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],
@@ -608,7 +608,12 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
              "license":"Unresolved; rights review pending.",
              "attribution":"USACE IENC; rights review pending.",
              "release_date":None,
-             "release_date_unknown_reason":"The service response does not declare a dated release for this layer snapshot."}
+             "release_date_unknown_reason":"The service response does not declare a dated release for this layer snapshot.",
+             **({"distributor":"USDOT Bureau of Transportation Statistics (BTS)",
+                 "delegation_evidence":{"bts_item_url":BTS_ITEM_URL,"bts_item_id":BTS_ITEM_ID,
+                   "bts_item_owner":"USDOT_BTS","official_service_directory":SERVICE_DIRECTORY_URL,
+                   "basis":"The captured public BTS item identifies the IENC program, says updates are bi-monthly, and links the USACE IENC Feature Classes service and master file geodatabase. This supports distribution lineage only; source edition, freshness, rights, and release acceptance remain unresolved."}}
+                if name == "bts_item" else {})}
             for name,(_body,receipt) in sorted(captures.items())]
     field_mapping=[{"source_name":name,"source_esri_type":kind,
                     "output_name":"geometry" if name == "SHAPE" else name,
