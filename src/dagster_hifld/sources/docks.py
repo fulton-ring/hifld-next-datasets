@@ -298,7 +298,8 @@ def capture(staging, version, client=None, replay_version=None):
                 "bytes":receipt["bytes"],"sha256":receipt["sha256"],
                 "request_body_bytes":receipt.get("request_body_bytes",0),"request_body_sha256":receipt.get("request_body_sha256"),
                 "license":"Public domain per official Docks Data Management Plan (DOI 10.21949/1519374); rights acceptance pending.",
-                "attribution":"USACE-copyrighted Navigation Facilities (Dock) ArcGIS service; BTS/NTAD distribution. Attribution/source acceptance remains pending."})
+                "attribution":"USACE-copyrighted Navigation Facilities (Dock) ArcGIS service; BTS/NTAD distribution. Attribution/source acceptance remains pending.",
+                "release_date":None,"release_date_unknown_reason":"The service exposes an edit timestamp, but no producer publication/effective date was supplied in the captured metadata."})
         manifest = {"schema_version":1,"approved":False,"title":"Navigation Facilities (Dock) — current USACE/BTS ArcGIS layer",
             "description":"Current candidate from the USACE-copyrighted Navigation Facilities (Dock) layer distributed through BTS/NTAD. This is a changed-source candidate; historical HIFLD Docks equivalence, national coverage semantics, source acceptance, rights acceptance, and release approval remain pending.",
             "publisher":"USACE source represented by BTS/NTAD catalog; ArcGIS service copyright USACE","agency":"U.S. Army Corps of Engineers",
