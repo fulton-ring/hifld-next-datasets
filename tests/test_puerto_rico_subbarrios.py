@@ -1,11 +1,13 @@
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 from dagster import DefaultScheduleStatus
 
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
@@ -26,10 +28,6 @@ from dagster_hifld.sources.puerto_rico_subbarrios import (
     _inspect_archive,
 )
 
-FIXTURE_DIR = Path(__file__).parent / "fixtures" / "puerto_rico_subbarrios"
-FIXTURE_ZIP = FIXTURE_DIR / "tl_2023_72_subbarrio.zip.ziplink"
-FIXTURE_README = FIXTURE_DIR / "README.md"
-
 
 def _receipt(body: bytes, wire: bytes) -> dict:
     return {
@@ -42,12 +40,29 @@ def _receipt(body: bytes, wire: bytes) -> dict:
 
 
 def _fixture_body() -> bytes | None:
-    if FIXTURE_ZIP.is_symlink() and FIXTURE_ZIP.resolve().is_file():
-        return FIXTURE_ZIP.resolve().read_bytes()
-    return None
+    fixture_path = os.environ.get("HIFLD_PUERTO_RICO_SUBBARRIOS_FIXTURE")
+    if fixture_path:
+        body = Path(fixture_path).expanduser().read_bytes()
+    elif os.environ.get("HIFLD_FETCH_PUERTO_RICO_SUBBARRIOS_FIXTURE") == "1":
+        response = httpx.get(SOURCE_URL, follow_redirects=False, timeout=120.0)
+        response.raise_for_status()
+        body = response.content
+    else:
+        return None
+    if len(body) != EXPECTED_BYTES or hashlib.sha256(body).hexdigest() != EXPECTED_SHA256:
+        raise ValueError("fixture_archive_identity_mismatch")
+    return body
 
 
 class PuertoRicoSubbarriosTests(unittest.TestCase):
+    def test_explicit_fixture_path_rejects_unpinned_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture_path = Path(tmp) / "source.zip"
+            fixture_path.write_bytes(b"changed archive")
+            with patch.dict(os.environ, {"HIFLD_PUERTO_RICO_SUBBARRIOS_FIXTURE": str(fixture_path)}, clear=True):
+                with self.assertRaisesRegex(ValueError, "fixture_archive_identity_mismatch"):
+                    _fixture_body()
+
     def test_source_asset_is_registered_with_stopped_refresh(self):
         keys = {key for definition in hifld_ingest_assets for key in definition.keys}
         self.assertIn(next(iter(puerto_rico_subbarrios_census.keys)), keys)
@@ -113,7 +128,7 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
     def test_inspect_archive_rejects_member_roster_drift(self):
         body = _fixture_body()
         if body is None:
-            self.skipTest("fixture archive not present")
+            self.skipTest("set HIFLD_PUERTO_RICO_SUBBARRIOS_FIXTURE or HIFLD_FETCH_PUERTO_RICO_SUBBARRIOS_FIXTURE=1")
         mutated = io_bytes_with_extra_member(body)
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
             _inspect_archive(mutated)
@@ -121,7 +136,7 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
     def test_inspect_archive_on_pinned_fixture(self):
         body = _fixture_body()
         if body is None:
-            self.skipTest("fixture archive not present")
+            self.skipTest("set HIFLD_PUERTO_RICO_SUBBARRIOS_FIXTURE or HIFLD_FETCH_PUERTO_RICO_SUBBARRIOS_FIXTURE=1")
         self.assertEqual(hashlib.sha256(body).hexdigest(), EXPECTED_SHA256)
         audit = _inspect_archive(body)
         self.assertEqual(audit["feature_count"], EXPECTED_FEATURE_COUNT)
