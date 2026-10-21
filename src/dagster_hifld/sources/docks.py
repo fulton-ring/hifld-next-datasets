@@ -142,6 +142,13 @@ def _validate_crs(ref):
     codes = [ref[k] for k in ("wkid", "latestWkid") if k in ref]
     if not codes or any(type(code) is not int or code != 4269 for code in codes):
         raise ValueError("source_crs_drift")
+    try:
+        if any(k in ref and not pyproj.CRS.from_wkt(ref[k]).equals(
+            pyproj.CRS.from_epsg(4269), ignore_axis_order=True
+        ) for k in ("wkt", "wkt2")):
+            raise ValueError("source_crs_drift")
+    except (pyproj.exceptions.CRSError, TypeError) as exc:
+        raise ValueError("source_crs_drift") from exc
 
 
 def _coordinates_agree(attrs, geometry):
@@ -152,9 +159,6 @@ def _coordinates_agree(attrs, geometry):
             and type(attrs.get("LATITUDE")) in (int, float)
             and round(geometry.get("x"), 6) == attrs["LONGITUDE"]
             and round(geometry.get("y"), 6) == attrs["LATITUDE"])
-    if any(k in ref and not pyproj.CRS.from_wkt(ref[k]).equals(pyproj.CRS.from_epsg(4269), ignore_axis_order=True)
-           for k in ("wkt", "wkt2")):
-        raise ValueError("source_crs_drift")
 
 
 def _parquet(fields, features):

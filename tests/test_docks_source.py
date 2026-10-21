@@ -54,3 +54,17 @@ def test_docks_non_null_geometry_must_match_native_coordinate_attributes():
     # The page-level validator is extracted below to make the invariant unit-testable.
     assert docks._coordinates_agree({"LATITUDE": 2.0, "LONGITUDE": 1.0}, {"x": 1.00000001, "y": 2.00000001})
     assert not docks._coordinates_agree({"LATITUDE": 2.1, "LONGITUDE": 1.0}, {"x": 1.0, "y": 2.0})
+
+
+def test_docks_crs_rejects_conflicting_wkt_and_wkid():
+    import pyproj
+
+    nad83_wkt = pyproj.CRS.from_epsg(4269).to_wkt()
+    wgs84_wkt = pyproj.CRS.from_epsg(4326).to_wkt()
+    docks._validate_crs({"wkid": 4269, "latestWkid": 4269, "wkt": nad83_wkt})
+    try:
+        docks._validate_crs({"wkid": 4269, "latestWkid": 4269, "wkt": wgs84_wkt})
+    except ValueError as exc:
+        assert str(exc) == "source_crs_drift"
+    else:
+        raise AssertionError("a conflicting CRS WKT must fail closed")
