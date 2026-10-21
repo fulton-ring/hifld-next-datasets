@@ -70,6 +70,11 @@ from dagster_hifld.assets.usace_pipeline_areas import (
     usace_pipeline_areas_draft_job,
     usace_pipeline_areas_draft_schedule,
 )
+from dagster_hifld.assets.us_county_boundaries import (
+    us_county_boundaries_draft_job,
+    us_county_boundaries_draft_schedule,
+    us_county_boundaries_source_complete,
+)
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -542,6 +547,7 @@ defs = Definitions(
         usace_overhead_cables_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
+        us_county_boundaries_source_complete,
         usace_pontoon_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
@@ -573,6 +579,7 @@ defs = Definitions(
         usace_pile_locations_draft_job,
         usace_pipeline_areas_draft_job,
         nces_private_schools_draft_job,
+        us_county_boundaries_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -591,6 +598,7 @@ defs = Definitions(
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
+        us_county_boundaries_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,

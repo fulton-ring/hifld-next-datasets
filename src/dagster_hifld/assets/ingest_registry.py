@@ -23,6 +23,7 @@ from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.quaternary_fault_lines import quaternary_fault_lines_usgs
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
+from dagster_hifld.assets.us_county_boundaries import us_county_boundaries_census
 from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
 from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
@@ -60,6 +61,7 @@ hifld_ingest_assets = [
     usace_berths_areas_usace_ienc,
     quaternary_fault_lines_usgs,
     usace_pylon_areas_usace_ienc,
+    us_county_boundaries_census,
     usace_pylon_locations_usace_ienc,
     usace_recommended_tracks_ienc,
     usace_overhead_pipeline_lines_usace_ienc,
