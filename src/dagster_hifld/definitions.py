@@ -15,6 +15,9 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.arc_regions import (
+    arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
+)
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
@@ -558,6 +561,7 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[
         *hifld_asset_checks,
+        arc_regions_full_quality,
         eia_power_plants_complete,
         gcca_warehouses_geometry_complete,
         census_primary_roads_source_complete,
@@ -613,6 +617,7 @@ defs = Definitions(
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
+        arc_regions_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -647,6 +652,7 @@ defs = Definitions(
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
+        arc_regions_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
