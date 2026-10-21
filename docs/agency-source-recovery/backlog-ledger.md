@@ -51,11 +51,11 @@ The user authorized the existing paid queues under the <=$25/day **inference** g
 Shared #417 is at `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0`, independently reviewed scoped fixes (review5599552229), with actual synthetic success `d054f1c6-2fe8-46f5-a332-47924cdcb9bc` and drift refusal `cd59e479-c18b-4647-aeaf-99f45e6644ad`. Baseline/configuration and unsupported arbitrary transformation accounting remain blocked; this does not complete #417. The branch advanced only after #283 pinned its original checkout. No merges, closures or production publication.
 
 
-## Latest verified checkpoint — 2026-10-21 13:22 UTC
+## Latest verified checkpoint — 2026-10-21 13:43 UTC
 
 The 415-issue inventory remains intact. Earlier PR counts are historical search snapshots and are not current open-PR totals.
 
-The current ledger coverage fields give a conservative, non-readiness snapshot: 415 inventory issues; 110 issue records with a current or historical PR reference (including research and tracking PRs); 5 rows with a structured exact-head review plus local-run bundle (#257, #261, #262, #268 and #269), plus 6 distinct latest-checkpoint issues with exact-head review or CI/runtime evidence (#3, #4, #10, #11, #275 and #282); 13 with the external decision/source evidence blocker label; 303 explicitly awaiting triage with no recovered pipeline PR; and 84 needing prior PR evidence reconciliation. The five-row structured subset is not the overall verified-pipeline count. These ledger-based groups overlap and do not establish which remaining datasets can be automated or count current open pipeline PRs.
+The current ledger coverage fields give a conservative, non-readiness snapshot: 415 inventory issues; 110 issue records with a current or historical PR reference (including research and tracking PRs); 5 rows with a structured exact-head review plus local-run bundle (#257, #261, #262, #268 and #269), plus 8 distinct latest-checkpoint issues with exact-head review or CI/runtime/audit evidence (#3, #4, #10, #11, #275, #282, #283 and #284); 13 with the external decision/source evidence blocker label; 303 explicitly awaiting triage with no recovered pipeline PR; and 84 needing prior PR evidence reconciliation. The five-row structured subset is not the overall verified-pipeline count. These ledger-based groups overlap and do not establish which remaining datasets can be automated or count current open pipeline PRs.
 
 | Work | Verified state |
 | --- | --- |
@@ -71,3 +71,17 @@ The current ledger coverage fields give a conservative, non-readiness snapshot: 
 | Pylon Locations / issue #284 | Recovery produced draft PR #557; worker reports actual runs at head `73c3ddf`. Independent verification remains pending. |
 
 At 13:18 UTC there were no active paid jobs and new paid admissions were held. The `<= $25/day` inference guard is unchanged; actual spend is unknown and the guard excludes GKE/Actions compute. Verified code merges are authorized. Issue closure, release acceptance and production publication remain unauthorized.
+
+## Latest verified checkpoint — 2026-10-21 13:43 UTC
+
+The priority code PRs #420/#3, #419/#4, #427/#10 and #428/#11 are merged, as is shared verifier PR #421. Their source issues remain separate acceptance gates; issues #3 and #10 were verified open, and issue #11 was verified open. Shared #417 remains open; its fail-closed support is limited to literal GeoJSON. Schedules are stopped. No source/contract approvals, issue closures, release acceptance or production publication are recorded.
+
+| Work | Latest verified evidence | Remaining gate |
+| --- | --- | --- |
+| #428 / issue #11 | Head `43faff7f72893264f3c04c3a717b29cb567ce1a0`, merge `7b653e26c7b1b21deb87628499b7aaa9ee7cc105`, tree `32a7b5b7a7a6b53b3d85b97afc884d9565cf6b22`; root review 5600411657; Docker CI passed; 41 tests. | Issue #11 remains open; acceptance gates remain. |
+| #556 / issue #283 | Head `a30e67a0117cf5398b6737336062e1a25783192c`, merge `ec5493622161dd3bc7e46769699d374b434b2b55`; root review 5600646726; current-head Docker build passed. Independent audit passed all 6,440 attributes and ring coordinates plus 37 body/wire receipt pairs. Capture/replay, quality failure and approval-refusal runs are recorded; fixture unchanged. Evidence retained at `/workspace/work/283-evidence`. Superseded paid review run 39607933649 was cancelled; no paid retry. | Issue #283 remains open; rights, continuity, delegation and release decisions remain unresolved. |
+| #557 / issue #284 | Head `327a875b9fda34b1d542d27a5d69032ff742fe42`, merge `5867c5cbf15210ff9c6c93f810ddf9bc63d8a8e8`; root review 5600557965; Docker build passed. Independent audit verified 4,079 native rows/IDs/attributes/XY and 26 raw body/wire pairs (78 artifacts). Ingest/catalog/GeoPackage/GeoParquet passed. | Blocking quality run `b1697eff-1fec-4d26-b8ed-ba4069d55aee` failed and skipped verify/promote; approval refusal `88e28dab-8242-4d56-a850-0ca4cadf1824` preserved the two-file fixture unchanged. Rights, edition, continuity and coverage remain pending; refresh stopped. Evidence: `/workspace/work/evidence-packets/284-native-recovery/`. Issue #284 remains open. |
+| #539 / issue #21 and #540 / issue #27 | Independent reviews found a packaged-runtime construction-validator defect requiring `Git.git` metadata. Local raw runs are valid from Git-backed checkouts. | Packaged runtime construction remains blocked. Foundation PR #559 at `83a0ee1106560b61a72f067a06cc0120c5e76ecd` merged as `c096761eacf3f621d424771d9eeaa9868d862e4d`; Docker build passed, root review 5600692808, preview tree `314994ebead14d02100f197e1f16f6ad27a22144` still awaits root verification. PR #558 at `856b9b9d1544fc9df26ae3c599dcc6246a86d577` review passed (5600645908) but retains the #273 base and is not merged. The foundation does not prove every Git-metadata blocker is fixed; EPA/IENC stack propagation is planned as the next `ienc_runtime_fix` task. Avoid duplicate fixes in #539/#540. |
+| Issue #307 | Official Census ACS 2024 candidate layer 472 is under source research. | Source approval is pending; there is no PR or pipeline yet. |
+
+No additional paid queues are admitted. The inference guard remains `<= $25/day`; actual spend is unknown and GKE/Actions compute is excluded.

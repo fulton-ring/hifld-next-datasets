@@ -36,19 +36,21 @@
         "needs_triage_no_recovered_pipeline_pr": "Rows whose explicit status is needs_triage_no_recovered_pipeline_pr; requires triage and is not proof that a pipeline is infeasible.",
         "prior_pr_evidence_needs_reconciliation": "Rows with status prior_pr_evidence_needs_reconciliation; prior association/review/runtime evidence remains unresolved.",
         "row_structured_exact_head_review_plus_local_run_bundle": "Five records with current/runtime head, a locally verified review status and dagster_runs bundle in their row structure (#257, #261, #262, #268, #269). This is a structured-field subset and does not count all evidenced reviews.",
-        "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Six additional dataset records explicitly listed in latest_verified_checkpoint with exact current PR heads plus review, merged-tree runtime/test, or CI evidence (#3, #4, #10, #11, #275, #282)."
+        "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Eight additional dataset records explicitly listed in latest_verified_checkpoint with exact current PR heads plus review, merged-tree runtime/test, independent audit or CI evidence (#3, #4, #10, #11, #275, #282, #283, #284)."
       },
-      "caveat": "These are ledger-based evidence counts, not mutually exclusive readiness categories. The structured five are not the total number of verified pipelines; the latest checkpoint separately records six additional distinct dataset issues with exact-head review or CI/runtime evidence. The counts do not establish how many remaining datasets can be automated or implementation capacity.",
+      "caveat": "These are ledger-based evidence counts, not mutually exclusive readiness categories. The structured five are not the total number of verified pipelines; the latest checkpoint separately records eight additional distinct dataset issues with exact-head review or CI/runtime/audit evidence. The counts do not establish how many remaining datasets can be automated or implementation capacity.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
-      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 6,
-      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 11,
+      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 8,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 13,
       "latest_checkpoint_priority_evidence_issues": [
         3,
         4,
         10,
         11,
         275,
-        282
+        282,
+        283,
+        284
       ]
     }
   },
@@ -352,29 +354,22 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 428,
+      "current_pr": null,
       "reviewed_head": "e03fd257e50650e467b4642cbf142422fb5468c0",
       "evidence_refs": [
         "issue comment 6271455848; source replay evidence is historical; 103,502 row full-source review retains prior scope"
       ],
       "blocker_type": "external_decision_or_source_evidence",
-      "status_note": "PR #428 remains open at eb6163b8e43933b1760fb23ee76b638734d0abe0 with packaged runtime fix, 41 tests and passing CI. It had been waiting on #419; #419 has now merged, so recheck #428 integration against the merged tree.",
+      "status_note": "PR #428 merged at 7b653e26c7b1b21deb87628499b7aaa9ee7cc105 from head 43faff7f72893264f3c04c3a717b29cb567ce1a0; tree 32a7b5b7a7a6b53b3d85b97afc884d9565cf6b22; root review 5600411657; CI Docker build passed. Issue #11 verified OPEN; no acceptance or publication implied.",
       "live_issue_updated_at": "2026-10-19T23:32:59Z",
       "live_issue_created_at": "2026-10-19T01:56:38Z",
       "live_issue_comment_count": 18,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 428,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/428",
-          "title": "Draft #11: preserve AFDC/BTS station data through local Dagster pipeline",
-          "head_sha_claim_in_body": "e03fd257e50650e467b4642cbf142422fb5468c0",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
-        }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_stopped",
+      "merged_pr": 428,
+      "current_head": "43faff7f72893264f3c04c3a717b29cb567ce1a0"
     },
     {
       "issue": 12,
@@ -6907,8 +6902,8 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 556,
-      "reviewed_head": "e1bcef4fa76c8a3eb4705d152482d307707f11cf",
+      "current_pr": null,
+      "reviewed_head": "a30e67a0117cf5398b6737336062e1a25783192c",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:15:27Z",
@@ -6917,10 +6912,12 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "active_narrow_fix_and_raw_recapture_review_pending",
+      "status": "code_merged_issue_open_acceptance_gated",
       "worker_run_id": 39597542093,
       "dispatch_head": "c5d316320f3120dd1a5dc9f34151b03ff0b1377b",
-      "status_note": "Saved PR #556 head e1bcef4fa76c8a3eb4705d152482d307707f11cf followed an implementation run 39597542093 with trusted-handoff failure. A packaged-runtime Git defect was found; narrow fix and local raw recapture are ongoing. Do not report a review pass. Worker claims 6,440 polygons and runs 0660ddae-c588-438f-a846-64fc6b76a436, 3120875d-10d4-4a9e-b257-e3fc53d65dad, 028cf03e-93d6-45ca-b781-586c1c21aade, e726ff9a-f3b1-4a98-9334-a36fa465458b; raw GKE retention is unverified."
+      "status_note": "PR #556 merged as ec5493622161dd3bc7e46769699d374b434b2b55 at head a30e67a0117cf5398b6737336062e1a25783192c; Docker build passed, root review 5600646726. Independent audit passed all 6,440 native attributes/every ring coordinate and 37 body/wire receipt pairs. Current capture/replay and two gates are recorded; populated fixture unchanged. Raw evidence retained at /workspace/work/283-evidence. Superseded paid review run 39607933649 was cancelled; no retry. Issue #283 remains open; rights, continuity, delegation and release decisions pending.",
+      "merged_pr": 556,
+      "current_head": "a30e67a0117cf5398b6737336062e1a25783192c"
     },
     {
       "issue": 284,
@@ -6930,8 +6927,8 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 557,
-      "reviewed_head": "73c3ddf",
+      "current_pr": null,
+      "reviewed_head": "327a875b9fda34b1d542d27a5d69032ff742fe42",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:15:31Z",
@@ -6940,10 +6937,12 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "draft_pr_saved_worker_runs_reported_review_pending",
+      "status": "code_merged_issue_open_acceptance_gated",
       "worker_run_id": 39599138325,
       "dispatch_head": "b57ff17ad49a2a8f84a29aaec12a52efbb3869c0",
-      "status_note": "Recovery produced draft PR #557; worker reports actual runs at head 73c3ddf. Independent verification remains pending."
+      "status_note": "PR #557 merged as 5867c5cbf15210ff9c6c93f810ddf9bc63d8a8e8 at head 327a875b9fda34b1d542d27a5d69032ff742fe42; Docker build passed, root review 5600557965. Independent native audit covered all 4,079 rows/IDs/attributes/XY and 26 body/wire hash pairs (78 artifacts). Ingest/catalog/GeoPackage/GeoParquet runs succeeded; quality run b1697eff-1fec-4d26-b8ed-ba4069d55aee failed the blocking catalog check and skipped verify/promote. Approval refusal 88e28dab-8242-4d56-a850-0ca4cadf1824 preserved the populated two-file fixture unchanged (63d56018f430...). Evidence retained in /workspace/work/evidence-packets/284-native-recovery/ and dagster/dagster-284-final/. Issue #284 remains open; rights, continuity, baseline and coverage decisions pending; refresh stopped and no publication.",
+      "merged_pr": 557,
+      "current_head": "327a875b9fda34b1d542d27a5d69032ff742fe42"
     },
     {
       "issue": 285,
@@ -9738,14 +9737,15 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T13:22:52Z",
+    "recorded_at": "2026-10-21T13:43:31Z",
     "source": "latest coordinator-verified PR heads, merge SHAs, review comments, CI and run handoffs supplied for this checkpoint",
     "scope_note": "This updates work evidence only. All 415 inventory issues remain tracked; issue states are not changed. Issue #417 remains open. No release or publication is authorized.",
     "pr_421_shared_verifier": {
-      "state": "merged",
+      "state": "merged_stopped_gated",
       "reviewed_head": "b57ff17ad49a2a8f84a29aaec12a52efbb3869c0",
       "merge_commit": "df0e0c3db6c63015c8f98788c4f9f2b90e8991c3",
-      "scope": "Shared verifier is fail-closed for literal GeoJSON only; issue #417 remains open and broader work remains incomplete."
+      "scope": "Shared verifier is fail-closed for literal GeoJSON only; issue #417 remains open and broader work remains incomplete.",
+      "notes": "All priority code is merged, but the shared verifier is fail-closed for literal GeoJSON only; issue #417 remains open and broader acceptance is incomplete. No release or publication."
     },
     "priority_dataset_prs": {
       "420_issue_3": {
@@ -9771,10 +9771,14 @@
         "notes": "Includes uv.lock and runtime COPY."
       },
       "428_issue_11": {
-        "state": "open_waiting_for_419_integration",
-        "head": "eb6163b8e43933b1760fb23ee76b638734d0abe0",
-        "checks": "Packaged runtime fix; 41 tests; CI passed.",
-        "notes": "Packaged runtime fix; 41 tests and CI passed. Previously waiting on #419, which has now merged; recheck integration against the merged tree."
+        "state": "merged_source_issue_open_gated",
+        "head": "43faff7f72893264f3c04c3a717b29cb567ce1a0",
+        "merge_commit": "7b653e26c7b1b21deb87628499b7aaa9ee7cc105",
+        "merged_tree": "32a7b5b7a7a6b53b3d85b97afc884d9565cf6b22",
+        "root_review": 5600411657,
+        "checks": "CI Docker build passed",
+        "issue_state": "Verified OPEN",
+        "notes": "Packaged runtime fix; 41 focused tests passed."
       }
     },
     "issue_25_tracking_replacement": {
@@ -9801,25 +9805,43 @@
         "blocker": "Parent #271 chain blocks merge."
       },
       "issue_283_pr_556": {
-        "state": "active_narrow_fix_and_raw_recapture; review_pending",
-        "saved_head": "e1bcef4fa76c8a3eb4705d152482d307707f11cf",
-        "implementation_run": "39597542093",
-        "notes": "Trusted handoff failed. A packaged-runtime Git defect was found; narrow fix and local raw recapture are ongoing. Do not report a review pass.",
-        "worker_claimed_polygon_count": 6440,
-        "worker_claimed_run_ids": [
-          "0660ddae-c588-438f-a846-64fc6b76a436",
-          "3120875d-10d4-4a9e-b257-e3fc53d65dad",
-          "028cf03e-93d6-45ca-b781-586c1c21aade",
-          "e726ff9a-f3b1-4a98-9334-a36fa465458b"
-        ],
-        "raw_gke_retention": "unverified"
+        "state": "merged_source_issue_open_acceptance_gated",
+        "head": "a30e67a0117cf5398b6737336062e1a25783192c",
+        "merge_commit": "ec5493622161dd3bc7e46769699d374b434b2b55",
+        "root_review": 5600646726,
+        "ci": "Current-head Docker build passed.",
+        "independent_audit": "All 6,440 native attributes and every ring coordinate passed; 37 body/wire receipt pairs passed.",
+        "runs": {
+          "source_capture_head": "d96713a72ddb (exact prefix supplied)",
+          "replay": "d7e6333a (exact prefix supplied)",
+          "quality_gate_failure": "f4e7be17",
+          "approval_refusal": "9ea7f8b9",
+          "fixture": "Populated fixture unchanged."
+        },
+        "evidence_path": "/workspace/work/283-evidence",
+        "notes": "The superseded paid review run 39607933649 was confirmed cancelled at 13:31:42; no paid retry. Historical continuity, source delegation, rights and release acceptance remain unresolved. Issue #283 remains open; no closure or publication."
       },
       "issue_284": {
-        "state": "draft_pr_saved_worker_runs_reported_review_pending",
-        "implementation_run": "39599138325",
+        "state": "merged_source_issue_open_acceptance_gated",
         "draft_pr": 557,
-        "reported_head": "73c3ddf",
-        "notes": "Recovery produced draft PR #557; worker reports actual runs at head 73c3ddf. Independent verification remains pending."
+        "head": "327a875b9fda34b1d542d27a5d69032ff742fe42",
+        "merge_commit": "5867c5cbf15210ff9c6c93f810ddf9bc63d8a8e8",
+        "root_review": 5600557965,
+        "ci": "Docker build passed.",
+        "independent_audit": "All 4,079 native rows, IDs, attributes and XY verified; hashes checked for 26 raw body/wire pairs (78 artifacts).",
+        "runs": {
+          "source_capture_head": "73c3ddf",
+          "ingest": "c9c27bb2-e7d1-46e1-9ad7-a5352572bc72",
+          "catalog": "39d6cef0-73e8-4061-a5c7-7b83e430ee45",
+          "geopackage": "54c2dacd-59cb-4ba2-8725-39dd56f86c3c",
+          "geoparquet": "8d19a592-b950-416e-9c4e-0f1a19be0576",
+          "quality_gate": "b1697eff-1fec-4d26-b8ed-ba4069d55aee",
+          "approval_refusal": "88e28dab-8242-4d56-a850-0ca4cadf1824"
+        },
+        "quality_outcome": "Blocking catalog-quality check failed; verify/promote skipped. Approval-refusal gate preserved the populated fixture (2 files; tree SHA-256 63d56018f43003f3a3b4fdc300351d61b41c1bd98d874bfb874b5c5d59e51d80).",
+        "evidence_path": "/workspace/work/evidence-packets/284-native-recovery/",
+        "dagster_instance": "dagster/dagster-284-final/",
+        "notes": "Rights, edition, baseline/continuity and coverage decisions remain pending. Refresh stopped; no publication. Issue #284 remains open."
       }
     },
     "queue_guard": {
@@ -9827,7 +9849,8 @@
       "active_paid_jobs": 0,
       "new_paid_admissions": "held",
       "inference_guard": "<= $25/day unchanged; actual spend unknown; guard excludes GKE/Actions compute cost.",
-      "instructions": "Do not retry PR #548 cleanup, do not create new paid admissions during this hold, and preserve concurrency/budget controls."
+      "instructions": "Do not retry PR #548 cleanup, do not create new paid admissions during this hold, and preserve concurrency/budget controls.",
+      "note": "No additional paid queues. The superseded #283 review run was confirmed cancelled; no paid retry."
     },
     "actions": {
       "verified_code_merges_authorized": true,
@@ -9838,6 +9861,40 @@
     "inventory_tracking": {
       "inventory_issue_scope": "All 415 dataset inventory issues #2–#416 remain represented. Do not use the earlier 114-PR/101-associated counts as current open-PR counts; they are a historical search snapshot.",
       "no_stale_open_pr_count_presented_as_current": true
+    },
+    "shared_runtime_fix_followups": {
+      "issue_21_pr_539": {
+        "head": "61cbdd6c9049be2407d5fe0b5fcc21caac27500b",
+        "state": "open_review_pending"
+      },
+      "issue_27_pr_540": {
+        "head": "9d3b1d52ac24ca6e99fc2237cafec8a0297e7a1e",
+        "state": "open_review_pending"
+      },
+      "finding": "Independent reviews found a packaged-runtime construction-validator defect requiring Git.git repository metadata; packaged runtime execution remains blocked despite raw local runs from valid checkouts.",
+      "shared_fix": {
+        "pr_559": {
+          "head": "83a0ee1106560b61a72f067a06cc0120c5e76ecd",
+          "state": "merged_foundation_ci_pass_root_verification_pending",
+          "merge_commit": "c096761eacf3f621d424771d9eeaa9868d862e4d",
+          "root_review": 5600692808,
+          "ci": "Docker build passed.",
+          "tested_preview_tree": "314994ebead14d02100f197e1f16f6ad27a22144",
+          "notes": "Root verification of actual preview remains pending; do not count this as resolving every packaged-runtime blocker."
+        },
+        "pr_558": {
+          "head": "856b9b9d1544fc9df26ae3c599dcc6246a86d577",
+          "state": "review_pass_not_merged_blocked_on_273_stack",
+          "root_review": 5600645908,
+          "notes": "Independent review also passed. PR retains the #273 base and is not merged."
+        }
+      },
+      "routing": "The packaged-runtime construction-validator defect was found in #539/#540 reviews. Foundation PR #559 is merged, but actual preview root verification is pending and not all older Git-metadata blockers are proven resolved. EPA/IENC stack propagation is planned as the next `ienc_runtime_fix` task; do not duplicate fixes in #539/#540."
+    },
+    "issue_307_candidate": {
+      "source": "Official Census ACS 2024 candidate layer 472",
+      "state": "in_progress_source_approval_pending_not_a_pipeline",
+      "notes": "Official Census ACS 2024 candidate layer 472; research is in progress, approval is pending, and there is no PR or pipeline yet."
     }
   },
   "pr_search_snapshot_records": [
