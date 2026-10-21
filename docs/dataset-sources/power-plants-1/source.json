@@ -21,6 +21,30 @@
   "geometry_xy_sha256": "65728ac6666ed38eb75c0b88fbb88509e5a075716f29a2a3bd480f5dec6975df",
   "source_scope": "Pinned historical EIA GIS snapshot, not a current feed or accepted HIFLD-equivalent baseline.",
   "current_successor_candidate": "EIA-860M generator-level monthly workbooks are distinct; aggregation and plant identity rules have not been approved, so they are not substituted here.",
-  "open_decisions": ["authoritative replacement/current release", "HIFLD baseline and population equivalence", "aggregation/ID rules", "schema and nullability contract", "rights and attribution", "coverage", "release approval"],
-  "refresh": "Dagster draft schedule is STOPPED. No production publication or release approval is claimed."
+  "open_decisions": [
+    "authoritative replacement/current release",
+    "HIFLD baseline and population equivalence",
+    "aggregation/ID rules",
+    "schema and nullability contract",
+    "rights and attribution",
+    "coverage",
+    "release approval"
+  ],
+  "refresh": "Dagster draft schedule is STOPPED. No production publication or release approval is claimed.",
+  "local_materialization": {
+    "status": "draft-only; release and source acceptance remain false",
+    "packaged_runtime_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "packaged_runtime_identity": "packaged-sha256:dc54e6abba216606b22de364d009631fb898cafe647e8defba644e5f9c605212",
+    "source_run_id": "133f60a4-fdee-4e6b-afe3-3608bc92c1b8",
+    "catalog_quality_run_id": "dded2d14-0d76-43a9-803b-7ae34a6c03d8",
+    "quality_false_refusal_run_id": "887eee24-a31f-4e9c-a17a-40787847e52b",
+    "empty_approval_refusal_run_id": "3c122e33-8ef4-45cc-bf11-4a83a8277f1f",
+    "retained_evidence_packet": "/workspace/work/274-clean-evidence/no-git/registered_no_git_run.json",
+    "run_database_sha256": "c6dd515a61048766ff511ab3b1175385bcbb8d791870f7277d9b1eb864352f30",
+    "capture_reused": true,
+    "quality_false_gate_preserved_preexisting_fixture": true,
+    "empty_exact_object_approval_registry_refused_candidate": true,
+    "promotion_attempted": false,
+    "freshness_baseline_rights_and_coverage_accepted": false
+  }
 }
