@@ -42,8 +42,8 @@
       },
       "caveat": "Status/evidence categories are ledger-based and not mutually exclusive readiness or feasibility measures. The row-derived code-merged/open/gated count and current main schedule registration count are separate concepts. No current open-PR census or readiness/capacity total is claimed.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
-      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 26,
-      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 30,
+      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 29,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 33,
       "latest_checkpoint_priority_evidence_issues": [
         2,
         3,
@@ -56,8 +56,11 @@
         19,
         20,
         21,
+        24,
+        26,
         27,
         28,
+        29,
         37,
         261,
         275,
@@ -81,7 +84,7 @@
       "last_open_pr_census_unmapped_issues_2026_10_21T1414Z": 286,
       "current_count_status": "No fresh full census; named PR and issue statuses only. Historical 14:14 census remains historical and open-PR totals are unset.",
       "ledger_status_counts_recorded_at": "2026-10-21T17:17:54Z",
-      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 26,
+      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 29,
       "code_merged_issue_open_acceptance_gated_issue_numbers": [
         2,
         6,
@@ -12781,7 +12784,8 @@
         "canonical_pr": 596,
         "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
         "state": "exact_head_review_in_progress",
-        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain."
+        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain.",
+        "review_status": "root exact-head review ongoing"
       },
       "28": {
         "canonical_pr": 594,
@@ -12797,7 +12801,8 @@
       "29": {
         "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
         "state": "exact_head_review_pending",
-        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved."
+        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved.",
+        "review_status": "independent exact-head review pending"
       },
       "32": {
         "state": "triage_active_no_verified_pipeline_pr",
@@ -12816,7 +12821,7 @@
       "issue_closures": "none",
       "release_acceptance": "none",
       "production_publication": "none",
-      "paid_dispatch": "none reported for this checkpoint"
+      "paid_dispatch": "No active paid jobs or new paid admissions reported in this checkpoint."
     },
     "main_registration_snapshot": {
       "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
@@ -14435,7 +14440,8 @@
         "canonical_pr": 596,
         "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
         "state": "exact_head_review_in_progress",
-        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain."
+        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain.",
+        "review_status": "root exact-head review ongoing"
       },
       "28": {
         "canonical_pr": 594,
@@ -14451,7 +14457,8 @@
       "29": {
         "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
         "state": "exact_head_review_pending",
-        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved."
+        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved.",
+        "review_status": "independent exact-head review pending"
       },
       "32": {
         "state": "triage_active_no_verified_pipeline_pr",
@@ -14470,7 +14477,7 @@
       "issue_closures": "none",
       "release_acceptance": "none",
       "production_publication": "none",
-      "paid_dispatch": "none reported for this checkpoint"
+      "paid_dispatch": "No active paid jobs or new paid admissions reported in this checkpoint."
     },
     "main_registration_snapshot": {
       "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
