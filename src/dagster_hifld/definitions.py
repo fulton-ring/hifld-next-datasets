@@ -18,127 +18,153 @@ from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
+
 from dagster_hifld.assets.usgs import (
     usgs_aquifers_draft_refresh_job,
     usgs_aquifers_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_job,
     aiannh_source_integrity_refresh_schedule,
 )
+
 from dagster_hifld.assets.bts import (
     amtrak_draft_refresh_job,
     amtrak_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
     quaternary_fault_lines_population_complete,
 )
+
 from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_complete,
     eia_power_plants_draft_job,
     eia_power_plants_draft_schedule,
 )
+
 from dagster_hifld.assets.gcca_warehouse_directory import (
     gcca_warehouses_geometry_complete,
     gcca_warehouses_draft_job,
     gcca_warehouses_draft_schedule,
 )
+
 from dagster_hifld.assets.red_cross_headquarters import (
     red_cross_headquarters_draft_job,
     red_cross_headquarters_draft_schedule,
     red_cross_headquarters_source_population,
 )
+
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
+    faa_aviation_draft_refresh_job,
+    faa_aviation_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.noaa_contiguous import (
     noaa_contiguous_draft_refresh_job,
     noaa_contiguous_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.noaa import (
     noaa_eez_draft_refresh_job,
     noaa_eez_draft_weekly_schedule,
-)
-from dagster_hifld.assets.noaa import (
     noaa_territorial_draft_refresh_job,
     noaa_territorial_draft_weekly_schedule,
 )
+
 from dagster_hifld.assets.usace_pylon_areas import (
     usace_pylon_areas_draft_schedule,
     usace_pylon_areas_complete,
     usace_pylon_areas_draft_job,
 )
+
 from dagster_hifld.assets.principal_ports import (
     principal_ports_source_complete,
     principal_ports_draft_schedule,
 )
+
 from dagster_hifld.assets.bsee_ocs_platforms import (
     bsee_ocs_platforms_complete,
     bsee_ocs_platforms_draft_job,
     bsee_ocs_platforms_draft_schedule,
 )
+
 from dagster_hifld.assets.nces_public_schools import (
     nces_public_schools_complete,
     nces_public_schools_draft_job,
     nces_public_schools_draft_schedule,
 )
+
 from dagster_hifld.assets.proposed_critical_habitat import (
     proposed_critical_habitat_complete,
     proposed_critical_habitat_draft_job,
     proposed_critical_habitat_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
     usace_overhead_cables_draft_job,
 )
+
 from dagster_hifld.assets.nces_private_schools import (
     nces_private_schools_complete,
     nces_private_schools_draft_job,
     nces_private_schools_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_berths_areas import (
     usace_berths_areas_complete,
     usace_berths_areas_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_pipeline_areas import (
     usace_pipeline_areas_complete,
     usace_pipeline_areas_draft_job,
     usace_pipeline_areas_draft_schedule,
 )
+
 from dagster_hifld.assets.us_county_boundaries import (
     us_county_boundaries_draft_job,
     us_county_boundaries_draft_schedule,
     us_county_boundaries_source_complete,
 )
+
 from dagster_hifld.assets.coastlines_usace_ienc import (
     coastlines_usace_ienc_complete,
     coastlines_usace_ienc_draft_job,
     coastlines_usace_ienc_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
     usace_overhead_pipeline_lines_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_complete,
     usace_obstruction_lines_draft_job,
     usace_obstruction_lines_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_complete,
     usace_caution_areas_draft_schedule,
     usace_caution_areas_draft_job,
 )
+
 from dagster_hifld.assets.usace_pile_locations import (
     usace_pile_locations_complete,
     usace_pile_locations_draft_job,
     usace_pile_locations_draft_schedule,
 )
+
 from dagster_hifld.assets.usace import (
     usace_administrative_areas_complete,
     usace_administrative_areas_draft_job,
@@ -147,46 +173,56 @@ from dagster_hifld.assets.usace import (
     usace_navigation_marks_areas_draft_job,
     usace_navigation_marks_areas_draft_schedule,
 )
+
 from dagster_hifld.assets.plate_boundaries import (
     plate_boundaries_draft_job,
     plate_boundaries_draft_schedule,
     plate_boundaries_population_complete,
 )
+
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.usace_recommended_tracks import (
     recommended_tracks_draft_job,
     recommended_tracks_draft_schedule,
     usace_recommended_tracks_complete,
 )
+
 from dagster_hifld.assets.fuel_stations import (
     fuel_stations_draft_refresh_job,
     fuel_stations_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.secondary_school_districts import (
     secondary_school_districts_draft_refresh_job,
     secondary_school_districts_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.unified_school_districts import (
     unified_school_districts_draft_refresh_job,
     unified_school_districts_draft_refresh_schedule,
 )
+
 from dagster_hifld.assets.puerto_rico_subbarrios import (
     puerto_rico_subbarrios_draft_job,
     puerto_rico_subbarrios_draft_schedule,
     puerto_rico_subbarrios_source_complete,
 )
+
 from dagster_hifld.assets.census_primary_roads import (
     census_primary_roads_source_complete,
     census_primary_roads_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
 )
+
 from dagster_hifld.assets.usace_airport_area import (
     usace_airport_area_complete,
     usace_airport_area_quality,
@@ -194,6 +230,37 @@ from dagster_hifld.assets.usace_airport_area import (
     usace_airport_area_draft_job,
     usace_airport_area_draft_schedule,
 )
+
+from dagster_hifld.assets.ibc import (
+    ibc_boundary_draft_refresh_job,
+    ibc_boundary_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws import (
+    fws_cbrs_buffer_draft_refresh_job,
+    fws_cbrs_buffer_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_map_panels import (
+    fws_cbrs_map_panels_draft_refresh_job,
+    fws_cbrs_map_panels_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_prohibitions import (
+    fws_cbrs_prohibitions_draft_refresh_job,
+    fws_cbrs_prohibitions_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_units import (
+    fws_cbrs_units_draft_refresh_job,
+    fws_cbrs_units_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.census_designated_places import (
+    cdp_source_integrity_job,
+    cdp_source_integrity_schedule,
+)
+
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -656,6 +723,13 @@ defs = Definitions(
         red_cross_headquarters_draft_job,
         usace_airport_area_draft_job,
         amtrak_draft_refresh_job,
+        faa_aviation_draft_refresh_job,
+        ibc_boundary_draft_refresh_job,
+        fws_cbrs_buffer_draft_refresh_job,
+        fws_cbrs_map_panels_draft_refresh_job,
+        fws_cbrs_prohibitions_draft_refresh_job,
+        fws_cbrs_units_draft_refresh_job,
+        cdp_source_integrity_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -697,6 +771,13 @@ defs = Definitions(
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
         amtrak_draft_refresh_schedule,
+        faa_aviation_draft_refresh_schedule,
+        ibc_boundary_draft_refresh_schedule,
+        fws_cbrs_buffer_draft_refresh_schedule,
+        fws_cbrs_map_panels_draft_refresh_schedule,
+        fws_cbrs_prohibitions_draft_refresh_schedule,
+        fws_cbrs_units_draft_refresh_schedule,
+        cdp_source_integrity_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

@@ -49,6 +49,13 @@ from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_curren
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 
+from dagster_hifld.assets.ibc import ibc_canada_us_border
+from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
+from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
+from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
+from dagster_hifld.assets.fws_units import fws_cbrs_units
+from dagster_hifld.assets.census_designated_places import census_designated_places
+
 hifld_ingest_assets = [
     usgs_aquifers,
     noaa_12nm_territorial_sea,
@@ -93,4 +100,10 @@ hifld_ingest_assets = [
     gcca_warehouses_current,
     coastlines_usace_ienc,
     usace_airport_area_ienc,
+    ibc_canada_us_border,
+    fws_cbrs_buffer_zone,
+    fws_cbrs_map_panels,
+    fws_cbrs_prohibitions,
+    fws_cbrs_units,
+    census_designated_places,
 ]
