@@ -38,7 +38,8 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 
 SLUG = 'cbrs-buffer-zone-1'
 URL = 'https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip'
@@ -581,7 +582,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     authored_snapshot='metadata/source/version_'+sha(manifest_body)+'_source_manifest.json'
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
         'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json',
-        'metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',authored_snapshot}
+        'metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',authored_snapshot}|STAGED_RELEASE_DERIVATIVE_NAMES
     if (root/authored_snapshot).exists() and (root/authored_snapshot).read_bytes()!=manifest_body:
         raise CBRSQuarantineError('cached_authored_manifest_snapshot_differs')
     paths=list(root.rglob('*'))
@@ -591,6 +592,8 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     expected=set(ready['objects'])|{'metadata/cbrs_buffer_candidate_ready.json'}
     if not expected.issubset(actual) or actual-expected-allowed_derivatives:
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CBRSQuarantineError('invalid_staged_release_derivatives') from exc
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     if cached!=captures:
         raise CBRSQuarantineError('cached_capture_differs_from_original_construction_bundle')

@@ -38,7 +38,8 @@ from dagster_hifld.construction_state import canonical_construction_bundle, load
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 SLUG = 'american-red-cross-regions'
@@ -496,8 +497,13 @@ def validate_candidate(root, payloads, ready):
     allowed = {'metadata/quality_manifest.json', 'metadata/data_dictionary.json', 'metadata/geoparquet_layout.json',
         'metadata/resolved_provenance.json', 'metadata/source/source_manifest.json',
         'metadata/source/quality_manifest.json', 'metadata/source/data_dictionary.json',
-        'metadata/source/version_' + digest(payloads['metadata/source_manifest.json']) + '_source_manifest.json'}
+        'metadata/source/version_' + digest(payloads['metadata/source_manifest.json']) + '_source_manifest.json'}|STAGED_RELEASE_DERIVATIVE_NAMES
     if not set(expected) <= set(actual) or set(actual) - set(expected) - allowed: raise ArcRegionsError('candidate_closed_roster_drift')
+    prefix=f'{SLUG}/{SLUG}/{ready["version"]}'
+    class CandidateStorage:
+        def read_key(self,key): return (root/key.removeprefix(prefix+'/')).read_bytes()
+    try: validate_staged_release_derivatives(CandidateStorage(),prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise ArcRegionsError('invalid_staged_release_derivatives') from exc
     for name, body in expected.items():
         if actual[name] != {'bytes': len(body), 'sha256': digest(body)}: raise ArcRegionsError('candidate_value_or_container_drift:' + name)
     for name in ['metadata/source/source_manifest.json', 'metadata/source/version_' + digest(payloads['metadata/source_manifest.json']) + '_source_manifest.json']:

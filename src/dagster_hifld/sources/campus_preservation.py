@@ -47,6 +47,8 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.sources.campus_preservation_spec import INPUTS, ARCHIVES, BASELINE_DUPLICATE_IDS
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    validate_staged_release_derivatives)
 
 SLUG = 'colleges-and-universities-campuses'
 TITLE = '2022 HIFLD/ORNL campus historical preservation candidate'
@@ -498,10 +500,12 @@ def reconcile_cache(storage, prefix, expected, table, version, fp):
     manifest = strict_json(expected['metadata/source_manifest.json'])
     snapshot = 'metadata/source/version_'+digest(expected['metadata/source_manifest.json'])+'_source_manifest.json'
     derivatives = {'metadata/source/source_manifest.json',snapshot,'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',
-                   'metadata/data_dictionary.json','metadata/quality_manifest.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json'}
+                   'metadata/data_dictionary.json','metadata/quality_manifest.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json'} | STAGED_RELEASE_DERIVATIVE_NAMES
     actual = {str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(owned|{READY}|derivatives) or not (owned|{READY}).issubset(actual):
         raise CampusQuarantineError('unrostered_or_missing_candidate_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CampusQuarantineError('invalid_staged_release_derivatives') from exc
     for name in ['metadata/source/source_manifest.json',snapshot]:
         if (root/name).exists() and (root/name).read_bytes() != expected['metadata/source_manifest.json']:
             raise CampusQuarantineError('authored_manifest_snapshot_changed')
