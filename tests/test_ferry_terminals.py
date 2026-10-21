@@ -7,6 +7,11 @@ import copy,fcntl,gzip,json,os,sqlite3,tempfile
 
 import httpx
 import pyarrow.parquet as pq
+from dagster import build_schedule_context
+from dagster import config as dagster_config
+from dagster._core.instance import DagsterInstance
+from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_schedule
+from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import ferry_terminals as s
 
@@ -222,3 +227,18 @@ class FerryTerminalsMechanicsTests(TestCase):
     def test_published_and_remote_storage_reject_unapproved_draft(self):
         for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
             with self.assertRaisesRegex(s.FerryQuarantineError,'draft_requires'):s.stage_ferry_terminals_candidate(storage,capture_dir=C)
+
+    def test_scheduled_refresh_run_request_config_validates_against_job(self):
+        """Asset jobs name nodes by asset key, so a schedule must not emit op config under the asset function name."""
+        repo=defs.get_repository_def();job=repo.get_job('bts_ferry_terminals_draft_refresh')
+        self.assertEqual([n.name for n in job.graph.nodes],['ingest__ferry_terminals__ferry_terminals'])
+        with DagsterInstance.ephemeral() as instance:
+            context=build_schedule_context(instance=instance,repository_def=repo,
+                resources={'staging_storage':StagingStorageResource(local_dir=self.tmp.name,use_local=True)})
+            result=bts_ferry_terminals_draft_refresh_schedule(context)
+        requests=result if isinstance(result,list) else [result]
+        self.assertTrue(requests)
+        schema=job.run_config_schema.config_type
+        for request in requests:
+            verdict=dagster_config.validate_config(schema,request.run_config or {})
+            self.assertTrue(verdict.success,f'{verdict.errors}; run_config={request.run_config}')
