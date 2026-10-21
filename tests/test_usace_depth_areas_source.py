@@ -80,6 +80,12 @@ def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
 
 
 class UsaceDepthAreasSourceTest(unittest.TestCase):
+    def test_later_batches_are_smaller_after_observed_200_id_response_limit(self) -> None:
+        batches = source._page_batches(source.EXPECTED_IDS)
+        self.assertEqual([len(batch) for batch in batches[:14]], [200] * 14)
+        self.assertEqual([len(batch) for batch in batches[14:]], [50] * 59 + [28])
+        self.assertEqual([oid for batch in batches for oid in batch], source.EXPECTED_IDS)
+
     def test_complete_id_roster_and_polygon_population_are_checked(self) -> None:
         fields, features, audit = source._validate(_captures(_docs()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
