@@ -2,12 +2,23 @@ import io
 import unittest
 import zipfile
 
+import geopandas as gpd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import shapely
+from pyproj import CRS
+from shapely.geometry import MultiPolygon, Polygon
+
 from dagster_hifld.assets.us_county_boundaries import us_county_boundaries_source_complete
+from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILE_PAIRS
 from dagster_hifld.sources.us_county_boundaries import (
     EXPECTED_BYTES,
     EXPECTED_FEATURE_COUNT,
     EXPECTED_GEOID_SHA256,
     EXPECTED_SHA256,
+    EXPECTED_FIELDS,
+    STRING_FIELDS,
+    _geoparquet,
     candidate_version,
     _inspect_archive,
 )
@@ -60,6 +71,39 @@ class UsCountyBoundariesTests(unittest.TestCase):
         self.assertTrue(result.passed)
         self.assertFalse(result.metadata["release_accepted"].value)
         self.assertFalse(result.metadata["rights_accepted"].value)
+
+    def test_native_geoparquet_output_is_registered_and_preserves_mixed_polygons(self):
+        self.assertIn(("us-county-boundaries-1", "us-county-boundaries-1"), SUPPORTED_DATASET_FILE_PAIRS)
+        attributes = {}
+        for name in EXPECTED_FIELDS:
+            if name in STRING_FIELDS:
+                attributes[name] = [None if name in {"CSAFP", "CBSAFP", "METDIVFP"} else f"{name}1",
+                                    f"{name}2"]
+            else:
+                attributes[name] = [1, 2]
+        attributes["GEOID"] = ["01001", "01003"]
+        polygons = [
+            Polygon([(0, 0), (2, 0), (2, 2), (0, 2), (0, 0)]),
+            MultiPolygon([
+                Polygon([(3, 0), (4, 0), (4, 1), (3, 1), (3, 0)]),
+                Polygon([(5, 0), (6, 0), (6, 1), (5, 1), (5, 0)]),
+            ]),
+        ]
+        frame = gpd.GeoDataFrame(attributes, geometry=polygons, crs="EPSG:4269")
+
+        output = _geoparquet(frame)
+        table = pq.read_table(pa.BufferReader(output))
+        self.assertEqual(table.column_names, EXPECTED_FIELDS + ["geometry"])
+        self.assertEqual(table["GEOID"].type, pa.string())
+        self.assertEqual(table["ALAND"].type, pa.int64())
+        self.assertEqual(table["CSAFP"].to_pylist()[0], None)
+        geometries = shapely.from_wkb(table["geometry"].to_pylist())
+        self.assertEqual([geometry.geom_type for geometry in geometries], ["Polygon", "MultiPolygon"])
+        self.assertTrue(all(shapely.equals_exact(a, b, tolerance=0.0) for a, b in zip(polygons, geometries)))
+        geo_metadata = __import__("json").loads(table.schema.metadata[b"geo"])
+        column = geo_metadata["columns"]["geometry"]
+        self.assertEqual(column["geometry_types"], ["MultiPolygon", "Polygon"])
+        self.assertTrue(CRS.from_json_dict(column["crs"]).equals(CRS.from_epsg(4269), ignore_axis_order=True))
 
 
 if __name__ == "__main__":

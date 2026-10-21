@@ -11,10 +11,15 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
+import shapely
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.sources.epa_frs_common import (
     capture_get,
     processing_identity,
@@ -114,7 +119,7 @@ def _capture(
     capture_directory: str | Path | None,
     staging_storage: StagingStorageResource,
     version: str,
-) -> tuple[bytes, dict[str, object]]:
+) -> tuple[bytes, dict[str, object], bytes, bytes]:
     temporary = tempfile.TemporaryDirectory(prefix="census-county-capture-") if capture_directory is None else None
     root = Path(temporary.name) if temporary is not None else Path(capture_directory)
     try:
@@ -160,13 +165,13 @@ def _capture(
                 staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
             )
             raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt
+        return body, receipt, wire, receipt_path.read_bytes()
     finally:
         if temporary is not None:
             temporary.cleanup()
 
 
-def _inspect_archive(body: bytes) -> dict[str, object]:
+def _inspect_archive_data(body: bytes) -> tuple[object, dict[str, object]]:
     expected_members = {
         "tl_2023_us_county.cpg", "tl_2023_us_county.dbf", "tl_2023_us_county.prj",
         "tl_2023_us_county.shp", "tl_2023_us_county.shp.ea.iso.xml",
@@ -213,7 +218,7 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
     id_digest = _sha(_canonical(ids))
     schema = [{"name": name, "type": "string" if name in STRING_FIELDS else "int64",
                "nullable": bool(frame[name].isna().any())} for name in EXPECTED_FIELDS]
-    return {
+    audit = {
         "feature_count": len(frame), "attribute_fields": EXPECTED_FIELDS,
         "attribute_types": {name: ("string" if name in STRING_FIELDS else "int64") for name in EXPECTED_FIELDS},
         "source_id_field": "GEOID", "source_id_sha256": id_digest,
@@ -224,6 +229,71 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
         "mtfcc_values": sorted(EXPECTED_MTFCC), "classfp_values": sorted(EXPECTED_CLASSFP),
         "funcstat_values": sorted(EXPECTED_FUNCSTAT),
     }
+    return frame, audit
+
+
+def _inspect_archive(body: bytes) -> dict[str, object]:
+    """Validate a pinned archive and return its source summary."""
+    return _inspect_archive_data(body)[1]
+
+
+def _geoparquet(frame) -> bytes:
+    """Encode native source columns and unmodified 2D polygon WKB."""
+    names = [name for name in EXPECTED_FIELDS]
+    arrays = []
+    fields = []
+    for name in names:
+        if name in STRING_FIELDS:
+            arrow_type = pa.string()
+            values = frame[name].tolist()
+            array = pa.array(values, type=arrow_type, safe=True, from_pandas=True)
+        else:
+            arrow_type = pa.int64()
+            values = frame[name].tolist()
+            array = pa.array(values, type=arrow_type, safe=True, from_pandas=True)
+        arrays.append(array)
+        fields.append(pa.field(name, arrow_type, nullable=bool(frame[name].isna().any())))
+
+    geometry_types = sorted(set(frame.geometry.geom_type.astype(str)))
+    if not geometry_types or not set(geometry_types) <= {"Polygon", "MultiPolygon"}:
+        raise ValueError("tiger_output_geometry_type_drift")
+    if any(shapely.get_coordinate_dimension(geometry) != 2 for geometry in frame.geometry.array):
+        raise ValueError("tiger_output_non_2d_geometry")
+    geometries = list(shapely.to_wkb(frame.geometry.array, byte_order=1, output_dimension=2))
+    arrays.append(pa.array(geometries, type=pa.binary(), safe=True))
+    fields.append(pa.field("geometry", pa.binary(), nullable=False))
+    geo_metadata = {
+        "version": "1.1.0",
+        "primary_column": "geometry",
+        "columns": {
+            "geometry": {
+                "encoding": "WKB",
+                "geometry_types": geometry_types,
+                "crs": frame.crs.to_json_dict(),
+            }
+        },
+    }
+    output = io.BytesIO()
+    table = pa.Table.from_arrays(arrays, schema=pa.schema(fields, metadata={b"geo": _canonical(geo_metadata)}))
+    pq.write_table(table, output, compression="zstd", use_dictionary=False)
+    readback = pq.read_table(pa.BufferReader(output.getvalue()))
+    if readback.num_rows != len(frame) or readback.column_names != names + ["geometry"]:
+        raise ValueError("tiger_output_schema_or_population_readback_drift")
+    for name in names:
+        expected = frame[name].tolist()
+        if name in STRING_FIELDS:
+            expected = [None if value is None or (isinstance(value, float) and value != value) else str(value)
+                        for value in expected]
+        else:
+            expected = [None if value is None else int(value) for value in expected]
+        if readback[name].to_pylist() != expected:
+            raise ValueError("tiger_output_attribute_readback_drift:" + name)
+    if readback["geometry"].to_pylist() != geometries:
+        raise ValueError("tiger_output_native_wkb_readback_drift")
+    geo = json.loads(readback.schema.metadata[b"geo"])
+    if geo["columns"]["geometry"]["geometry_types"] != geometry_types:
+        raise ValueError("tiger_output_geometry_metadata_drift")
+    return output.getvalue()
 
 
 def capture_us_county_boundaries(
@@ -237,12 +307,24 @@ def capture_us_county_boundaries(
     )
     if version != candidate_version(identity):
         raise ValueError("candidate_version_identity_mismatch")
-    body, receipt = _capture(capture_directory, staging_storage, version)
-    audit = _inspect_archive(body)
+    body, receipt, wire, receipt_bytes = _capture(capture_directory, staging_storage, version)
+    frame, audit = _inspect_archive_data(body)
+    parquet = _geoparquet(frame)
+    parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+    audit["native_geoparquet_bytes"] = len(parquet)
+    audit["native_geoparquet_sha256"] = _sha(parquet)
+    audit["native_geometry_type_counts"] = {
+        name: int((frame.geometry.geom_type == name).sum())
+        for name in sorted(set(frame.geometry.geom_type.astype(str)))
+    }
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-    archive_key = f"{prefix}/shapefile/{SOURCE_FILE}"
+    archive_key = f"{prefix}/raw/source.body"
     before = staging_storage.object_snapshot(archive_key)
     write_immutable(staging_storage, archive_key, body)
+    wire_key = f"{prefix}/raw/source.wire"
+    receipt_raw_key = f"{prefix}/raw/source.receipt.json"
+    write_immutable(staging_storage, wire_key, wire)
+    write_immutable(staging_storage, receipt_raw_key, receipt_bytes)
     after = staging_storage.object_snapshot(archive_key)
     if after is None or after.size != EXPECTED_BYTES or staging_storage.sha256_key(archive_key) != EXPECTED_SHA256:
         raise ValueError("staged_tiger_archive_integrity_failure")
@@ -276,9 +358,22 @@ def capture_us_county_boundaries(
             "role": "producer_publication",
             "release_date_unknown_reason": "The producer identifies this as the 2023 TIGER/Line vintage; a precise publication date was not established. The vintage year is not treated as the source data release date.",
         }],
-        "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the county Shapefile without ID synthesis, schema widening, or attribute mapping."],
+        "transformations": ["Preserve the complete source ZIP, wire response, and receipt under raw/; export its county features to GeoParquet without ID synthesis, schema widening, attribute mapping, geometry repair, or reprojection."],
         "lineage": "Official U.S. Census Bureau Geography Division TIGER/Line COUNTY product (producer publication), pinned to the 2023 vintage. No claim is made that this source replaces or matches a historical HIFLD baseline.",
+        "prebuilt_output_policy": {
+            "schema_version": 1,
+            "formats": {"geoparquet": {
+                "reason": "Preserves all source attributes, GEOID strings, nulls, and native Polygon/MultiPolygon WKB at EPSG:4269; this unapproved candidate performs no geometry repair, simplification, or reprojection.",
+                "objects": [{"path": parquet_path, "bytes": len(parquet), "sha256": _sha(parquet)}],
+            }},
+        },
+        "unsupported_output_formats": {
+            "geopackage": "No approved export-field mapping or downstream schema contract.",
+            "pmtiles": "No approved display transformation or generalization.",
+        },
     }
+    validate_release_provenance(manifest)
+    validate_output_policy(manifest)
     manifest_key = f"{prefix}/metadata/source_manifest.json"
     if staging_storage.object_exists(manifest_key):
         encoded_manifest = staging_storage.read_key(manifest_key)
@@ -317,6 +412,32 @@ def capture_us_county_boundaries(
     write_immutable(staging_storage, receipt_key, _canonical(receipt) + b"\n")
     identity_key = f"{prefix}/metadata/processing_identity.json"
     write_immutable(staging_storage, identity_key, _canonical(identity) + b"\n")
+    geoparquet_key = f"{prefix}/{parquet_path}"
+    write_immutable(staging_storage, geoparquet_key, parquet)
+    candidate_ready_key = f"{prefix}/metadata/candidate_ready.json"
+    ready = {
+        "approved": False,
+        "version": version,
+        "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
+        "source_archive_sha256": EXPECTED_SHA256,
+        "source_population_complete": True,
+        "source_release_accepted": False,
+        "source_freshness_accepted": False,
+        "schema_contract_accepted": False,
+        "id_contract_accepted": False,
+        "coverage_accepted": False,
+        "rights_accepted": False,
+        "mapping_approved": False,
+        "release_accepted": False,
+    }
+    write_immutable(staging_storage, candidate_ready_key, _canonical(ready) + b"\n")
+    for key, expected_bytes, expected_sha in (
+        (geoparquet_key, len(parquet), _sha(parquet)),
+        (candidate_ready_key, len(_canonical(ready) + b"\n"), _sha(_canonical(ready) + b"\n")),
+    ):
+        snapshot = staging_storage.object_snapshot(key)
+        if snapshot is None or snapshot.size != expected_bytes or staging_storage.sha256_key(key) != expected_sha:
+            raise ValueError("staged_tiger_candidate_object_integrity_failure:" + key.rsplit("/", 1)[-1])
     validate_construction_code_identity(
         Path(__file__).parents[3], identity.get("code_commit"), identity.get("files", {}), identity=identity,
     )
@@ -333,5 +454,9 @@ def capture_us_county_boundaries(
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
-        "written_keys": [archive_key, manifest_key, audit_key, receipt_key, identity_key],
+        "candidate_ready": candidate_ready_key,
+        "prebuilt_geoparquet": geoparquet_key,
+        "prebuilt_geoparquet_sha256": _sha(parquet),
+        "written_keys": [archive_key, wire_key, receipt_raw_key, manifest_key, audit_key, receipt_key, identity_key,
+                         geoparquet_key, candidate_ready_key],
     }
