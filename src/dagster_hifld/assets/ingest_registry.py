@@ -37,6 +37,7 @@ from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_i
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
+from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -69,4 +70,5 @@ hifld_ingest_assets = [
     puerto_rico_subbarrios_census,
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
+    usace_pipeline_areas_usace_ienc,
 ]
