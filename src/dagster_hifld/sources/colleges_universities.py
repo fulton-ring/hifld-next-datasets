@@ -44,7 +44,7 @@ LAYER = 'NCES_EDGE_2025_2026'
 LANDING = 'https://nces.ed.gov/programs/edge/Geographic/SchoolLocations'
 URL = 'https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2526.zip'
 DOCUMENTATION = 'https://nces.ed.gov/programs/edge/docs/EDGE_GEOCODE_POSTSEC_TECHDOC.pdf'
-LICENSE = DOCUMENTATION
+LICENSE = 'Rights review pending.'
 STEM = 'EDGE_GEOCODE_POSTSECSCH_2526'
 URLS = {'nces_landing':LANDING,'nces_geocode':URL,'nces_documentation':DOCUMENTATION}
 PINS = {'nces_geocode': {'bytes': 2651816, 'sha256': '4325bd9d8ab69155a95381f4a09eb62ad75e7960c288af6c192f224ca49b5114'}}
@@ -145,7 +145,8 @@ def manifest_for(captures,identity):
         'code_commit':identity['code_commit'],'code_identity_scheme':identity['code_identity_scheme'],
         'processing_code':{'scheme':identity['code_identity_scheme'],'identity':identity['code_commit']},
         'title':'Colleges and Universities — complete NCES EDGE2025–2026 changed successor draft',
-        'publisher':'National Center for Education Statistics','agency':'U.S. Department of Education','source_url':LANDING,'license':LICENSE,
+        'publisher':'National Center for Education Statistics','agency':'U.S. Department of Education','source_url':LANDING,
+        'documentation_url':DOCUMENTATION,'license':LICENSE,
         'processing_fingerprint':digest(encode(identity)),'inputs':inputs,
         'transformations':[{'operation':'decode_complete_original_nested_shapefile','parameters':{'fields':'All21 original names/physical DBF declarations preserved; no ORNL enrichment inferred','source_fid':'Original file-local OGC_FID retained separately; not a generated IPEDSID','UNITID':'Original DBF C8 string preserved; no approved IPEDSID mapping','crs':'EPSG:4326','geometry':'native WKB Point, no reproject/repair/quantization'}},
             {'operation':'native_geopackage_and_geoparquet','parameters':{'source_types':'DBF C remains string, LAT/LON N11/12,6 exposed float64; raw lexical values retained and independently compared','gpkg_fid':'separate storage index, not source/published identifier'}}],

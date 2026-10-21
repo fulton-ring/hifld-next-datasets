@@ -213,6 +213,22 @@ def small_dbf():
     return bytes(body)+b'\x1a',rows
 
 class CollegeStructuralTests(unittest.TestCase):
+    def test_rights_remain_unresolved_and_technical_documentation_stays_separate(self):
+        captures={}
+        for name,url in c.URLS.items():
+            body=(f"Technical documentation: {c.URL}".encode() if name=='nces_landing' else f"synthetic {name}".encode())
+            receipt={'url':url,'final_url':url,'status':200,'bytes':len(body),'sha256':c.digest(body),
+                'complete_body':True,'observed_at':'2026-10-21T12:00:00Z'}
+            captures[name]=(body,receipt)
+        manifest=c.manifest_for(captures,{'code_commit':'synthetic-test-identity','code_identity_scheme':'synthetic-test'})
+        self.assertEqual(manifest['license'],'Rights review pending.')
+        self.assertEqual(manifest['documentation_url'],c.DOCUMENTATION)
+        documentation=next(item for item in manifest['inputs']if item['input_id'].startswith('nces_documentation:'))
+        self.assertEqual(documentation['canonical_url'],c.DOCUMENTATION)
+        self.assertEqual(documentation['license'],'Rights review pending.')
+        self.assertNotEqual(manifest['license'],c.DOCUMENTATION)
+        self.assertEqual(c.provenance_projection(manifest)['documentation_url'],c.DOCUMENTATION)
+
     def test_two_synthetic_binary_DBF_rows_keep_leading_characters_and_precision(self):
         body,rows=small_dbf();self.assertEqual(c.dbf_definition(body)['row_count'],2);self.assertEqual(c.decode_dbf_rows(body),rows);self.assertTrue(rows[0]['NAME'].startswith('  '));self.assertEqual(rows[0]['ZIP'],'00123-0000')
     def test_small_DBF_corrupt_headers_types_and_truncation_fail(self):
