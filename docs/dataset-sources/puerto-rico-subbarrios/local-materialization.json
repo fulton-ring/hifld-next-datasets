@@ -195,11 +195,34 @@
       "same_populated_fixture_object_count": 20
     },
     "registered_dagster_runs": {
+      "catalog_and_formats_run_success": false,
       "candidate_prefix": "puerto-rico-subbarrios/puerto-rico-subbarrios/v851ec1f176c75312848b43135fbd3831",
       "candidate_version": "v851ec1f176c75312848b43135fbd3831",
       "catalog_and_formats_job": "282_registered_candidate_catalog_gate",
       "catalog_and_formats_run_id": "4a4cce26-630c-4324-8b2a-7bc183f6c27f",
       "catalog_quality_check_passed": true,
+      "catalog_run_failure": "publish__verify refused because no independent approval registry was configured; all selected catalog and format steps succeeded, but the overall Dagster run correctly remained failed",
+      "format_outputs": {
+        "geopackage": {
+          "file_count": 0,
+          "status": "withheld by source-manifest output policy",
+          "skip_reason": "unsupported_output_format: mixed Polygon/MultiPolygon geometry violates the inherited writer type contract"
+        },
+        "geoparquet": {
+          "file_count": 1,
+          "status": "materialized",
+          "sha256": "f35f2f6b94685c090fd4d950ff72400d8ff2ec4f0121e5cdf84e5d731ac8ebf2"
+        },
+        "pmtiles": {
+          "file_count": 0,
+          "status": "withheld by source-manifest output policy",
+          "skip_reason": "unsupported_output_format: lossy tiled output lacks an approved dataset-specific loss/zoom/attribute policy"
+        },
+        "shapefile_zip": {
+          "file_count": 8,
+          "status": "materialized"
+        }
+      },
       "persistent_home": "/workspace/work/282-clean-evidence/final/dagster-home",
       "publish_promote_started": false,
       "published_fixture_root": "/workspace/work/282-clean-evidence/final/candidate/published",
@@ -225,6 +248,7 @@
     }
   },
   "downstream_run": {
+    "evidence_status": "historical; superseded by clean_main_replay after output-policy exclusions were added",
     "catalog_materialized": true,
     "geopackage": "skipped: declared unsupported for this dataset (mixed Polygon/MultiPolygon; inherited chunked writer cannot declare a compatible geometry type)",
     "geoparquet_materialized": true,
