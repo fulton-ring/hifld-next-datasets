@@ -94,10 +94,12 @@ from dagster_hifld.assets.census_elementary_districts import census_elementary_d
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 from dagster_hifld.assets.epa_eez import epa_eez
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
+from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 
 hifld_ingest_assets = [
     epa_eez,
     epa_regions_with_eez,
+    epa_large_scale_regions,
     census_elementary_districts,
     noaa_current_dart,
     usgs_crushed_stone_preservation,
