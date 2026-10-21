@@ -1,0 +1,16 @@
+{
+  "requested_url": "https://gis.fema.gov/arcgis/rest/services?f=pjson",
+  "observed_final_url": "https://gis.fema.gov/arcgis/rest/services?f=pjson",
+  "started_at": "2026-10-19T12:21:59.351161+00:00",
+  "observed_at": "2026-10-19T12:21:59.700747+00:00",
+  "status": 200,
+  "headers": {
+    "date": "Mon, 19 Oct 2026 12:21:59 GMT",
+    "content-type": "text/plain;charset=UTF-8"
+  },
+  "wire_bytes": 285,
+  "bytes": 285,
+  "sha256": "ad868bed357591f96a3d07aee81c4a6a34480f758ec129be14bf1a7af9550e8c",
+  "complete": true,
+  "redirects": []
+}
