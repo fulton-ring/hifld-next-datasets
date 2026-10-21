@@ -1,0 +1,9 @@
+# US County Boundaries (Census TIGER/Line)
+
+This draft acquires the official U.S. Census Bureau Geography Division 2023 TIGER/Line `COUNTY` ZIP and stages the complete source archive as a candidate. The retained archive was observed at the official Census URL, is 83,451,409 bytes, and matches SHA-256 `692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e`.
+
+The isolated archive inspection found 3,235 county and county-equivalent polygons, 18 declared attributes, GEOID values retained as five-character strings, EPSG:4269, and no null, empty, or invalid geometries. The source extent is recorded as observed. This is source integrity evidence; it does not establish compatibility with a historical HIFLD/FEMA baseline, a published schema or ID contract, or accepted coverage.
+
+The precise producer release date was not established. The 2023 TIGER/Line vintage is pinned; the capture packet records the exact request and complete wire/body receipts. The archived HIFLD copy was not used. Source release/currentness, schema and ID contracts, coverage, rights, mapping, and release acceptance remain false. The refresh schedule is STOPPED.
+
+Retained local evidence is under `/workspace/work/363-clean-evidence/`, including the raw body and wire response, request receipt, and archive inspection report. These local evidence files are not committed as data assets.
