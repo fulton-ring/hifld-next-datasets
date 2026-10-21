@@ -15,6 +15,11 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.ferc_regions import (
+    ferc_historical_full_quality,
+    ferc_historical_integrity_schedule,
+    ferc_historical_reconstruction_job,
+)
 from dagster_hifld.assets.epa_regions import epa_regions_draft_job, epa_regions_draft_schedule
 from dagster_hifld.assets.epa_large_scale import (
     epa_large_scale_source_integrity_job,
@@ -931,6 +936,7 @@ defs = Definitions(
         epa_regions_with_eez_full_quality,
         epa_frs_toxic_release_inventory_complete,
         epa_frs_tsca_complete,
+        ferc_historical_full_quality,
     ],
     jobs=[
         epa_large_scale_source_integrity_job,
@@ -1015,6 +1021,7 @@ defs = Definitions(
         epa_regions_with_eez_draft_job,
         epa_frs_tri_draft_job,
         epa_tsca_draft_job,
+        ferc_historical_reconstruction_job,
     ],
     schedules=[
         epa_large_scale_source_integrity_schedule,
@@ -1104,6 +1111,7 @@ defs = Definitions(
         epa_regions_with_eez_draft_schedule,
         epa_frs_tri_draft_schedule,
         epa_tsca_draft_schedule,
+        ferc_historical_integrity_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

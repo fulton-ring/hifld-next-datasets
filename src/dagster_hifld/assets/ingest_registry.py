@@ -26,6 +26,7 @@ from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
+from dagster_hifld.assets.ferc_regions import ferc_historical_preservation
 from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.epa_regions import epa_regions
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
@@ -97,6 +98,7 @@ from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 
 hifld_ingest_assets = [
+    ferc_historical_preservation,
     epa_eez,
     epa_regions_with_eez,
     epa_large_scale_regions,
