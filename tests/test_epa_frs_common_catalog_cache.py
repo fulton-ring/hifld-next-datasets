@@ -21,7 +21,7 @@ class CachedCatalogSemanticValidationTests(unittest.TestCase):
         storage = StagingStorageResource(local_dir=str(root))
         resolved = load_resolved_source_manifest(storage, *PREFIX.split("/")).metadata
         summary = summarize_staged_catalog(
-            storage, *PREFIX.split("/"), "synthetic", source_metadata=resolved
+            storage, *PREFIX.split("/"), PREFIX.split("/")[0], source_metadata=resolved
         )
         quality_key = f"{PREFIX}/metadata/quality_manifest.json"
         dictionary_key = f"{PREFIX}/metadata/data_dictionary.json"
