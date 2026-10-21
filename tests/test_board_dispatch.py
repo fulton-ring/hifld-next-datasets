@@ -28,6 +28,7 @@ class FakeAPI:
         self.runs = runs or []
         self.pr = pr
         self.posts = []
+        self.commit_refs = []
         self.current_status = None
         self.head = SHA
 
@@ -53,6 +54,7 @@ class FakeAPI:
             return dict(number=548, state='open', head={'sha': self.head, 'ref': 'codex/cloud-dataset-282', 'repo': {'full_name': dispatch.REPO}},
                         base={'ref': 'codex/cloud-dataset-271', 'repo': {'full_name': dispatch.REPO}})
         if '/commits/' in path:
+            self.commit_refs.append(path.rsplit('/commits/', 1)[1])
             return {'sha': SHA}
         raise AssertionError((kind, path, data))
 
@@ -120,14 +122,20 @@ class BoardDispatchTests(unittest.TestCase):
         api.current_status = 'Ready'
         self.assertEqual(len(dispatch.dispatch_cards([card(status='Ready')], api, now=NOW)), 1)
         self.assertEqual(api.posts[0]['inputs']['datasets_ref'], 'codex/cloud-dataset-282')
+        self.assertEqual(api.posts[0]['inputs']['dispatch_head_sha'], SHA)
+        self.assertEqual(api.posts[0]['inputs']['pr_base'], 'codex/cloud-dataset-271')
+        self.assertEqual(api.commit_refs, [])
         api = FakeAPI()
         self.assertEqual(dispatch.dispatch_cards([card(status=x) for x in ('Backlog', 'Needs decision', 'Done', 'In progress')], api, now=NOW), [])
 
-    def test_new_ready_work_uses_shared_candidate_and_review_requires_pr(self):
+    def test_new_ready_work_pins_current_main_and_review_requires_pr(self):
         api = FakeAPI(pr=False)
         api.current_status = 'Ready'
         self.assertEqual(len(dispatch.dispatch_cards([card(status='Ready')], api, now=NOW)), 1)
-        self.assertEqual(api.posts[0]['inputs']['datasets_ref'], 'codex/cloud-verification-417')
+        self.assertEqual(api.posts[0]['inputs']['datasets_ref'], SHA)
+        self.assertEqual(api.posts[0]['inputs']['dispatch_head_sha'], SHA)
+        self.assertEqual(api.posts[0]['inputs']['pr_base'], 'main')
+        self.assertEqual(api.commit_refs, ['main'])
         api = FakeAPI(pr=False)
         self.assertEqual(dispatch.dispatch_cards([card()], api, now=NOW), [])
 

@@ -120,8 +120,9 @@ jobs and two active/queued reviews independently. Completed attempts do not
 consume slots; there is no daily attempt-count limit. Its inference-budget preflight still runs
 before GKE allocation. Exhausted capacity leaves cards waiting; there is no
 automatic retry of a previously attempted issue/head/role. Failed reviews require
-supervisor inspection. Existing PRs retain their actual branch and dependency;
-new implementations start from `codex/cloud-verification-417`. Fork PRs are never
+supervisor inspection. Existing PRs retain their actual branch, head and base;
+new unassociated implementations resolve the current `main` SHA and use `main` as
+their PR base. Fork PRs are never
 review candidates. Shared verifier #417 may receive an exact-head independent
 review from Review; its implementation and acceptance remain separately supervised.
 
