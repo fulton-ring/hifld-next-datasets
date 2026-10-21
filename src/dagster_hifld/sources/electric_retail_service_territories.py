@@ -34,8 +34,8 @@ FEATURE_LAYER_URL = (
 )
 FEATURE_SERVICE_URL = FEATURE_LAYER_URL.rsplit("/0", 1)[0]
 ITEM_ID = "597555ce8e4a4892a030784a7c657fdd"
-ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"
-OWNER_URL = "https://www.arcgis.com/sharing/rest/community/users/NBAM_Org?f=json"
+ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=pjson"
+OWNER_URL = "https://www.arcgis.com/sharing/rest/community/users/NBAM_Org?f=pjson"
 EXPECTED_COPY_NOTICE = "downloaded from Homeland Infrastructure Foundation-Level Data (HIFLD) on 8/21/2025 and will not be updated"
 EXPECTED_COPYRIGHT = "Oak Ridge National Laboratory (ORNL), DOE - Office of Cybersecurity, Energy Security, and Emergency Response (CESER)"
 MAX_RESPONSE_BYTES = 64_000_000
