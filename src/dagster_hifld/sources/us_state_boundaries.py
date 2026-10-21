@@ -154,6 +154,7 @@ def _capture(
             try:
                 with httpx.Client(timeout=httpx.Timeout(600.0, connect=30.0), follow_redirects=False) as client:
                     body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
+                wire = wire_path.read_bytes()
             except Exception as exc:
                 quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
                 raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
