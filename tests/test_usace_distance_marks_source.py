@@ -12,13 +12,14 @@ from dagster_hifld.sources import usace_distance_marks as source
 
 
 class ArcGISFixture(httpx.BaseTransport):
-    def __init__(self, *, changed_after=False, schema_drift=False, changed_page_crs=False, changed_feature_crs=False, geometry_z=False):
+    def __init__(self, *, changed_after=False, schema_drift=False, changed_page_crs=False, changed_feature_crs=False, geometry_z=False, fail_page_once=None):
         self.ids = list(range(1, source.EXPECTED_COUNT + 1))
         self.changed_after = changed_after
         self.schema_drift = schema_drift
         self.changed_page_crs = changed_page_crs
         self.changed_feature_crs = changed_feature_crs
         self.geometry_z = geometry_z
+        self.fail_page_once = fail_page_once
         self.id_calls = 0
 
     def handle_request(self, request):
@@ -38,6 +39,10 @@ class ArcGISFixture(httpx.BaseTransport):
             data = {"count": source.EXPECTED_COUNT}
         else:
             requested = [int(value) for value in query["objectIds"].split(",")]
+            if requested and requested[0] == self.fail_page_once:
+                self.fail_page_once = None
+                return httpx.Response(503, stream=httpx.ByteStream(b"temporarily unavailable"), request=request,
+                                      headers={"content-type": "text/plain"})
             features = []
             for identity in requested:
                 attrs = {name: (identity if name == "OBJECTID" else 123 if name == "Scale_Minimum" else 12.5 if name == "Waterway_Distance" else "" if name != "Feature_ID" else f"id-{identity}") for name, _ in source.FIELDS}
@@ -87,6 +92,21 @@ class DistanceMarkCaptureTests(unittest.TestCase):
         self.assertEqual(table.column("native_x")[0].as_py(), -79.5 + 0.00001)
         self.assertEqual(table.column("native_y")[0].as_py(), 40.0)
         self.assertEqual(json.loads(table.schema.metadata[b"geo"])["columns"]["geometry"]["geometry_types"], ["Point"])
+
+    def test_transient_page_failure_is_retained_before_bounded_retry(self):
+        storage, result = self._capture(ArcGISFixture(fail_page_once=3201))
+        self.assertEqual(result["feature_count"], 7453)
+        prefix = storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", "")
+        body_key = prefix + "raw/page_0003200.attempt_1.json"
+        wire_key = prefix + "raw/page_0003200.attempt_1.wire"
+        receipt_key = prefix + "raw/page_0003200.attempt_1.receipt.json"
+        self.assertEqual(storage.read_key(body_key), b"temporarily unavailable")
+        self.assertEqual(storage.read_key(wire_key), b"temporarily unavailable")
+        receipt = json.loads(storage.read_key(receipt_key))
+        self.assertEqual(receipt["status"], 503)
+        self.assertEqual(receipt["attempt"], 1)
+        self.assertTrue(receipt["complete"])
+        self.assertTrue(storage.object_exists(prefix + "raw/page_0003200.json"))
 
     def test_before_after_id_drift_refuses_a_candidate(self):
         transport = ArcGISFixture(changed_after=True)

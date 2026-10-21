@@ -5,6 +5,7 @@ import hashlib
 import json
 import platform
 import struct
+import time
 from datetime import datetime, timezone
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -47,38 +48,46 @@ def _digest(body: bytes) -> str:
 
 def _request(client: httpx.Client, params: dict[str, object], staging, version_key: str, name: str, budget: list[int]) -> dict:
     url = LAYER_URL if name == "layer" else LAYER_URL + "/query"
-    raw_parts: list[bytes] = []
-    wire_parts: list[bytes] = []
-    try:
-        with client.stream("GET", url, params=params, headers={"Accept-Encoding": "identity"}) as response:
-            capture = capture_http_response(
-                response, max_wire_bytes=8_000_000, max_decoded_bytes=8_000_000,
-                reserve=lambda progress: _reserve(budget, progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes),
-                retain_wire=wire_parts.append, retain_decoded=raw_parts.append,
-            )
-    except Exception as exc:
-        raise ValueError("source_transport_error:" + type(exc).__name__) from exc
-    body = b"".join(raw_parts)
-    wire = b"".join(wire_parts)
-    receipt = {
-        "method": "GET", "url": str(response.request.url), "status": capture.status_code,
-        "observed_at": datetime.now(timezone.utc).isoformat(), "bytes": len(body),
-        "sha256": _digest(body), "wire_bytes": len(wire), "wire_sha256": _digest(wire),
-        "content_type": response.headers.get("content-type"), "content_encoding": capture.content_encoding,
-        "complete": capture.complete, "error_code": capture.error_code,
-    }
-    budget[0] += len(body) + len(wire)
-    if budget[0] > 128_000_000:
-        raise ValueError("source_total_capture_budget_exceeded")
-    staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.json", body)
-    staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.wire", wire)
-    staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.receipt.json", _json_bytes(receipt))
-    if not capture.complete or not 200 <= capture.status_code < 300:
+    for attempt in range(3):
+        raw_parts: list[bytes] = []
+        wire_parts: list[bytes] = []
+        try:
+            with client.stream("GET", url, params=params, headers={"Accept-Encoding": "identity"}) as response:
+                capture = capture_http_response(
+                    response, max_wire_bytes=8_000_000, max_decoded_bytes=8_000_000,
+                    reserve=lambda progress: _reserve(budget, progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes),
+                    retain_wire=wire_parts.append, retain_decoded=raw_parts.append,
+                )
+        except Exception as exc:
+            raise ValueError("source_transport_error:" + type(exc).__name__) from exc
+        body = b"".join(raw_parts)
+        wire = b"".join(wire_parts)
+        status_ok = capture.complete and 200 <= capture.status_code < 300
+        # Preserve unsuccessful responses under attempt-specific names before retrying.
+        artifact_name = name if status_ok else f"{name}.attempt_{attempt + 1}"
+        receipt = {
+            "method": "GET", "url": str(response.request.url), "status": capture.status_code,
+            "attempt": attempt + 1, "observed_at": datetime.now(timezone.utc).isoformat(), "bytes": len(body),
+            "sha256": _digest(body), "wire_bytes": len(wire), "wire_sha256": _digest(wire),
+            "content_type": response.headers.get("content-type"), "content_encoding": capture.content_encoding,
+            "complete": capture.complete, "error_code": capture.error_code,
+        }
+        budget[0] += len(body) + len(wire)
+        if budget[0] > 128_000_000:
+            raise ValueError("source_total_capture_budget_exceeded")
+        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.json", body)
+        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.wire", wire)
+        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.receipt.json", _json_bytes(receipt))
+        if status_ok:
+            parsed = json.loads(body)
+            if not isinstance(parsed, dict) or "error" in parsed:
+                raise ValueError(f"invalid_arcgis_response:{name}")
+            return parsed
+        if capture.status_code in {429, 500, 502, 503, 504} and attempt < 2:
+            time.sleep(0.25 * (attempt + 1))
+            continue
         raise ValueError("incomplete_source_response:" + name)
-    parsed = json.loads(body)
-    if not isinstance(parsed, dict) or "error" in parsed:
-        raise ValueError(f"invalid_arcgis_response:{name}")
-    return parsed
+    raise ValueError("source_retry_limit_exceeded:" + name)
 
 
 def _reserve(budget: list[int], upcoming: int) -> None:
