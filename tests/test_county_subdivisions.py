@@ -182,6 +182,13 @@ class CountySubdivisionTests(unittest.TestCase):
             ready=source.strict_json((root/source.READY).read_bytes());ready['objects'][name]=source.sha256_file(gpkg);(root/source.READY).write_bytes(source.encode(ready))
             self.assertTrue(self.stage(storage,raw,receipt)['reused'])
 
+    def test_sqlite_non_counter_header_change_changes_container_digest(self):
+        with tempfile.TemporaryDirectory(prefix='cousub-sqlite-header-') as tmp:
+            original=Path(tmp)/'original.sqlite';altered=Path(tmp)/'altered.sqlite'
+            with sqlite3.connect(original) as db:db.execute('CREATE TABLE marker(value TEXT)')
+            body=bytearray(original.read_bytes());version=(int.from_bytes(body[96:100],'big')+1).to_bytes(4,'big');body[96:100]=version;altered.write_bytes(body)
+            self.assertNotEqual(source.stable_sqlite_sha256(original),source.stable_sqlite_sha256(altered))
+
     def test_self_repinned_report_and_native_metadata_still_quarantine(self):
         for kind in ['report','container','unknown','ready_sha','ready_extra']:
             with self.subTest(kind=kind),synthetic_population() as (_,storage,raw,receipt,_):

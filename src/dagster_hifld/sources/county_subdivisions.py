@@ -271,7 +271,7 @@ def stable_sqlite_sha256(path):
         if page_size==1:page_size=65536
         if page_size<512 or page_size>65536 or page_size&(page_size-1) or os.fstat(stream.fileno()).st_size%page_size:
             raise CountySubdivisionQuarantineError('invalid_sqlite_container_page_layout')
-        h.update(header[:24]);h.update(b'\x00'*4);h.update(header[28:92]);h.update(b'\x00'*4)
+        h.update(header[:24]);h.update(b'\x00'*4);h.update(header[28:92]);h.update(b'\x00'*4);h.update(header[96:100])
         while True:
             chunk=stream.read(1024*1024)
             if not chunk:break
