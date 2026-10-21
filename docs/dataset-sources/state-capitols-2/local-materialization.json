@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "evidence_recorded_at": "2026-10-21T18:32:00Z",
+  "evidence_root": "/workspace/work/613-evidence",
+  "source_capture": {
+    "captured_at_start": "2026-10-21T18:24:32.995921Z",
+    "captured_at_end": "2026-10-21T18:24:55.057234Z",
+    "complete_feature_count": 55,
+    "all_request_body_wire_receipts_retained": true,
+    "raw_artifact_count": 27,
+    "source_id_sha256": "f760211171a6ee10347ae7a6e612a6d42a19c104217fbdf959223abcc8963770",
+    "source_record_sha256": "fe5b62591cf0364d4f9b4c5fc42ac9d07f209178c52432a1ca4dd7ac230e2322",
+    "source_geometry_sha256": "f8351597c3cac78a4c6456eaee5fbc4034eb4a9999764cb9061875fcb239a0d3",
+    "capture_recovery": "The first validation manifest was preserved and marked incomplete after a code check looked for the wrong layer CRS field. The complete retained receipts were replayed after correcting the code to use sourceSpatialReference; this did not issue another source request."
+  },
+  "runtime": {
+    "mode": "packaged_no_git",
+    "git_metadata_present": false,
+    "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "code_commit": "packaged-sha256:f6242d32fa44881139df0119b4fb3a5bbb3868f120a37ddf50a8effc53d548f2",
+    "source_run_id": "f1b64d4e-959c-46ca-acbd-03aafdaad178",
+    "catalog_run_id": "c7ae8632-f161-4bea-b854-28df03932b6b",
+    "post_catalog_cache_reuse_run_id": "483f1f91-3e71-423e-b812-2add4beba425",
+    "candidate_version": "v0ee39acf8ad6de3756bf8df5940e23f5",
+    "feature_count": 55,
+    "cache_reused": true,
+    "catalog_quality_passed": true,
+    "catalog_invalid_geometry_count": 0,
+    "candidate_ready": false,
+    "release_accepted": false,
+    "source_release_accepted": false
+  },
+  "native_parity": {
+    "feature_count": 55,
+    "attribute_fields_compared": 19,
+    "ordered_objectids_match": true,
+    "native_xy_wkb_matches_source": true,
+    "crs": "EPSG:3857",
+    "all_page_requests_requested_z_and_m": true,
+    "all_returned_geometries_are_xy_only": true,
+    "layer_hasZ": null,
+    "layer_hasM": null,
+    "evidence_file": "native-parity.json"
+  },
+  "registered_gate_proof": {
+    "quality_failure_run_id": "d0c05432-7f6a-40bd-837c-d8c2e57f7df6",
+    "quality_failure_blocks_verify_and_promote": true,
+    "empty_approval_run_id": "c8a92915-0c3d-4439-8e38-dc64984fefb7",
+    "empty_approval_quality_passed": true,
+    "empty_approval_blocks_verify_and_promote": true,
+    "populated_synthetic_published_fixture_unchanged": true,
+    "populated_synthetic_published_fixture_object_count": 3,
+    "evidence_file": "final-registered-gate-proof/registered-gate-proof.json"
+  },
+  "release_publication": {
+    "production_publication_attempted": false,
+    "production_publication_occurred": false,
+    "external_source_baseline_rights_attribution_and_release_decisions": "pending"
+  }
+}

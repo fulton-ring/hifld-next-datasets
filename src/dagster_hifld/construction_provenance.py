@@ -7,8 +7,12 @@ signing identity, dataset acceptance, or permission to release any artifact.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
+import importlib
+import json
 import os
 import re
+import stat
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
@@ -19,6 +23,7 @@ _MAX_TOTAL_PATH_BYTES = 128 * 1024
 _MAX_BLOB_BYTES = 16 * 1024 * 1024
 _MAX_TOTAL_BLOB_BYTES = 256 * 1024 * 1024
 _TIMEOUT = 30
+_PACKAGED_SCHEME = "sha256-packaged-dagster-hifld-v1"
 
 
 class ConstructionCodeIdentityError(ValueError):
@@ -39,7 +44,8 @@ def _git(root: Path, args: list[str], env: dict[str, str]) -> subprocess.Complet
 
 
 def validate_construction_code_identity(repo_root: Path, code_commit: str,
-                                        processing_files: Mapping[str, str]) -> None:
+                                        processing_files: Mapping[str, str], *,
+                                        identity: Mapping[str, object] | None = None) -> None:
     """Require canonical reachable commit + SHA256 of EVERY regular Git blob.
 
     Reachable means ancestor of HEAD or a local branch/remote-tracking/tag ref;
@@ -59,6 +65,11 @@ def validate_construction_code_identity(repo_root: Path, code_commit: str,
             raise ConstructionCodeIdentityError("construction_invalid_repository")
     except OSError as exc:
         raise ConstructionCodeIdentityError("construction_invalid_repository") from exc
+    if identity is not None and identity.get("code_identity_scheme") == _PACKAGED_SCHEME:
+        _validate_packaged_identity(root, code_commit, processing_files, identity)
+        return
+    if (identity is not None and identity.get("code_identity_scheme") != "git-commit-blobs-v1"):
+        raise ConstructionCodeIdentityError("construction_unknown_identity_scheme")
     if (not isinstance(code_commit, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", code_commit)
             or set(code_commit) == {"0"}):
         raise ConstructionCodeIdentityError("construction_invalid_commit")
@@ -152,3 +163,134 @@ def validate_construction_code_identity(repo_root: Path, code_commit: str,
             raise ConstructionCodeIdentityError("construction_git_read_failed")
         if hashlib.sha256(blob.stdout).hexdigest() != processing_files[path]:
             raise ConstructionCodeIdentityError("construction_processing_blob_hash_mismatch")
+
+
+def _validate_packaged_identity(root: Path, code_commit: str,
+                                processing_files: Mapping[str, str],
+                                identity: Mapping[str, object]) -> None:
+    """Recompute an explicit installed-package identity when no Git repo ships."""
+    git_metadata = root / ".git"
+    if git_metadata.exists() or git_metadata.is_symlink():
+        raise ConstructionCodeIdentityError("construction_packaged_identity_has_git_metadata")
+    if (not isinstance(code_commit, str)
+            or not re.fullmatch(r"packaged-sha256:[0-9a-f]{64}", code_commit)
+            or identity.get("working_tree_status") != "unknown"):
+        raise ConstructionCodeIdentityError("construction_invalid_packaged_identity")
+    if not isinstance(processing_files, Mapping) or not 0 < len(processing_files) <= _MAX_FILES:
+        raise ConstructionCodeIdentityError("construction_invalid_processing_files")
+    if identity.get("files") != processing_files:
+        raise ConstructionCodeIdentityError("construction_packaged_file_inventory_mismatch")
+    package = root / "src/dagster_hifld"
+    if package.is_dir():
+        package_prefix = "src/dagster_hifld"
+    else:
+        package = root / "dagster_hifld"
+        package_prefix = "dagster_hifld"
+    if not package.is_dir() or package.is_symlink():
+        raise ConstructionCodeIdentityError("construction_packaged_source_missing")
+    expected_paths = {"pyproject.toml", "uv.lock"}
+    for path in package.rglob("*"):
+        if "__pycache__" in path.parts:
+            continue
+        if path.is_symlink():
+            raise ConstructionCodeIdentityError("construction_packaged_source_symlink")
+        if not path.is_file():
+            continue
+        expected_paths.add(package_prefix + "/" + path.relative_to(package).as_posix())
+    if len(expected_paths) <= 2:
+        raise ConstructionCodeIdentityError("construction_packaged_source_missing")
+    if set(processing_files) != expected_paths:
+        raise ConstructionCodeIdentityError("construction_packaged_file_inventory_mismatch")
+    allowed_roots = ("src/dagster_hifld/", "dagster_hifld/")
+    if not {"pyproject.toml", "uv.lock"} <= set(processing_files):
+        raise ConstructionCodeIdentityError("construction_packaged_dependency_inputs_missing")
+    total_path_bytes = 0
+    total_blob_bytes = 0
+    for path, digest in processing_files.items():
+        if (not isinstance(path, str) or not path or any(ord(char) < 32 or char == "\\" for char in path)
+                or PurePosixPath(path).is_absolute() or PurePosixPath(path).as_posix() != path
+                or any(part in {".", "..", ".git", "__pycache__"} for part in PurePosixPath(path).parts)
+                or (path not in {"pyproject.toml", "uv.lock"} and not path.startswith(allowed_roots))):
+            raise ConstructionCodeIdentityError("construction_unsafe_processing_path")
+        try:
+            total_path_bytes += len(path.encode("utf-8")) + 1
+        except UnicodeError as exc:
+            raise ConstructionCodeIdentityError("construction_unsafe_processing_path") from exc
+        if (len(path.encode("utf-8")) > _MAX_PATH_BYTES
+                or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+            raise ConstructionCodeIdentityError("construction_invalid_processing_digest")
+        if total_path_bytes > _MAX_TOTAL_PATH_BYTES:
+            raise ConstructionCodeIdentityError("construction_processing_path_limit")
+        file_path = root / path
+        try:
+            before = file_path.lstat()
+        except OSError as exc:
+            raise ConstructionCodeIdentityError("construction_packaged_file_missing") from exc
+        if not stat.S_ISREG(before.st_mode):
+            raise ConstructionCodeIdentityError("construction_nonregular_processing_blob")
+        if before.st_size > _MAX_BLOB_BYTES or total_blob_bytes + before.st_size > _MAX_TOTAL_BLOB_BYTES:
+            raise ConstructionCodeIdentityError("construction_processing_blob_size_limit")
+        total_blob_bytes += before.st_size
+        try:
+            with file_path.open("rb") as stream:
+                opened = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(opened.st_mode) or opened.st_dev != before.st_dev
+                        or opened.st_ino != before.st_ino or opened.st_size != before.st_size):
+                    raise ConstructionCodeIdentityError("construction_packaged_file_changed")
+                content_hash = hashlib.sha256()
+                size = 0
+                while chunk := stream.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > _MAX_BLOB_BYTES or total_blob_bytes - before.st_size + size > _MAX_TOTAL_BLOB_BYTES:
+                        raise ConstructionCodeIdentityError("construction_processing_blob_size_limit")
+                    content_hash.update(chunk)
+                after = os.fstat(stream.fileno())
+        except OSError as exc:
+            raise ConstructionCodeIdentityError("construction_packaged_file_missing") from exc
+        if (size != before.st_size or after.st_dev != before.st_dev or after.st_ino != before.st_ino
+                or after.st_size != before.st_size or after.st_mtime_ns != before.st_mtime_ns):
+            raise ConstructionCodeIdentityError("construction_packaged_file_changed")
+        if content_hash.hexdigest() != digest:
+            raise ConstructionCodeIdentityError("construction_packaged_file_hash_mismatch")
+    distributions = identity.get("installed_distributions")
+    if not isinstance(distributions, list):
+        raise ConstructionCodeIdentityError("construction_packaged_distributions_missing")
+    actual_distributions = []
+    for distribution in importlib.metadata.distributions():
+        name = distribution.metadata.get("Name")
+        version = distribution.version
+        if name and version:
+            actual_distributions.append({"name": name, "version": version})
+    actual_distributions.sort(key=lambda item: (item["name"].casefold(), item["name"], item["version"]))
+    if distributions != actual_distributions:
+        raise ConstructionCodeIdentityError("construction_packaged_distributions_changed")
+    runtime_versions = _packaged_runtime_versions()
+    if any(identity.get(key) != value for key, value in runtime_versions.items()):
+        raise ConstructionCodeIdentityError("construction_packaged_runtime_versions_changed")
+    required = ("code_identity_scheme", "working_tree_status", "files", "installed_distributions",
+                "python", "pyarrow", "proj", "geos")
+    if any(key not in identity for key in required):
+        raise ConstructionCodeIdentityError("construction_packaged_identity_incomplete")
+    try:
+        body = json.dumps({key: identity[key] for key in required}, sort_keys=True,
+                          separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise ConstructionCodeIdentityError("construction_packaged_identity_invalid") from exc
+    digest = hashlib.sha256(body).hexdigest()
+    if code_commit != f"packaged-sha256:{digest}":
+        raise ConstructionCodeIdentityError("construction_packaged_identity_hash_mismatch")
+
+
+def _packaged_runtime_versions() -> dict[str, str]:
+    """Read runtime versions lazily so Git-only checks need no geo imports."""
+    try:
+        pyarrow = importlib.import_module("pyarrow")
+        pyproj = importlib.import_module("pyproj")
+        shapely = importlib.import_module("shapely")
+        import platform
+        return {
+            "python": platform.python_version(), "pyarrow": str(pyarrow.__version__),
+            "proj": str(pyproj.proj_version_str), "geos": str(shapely.geos_version_string),
+        }
+    except (ImportError, AttributeError) as exc:
+        raise ConstructionCodeIdentityError("construction_packaged_runtime_versions_unavailable") from exc
