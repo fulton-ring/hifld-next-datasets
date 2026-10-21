@@ -12,6 +12,7 @@ from dagster_hifld.sources.epa_tsca import DATASET_SLUG, FILE_SLUG, capture_epa_
 
 class EpaTscaConfig(Config):
     capture_directory: str = ""
+    replay_capture_directory: str = ""
 
 
 @asset(
@@ -29,6 +30,7 @@ def epa_frs_toxic_substances_control_act_tsca(
     result = capture_epa_tsca(
         staging_storage, version=version,
         capture_directory=config.capture_directory or None,
+        replay_capture_directory=config.replay_capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
