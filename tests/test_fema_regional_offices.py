@@ -163,6 +163,31 @@ class FemaOfficeTests(unittest.TestCase):
                     self.stage(storage,inputs)
 
     @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
+    def test_cached_catalog_rejects_missing_source_sidecars_and_provenance(self):
+        missing_sidecars = (
+            ('metadata/source/quality_manifest.json',),
+            ('metadata/source/data_dictionary.json',),
+            ('metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'),
+            ('metadata/resolved_provenance.json',),
+        )
+        for missing in missing_sidecars:
+            with self.subTest(missing=missing),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);inputs=root/'inputs';inputs.mkdir();unpack(inputs)
+                storage=StagingStorageResource(local_dir=str(root/'staging'))
+                staged=self.stage(storage,inputs);version=staged['version']
+                resolved=load_resolved_source_manifest(storage,s.SLUG,s.SLUG,version)
+                summary=summarize_staged_catalog(storage,s.SLUG,s.SLUG,version,s.SLUG,source_metadata=resolved.metadata)
+                snapshot_source_metadata(storage,s.SLUG,s.SLUG,version)
+                write_catalog_metadata(storage,s.SLUG,s.SLUG,version,summary.quality_manifest,summary.data_dictionary)
+                snapshot_source_metadata(storage,s.SLUG,s.SLUG,version)
+                candidate=root/'staging'/s.SLUG/s.SLUG/version
+                for relative in missing:
+                    (candidate/relative).unlink()
+                error='catalog_resolved_provenance_drift' if missing==('metadata/resolved_provenance.json',) else 'catalog_metadata_incomplete'
+                with self.assertRaisesRegex(ValueError,error):
+                    self.stage(storage,inputs)
+
+    @unittest.skipUnless(os.environ.get('HIFLD_FEMA_OFFICES_TEST_CAPTURE_ARCHIVE'), 'complete FEMA capture opt-in; see dataset README')
     def test_missing_all_originals_durable_incident_prevents_cold_rebootstrap(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);inputs=root/'inputs';inputs.mkdir();unpack(inputs);storage=StagingStorageResource(local_dir=str(root/'staging'));first=self.stage(storage,inputs);target=root/'staging'/s.SLUG/s.SLUG/first['version'];state=root/'staging'/s.construction_record_key(first['version']);backup={p:p.read_bytes() for p in state.parent.rglob('*') if p.is_file()}
