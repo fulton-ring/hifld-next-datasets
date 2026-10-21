@@ -5,6 +5,7 @@ assets are derived automatically from this registry.
 """
 
 from dagster_hifld.assets.ibc import ibc_canada_us_border
+from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -14,6 +15,7 @@ from dagster_hifld.assets.census_bureau import census_bureau_aiannh_areas
 from dagster_hifld.assets.census_primary_roads import census_bureau_primary_roads
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
 from dagster_hifld.assets.red_cross import red_cross_american_red_cross_divisions
+from dagster_hifld.assets.arc_regions import arc_regions
 from dagster_hifld.assets.red_cross_headquarters import red_cross_headquarters
 from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facilities
 from dagster_hifld.assets.bts import bts_amtrak_stations
@@ -46,9 +48,11 @@ from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
 from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_current
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
+from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 
 hifld_ingest_assets = [
     ibc_canada_us_border,
+    usgs_aquifers,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
@@ -57,6 +61,7 @@ hifld_ingest_assets = [
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
     red_cross_american_red_cross_divisions,
+    arc_regions,
     red_cross_headquarters,
     faa_airspace_boundaries,
     faa_aviation_facilities,
@@ -89,4 +94,5 @@ hifld_ingest_assets = [
     nces_public_schools,
     gcca_warehouses_current,
     coastlines_usace_ienc,
+    usace_airport_area_ienc,
 ]
