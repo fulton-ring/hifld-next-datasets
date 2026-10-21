@@ -34,9 +34,7 @@ The DataLumos project
 [239022 version V1](https://www.datalumos.org/datalumos/project/239022/version/V1/view)
 is the inventoried archive. Anonymous access returns a Cloudflare challenge
 (HTTP 403, `cf-mitigated: challenge`, "Just a moment...") for both the project
-page and API paths, observed 2026-10-21. No Wayback Machine snapshot of the
-project exists, and archive.org services were themselves offline during this
-session. The Canadian open-government mirror
+page and API paths, observed 2026-10-21. The DataLumos project capture was not needed to recover the exact USGS producer package. The Canadian open-government mirror
 (`6250_ferrous_metal_mines_2003.zip`) holds only Atlas 6th-edition raster
 plates (JPG/PDF/metadata), not the vector layer. USGS MRDS is a different
 producer dataset with different identifiers; substituting it, a mirror, or a
@@ -49,13 +47,11 @@ producer archive (`archive_path` plus a hash-pinned retrieval receipt). It
 independently captures the pinned FGDC metadata document (live, or a preserved
 replay with its own receipt), decodes the tar.gz members byte-strictly (DBF
 field roster, fixed-point scale, ASCII, deleted-record and tail checks; SHP/SHX
-point records, offsets, index and finite-coordinate checks; `.prj` CRS parse),
+point records, offsets, index and finite-coordinate checks). The original package has no `.prj`; the pipeline derives NAD83 only from the exact pinned producer FGDC XML, which explicitly declares North American Datum of 1983 and decimal degrees. 
 cross-checks each DBF LATITUDE/LONGITUDE decimal against its native point
 within the documented rounding tolerance, and writes a typed GeoParquet
 candidate with original IDs (`MINOP3X020`, plus implicit `source_fid` and SHP
-record number), exact decimal types, and native CRS metadata. A WGS84 `.prj`
-contradicting the FGDC NAD83 declaration is recorded as a datum contradiction,
-not silently corrected. Content-derived versioning and the first-construction
+record number), exact decimal types, and native CRS metadata. When a `.prj` is present, the declared geographic CRS is retained and any contradiction with the FGDC datum is recorded without correction. Content-derived versioning and the first-construction
 witness bind code, complete source content, and output bytes; cache replay
 verifies stored objects and preserves original receipts and wire bytes.
 

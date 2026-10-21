@@ -23,6 +23,7 @@ import stat
 import struct
 import tarfile
 import tempfile
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path, PurePosixPath
@@ -65,8 +66,8 @@ METADATA_SHA256 = "8302b0f0028247f00d0a96a3b9d537c2e8db712f2425e09a2f1fc1317f94a
 ARCHIVE_CANONICAL_URL = "http://dds.cr.usgs.gov/pub/data/nationalatlas/minop3x020_nt00020.tar.gz"
 MAX_ARCHIVE_BYTES = 64_000_000
 MAX_METADATA_BYTES = 128_000
-REQUIRED_MEMBERS = frozenset(STEM + suffix for suffix in (".shp", ".shx", ".dbf", ".prj"))
-OPTIONAL_MEMBERS = frozenset(STEM + suffix for suffix in (".sbn", ".sbx", ".shp.xml"))
+REQUIRED_MEMBERS = frozenset(STEM + suffix for suffix in (".shp", ".shx", ".dbf"))
+OPTIONAL_MEMBERS = frozenset(STEM + suffix for suffix in (".prj", ".sbn", ".sbx", ".shp.xml"))
 DBF_FIELD_NAMES = (
     "MINOP3X020", "COMMODITY", "SITE_NAME", "COMPANY_NA", "STATE_LOCA",
     "COUNTY", "LATITUDE", "LONGITUDE", "PLANT_MIN",
@@ -309,7 +310,34 @@ def decode_points(body: bytes, index: bytes, count: int) -> list[bytes]:
     return out
 
 
-def inspect_archive(body: bytes) -> tuple[list[dict], dict, list[tuple[str, str, int, int]]]:
+def _native_crs(members: dict[str, bytes], metadata_body: bytes | None) -> pyproj.CRS:
+    prj = members.get(f"{STEM}.prj")
+    if prj is not None:
+        try:
+            crs = pyproj.CRS(prj.decode("ascii", errors="strict"))
+        except (UnicodeDecodeError, pyproj.exceptions.CRSError) as exc:
+            raise FerrousMinesQuarantineError("unparseable_native_prj") from exc
+    else:
+        # The original producer tarball contains no .prj file. Its independently
+        # hash-pinned FGDC XML explicitly declares NAD83 and decimal degrees.
+        if metadata_body is None or digest(metadata_body) != METADATA_SHA256:
+            raise FerrousMinesQuarantineError("missing_prj_requires_exact_producer_fgdc_metadata")
+        try:
+            root = ET.fromstring(metadata_body)
+            datum = root.findtext(".//horizdn", "").strip()
+            units = root.findtext(".//geogunit", "").strip()
+        except ET.ParseError as exc:
+            raise FerrousMinesQuarantineError("invalid_pinned_producer_fgdc_xml") from exc
+        if datum != FGDC_HORIZONTAL_DATUM or units != "Decimal degrees":
+            raise FerrousMinesQuarantineError("fgdc_native_crs_declaration_missing_or_drifted")
+        crs = pyproj.CRS.from_epsg(4269)
+    if not crs.is_geographic:
+        raise FerrousMinesQuarantineError("native_prj_not_geographic")
+    return crs
+
+
+def inspect_archive(body: bytes, metadata_body: bytes | None = None
+                    ) -> tuple[list[dict], dict, list[tuple[str, str, int, int]]]:
     if not body.startswith(b"\x1f\x8b"):
         raise FerrousMinesQuarantineError("changed_truncated_or_unknown_producer_archive")
     members: dict[str, bytes] = {}
@@ -338,12 +366,7 @@ def inspect_archive(body: bytes) -> tuple[list[dict], dict, list[tuple[str, str,
     ids = [row[ID_FIELD] for row in rows]
     if any(value <= 0 for value in ids) or len(set(ids)) != count:
         raise FerrousMinesQuarantineError("missing_duplicate_or_nonpositive_source_identifier")
-    try:
-        crs = pyproj.CRS(members[f"{STEM}.prj"].decode("ascii", errors="strict"))
-    except (UnicodeDecodeError, pyproj.exceptions.CRSError) as exc:
-        raise FerrousMinesQuarantineError("unparseable_native_prj") from exc
-    if not crs.is_geographic:
-        raise FerrousMinesQuarantineError("native_prj_not_geographic")
+    crs = _native_crs(members, metadata_body)
     deviations = []
     for row in rows:
         point = shapely.from_wkb(row["geometry"])
@@ -640,7 +663,7 @@ def stage_ferrous_metal_mines(storage: StagingStorageResource, *, archive_path: 
         except FerrousMinesQuarantineError as exc:
             location = quarantine(storage, b"", None, str(exc), "metadata-failures")
             raise FerrousMinesQuarantineError(f"{exc}; retained:{location}") from exc
-        rows, audit, fields = inspect_archive(archive_body)
+        rows, audit, fields = inspect_archive(archive_body, metadata_body)
         members_bytes = _archive_members(archive_body)
         identity = processing_identity()
         fingerprint = digest(encode(identity))
