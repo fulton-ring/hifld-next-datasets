@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "dataset_slug": "coastlines-usace-ienc",
+  "title": "Coastlines (USACE IENC)",
+  "publisher": "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service",
+  "source": {
+    "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/COASTLINE_LINE/MapServer/33",
+    "service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+    "current_bts_item": {
+      "id": "7ec34864c8804468a9cf52d437fe4b6c",
+      "owner": "USDOT_BTS",
+      "observed_at": "2026-10-21T16:10:17.390580+00:00",
+      "description": "Public IENC item describes bi-monthly USACE/AGC updates and links the official feature-class service and master geodatabase. Its modified timestamp is not treated as a layer release date."
+    },
+    "prior_bts_item": {
+      "id": "3607d485a9854d6fa458bf507058ceae",
+      "observation": "Anonymous access denied in prior source inspection; continuity to the current catalog record is not accepted."
+    },
+    "relationship": "Current public BTS item is distributor evidence for the official USACE IENC service. Succession from the inaccessible prior item and historical HIFLD/DataLumos equivalence remain unverified."
+  },
+  "observed": {
+    "observation_date": "2026-10-21",
+    "feature_count": 22819,
+    "objectid": "Integer IDs 1 through 22819",
+    "objectid_sha256_canonical_json": "363bf4b58dfbae112710b7e33a52c6fe9f6aca2862b0e548728f65900c213827",
+    "feature_id_null_count": 0,
+    "feature_id_unique_nonnull_count": 22571,
+    "geometry_type": "esriGeometryPolyline",
+    "candidate_geometry_type": "LineString",
+    "native_crs": "EPSG:4326",
+    "z": false,
+    "m": false,
+    "source_vertex_count": 3159989,
+    "source_record_sha256": "801d71fcddf4132540001657e16c7eebc7af5be7d3b42d7a36a656feea73f4ec",
+    "source_geometry_sha256": "43b9fc2717215ddc0050909ff5e5e66eb872feb977a2a97ed803e6745707d70c",
+    "source_schema_sha256": "3218ffb0204e6f9606e3e2264e0c90b77a3784ba6be44f424f102c182b942eef",
+    "capture_content_sha256": "d2bf7758ffc7b77ebe1dc9604f60073c76792c640f72d36660511bc2ec8653b5",
+    "fields": [
+      {"name":"OBJECTID","type":"esriFieldTypeOID"},
+      {"name":"SHAPE","type":"esriFieldTypeGeometry"},
+      {"name":"Category_of_Coastline","type":"esriFieldTypeString"},
+      {"name":"Scale_Minimum","type":"esriFieldTypeString"},
+      {"name":"Source_Date","type":"esriFieldTypeString"},
+      {"name":"Source_Indication","type":"esriFieldTypeString"},
+      {"name":"Source_Dataset","type":"esriFieldTypeString"},
+      {"name":"Feature_ID","type":"esriFieldTypeString"}
+    ],
+    "coverage_scope": "Complete current COASTLINE_LINE feature class; inland chart coverage only, not nationwide coastline coverage.",
+    "source_release_date": null,
+    "source_release_date_unknown_reason": "Layer metadata provides no source edition or release date; the BTS update cadence does not date this snapshot."
+  },
+  "candidate": {
+    "approved": false,
+    "format": "GeoParquet",
+    "geometry_policy": "Retain native source coordinates and polyline paths without reprojection or repair.",
+    "path": "geoparquet/coastlines-usace-ienc.parquet",
+    "bytes": 43244414,
+    "sha256": "bca10b43c241e03d3b773cbf4939dd2e914b4a361d0e0c84e318094c1b094f46",
+    "processing_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "source_item_succession_accepted": false,
+    "release_accepted": false,
+    "unsupported_formats": {
+      "GeoPackage": "No approved schema or compatibility contract.",
+      "PMTiles": "No approved display transformation."
+    }
+  },
+  "decisions_pending": [
+    "Historical HIFLD/DataLumos equivalence and source-item succession.",
+    "Source edition, release date, and freshness baseline.",
+    "Schema and identifier contracts, geographic coverage, rights, attribution, and release approval."
+  ]
+}
