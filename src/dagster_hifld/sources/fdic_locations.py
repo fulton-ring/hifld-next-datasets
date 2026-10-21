@@ -31,6 +31,7 @@ import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle,load_first_construction,seal_first_construction
 from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.release_approval import validate_release_provenance,verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource,StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
@@ -455,7 +456,7 @@ def reconcile_cache(storage,prefix,expected,version,fp):
         if bounded_regular_read(root/name,len(body))!=body:raise FdicQuarantineError('fresh_complete_source_owned_payload_disagrees:'+name)
     snapshot='metadata/source/version_'+digest(expected['metadata/source_manifest.json'])+'_source_manifest.json'
     downstream={'metadata/source/source_manifest.json',snapshot,'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',
-        'metadata/data_dictionary.json','metadata/quality_manifest.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json'}
+        'metadata/data_dictionary.json','metadata/quality_manifest.json','metadata/resolved_provenance.json'}
     actual={str(p.relative_to(root))for p in root.rglob('*')if p.is_file()};owned=set(expected)
     if actual-(owned|{READY}|downstream)or not(owned|{READY}).issubset(actual):raise FdicQuarantineError('unrostered_or_missing_candidate_object')
     for name in ['metadata/source/source_manifest.json',snapshot]:
@@ -463,6 +464,23 @@ def reconcile_cache(storage,prefix,expected,version,fp):
     if(root/'metadata/resolved_provenance.json').exists():
         resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
         if encode(strict_json((root/'metadata/resolved_provenance.json').read_bytes()))!=encode(resolved):raise FdicQuarantineError('resolved_provenance_changed')
+    catalog_paths={
+        'metadata/quality_manifest.json':'quality_manifest',
+        'metadata/source/quality_manifest.json':'quality_manifest',
+        'metadata/data_dictionary.json':'data_dictionary',
+        'metadata/source/data_dictionary.json':'data_dictionary',
+    }
+    catalog_present=actual.intersection(catalog_paths)
+    if catalog_present:
+        if not {'metadata/quality_manifest.json','metadata/data_dictionary.json'}.issubset(actual):
+            raise FdicQuarantineError('incomplete_catalog_sidecar_pair')
+        resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
+        summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
+        canonical_catalog={'quality_manifest':summary.quality_manifest,'data_dictionary':summary.data_dictionary}
+        for name in sorted(catalog_present):
+            actual_catalog=strict_json(bounded_regular_read(root/name,20_000_000))
+            if encode(actual_catalog)!=encode(canonical_catalog[catalog_paths[name]]):
+                raise FdicQuarantineError('catalog_sidecar_semantic_drift:'+name)
 
 
 def capture_live_observation(storage,captures):

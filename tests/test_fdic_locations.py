@@ -64,6 +64,27 @@ class FdicLocationsTests(unittest.TestCase):
             (root/s.GEOJSON_KEY).write_bytes(bad);ready['objects'][s.GEOJSON_KEY]={'sha256':s.digest(bad),'bytes':len(bad)};(root/s.READY).write_bytes(s.encode(ready))
             with self.assertRaisesRegex(ValueError,'repinned_noncanonical_or_changed_ready_receipt'):s.reconcile_cache(storage,'synthetic',expected,'v0.0.0-synthetic','a'*64)
 
+    def test_postcatalog_cache_recomputes_full_canonical_quality_and_dictionary(self):
+        with tempfile.TemporaryDirectory()as temporary:
+            storage=StagingStorageResource(local_dir=temporary);root=Path(temporary)/'synthetic';(root/'metadata').mkdir(parents=True);(root/'candidate').mkdir()
+            expected={'candidate/payload.json':s.encode({'native':True}),'metadata/source_manifest.json':s.encode({'schema_version':1})}
+            for name,payload in expected.items():(root/name).write_bytes(payload)
+            quality={'version':'v1','quality_check_passed':False,'feature_count':3,'nested':{'bounds':[1,2,3,4]}}
+            dictionary={'schema_version':1,'columns':[{'name':'BANK_ID','types':{'string':3},'presence':{'absent':0,'null':1}}]}
+            for name,value in [('metadata/quality_manifest.json',quality),('metadata/data_dictionary.json',dictionary)]:
+                (root/name).write_bytes(s.encode(value))
+            version='v0.0.0-synthetic';fingerprint='a'*64
+            ready={'version':version,'processing_fingerprint':fingerprint,'approved':False,'objects':{name:{'sha256':s.digest(payload),'bytes':len(payload)}for name,payload in expected.items()}}
+            (root/s.READY).write_bytes(s.encode(ready))
+            summary=Mock(quality_manifest=quality,data_dictionary=dictionary)
+            with patch.object(s,'load_resolved_source_manifest',return_value=Mock(metadata={})),patch.object(s,'summarize_staged_catalog',return_value=summary):
+                s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
+                altered=json.loads((root/'metadata/data_dictionary.json').read_bytes())
+                altered['columns'][0]['presence']['absent']=9
+                (root/'metadata/data_dictionary.json').write_bytes(s.encode(altered))
+                with self.assertRaisesRegex(ValueError,'catalog_sidecar_semantic_drift:metadata/data_dictionary.json'):
+                    s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
+
     def test_canonical_ready_rejects_false_as_integer(self):
         with tempfile.TemporaryDirectory()as temporary:
             storage=StagingStorageResource(local_dir=temporary);root=Path(temporary)/'synthetic';(root/'metadata').mkdir(parents=True)
