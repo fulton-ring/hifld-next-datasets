@@ -23,7 +23,34 @@
       "no_open_pr_in_recovered_catalog": "314 in historical recovered snapshot only",
       "classification": "Historical search snapshot only. These counts are not current open-PR counts; absence of a recovered PR is not evidence of an external blocker."
     },
-    "snapshot_note": "The issue inventory remains 415 records. Prior PR association/search counts are historical and must not be presented as current. Current exact PR state is maintained in latest_verified_checkpoint."
+    "snapshot_note": "The issue inventory remains 415 records. Prior PR association/search counts are historical and must not be presented as current. Current exact PR state is maintained in latest_verified_checkpoint.",
+    "ledger_based_progress_counts": {
+      "inventory_issues": 415,
+      "issues_with_current_or_historical_pr_reference": 110,
+      "external_decision_or_source_evidence_blocker_label": 13,
+      "needs_triage_no_recovered_pipeline_pr": 303,
+      "prior_pr_evidence_needs_reconciliation": 84,
+      "definitions": {
+        "issues_with_current_or_historical_pr_reference": "Distinct issue records with current_pr, a row-level observed_open_prs association, or an explicitly recorded merged priority PR in latest_verified_checkpoint; includes research/tracking PRs and is not a count of open pipeline PRs.",
+        "external_decision_or_source_evidence_blocker_label": "Rows whose blocker_type is external_decision_or_source_evidence. This is a ledger label, not a permanent source-impossibility finding.",
+        "needs_triage_no_recovered_pipeline_pr": "Rows whose explicit status is needs_triage_no_recovered_pipeline_pr; requires triage and is not proof that a pipeline is infeasible.",
+        "prior_pr_evidence_needs_reconciliation": "Rows with status prior_pr_evidence_needs_reconciliation; prior association/review/runtime evidence remains unresolved.",
+        "row_structured_exact_head_review_plus_local_run_bundle": "Five records with current/runtime head, a locally verified review status and dagster_runs bundle in their row structure (#257, #261, #262, #268, #269). This is a structured-field subset and does not count all evidenced reviews.",
+        "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Six additional dataset records explicitly listed in latest_verified_checkpoint with exact current PR heads plus review, merged-tree runtime/test, or CI evidence (#3, #4, #10, #11, #275, #282)."
+      },
+      "caveat": "These are ledger-based evidence counts, not mutually exclusive readiness categories. The structured five are not the total number of verified pipelines; the latest checkpoint separately records six additional distinct dataset issues with exact-head review or CI/runtime evidence. The counts do not establish how many remaining datasets can be automated or implementation capacity.",
+      "row_structured_exact_head_review_plus_local_run_bundle": 5,
+      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 6,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 11,
+      "latest_checkpoint_priority_evidence_issues": [
+        3,
+        4,
+        10,
+        11,
+        275,
+        282
+      ]
+    }
   },
   "coordination_issue_417": {
     "issue": 417,

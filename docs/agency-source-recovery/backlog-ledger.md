@@ -55,6 +55,8 @@ Shared #417 is at `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0`, independently revi
 
 The 415-issue inventory remains intact. Earlier PR counts are historical search snapshots and are not current open-PR totals.
 
+The current ledger coverage fields give a conservative, non-readiness snapshot: 415 inventory issues; 110 issue records with a current or historical PR reference (including research and tracking PRs); 5 rows with a structured exact-head review plus local-run bundle (#257, #261, #262, #268 and #269), plus 6 distinct latest-checkpoint issues with exact-head review or CI/runtime evidence (#3, #4, #10, #11, #275 and #282); 13 with the external decision/source evidence blocker label; 303 explicitly awaiting triage with no recovered pipeline PR; and 84 needing prior PR evidence reconciliation. The five-row structured subset is not the overall verified-pipeline count. These ledger-based groups overlap and do not establish which remaining datasets can be automated or count current open pipeline PRs.
+
 | Work | Verified state |
 | --- | --- |
 | Shared verifier #421 / issue #417 | Head `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0` merged as `df0e0c3db6c63015c8f98788c4f9f2b90e8991c3`; fail-closed scope is limited to literal GeoJSON. Issue #417 remains open. |
