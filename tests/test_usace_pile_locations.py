@@ -52,6 +52,7 @@ class PileLocationsTests(unittest.TestCase):
         check=usace_pile_locations_complete({"feature_count":source.EXPECTED_COUNT,"source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
+        self.assertFalse(check.metadata["bts_item_succession_accepted"].value)
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
         name,url=source._capture_roster(source.EXPECTED_IDS)[0]

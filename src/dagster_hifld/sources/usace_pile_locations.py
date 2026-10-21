@@ -288,8 +288,9 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": _capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
-        "source_release_accepted": False, "source_freshness_accepted": False,
-        "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
+        "bts_item_succession_accepted": False, "source_release_accepted": False,
+        "source_freshness_accepted": False, "schema_contract_accepted": False,
+        "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
     parquet = _parquet_bytes(fields, features)
     version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
@@ -318,7 +319,8 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
+        "code_identity_scheme": identity["code_identity_scheme"],
+        "bts_item_succession_accepted": False, "inputs": inputs,
         "transformations": [{"operation": "Esri native point XY to GeoParquet WKB candidate", "parameters": {
             "source_fields": "all declared attributes retained in source order and declared types; null-only Festure_ID remains UTF-8 string",
             "source_ids": "OBJECTID and Festure_ID retained unchanged, including nulls", "source_crs": "EPSG:4326",
@@ -342,7 +344,8 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
         "objects": {output_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
-        "source_population_complete": True, "source_record_sha256": audit["source_record_sha256"],
+        "source_population_complete": True, "bts_item_succession_accepted": False,
+        "source_record_sha256": audit["source_record_sha256"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_release_accepted": False,
         "freshness_accepted": False, "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
@@ -372,7 +375,8 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
             "geometry_invalid_count": audit["geometry_invalid_count"], "geometry_empty_count": audit["geometry_empty_count"],
-            "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
+            "bts_item_succession_accepted": False, "source_release_accepted": False,
+            "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
             "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
     descriptors = {}
@@ -397,6 +401,7 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
         "geometry_invalid_count": audit["geometry_invalid_count"], "geometry_empty_count": audit["geometry_empty_count"],
-        "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
+        "bts_item_succession_accepted": False, "source_release_accepted": False,
+        "source_freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
         "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}

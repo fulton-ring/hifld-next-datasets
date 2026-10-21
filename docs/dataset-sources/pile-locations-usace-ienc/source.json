@@ -166,6 +166,11 @@
     "retained_lifecycle_packet": "/workspace/work/269/runtime/lifecycle/packet.json",
     "retained_packet_results": "Registered source and catalog succeeded, all 3,010 native point rows passed catalog quality, and empty-approval verification failed closed with the populated published fixture unchanged.",
     "packaged_no_git_dagster_proof": "Not yet recorded for the clean-main replacement.",
-    "quality_false_blocking_gate": "Not present in the retained lifecycle packet; must be recorded for the clean-main replacement."
+    "quality_false_blocking_gate": "Not present in the retained lifecycle packet; must be recorded for the clean-main replacement.",
+    "clean_main_code_changes": [
+      "The pipeline now pins BTS item 7ec34864c8804468a9cf52d437fe4b6c and validates owner, type, access, title and linked service claims.",
+      "BTS item succession remains false in source audit, source manifest, candidate readiness, candidate output, and blocking-check metadata.",
+      "The packaged code identity scheme is written into the source manifest and the exact identity object is passed to construction-code validation."
+    ]
   }
 }
