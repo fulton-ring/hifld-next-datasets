@@ -103,7 +103,13 @@
     ],
     "geometry": "Native SHP Point WKB; archive has no .prj, so native CRS comes only from exact pinned producer FGDC tags declaring North American Datum of 1983 and decimal degrees; no reprojection",
     "numeric_preservation": "fixed-point decimal width/scale from DBF declarations; no float substitution",
-    "unexpected_columns": "any missing, renamed, or extra column fails closed into quarantine"
+    "unexpected_columns": "any missing, renamed, or extra column fails closed into quarantine",
+    "coordinate_relationship": {
+      "status": "unapproved diagnostic only",
+      "dbf_coordinate_field_scale_degrees": 0.001,
+      "observed_max_dbf_to_native_shp_xy_difference_degrees": 0.00090426318336,
+      "note": "FGDC does not define DBF-to-SHP equivalence or rounding. Literal DBF attributes and native SHP XY are preserved independently; no coordinate is rewritten or reprojected."
+    }
   },
   "pipeline": {
     "asset_key": "ingest/ferrous-metal-mines/ferrous-metal-mines",

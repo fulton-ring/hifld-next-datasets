@@ -75,9 +75,10 @@ DBF_FIELD_NAMES = (
 DBF_FIELD_KINDS = ("N", "C", "C", "C", "C", "C", "N", "N", "C")
 ID_FIELD = "MINOP3X020"
 GEODETIC_FIELDS = ("LATITUDE", "LONGITUDE")
-# The producer's two DBF coordinate columns are N(9,3) and N(11,3); one
-# least-significant unit bounds cross-check error against SHP's full precision.
-GEOMETRY_TOLERANCE = 0.001
+# Proposed diagnostic sanity bound only: one physical DBF coordinate unit.
+# FGDC does not define an equivalence/rounding rule between these DBF values
+# and SHP XY; both are retained literally and no coordinate is rewritten.
+DBF_GEOMETRY_SANITY_BOUND = Decimal("0.001")
 FGDC_HORIZONTAL_DATUM = "North American Datum of 1983"
 PRODUCER_PUBDATE = "200512"
 PRODUCER_RELEASE_DATE = "2005-12-01"
@@ -370,13 +371,27 @@ def inspect_archive(body: bytes, metadata_body: bytes | None = None
         raise FerrousMinesQuarantineError("missing_duplicate_or_nonpositive_source_identifier")
     crs = _native_crs(members, metadata_body)
     deviations = []
+    coordinate_diagnostics = []
     for row in rows:
         point = shapely.from_wkb(row["geometry"])
-        deviation = max(abs(row["LONGITUDE"] - Decimal(repr(point.x))),
-                        abs(row["LATITUDE"] - Decimal(repr(point.y))))
-        if deviation >= Decimal(str(GEOMETRY_TOLERANCE)):
+        longitude_deviation = abs(row["LONGITUDE"] - Decimal(repr(point.x)))
+        latitude_deviation = abs(row["LATITUDE"] - Decimal(repr(point.y)))
+        deviation = max(longitude_deviation, latitude_deviation)
+        if deviation >= DBF_GEOMETRY_SANITY_BOUND:
             raise FerrousMinesQuarantineError("dbf_coordinate_geometry_drift")
         deviations.append(float(deviation))
+        coordinate_diagnostics.append({
+            "source_fid": row["source_fid"],
+            "source_shp_record_number": row["source_shp_record_number"],
+            "source_id": row[ID_FIELD],
+            "dbf_latitude_literal": str(row["LATITUDE"]),
+            "dbf_longitude_literal": str(row["LONGITUDE"]),
+            "shp_x_longitude_literal": repr(point.x),
+            "shp_y_latitude_literal": repr(point.y),
+            "longitude_absolute_difference_degrees": str(longitude_deviation),
+            "latitude_absolute_difference_degrees": str(latitude_deviation),
+            "max_absolute_difference_degrees": str(deviation),
+        })
     bounds = shapely.total_bounds(shapely.from_wkb([row["geometry"] for row in rows])).tolist()
     schema_sha = digest(encode([list(item) for item in zip(DBF_FIELD_NAMES, DBF_FIELD_KINDS)]))
     record_sha = digest(encode([
@@ -401,8 +416,13 @@ def inspect_archive(body: bytes, metadata_body: bytes | None = None
         "fgdc_declared_horizontal_datum": FGDC_HORIZONTAL_DATUM,
         "datum_contradiction": "83" not in (crs.datum.name or "").replace(" ", ""),
         "native_bounds": bounds,
-        "dbf_geometry_coordinate_tolerance_degrees": str(GEOMETRY_TOLERANCE),
+        "proposed_dbf_geometry_sanity_bound_degrees": str(DBF_GEOMETRY_SANITY_BOUND),
         "dbf_geometry_max_coordinate_deviation_degrees": max(deviations),
+        "dbf_geometry_coordinate_diagnostics": coordinate_diagnostics,
+        "coordinate_relationship_status": (
+            "diagnostic_only_unapproved; FGDC defines no DBF-to-SHP equivalence or rounding rule; "
+            "literal DBF coordinate attributes and native SHP XY are both retained unchanged"
+        ),
         "archive_members": {name: {"bytes": len(data), "sha256": digest(data)}
                             for name, data in sorted(members.items())},
         "source_schema_sha256": schema_sha,
