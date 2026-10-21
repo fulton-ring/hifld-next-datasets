@@ -80,6 +80,7 @@ from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_a
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
+from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 
 hifld_ingest_assets = [
     census_elementary_districts,
@@ -156,4 +157,5 @@ hifld_ingest_assets = [
     usace_data_coverage_areas_usace_ienc,
     docks_usace_bts,
     usace_depth_areas_usace_ienc,
+    electric_retail_service_territories_preservation_candidate,
 ]
