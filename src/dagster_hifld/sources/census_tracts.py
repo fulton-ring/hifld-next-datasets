@@ -36,6 +36,7 @@ SOURCE_GEOMETRY = "MultiPolygon"
 RAW_KEY = f"_raw-captures/{DATASET_SLUG}/{SOURCE_SHA256}/original.gdb.zip"
 RAW_RECEIPT_KEY = RAW_KEY + ".receipt.json"
 OUTPUT_NAME = f"{DATASET_SLUG}.parquet"
+READY_ROSTER = "metadata/ready_roster.json"
 EXPECTED_NAMES = ("OBJECTID", "GEOID", "GEOIDFQ", "NAMELSAD", "ALAND", "AWATER", "INTPTLAT", "INTPTLON", "SHAPE")
 EXPECTED_TYPES = (pa.int64(), pa.string(), pa.string(), pa.string(), pa.float64(), pa.float64(), pa.string(), pa.string(), pa.binary())
 EXPECTED_NATIVE_FIELDS = {
@@ -338,6 +339,146 @@ def _manifest(identity: dict[str, object], audit: dict[str, object], receipt: di
     return manifest
 
 
+def _file_roster(root: Path, *, exclude: frozenset[str] = frozenset()) -> dict[str, dict[str, object]]:
+    """Hash the complete regular-file tree without following aliases."""
+    roster: dict[str, dict[str, object]] = {}
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            raise CensusTractsError("candidate_contains_symlink")
+        if path.is_dir():
+            continue
+        if rel in exclude:
+            continue
+        if not path.is_file() or path.stat().st_nlink != 1:
+            raise CensusTractsError("candidate_contains_nonregular_or_linked_file")
+        roster[rel] = {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
+    return roster
+
+
+def _check_file_roster(root: Path, expected: dict[str, dict[str, object]]) -> None:
+    if _file_roster(root, exclude=frozenset({READY_ROSTER})) != expected:
+        raise CensusTractsError("existing_candidate_file_roster_changed")
+
+
+def _write_ready_roster(root: Path, *, identity: dict[str, object], fingerprint: str,
+                        version: str, receipt: dict[str, object]) -> dict[str, object]:
+    roster = _file_roster(root, exclude=frozenset({READY_ROSTER}))
+    ready = {
+        "schema_version": 1, "candidate_version": version,
+        "source_archive_sha256": SOURCE_SHA256,
+        "receipt_sha256": _sha(_canonical(receipt)),
+        "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
+        "processing_fingerprint": fingerprint,
+        "code_identity": identity,
+        "files": roster,
+    }
+    ready_path = root / READY_ROSTER
+    ready_path.parent.mkdir(parents=True, exist_ok=True)
+    ready_path.write_bytes(_canonical(ready))
+    return ready
+
+
+def _verify_ready_roster(root: Path, *, identity: dict[str, object], fingerprint: str,
+                         version: str, receipt: dict[str, object],
+                         native_definition: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
+    """Accept an existing candidate only when its complete immutable roster matches."""
+    ready_path = root / READY_ROSTER
+    if root.is_symlink() or not root.is_dir() or ready_path.is_symlink() or not ready_path.is_file():
+        raise CensusTractsError("existing_candidate_ready_roster_missing_or_aliased")
+    try:
+        ready = json.loads(ready_path.read_text("utf-8"))
+    except (OSError, ValueError) as exc:
+        raise CensusTractsError("existing_candidate_ready_roster_invalid") from exc
+    if not isinstance(ready, dict) or ready != {
+        "schema_version": 1, "candidate_version": version,
+        "source_archive_sha256": SOURCE_SHA256,
+        "receipt_sha256": _sha(_canonical(receipt)),
+        "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
+        "processing_fingerprint": fingerprint,
+        "code_identity": identity,
+        "files": ready.get("files") if isinstance(ready, dict) else None,
+    } or ready_path.read_bytes() != _canonical(ready):
+        raise CensusTractsError("existing_candidate_identity_or_ready_roster_drift")
+    expected_files = ready.get("files")
+    if not isinstance(expected_files, dict) or set(expected_files) != {
+        "geoparquet/" + OUTPUT_NAME,
+        "metadata/source_manifest.json", "metadata/processing_identity.json",
+        "metadata/source_capture.json", "metadata/source_audit.json",
+        "metadata/baseline_comparison.json",
+    }:
+        raise CensusTractsError("existing_candidate_file_roster_incomplete")
+    _check_file_roster(root, expected_files)
+
+    def read_json(relative: str) -> dict[str, object]:
+        try:
+            value = json.loads((root / relative).read_text("utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CensusTractsError("existing_candidate_metadata_invalid:" + relative) from exc
+        if not isinstance(value, dict):
+            raise CensusTractsError("existing_candidate_metadata_not_object:" + relative)
+        return value
+
+    if (root / "metadata/processing_identity.json").read_bytes() != _canonical(identity):
+        raise CensusTractsError("existing_candidate_code_identity_drift")
+    capture = read_json("metadata/source_capture.json")
+    expected_capture = {"archive_key": RAW_KEY, "receipt_key": RAW_RECEIPT_KEY,
+        "archive_sha256": SOURCE_SHA256, "archive_bytes": SOURCE_BYTES,
+        "archive_members": SOURCE_MEMBERS, "archive_expanded_bytes": SOURCE_EXPANDED_BYTES,
+        "source_url": SOURCE_URL}
+    if capture != expected_capture:
+        raise CensusTractsError("existing_candidate_source_capture_drift")
+    baseline = read_json("metadata/baseline_comparison.json")
+    if baseline != {"schema_version": 1, "approved": False, "status": "blocked",
+                    "reason_codes": ["published_baseline_and_ID_schema_contract_acceptance_pending"]}:
+        raise CensusTractsError("existing_candidate_baseline_metadata_drift")
+    manifest = read_json("metadata/source_manifest.json")
+    validate_provenance(manifest)
+    inputs = manifest.get("inputs")
+    transformations = manifest.get("transformations")
+    if (manifest.get("approved") is not False or manifest.get("code_commit") != identity.get("code_commit")
+        or manifest.get("code_identity_scheme") != identity.get("code_identity_scheme")
+        or manifest.get("processing_fingerprint") != fingerprint
+        or manifest.get("source_url") != SOURCE_URL or not isinstance(inputs, list) or len(inputs) != 1
+        or not isinstance(inputs[0], dict) or inputs[0].get("sha256") != SOURCE_SHA256
+        or inputs[0].get("bytes") != SOURCE_BYTES or inputs[0].get("canonical_url") != SOURCE_URL
+        or inputs[0].get("retrieved_at") != receipt.get("observed_at")
+        or not isinstance(transformations, list) or len(transformations) != 1
+        or not isinstance(transformations[0], dict)
+        or transformations[0].get("parameters", {}).get("source_archive_sha256") != SOURCE_SHA256):
+        raise CensusTractsError("existing_candidate_provenance_identity_drift")
+    audit = read_json("metadata/source_audit.json")
+    output_record = expected_files["geoparquet/" + OUTPUT_NAME]
+    if (audit.get("approved") is not False or audit.get("feature_count") != SOURCE_FEATURE_COUNT
+        or audit.get("parquet_sha256") != output_record.get("sha256")
+        or audit.get("parquet_bytes") != output_record.get("bytes")
+        or audit.get("crs") != SOURCE_CRS or audit.get("geometry_type") != SOURCE_GEOMETRY
+        or audit.get("native_layer_definition") != native_definition
+        or not audit.get("native_objectid_sha256")
+        or audit.get("source_batch_sha256") != audit.get("parquet_batch_sha256")
+        or not isinstance(audit.get("statefp_counts"), dict)
+        or sum(audit["statefp_counts"].values()) != SOURCE_FEATURE_COUNT):
+        raise CensusTractsError("existing_candidate_source_audit_or_output_drift")
+    parquet_path = root / "geoparquet" / OUTPUT_NAME
+    parquet = pq.ParquetFile(parquet_path)
+    if (parquet.metadata.num_rows != SOURCE_FEATURE_COUNT
+        or tuple(parquet.schema_arrow.names) != EXPECTED_NAMES
+        or sha256_file(parquet_path) != output_record["sha256"]):
+        raise CensusTractsError("existing_candidate_native_output_changed")
+    return audit, ready
+
+
+def _candidate_result(version: str, identity: dict[str, object], audit: dict[str, object], *, reused: bool) -> dict[str, object]:
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+        "feature_count": audit["feature_count"], "source_population_complete": True,
+        "source_archive_bytes": SOURCE_BYTES, "source_archive_sha256": SOURCE_SHA256,
+        "source_id_sha256": audit["native_objectid_sha256"], "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
+        "native_parquet_sha256": audit["parquet_sha256"], "native_parquet_bytes": audit["parquet_bytes"],
+        "native_value_parity": audit["source_batch_sha256"] == audit["parquet_batch_sha256"],
+        "code_identity_scheme": identity["code_identity_scheme"], "code_commit": identity["code_commit"],
+        "statefp_counts": audit["statefp_counts"], "candidate_reused": reused, "approved": False}
+
+
 def stage_census_tracts(
     storage: StagingStorageResource, *, archive_path: str, receipt_path: str,
 ) -> dict[str, object]:
@@ -355,7 +496,9 @@ def stage_census_tracts(
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     target = root / prefix
     if target.exists() or target.is_symlink():
-        raise CensusTractsError("existing_candidate_version_refused_for_mutation")
+        audit, _ = _verify_ready_roster(target, identity=identity, fingerprint=fingerprint, version=version,
+                                        receipt=receipt, native_definition=archive_audit["native_definition"])
+        return _candidate_result(version, identity, audit, reused=True)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".census-tracts-building-", dir=target.parent))
     try:
@@ -384,6 +527,7 @@ def stage_census_tracts(
             path = temporary / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(body)
+        _write_ready_roster(temporary, identity=identity, fingerprint=fingerprint, version=version, receipt=receipt)
         os.replace(temporary, target)
     except BaseException as exc:
         quarantine = root / "_quarantine" / DATASET_SLUG / ("failed-" + fingerprint[:16])
@@ -396,11 +540,4 @@ def stage_census_tracts(
         except OSError:
             pass
         raise
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": result["feature_count"], "source_population_complete": True,
-        "source_archive_bytes": SOURCE_BYTES, "source_archive_sha256": SOURCE_SHA256,
-        "source_id_sha256": result["native_objectid_sha256"], "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
-        "native_parquet_sha256": result["parquet_sha256"], "native_parquet_bytes": result["parquet_bytes"],
-        "native_value_parity": result["source_batch_sha256"] == result["parquet_batch_sha256"],
-        "code_identity_scheme": identity["code_identity_scheme"], "code_commit": identity["code_commit"],
-        "statefp_counts": result["statefp_counts"], "approved": False}
+    return _candidate_result(version, identity, result, reused=False)

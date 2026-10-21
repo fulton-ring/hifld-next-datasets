@@ -124,6 +124,34 @@ class CensusTractsTests(unittest.TestCase):
         self.assertEqual(manifest["prebuilt_output_policy"]["formats"]["geoparquet"]["objects"][0]["bytes"], 1234)
         self.assertNotIn("promotion_allowed", manifest)
 
+    def test_ready_roster_accepts_identical_files_without_rewriting_them(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "metadata").mkdir()
+            (root / "geoparquet").mkdir()
+            (root / "metadata/source.json").write_bytes(b"immutable metadata\n")
+            (root / "geoparquet/candidate.parquet").write_bytes(b"immutable output bytes")
+            expected = source._file_roster(root)
+            before = {name: (root / name).stat().st_mtime_ns for name in expected}
+            source._check_file_roster(root, expected)
+            after = {name: (root / name).stat().st_mtime_ns for name in expected}
+            self.assertEqual(after, before)
+
+    def test_ready_roster_fails_closed_on_tampered_or_added_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "metadata").mkdir()
+            candidate = root / "metadata/source.json"
+            candidate.write_bytes(b"original")
+            expected = source._file_roster(root)
+            candidate.write_bytes(b"tampered")
+            with self.assertRaisesRegex(source.CensusTractsError, "file_roster_changed"):
+                source._check_file_roster(root, expected)
+            candidate.write_bytes(b"original")
+            (root / "extra.bin").write_bytes(b"unexpected")
+            with self.assertRaisesRegex(source.CensusTractsError, "file_roster_changed"):
+                source._check_file_roster(root, expected)
+
 
 if __name__ == "__main__":
     unittest.main()
