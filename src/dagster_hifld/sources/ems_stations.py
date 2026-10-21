@@ -261,7 +261,9 @@ def stage_candidate(storage: StagingStorageResource, *, capture_dir: Path | None
     raw_hashes = {name: digest(raw) for name, raw in sorted(bodies.items())}
     raw_identity = canonical_hash(raw_hashes)
     processor = verifier_implementation_sha256()
-    version = "v0.0.0-draft.usgs." + canonical_hash({"raw": raw_identity, "processor": processor, "retrieval_receipts": receipts})[:20]
+    resolved_code_commit = code_commit or f"installed-package-sha256:{processor}"
+    version = "v0.0.0-draft.usgs." + canonical_hash({"raw": raw_identity, "processor": processor,
+        "code_commit": resolved_code_commit, "retrieval_receipts": receipts})[:20]
     prefix = f"{SLUG}/{SLUG}/{version}"
     raw_keys = {}
     for name, raw in sorted(bodies.items()):
@@ -279,7 +281,7 @@ def stage_candidate(storage: StagingStorageResource, *, capture_dir: Path | None
         "lineage":"Official USGS The National Map Corps live Fire Stations/EMS Stations MapServer layer 51. This is a maintained service snapshot and is not asserted equivalent to the historical HIFLD/DataLumos release.",
         "source_url":LANDING,"documentation_url":LANDING,"live_source_layer":URL,"license":"Rights review pending; consult USGS terms and disclaimers.",
         "baseline_accepted":False,"contract_approved":False,"promotion_approved":False,"data_lumos_equivalence_claimed":False,
-        "code_commit":code_commit or f"installed-package-sha256:{processor}","code_identity_scheme":"run-tag" if code_commit else "installed-package-sha256-v1",
+        "code_commit":resolved_code_commit,"code_identity_scheme":"run-tag" if code_commit else "installed-package-sha256-v1",
         "inputs":[{"input_id":name,"producer":"U.S. Geological Survey, The National Map Corps","host":urlsplit(next(r["url"] for r in receipts if r["capture"]==name)).hostname,"canonical_url":LANDING,
             "retrieval_url":next(r["url"] for r in receipts if r["capture"]==name),"observed_final_url":next(r["final_url"] for r in receipts if r["capture"]==name),
             "retrieved_at":next(r["fetched_at"] for r in receipts if r["capture"]==name),"sha256":raw_hashes[name],"bytes":len(bodies[name]),"raw_key":raw_keys[name],
