@@ -19,7 +19,9 @@ DATASET_SLUG = "docks-usace-bts"
 FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Docks/FeatureServer/0"
 EXPECTED_COUNT = 20563
-PAGE_SIZE = 2000
+# The service permits 2,000 records, but the platform rejects a long GET
+# header for a 2,000-ID objectIds list. Keep request URLs below that limit.
+PAGE_SIZE = 400
 MAX_BYTES = 384_000_000
 _STRINGS = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"}
 
