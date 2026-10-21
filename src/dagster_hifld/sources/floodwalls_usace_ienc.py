@@ -238,6 +238,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     expected_attrs = [field["name"] for field in ATTRIBUTE_FIELDS]
     ids = []
     vertex_count = 0
+    coordinate_values = []
     for feature in features:
         attrs, geometry = feature.get("attributes"), feature.get("geometry")
         if not isinstance(attrs, dict) or set(attrs) != set(expected_attrs) or len(attrs) != len(expected_attrs):
@@ -271,9 +272,20 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                 if (not isinstance(point, list) or len(point) != 2
                         or any(type(coord) not in (float, int) or not math.isfinite(coord) for coord in point)):
                     raise ValueError("source_xy_ordinate_contract_drift")
+                longitude, latitude = point
+                if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
+                    raise ValueError("source_coordinate_range_drift")
+                if not (EXPECTED_EXTENT["xmin"] <= longitude <= EXPECTED_EXTENT["xmax"]
+                        and EXPECTED_EXTENT["ymin"] <= latitude <= EXPECTED_EXTENT["ymax"]):
+                    raise ValueError("source_feature_outside_coverage_extent")
+                coordinate_values.append((longitude, latitude))
                 vertex_count += 1
     if sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT:
         raise ValueError("source_feature_ID_population_drift")
+    observed_extent = {
+        "xmin": min(x for x, _ in coordinate_values), "ymin": min(y for _, y in coordinate_values),
+        "xmax": max(x for x, _ in coordinate_values), "ymax": max(y for _, y in coordinate_values),
+    }
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),
@@ -282,12 +294,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "source_geometry_sha256": _sha(_canonical([[row["attributes"]["OBJECTID"], row["geometry"]]
                                                    for row in features])),
         "source_geometry_type": "esriGeometryPolyline", "source_wkid": 4326, "source_vertex_count": vertex_count,
-        "source_extent": layer["extent"],
+        "source_extent": layer["extent"], "source_vertex_bounds": observed_extent,
         "source_coverage_scope": "Complete current FLOODWALL_LINE feature class returned by the official IENC "
                                  "service; observed central-US inland waterway coverage only, not national coverage.",
         "drift_guard": "Exact BTS item/service link, advertised service/layer identity, declared field roster/types, "
                        "every present layer/page/feature wkid, latestWkid and WKT/WKT2 CRS representation, count, "
-                       "before/after IDs, complete returned attributes and XY paths are checked.",
+                       "before/after IDs, complete returned attributes and XY paths, geographic coordinate ranges, "
+                       "and every observed vertex against the declared layer coverage extent are checked.",
     }
     return fields, features, audit
 
@@ -367,7 +380,7 @@ def capture_floodwalls_usace_ienc(storage: StagingStorageResource, *, version: s
         if requested and (any(requested.glob("*.body")) or any(requested.glob("*.wire"))
                           or any(requested.glob("*.receipt.json"))):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
-        root = (requested / version + "-" + uuid4().hex) if requested else Path(
+        root = (requested / (version + "-" + uuid4().hex)) if requested else Path(
             "/tmp/hifld-native-reconstruction/291/captures") / (version + "-" + uuid4().hex)
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")

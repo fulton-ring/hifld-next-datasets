@@ -117,6 +117,14 @@ class FloodwallsUsaceIencTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_xy_ordinate_contract_drift"):
             source._validate({n: (_canonical(v), {}) for n, v in docs.items()})
 
+    def test_feature_coordinates_must_match_geographic_and_layer_coverage_contract(self):
+        for point, error in (([10000, 10000], "source_coordinate_range_drift"),
+                             ([0, 0], "source_feature_outside_coverage_extent")):
+            docs = json.loads(json.dumps(self._documents()))
+            docs["features"]["features"][0]["geometry"]["paths"][0][0] = point
+            with self.subTest(point=point), self.assertRaisesRegex(ValueError, error):
+                source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+
     def test_layer_page_and_explicit_feature_crs_reject_ambiguous_or_contradictory_values(self):
         mutations = [
             ("layer wkid/latestWkid contradiction", lambda d: d["layer_before"].update(
