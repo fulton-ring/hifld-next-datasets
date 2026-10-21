@@ -118,7 +118,7 @@ class DynamicBuoysTests(unittest.TestCase):
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
         pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
                  if name.startswith("page_")]
-        self.assertEqual(len(pages), 12)
+        self.assertEqual(len(pages), 48)
         for _name, url in pages:
             query = parse_qs(urlsplit(url).query)
             self.assertEqual(query["returnZ"], ["true"])
