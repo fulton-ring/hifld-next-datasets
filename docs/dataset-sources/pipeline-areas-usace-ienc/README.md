@@ -45,5 +45,14 @@ exact candidate for missing approval in run
 was unchanged. The package identity scheme, capture hashes, candidate digest,
 and approval limits are recorded in [source.json](source.json).
 
+A separate registered-graph negative test copied that candidate into an
+isolated staging root and changed only the copy's quality manifest to
+`quality_check_passed: false`. The blocking `publish/catalog` quality check
+failed in run `da5796af-56e4-4249-83d3-e74c0b5650c9`. The selected verifier
+and promotion assets had no start events, and the populated fixture remained
+unchanged. The original staged candidate, source capture and positive quality
+evidence were left intact. The Dagster event record and candidate-copy hashes
+are retained under `/workspace/work/270-clean-evidence/false-quality-graph-run.json`.
+
 See [source.json](source.json) for the field declarations, checksums, URLs and
 acceptance flags.

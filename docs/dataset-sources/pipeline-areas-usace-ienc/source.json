@@ -156,6 +156,25 @@
     "published_fixture_object_count": 1,
     "published_fixture_sha256": "0c65c9ccd8f348b0481d385657f0fedcfe1c7c7e4729ddff0d877c3148c249db",
     "published_fixture_inventory_unchanged": true,
-    "refresh_schedule": "STOPPED"
+    "refresh_schedule": "STOPPED",
+    "negative_quality_graph_run_id": "da5796af-56e4-4249-83d3-e74c0b5650c9",
+    "negative_quality_graph_run_status": "failure_expected_blocking_quality_check",
+    "negative_quality_check_passed": false,
+    "negative_quality_check_asset": "publish/catalog:quality_manifest",
+    "negative_quality_graph_selected_ops": [
+      "publish__catalog_quality_manifest",
+      "publish__verify",
+      "publish__promote"
+    ],
+    "negative_quality_graph_started_ops": [
+      "publish__catalog_quality_manifest"
+    ],
+    "negative_quality_graph_verification_and_promotion_started": false,
+    "negative_quality_test_candidate_copy_marker": "270-candidate-copy-for-quality-block-test",
+    "negative_quality_test_original_candidate_unchanged": true,
+    "negative_quality_test_published_fixture_inventory_unchanged": true,
+    "negative_quality_test_record": "/workspace/work/270-clean-evidence/false-quality-graph-run.json",
+    "negative_quality_test_dagster_home": "/workspace/work/270-clean-evidence/false-quality-home",
+    "negative_quality_test_run_database": "/workspace/work/270-clean-evidence/false-quality-home/history/runs.db"
   }
 }
