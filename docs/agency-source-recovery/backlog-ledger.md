@@ -6,7 +6,24 @@ Existing priority PRs #420/#3, #419/#4, #427/#10 and #428/#11 were recovered wit
 
 The recent checkpoint below distinguishes completed reviewed drafts, review revisions, active work and evidenced external blockers. A docs-only research branch does not complete a feasible pipeline. Missing baseline/contract approval permits draft implementation and local testing; it blocks release. Other issue records still need triage or reconciliation of prior work; they are not silently classified as blocked.
 
-### Latest verified checkpoint — 2026-10-21 16:10 UTC
+### Latest verified checkpoint — 2026-10-21 16:29 UTC
+
+All 415 inventory rows remain preserved. This named-status refresh is not a new open-PR census; the 14:14 census remains historical. Live metadata confirms integration PR #585 merged at `8cd91b4a4fc5c32765e8871962fbd0287adca9e9` with tree `e23f822b8dd6dc646bb6f6299986efc2a5889d0f`, from integration head `8c11f067b1f95ed009f1ee3d824ad0c01a8942f3` based on `ec102654516996c1a7e9c94048a4eef2ec9c032b`. Root review 5602837517 and CI build passed. Root verified 16 source-owned blobs and all three original source-head ancestors; only additive `ingest_registry.py` and `definitions.py` resolutions differ. Combined definitions load passed with 91 ingest assets, 23 checks, 25 jobs and 28 schedules, all STOPPED.
+
+GitHub automatically marked source PRs #579, #580 and #581 merged via ancestry. Canonical implementation for issues #278, #363 and #281 is integration PR #585. Canonical issue comments 6320990068, 6320993577 and 6320997191 record the merge and continued acceptance gates. All three issues remain OPEN. `move:needs-decision` was requested; the latest issue API readbacks showed it on #278 and #363, while #281's label was absent pending board sync. Root reports catch-up sync 39635148122 queued. No issue closure, source acceptance or publication occurred.
+
+Current named work:
+
+- #279 FWS Proposed Critical Habitat: PR #583 remains open at `e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc`. Corrected populated-fixture refusal gates passed: false-quality run `c4443585-dd46-4338-8d52-78d0e372c804` and empty-approval run `fca83134-c84a-4987-8533-6d783e3ae0aa` preserved the 14-object PublishedStorage fixture with hash `3bb485f4ad2391077fcbd3dd9be59d0e04f121ded07795428200d31edec67011`. Final exact-head technical review 5602868385 PASS verified native fidelity, packaged no-Git execution and both refusal gates. All 70 OBJECTIDs/26 REST attributes and native FileGDB WKB match; the missing original createReplica POST receipt is disclosed. Earlier empty-destination finding 5602771289 is superseded; PR body corrected. Technical review does not approve source, baseline, rights, contract, coverage or release.
+- #280 Public Refrigerated Warehouses: PR #582 remains open at `28447861d818c0af8a264d2cddb4cedf599a2ce5`. Review 5602844755 passed the scoped unknown-CRS and source-field-presence fixes. The candidate preserves 778 U.S. rows, including the missing-geometry row and 117 optional-field omissions; native catalog fails closed on unknown CRS. CRS authority, continuity, coverage, missing-geometry disposition, rights and release remain undecided.
+- #37 Coastlines retains open PR #542 at `f5c7a5daa64b7ed8c86c044963793bd3cbdb8f0d`; a narrow fix is active on its existing stack.
+- #2 12NM Territorial Sea retains PR #418, now at `22576c3b1ee74650b079110d0a9835355295918f` on base `ec102654516996c1a7e9c94048a4eef2ec9c032b`; review is active.
+- #5 LNG storage remains blocked on the PHMSA candidate's lack of usable geometry and national coverage evidence; PR #424 remains open at `338f85206ce645958bc4c5cc6e5cc2b1219daf08`.
+- #6 Administrative Areas native recovery is active; PR #423 remains open at `1267ccedb2ee8a32c0e51c93ad16b5b6681c655e` on its stacked base.
+
+No fresh global PR census or full-suite run was performed. The historical 14:14 counts are not current status or capacity estimates. No paid dispatch or production publication is claimed.
+
+### Previous checkpoint — 2026-10-21 16:10 UTC
 
 All 415 inventory rows are preserved. This is a named-status update, not a new open-PR census; the earlier 14:14 census remains historical. GitHub readbacks confirmed every named source issue below is still open. No issue was manually closed and no production data was published.
 
