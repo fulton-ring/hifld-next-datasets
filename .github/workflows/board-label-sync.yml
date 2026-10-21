@@ -2,20 +2,20 @@ name: Board label sync
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   issues:
     types: [labeled]
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "List requested moves without changing the board or labels"
+        description: "Preview board moves and eligible jobs without changing or dispatching"
         type: boolean
         default: true
   pull_request:
-    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tests/test_board_sync.py"]
+    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tools/board_dispatch.py", "tests/test_board_*.py"]
   push:
     branches: [main]
-    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tests/test_board_sync.py"]
+    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tools/board_dispatch.py", "tests/test_board_*.py"]
 
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - run: python3 -m unittest discover -s tests -p test_board_sync.py
+      - run: python3 -m unittest discover -s tests -p 'test_board_*.py'
 
   sync:
     if: >-
@@ -70,3 +70,21 @@ jobs:
           if [[ -n "$ISSUE_NUMBER" ]]; then args+=(--issue "$ISSUE_NUMBER"); fi
           if [[ "$DRY_RUN" == 1 ]]; then args+=(--dry-run); fi
           python3 tools/board_sync.py "${args[@]}"
+      - name: Admit Ready implementations and Review jobs within shared limits
+        env:
+          GH_CONTROL_TOKEN: ${{ secrets.AGENT_CONTROLLER_TOKEN }}
+          DISPATCH_ENABLED: ${{ vars.AGENT_DISPATCH_ENABLED }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$DISPATCH_ENABLED" != true ]]; then
+            echo 'Automatic dispatch is disabled; board moves are still synchronized.'
+            exit 0
+          fi
+          if [[ -z "$GH_CONTROL_TOKEN" ]]; then
+            echo '::error::Set AGENT_CONTROLLER_TOKEN: private hifld-next-iac Actions read/write only.'
+            exit 1
+          fi
+          args=()
+          if [[ "$DRY_RUN" == 1 ]]; then args+=(--dry-run); fi
+          python3 tools/board_dispatch.py "${args[@]}"

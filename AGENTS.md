@@ -97,13 +97,44 @@ protocol as `fulton-ring/agent-content-demos`: `move:backlog`, `move:ready`,
 `gh issue edit 84 --repo fulton-ring/hifld-next-datasets --add-label move:review`.
 The **Board label sync** workflow sets the Project Status and removes the move
 labels only after the update succeeds. Decisions take priority over review,
-in-progress, ready and backlog when requests conflict. A label moves a card;
-it never starts a paid worker or grants source, contract or release acceptance.
+in-progress, ready and backlog when requests conflict. A label does not grant
+source, contract or release acceptance.
 Only mark in-progress for a real running implementation, and request review
 with an exact-commit handoff. Do not use labels to bypass maintainer decisions.
 
-The workflow runs on supported label additions and every 15 minutes for catch-up.
+The workflow runs on supported label additions and every five minutes for catch-up.
 Manual runs default to a dry run. It requires repository secret
 `AGENT_BOARD_TOKEN` with organization Projects read/write access (resource owner
 `fulton-ring`) and Issues read access to this repository; label removal uses the workflow's repository-scoped `GITHUB_TOKEN`.
 Keep the Project credential out of worker environments. No model key is needed.
+
+### Automatic worker and review admission
+
+When repository variable `AGENT_DISPATCH_ENABLED=true`, **Ready** queues
+implementation and **Review** queues an independent review of the exact current
+PR head. The supervisor chooses work by moving selected Backlog cards to Ready.
+Backlog, Needs decision, In progress and Done do not dispatch. The board remains
+the queue: each sweep admits at most two jobs into the private trusted-main
+`fulton-ring/hifld-next-iac` workflow, respecting two active/queued jobs combined
+and six attempts per rolling 24 hours. Its inference-budget preflight still runs
+before GKE allocation. Exhausted capacity leaves cards waiting; there is no
+automatic retry of a previously attempted issue/head/role. Failed reviews require
+supervisor inspection. Existing PRs retain their actual branch and dependency;
+new implementations start from `codex/cloud-verification-417`. Fork PRs are never
+review candidates. Shared framework gates such as #417 require separate supervision.
+
+The dispatcher requires a separate `AGENT_CONTROLLER_TOKEN` Actions secret here:
+a fine-grained token owned by `fulton-ring`, selecting **only hifld-next-iac**,
+with **Actions read/write** and automatic metadata access. Its owner must be an
+authorized writer of that private repository. It needs no contents, issues,
+administration or Project write permission. Keep it separate from the scoped
+worker issue/PR token and out of model environments. Enable dispatch only after
+the private workflow protocol and token are configured; the default is disabled.
+Manual runs default to dry-run and cannot dispatch or mutate cards in that mode.
+
+Reviewers run read-only. A separate trusted workflow step posts the exact-head
+report and requests Ready for finite code changes, preserving pending acceptance
+gates, or Needs decision for human blockers and completed review/merge handoff.
+It ignores stale-head results for routing. Review success never itself merges,
+closes an issue, accepts a contract or publishes data; the supervisor verifies the
+remaining checks and maintainer approvals before advancing those actions.

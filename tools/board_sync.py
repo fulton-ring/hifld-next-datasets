@@ -42,6 +42,7 @@ def request(token, path, data=None, method=None):
     req = urllib.request.Request(
         'https://api.github.com/' + path, data=body, method=method,
         headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
+                 'X-GitHub-Api-Version': '2026-03-10',
                  'Accept': 'application/vnd.github+json', 'User-Agent': 'hifld-board-sync'},
     )
     with urllib.request.urlopen(req, timeout=30) as response:
