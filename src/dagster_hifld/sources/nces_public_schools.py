@@ -501,7 +501,10 @@ def capture_nces_public_schools(
         "raw/capture_manifest.json": _canonical(capture_evidence) + b"\n",
         "raw/source.body": artifacts["source.body"],
         "raw/source.wire": artifacts["source.wire"],
-        "raw/source.receipt.json": artifacts["source.receipt.json"],
+        # Keep the complete legacy receipt byte-for-byte and separately write
+        # the normalized receipt expected by the shared cache verifier.
+        "raw/source.receipt.json": _canonical(receipt) + b"\n",
+        "raw/source.original_receipt.json": artifacts["source.receipt.json"],
     }
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     receipts = {"source": receipt}
