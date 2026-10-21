@@ -173,7 +173,7 @@ def _capture(
                 staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
             )
             raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt, wire, receipt_path.read_bytes()
+        return body, receipt, wire, (root / "source.receipt.json").read_bytes()
     finally:
         if temporary is not None:
             temporary.cleanup()
