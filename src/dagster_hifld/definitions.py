@@ -162,6 +162,12 @@ from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_data_coverage_areas import (
+    usace_data_coverage_areas_complete,
+    usace_data_coverage_areas_draft_job,
+    usace_data_coverage_areas_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_complete,
     usace_caution_areas_draft_schedule,
@@ -739,6 +745,7 @@ defs = Definitions(
         usace_crane_locations_complete,
         usace_crane_locations_quality,
         usace_crane_locations_release,
+        usace_data_coverage_areas_complete,
     ],
     jobs=[
         colleges_source_integrity_job,
@@ -793,6 +800,7 @@ defs = Definitions(
         construction_minerals_draft_job,
         county_subdivisions_draft_refresh_job,
         usace_crane_locations_draft_job,
+        usace_data_coverage_areas_draft_job,
     ],
     schedules=[
         colleges_source_integrity_schedule,
@@ -851,6 +859,7 @@ defs = Definitions(
         construction_minerals_draft_schedule,
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
+        usace_data_coverage_areas_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
