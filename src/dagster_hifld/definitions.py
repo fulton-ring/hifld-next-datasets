@@ -32,6 +32,11 @@ from dagster_hifld.assets.usace_pylon_areas import (
     usace_pylon_areas_draft_schedule,
     usace_pylon_areas_complete,
 )
+from dagster_hifld.assets.usace_overhead_pipeline_lines import (
+    usace_overhead_pipeline_lines_complete,
+    usace_overhead_pipeline_lines_draft_job,
+    usace_overhead_pipeline_lines_draft_schedule,
+)
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
@@ -441,7 +446,7 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=[*hifld_asset_checks, usace_pylon_areas_complete],
+    asset_checks=[*hifld_asset_checks, usace_pylon_areas_complete, usace_overhead_pipeline_lines_complete],
     jobs=[
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
@@ -449,6 +454,7 @@ defs = Definitions(
         usace_pylon_areas_draft_job,
         pylon_locations_draft_refresh_job,
         fuel_stations_draft_refresh_job,
+        usace_overhead_pipeline_lines_draft_job,
         secondary_school_districts_draft_refresh_job,
     ],
     schedules=[
@@ -458,6 +464,7 @@ defs = Definitions(
         noaa_contiguous_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
         fuel_stations_draft_refresh_schedule,
+        usace_overhead_pipeline_lines_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
