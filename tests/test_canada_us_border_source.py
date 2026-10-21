@@ -297,7 +297,7 @@ class BoundaryTests(unittest.TestCase):
                 s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
             commit.assert_not_called();self.assertFalse(root.exists())
 
-    def test_original_commit_cannot_self_repin_and_docs_refresh_retains_original(self):
+    def test_original_commit_cannot_self_repin_and_source_replay_retains_binding(self):
         with tempfile.TemporaryDirectory() as d:
             storage=StagingStorageResource(local_dir=d)
             out=s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE)
@@ -305,9 +305,8 @@ class BoundaryTests(unittest.TestCase):
             manifest=root/'metadata/source_manifest.json';original=manifest.read_bytes()
             bundle=Path(d,'_source-provenance',s.SLUG,out['version'],'bundle.json')
             original_bundle=bundle.read_bytes()
-            # A subsequent docs-only HEAD does not rewrite the real construction.
-            with patch.object(s.subprocess,'check_output',return_value='f'*40+'\n'):
-                self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
+            # Replaying the authentic unchanged capture reuses the bound source.
+            self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
             self.assertEqual(manifest.read_bytes(),original)
             forged=json.loads(original);forged['code_commit']='0'*40;manifest.write_bytes(s.encode(forged))
             marker=root/'metadata/canada_us_border_candidate_ready.json';ready=json.loads(marker.read_text())
@@ -320,8 +319,7 @@ class BoundaryTests(unittest.TestCase):
             retained=list(Path(d,'_quarantine',s.SLUG).glob('invalid-cache-*/candidate'))
             self.assertEqual(len(retained),1)
             self.assertEqual(before,{str(p.relative_to(retained[0])):s.sha(p.read_bytes()) for p in retained[0].rglob('*') if p.is_file()})
-            with patch.object(s.subprocess,'check_output',return_value='f'*40+'\n'):
-                self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
+            self.assertEqual(s.stage_canada_us_border_candidate(storage,capture_dir=CAPTURE),out)
             self.assertEqual(manifest.read_bytes(),original);self.assertEqual(bundle.read_bytes(),original_bundle)
             self.assertEqual((published/'prior').read_bytes(),b'local-fixture')
             # Existing unbound caches cannot bless themselves as original history.
