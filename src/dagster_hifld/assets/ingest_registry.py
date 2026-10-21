@@ -79,8 +79,10 @@ from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
+from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 
 hifld_ingest_assets = [
+    census_elementary_districts,
     noaa_current_dart,
     usgs_crushed_stone_preservation,
     nces_colleges_universities,
