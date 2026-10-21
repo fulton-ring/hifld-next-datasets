@@ -1,0 +1,180 @@
+{
+  "dataset": "Pipeline Areas (USACE IENC)",
+  "inventory_id": 270,
+  "dataset_slug": "pipeline-areas-usace-ienc",
+  "file_slug": "pipeline-areas-usace-ienc",
+  "publisher": "USDOT Bureau of Transportation Statistics (BTS) catalog; source data maintained by USACE Army Geospatial Center",
+  "bts_item_id": "7ec34864c8804468a9cf52d437fe4b6c",
+  "bts_item_url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
+  "bts_source_claim": "The current public BTS IENC PDF item says USACE/AGC updates the IENC dataset bi-monthly, links the master file geodatabase and official IENC Feature Classes service, and warns about chart data inaccuracies. The formerly captured BTS map-service item is now denied; succession continuity is unverified and unapproved.",
+  "official_landing": "https://ienccloud.us/",
+  "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PIPE_AREA/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PIPE_AREA/MapServer/82",
+  "layer_id": 82,
+  "layer_name": "PIPE_AREA",
+  "hifld_catalog_url": "https://catalog.data.gov/dataset/pipeline-areas-usace-ienc",
+  "observed_count": 112,
+  "observed_objectids": "integers 1 through 112",
+  "observed_objectids_sha256_canonical_json": "e69cdd8efea14208f00757e111fb785639b1ba0d559b6c840977c5c7af99d84b",
+  "geometry_type": "esriGeometryPolygon",
+  "source_crs": "EPSG:4326 (layer and query page metadata)",
+  "native_identifiers": {
+    "OBJECTID": "integer, source object identifier",
+    "Feature_ID": "string, preserve verbatim"
+  },
+  "source_fields": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID"
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry"
+    },
+    {
+      "name": "Object_Name",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Product",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Restriction",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Status",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Category_of_Pipeline",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Information",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Scale_Minimum",
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "name": "Source_Date",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Indication",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Source_Dataset",
+      "type": "esriFieldTypeString",
+      "length": 254
+    },
+    {
+      "name": "Feature_ID",
+      "type": "esriFieldTypeString",
+      "length": 254
+    }
+  ],
+  "capture_policy": "Retain decoded ESRI JSON bodies, exact HTTP wire bodies, and request receipts; store the complete native schema/attributes and rings in a typed GeoParquet candidate without reprojection or geometry repair.",
+  "completeness_policy": "Independently read count and ID roster before and after the full page capture; compare exact expected native ID set, field declarations, CRS and full feature roster; validate native attribute types, identifiers, polygon rings and geometry validity; reject drift and quarantine incomplete responses.",
+  "freshness": "BTS describes a bi-monthly update cadence. No source release date for this observed PIPE_AREA layer was present in the service response; fetch date is not used as a release date.",
+  "coverage_limit": "Complete inland IENC chart feature class only. This is not nationwide land-pipeline coverage and should not be expanded to the entire LNG or pipeline universe.",
+  "lineage_limit": "The official IENCCloud endpoint is linked by current public BTS PDF item 7ec34864c8804468a9cf52d437fe4b6c and listed in the service directory. Prior BTS map-service item 3607d485a9854d6fa458bf507058ceae is no longer anonymously accessible. Succession continuity is unverified. The current PIPE_AREA layer has not been compared with the archived HIFLD baseline or its original clipping/extraction rules; rights and the schema/ID/coverage contract remain unresolved.",
+  "acceptance": {
+    "historical_baseline": false,
+    "release_date_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "release": false
+  },
+  "capture_evidence": {
+    "captured_at": "2026-10-21T15:30:36.805368+00:00",
+    "capture_directory": "v20261021T153033Z-6735e8115d8d4f9fb627ac0a583bffde",
+    "complete": true,
+    "request_count": 12,
+    "current_bts_item_id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "current_bts_item_bytes": 5579,
+    "current_bts_item_sha256": "28d292b46d982cb977619454b593811a4b2f5ecf9a346acca65c12642d848a06",
+    "prior_bts_map_service_item_id": "3607d485a9854d6fa458bf507058ceae",
+    "prior_bts_item_body_bytes": 5576,
+    "prior_bts_item_body_sha256": "a0db815390a69371cb90343dd50481e2061b173eae762ace210c7e7b8f6077b4",
+    "prior_capture_at": "2026-10-20T03:23:01.528108+00:00",
+    "succession_continuity_accepted": false,
+    "full_page_bytes": 265257,
+    "full_page_sha256": "7f37fbbd3339ce7e2b89920e30903b9cb680cf6871b2b713da14815bdc1ea69c",
+    "full_page_wire_sha256": "7f37fbbd3339ce7e2b89920e30903b9cb680cf6871b2b713da14815bdc1ea69c",
+    "source_record_sha256": "55bf5af7b11eea868d0a04ba1842905b67cb61ebd36a7e5a906c11d23d05f0c2",
+    "source_schema_sha256": "79acb49d582bbf1833177616c4d4ce27a0670acd0c0a2834b980799cce40e290",
+    "source_geometry_sha256": "1e838c725db02e5c1aec42ee933f82f2922e9f7a80b5ec8055dbfac75478fb6b",
+    "source_capture_sha256": "4464f63b938ed2137c9f804a970134d50ae988d24103aaea20cdb1e4993e4532"
+  },
+  "materialization_evidence": {
+    "live_capture_source_run_id": "10c133e1-0172-4067-908b-b705cf3c6813",
+    "source_run_id": "21e23c18-3e6b-47d2-8951-69dad09f970a",
+    "catalog_run_id": "bd52bb32-3096-4943-b36b-5b68fe8345e6",
+    "cache_replay_after_catalog_run_id": "89fffab5-9e76-4f86-a9ec-6405c2d21ad5",
+    "quality_check_run_id": "a37abe05-5b4d-4f96-89db-6b2f15ad2c2c",
+    "verifier_refusal_run_id": "9d4cade7-225e-44c8-bde8-48352463a45c",
+    "candidate_version": "v093b3deae1e3fd2e03e1321a2ec44b5d",
+    "runtime_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "runtime_identity": "packaged-sha256:9247ad038682aa9e1d27afaef6e3d4a1f2f642fe6931a0160c165a714b1eb26e",
+    "runtime_working_tree_status": "unknown",
+    "runtime_packaged_file_count": 91,
+    "runtime_installed_distribution_count": 210,
+    "source_feature_count": 112,
+    "source_id_sha256": "e69cdd8efea14208f00757e111fb785639b1ba0d559b6c840977c5c7af99d84b",
+    "source_id_min": 1,
+    "source_id_max": 112,
+    "source_vertices": 5418,
+    "polygon_features_valid": 112,
+    "empty_or_invalid_features": 0,
+    "geoparquet_rows": 112,
+    "geoparquet_sha256": "10f87d0b94dec67b7eabb16a791cc571f12011de79d26a053347fad1c51fcbd3",
+    "geoparquet_bytes": 87823,
+    "native_properties_identical": true,
+    "native_polygon_coordinate_sequences_identical": true,
+    "catalog_quality_check_passed": true,
+    "catalog_quality_scope": "all_rows",
+    "catalog_invalid_geometry_count": 0,
+    "cache_replay_reused_candidate": true,
+    "verifier_refusal": "missing_or_ambiguous_exact_object_approval",
+    "approval_registry": "valid empty registry outside staging and published roots",
+    "published_fixture_object_count": 1,
+    "published_fixture_sha256": "0c65c9ccd8f348b0481d385657f0fedcfe1c7c7e4729ddff0d877c3148c249db",
+    "published_fixture_inventory_unchanged": true,
+    "refresh_schedule": "STOPPED",
+    "negative_quality_graph_run_id": "da5796af-56e4-4249-83d3-e74c0b5650c9",
+    "negative_quality_graph_run_status": "failure_expected_blocking_quality_check",
+    "negative_quality_check_passed": false,
+    "negative_quality_check_asset": "publish/catalog:quality_manifest",
+    "negative_quality_graph_selected_ops": [
+      "publish__catalog_quality_manifest",
+      "publish__verify",
+      "publish__promote"
+    ],
+    "negative_quality_graph_started_ops": [
+      "publish__catalog_quality_manifest"
+    ],
+    "negative_quality_graph_verification_and_promotion_started": false,
+    "negative_quality_test_candidate_copy_marker": "270-candidate-copy-for-quality-block-test",
+    "negative_quality_test_original_candidate_unchanged": true,
+    "negative_quality_test_published_fixture_inventory_unchanged": true,
+    "negative_quality_test_record": "/workspace/work/270-clean-evidence/false-quality-graph-run.json",
+    "negative_quality_test_dagster_home": "/workspace/work/270-clean-evidence/false-quality-home",
+    "negative_quality_test_run_database": "/workspace/work/270-clean-evidence/false-quality-home/history/runs.db"
+  }
+}
