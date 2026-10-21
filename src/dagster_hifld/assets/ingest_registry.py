@@ -8,6 +8,7 @@ from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
+from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
@@ -179,6 +180,7 @@ hifld_ingest_assets = [
     eia_power_plants_historical,
     epa_frs_eia_860_power_generation_facilities_by_source,
     usace_fuds_projects_points,
+    usace_fuds_program_district_boundaries,
     epa_small_scale_regions,
     nces_private_schools_2023_24,
     nces_public_schools,

@@ -124,6 +124,10 @@ from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
 )
+from dagster_hifld.assets.fuds_district_boundaries import (
+    fuds_district_boundaries_draft_schedule,
+    usace_fuds_program_district_boundaries_complete,
+)
 from dagster_hifld.assets.epa_small_scale import (
     epa_small_scale_source_integrity_job,
     epa_small_scale_source_integrity_schedule,
@@ -915,6 +919,7 @@ defs = Definitions(
     assets=[*hifld_dataset_assets, epa_disaster_debris_recovery_data],
     asset_checks=[
         *hifld_asset_checks,
+        usace_fuds_program_district_boundaries_complete,
         epa_disaster_debris_complete,
         arc_regions_full_quality,
         eia_power_plants_complete,
@@ -1189,6 +1194,7 @@ defs = Definitions(
         fema_regions_draft_schedule,
         ferc_historical_integrity_schedule,
         fuds_division_draft_schedule,
+        fuds_district_boundaries_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
