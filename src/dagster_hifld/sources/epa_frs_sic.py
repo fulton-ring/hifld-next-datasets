@@ -30,7 +30,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_arcgis_table import capture_table
+from dagster_hifld.sources.epa_frs_arcgis_table import ArcGISTableProfile, capture_table
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -45,7 +45,7 @@ TABLE_URL = f"{SERVICE_URL}/{TABLE_ID}"
 NATIVE_SERVER_TABLE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer/25"
 DATASET_SLUG = "epa-frs-sic-codes"
 FILE_SLUG = DATASET_SLUG
-NATIVE_PATH = f"unknown/{FILE_SLUG}.parquet"
+NATIVE_PATH = f"geoparquet/{FILE_SLUG}.parquet"
 PUBLISHER = "U.S. Environmental Protection Agency, Facility Registry Service (EPA_GEO hosted FeatureServer)"
 EPA_FRS_URL = "https://www.epa.gov/frs"
 GEOSPATIAL_DOWNLOAD_URL = "https://www.epa.gov/frs/geospatial-data-download-service"
@@ -237,7 +237,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                     + GEOSPATIAL_DOWNLOAD_URL,
                     "Portal item " + ITEM_ID + " is maintained by EPA (owner EPA_GEO); see " + EPA_FRS_URL],
         "prebuilt_output_policy": {"schema_version": 1,
-                                   "formats": {"parquet": {"reason": "Native Esri fields, IDs and declared types retained; approvals pending.",
+                                   "formats": {"geoparquet": {"reason": "Native Esri fields, IDs and declared types retained; no geometry source exists and none is invented; approvals pending.",
                                                            "objects": [{"path": NATIVE_PATH, **source_objects[NATIVE_PATH]}]}}},
         "unsupported_output_formats": {"geopackage": "No approved source-to-public schema mapping.",
                                        "pmtiles": "No geometry source is available."},
