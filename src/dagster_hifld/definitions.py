@@ -46,6 +46,11 @@ from dagster_hifld.assets.bsee_ocs_platforms import (
     bsee_ocs_platforms_draft_job,
     bsee_ocs_platforms_draft_schedule,
 )
+from dagster_hifld.assets.usace_overhead_cables import (
+    usace_overhead_cables_complete,
+    usace_overhead_cables_draft_schedule,
+    usace_overhead_cables_draft_job,
+)
 from dagster_hifld.assets.usace_berths_areas import (
     usace_berths_areas_complete,
     usace_berths_areas_draft_schedule,
@@ -502,6 +507,7 @@ defs = Definitions(
         usace_obstruction_lines_complete,
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
+        usace_overhead_cables_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_pontoon_areas_complete,
@@ -517,6 +523,7 @@ defs = Definitions(
         recommended_tracks_draft_job,
         fuel_stations_draft_refresh_job,
         usace_overhead_pipeline_lines_draft_job,
+        usace_overhead_cables_draft_job,
         usace_obstruction_lines_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
@@ -536,6 +543,7 @@ defs = Definitions(
         recommended_tracks_draft_schedule,
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
+        usace_overhead_cables_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
