@@ -30,7 +30,7 @@ class PanelsTests(unittest.TestCase):
         rows,audit,_=s.inspect_source(captures())
         self.assertEqual(len(rows),574);self.assertEqual(audit['invalid_geometry_count'],0)
         self.assertEqual(len({r['properties']['OBJECTID'] for r in rows}),574)
-        self.assertEqual(len(s.provenance(captures())['inputs']),8)
+        self.assertEqual(len(s.provenance(captures(), s.processing_identity())['inputs']),8)
         self.assertEqual(s.typed_table(rows,audit).schema.field('Map_Date').type.bit_width,64)
 
 

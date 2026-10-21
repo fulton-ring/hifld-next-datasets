@@ -162,7 +162,7 @@ def validate_provenance(manifest: object) -> None:
         raise ValueError("authored_manifest_layer_has_unresolved_input_identity")
 
 
-PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "lineage", "manifest_layers",
+PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "processing_code", "code_identity_scheme", "lineage", "manifest_layers",
                      "unsupported_output_formats", "prebuilt_output_policy", "literal_geojson_catalog")
 
 

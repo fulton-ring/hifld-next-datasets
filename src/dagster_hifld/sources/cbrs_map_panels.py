@@ -7,17 +7,14 @@ from __future__ import annotations
 
 import collections
 import hashlib
-import importlib.metadata
 import io
 import fcntl
 import os
 import json
-import platform
 import re
 import sqlite3
 import stat
 import struct
-import subprocess
 import tempfile
 import zipfile
 from contextlib import contextmanager
@@ -34,7 +31,9 @@ import shapely
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
 SLUG = 'cbrs-map-panels-1'
@@ -163,7 +162,7 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     return captures
 
 
-def provenance(captures: dict) -> dict:
+def provenance(captures: dict, identity: dict) -> dict:
     if set(captures)!=set(URLS): raise CBRSQuarantineError('capture_roster_drift')
     for name,url in URLS.items(): validate_receipt(*captures[name],url)
     if b'gis1.wim.usgs.gov' not in captures['fws_data'][0] or b'a60c25b4b2e44969b3164742901058a2' not in captures['fws_data'][0]:
@@ -184,7 +183,8 @@ def provenance(captures: dict) -> dict:
             'lineage':'FWS official maps-and-data links exact ArcGIS item and USGS CBRS Mapper; exact service layer5 Map Panels.',
             'authority_evidence':LANDING,'delegation_evidence':{'url':LANDING,'scope':'Exact FWS-linked USGS CBRS MapServer via ArcGIS itema60c25b4b2e44969b3164742901058a2'}})
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,
-        'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
+        'code_commit':identity['code_commit'],
+        'code_identity_scheme':identity['code_identity_scheme'],
         'title':'CBRS Map Panels — faithful complete API working draft',
         'publisher':'U.S. Fish and Wildlife Service via delegated USGS CBRS Mapper','agency':'U.S. Fish and Wildlife Service',
         'source_url':LANDING,'license':LANDING,'inputs':inputs,
@@ -198,14 +198,12 @@ def provenance(captures: dict) -> dict:
 
 
 def processing_identity() -> dict:
-    """Installed source, lock/project, Python, Python distributions and native engines."""
+    """Use the shared Git-or-packaged construction identity and validate its claim."""
     root = Path(__file__).parents[3]
-    sources = sorted(root.joinpath('src/dagster_hifld').rglob('*.py'))
-    return {'python': platform.python_version(), 'implementation': platform.python_implementation(),
-            'platform': platform.platform(),
-            'distributions': sorted((d.metadata['Name'], d.version) for d in importlib.metadata.distributions()),
-            'gdal': fiona.__gdal_version__, 'geos': shapely.geos_version_string, 'proj': pyproj.proj_version_str,
-            'files': {str(p.relative_to(root)): sha256_file(p) for p in sources + [root / 'uv.lock', root / 'pyproject.toml']},
+    identity = packaged_processing_identity(root)
+    validate_construction_code_identity(
+        root, identity['code_commit'], identity['files'], identity=identity)
+    return {**identity, 'gdal': fiona.__gdal_version__,
             'verifier_sha256': verifier_implementation_sha256()}
 
 
@@ -320,7 +318,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     if not expected.issubset(actual) or actual-expected-allowed_derivatives:
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
-    expected_manifest=provenance(cached)
+    expected_manifest=provenance(cached, identity)
     expected_manifest['processing_fingerprint']=sha(encode(identity))
     if any(cached[name][0]!=captures[name][0] for name in URLS):
         raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
@@ -424,12 +422,12 @@ def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_
     captures = acquire(storage,capture_dir)
     body,receipt = captures['page0000']
     try:
-        manifest=provenance(captures)
+        identity = processing_identity()
+        manifest=provenance(captures, identity)
         with tempfile.TemporaryDirectory(prefix='cbrs_map_panels-source-') as tmp:
             directory = Path(tmp)
             rows, audit, members = inspect_source(captures)
             records = b''.join(encode(r) for r in rows)
-            identity = processing_identity()
             fingerprint = sha(encode(identity))
             capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
             version = f'v0.0.0-draft-cbrspanels-{capture_fingerprint[:16]}-{fingerprint[:16]}'
@@ -479,8 +477,9 @@ def stage_cbrs_map_panels_candidate(storage: StagingStorageResource, *, capture_
                 'geometry': mapping(shapely.from_wkb(r['geometry']))}) for r in pq.read_table(parquet).to_pylist()))
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
-            commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest.update(code_commit=commit,processing_fingerprint=fingerprint)
+            manifest.update(code_commit=identity['code_commit'],
+                            code_identity_scheme=identity['code_identity_scheme'],
+                            processing_fingerprint=fingerprint)
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(),
