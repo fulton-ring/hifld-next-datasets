@@ -11,7 +11,7 @@
       416
     ],
     "live_issue_states_verified": "#2-101 open via GitHub search; closed issue search returned empty; #102-416 not individually paged/rechecked",
-    "pr_search": "Historical search snapshot only (previously recovered 114 PR records); it is not the current open-PR count. Reconcile current PR state from live references before reporting counts.",
+    "pr_search": "Historical 2026-10-20 search snapshot only; do not report its 114 records or old issue association counts as current.",
     "durable_local_runtime_evidence": "not present after cloud replacement; do not infer historical evidence absent from GitHub comments/PR bodies",
     "issue_states": "All 415 dataset issues #2-416 individually fetched from GitHub on 2026-10-20; current state/open status and metadata recorded. Closed issue search had returned empty.",
     "prs_returned": "114 historical PR search records; not current open count",
@@ -19,39 +19,63 @@
     "prs_with_high_confidence_issue_association": 78,
     "open_issue_work_progress": {
       "total_dataset_issues": 415,
-      "open_pr_associated": "101 in historical recovered snapshot only",
-      "no_open_pr_in_recovered_catalog": "314 in historical recovered snapshot only",
-      "classification": "Historical search snapshot only. These counts are not current open-PR counts; absence of a recovered PR is not evidence of an external blocker."
+      "open_pr_associated": "101 in historical 2026-10-20 snapshot only",
+      "no_open_pr_in_recovered_catalog": "314 in historical 2026-10-20 snapshot only",
+      "classification": "Historical 2026-10-20 PR association snapshot; superseded for current open-PR mapping by fresh_open_pr_census. A missing current open PR is not evidence of source infeasibility."
     },
-    "snapshot_note": "The issue inventory remains 415 records. Prior PR association/search counts are historical and must not be presented as current. Current exact PR state is maintained in latest_verified_checkpoint.",
+    "snapshot_note": "415 issue records remain. 2026-10-20 PR snapshot counts are historical. Current open-PR census is recorded separately with exact branch-derived associations.",
     "ledger_based_progress_counts": {
       "inventory_issues": 415,
-      "issues_with_current_or_historical_pr_reference": 110,
       "external_decision_or_source_evidence_blocker_label": 13,
-      "needs_triage_no_recovered_pipeline_pr": 300,
-      "prior_pr_evidence_needs_reconciliation": 83,
+      "needs_triage_no_recovered_pipeline_pr": 270,
+      "prior_pr_evidence_needs_reconciliation": 119,
       "definitions": {
         "issues_with_current_or_historical_pr_reference": "Distinct issue records with current_pr, a row-level observed_open_prs association, or an explicitly recorded merged priority PR in latest_verified_checkpoint; includes research/tracking PRs and is not a count of open pipeline PRs.",
         "external_decision_or_source_evidence_blocker_label": "Rows whose blocker_type is external_decision_or_source_evidence. This is a ledger label, not a permanent source-impossibility finding.",
         "needs_triage_no_recovered_pipeline_pr": "Rows whose explicit status is needs_triage_no_recovered_pipeline_pr; requires triage and is not proof that a pipeline is infeasible.",
         "prior_pr_evidence_needs_reconciliation": "Rows with status prior_pr_evidence_needs_reconciliation; prior association/review/runtime evidence remains unresolved.",
         "row_structured_exact_head_review_plus_local_run_bundle": "Five records with current/runtime head, a locally verified review status and dagster_runs bundle in their row structure (#257, #261, #262, #268, #269). This is a structured-field subset and does not count all evidenced reviews.",
-        "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Eight additional dataset records explicitly listed in latest_verified_checkpoint with exact current PR heads plus review, merged-tree runtime/test, independent audit or CI evidence (#3, #4, #10, #11, #275, #282, #283, #284)."
+        "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Ten additional priority records explicitly listed in latest_verified_checkpoint with exact PR heads plus review, merged-tree runtime/test, independent audit or CI evidence (#3, #4, #10, #11, #261, #275, #282, #283, #284, #307). The five-row structured subset overlaps this group; counts are not additive.",
+        "current_open_pr_mapped_issues": "Distinct inventory issue rows with at least one exact-branch-mapped currently open PR.",
+        "inventory_issues_without_mapped_open_pr": "415 inventory rows minus currently mapped open PR rows at the census timestamp; not a feasibility or capacity estimate."
       },
-      "caveat": "These are ledger-based evidence counts, not mutually exclusive readiness categories. The structured five are not the total number of verified pipelines; the latest checkpoint separately records eight additional distinct dataset issues with exact-head review or CI/runtime/audit evidence. The counts do not establish how many remaining datasets can be automated or implementation capacity.",
+      "caveat": "Counts reflect ledger status categories and exact-branch association at the stated census time. Categories are not mutually exclusive readiness/feasibility measures; open-PR mapping does not imply review, successful runtime, source suitability, or acceptance.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
-      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 8,
-      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 13,
+      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 10,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 14,
       "latest_checkpoint_priority_evidence_issues": [
         3,
         4,
         10,
         11,
+        261,
         275,
         282,
         283,
-        284
-      ]
+        284,
+        307
+      ],
+      "current_open_pr_mapped_issues": 129,
+      "current_open_pr_records": 129,
+      "current_open_pr_records_mapped_to_inventory": 129,
+      "inventory_issues_without_mapped_open_pr": 286,
+      "code_merged_issue_open_acceptance_gated": 4
+    },
+    "current_open_pr_census": {
+      "recorded_at": "2026-10-21T14:14:32Z",
+      "source": "GitHub API /pulls?state=open per_page=100 pages 1-3, metadata only",
+      "open_prs_total": 132,
+      "mapped_prs": 129,
+      "distinct_inventory_issues_with_open_pr": 129,
+      "inventory_issues_without_mapped_open_pr": 286,
+      "mapping_rule": "Exact branch codex/cloud-dataset-N or codex/N-clean-replacement; no title/body-only associations.",
+      "unmapped_open_prs": [
+        558,
+        533,
+        1
+      ],
+      "association_scope": "Mapping establishes branch association only, not code quality, feasibility, implementation, review, run success, source acceptance, or release readiness.",
+      "multiple_open_pr_issue_count": 0
     }
   },
   "coordination_issue_417": {
@@ -97,14 +121,19 @@
       "observed_open_prs": [
         {
           "pr": 418,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/418",
           "title": "Draft: reconstruct NOAA 12NM Territorial Sea with gated local Dagster pipeline",
-          "head_sha_claim_in_body": "7f123a9fe8dc56d0eae7f95234791bd6ac41868d",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-2",
+          "head_sha": "7f123a9fe8dc56d0eae7f95234791bd6ac41868d",
+          "base_branch": "codex/cloud-dataset-3",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        418
+      ]
     },
     {
       "issue": 3,
@@ -175,14 +204,19 @@
       "observed_open_prs": [
         {
           "pr": 424,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/424",
           "title": "Blocked #5: PA-only LNG candidate is not national coverage",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-5",
+          "head_sha": "338f85206ce645958bc4c5cc6e5cc2b1219daf08",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": false,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        424
+      ]
     },
     {
       "issue": 6,
@@ -207,14 +241,19 @@
       "observed_open_prs": [
         {
           "pr": 423,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/423",
           "title": "Draft pipeline: official USACE IENC Administrative Areas (#6)",
-          "head_sha_claim_in_body": "1267ccedb2ee8a32c0e51c93ad16b5b6681c655e",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-6",
+          "head_sha": "1267ccedb2ee8a32c0e51c93ad16b5b6681c655e",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        423
+      ]
     },
     {
       "issue": 7,
@@ -239,14 +278,19 @@
       "observed_open_prs": [
         {
           "pr": 422,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/422",
           "title": "Blocked #7: Agricultural Minerals source decision pending",
-          "head_sha_claim_in_body": "5dc4abe4d7f1ea042948d31aca9cc868fc6ee2d3",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-7",
+          "head_sha": "5dc4abe4d7f1ea042948d31aca9cc868fc6ee2d3",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": false,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        422
+      ]
     },
     {
       "issue": 8,
@@ -271,14 +315,19 @@
       "observed_open_prs": [
         {
           "pr": 426,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/426",
           "title": "Implement faithful AIANNH draft pipeline (#8)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-8",
+          "head_sha": "1fe2d87a1224261e51d76244bba4162445ddeee8",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        426
+      ]
     },
     {
       "issue": 9,
@@ -305,14 +354,19 @@
       "observed_open_prs": [
         {
           "pr": 425,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/425",
           "title": "Draft pipeline: official USACE IENC airport-area polygons (#9)",
-          "head_sha_claim_in_body": "62c8524e279ea5606a8aa2b074e90a0a064ec2c3",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-9",
+          "head_sha": "62c8524e279ea5606a8aa2b074e90a0a064ec2c3",
+          "base_branch": "codex/cloud-dataset-6",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        425
+      ]
     },
     {
       "issue": 10,
@@ -334,16 +388,7 @@
       "live_issue_comment_count": 13,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 509,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/509",
-          "title": "Draft: reconstruct USACE IRM property boundaries with native geometry",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.5
-        }
-      ],
+      "observed_open_prs": [],
       "status": "code_merged_issue_open_acceptance_stopped"
     },
     {
@@ -394,14 +439,19 @@
       "observed_open_prs": [
         {
           "pr": 429,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/429",
           "title": "Blocked: Red Cross States versus Chapters identity decision (#12)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-12",
+          "head_sha": "f07291d2cf094857679885cce38358535164584e",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        429
+      ]
     },
     {
       "issue": 13,
@@ -426,14 +476,19 @@
       "observed_open_prs": [
         {
           "pr": 442,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/442",
           "title": "Blocked #13: Red Cross county source authority and vintage",
-          "head_sha_claim_in_body": "5d35503ae71ccc6d07518d09d0564e61f83cf011",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-13",
+          "head_sha": "5d35503ae71ccc6d07518d09d0564e61f83cf011",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        442
+      ]
     },
     {
       "issue": 14,
@@ -458,14 +513,19 @@
       "observed_open_prs": [
         {
           "pr": 451,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/451",
           "title": "Blocked #14: Red Cross divisions authority and vintage unresolved",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-14",
+          "head_sha": "f6f6a03276fcdc13f8cefcb2b5e9ac5901de43c4",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        451
+      ]
     },
     {
       "issue": 15,
@@ -490,14 +550,19 @@
       "observed_open_prs": [
         {
           "pr": 452,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/452",
           "title": "Blocked #15: Red Cross HQ source and Saipan compatibility decisions",
-          "head_sha_claim_in_body": "746d979d77fd3df958d5d251513c9dad283efc99",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-15",
+          "head_sha": "746d979d77fd3df958d5d251513c9dad283efc99",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        452
+      ]
     },
     {
       "issue": 16,
@@ -507,7 +572,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 465,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -516,8 +581,23 @@
       "live_issue_comment_count": 6,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 465,
+          "title": "Draft: reconstruct ARC Regions from complete native publisher snapshot",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-16",
+          "head_sha": "fd956967c3560f12f05be68d39ac6c537186ae17",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        465
+      ]
     },
     {
       "issue": 17,
@@ -539,14 +619,19 @@
       "observed_open_prs": [
         {
           "pr": 430,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/430",
           "title": "Draft: implement faithful local Amtrak Stations reconstruction pipeline (#17)",
-          "head_sha_claim_in_body": "3b9142a1270e070a2266b615b02e9dadda771d55",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-17",
+          "head_sha": "3b9142a1270e070a2266b615b02e9dadda771d55",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        430
+      ]
     },
     {
       "issue": 18,
@@ -568,14 +653,19 @@
       "observed_open_prs": [
         {
           "pr": 432,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/432",
           "title": "Blocked: FCC ASR official source and identifier contract (#18)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-18",
+          "head_sha": "27e4ab80030c6ac6346d8b9477e2d34eabded6c6",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        432
+      ]
     },
     {
       "issue": 19,
@@ -597,14 +687,19 @@
       "observed_open_prs": [
         {
           "pr": 434,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/434",
           "title": "Draft USGS aquifers reconstruction with immutable construction provenance",
-          "head_sha_claim_in_body": "aa94858b34c6773abc6f2584d997a240fd772045",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-19",
+          "head_sha": "aa94858b34c6773abc6f2584d997a240fd772045",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        434
+      ]
     },
     {
       "issue": 20,
@@ -626,14 +721,19 @@
       "observed_open_prs": [
         {
           "pr": 431,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/431",
           "title": "Draft: reconstruct Aviation Facilities with typed source pipeline and release gates",
-          "head_sha_claim_in_body": "d5b6013bc96a59220800a0ce8607a6f5461306dc",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-20",
+          "head_sha": "d5b6013bc96a59220800a0ce8607a6f5461306dc",
+          "base_branch": "codex/cloud-dataset-10",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        431
+      ]
     },
     {
       "issue": 21,
@@ -654,7 +754,18 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 539,
+          "title": "Add guarded USACE IENC Berths Areas draft pipeline (#21)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-21",
+          "head_sha": "61cbdd6c9049be2407d5fe0b5fcc21caac27500b",
+          "base_branch": "codex/cloud-dataset-262",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "current_head": "61cbdd6c9049be2407d5fe0b5fcc21caac27500b",
       "status": "pipeline_review_pending",
       "runtime_head": "93fe0964b0c64e76171a0f500a6f973955748638",
@@ -665,7 +776,9 @@
         "catalog": "eee8e122-f0fa-4853-b317-2c1fcdf45684"
       },
       "remaining_validation": "Approval-refusal preservation was tested with empty published root; populated accepted fixture still needed.",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/539"
+      "current_pr_candidates": [
+        539
+      ]
     },
     {
       "issue": 22,
@@ -687,14 +800,19 @@
       "observed_open_prs": [
         {
           "pr": 433,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/433",
           "title": "Blocked #22: Biodiesel current spatial feed and lineage unresolved",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-22",
+          "head_sha": "5423d3bdae4d60adc74e6fc950e1b27b56070b82",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        433
+      ]
     },
     {
       "issue": 23,
@@ -704,7 +822,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 464,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -713,8 +831,23 @@
       "live_issue_comment_count": 7,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 464,
+          "title": "Draft whole NACEI99 natural gas crossings pipeline; exact EIA US51 blocked",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-23",
+          "head_sha": "be4b056322fa3b86a35eceef6579edcfb66e2bfc",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        464
+      ]
     },
     {
       "issue": 24,
@@ -744,7 +877,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 544,
+      "current_pr": 25,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -753,10 +886,31 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 25,
+          "title": "Draft pipeline: Building Locations (USACE IENC) (#25)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-25",
+          "head_sha": "e1b94c73277b97f6b1ed2f95efd836a9e12bb278",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "status": "tracking_replacement_pr_open",
       "worker": "dataset_4",
-      "status_note": "Issue #25 tracking is represented by replacement PR #544."
+      "status_note": "Issue #25 tracking is represented by replacement PR #544.",
+      "historical_pr_refs": [
+        {
+          "pr": 544,
+          "recorded_as_current_before_census": true,
+          "review_status": "not revalidated by this open-PR census"
+        }
+      ],
+      "current_pr_candidates": [
+        25
+      ]
     },
     {
       "issue": 26,
@@ -778,14 +932,19 @@
       "observed_open_prs": [
         {
           "pr": 435,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/435",
           "title": "Draft: reconstruct complete IBC Canada–US border with provenance and release gates",
-          "head_sha_claim_in_body": "52e479e0a2c81325b61bcd2ac36c6dda15c8e9bb",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-26",
+          "head_sha": "52e479e0a2c81325b61bcd2ac36c6dda15c8e9bb",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        435
+      ]
     },
     {
       "issue": 27,
@@ -806,7 +965,18 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 540,
+          "title": "Draft: USACE IENC caution area points (#27)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-27",
+          "head_sha": "9d3b1d52ac24ca6e99fc2237cafec8a0297e7a1e",
+          "base_branch": "codex/cloud-dataset-269",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "work_status": "active_source_research",
       "assigned_worker": "dataset_27",
       "status_note": "Caution Area Locations USACE IENC. Coordinator confirms open issue with zero prior PR/comments. Cached official IENC service directory research exists at /workspace/work/hifld-coordinator/21/research/service_directory.body; resolve exact layer name/ID before constructing a pipeline. Draft pipeline may proceed before baseline approval; require exact publisher/linkage, raw source fidelity, bounded completeness, schema/CRS checks, sealed candidate, standard partition/catalog/quality/registered verifier gates, STOPPED refresh. Do not assert source authority without BTS official link/USACE attribution evidence.",
@@ -820,7 +990,9 @@
         "catalog": "03e1f0bf-f1b0-44f1-b8b3-f41f4114058c",
         "approval_refusal": "b6a0ecea-c304-4f1c-a397-217e19d20a86"
       },
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/540"
+      "current_pr_candidates": [
+        540
+      ]
     },
     {
       "issue": 28,
@@ -830,7 +1002,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 437,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -839,8 +1011,23 @@
       "live_issue_comment_count": 26,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 437,
+          "title": "Draft: reconstruct FWS CBRS buffers with preserved provenance and gated promotion",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-28",
+          "head_sha": "a46a75a1c4290a606e7e710efce502314f0069cb",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        437
+      ]
     },
     {
       "issue": 29,
@@ -862,14 +1049,19 @@
       "observed_open_prs": [
         {
           "pr": 438,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/438",
           "title": "Draft: implement and verify complete CBRS Map Panels pipeline (#29)",
-          "head_sha_claim_in_body": "f34138f3eca86204c541fb144fe29577ba1500a6",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-29",
+          "head_sha": "f34138f3eca86204c541fb144fe29577ba1500a6",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        438
+      ]
     },
     {
       "issue": 30,
@@ -879,7 +1071,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 439,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -890,23 +1082,21 @@
       "live_assignees": [],
       "observed_open_prs": [
         {
-          "pr": 437,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/437",
-          "title": "Draft: reconstruct FWS CBRS buffers with preserved provenance and gated promotion",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.5
-        },
-        {
           "pr": 439,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/439",
           "title": "Draft: implement faithful CBRS Prohibitions reconstruction pipeline (#30)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-30",
+          "head_sha": "3a7774452d168a611a58c015113df0369beead00",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        439
+      ]
     },
     {
       "issue": 31,
@@ -928,14 +1118,19 @@
       "observed_open_prs": [
         {
           "pr": 440,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/440",
           "title": "Draft: reconstruct native CBRS Units with sealed construction history (#31)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-31",
+          "head_sha": "b3a1111d6c04a4a6d100bb769d3fd20743653f17",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        440
+      ]
     },
     {
       "issue": 32,
@@ -997,14 +1192,19 @@
       "observed_open_prs": [
         {
           "pr": 445,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/445",
           "title": "Draft: reconstruct exact Census2024 designated places with native verification gates",
-          "head_sha_claim_in_body": "c959f614ed7dc19373c1c8df3500a30d895bb3ee",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-34",
+          "head_sha": "c959f614ed7dc19373c1c8df3500a30d895bb3ee",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        445
+      ]
     },
     {
       "issue": 35,
@@ -1023,24 +1223,7 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 436,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/436",
-          "title": "Draft Census CSA reconstruction pipeline with native fidelity gates",
-          "head_sha_claim_in_body": "0e7b6fc8f60ccd6c73086b2cdf075e2993936e08",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
-        },
-        {
-          "pr": 455,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/455",
-          "title": "Draft Census elementary-district pipeline with native schema and gated promotion",
-          "head_sha_claim_in_body": "90d81a3678eab42ccaf2053159442c484994ae28",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
-        }
-      ],
+      "observed_open_prs": [],
       "status": "needs_triage_no_recovered_pipeline_pr"
     },
     {
@@ -1071,7 +1254,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 542,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1080,9 +1263,24 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "in_progress",
-      "worker": "dataset_11"
+      "observed_open_prs": [
+        {
+          "pr": 542,
+          "title": "Add gated draft USACE IENC Coastlines pipeline (#37)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-37",
+          "head_sha": "f5c7a5daa64b7ed8c86c044963793bd3cbdb8f0d",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": false,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "worker": "dataset_11",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        542
+      ]
     },
     {
       "issue": 38,
@@ -1104,14 +1302,19 @@
       "observed_open_prs": [
         {
           "pr": 444,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/444",
           "title": "Draft NCES colleges pipeline with durable provenance and bounded staging",
-          "head_sha_claim_in_body": "980c833795f7d7e8077fe227f1d8b967802f411a",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-38",
+          "head_sha": "980c833795f7d7e8077fe227f1d8b967802f411a",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        444
+      ]
     },
     {
       "issue": 39,
@@ -1133,14 +1336,19 @@
       "observed_open_prs": [
         {
           "pr": 456,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/456",
           "title": "Draft: reconstruct historical ORNL campus polygons with gated local pipeline (#39)",
-          "head_sha_claim_in_body": "caa2ff53c741556dbfe832472bb10d6f77a08725",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-39",
+          "head_sha": "caa2ff53c741556dbfe832472bb10d6f77a08725",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        456
+      ]
     },
     {
       "issue": 40,
@@ -1150,7 +1358,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 436,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1159,8 +1367,23 @@
       "live_issue_comment_count": 10,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 436,
+          "title": "Draft Census CSA reconstruction pipeline with native fidelity gates",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-40",
+          "head_sha": "0e7b6fc8f60ccd6c73086b2cdf075e2993936e08",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        436
+      ]
     },
     {
       "issue": 41,
@@ -1182,14 +1405,19 @@
       "observed_open_prs": [
         {
           "pr": 441,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/441",
           "title": "Draft: reconstruct all Census consolidated cities with authenticated provenance gates",
-          "head_sha_claim_in_body": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-41",
+          "head_sha": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        441
+      ]
     },
     {
       "issue": 42,
@@ -1211,14 +1439,19 @@
       "observed_open_prs": [
         {
           "pr": 453,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/453",
           "title": "Draft: working reconstruction of a complete historical Construction Minerals candidate",
-          "head_sha_claim_in_body": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-42",
+          "head_sha": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        453
+      ]
     },
     {
       "issue": 43,
@@ -1240,14 +1473,19 @@
       "observed_open_prs": [
         {
           "pr": 490,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/490",
           "title": "Document Control Areas producer and successor lineage blocker",
-          "head_sha_claim_in_body": "96c2a7522be916e3c27e2205ff126e87505e2e92",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-43",
+          "head_sha": "96c2a7522be916e3c27e2205ff126e87505e2e92",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        490
+      ]
     },
     {
       "issue": 44,
@@ -1289,14 +1527,19 @@
       "observed_open_prs": [
         {
           "pr": 454,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/454",
           "title": "Draft: reconstruct County Subdivisions with native IDs and guarded promotion",
-          "head_sha_claim_in_body": "6a386bcde0eddb6489d40adb5d066d9fa75923e3",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-45",
+          "head_sha": "6a386bcde0eddb6489d40adb5d066d9fa75923e3",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        454
+      ]
     },
     {
       "issue": 46,
@@ -1358,14 +1601,19 @@
       "observed_open_prs": [
         {
           "pr": 462,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/462",
           "title": "Draft: reconstruct native historical crushed-stone candidate with gated baseline mismatch",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-48",
+          "head_sha": "5e241bf84a008912670b349deb5d0f0d850f62fd",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        462
+      ]
     },
     {
       "issue": 49,
@@ -1387,14 +1635,19 @@
       "observed_open_prs": [
         {
           "pr": 443,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/443",
           "title": "Draft: reconstruct NOAA DART with guarded provenance recovery",
-          "head_sha_claim_in_body": "dac334cb825d29cded9955dbe026baf8831daee9",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-49",
+          "head_sha": "dac334cb825d29cded9955dbe026baf8831daee9",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        443
+      ]
     },
     {
       "issue": 50,
@@ -1516,14 +1769,19 @@
       "observed_open_prs": [
         {
           "pr": 468,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/468",
           "title": "Draft Healthcare Ready dialysis pipeline with literal-source quality gates",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.5
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-55",
+          "head_sha": "e9c4a9c466839268e1c6a088e6029f890522dd57",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        468
+      ]
     },
     {
       "issue": 56,
@@ -1693,7 +1951,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 455,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1702,8 +1960,23 @@
       "live_issue_comment_count": 12,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 455,
+          "title": "Draft Census elementary-district pipeline with native schema and gated promotion",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-64",
+          "head_sha": "90d81a3678eab42ccaf2053159442c484994ae28",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence. Fresh census maps current open PR #455 (branch codex/cloud-dataset-64); exact head/base are stored in observed_open_prs.",
+      "current_pr_candidates": [
+        455
+      ]
     },
     {
       "issue": 65,
@@ -1713,7 +1986,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 484,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1722,8 +1995,23 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 484,
+          "title": "Draft: reconstruct national EPA disaster debris recovery facilities",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-65",
+          "head_sha": "fbfe1bc44db412e8a454a35e4dc57f710c25a844",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        484
+      ]
     },
     {
       "issue": 66,
@@ -1733,7 +2021,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 487,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1742,8 +2030,23 @@
       "live_issue_comment_count": 6,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 487,
+          "title": "Draft: reconstruct EPA emergency-response RMP facilities with guarded native refresh",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-66",
+          "head_sha": "a1397bf34b23e69df9475dc8dc472ac2fb22dd3d",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        487
+      ]
     },
     {
       "issue": 67,
@@ -1753,7 +2056,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 476,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1764,63 +2067,21 @@
       "live_assignees": [],
       "observed_open_prs": [
         {
-          "pr": 459,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/459",
-          "title": "Draft EPA Regions reconstruction pipeline with verified native staging and release gates",
-          "head_sha_claim_in_body": "db6fa7a6e9e29de007c06f809d98600f3f88cb6d",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
-        },
-        {
           "pr": 476,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/476",
           "title": "Draft: native EPA Facilities pipeline and reusable point-source profile",
-          "head_sha_claim_in_body": "5c17da5479d0ec66be299853e7dfd35a56043b1c",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
-        },
-        {
-          "pr": 477,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/477",
-          "title": "Draft: native EPA Facilities Labels reconstruction pipeline",
-          "head_sha_claim_in_body": "6378f8908832034948e408b57e1184319d610559",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
-        },
-        {
-          "pr": 484,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/484",
-          "title": "Draft: reconstruct national EPA disaster debris recovery facilities",
-          "head_sha_claim_in_body": "fbfe1bc44db412e8a454a35e4dc57f710c25a844",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
-        },
-        {
-          "pr": 486,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/486",
-          "title": "Draft: reconstruct EPA FRS RCRA TSD facilities with guarded native refresh",
-          "head_sha_claim_in_body": "d4a4c34151b85934dad3d800fb777553a1e5c8d6",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
-        },
-        {
-          "pr": 487,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/487",
-          "title": "Draft: reconstruct EPA emergency-response RMP facilities with guarded native refresh",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
-        },
-        {
-          "pr": 488,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/488",
-          "title": "Draft: reconstruct native EPA FRS TRI facilities with guarded refresh",
-          "head_sha_claim_in_body": "f48b361f9f96a23e82c6b34087dcd8df99c48fb5",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-67",
+          "head_sha": "5c17da5479d0ec66be299853e7dfd35a56043b1c",
+          "base_branch": "codex/cloud-dataset-76",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        476
+      ]
     },
     {
       "issue": 68,
@@ -1830,7 +2091,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 477,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1839,8 +2100,23 @@
       "live_issue_comment_count": 2,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 477,
+          "title": "Draft: native EPA Facilities Labels reconstruction pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-68",
+          "head_sha": "dc9153a18a1f33911e8b481bb664a4ce0fe1f8c8",
+          "base_branch": "codex/cloud-dataset-67",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        477
+      ]
     },
     {
       "issue": 69,
@@ -1862,14 +2138,19 @@
       "observed_open_prs": [
         {
           "pr": 478,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/478",
           "title": "Draft: EPA FRS EIA-860 power generation reconstruction pipeline",
-          "head_sha_claim_in_body": "c83982822738f410a89891861d43aafe79125921",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.7142857142857143
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-69",
+          "head_sha": "c83982822738f410a89891861d43aafe79125921",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        478
+      ]
     },
     {
       "issue": 70,
@@ -1891,14 +2172,19 @@
       "observed_open_prs": [
         {
           "pr": 480,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/480",
           "title": "Draft: reconstruct EPA EIA-860 NAICS table with guarded refresh",
-          "head_sha_claim_in_body": "5ee6755af5fc228ade71bb5c6b71a17ee658ac25",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-70",
+          "head_sha": "5ee6755af5fc228ade71bb5c6b71a17ee658ac25",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        480
+      ]
     },
     {
       "issue": 71,
@@ -1908,7 +2194,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 483,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1917,8 +2203,23 @@
       "live_issue_comment_count": 3,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 483,
+          "title": "Draft: reconstruct EPA FRS SIC powerplant table with sealed local pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-71",
+          "head_sha": "2940ee80a9198ad198f0ea64d3464297eebeb138",
+          "base_branch": "codex/cloud-dataset-70",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        483
+      ]
     },
     {
       "issue": 72,
@@ -1928,7 +2229,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 488,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1937,8 +2238,23 @@
       "live_issue_comment_count": 2,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 488,
+          "title": "Draft: reconstruct native EPA FRS TRI facilities with guarded refresh",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-72",
+          "head_sha": "f48b361f9f96a23e82c6b34087dcd8df99c48fb5",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        488
+      ]
     },
     {
       "issue": 73,
@@ -1960,14 +2276,19 @@
       "observed_open_prs": [
         {
           "pr": 485,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/485",
           "title": "Draft: reconstruct native EPA FRS TSCA facilities with guarded refresh",
-          "head_sha_claim_in_body": "ec8403a82ddc02322a75af1657e09d6da2484271",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-73",
+          "head_sha": "ec8403a82ddc02322a75af1657e09d6da2484271",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        485
+      ]
     },
     {
       "issue": 74,
@@ -1977,7 +2298,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 486,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1986,8 +2307,23 @@
       "live_issue_comment_count": 4,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 486,
+          "title": "Draft: reconstruct EPA FRS RCRA TSD facilities with guarded native refresh",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-74",
+          "head_sha": "d4a4c34151b85934dad3d800fb777553a1e5c8d6",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        486
+      ]
     },
     {
       "issue": 75,
@@ -1997,7 +2333,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 470,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2009,22 +2345,20 @@
       "observed_open_prs": [
         {
           "pr": 470,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/470",
           "title": "Draft: reconstruct exact EPA EEZ region-boundary pipeline (#75)",
-          "head_sha_claim_in_body": "bfb066efa1aa30f1a5b883b91dc0e716a80f5f68",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
-        },
-        {
-          "pr": 474,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/474",
-          "title": "Draft EPA Region Boundaries with EEZ source pipeline",
-          "head_sha_claim_in_body": "924ad20de0a4cfdefbe6e206fc5c542e21752d17",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-75",
+          "head_sha": "bfb066efa1aa30f1a5b883b91dc0e716a80f5f68",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        470
+      ]
     },
     {
       "issue": 76,
@@ -2034,7 +2368,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 474,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2043,8 +2377,23 @@
       "live_issue_comment_count": 3,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 474,
+          "title": "Draft EPA Region Boundaries with EEZ source pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-76",
+          "head_sha": "924ad20de0a4cfdefbe6e206fc5c542e21752d17",
+          "base_branch": "codex/cloud-dataset-75",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        474
+      ]
     },
     {
       "issue": 77,
@@ -2054,7 +2403,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 459,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2063,8 +2412,23 @@
       "live_issue_comment_count": 8,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 459,
+          "title": "Draft EPA Regions reconstruction pipeline with verified native staging and release gates",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-77",
+          "head_sha": "db6fa7a6e9e29de007c06f809d98600f3f88cb6d",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        459
+      ]
     },
     {
       "issue": 78,
@@ -2086,14 +2450,19 @@
       "observed_open_prs": [
         {
           "pr": 472,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/472",
           "title": "Implement exact EPA large-scale regional boundary draft pipeline",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-78",
+          "head_sha": "988177b44da48d6ad05e10ed7471326719b3c578",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        472
+      ]
     },
     {
       "issue": 79,
@@ -2115,14 +2484,19 @@
       "observed_open_prs": [
         {
           "pr": 471,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/471",
           "title": "Draft exact EPA small-scale regions pipeline with native NAD83 preservation",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-79",
+          "head_sha": "4066c825153670c1a2eda94e18d940fb708789be",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        471
+      ]
     },
     {
       "issue": 80,
@@ -2144,14 +2518,19 @@
       "observed_open_prs": [
         {
           "pr": 469,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/469",
           "title": "Implement complete EPA FRS SEMS interest draft pipeline",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-80",
+          "head_sha": "9e3c80c08178090c250c6b0ad3bcdc5d55186f41",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        469
+      ]
     },
     {
       "issue": 81,
@@ -2173,14 +2552,19 @@
       "observed_open_prs": [
         {
           "pr": 489,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/489",
           "title": "Document EIA ethanol spatial query-access and lineage blocker",
-          "head_sha_claim_in_body": "ff0eaa5fc0f03e98bfa5ff63b421b772bea34bc6",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-81",
+          "head_sha": "ff0eaa5fc0f03e98bfa5ff63b421b772bea34bc6",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        489
+      ]
     },
     {
       "issue": 82,
@@ -2190,7 +2574,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 461,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2199,8 +2583,23 @@
       "live_issue_comment_count": 10,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 461,
+          "title": "Draft: preserve complete FDIC locations in a gated reconstruction pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-82",
+          "head_sha": "ffaede69804e6a1a2332deaab5d60e447775f2c1",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        461
+      ]
     },
     {
       "issue": 83,
@@ -2222,14 +2621,19 @@
       "observed_open_prs": [
         {
           "pr": 457,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/457",
           "title": "Draft: reconstruct complete native FEMA Regional Offices pipeline",
-          "head_sha_claim_in_body": "1683fc1a1d1fa88c9c564f8baf3a8bde4ce8e33c",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-83",
+          "head_sha": "1683fc1a1d1fa88c9c564f8baf3a8bde4ce8e33c",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        457
+      ]
     },
     {
       "issue": 84,
@@ -2251,14 +2655,19 @@
       "observed_open_prs": [
         {
           "pr": 458,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/458",
           "title": "Implement official FEMA Regions draft reconstruction pipeline",
-          "head_sha_claim_in_body": "9fc7442bce50e0303011cf0b61b5cea779648049",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-84",
+          "head_sha": "9fc7442bce50e0303011cf0b61b5cea779648049",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        458
+      ]
     },
     {
       "issue": 85,
@@ -2268,7 +2677,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 460,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2280,22 +2689,20 @@
       "observed_open_prs": [
         {
           "pr": 460,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/460",
           "title": "Draft FERC historical preservation with exact decimals and blocked release",
-          "head_sha_claim_in_body": "8ce4ce003cb267b824d827e9ebd069015151c82a",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
-        },
-        {
-          "pr": 465,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/465",
-          "title": "Draft: reconstruct ARC Regions from complete native publisher snapshot",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.5
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-85",
+          "head_sha": "8ce4ce003cb267b824d827e9ebd069015151c82a",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        460
+      ]
     },
     {
       "issue": 86,
@@ -2357,14 +2764,19 @@
       "observed_open_prs": [
         {
           "pr": 447,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/447",
           "title": "Draft BTS ferry routes pipeline with bounded local staging",
-          "head_sha_claim_in_body": "b60ce7b53161846bb6cac3f350b5472d77f2ae31",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-88",
+          "head_sha": "b60ce7b53161846bb6cac3f350b5472d77f2ae31",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        447
+      ]
     },
     {
       "issue": 89,
@@ -2386,14 +2798,19 @@
       "observed_open_prs": [
         {
           "pr": 446,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/446",
           "title": "Draft NCFO ferry terminals reconstruction with preserved source identities",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-89",
+          "head_sha": "e6022b492333b7eaa677911f1925292b22ecd403",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        446
+      ]
     },
     {
       "issue": 90,
@@ -2415,14 +2832,19 @@
       "observed_open_prs": [
         {
           "pr": 491,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/491",
           "title": "Draft: reconstruct native FWS final critical habitat with guarded refresh",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.75
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-90",
+          "head_sha": "ea5afa73a6552ae4c38a65b6e063eeea810a1093",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        491
+      ]
     },
     {
       "issue": 91,
@@ -2504,14 +2926,19 @@
       "observed_open_prs": [
         {
           "pr": 497,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/497",
           "title": "Capture exact USACE FUDS Program District Boundaries as a gated candidate",
-          "head_sha_claim_in_body": "44cf60be1fd169914f5b8cf5ef9f482c58e0f31a",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5714285714285714
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-94",
+          "head_sha": "44cf60be1fd169914f5b8cf5ef9f482c58e0f31a",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        497
+      ]
     },
     {
       "issue": 95,
@@ -2533,14 +2960,19 @@
       "observed_open_prs": [
         {
           "pr": 496,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/496",
           "title": "Draft: Native USACE FUDS Program Division Boundaries",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.8
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-95",
+          "head_sha": "ad00c2f63056864023af522f20e8838c766986b7",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        496
+      ]
     },
     {
       "issue": 96,
@@ -2550,7 +2982,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 498,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2559,8 +2991,23 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 498,
+          "title": "Draft: add gated ingest for USACE FUDS Project Point (layer 2)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-96",
+          "head_sha": "15497fd6ca90aa25fd7bc4a29d621bb291d9fe46",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        498
+      ]
     },
     {
       "issue": 97,
@@ -2582,14 +3029,19 @@
       "observed_open_prs": [
         {
           "pr": 502,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/502",
           "title": "Draft: USACE FUDS public property boundaries ingest pipeline",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-97",
+          "head_sha": "84f4b6ac28b8ce0444e4a7480dccb2b4e4ba714c",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        502
+      ]
     },
     {
       "issue": 98,
@@ -2611,14 +3063,19 @@
       "observed_open_prs": [
         {
           "pr": 500,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/500",
           "title": "Draft: reconstruct native USACE FUDS munitions response sites",
-          "head_sha_claim_in_body": "feb3bb35ce5987432a7e62c53c1fbccfa4420449",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.8
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-98",
+          "head_sha": "feb3bb35ce5987432a7e62c53c1fbccfa4420449",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        500
+      ]
     },
     {
       "issue": 99,
@@ -2640,14 +3097,19 @@
       "observed_open_prs": [
         {
           "pr": 501,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/501",
           "title": "Draft: reconstruct native USACE FUDS public properties",
-          "head_sha_claim_in_body": "742e4e8cad2bd2e1d070f38dca1db744b84b8d2d",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.75
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-99",
+          "head_sha": "742e4e8cad2bd2e1d070f38dca1db744b84b8d2d",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        501
+      ]
     },
     {
       "issue": 100,
@@ -2669,14 +3131,19 @@
       "observed_open_prs": [
         {
           "pr": 503,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/503",
           "title": "Draft: stream the complete EPA FRS interest contact table",
-          "head_sha_claim_in_body": "269449f842e4777add5787df2bba43651e9bf3ed",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-100",
+          "head_sha": "269449f842e4777add5787df2bba43651e9bf3ed",
+          "base_branch": "codex/cloud-dataset-71",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        503
+      ]
     },
     {
       "issue": 101,
@@ -2726,7 +3193,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 483,
+      "current_pr": null,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2735,17 +3202,15 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
+      "observed_open_prs": [],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "historical_pr_refs": [
         {
           "pr": 483,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/483",
-          "title": "Draft: reconstruct EPA FRS SIC powerplant table with sealed local pipeline",
-          "head_sha_claim_in_body": "2940ee80a9198ad198f0ea64d3464297eebeb138",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "recorded_as_current_before_census": true,
+          "review_status": "not revalidated by this open-PR census"
         }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      ]
     },
     {
       "issue": 104,
@@ -2887,14 +3352,19 @@
       "observed_open_prs": [
         {
           "pr": 463,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/463",
           "title": "Draft Smithsonian Holocene volcano pipeline with exact source types and release gates",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-110",
+          "head_sha": "ea7789e8f1613f3cf7b34b6e0ca7f8c3f753e9a8",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        463
+      ]
     },
     {
       "issue": 111,
@@ -2916,14 +3386,19 @@
       "observed_open_prs": [
         {
           "pr": 467,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/467",
           "title": "Draft: reconstruct official NOAA significant earthquake pipeline (#111)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-111",
+          "head_sha": "7cb993e2392b88b43fd52582345e4e41bd8b6fb6",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        467
+      ]
     },
     {
       "issue": 112,
@@ -2945,14 +3420,19 @@
       "observed_open_prs": [
         {
           "pr": 466,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/466",
           "title": "Draft NOAA significant volcanic event pipeline with native types and release gates",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.75
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-112",
+          "head_sha": "a07432e176856636ea632d3c0bf5f53d56110cde",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        466
+      ]
     },
     {
       "issue": 113,
@@ -2962,7 +3442,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 448,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2971,8 +3451,23 @@
       "live_issue_comment_count": 11,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 448,
+          "title": "Draft NOAA historical tsunami events pipeline and research archive",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-113",
+          "head_sha": "9af19dda605ff083a066358306a89ea5fbe79df8",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        448
+      ]
     },
     {
       "issue": 114,
@@ -2982,7 +3477,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 449,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -2993,23 +3488,21 @@
       "live_assignees": [],
       "observed_open_prs": [
         {
-          "pr": 448,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/448",
-          "title": "Draft NOAA historical tsunami events pipeline and research archive",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.5
-        },
-        {
           "pr": 449,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/449",
           "title": "Draft: reconstruct Historical Tsunami Observations with native fidelity and release gates",
-          "head_sha_claim_in_body": "31f81f5a3fb6558e113461e4f47a9b7cdee33334",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-114",
+          "head_sha": "31f81f5a3fb6558e113461e4f47a9b7cdee33334",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        449
+      ]
     },
     {
       "issue": 115,
@@ -3079,7 +3572,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 492,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -3088,8 +3581,23 @@
       "live_issue_comment_count": 1,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 492,
+          "title": "Draft: add gated native EPA ICIS wastewater capture",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-118",
+          "head_sha": "f4b30e4a22b5dc0694492df4e282003b75689297",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        492
+      ]
     },
     {
       "issue": 119,
@@ -3111,14 +3619,19 @@
       "observed_open_prs": [
         {
           "pr": 495,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/495",
           "title": "Draft: reconstruct native ICIS wastewater NAICS codes with guarded refresh",
-          "head_sha_claim_in_body": "3ab754dd5b478d98cb37c321c8e0db2754bb8931",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.8
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-119",
+          "head_sha": "3ab754dd5b478d98cb37c321c8e0db2754bb8931",
+          "base_branch": "codex/cloud-dataset-71",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        495
+      ]
     },
     {
       "issue": 120,
@@ -3140,14 +3653,19 @@
       "observed_open_prs": [
         {
           "pr": 493,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/493",
           "title": "Draft: reconstruct native ICIS wastewater SIC codes with guarded refresh",
-          "head_sha_claim_in_body": "5b58b3aa0fa89eda4a01a622508e8f6f687dad25",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.8
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-120",
+          "head_sha": "5b58b3aa0fa89eda4a01a622508e8f6f687dad25",
+          "base_branch": "codex/cloud-dataset-71",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        493
+      ]
     },
     {
       "issue": 121,
@@ -3209,14 +3727,19 @@
       "observed_open_prs": [
         {
           "pr": 505,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/505",
           "title": "Draft: reconstruct USACE IRM project boundaries with native XYZ",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-123",
+          "head_sha": "3f92ca77145314ee7619d8989e606531e3333092",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        505
+      ]
     },
     {
       "issue": 124,
@@ -3226,7 +3749,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 508,
+      "current_pr": 509,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -3237,15 +3760,27 @@
       "live_assignees": [],
       "observed_open_prs": [
         {
-          "pr": 508,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/508",
-          "title": "Draft: reconstruct native USACE IRM property points",
-          "head_sha_claim_in_body": "5e427bb08b59223e2138fb722c15cb0f78122c2a",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
+          "pr": 509,
+          "title": "Draft: reconstruct USACE IRM property boundaries with native geometry",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-124",
+          "head_sha": "8f45fc0406a12b954f487f661daf8ade877acc62",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "historical_pr_refs": [
+        {
+          "pr": 508,
+          "recorded_as_current_before_census": true,
+          "review_status": "not revalidated by this open-PR census"
+        }
+      ],
+      "current_pr_candidates": [
+        509
+      ]
     },
     {
       "issue": 125,
@@ -3255,7 +3790,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 508,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -3264,8 +3799,23 @@
       "live_issue_comment_count": 2,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 508,
+          "title": "Draft: reconstruct native USACE IRM property points",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-125",
+          "head_sha": "7ecdc7b6c2c5fca6ca2f4656a93822ba7c539391",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        508
+      ]
     },
     {
       "issue": 126,
@@ -3287,14 +3837,19 @@
       "observed_open_prs": [
         {
           "pr": 494,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/494",
           "title": "Draft: reconstruct native BTS air-to-truck freight facilities",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.8
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-126",
+          "head_sha": "f7625b459b17d4ab04a5f2a8935c5e72cf1d6940",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        494
+      ]
     },
     {
       "issue": 127,
@@ -3316,14 +3871,19 @@
       "observed_open_prs": [
         {
           "pr": 499,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/499",
           "title": "BTS Marine Roll-on/Roll-off native draft pipeline",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 0.6666666666666666
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-127",
+          "head_sha": "a2334bd9a5a4f364aeb06d248c16174cf00cc800",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        499
+      ]
     },
     {
       "issue": 128,
@@ -3345,14 +3905,19 @@
       "observed_open_prs": [
         {
           "pr": 504,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/504",
           "title": "Draft: reconstruct BTS rail TOFC/COFC freight facilities",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-128",
+          "head_sha": "93cadfe9aaf376619c930b1d00e91373c7ee1ca9",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        504
+      ]
     },
     {
       "issue": 129,
@@ -3362,7 +3927,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 506,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -3371,8 +3936,23 @@
       "live_issue_comment_count": 2,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 506,
+          "title": "Draft: reconstruct the official frozen BTS IPCD snapshot",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-129",
+          "head_sha": "323ee875530759c320ee398d099d31349852c094",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        506
+      ]
     },
     {
       "issue": 130,
@@ -3394,14 +3974,19 @@
       "observed_open_prs": [
         {
           "pr": 517,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/517",
           "title": "Draft pipeline: USACE IENC isolated danger buoy point (#130)",
-          "head_sha_claim_in_body": "429f422c00d7c74b77282cab427ab091c8d3270f",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-130",
+          "head_sha": "429f422c00d7c74b77282cab427ab091c8d3270f",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        517
+      ]
     },
     {
       "issue": 131,
@@ -3671,7 +4256,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 507,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -3680,8 +4265,23 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 507,
+          "title": "Draft: frozen EIA 2020 LNG adapter; current coverage blocked",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-144",
+          "head_sha": "3b7f8e2a657ff8c386b8273c23b3a275e48623ed",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        507
+      ]
     },
     {
       "issue": 145,
@@ -3843,14 +4443,19 @@
       "observed_open_prs": [
         {
           "pr": 511,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/511",
           "title": "Draft: reconstruct Census2024 Metropolitan Divisions with guarded promotion",
-          "head_sha_claim_in_body": "eeb59623a0a5ed3ea5cf0c2adb7e2c002a8e4726",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-152",
+          "head_sha": "eeb59623a0a5ed3ea5cf0c2adb7e2c002a8e4726",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        511
+      ]
     },
     {
       "issue": 153,
@@ -4092,14 +4697,19 @@
       "observed_open_prs": [
         {
           "pr": 514,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/514",
           "title": "Draft pipeline: USGS National Forests from native PBF (#164)",
-          "head_sha_claim_in_body": "340ae8e25cce39d8630102c431a159c740094197",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-164",
+          "head_sha": "340ae8e25cce39d8630102c431a159c740094197",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        514
+      ]
     },
     {
       "issue": 165,
@@ -4161,14 +4771,19 @@
       "observed_open_prs": [
         {
           "pr": 512,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/512",
           "title": "Draft: reconstruct official BTS National Transit Map Agencies",
-          "head_sha_claim_in_body": "25591451db2d2948dd1a1a6848dc619360a37e17",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-167",
+          "head_sha": "25591451db2d2948dd1a1a6848dc619360a37e17",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        512
+      ]
     },
     {
       "issue": 168,
@@ -4230,14 +4845,19 @@
       "observed_open_prs": [
         {
           "pr": 510,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/510",
           "title": "Draft: reconstruct the official FHWA National Tunnel Inventory",
-          "head_sha_claim_in_body": "828957f150e076e8d2b7eba8937f429da45df461",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-170",
+          "head_sha": "828957f150e076e8d2b7eba8937f429da45df461",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        510
+      ]
     },
     {
       "issue": 171,
@@ -4259,14 +4879,19 @@
       "observed_open_prs": [
         {
           "pr": 516,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/516",
           "title": "Draft pipeline: EIA interstate/intrastate natural gas pipelines (#171)",
-          "head_sha_claim_in_body": "9f76bf92673135bf1a67d803acad83328c29577b",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-171",
+          "head_sha": "9f76bf92673135bf1a67d803acad83328c29577b",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        516
+      ]
     },
     {
       "issue": 172,
@@ -4328,14 +4953,19 @@
       "observed_open_prs": [
         {
           "pr": 515,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/515",
           "title": "Draft pipeline: EIA natural gas trading hubs historical release (#174)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-174",
+          "head_sha": "13e5c80887f7556cad63fd502b372578f9c7fd5d",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        515
+      ]
     },
     {
       "issue": 175,
@@ -4377,14 +5007,19 @@
       "observed_open_prs": [
         {
           "pr": 513,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/513",
           "title": "Draft pipeline: NOAA nautical navigation aids (#176)",
-          "head_sha_claim_in_body": "8079398a841751a6bb0b00534374661763dfca28",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-176",
+          "head_sha": "8079398a841751a6bb0b00534374661763dfca28",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        513
+      ]
     },
     {
       "issue": 177,
@@ -4406,14 +5041,19 @@
       "observed_open_prs": [
         {
           "pr": 519,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/519",
           "title": "Draft pipeline: official IENC nautical publication areas (#177)",
-          "head_sha_claim_in_body": "069a76b1f23a2097b9fc2bfc0c15668621565b2d",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-177",
+          "head_sha": "069a76b1f23a2097b9fc2bfc0c15668621565b2d",
+          "base_branch": "codex/cloud-dataset-6",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        519
+      ]
     },
     {
       "issue": 178,
@@ -4435,14 +5075,19 @@
       "observed_open_prs": [
         {
           "pr": 520,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/520",
           "title": "Native USACE waterway network source pipeline (#178)",
-          "head_sha_claim_in_body": "74a027fd542f5d11babf14d700dbcaa91760f362",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-178",
+          "head_sha": "74a027fd542f5d11babf14d700dbcaa91760f362",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        520
+      ]
     },
     {
       "issue": 179,
@@ -4464,14 +5109,19 @@
       "observed_open_prs": [
         {
           "pr": 521,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/521",
           "title": "Draft pipeline: native USACE waterway network nodes (#179)",
-          "head_sha_claim_in_body": "4e3cbd2d6c012dd482ebbb39c99c61d2eb8d21b0",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-179",
+          "head_sha": "4e3cbd2d6c012dd482ebbb39c99c61d2eb8d21b0",
+          "base_branch": "codex/cloud-dataset-178",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        521
+      ]
     },
     {
       "issue": 180,
@@ -4493,14 +5143,19 @@
       "observed_open_prs": [
         {
           "pr": 522,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/522",
           "title": "Draft pipeline: complete official IENC navigation lights (#180)",
-          "head_sha_claim_in_body": "31c238d5c7678ea9076af711a2b01fd74918dd96",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-180",
+          "head_sha": "d0acefb37f98ce1fd3b8e6b6c61f8ad1a202c35b",
+          "base_branch": "codex/cloud-dataset-6",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        522
+      ]
     },
     {
       "issue": 181,
@@ -4522,14 +5177,19 @@
       "observed_open_prs": [
         {
           "pr": 523,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/523",
           "title": "Draft pipeline: official IENC navigation marks areas (#181)",
-          "head_sha_claim_in_body": "2b55455a6f261e74bc0a42ce34b92f8aa5ab72df",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-181",
+          "head_sha": "2b55455a6f261e74bc0a42ce34b92f8aa5ab72df",
+          "base_branch": "codex/cloud-dataset-6",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        523
+      ]
     },
     {
       "issue": 182,
@@ -4551,14 +5211,19 @@
       "observed_open_prs": [
         {
           "pr": 518,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/518",
           "title": "Draft pipeline: NCUA active-charter Locator points (#182)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-182",
+          "head_sha": "3a7b132c005e94feb797e461e55f579e12bb6182",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        518
+      ]
     },
     {
       "issue": 183,
@@ -4808,7 +5473,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 482,
+      "current_pr": null,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -4817,17 +5482,15 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
+      "observed_open_prs": [],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "historical_pr_refs": [
         {
           "pr": 482,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/482",
-          "title": "Draft: guarded ref_gages successor pipeline for NLDI monitoring locations",
-          "head_sha_claim_in_body": "00364527a113005c9c497d8a69e1d3276d72da64",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "recorded_as_current_before_census": true,
+          "review_status": "not revalidated by this open-PR census"
         }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      ]
     },
     {
       "issue": 196,
@@ -5437,7 +6100,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 498,
+      "current_pr": null,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -5446,17 +6109,15 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
+      "observed_open_prs": [],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "historical_pr_refs": [
         {
           "pr": 498,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/498",
-          "title": "Draft: add gated ingest for USACE FUDS Project Point (layer 2)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "recorded_as_current_before_census": true,
+          "review_status": "not revalidated by this open-PR census"
         }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      ]
     },
     {
       "issue": 227,
@@ -5486,7 +6147,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 482,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -5495,8 +6156,23 @@
       "live_issue_comment_count": 3,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 482,
+          "title": "Draft: guarded ref_gages successor pipeline for NLDI monitoring locations",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-228",
+          "head_sha": "00364527a113005c9c497d8a69e1d3276d72da64",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        482
+      ]
     },
     {
       "issue": 229,
@@ -5606,7 +6282,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 464,
+      "current_pr": null,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -5615,17 +6291,15 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
+      "observed_open_prs": [],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "historical_pr_refs": [
         {
           "pr": 464,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/464",
-          "title": "Draft whole NACEI99 natural gas crossings pipeline; exact EIA US51 blocked",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "recorded_as_current_before_census": true,
+          "review_status": "not revalidated by this open-PR census"
         }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      ]
     },
     {
       "issue": 235,
@@ -5947,14 +6621,19 @@
       "observed_open_prs": [
         {
           "pr": 524,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/524",
           "title": "Draft pipeline: Notice Marks (USACE IENC) (#250)",
-          "head_sha_claim_in_body": "74d78635c6fcc71c76a4a2038e60ea48228e9ab0",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-250",
+          "head_sha": "bcc4342e2d3d911e3c5823323894eb6bf3d890c4",
+          "base_branch": "codex/cloud-dataset-180",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        524
+      ]
     },
     {
       "issue": 251,
@@ -5996,14 +6675,19 @@
       "observed_open_prs": [
         {
           "pr": 525,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/525",
           "title": "Draft pipeline: complete official IENC obstruction areas (#252)",
-          "head_sha_claim_in_body": "3347f6f322450daaa9e8e97e724e0c888f0a65f3",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-252",
+          "head_sha": "3347f6f322450daaa9e8e97e724e0c888f0a65f3",
+          "base_branch": "codex/cloud-dataset-181",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        525
+      ]
     },
     {
       "issue": 253,
@@ -6027,11 +6711,13 @@
       "observed_open_prs": [
         {
           "pr": 527,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/527",
           "title": "Draft pipeline: complete official IENC obstruction lines (#253)",
-          "head_sha_claim_in_body": "4dfc805b1f6bab33ece9f2ee82172a837bc388a7",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-253",
+          "head_sha": "1c6e403ba8e898e22802cdac839aa7cfd2a25d58",
+          "base_branch": "codex/cloud-dataset-181",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
       "status_note": "Open draft PR #527 at exact head 1c6e403ba8e898e22802cdac839aa7cfd2a25d58; independent scoped code-guard PASS comment 5580349669. No new full-graph replay. Integration note: PR #527 base 181 is not a main ancestor and carries 17 unreviewed main files; do not blindly retarget.",
@@ -6039,7 +6725,6 @@
       "review_id": 5580349669,
       "status": "reviewed_draft_prior_runtime",
       "runtime_scope": "Exact-request replay-guard delta reviewed; original complete source capture absent in replacement Cloud; no new full graph claimed.",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/527",
       "release_accepted": false,
       "remaining_release_decisions": [
         "source/currentness",
@@ -6047,6 +6732,9 @@
         "schema/ID/geometry/coverage contract",
         "rights",
         "exact release approval"
+      ],
+      "current_pr_candidates": [
+        527
       ]
     },
     {
@@ -6069,14 +6757,19 @@
       "observed_open_prs": [
         {
           "pr": 526,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/526",
           "title": "Draft pipeline: complete official IENC obstruction locations (#254)",
-          "head_sha_claim_in_body": "1eac2574108d399937419a7bd12a86ee8e4a12be",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-254",
+          "head_sha": "e0cb1fccc433ef4123a379b66d95e15f0fac4c91",
+          "base_branch": "codex/cloud-dataset-180",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        526
+      ]
     },
     {
       "issue": 255,
@@ -6118,14 +6811,19 @@
       "observed_open_prs": [
         {
           "pr": 528,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/528",
           "title": "Draft pipeline: complete BOEM OCS protraction diagrams (#256)",
-          "head_sha_claim_in_body": "19bc2527f10f49311743a8ef002f03fe86576c97",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-256",
+          "head_sha": "19bc2527f10f49311743a8ef002f03fe86576c97",
+          "base_branch": "codex/cloud-dataset-69",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        528
+      ]
     },
     {
       "issue": 257,
@@ -6150,11 +6848,13 @@
       "observed_open_prs": [
         {
           "pr": 529,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/529",
           "title": "Draft pipeline: native BSEE OCS drilling platforms (#257)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-257",
+          "head_sha": "39f848879d39909510ac443798716e26d13d3d4d",
+          "base_branch": "codex/cloud-dataset-256",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
       "status_note": "Current exact head 39f848879d39909510ac443798716e26d13d3d4d independently reviewed at comment 6282407482. Source run cfa5aac4-4cbf-41f9-9364-88cb00bfd119; catalog b821b4d7-8dce-462c-801c-72b92cdcc240; cache 5cdb6440-c98b-4f19-bb60-76e163339014 reused; verifier d1fa3dd5-a187-40d7-897b-9445da3214d5 refused missing approval with published fixture preserved. 7,317 rows; output SHA reported 52a20aa3…0997; recovered source ZIP SHA 24f3fee…503c.",
@@ -6171,7 +6871,6 @@
       },
       "published_inventory_preserved": true,
       "local_packet": "/workspace/work/257-resume/packet.json",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/529",
       "release_accepted": false,
       "remaining_release_decisions": [
         "source/currentness",
@@ -6179,6 +6878,9 @@
         "schema/ID/geometry/coverage contract",
         "rights",
         "exact release approval"
+      ],
+      "current_pr_candidates": [
+        529
       ]
     },
     {
@@ -6243,11 +6945,13 @@
       "observed_open_prs": [
         {
           "pr": 530,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/530",
           "title": "Draft pipeline: complete official IENC overhead cables (#260)",
-          "head_sha_claim_in_body": "1d5f39e425ebfc7554b85bd42dd6263afebffaa3",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-260",
+          "head_sha": "126dae201632ddcc911881a138d0c88af753fcd0",
+          "base_branch": "codex/cloud-dataset-253",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
       "status_note": "Open draft PR #530 at exact head 126dae201632ddcc911881a138d0c88af753fcd0; independent scoped code-guard PASS comment 5580350035. No new full-graph replay.",
@@ -6255,7 +6959,6 @@
       "review_id": 5580350035,
       "status": "reviewed_draft_prior_runtime",
       "runtime_scope": "Exact-request replay guard reviewed; original complete capture absent in replacement Cloud; no new full graph claimed.",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/530",
       "release_accepted": false,
       "remaining_release_decisions": [
         "source/currentness",
@@ -6263,6 +6966,9 @@
         "schema/ID/geometry/coverage contract",
         "rights",
         "exact release approval"
+      ],
+      "current_pr_candidates": [
+        530
       ]
     },
     {
@@ -6273,7 +6979,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 531,
+      "current_pr": 561,
       "reviewed_head": "750c43c56dce3142aeb6222226d75bb59d1b15c0",
       "evidence_refs": [
         "PR #531 exact-head independent review comment 5580351370; source/catalog/cache/verifier run IDs recorded by coordinator"
@@ -6287,17 +6993,18 @@
       "observed_open_prs": [
         {
           "pr": 531,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/531",
           "title": "Draft pipeline: preserve official USACE IENC overhead pipeline lines (#261)",
           "state": "open",
-          "head_sha_claim_in_body": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
-          "review_evidence_status": "not_recovered_in_ledger",
-          "association_confidence": 1
+          "head_branch": "codex/cloud-dataset-261",
+          "head_sha": "75f5ec9358e5f8108d3b1139c9d7812248c82624",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
       "work_status": "active_draft_pipeline",
       "assigned_worker": "dataset_11",
-      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1–92, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED. Independent exact-head review PASS comment 5580351370. Current source run 5a53d090-d9c1-4194-a375-5442087c06cd, catalog 97364133-8105-4f6b-91f4-1ba5e7c9f520, cache 40c1f7c6-32e8-445c-822a-7455e47eb14a, verifier f6eab900-f66d-4d64-90fe-6ef06bfc1844; all 92 x 14 attributes and XY path sequences matched, verifier refused missing approval and preserved published inventory. Current narrow packaged-identity fix is in progress on the existing PR #531 branch; do not blindly retarget to main.",
+      "status_note": "Clean replacement PR #561 merged at exact head 0535903d166291453f5877a77fd7727434d85a15 as 9a4ee165ebfbca350805ee189dc0cac5c33144f9; reviewed tree 00df07d7f4dd27e4520cfd8e632b02145bb83b6c, root review 5601095051 and CI passed. PR #531 remains open on base codex/cloud-dataset-260 and is retained as an observed stack child, not the canonical implementation. Quality gate 4a590cc2-9cf7-497b-a11d-7324f1db440f blocks verify/promote with the populated fixture preserved; source/runtime capture evidence retained in the packet. Issue #261 remains open; source acceptance and release decisions are pending.",
       "local_or_current_branch_evidence": {
         "pr": 531,
         "head": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
@@ -6307,7 +7014,7 @@
       },
       "current_head": "750c43c56dce3142aeb6222226d75bb59d1b15c0",
       "review_id": 5580351370,
-      "status": "reviewed_locally_verified_draft",
+      "status": "code_merged_issue_open_acceptance_gated",
       "runtime_head": "750c43c56dce3142aeb6222226d75bb59d1b15c0",
       "rows": 92,
       "dagster_runs": {
@@ -6323,7 +7030,7 @@
       },
       "published_inventory_preserved": true,
       "local_packet": "/workspace/work/261-review/packet.json",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/531",
+      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/561",
       "release_accepted": false,
       "remaining_release_decisions": [
         "source/currentness",
@@ -6331,6 +7038,33 @@
         "schema/ID/geometry/coverage contract",
         "rights",
         "exact release approval"
+      ],
+      "current_pr_candidates": [
+        531,
+        561
+      ],
+      "current_pr_state": "merged",
+      "merged_pr": 561,
+      "merge_commit": "9a4ee165ebfbca350805ee189dc0cac5c33144f9",
+      "merged_head": "0535903d166291453f5877a77fd7727434d85a15",
+      "merged_tree": "00df07d7f4dd27e4520cfd8e632b02145bb83b6c",
+      "root_review_id": 5601095051,
+      "ci": "passed",
+      "historical_pr_refs": [
+        {
+          "pr": 531,
+          "head": "75f5ec9358e5f8108d3b1139c9d7812248c82624",
+          "base": "codex/cloud-dataset-260",
+          "state": "open_at_2026-10-21T14:14:32Z",
+          "canonical": false
+        },
+        {
+          "pr": 561,
+          "head": "0535903d166291453f5877a77fd7727434d85a15",
+          "merge_commit": "9a4ee165ebfbca350805ee189dc0cac5c33144f9",
+          "state": "merged",
+          "canonical": true
+        }
       ]
     },
     {
@@ -6350,7 +7084,18 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 535,
+          "title": "Draft NOAA Overview layer pipeline (#262)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-262",
+          "head_sha": "3dbecf38f5c9f294d83d5d5163a578e1c64117b8",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "work_status": "active_draft_pipeline",
       "assigned_worker": "dataset_10",
       "status_note": "NOAA Overview; active worker dataset_10.",
@@ -6366,7 +7111,6 @@
       "runtime_scope": "Prior graph on stated head; final validation-only CRS/edition correction has 9 focused tests and retained-source replay with unchanged GPKG hash.",
       "published_inventory_preserved": true,
       "historical_vintage": "NOAA Version4.1 revised2013-09-13; currentness not accepted",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/535",
       "release_accepted": false,
       "remaining_release_decisions": [
         "source/currentness",
@@ -6374,6 +7118,9 @@
         "schema/ID/geometry/coverage contract",
         "rights",
         "exact release approval"
+      ],
+      "current_pr_candidates": [
+        535
       ]
     },
     {
@@ -6455,12 +7202,13 @@
       "observed_open_prs": [
         {
           "pr": 532,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/532",
           "title": "Document Paging Transmission Towers source audit",
           "state": "open",
-          "head_sha_claim_in_body": "279a65961c41848170afc041109713f15bf319c3",
-          "review_evidence_status": "research-only; review evidence not recovered",
-          "association_confidence": 1
+          "head_branch": "codex/cloud-dataset-265",
+          "head_sha": "279a65961c41848170afc041109713f15bf319c3",
+          "base_branch": "main",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
       "work_status": "research_only_draft_pr",
@@ -6469,7 +7217,9 @@
       "current_head": "279a65961c41848170afc041109713f15bf319c3",
       "status": "external_source_access_decision",
       "detail": "Official ULS paging download and documentation returned actual HTTP403; third-party HIFLD copies are not official-source substitutes. Research-only PR, not pipeline.",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/532"
+      "current_pr_candidates": [
+        532
+      ]
     },
     {
       "issue": 266,
@@ -6540,7 +7290,18 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 534,
+          "title": "Add historical EIA petroleum refinery adapter",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-268",
+          "head_sha": "f1e6e65981cb33ba53938ef9a71efe8e969e9402",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "current_head": "f1e6e65981cb33ba53938ef9a71efe8e969e9402",
       "review_id": 5580398224,
       "status": "reviewed_locally_verified_historical_draft",
@@ -6555,7 +7316,6 @@
       "runtime_scope": "Graph on697a; final capture/cache-lifecycle delta independently reviewed and6focusedtests passed. No final-head full-graph repeat claimed.",
       "published_inventory_preserved": true,
       "full_source_comparison": "All130rows,22attribute arrays,bothIDarrays andPointWKB match original officialZIP.",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/534",
       "release_accepted": false,
       "remaining_release_decisions": [
         "source/currentness",
@@ -6563,6 +7323,9 @@
         "schema/ID/geometry/coverage contract",
         "rights",
         "exact release approval"
+      ],
+      "current_pr_candidates": [
+        534
       ]
     },
     {
@@ -6582,7 +7345,18 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 537,
+          "title": "Draft native pipeline for USACE IENC pile locations",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-269",
+          "head_sha": "d1ddc0720fcb0c35f298c7b6a3f91202d5883266",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "current_head": "d1ddc0720fcb0c35f298c7b6a3f91202d5883266",
       "review_id": 5580407889,
       "status": "reviewed_locally_verified_draft",
@@ -6602,7 +7376,6 @@
       },
       "published_inventory_preserved": true,
       "local_packet": "/workspace/work/269/runtime/lifecycle/packet.json",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/537",
       "release_accepted": false,
       "remaining_release_decisions": [
         "source/currentness",
@@ -6610,6 +7383,9 @@
         "schema/ID/geometry/coverage contract",
         "rights",
         "exact release approval"
+      ],
+      "current_pr_candidates": [
+        537
       ]
     },
     {
@@ -6629,13 +7405,26 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 538,
+          "title": "Draft pipeline: official IENC Pipeline Areas (#270)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-270",
+          "head_sha": "f08b23adffb55a9e7305f03317fa5f925f12efae",
+          "base_branch": "codex/cloud-dataset-261",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "current_head": "3aa50bff218acbcdd3ec48a4205c02414f2bb71f",
       "status": "review_changes_in_progress",
       "review_id": 5580416903,
       "rows": 112,
       "detail": "Concrete CRS/after-layer-drift and BTS input attribution fixes requested; source/catalog/cache/refusal evidence present at original head, not final approval.",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/538"
+      "current_pr_candidates": [
+        538
+      ]
     },
     {
       "issue": 271,
@@ -6656,14 +7445,27 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 536,
+          "title": "Draft native USGS Plate Boundaries pipeline with complete capture and release gate",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-271",
+          "head_sha": "66bd3da6bfb1a74d22eab1f94d55349c596e3098",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "work_status": "draft_pipeline_open",
       "status_note": "Plate Boundaries (USGS). Open draft PR #536 at 7472fa8cbe4158269d4130c2215253b8e162ed53. Complete official USGS Plates layer extraction/materialization: 1,175/1,175 IDs; registered run 081713bf-2954-4c81-8dd0-0174fceca794; candidate 459009 bytes SHA256 678863382d2e28b437016337d08136fa622a87e8f83683323e9f5bdf6c3cc9cf; receipt SHA 03827b10f6ad496c707c5f8752ba7cb30c1dcb49d007f134b536de3ae76d5869; 7 focused tests pass. Historical archive equivalence/current edition, schema/ID/baseline, rights, coverage/release decisions remain pending.",
       "current_head": "7472fa8cbe4158269d4130c2215253b8e162ed53",
       "status": "review_changes_in_progress",
       "review_id": 5580371556,
       "detail": "Native3857 geometry/raw retention, isolated resources, immutable standard staging and complete catalog/verifier lifecycle required; original GeoJSON extraction is not complete pipeline.",
-      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/536"
+      "current_pr_candidates": [
+        536
+      ]
     },
     {
       "issue": 272,
@@ -6673,7 +7475,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 541,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -6682,9 +7484,24 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "in_progress",
-      "worker": "dataset_265"
+      "observed_open_prs": [
+        {
+          "pr": 541,
+          "title": "Draft: document POL Terminals source investigation blocker",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-272",
+          "head_sha": "7a0dec8f1e6f1559a6f1748d102fc3ee5bdd7577",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "worker": "dataset_265",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        541
+      ]
     },
     {
       "issue": 273,
@@ -6694,7 +7511,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 545,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -6703,9 +7520,24 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "in_progress",
-      "worker": "dataset_3"
+      "observed_open_prs": [
+        {
+          "pr": 545,
+          "title": "Add draft pipeline for USACE IENC pontoon areas",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-273",
+          "head_sha": "5d029e51f40cf42532671c13d5c2dc61f2aad6d0",
+          "base_branch": "codex/cloud-dataset-261",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "worker": "dataset_3",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        545
+      ]
     },
     {
       "issue": 274,
@@ -6715,7 +7547,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 543,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -6724,9 +7556,24 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "in_progress",
-      "worker": "backlog_ledger"
+      "observed_open_prs": [
+        {
+          "pr": 543,
+          "title": "Add a pinned historical EIA power plants candidate pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-274",
+          "head_sha": "64809f384791ed2ae274f67e0ee9d7aff4c41070",
+          "base_branch": "codex/cloud-dataset-269",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "worker": "backlog_ledger",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        543
+      ]
     },
     {
       "issue": 275,
@@ -6745,11 +7592,25 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 546,
+          "title": "Add a verified Census Primary Roads source candidate",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-275",
+          "head_sha": "eb8448f77d19e37d798032f339b1f7f8b793ec86",
+          "base_branch": "codex/cloud-dataset-260",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "status": "reviewed_draft_merge_blocked",
       "current_head": "8d1dd15c0ded6d7b77a5eff1bca6fb9189683e7c",
       "worker_run_id": 39597483660,
-      "status_note": "PR #546 packaged hash fix; 14 tests; source 5a914974-4e35-4d8a-9371-54fee156e602, cache b9930531-2f2f-4513-ad9d-b36cfe9065ef, catalog 5f02e141-c34b-4249-8347-1fb7b824321a; root review 5599755431. Parent #260 chain blocks merge."
+      "status_note": "PR #546 packaged hash fix; 14 tests; source 5a914974-4e35-4d8a-9371-54fee156e602, cache b9930531-2f2f-4513-ad9d-b36cfe9065ef, catalog 5f02e141-c34b-4249-8347-1fb7b824321a; root review 5599755431. Parent #260 chain blocks merge.",
+      "current_pr_candidates": [
+        546
+      ]
     },
     {
       "issue": 276,
@@ -6759,7 +7620,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 547,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -6768,8 +7629,23 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 547,
+          "title": "Draft official USACE Principal Ports successor pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-276",
+          "head_sha": "f43f7fcaddeb80b9f772ee5923614800f153107e",
+          "base_branch": "codex/cloud-dataset-21",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        547
+      ]
     },
     {
       "issue": 277,
@@ -6888,11 +7764,25 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
+      "observed_open_prs": [
+        {
+          "pr": 548,
+          "title": "Draft Census Puerto Rico Subbarrios candidate pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-282",
+          "head_sha": "502a00aedcc4d664b4fa2d772d0c6dfc449f28cf",
+          "base_branch": "codex/cloud-dataset-271",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
       "status": "review_pass_cleanup_failure_merge_blocked",
       "current_head": "502a00aedcc4d664b4fa2d772d0c6dfc449f28cf",
       "worker_run_id": 39595773668,
-      "status_note": "Independent paid review passed despite workflow cleanup failure run 39599895858. Do not retry. Parent #271 chain blocks merge."
+      "status_note": "Independent paid review passed despite workflow cleanup failure run 39599895858. Do not retry. Parent #271 chain blocks merge.",
+      "current_pr_candidates": [
+        548
+      ]
     },
     {
       "issue": 283,
@@ -6952,7 +7842,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 549,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -6961,11 +7851,26 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "native_worker_assigned_evidence_pending",
+      "observed_open_prs": [
+        {
+          "pr": 549,
+          "title": "Draft USGS Quaternary Fault Lines source pipeline with complete capture gate",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-285",
+          "head_sha": "5bb53396ee1be58c77ff1016f2e70dfd236dba11",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
       "work_status": "native_worker_assigned",
       "assigned_worker": "recover_284_native",
-      "status_note": "Native worker assigned; source/runtime evidence claim pending. This is not source approval or an external blocker."
+      "status_note": "Current native repair remains on existing PR #549, now exact head 5bb53396ee1be58c77ff1016f2e70dfd236dba11 (base codex/cloud-verification-417). Fresh main integration is ongoing; do not create a duplicate. This is implementation work, not source acceptance.",
+      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/549",
+      "current_pr_candidates": [
+        549
+      ]
     },
     {
       "issue": 286,
@@ -7057,7 +7962,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 562,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -7066,11 +7971,25 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "native_eligibility_worker_claim_pending",
+      "observed_open_prs": [
+        {
+          "pr": 562,
+          "title": "Add proposal-only USACE IENC Recommended Tracks pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-290",
+          "head_sha": "5369d0e4c1f15d875a9f27995cbdcf74f3b5613d",
+          "base_branch": "main",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
       "work_status": "native_eligibility_recheck_claim_pending",
       "assigned_worker": "shared_gate_fixes",
-      "status_note": "Worker reports official USACE IENC RECOMMENDED_TRACK_LINE layer 46, 666 features, EPSG:4326 polyline and 10 fields. No prior comments/PR/branch found. Verify the claim; BTS delegation succession is unapproved. Not a pipeline approval or external blocker."
+      "status_note": "PR #562 is open at exact head 5369d0e4c1f15d875a9f27995cbdcf74f3b5613d on main. Worker reports full official IENC RECOMMENDED_TRACK_LINE layer 46 capture, 666 features, EPSG:4326 polylines and 10 fields; code review and fresh main integration are pending. BTS delegation succession is unapproved. Branch mapping does not establish source approval or pipeline readiness.",
+      "current_pr_candidates": [
+        562
+      ]
     },
     {
       "issue": 291,
@@ -7401,7 +8320,7 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": null,
-      "reviewed_head": null,
+      "reviewed_head": "f2a67dfb2116c9bdd2c6f6e2518e9d16acebacd3",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:17:27Z",
@@ -7410,8 +8329,16 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "in_progress_initial_ingest_catalog_final_replay_pending",
-      "status_note": "Worker reports ingest 73bc0e3a-739c-4ca7-b736-4021de8ab649 and catalog 87fd7f41-eca8-4b0c-9399-64a07a2349be: 481 original 2024 GDB MultiPolygon features, EPSG:4269, 10 attributes plus FID; web layer 472 rejected as partial route. Final committed replay/gates remain in progress, no reviewed PR; source approval pending."
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #560 merged as ebe53ed3e1803c93fc74f95cf755fdfb29c711ff at exact head f2a67dfb2116c9bdd2c6f6e2518e9d16acebacd3; root review 5600976268. Final retained-byte source replay and catalog passed 481-record quality. Gate bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29 failed closed and gate 29591f2d-98ad-407f-ba85-898aef90c6fa refused promotion; populated synthetic 14-object fixture remained unchanged. Issue #307 stays open; rights, baseline, archive equivalence and release decisions remain pending.",
+      "merged_pr": 560,
+      "current_head": "f2a67dfb2116c9bdd2c6f6e2518e9d16acebacd3",
+      "dagster_runs": {
+        "source_replay": "d1f95481-7a2d-4f07-8b95-2a57f1a4322d",
+        "catalog": "2f6e1915-fbdf-4b51-a5d6-939d8c875adf",
+        "quality_gate": "bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29",
+        "approval_gate": "29591f2d-98ad-407f-ba85-898aef90c6fa"
+      }
     },
     {
       "issue": 308,
@@ -7793,14 +8720,19 @@
       "observed_open_prs": [
         {
           "pr": 473,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/473",
           "title": "Draft: reconstruct native FEMA State Emergency Operations Centers pipeline",
-          "head_sha_claim_in_body": "27fdaad4986d61183ab2df7a34265f89c4e7c663",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.8
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-326",
+          "head_sha": "17f34e92078df50f2c0c5a780fa42aca96617e45",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        473
+      ]
     },
     {
       "issue": 327,
@@ -7942,14 +8874,19 @@
       "observed_open_prs": [
         {
           "pr": 450,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/450",
           "title": "Draft NOAA tsunami tide station pipeline and release gates (#334)",
-          "head_sha_claim_in_body": null,
-          "review_evidence_status": "not_in_search_payload",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-334",
+          "head_sha": "a08fde2c63a8f8d5829af4aba5ac4287162257ad",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        450
+      ]
     },
     {
       "issue": 333,
@@ -7979,7 +8916,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 563,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -7988,8 +8925,25 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 563,
+          "title": "Add draft Unified School Districts pipeline",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-335",
+          "head_sha": "6c523380f087bd54114e86b26f2d834c688e96a1",
+          "base_branch": "main",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "work_status": "native_source_route_candidate",
+      "assigned_worker": "native implementation",
+      "status_note": "PR #563 is open at exact head 6c523380f087bd54114e86b26f2d834c688e96a1 on main. Native draft proposes 2024 Census TIGER/Line School_District_Unified GDB, 10,897 MultiPolygon features, OBJECTID/FID, 10 attributes, EPSG:4269. Final replay, packaged identity validation and review are pending; this is not pipeline completion or historical equivalence/rights/coverage acceptance.",
+      "current_pr_candidates": [
+        563
+      ]
     },
     {
       "issue": 336,
@@ -8419,7 +9373,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 475,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -8428,8 +9382,23 @@
       "live_issue_comment_count": 3,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 475,
+          "title": "Draft: reconstruct native USACE district division and research-lab offices",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-356",
+          "head_sha": "ad8382423740b28d10cfc694daf94a98876c711a",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        475
+      ]
     },
     {
       "issue": 358,
@@ -8511,14 +9480,19 @@
       "observed_open_prs": [
         {
           "pr": 479,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/479",
           "title": "Decision needed: USCG Captain of Port source authority",
-          "head_sha_claim_in_body": "7568808cef722657813548d08032c098993d5114",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.5
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-360",
+          "head_sha": "7568808cef722657813548d08032c098993d5114",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        479
+      ]
     },
     {
       "issue": 362,
@@ -8548,7 +9522,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 554,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -8557,8 +9531,23 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 554,
+          "title": "Draft pipeline: US County Boundaries (Census TIGER/Line) (#363)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-363",
+          "head_sha": "53b4ba2327c51a9d6f1269a8288fd7f6f4567719",
+          "base_branch": "codex/cloud-dataset-271",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
+        }
+      ],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "current_pr_candidates": [
+        554
+      ]
     },
     {
       "issue": 364,
@@ -9060,14 +10049,19 @@
       "observed_open_prs": [
         {
           "pr": 481,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/481",
           "title": "Draft: reconstruct 119th Congressional Districts from Census TIGER 2025",
-          "head_sha_claim_in_body": "66e759cc61d631689223509e5659f7e8fc0810a6",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 1
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-387",
+          "head_sha": "66e759cc61d631689223509e5659f7e8fc0810a6",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "current_pr_candidates": [
+        481
+      ]
     },
     {
       "issue": 391,
@@ -9157,7 +10151,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 492,
+      "current_pr": null,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -9166,17 +10160,15 @@
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
+      "observed_open_prs": [],
+      "status": "prior_pr_evidence_needs_reconciliation",
+      "historical_pr_refs": [
         {
           "pr": 492,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/492",
-          "title": "Draft: add gated native EPA ICIS wastewater capture",
-          "head_sha_claim_in_body": "f4b30e4a22b5dc0694492df4e282003b75689297",
-          "review_evidence_status": "head_claim_only",
-          "association_confidence": 0.6
+          "recorded_as_current_before_census": true,
+          "review_status": "not revalidated by this open-PR census"
         }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation"
+      ]
     },
     {
       "issue": 394,
@@ -9746,7 +10738,7 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T13:52:19Z",
+    "recorded_at": "2026-10-21T14:14:32Z",
     "source": "latest coordinator-verified PR heads, merge SHAs, review comments, CI and run handoffs supplied for this checkpoint",
     "scope_note": "This updates work evidence only. All 415 inventory issues remain tracked; issue states are not changed. Issue #417 remains open. No release or publication is authorized.",
     "pr_421_shared_verifier": {
@@ -9788,7 +10780,8 @@
         "checks": "CI Docker build passed",
         "issue_state": "Verified OPEN",
         "notes": "Packaged runtime fix; 41 focused tests passed."
-      }
+      },
+      "#261": "PR #561 merged at exact head 0535903d166291453f5877a77fd7727434d85a15 (merge 9a4ee165ebfbca350805ee189dc0cac5c33144f9); root review 5601095051, CI passed; issue remains open with acceptance gated. PR #531 persists as an open, noncanonical stack child."
     },
     "issue_25_tracking_replacement": {
       "pr": 544,
@@ -9901,42 +10894,43 @@
       "routing": "The packaged-runtime construction-validator defect was found in #539/#540 reviews. PR #559 foundation is merged and root verified actual merged tree 314994ebead14d02100f197e1f16f6ad27a22144 matches the reviewed preview. PR #558 still retains the #273 base and is not merged. Not all older Git-metadata blockers are proven resolved; EPA/IENC stack propagation is planned next. The #261 fix is being made on existing PR #531 branch; no blind main retarget. Avoid duplicate fixes."
     },
     "issue_307_candidate": {
-      "source": "Official Census ACS 2024 candidate layer 472",
-      "state": "in_progress_initial_ingest_catalog_final_replay_and_gates_ongoing_not_reviewed",
+      "source": "2024 Census TIGER/Line Geodatabase, School_District_Secondary",
+      "state": "merged_code_issue_open_acceptance_gated",
+      "pr": 560,
+      "head": "f2a67dfb2116c9bdd2c6f6e2518e9d16acebacd3",
+      "merge_commit": "ebe53ed3e1803c93fc74f95cf755fdfb29c711ff",
+      "root_review": 5600976268,
       "runs": {
-        "ingest": "73bc0e3a-739c-4ca7-b736-4021de8ab649",
-        "catalog": "87fd7f41-eca8-4b0c-9399-64a07a2349be"
+        "source_replay": "d1f95481-7a2d-4f07-8b95-2a57f1a4322d",
+        "catalog": "2f6e1915-fbdf-4b51-a5d6-939d8c875adf",
+        "quality_gate": "bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29",
+        "approval_gate": "29591f2d-98ad-407f-ba85-898aef90c6fa"
       },
-      "worker_claim": "481 original GDB 2024 MultiPolygon features, EPSG:4269, 10 attributes plus FID; web layer 472 was rejected as a partial route.",
-      "review_status": "Final committed replay and gates remain ongoing; there is no reviewed PR yet. A Git-metadata review found no defect before final replay; worker is using the main-helper fix.",
-      "notes": "Source approval remains pending. Treat run/source details as worker claims pending final replay and review; do not count as a completed reviewed pipeline."
+      "source_claim": "481 features, FIDs 1–481, 10 attributes, MultiPolygon EPSG:4269. The separate web layer 472 is documented as a proposed successor, not equivalent.",
+      "acceptance": "Gates refused/blocked promotion with the same populated 14-object synthetic fixture unchanged. Rights, baseline, archive equivalence and release decisions remain pending; issue #307 remains open.",
+      "review_id": 5600976268,
+      "expected_tree": "314994ebead14d02100f197e1f16f6ad27a22144",
+      "source_replay": "d1f95481-7a2d-4f07-8b95-2a57f1a4322d",
+      "catalog_run": "2f6e1915-fbdf-4b51-a5d6-939d8c875adf",
+      "quality_gate": "bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29",
+      "approval_gate": "29591f2d-98ad-407f-ba85-898aef90c6fa",
+      "issue_remains_open": true
     },
     "native_work_checkpoint": {
-      "recorded_at": "2026-10-21T13:52:19Z",
+      "recorded_at": "2026-10-21T14:09:33Z",
       "issue_261_pr_531": {
-        "state": "narrow packaged-identity fix in progress on existing PR branch",
-        "branch": "codex/cloud-dataset-261",
-        "notes": "Do not blindly retarget to main."
+        "state": "reviewed_ci_pass_ancestry_blocked",
+        "head": "75f5ec9358e5f8108d3b1139c9d7812248c82624",
+        "base": "codex/cloud-dataset-260",
+        "root_review": 5600883393,
+        "ci": "passed",
+        "replacement_pr": 561,
+        "replacement_head": "0535903d166291453f5877a77fd7727434d85a15",
+        "replacement_base": "main",
+        "notes": "PR #531 base ancestry is blocked. Preserve #531 review evidence; clean replacement #561 is in preparation, with both open PRs mapped to issue #261."
       },
-      "issue_285": {
-        "dataset": "Quaternary Fault Lines",
-        "assigned_worker": "recover_284_native",
-        "state": "native worker assigned; evidence/claim pending"
-      },
-      "issue_290": {
-        "dataset": "Recommended Tracks",
-        "assigned_worker": "shared_gate_fixes",
-        "state": "eligibility/source claim pending",
-        "worker_claim": {
-          "layer": "RECOMMENDED_TRACK_LINE",
-          "layer_id": 46,
-          "features": 666,
-          "geometry": "EPSG:4326 Polyline",
-          "fields": 10,
-          "notes": "No existing comments, PR or branch were found; verify source claim before acceptance."
-        },
-        "notes": "BTS succession/delegation is unapproved. This is not a pipeline approval or external blocker."
-      },
+      "issue_285": "Existing PR #549 repair at exact head 5bb53396ee1be58c77ff1016f2e70dfd236dba11; fresh main integration ongoing, no duplicate requested.",
+      "issue_290": "PR #562 exact head 5369d0e4c1f15d875a9f27995cbdcf74f3b5613d on main; code review/fresh integration pending, worker claim is not approval.",
       "issue_289": {
         "state": "not being worked",
         "notes": "No worker assignment in this batch."
@@ -9946,7 +10940,10 @@
         "head_branch_base": "181",
         "notes": "Base 181 is not a main ancestor and carries 17 unreviewed main files; do not blindly retarget."
       },
-      "paid_work": "Native workers only; no additional paid runs/admissions while handoff issues are resolved."
+      "paid_work": "Native workers only; no additional paid runs/admissions while handoff issues are resolved.",
+      "issue_335": "PR #563 exact head 6c523380f087bd54114e86b26f2d834c688e96a1 on main; final replay/review pending.",
+      "issue_261": "Canonical PR #561 merged; quality gate 4a590cc2-9cf7-497b-a11d-7324f1db440f blocks verify/promote with populated fixture preserved. Issue open and source acceptance pending.",
+      "issue_307": "PR #560 merged at exact head f2a67dfb2116c9bdd2c6f6e2518e9d16acebacd3, merge ebe53ed3e1803c93fc74f95cf755fdfb29c711ff. Root review 5600976268 and actual merged tree 314994ebead14d02100f197e1f16f6ad27a22144 matched reviewed preview. Replay/catalog quality passed; quality gate bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29 failed closed and approval gate 29591f2d-98ad-407f-ba85-898aef90c6fa refused promotion with fixture preserved. Issue remains open."
     }
   },
   "pr_search_snapshot_records": [
@@ -11237,5 +12234,156 @@
       "review_evidence_status": "draft pipeline evidence; external acceptance decisions pending"
     }
   ],
-  "pr_search_snapshot_note": "Historical 2026-10-20 created-date PR search records. Not a live list or current open-PR total."
+  "pr_search_snapshot_note": "Historical 2026-10-20 created-date PR search records. Not a live list or current open-PR total.",
+  "superseded_snapshot_associations": [
+    {
+      "prior_candidate_issue": 10,
+      "pr": 509,
+      "exact_branch_issue": 124,
+      "head_branch": "codex/cloud-dataset-124",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 30,
+      "pr": 437,
+      "exact_branch_issue": 28,
+      "head_branch": "codex/cloud-dataset-28",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 35,
+      "pr": 436,
+      "exact_branch_issue": 40,
+      "head_branch": "codex/cloud-dataset-40",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 35,
+      "pr": 455,
+      "exact_branch_issue": 64,
+      "head_branch": "codex/cloud-dataset-64",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 67,
+      "pr": 459,
+      "exact_branch_issue": 77,
+      "head_branch": "codex/cloud-dataset-77",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 67,
+      "pr": 477,
+      "exact_branch_issue": 68,
+      "head_branch": "codex/cloud-dataset-68",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 67,
+      "pr": 484,
+      "exact_branch_issue": 65,
+      "head_branch": "codex/cloud-dataset-65",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 67,
+      "pr": 486,
+      "exact_branch_issue": 74,
+      "head_branch": "codex/cloud-dataset-74",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 67,
+      "pr": 487,
+      "exact_branch_issue": 66,
+      "head_branch": "codex/cloud-dataset-66",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 67,
+      "pr": 488,
+      "exact_branch_issue": 72,
+      "head_branch": "codex/cloud-dataset-72",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 75,
+      "pr": 474,
+      "exact_branch_issue": 76,
+      "head_branch": "codex/cloud-dataset-76",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 85,
+      "pr": 465,
+      "exact_branch_issue": 16,
+      "head_branch": "codex/cloud-dataset-16",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 103,
+      "pr": 483,
+      "exact_branch_issue": 71,
+      "head_branch": "codex/cloud-dataset-71",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 114,
+      "pr": 448,
+      "exact_branch_issue": 113,
+      "head_branch": "codex/cloud-dataset-113",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 124,
+      "pr": 508,
+      "exact_branch_issue": 125,
+      "head_branch": "codex/cloud-dataset-125",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 195,
+      "pr": 482,
+      "exact_branch_issue": 228,
+      "head_branch": "codex/cloud-dataset-228",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 226,
+      "pr": 498,
+      "exact_branch_issue": 96,
+      "head_branch": "codex/cloud-dataset-96",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 234,
+      "pr": 464,
+      "exact_branch_issue": 23,
+      "head_branch": "codex/cloud-dataset-23",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    },
+    {
+      "prior_candidate_issue": 393,
+      "pr": 492,
+      "exact_branch_issue": 118,
+      "head_branch": "codex/cloud-dataset-118",
+      "note": "Historical candidate association superseded by exact open-PR head branch."
+    }
+  ],
+  "fresh_open_pr_census": {
+    "recorded_at": "2026-10-21T14:14:32Z",
+    "source": "GitHub API /pulls?state=open per_page=100 pages 1-3, metadata only",
+    "open_prs_total": 132,
+    "mapped_prs": 129,
+    "distinct_inventory_issues_with_open_pr": 129,
+    "inventory_issues_without_mapped_open_pr": 286,
+    "mapping_rule": "Exact branch codex/cloud-dataset-N or codex/N-clean-replacement; no title/body-only associations.",
+    "unmapped_open_prs": [
+      558,
+      533,
+      1
+    ],
+    "association_scope": "Mapping establishes branch association only, not code quality, feasibility, implementation, review, run success, source acceptance, or release readiness.",
+    "multiple_open_pr_issue_count": 0
+  }
 }
