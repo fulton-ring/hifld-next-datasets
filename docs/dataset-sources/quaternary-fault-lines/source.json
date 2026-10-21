@@ -45,41 +45,157 @@
       "ymax": 11317901.5467
     },
     "fields": [
-      {"name": "OBJECTID", "type": "esriFieldTypeOID"},
-      {"name": "Shape", "type": "esriFieldTypeGeometry"},
-      {"name": "fault_name", "type": "esriFieldTypeString", "length": 100},
-      {"name": "section_name", "type": "esriFieldTypeString", "length": 100},
-      {"name": "fault_id", "type": "esriFieldTypeString", "length": 10},
-      {"name": "section_id", "type": "esriFieldTypeString", "length": 1},
-      {"name": "Location", "type": "esriFieldTypeString", "length": 100},
-      {"name": "linetype", "type": "esriFieldTypeString", "length": 50},
-      {"name": "age", "type": "esriFieldTypeString", "length": 50},
-      {"name": "dip_direction", "type": "esriFieldTypeString", "length": 50},
-      {"name": "slip_rate", "type": "esriFieldTypeString", "length": 100},
-      {"name": "slip_sense", "type": "esriFieldTypeString", "length": 50},
-      {"name": "mapped_scale", "type": "esriFieldTypeString", "length": 50},
-      {"name": "class", "type": "esriFieldTypeString", "length": 50},
-      {"name": "mapped_certainty", "type": "esriFieldTypeString", "length": 200},
-      {"name": "strike", "type": "esriFieldTypeString", "length": 50},
-      {"name": "total_fault_length", "type": "esriFieldTypeInteger"},
-      {"name": "cooperators", "type": "esriFieldTypeString", "length": 200},
-      {"name": "earthquake", "type": "esriFieldTypeString", "length": 200},
-      {"name": "last_review", "type": "esriFieldTypeDate"},
-      {"name": "fault_url", "type": "esriFieldTypeString", "length": 500},
-      {"name": "symbology", "type": "esriFieldTypeString", "length": 100},
-      {"name": "ref_id", "type": "esriFieldTypeString", "length": 50},
-      {"name": "Fault_ID_num", "type": "esriFieldTypeInteger"},
-      {"name": "Shape_Length", "type": "esriFieldTypeDouble"},
-      {"name": "archive_pdf", "type": "esriFieldTypeString", "length": 255}
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "name": "Shape",
+        "type": "esriFieldTypeGeometry"
+      },
+      {
+        "name": "fault_name",
+        "type": "esriFieldTypeString",
+        "length": 100
+      },
+      {
+        "name": "section_name",
+        "type": "esriFieldTypeString",
+        "length": 100
+      },
+      {
+        "name": "fault_id",
+        "type": "esriFieldTypeString",
+        "length": 10
+      },
+      {
+        "name": "section_id",
+        "type": "esriFieldTypeString",
+        "length": 1
+      },
+      {
+        "name": "Location",
+        "type": "esriFieldTypeString",
+        "length": 100
+      },
+      {
+        "name": "linetype",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "age",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "dip_direction",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "slip_rate",
+        "type": "esriFieldTypeString",
+        "length": 100
+      },
+      {
+        "name": "slip_sense",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "mapped_scale",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "class",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "mapped_certainty",
+        "type": "esriFieldTypeString",
+        "length": 200
+      },
+      {
+        "name": "strike",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "total_fault_length",
+        "type": "esriFieldTypeInteger"
+      },
+      {
+        "name": "cooperators",
+        "type": "esriFieldTypeString",
+        "length": 200
+      },
+      {
+        "name": "earthquake",
+        "type": "esriFieldTypeString",
+        "length": 200
+      },
+      {
+        "name": "last_review",
+        "type": "esriFieldTypeDate"
+      },
+      {
+        "name": "fault_url",
+        "type": "esriFieldTypeString",
+        "length": 500
+      },
+      {
+        "name": "symbology",
+        "type": "esriFieldTypeString",
+        "length": 100
+      },
+      {
+        "name": "ref_id",
+        "type": "esriFieldTypeString",
+        "length": 50
+      },
+      {
+        "name": "Fault_ID_num",
+        "type": "esriFieldTypeInteger"
+      },
+      {
+        "name": "Shape_Length",
+        "type": "esriFieldTypeDouble"
+      },
+      {
+        "name": "archive_pdf",
+        "type": "esriFieldTypeString",
+        "length": 255
+      }
     ],
     "observed_null_counts_2026-10-21": {
-      "OBJECTID": 0, "fault_name": 0, "section_name": 0, "fault_id": 0,
-      "section_id": 0, "Location": 0, "linetype": 0, "age": 0,
-      "dip_direction": 793, "slip_rate": 717, "slip_sense": 715,
-      "mapped_scale": 0, "class": 434, "mapped_certainty": 0, "strike": 434,
-      "total_fault_length": 21950, "cooperators": 0, "earthquake": 754,
-      "last_review": 934, "fault_url": 310, "symbology": 0, "ref_id": 0,
-      "Fault_ID_num": 0, "Shape_Length": 0, "archive_pdf": 0
+      "OBJECTID": 0,
+      "fault_name": 0,
+      "section_name": 0,
+      "fault_id": 0,
+      "section_id": 0,
+      "Location": 0,
+      "linetype": 0,
+      "age": 0,
+      "dip_direction": 793,
+      "slip_rate": 717,
+      "slip_sense": 715,
+      "mapped_scale": 0,
+      "class": 434,
+      "mapped_certainty": 0,
+      "strike": 434,
+      "total_fault_length": 21950,
+      "cooperators": 0,
+      "earthquake": 754,
+      "last_review": 934,
+      "fault_url": 310,
+      "symbology": 0,
+      "ref_id": 0,
+      "Fault_ID_num": 0,
+      "Shape_Length": 0,
+      "archive_pdf": 0
     }
   },
   "capture_2026-10-21": {
@@ -90,7 +206,12 @@
     "source_geometry_sha256": "a86afbdc44a9a138c007ca95a8f85020716055e7d2d8cb82f672a8ffac21ec93",
     "source_schema_sha256": "e77beb61938c9b3ff2a3852a7437bd8079cf47bf0899f24b3be82e94d8c2d86b",
     "native_vertex_count": 993315,
-    "native_xy_bounds": [-20037507.0672, 2127432.182599999, 20037507.067199998, 11317901.5467],
+    "native_xy_bounds": [
+      -20037507.0672,
+      2127432.182599999,
+      20037507.067199998,
+      11317901.5467
+    ],
     "completeness": "complete for the observed live 112,809-feature roster; not proof of date, HIFLD archive equality, or a newly issued scientific edition",
     "single_request_limit": "200 IDs per request succeeded; 1,000 IDs returned HTTP 413, so the pipeline uses 200-ID batches.",
     "release_date": null,
@@ -116,8 +237,13 @@
     "release_acceptance": false
   },
   "pipeline_implementation": {
-    "candidate_status": "draft; local materialization evidence recorded separately",
+    "candidate_version": "v20261021T033518Z",
+    "candidate_prefix": "quaternary-fault-lines/quaternary-fault-lines/v20261021T033518Z",
+    "output": "geoparquet/quaternary-fault-lines.parquet",
+    "output_bytes": 15622886,
+    "output_sha256": "dc4a6b3a45d061e8cc2c414fb9a7f87c6fda245fa1440ecf2c05989a298f5eb8",
     "dagster_schedule": "defined and stopped",
+    "local_materialization_evidence": "local-materialization.json",
     "release": "candidate remains unapproved; no production publication"
   }
 }

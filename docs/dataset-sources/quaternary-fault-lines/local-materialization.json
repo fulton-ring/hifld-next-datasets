@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "dataset_slug": "quaternary-fault-lines",
+  "file_slug": "quaternary-fault-lines",
+  "version": "v20261021T033518Z",
+  "code_commit": "f875d59045fb16aa9f3080f15941a064615210ad",
+  "staging_root": "/agent-data/staging (disposable local isolated state)",
+  "dagster_home": "/agent-data/dagster",
+  "ingest_run_id": "8596176c-905d-4904-ac8b-b2abfe9e4fc5",
+  "catalog_run_id": "441d6f26-2b2b-42c7-9dcd-5d5214c49f39",
+  "capture_mode": "complete capture replayed from /tmp/hifld-qfl-capture/57403c4720e648529a4667642e13d0d0",
+  "source_feature_count": 112809,
+  "source_id_sha256": "9918f4432ae51ff5a78ce8fde86976181f70c79106a4daa63f5b1e85f4b663d9",
+  "source_record_sha256": "ce2b8535e87ee3a495735c404d1f9d2a5d7dc63c29789f5441ab12cea9e2ab8d",
+  "source_geometry_sha256": "a86afbdc44a9a138c007ca95a8f85020716055e7d2d8cb82f672a8ffac21ec93",
+  "source_schema_sha256": "e77beb61938c9b3ff2a3852a7437bd8079cf47bf0899f24b3be82e94d8c2d86b",
+  "candidate_parquet": {
+    "path": "geoparquet/quaternary-fault-lines.parquet",
+    "bytes": 15622886,
+    "sha256": "dc4a6b3a45d061e8cc2c414fb9a7f87c6fda245fa1440ecf2c05989a298f5eb8"
+  },
+  "raw_evidence": {
+    "artifact_count": 1146,
+    "bytes": 137363456,
+    "note": "573 JSON response bodies plus 573 checksummed receipts retained under raw/"
+  },
+  "catalog": {
+    "asset": "publish/catalog",
+    "catalog_mode": "native_geoparquet_full_population",
+    "feature_count": 112809,
+    "geometry_type": "MultiLineString",
+    "invalid_geometry_count": 0,
+    "null_geometry_count": 0,
+    "quality_check_passed": true,
+    "columns_hash": "8a407a194979fabfee3f3c3323088f7ba45e29a99fba29fb90a9f2a5651dab32"
+  },
+  "checks": {
+    "focused_source_tests": "6 passed",
+    "ingest_asset_check": "quaternary_fault_lines_population_complete passed",
+    "catalog_asset_check": "quality_manifest passed",
+    "publication": "not attempted; candidate remains unapproved and no release approval registry entry exists"
+  },
+  "blockers": [
+    "DataLumos project page returned anonymous HTTP 403 Cloudflare challenge; archive contents were not compared.",
+    "DHS crosswalk record-level match was not independently re-fetched.",
+    "The service's 2020 release label is not a dated data-release identifier.",
+    "Schema/ID contract, HIFLD archive equivalence, coverage, rights, attribution, and release approval require a maintainer decision."
+  ]
+}
