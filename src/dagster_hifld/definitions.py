@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.fws_units import (
+    fws_cbrs_units_draft_refresh_job,
+    fws_cbrs_units_draft_refresh_schedule,
+)
 from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
@@ -656,6 +660,7 @@ defs = Definitions(
         red_cross_headquarters_draft_job,
         usace_airport_area_draft_job,
         amtrak_draft_refresh_job,
+        fws_cbrs_units_draft_refresh_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -697,6 +702,7 @@ defs = Definitions(
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
         amtrak_draft_refresh_schedule,
+        fws_cbrs_units_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

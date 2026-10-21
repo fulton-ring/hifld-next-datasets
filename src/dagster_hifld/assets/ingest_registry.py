@@ -22,6 +22,7 @@ from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
+from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_features
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
@@ -50,6 +51,7 @@ from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 
 hifld_ingest_assets = [
+    fws_cbrs_units,
     usgs_aquifers,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
