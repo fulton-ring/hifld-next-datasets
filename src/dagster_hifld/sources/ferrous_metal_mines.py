@@ -66,8 +66,8 @@ METADATA_SHA256 = "8302b0f0028247f00d0a96a3b9d537c2e8db712f2425e09a2f1fc1317f94a
 ARCHIVE_CANONICAL_URL = "http://dds.cr.usgs.gov/pub/data/nationalatlas/minop3x020_nt00020.tar.gz"
 MAX_ARCHIVE_BYTES = 64_000_000
 MAX_METADATA_BYTES = 128_000
-REQUIRED_MEMBERS = frozenset(STEM + suffix for suffix in (".shp", ".shx", ".dbf", ".txt"))
-OPTIONAL_MEMBERS = frozenset(STEM + suffix for suffix in (".prj", ".sbn", ".sbx", ".shp.xml"))
+REQUIRED_MEMBERS = frozenset(STEM + suffix for suffix in (".shp", ".shx", ".dbf"))
+OPTIONAL_MEMBERS = frozenset(STEM + suffix for suffix in (".prj", ".txt", ".sbn", ".sbx", ".shp.xml"))
 DBF_FIELD_NAMES = (
     "MINOP3X020", "COMMODITY", "SITE_NAME", "COMPANY_NA", "STATE_LOCA",
     "COUNTY", "LATITUDE", "LONGITUDE", "PLANT_MIN",
