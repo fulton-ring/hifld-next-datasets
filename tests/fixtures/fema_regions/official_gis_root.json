@@ -1,0 +1,25 @@
+{
+ "currentVersion": 11.5,
+ "folders": [
+  "DR",
+  "Exercise",
+  "FEMA",
+  "GP",
+  "NRI",
+  "NSS",
+  "Partner",
+  "R7",
+  "TEMPO",
+  "Utilities"
+ ],
+ "services": [
+  {
+   "name": "GreatLakes",
+   "type": "FeatureServer"
+  },
+  {
+   "name": "GreatLakes",
+   "type": "MapServer"
+  }
+ ]
+}
