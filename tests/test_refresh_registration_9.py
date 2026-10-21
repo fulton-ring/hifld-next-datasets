@@ -13,6 +13,11 @@ class AirportAreaRefreshRegistrationTests(unittest.TestCase):
         self.assertEqual(set(job.asset_layer.executable_asset_keys), {
             AssetKey(["ingest", "airport-area-usace-ienc", "airport-area-usace-ienc"])
         })
+        check_nodes = set(job.graph.node_names()) - {
+            "ingest__airport_area_usace_ienc__airport_area_usace_ienc"
+        }
+        self.assertEqual(len(check_nodes), 3)
+        self.assertTrue(all("usace_airport_area_" in node for node in check_nodes))
         schedule = repository.get_schedule_def("usace_airport_area_draft_refresh_schedule")
         self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
         self.assertEqual(schedule.cron_schedule, "0 8 1 * *")
