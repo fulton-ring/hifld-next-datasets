@@ -48,6 +48,7 @@ from dagster_hifld.assets.nces_public_schools import nces_public_schools
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
+from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
@@ -117,6 +118,7 @@ hifld_ingest_assets = [
     usace_pile_locations_usace_ienc,
     usace_pipeline_areas_usace_ienc,
     usace_data_quality_areas_usace_ienc,
+    usace_dumping_ground_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
     nces_private_schools_2023_24,
