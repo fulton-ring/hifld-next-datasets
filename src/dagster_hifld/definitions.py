@@ -16,8 +16,34 @@ from dagster import (
 
 from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.quaternary_fault_lines import (
+    quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
     quaternary_fault_lines_population_complete,
+)
+from dagster_hifld.assets.faa import (
+    faa_airspace_draft_refresh_job,
+    faa_airspace_draft_refresh_schedule,
+)
+from dagster_hifld.assets.noaa_contiguous import (
+    noaa_contiguous_draft_refresh_job,
+    noaa_contiguous_draft_refresh_schedule,
+)
+from dagster_hifld.assets.noaa import (
+    noaa_eez_draft_refresh_job,
+    noaa_eez_draft_weekly_schedule,
+)
+from dagster_hifld.assets.usace_pylon_areas import (
+    usace_pylon_areas_draft_schedule,
+    usace_pylon_areas_complete,
+    usace_pylon_areas_draft_job,
+)
+from dagster_hifld.assets.usace_pylon_locations import (
+    pylon_locations_draft_refresh_job,
+    pylon_locations_draft_refresh_schedule,
+)
+from dagster_hifld.assets.fuel_stations import (
+    fuel_stations_draft_refresh_job,
+    fuel_stations_draft_refresh_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -36,7 +62,6 @@ from dagster_hifld.source_formats import (
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
 )
-
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -412,8 +437,25 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=[*hifld_asset_checks, quaternary_fault_lines_population_complete],
-    schedules=[quaternary_fault_lines_draft_schedule],
+    asset_checks=[*hifld_asset_checks, quaternary_fault_lines_population_complete, usace_pylon_areas_complete],
+    jobs=[
+        quaternary_fault_lines_draft_job,
+        faa_airspace_draft_refresh_job,
+        noaa_eez_draft_refresh_job,
+        noaa_contiguous_draft_refresh_job,
+        usace_pylon_areas_draft_job,
+        pylon_locations_draft_refresh_job,
+        fuel_stations_draft_refresh_job,
+    ],
+    schedules=[
+        quaternary_fault_lines_draft_schedule,
+        usace_pylon_areas_draft_schedule,
+        faa_airspace_draft_refresh_schedule,
+        noaa_eez_draft_weekly_schedule,
+        noaa_contiguous_draft_refresh_schedule,
+        pylon_locations_draft_refresh_schedule,
+        fuel_stations_draft_refresh_schedule,
+    ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
