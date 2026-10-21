@@ -8,6 +8,7 @@ import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
+from uuid import uuid4
 
 import httpx
 import pyarrow as pa
@@ -15,7 +16,8 @@ import pyarrow.parquet as pq
 import pyproj
 
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
 
 DATASET_SLUG = "docks-usace-bts"
 FILE_SLUG = DATASET_SLUG
@@ -35,6 +37,37 @@ def _sha(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _safe_version(value: str) -> bool:
+    return (isinstance(value, str) and 1 <= len(value) <= 128
+            and all(ch.isascii() and (ch.isalnum() or ch in "._-") for ch in value)
+            and value not in {".", ".."})
+
+
+def _reserve_target(staging, version):
+    if (not isinstance(staging, StagingStorageResource)
+            or isinstance(staging, PublishedStorageResource)
+            or not staging.use_local or staging.bucket or staging.prefix
+            or not staging.local_dir):
+        raise ValueError("docks_requires_explicit_unprefixed_local_staging")
+    if not _safe_version(version):
+        raise ValueError("unsafe_docks_target_version")
+    if staging.list_keys(DATASET_SLUG, FILE_SLUG, version):
+        raise ValueError("docks_target_version_not_empty")
+    key = f"{DATASET_SLUG}/{FILE_SLUG}/{version}/metadata/target_reservation.json"
+    write_immutable(staging, key, _canonical({"reserved_at": datetime.now(timezone.utc).isoformat(), "version": version}))
+
+
+def _write_target(staging, version, filename, data):
+    key = f"{DATASET_SLUG}/{FILE_SLUG}/{version}/{filename}"
+    write_immutable(staging, key, data)
+
+
+def _expected_request(method, url, params):
+    if method == "POST":
+        return url, urlencode(params).encode("ascii")
+    return str(httpx.URL(url).copy_merge_params(params)), b""
+
+
 def _source_modified_date(value):
     if type(value) is not int or value < 0:
         raise ValueError("source_edit_timestamp_missing")
@@ -42,6 +75,8 @@ def _source_modified_date(value):
 
 
 def _request(client, staging, version, name, url, params, budget, replay_prefix=None):
+    method = "POST" if name.startswith("page_") else "GET"
+    expected_url, expected_body = _expected_request(method, url, params)
     if replay_prefix is not None:
         body = staging.read_key(f"{replay_prefix}/raw/{name}.body")
         wire = staging.read_key(f"{replay_prefix}/raw/{name}.wire")
@@ -50,18 +85,19 @@ def _request(client, staging, version, name, url, params, budget, replay_prefix=
         if (receipt.get("complete") is not True or receipt.get("status") != 200
                 or receipt.get("sha256") != _sha(body) or receipt.get("bytes") != len(body)
                 or receipt.get("wire_sha256") != _sha(wire) or receipt.get("wire_bytes") != len(wire)
-                or receipt.get("url", "").split("?", 1)[0] != url):
+                or receipt.get("method") != method or receipt.get("url") != expected_url
+                or receipt.get("final_url") != expected_url):
             raise ValueError("retained_capture_receipt_mismatch:" + name)
         request_body = b""
-        if name.startswith("page_"):
+        if method == "POST":
             request_body = staging.read_key(f"{replay_prefix}/raw/{name}.request.body")
-            if (receipt.get("method") != "POST" or receipt.get("request_body_sha256") != _sha(request_body)
-                    or receipt.get("request_body_bytes") != len(request_body)):
+            if (request_body != expected_body or receipt.get("request_body_sha256") != _sha(expected_body)
+                    or receipt.get("request_body_bytes") != len(expected_body)):
                 raise ValueError("retained_capture_request_mismatch:" + name)
         for suffix, data in (("body", body), ("wire", wire), ("receipt.json", receipt_raw)):
-            staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.{suffix}", data)
+            _write_target(staging, version, f"raw/{name}.{suffix}", data)
         if request_body:
-            staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.request.body", request_body)
+            _write_target(staging, version, f"raw/{name}.request.body", request_body)
         budget[0] += len(body) + len(wire)
         if budget[0] > MAX_BYTES:
             raise ValueError("source_total_capture_budget_exceeded")
@@ -71,8 +107,7 @@ def _request(client, staging, version, name, url, params, budget, replay_prefix=
         return parsed
     body_parts, wire_parts = [], []
     response_obj = None
-    method = "POST" if name.startswith("page_") else "GET"
-    request_body = urlencode(params).encode("ascii") if method == "POST" else b""
+    request_body = expected_body
     try:
         with client.stream(method, url, params=params if method == "GET" else None,
                            data=params if method == "POST" else None,
@@ -85,6 +120,19 @@ def _request(client, staging, version, name, url, params, budget, replay_prefix=
                 retain_wire=wire_parts.append, retain_decoded=body_parts.append,
             )
     except Exception as exc:
+        body, wire = b"".join(body_parts), b"".join(wire_parts)
+        attempt = f"{name}.{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.{uuid4().hex[:8]}"
+        partial_receipt = {"method": method, "url": expected_url,
+            "final_url": str(response_obj.url) if response_obj is not None else expected_url,
+            "request_body_bytes": len(request_body), "request_body_sha256": _sha(request_body) if request_body else None,
+            "status": response_obj.status_code if response_obj is not None else None,
+            "observed_at": datetime.now(timezone.utc).isoformat(), "bytes": len(body), "sha256": _sha(body),
+            "wire_bytes": len(wire), "wire_sha256": _sha(wire), "complete": False,
+            "error_code": "transport_error", "error_type": type(exc).__name__}
+        for suffix, data in (("body", body), ("wire", wire), ("receipt.json", _canonical(partial_receipt))):
+            _write_target(staging, version, f"quarantine/partial/{attempt}.{suffix}", data)
+        if request_body:
+            _write_target(staging, version, f"quarantine/partial/{attempt}.request.body", request_body)
         raise ValueError("source_transport_error:" + type(exc).__name__) from exc
     body, wire = b"".join(body_parts), b"".join(wire_parts)
     receipt = {"method": method, "url": str(response_obj.request.url), "final_url": final_url,
@@ -98,9 +146,9 @@ def _request(client, staging, version, name, url, params, budget, replay_prefix=
     if budget[0] > MAX_BYTES:
         raise ValueError("source_total_capture_budget_exceeded")
     for suffix, data in (("body", body), ("wire", wire), ("receipt.json", _canonical(receipt))):
-        staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.{suffix}", data)
+        _write_target(staging, version, f"raw/{name}.{suffix}", data)
     if request_body:
-        staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.request.body", request_body)
+        _write_target(staging, version, f"raw/{name}.request.body", request_body)
     if not capture.complete or capture.status_code != 200 or final_url != str(response_obj.request.url):
         raise ValueError("incomplete_source_response:" + name)
     parsed = json.loads(body)
@@ -203,6 +251,9 @@ def _parquet(fields, features):
 
 def capture(staging, version, client=None, replay_version=None):
     """Capture the entire observed layer; retain exact pages, wire bodies, and receipts."""
+    if replay_version is not None and not _safe_version(replay_version):
+        raise ValueError("unsafe_docks_replay_version")
+    _reserve_target(staging, version)
     replay_prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{replay_version}" if replay_version else None
     owned = client is None and replay_prefix is None
     client = client or (httpx.Client(timeout=90, follow_redirects=False) if replay_prefix is None else None)
@@ -285,7 +336,7 @@ def capture(staging, version, client=None, replay_version=None):
                  or not (-90 <= feature["geometry"]["y"] <= 90))
             for feature in features)
         parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
-        staging.write(DATASET_SLUG, FILE_SLUG, version, parquet_path, parquet)
+        _write_target(staging, version, parquet_path, parquet)
         ids_sha = _sha(_canonical(ids)); schema_sha = _sha(_canonical([(f["name"], f["type"]) for f in fields]))
         source_record_sha = _sha(_canonical([f["attributes"] for f in features]))
         identity = processing_identity(Path(__file__).parents[3])
@@ -323,8 +374,8 @@ def capture(staging, version, client=None, replay_version=None):
             "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Source-faithful typed attributes and original point XY are retained with explicit EPSG:4269 metadata; this is an unapproved candidate, not release evidence.","objects":[{"path":parquet_path,"sha256":_sha(parquet),"bytes":len(parquet)}]}}},
             "unsupported_output_formats":{"shapefile_zip":"Field-name/value coercion is unapproved.","geopackage":"No output field mapping or baseline compatibility approval.","pmtiles":"No display transformation is approved."},
             "release_accepted":False,"promotion_allowed":False}
-        staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/source_manifest.json", _canonical(manifest))
-        staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/native_capture.json", _canonical({
+        _write_target(staging, version, "metadata/source_manifest.json", _canonical(manifest))
+        _write_target(staging, version, "metadata/native_capture.json", _canonical({
             "layer_url":LAYER_URL,"capture_started_at":datetime.now(timezone.utc).isoformat(),"feature_count":len(features),
             "count_before":before_count,"count_after":after_count,"ids_sha256":ids_sha,"schema_sha256":schema_sha,
             "record_attributes_sha256":source_record_sha,"native_parquet_sha256":_sha(parquet),"native_crs":"EPSG:4269",
