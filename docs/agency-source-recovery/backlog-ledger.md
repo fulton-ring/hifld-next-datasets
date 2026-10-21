@@ -6,6 +6,20 @@ Existing priority PRs #420/#3, #419/#4, #427/#10 and #428/#11 were recovered wit
 
 The recent checkpoint below distinguishes completed reviewed drafts, review revisions, active work and evidenced external blockers. A docs-only research branch does not complete a feasible pipeline. Missing baseline/contract approval permits draft implementation and local testing; it blocks release. Other issue records still need triage or reconciliation of prior work; they are not silently classified as blocked.
 
+### Latest verified checkpoint — 2026-10-21 16:10 UTC
+
+All 415 inventory rows are preserved. This is a named-status update, not a new open-PR census; the earlier 14:14 census remains historical. GitHub readbacks confirmed every named source issue below is still open. No issue was manually closed and no production data was published.
+
+Integration PR #578 merged as `ec102654516996c1a7e9c94048a4eef2ec9c032b`; its tree `c026e228efae47d6aa398281316a27cfc90072d5` matches exact reviewed integration head `de8b1ab0c97cd35735f88b4ab6dc720f34162133`. Root review 5602416129 and CI build passed. Root independently verified ancestry and all 26 source-owned blobs; combined Definitions loaded 96 assets and all 25 schedules remained STOPPED. Original PRs #572–#577 are now `merged=true` automatically because #578 introduced their exact heads through ancestry; none was manually closed. Issues #181, #260, #269, #270, #271 and #274 remain open with canonical original-PR markers and Needs decision board markers. Their source/rights/continuity/contract/release decisions remain pending.
+
+Issue #273 PR #571 separately merged at `8d789dbb92a17989c52365f740f4167a0f5819df`, tree `1721b18618b504ea1048c9bd0ea689368c84c97e`, review 5602265631, CI passed. Canonical marker posted; issue remains open.
+
+Three additional reviewed drafts are pending integration: PR #579/#278 at `bb6e54f00860c33b0ec7e5307bbb824525674702` (review 5602488821), retaining the 22,510-row 2023–24 NCES private-schools cohort with changed-successor and contract decisions pending; PR #580/#363 at updated head `5bc534dd6477e1ed83df7a27c497014c6540ab29` (review 5602607422), where the prior output blocker is fixed and the 112 MB Parquet output was checked for all 3,235 attributes, WKB and mixed geometry; and PR #581/#281 at `d6c19f33786bd1379660b3518c1ac7ff4c73d0ad` (review 5602637454), preserving 102,178 native NCES point records and 23 fields. All remain drafts; schedules stay STOPPED and release acceptance remains false.
+
+Current work notes: #279 FWS partial capture is being completed via official exports; #280 source investigation is ongoing. #37 retains open PR #542 at `f5c7a5daa64b7ed8c86c044963793bd3cbdb8f0d` on its existing stacked base. #2 retains open PR #418 at `7f123a9fe8dc56d0eae7f95234791bd6ac41868d`, based on #3. These are retained work references, not new completion claims.
+
+No new census, source materialization, capture, gate run, or full-suite replay was performed for this checkpoint. No paid/configuration change was reported. Earlier PR-count snapshots must not be described as current.
+
 ### Latest verified checkpoint — 2026-10-21 15:40 UTC
 
 All 415 inventory rows remain represented. This is a named PR/status update, not a fresh repository census; the 14:14 open-PR census remains historical and must not be presented as current. Source issues remain open. No issue closure, release acceptance, schedule activation or production publication occurred.
