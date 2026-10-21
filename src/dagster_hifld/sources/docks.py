@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,7 +41,34 @@ def _source_modified_date(value):
     return datetime.fromtimestamp(value / 1000, timezone.utc).date().isoformat()
 
 
-def _request(client, staging, version, name, url, params, budget):
+def _request(client, staging, version, name, url, params, budget, replay_prefix=None):
+    if replay_prefix is not None:
+        body = staging.read_key(f"{replay_prefix}/raw/{name}.body")
+        wire = staging.read_key(f"{replay_prefix}/raw/{name}.wire")
+        receipt_raw = staging.read_key(f"{replay_prefix}/raw/{name}.receipt.json")
+        receipt = json.loads(receipt_raw)
+        if (receipt.get("complete") is not True or receipt.get("status") != 200
+                or receipt.get("sha256") != _sha(body) or receipt.get("bytes") != len(body)
+                or receipt.get("wire_sha256") != _sha(wire) or receipt.get("wire_bytes") != len(wire)
+                or receipt.get("url", "").split("?", 1)[0] != url):
+            raise ValueError("retained_capture_receipt_mismatch:" + name)
+        request_body = b""
+        if name.startswith("page_"):
+            request_body = staging.read_key(f"{replay_prefix}/raw/{name}.request.body")
+            if (receipt.get("method") != "POST" or receipt.get("request_body_sha256") != _sha(request_body)
+                    or receipt.get("request_body_bytes") != len(request_body)):
+                raise ValueError("retained_capture_request_mismatch:" + name)
+        for suffix, data in (("body", body), ("wire", wire), ("receipt.json", receipt_raw)):
+            staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.{suffix}", data)
+        if request_body:
+            staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.request.body", request_body)
+        budget[0] += len(body) + len(wire)
+        if budget[0] > MAX_BYTES:
+            raise ValueError("source_total_capture_budget_exceeded")
+        parsed = json.loads(body)
+        if not isinstance(parsed, dict) or "error" in parsed:
+            raise ValueError("invalid_arcgis_response:" + name)
+        return parsed
     body_parts, wire_parts = [], []
     response_obj = None
     method = "POST" if name.startswith("page_") else "GET"
@@ -155,8 +183,6 @@ def _parquet(fields, features):
         x, y = point.get("x"), point.get("y")
         if type(x) not in (int, float) or type(y) not in (int, float):
             raise ValueError("source_point_geometry_invalid")
-        if not (-180 <= x <= 180 and -90 <= y <= 90):
-            raise ValueError("source_point_out_of_bounds")
         xs.append(float(x)); ys.append(float(y)); geometries.append(struct.pack("<BIdd", 1, 1, float(x), float(y)))
     arrays["native_x"] = pa.array(xs, type=pa.float64())
     arrays["native_y"] = pa.array(ys, type=pa.float64())
@@ -171,13 +197,14 @@ def _parquet(fields, features):
     return sink.getvalue().to_pybytes()
 
 
-def capture(staging, version, client=None):
+def capture(staging, version, client=None, replay_version=None):
     """Capture the entire observed layer; retain exact pages, wire bodies, and receipts."""
-    owned = client is None
-    client = client or httpx.Client(timeout=90, follow_redirects=False)
+    replay_prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{replay_version}" if replay_version else None
+    owned = client is None and replay_prefix is None
+    client = client or (httpx.Client(timeout=90, follow_redirects=False) if replay_prefix is None else None)
     budget = [0]
     try:
-        layer = _request(client, staging, version, "layer", LAYER_URL, {"f": "pjson"}, budget)
+        layer = _request(client, staging, version, "layer", LAYER_URL, {"f": "pjson"}, budget, replay_prefix)
         if layer.get("id") != 0 or layer.get("name") != "Navigation Facilities (Dock)" or layer.get("geometryType") != "esriGeometryPoint":
             raise ValueError("source_layer_identity_drift")
         advanced = layer.get("advancedQueryCapabilities")
@@ -193,9 +220,9 @@ def capture(staging, version, client=None):
         if fields[0]["name"] != "OBJECTID" or fields[0]["type"] != "esriFieldTypeOID":
             raise ValueError("source_objectid_contract_drift")
         before_count = _request(client, staging, version, "count_before", LAYER_URL + "/query",
-                                {"f":"json", "where":"1=1", "returnCountOnly":"true"}, budget).get("count")
+                                {"f":"json", "where":"1=1", "returnCountOnly":"true"}, budget, replay_prefix).get("count")
         before_result = _request(client, staging, version, "ids_before", LAYER_URL + "/query",
-                                 {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget)
+                                 {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget, replay_prefix)
         ids = before_result.get("objectIds")
         if before_count != EXPECTED_COUNT or not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or any(type(i) is not int for i in ids):
             raise ValueError("source_population_drift")
@@ -208,7 +235,7 @@ def capture(staging, version, client=None):
             result = _request(client, staging, version, f"page_{start:07d}", LAYER_URL + "/query", {
                 "f":"json", "objectIds":",".join(map(str, wanted)), "outFields":"*",
                 "returnGeometry":"true", "outSR":"4269", "orderByFields":"OBJECTID ASC"
-            }, budget)
+            }, budget, replay_prefix)
             page = result.get("features")
             if (not isinstance(page, list) or len(page) != len(wanted) or result.get("exceededTransferLimit") is True
                     or result.get("geometryType") != "esriGeometryPoint"):
@@ -234,13 +261,25 @@ def capture(staging, version, client=None):
             features.extend(page)
             pages.append({"offset": start, "requested_ids": wanted, "returned_ids": returned, "count": len(page)})
         after_count = _request(client, staging, version, "count_after", LAYER_URL + "/query",
-                               {"f":"json", "where":"1=1", "returnCountOnly":"true"}, budget).get("count")
+                               {"f":"json", "where":"1=1", "returnCountOnly":"true"}, budget, replay_prefix).get("count")
         after_result = _request(client, staging, version, "ids_after", LAYER_URL + "/query",
-                                {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget)
+                                {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget, replay_prefix)
         after_ids = after_result.get("objectIds")
         if after_count != before_count or not isinstance(after_ids, list) or sorted(after_ids) != ids:
             raise ValueError("source_population_changed_during_capture")
+        source_capture_started_at = (
+            json.loads(staging.read_key(f"{replay_prefix}/raw/layer.receipt.json")).get("observed_at")
+            if replay_prefix else json.loads(staging.read_key(
+                f"{DATASET_SLUG}/{FILE_SLUG}/{version}/raw/layer.receipt.json")).get("observed_at")
+        )
         parquet = _parquet(fields, features)
+        invalid_coordinate_count = sum(
+            feature.get("geometry") is not None
+            and (not math.isfinite(feature["geometry"].get("x", math.nan))
+                 or not math.isfinite(feature["geometry"].get("y", math.nan))
+                 or not (-180 <= feature["geometry"]["x"] <= 180)
+                 or not (-90 <= feature["geometry"]["y"] <= 90))
+            for feature in features)
         staging.write(DATASET_SLUG, FILE_SLUG, version, f"metadata/native_candidate/{FILE_SLUG}.parquet", parquet)
         geojson = _canonical({"type":"FeatureCollection","features":[
             {"type":"Feature","id":feature["attributes"]["OBJECTID"],"properties":feature["attributes"],
@@ -274,14 +313,16 @@ def capture(staging, version, client=None):
             "layer_url":LAYER_URL,"capture_started_at":datetime.now(timezone.utc).isoformat(),"feature_count":len(features),
             "count_before":before_count,"count_after":after_count,"ids_sha256":ids_sha,"schema_sha256":schema_sha,
             "record_attributes_sha256":source_record_sha,"native_parquet_sha256":_sha(parquet),"geojson_sha256":_sha(geojson),"native_crs":"EPSG:4269",
-            "pages":pages,"capture_budget_bytes":budget[0],"source_edit_timestamp_epoch_ms":layer.get("editingInfo",{}).get("dataLastEditDate"),"catalog_description_count":"nearly 12,000",
-            "api_observed_count":len(features),"catalog_api_count_discrepancy":True,
+            "pages":pages,"capture_started_at":source_capture_started_at,"processed_at":datetime.now(timezone.utc).isoformat(),
+            "replayed_from_version":replay_version,"capture_budget_bytes":budget[0],"source_edit_timestamp_epoch_ms":layer.get("editingInfo",{}).get("dataLastEditDate"),"catalog_description_count":"nearly 12,000",
+            "api_observed_count":len(features),"catalog_api_count_discrepancy":True,"geometries_outside_epsg4326_coordinate_domain_preserved":invalid_coordinate_count,
             "code_identity":identity,
             "historical_hifld_equivalence_accepted":False,"rights_accepted":False,"source_accepted":False,"release_accepted":False}))
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),
             "source_population_complete":True,"source_id_sha256":ids_sha,"source_schema_sha256":schema_sha,
             "source_record_sha256":source_record_sha,"native_parquet_sha256":_sha(parquet),
             "null_geometry_count":sum(feature.get("geometry") is None for feature in features),
+            "invalid_coordinate_count":invalid_coordinate_count,
             "source_coverage_scope":manifest["source_coverage_scope"],"candidate_ready":"metadata/source_manifest.json",
             "source_accepted":False,"rights_accepted":False,"coverage_accepted":False,"release_accepted":False}
     finally:

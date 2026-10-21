@@ -1,6 +1,6 @@
 """Draft assets for the current USACE/BTS Navigation Facilities (Dock) layer."""
 from dagster import (
-    AssetCheckResult, AssetKey, AssetSelection,
+    AssetCheckResult, AssetKey, AssetSelection, Config,
     DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
@@ -8,6 +8,10 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.docks import DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture
+
+
+class DocksConfig(Config):
+    replay_version: str = ""
 
 
 @asset(
@@ -20,9 +24,9 @@ from dagster_hifld.sources.docks import DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG,
         "HIFLD Docks equivalence and source, coverage, rights, and release acceptance remain pending."
     ),
 )
-def docks_usace_bts(context, staging_storage: StagingStorageResource) -> dict:
+def docks_usace_bts(context, config: DocksConfig, staging_storage: StagingStorageResource) -> dict:
     version = build_version_id(context)
-    result = capture(staging_storage, version)
+    result = capture(staging_storage, version, replay_version=config.replay_version or None)
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
         [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, version)],
@@ -54,10 +58,13 @@ def docks_source_population_complete(candidate: dict) -> AssetCheckResult:
 @asset_check(asset=docks_usace_bts, blocking=True)
 def docks_source_geometry_quality(candidate: dict) -> AssetCheckResult:
     nulls = candidate.get("null_geometry_count")
+    invalid_coordinates = candidate.get("invalid_coordinate_count")
     passed = (candidate.get("source_population_complete") is True
-              and type(nulls) is int and nulls == 0)
+              and type(nulls) is int and nulls == 0
+              and type(invalid_coordinates) is int and invalid_coordinates == 0)
     return AssetCheckResult(passed=passed, metadata={
         "null_source_geometries": nulls if nulls is not None else "missing",
+        "source_coordinates_outside_epsg4269_geographic_domain": invalid_coordinates if invalid_coordinates is not None else "missing",
         "rows_preserved_in_candidate": candidate.get("feature_count", 0),
         "crs": "EPSG:4269",
         "source_schema_acceptance": False,
