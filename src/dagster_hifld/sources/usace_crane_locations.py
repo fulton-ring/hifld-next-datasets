@@ -352,7 +352,10 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     if shutil.disk_usage(base).free < 300_000_000: raise ValueError("disk_floor_before_acquisition")
     requested=Path(capture_directory).absolute() if capture_directory else None
     replay=bool(requested and (requested/"capture_manifest.json").exists())
+    recover_receipted=bool(requested and not replay and any(requested.glob("*.receipt.json")))
     if replay:
+        root=requested
+    elif recover_receipted:
         root=requested
     elif requested:
         if any(requested.glob("*.body")) or any(requested.glob("*.wire")) or any(requested.glob("*.receipt.json")):
@@ -398,6 +401,26 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
                     or receipt.get("wire_bytes")!=len(attempt_wire) or receipt.get("wire_sha256")!=_sha(attempt_wire)
                     or receipt!=retained_attempt_receipt):
                     raise ValueError("retained_failed_attempt_bytes_changed:"+name)
+        elif recover_receipted:
+            ids_body, ids_receipt = _load_replay(root, "ids_seed")
+            ids = json.loads(ids_body).get("objectIds")
+            if (not isinstance(ids, list) or len(ids) != EXPECTED_COUNT
+                    or any(type(value) is not int for value in ids) or sorted(ids) != EXPECTED_IDS):
+                raise ValueError("retained_unsealed_seed_roster_invalid")
+            names_urls = [("ids_seed", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})), *_capture_roster(EXPECTED_IDS)]
+            expected_names = {name for name, _url in names_urls}
+            actual_names = {path.name.removesuffix(".receipt.json") for path in root.glob("*.receipt.json")}
+            if actual_names != expected_names:
+                raise ValueError("retained_unsealed_capture_roster_mismatch")
+            captures = {}
+            for name, expected_url in names_urls:
+                body, receipt = _load_replay(root, name)
+                if receipt.get("url") != expected_url or receipt.get("final_url") != expected_url:
+                    raise ValueError("retained_unsealed_capture_url_mismatch:" + name)
+                captures[name] = (body, receipt)
+            expected_files = {f"{name}.{suffix}" for name in expected_names for suffix in ("body", "wire", "receipt.json")}
+            if {path.name for path in root.iterdir() if path.is_file()} != expected_files:
+                raise ValueError("retained_unsealed_capture_artifact_roster_mismatch")
         else:
             budget_root=requested if requested else root.parent
             existing_bytes=sum(p.stat().st_size for p in budget_root.rglob("*")
@@ -433,7 +456,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name=="bts_item" else "producer_publication","canonical_url":BTS_ITEM_URL if name=="bts_item" else SERVICE_DIRECTORY_URL if name=="service_directory" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"BTS describes bi-monthly IENC updates but does not identify this layer snapshot's edition date."} for name,(_body,receipt) in sorted(captures.items())]
+    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name=="bts_item" else "producer_publication","delegation_evidence":{"distributor":"USDOT BTS","item_id":BTS_ITEM_ID,"item_url":BTS_ITEM_URL,"service_directory_url":SERVICE_DIRECTORY_URL,"basis":"Captured USDOT BTS item identifies the IENC dataset as a USACE/AGC product and links the official IENC Feature Classes service; this supports distribution provenance only, not edition, freshness, rights, or release acceptance."} if name=="bts_item" else None,"canonical_url":BTS_ITEM_URL if name=="bts_item" else SERVICE_DIRECTORY_URL if name=="service_directory" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"BTS describes bi-monthly IENC updates but does not identify this layer snapshot's edition date."} for name,(_body,receipt) in sorted(captures.items())]
     manifest={"schema_version":1,"approved":False,"title":"Crane Locations (USACE IENC)","description":"Complete observed CRANES_POINT feature class from the official USACE IENC service; unapproved faithful candidate. The inland IENC chart extent is not a nationwide crane inventory. Historical HIFLD equivalence, source edition/freshness, schema/ID contract, rights, baseline and release decisions remain pending.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Native point x/y retained in captured raw Esri JSON and WKB at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":{"distribution_attestation":{"item_id":BTS_ITEM_ID,"owner":"USDOT_BTS","url":BTS_ITEM_URL,"description":"BTS item describes bi-monthly USACE/AGC IENC updates and links the official service."},"official_service_directory":SERVICE_DIRECTORY_URL,"official_service":SERVICE_URL,"layer":LAYER_URL,"scope":"This candidate represents only the complete observed CRANES_POINT layer, not every USACE crane or a nationwide inventory."},"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Only native fields, IDs and point coordinates are represented in the candidate; output mapping, source rights and release decisions remain pending.","objects":[{"path":"geoparquet/crane-locations-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":UNSUPPORTED_OUTPUT_FORMATS}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"CRANES_POINT","official_source_item":f"USDOT_BTS {BTS_ITEM_ID}","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
