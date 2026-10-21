@@ -194,6 +194,10 @@ from dagster_hifld.assets.usace_airport_area import (
     usace_airport_area_draft_job,
     usace_airport_area_draft_schedule,
 )
+from dagster_hifld.assets.combined_statistical_areas import (
+    csa_source_integrity_job,
+    csa_source_integrity_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -656,6 +660,7 @@ defs = Definitions(
         red_cross_headquarters_draft_job,
         usace_airport_area_draft_job,
         amtrak_draft_refresh_job,
+        csa_source_integrity_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -697,6 +702,7 @@ defs = Definitions(
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
         amtrak_draft_refresh_schedule,
+        csa_source_integrity_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
