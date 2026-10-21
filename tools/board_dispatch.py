@@ -150,6 +150,11 @@ def dispatch_cards(board, api, dry_run=False, now=None):
     for card in window:
         runs = ledger(api)
         known = {r['id'] for r in runs}
+        acknowledged = {r['id']: r for r in reservations}
+        # The run can appear before GitHub publishes its input-derived title.
+        # Our dispatch acknowledgment already binds this ID to the exact task.
+        runs = [dict(r, display_title=acknowledged[r['id']]['display_title'])
+                if r['id'] in acknowledged else r for r in runs]
         runs += [r for r in reservations if r['id'] not in known]
         role = 'review' if card['status'] == 'Review' else 'implementation'
         if not capacity(runs, role):
