@@ -46,6 +46,11 @@ from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
 )
+from dagster_hifld.assets.usace_recommended_tracks import (
+    recommended_tracks_draft_job,
+    recommended_tracks_draft_schedule,
+    usace_recommended_tracks_complete,
+)
 from dagster_hifld.assets.fuel_stations import (
     fuel_stations_draft_refresh_job,
     fuel_stations_draft_refresh_schedule,
@@ -53,6 +58,10 @@ from dagster_hifld.assets.fuel_stations import (
 from dagster_hifld.assets.secondary_school_districts import (
     secondary_school_districts_draft_refresh_job,
     secondary_school_districts_draft_refresh_schedule,
+)
+from dagster_hifld.assets.unified_school_districts import (
+    unified_school_districts_draft_refresh_job,
+    unified_school_districts_draft_refresh_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -450,6 +459,7 @@ defs = Definitions(
         *hifld_asset_checks,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
+        usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
     ],
     jobs=[
@@ -459,9 +469,11 @@ defs = Definitions(
         noaa_contiguous_draft_refresh_job,
         usace_pylon_areas_draft_job,
         pylon_locations_draft_refresh_job,
+        recommended_tracks_draft_job,
         fuel_stations_draft_refresh_job,
         usace_overhead_pipeline_lines_draft_job,
         secondary_school_districts_draft_refresh_job,
+        unified_school_districts_draft_refresh_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -470,9 +482,11 @@ defs = Definitions(
         noaa_eez_draft_weekly_schedule,
         noaa_contiguous_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
+        recommended_tracks_draft_schedule,
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
+        unified_school_districts_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
