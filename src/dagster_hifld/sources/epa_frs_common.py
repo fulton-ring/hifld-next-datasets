@@ -14,7 +14,7 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 from uuid import uuid4
 
 import httpx
@@ -34,7 +34,7 @@ from dagster_hifld.construction_provenance import (
     _MAX_PATH_BYTES,
     validate_construction_code_identity,
 )
-from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
 
@@ -69,8 +69,13 @@ def candidate_prefix(dataset_slug: str, file_slug: str, version: str) -> str:
 
 
 def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
-                *, max_bytes: int = 128 * 1024 * 1024) -> tuple[bytes, dict[str, object]]:
-    """Persist complete GET decoded and wire bodies plus a hash-pinned receipt."""
+                *, max_bytes: int = 128 * 1024 * 1024,
+                reserve: Callable[[CaptureProgress], None] | None = None) -> tuple[bytes, dict[str, object]]:
+    """Persist complete GET decoded and wire bodies plus a hash-pinned receipt.
+
+    Incomplete/status-failed responses and mid-stream HTTP errors still leave
+    bounded body/wire evidence and a receipt before this helper raises.
+    """
     capture_root.mkdir(parents=True, exist_ok=True)
     wire_path, body_path = capture_root / f"{name}.wire", capture_root / f"{name}.body"
     for path in (wire_path, body_path):
@@ -88,25 +93,49 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
         else:
             body_size += len(data); body_hash.update(data)
 
-    with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-        result = capture_http_response(
-            response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
-            reserve=lambda _progress: None,
-            retain_wire=lambda data: retain(wire_path, wire_hash, data, "wire"),
-            retain_decoded=lambda data: retain(body_path, body_hash, data, "body"),
-        )
-        final_url = str(response.url)
+    try:
+        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
+            result = capture_http_response(
+                response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
+                reserve=reserve or (lambda _progress: None),
+                retain_wire=lambda data: retain(wire_path, wire_hash, data, "wire"),
+                retain_decoded=lambda data: retain(body_path, body_hash, data, "body"),
+            )
+            final_url = str(response.url)
+            status = result.status_code
+            complete = result.complete
+            content_encoding = result.content_encoding
+            content_length = result.content_length
+            error_code = result.error_code
+    except httpx.HTTPError as exc:
+        # Connection/timeout failures before a response still get a durable receipt.
+        # Keep the exception class, never its text (which can contain request details).
+        wire_path.touch(exist_ok=True)
+        body_path.touch(exist_ok=True)
+        receipt = {
+            "method": "GET", "url": url, "final_url": None, "observed_at": observed,
+            "status": None, "complete_body": False,
+            "wire_bytes": 0, "wire_sha256": hashlib.sha256().hexdigest(),
+            "bytes": 0, "sha256": hashlib.sha256().hexdigest(),
+            "content_encoding": None, "content_length": None,
+            "error_code": "request_error", "error_type": type(exc).__name__,
+        }
+        (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+        raise ValueError(f"incomplete_source_capture:{name}") from None
+    wire_path.touch(exist_ok=True)
+    body_path.touch(exist_ok=True)
     receipt = {
         "method": "GET", "url": url, "final_url": final_url, "observed_at": observed,
-        "status": result.status_code, "complete_body": result.complete,
+        "status": status, "complete_body": complete,
         "wire_bytes": result.wire_bytes_retained, "wire_sha256": result.wire_sha256,
         "bytes": result.decoded_bytes_retained, "sha256": result.decoded_sha256,
-        "content_encoding": result.content_encoding, "content_length": result.content_length,
-        "error_code": result.error_code,
+        "content_encoding": content_encoding, "content_length": content_length,
+        "error_code": error_code,
+        "error_type": result.error_type,
     }
     (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
     wire_body, body = wire_path.read_bytes(), body_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
+    if (not complete or status != 200 or final_url != url
             or len(wire_body) != receipt["wire_bytes"] or _sha(wire_body) != receipt["wire_sha256"]
             or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]):
         raise ValueError(f"incomplete_source_capture:{name}")
