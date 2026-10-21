@@ -115,6 +115,10 @@ from dagster_hifld.assets.epa_power_generation import (
     epa_power_generation_draft_job,
     epa_power_generation_draft_schedule,
 )
+from dagster_hifld.assets.fuds_projects_points import (
+    fuds_projects_points_draft_schedule,
+    usace_fuds_projects_points_complete,
+)
 from dagster_hifld.assets.epa_small_scale import (
     epa_small_scale_source_integrity_job,
     epa_small_scale_source_integrity_schedule,
@@ -888,6 +892,7 @@ defs = Definitions(
         arc_regions_full_quality,
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
+        usace_fuds_projects_points_complete,
         epa_frs_naics_complete,
         epa_frs_naics_published_membership_compatible,
         gcca_warehouses_geometry_complete,
@@ -1090,6 +1095,7 @@ defs = Definitions(
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
         epa_power_generation_draft_schedule,
+        fuds_projects_points_draft_schedule,
         epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
