@@ -23,6 +23,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.epa_power_generation import _verify_first_candidate
 
 
 class EpaFrsCandidateLifecycleTests(unittest.TestCase):
@@ -90,6 +91,11 @@ class EpaFrsCandidateLifecycleTests(unittest.TestCase):
                 return verify_cached_candidate(storage, repo, state_key, prefix, version,
                     fingerprint, identity, record_sha, schema_sha, descriptors, {"source": receipt})
             self.assertTrue(reuse()["reused"])
+            self.assertTrue(_verify_first_candidate(
+                storage, prefix, state_key, version, fingerprint, identity,
+                {"source_record_sha256": record_sha, "source_schema_sha256": schema_sha},
+                set(objects), objects["geoparquet/native.parquet"],
+            )["reused"])
             rogue = Path(tmp) / prefix / "raw/unsealed.body"
             rogue.write_bytes(b"unsealed")
             with self.assertRaisesRegex(ValueError, "storage_roster_changed"):
