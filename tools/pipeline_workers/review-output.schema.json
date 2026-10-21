@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "summary",
+    "source_authority_verified",
+    "schema_compatible",
+    "ids_preserved"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "changes_requested",
+        "breaking_change"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "source_authority_verified": {
+      "type": "boolean"
+    },
+    "schema_compatible": {
+      "type": "boolean"
+    },
+    "ids_preserved": {
+      "type": "boolean"
+    }
+  }
+}

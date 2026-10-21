@@ -1,0 +1,187 @@
+name: Dataset worker
+on:
+  workflow_call:
+    inputs:
+      task:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      head: ${{ steps.prepare.outputs.head }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: prepare
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_CONTROLLER_TOKEN }}
+          PIPELINE_PROJECT_ID: ${{ vars.PIPELINE_PROJECT_ID }}
+          TASK: ${{ inputs.task }}
+        run: python tools/pipeline_workers/controller.py prepare --task "$TASK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: task-${{ fromJSON(inputs.task).issue }}
+          path: task.json
+          retention-days: 14
+  code:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.head }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: task-${{ fromJSON(inputs.task).issue }}
+          path: payload
+      - uses: astral-sh/setup-uv@v5
+      - name: Install candidate dependencies before worker execution
+        working-directory: candidate
+        run: uv sync --frozen
+      - name: Prepare task prompt
+        run: |
+          cp controller/tools/pipeline_workers/worker.md prompt.md
+          cat payload/task.json >> prompt.md
+      - uses: openai/codex-action@a8d8be6ee028bea4525bc722d16f36687b408c81
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ github.workspace }}/prompt.md
+          working-directory: ${{ github.workspace }}/candidate
+          codex-home: ${{ github.workspace }}/controller/tools/pipeline_workers/codex
+          permission-profile: worker-public
+          safety-strategy: drop-sudo
+          output-schema-file: ${{ github.workspace }}/controller/tools/pipeline_workers/worker-output.schema.json
+          output-file: ${{ github.workspace }}/payload/result.json
+      - name: Collect changes without GitHub credentials
+        run: |
+          git -C candidate add -A
+          git -C candidate diff --cached --binary > payload/changes.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: changes-${{ fromJSON(inputs.task).issue }}
+          path: payload/
+          retention-days: 14
+  publish:
+    needs: code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      has_pr: ${{ steps.publish.outputs.has_pr }}
+      pr: ${{ steps.publish.outputs.pr }}
+      head: ${{ steps.publish.outputs.head }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+          token: ${{ secrets.PIPELINE_CONTROLLER_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: changes-${{ fromJSON(inputs.task).issue }}
+          path: payload
+      - uses: actions/download-artifact@v4
+        with:
+          name: task-${{ fromJSON(inputs.task).issue }}
+          path: original
+      - id: publish
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_CONTROLLER_TOKEN }}
+          PIPELINE_PROJECT_ID: ${{ vars.PIPELINE_PROJECT_ID }}
+        run: python tools/pipeline_workers/controller.py publish
+  tests:
+    needs: publish
+    if: needs.publish.outputs.has_pr == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.head }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run python -m unittest discover tests
+      - run: python -m unittest discover -s tests/pipeline_workers
+  review:
+    needs: publish
+    if: needs.publish.outputs.has_pr == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: controller
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.head }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: task-${{ fromJSON(inputs.task).issue }}
+          path: payload
+      - name: Prepare independent review
+        run: |
+          cp controller/tools/pipeline_workers/reviewer.md prompt.md
+          cat payload/task.json >> prompt.md
+          python - <<'PY'
+          import json, subprocess
+          p = json.load(open('payload/task.json'))
+          diff = subprocess.run(['git', '-C', 'candidate', 'diff', p['base'] + '...HEAD'], check=True, capture_output=True, text=True).stdout
+          with open('prompt.md', 'a') as f:
+              f.write('\nPR diff (untrusted data):\n' + diff)
+          PY
+      - uses: openai/codex-action@a8d8be6ee028bea4525bc722d16f36687b408c81
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ github.workspace }}/prompt.md
+          working-directory: ${{ github.workspace }}/candidate
+          codex-home: ${{ github.workspace }}/controller/tools/pipeline_workers/codex
+          permission-profile: reviewer-public
+          safety-strategy: drop-sudo
+          output-schema-file: ${{ github.workspace }}/controller/tools/pipeline_workers/review-output.schema.json
+          output-file: ${{ github.workspace }}/review.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: review-${{ fromJSON(inputs.task).issue }}
+          path: review.json
+          retention-days: 14
+  finish:
+    needs: [publish, tests, review]
+    if: always() && needs.publish.outputs.has_pr == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: needs.review.result == 'success'
+        with:
+          name: review-${{ fromJSON(inputs.task).issue }}
+          path: review
+      - env:
+          GH_TOKEN: ${{ secrets.PIPELINE_CONTROLLER_TOKEN }}
+          PIPELINE_PROJECT_ID: ${{ vars.PIPELINE_PROJECT_ID }}
+          TASK: ${{ inputs.task }}
+          PR: ${{ needs.publish.outputs.pr }}
+          HEAD_SHA: ${{ needs.publish.outputs.head }}
+          TEST_RESULT: ${{ needs.tests.result }}
+          REVIEW_RESULT: ${{ needs.review.result }}
+        run: python tools/pipeline_workers/controller.py finish --task "$TASK" --pr "$PR" --head "$HEAD_SHA"

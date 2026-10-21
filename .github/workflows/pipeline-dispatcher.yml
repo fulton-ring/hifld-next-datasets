@@ -1,0 +1,58 @@
+name: Pipeline workers
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List eligible Codex cards without starting workers
+        type: boolean
+        default: true
+# Serialize the entire batch, including reusable workers. Claims cannot overlap
+# across manual and scheduled dispatches. Individual jobs have bounded runtimes.
+concurrency:
+  group: pipeline-workers
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_work: ${{ steps.plan.outputs.has_work }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check controller setup
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_CONTROLLER_TOKEN }}
+          PIPELINE_PROJECT_ID: ${{ vars.PIPELINE_PROJECT_ID }}
+          OPENAI_CONFIGURED: ${{ secrets.OPENAI_API_KEY != '' }}
+        run: |
+          test -n "$GH_TOKEN" || { echo 'Set PIPELINE_CONTROLLER_TOKEN with Projects and repository access'; exit 1; }
+          test -n "$PIPELINE_PROJECT_ID" || { echo 'Set PIPELINE_PROJECT_ID'; exit 1; }
+          test "$OPENAI_CONFIGURED" = true || { echo 'Set OPENAI_API_KEY'; exit 1; }
+      - id: plan
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_CONTROLLER_TOKEN }}
+          PIPELINE_PROJECT_ID: ${{ vars.PIPELINE_PROJECT_ID }}
+          PIPELINE_MAX_WORKERS: ${{ vars.PIPELINE_MAX_WORKERS || '2' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: |
+          args=()
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          python tools/pipeline_workers/controller.py plan "${args[@]}"
+  worker:
+    needs: plan
+    if: needs.plan.outputs.has_work == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    uses: ./.github/workflows/pipeline-worker.yml
+    with:
+      task: ${{ toJSON(matrix) }}
+    secrets: inherit
