@@ -56,7 +56,9 @@ FIELD_DEFINITIONS=[{'nullable': True, 'domain': None, 'name': 'FIRST_CONTACT', '
 PAGE_FIELDS=[{'name': 'FIRST_CONTACT', 'type': 'esriFieldTypeString', 'alias': 'Contact Info', 'length': 500}, {'name': 'Shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'Shape_Length'}, {'name': 'Shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'Shape_Area'}, {'name': 'OBJECTID', 'type': 'esriFieldTypeOID', 'alias': 'OBJECTID'}, {'name': 'EPAREGION', 'type': 'esriFieldTypeString', 'alias': 'EPAREGION', 'length': 50}]
 REGION_IDENTITIES={1: 'Region 1', 2: 'Region 10', 3: 'Region 2', 4: 'Region 3', 5: 'Region 4', 6: 'Region 5', 7: 'Region 6', 8: 'Region 7', 9: 'Region 8', 10: 'Region 9'}
 ATTRIBUTE_FIELDS=[d for d in FIELD_DEFINITIONS if d['type']!='esriFieldTypeGeometry']
-URLS={'source_service':SERVICE+'?f=pjson','layer_before':BASE+'?f=pjson','license_epa':LICENSE,'count_before':BASE+'/query?'+urlencode({'where':'1=1','returnCountOnly':'true','f':'json'}),'ids_before':BASE+'/query?'+urlencode({'where':'1=1','returnIdsOnly':'true','f':'json'}),'page_00000':BASE+'/query?'+urlencode({'objectIds':'1,2,3,4,5,6,7,8,9,10','outFields':'*','returnGeometry':'true','returnZ':'true','returnM':'true','returnTrueCurves':'true','outSR':4269,'orderByFields':'OBJECTID ASC','f':'json'}),'layer_after':BASE+'?f=pjson'}
+# The producer layer metadata omits hasZ/hasM (neither dimension is advertised).
+# Keep true curves and the producer's native CRS, while avoiding unsupported Z/M output switches.
+URLS={'source_service':SERVICE+'?f=pjson','layer_before':BASE+'?f=pjson','license_epa':LICENSE,'count_before':BASE+'/query?'+urlencode({'where':'1=1','returnCountOnly':'true','f':'json'}),'ids_before':BASE+'/query?'+urlencode({'where':'1=1','returnIdsOnly':'true','f':'json'}),'page_00000':BASE+'/query?'+urlencode({'objectIds':'1,2,3,4,5,6,7,8,9,10','outFields':'*','returnGeometry':'true','returnTrueCurves':'true','outSR':4269,'orderByFields':'OBJECTID ASC','f':'json'}),'layer_after':BASE+'?f=pjson'}
 URLS.update({'count_after':URLS['count_before'],'ids_after':URLS['ids_before']})
 
 class EpaEezQuarantineError(ValueError):pass
