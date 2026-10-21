@@ -30,6 +30,11 @@ from dagster_hifld.assets.gcca_warehouse_directory import (
     gcca_warehouses_draft_job,
     gcca_warehouses_draft_schedule,
 )
+from dagster_hifld.assets.red_cross_headquarters import (
+    red_cross_headquarters_draft_job,
+    red_cross_headquarters_draft_schedule,
+    red_cross_headquarters_source_population,
+)
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
@@ -560,6 +565,7 @@ defs = Definitions(
         *hifld_asset_checks,
         eia_power_plants_complete,
         gcca_warehouses_geometry_complete,
+        red_cross_headquarters_source_population,
         census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
@@ -613,6 +619,7 @@ defs = Definitions(
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
+        red_cross_headquarters_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -647,6 +654,7 @@ defs = Definitions(
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
+        red_cross_headquarters_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
