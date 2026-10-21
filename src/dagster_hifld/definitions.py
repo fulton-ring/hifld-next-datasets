@@ -27,6 +27,11 @@ from dagster_hifld.assets.fdic_locations import (
     fdic_locations_draft_schedule,
     fdic_locations_full_quality,
 )
+from dagster_hifld.assets.fema_regions import (
+    fema_regions_draft_job,
+    fema_regions_draft_schedule,
+    fema_regions_full_quality,
+)
 from dagster_hifld.assets.epa_eez import (
     epa_eez_draft_job,
     epa_eez_draft_schedule,
@@ -943,6 +948,7 @@ defs = Definitions(
         epa_frs_toxic_release_inventory_complete,
         epa_frs_tsca_complete,
         fdic_locations_full_quality,
+        fema_regions_full_quality,
     ],
     jobs=[
         epa_large_scale_source_integrity_job,
@@ -1031,6 +1037,7 @@ defs = Definitions(
         epa_frs_tri_draft_job,
         epa_tsca_draft_job,
         fdic_locations_draft_job,
+        fema_regions_draft_job,
     ],
     schedules=[
         epa_large_scale_source_integrity_schedule,
@@ -1124,6 +1131,7 @@ defs = Definitions(
         epa_frs_tri_draft_schedule,
         epa_tsca_draft_schedule,
         fdic_locations_draft_schedule,
+        fema_regions_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
