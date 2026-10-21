@@ -1,0 +1,99 @@
+{
+  "acceptance": {
+    "coverage_accepted": false,
+    "id_contract_accepted": false,
+    "mapping_approved": false,
+    "production_promotion_performed": false,
+    "release_accepted": false,
+    "rights_accepted": false,
+    "schedule_default_status": "STOPPED",
+    "schema_contract_accepted": false,
+    "source_freshness_accepted": false,
+    "source_release_accepted": false
+  },
+  "catalog_provenance": {
+    "coverage_accepted": false,
+    "id_contract_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "resolved_manifest_identity_matches_candidate": true,
+    "rights_accepted": false,
+    "schema_contract_accepted": false,
+    "source_archive_bytes": 83451409,
+    "source_archive_sha256": "692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e",
+    "source_freshness_accepted": false,
+    "source_release_accepted": false
+  },
+  "evidence_packet": "/workspace/work/363-clean-evidence",
+  "evidence_status": "local_verification_only_not_release_acceptance",
+  "native_geoparquet": {
+    "CRS_EPSG": 4269,
+    "GEOID_roster_and_order_equal": true,
+    "all_typed_attribute_values_equal": true,
+    "bytes": 112187066,
+    "features_compared": 3235,
+    "full_population_parity_report": "/workspace/work/363-clean-evidence/native-output-fix/full_parity_report.json",
+    "geometry_type_counts": {
+      "MultiPolygon": 53,
+      "Polygon": 3182
+    },
+    "geometry_types": [
+      "MultiPolygon",
+      "Polygon"
+    ],
+    "per_feature_native_WKB_equal": true,
+    "registered_native_discovery_passed": true,
+    "sha256": "ce11854dd50f8811e9b5ff8fff74c33bb5edf2060abf51d04fb00bfe24eff12f",
+    "source_body_wire_receipt_preserved_under_raw": true,
+    "staged_key": "us-county-boundaries-1/us-county-boundaries-1/vbe895302932a58d4d390dbf154f21beb/geoparquet/us-county-boundaries-1.parquet",
+    "typed_attributes_compared": 18
+  },
+  "refusal_gates": {
+    "empty_approval_registry": {
+      "populated_synthetic_published_fixture_unchanged": true,
+      "promote_started": false,
+      "run_id": "2e38b364-95e8-4d2c-af08-f77618eba3e3",
+      "verify_refused_missing_exact_object_approval": true
+    },
+    "false_quality_manifest": {
+      "populated_synthetic_published_fixture_unchanged": true,
+      "run_failed_at_blocking_quality_check": true,
+      "run_id": "ac5f66b8-e233-43df-aa81-d15013d11f73",
+      "verify_or_promote_started": false
+    },
+    "synthetic_published_fixture_file_count": 1
+  },
+  "run_record": "/workspace/work/363-clean-evidence/native-output-fix/registered_native_run.json",
+  "runs": {
+    "catalog_materialization": {
+      "catalog_mode": "native_geoparquet_full_population",
+      "empty_geometry_count": 0,
+      "feature_count": 3235,
+      "invalid_geometry_count": 0,
+      "quality_check_passed": true,
+      "run_id": "2e14be77-f36a-422c-a31b-d6f83da34d3f",
+      "success": true
+    },
+    "source_materialization": {
+      "blocking_source_check_passed": true,
+      "candidate_version": "vbe895302932a58d4d390dbf154f21beb",
+      "run_id": "f76a7777-65e0-4fc3-b0d5-581139651352",
+      "success": true
+    }
+  },
+  "runtime": {
+    "code_commit": "packaged-sha256:62d47dd9456123a8c915b5dad6ed8fc70bbb569a93c0ca60fc4310edb00129e0",
+    "dagster_home": "/workspace/work/363-clean-evidence/native-output-fix/dagster_home",
+    "identity_file_count": 97,
+    "identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "packaged_runtime_without_git": true,
+    "runtime_source_base": "7224d1653522cc2e15b1d6d8f5f895874b821836 plus this County candidate source and asset",
+    "runtime_versions": {
+      "geos": "3.13.1",
+      "proj": "9.5.1",
+      "pyarrow": "23.0.1",
+      "python": "3.12.14"
+    },
+    "working_tree_status": "unknown"
+  }
+}
