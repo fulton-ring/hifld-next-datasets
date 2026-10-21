@@ -72,7 +72,8 @@ def _capture_request(client: httpx.Client | None, root: Path, name: str, method:
     receipt_path, request_path = root / f"{name}.receipt.json", root / f"{name}.request.body"
     expected_request = urlencode(params).encode("ascii") if method == "POST" else None
     expected_url = url + ("?" + urlencode(params) if method == "GET" and params else "")
-    if replay:
+    replay_paths = (body_path, wire_path, receipt_path, *((request_path,) if method == "POST" else ()))
+    if replay and all(path.exists() for path in replay_paths):
         body, wire = body_path.read_bytes(), wire_path.read_bytes()
         receipt = json.loads(receipt_path.read_bytes())
         request = request_path.read_bytes() if method == "POST" else None
@@ -223,8 +224,11 @@ def _validate_layer(layer: dict, expected_signature: list[tuple[str, str, int | 
 
 
 def _ring_area(ring: list[list[float]]) -> float:
-    return sum(ring[i][0] * ring[(i + 1) % len(ring)][1]
-               - ring[(i + 1) % len(ring)][0] * ring[i][1]
+    # Translate to the first vertex before shoelace accumulation to avoid
+    # cancellation for small polygons at large projected coordinates.
+    origin_x, origin_y = ring[0]
+    return sum((ring[i][0] - origin_x) * (ring[(i + 1) % len(ring)][1] - origin_y)
+               - (ring[(i + 1) % len(ring)][0] - origin_x) * (ring[i][1] - origin_y)
                for i in range(len(ring) - 1)) / 2
 
 
@@ -232,7 +236,7 @@ def _polygon_from_esri(geometry: dict):
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    exteriors, holes = [], []
+    exteriors, holes, collapsed = [], [], []
     for ring in rings:
         if (not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]
                 or any(not isinstance(point, list) or len(point) != 2
@@ -241,10 +245,11 @@ def _polygon_from_esri(geometry: dict):
             raise ValueError("source_polygon_ring_invalid")
         area = _ring_area(ring)
         if area == 0:
-            raise ValueError("source_polygon_zero_area_ring")
+            collapsed.append(ring)
+            continue
         # Esri JSON specifies clockwise shells and counter-clockwise holes.
         (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
+    if not exteriors and not collapsed:
         raise ValueError("source_polygon_shell_missing")
     shell_polys = [Polygon(ring) for ring in exteriors]
     assignments: list[list[list[list[float]]]] = [[] for _ in exteriors]
@@ -255,6 +260,9 @@ def _polygon_from_esri(geometry: dict):
             raise ValueError("source_polygon_orphan_hole")
         assignments[min(containers, key=lambda i: shell_polys[i].area)].append(hole)
     polygons = [Polygon(shell, assigned) for shell, assigned in zip(exteriors, assignments, strict=True)]
+    # Keep collapsed source rings as explicit zero-area polygon parts. They make
+    # the derived geometry invalid and fail quality checks; they are never repaired or dropped.
+    polygons.extend(Polygon(ring) for ring in collapsed)
     result = polygons[0] if len(polygons) == 1 else MultiPolygon(polygons)
     if result.is_empty:
         raise ValueError("source_polygon_empty")
@@ -357,10 +365,11 @@ def capture_electric_retail_service_territories(
         root.mkdir(parents=True)
     captures: list[dict[str, object]] = []
     budget = [0]
-    owned_client = client is None and not replay
+    owned_client = client is None
     client = client or (httpx.Client(timeout=httpx.Timeout(90, connect=15), follow_redirects=False,
                                      headers={"User-Agent": "hifld-next-datasets/electric-retail-63-preservation"})
-                       if not replay else None)
+                       if not replay else httpx.Client(timeout=httpx.Timeout(90, connect=15), follow_redirects=False,
+                                                       headers={"User-Agent": "hifld-next-datasets/electric-retail-63-preservation"}))
     candidate_version = ""
     try:
         item, body, wire, request_body, receipt = _capture_request(client, root, "source_item", "GET", ITEM_URL, {}, budget, replay, captures)
@@ -487,7 +496,10 @@ def capture_electric_retail_service_territories(
             "source_id_sha256": id_sha, "source_schema_sha256": schema_sha,
             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
             "null_geometry_count": 0,
-            "invalid_geometry_count": sum(not geometry.is_valid for _attrs, geometry in processed),
+            "invalid_geometry_count": sum(
+                not geometry.is_valid or geometry.is_empty or geometry.area == 0
+                for _attrs, geometry in processed
+            ),
             "source_coverage_scope": source_manifest["source_coverage_scope"],
             "capture_attempt_manifest": attempt_prefix + "/metadata/capture_attempt.json",
             "native_crs": "EPSG:3857", "source_edition": "2025-08-21",

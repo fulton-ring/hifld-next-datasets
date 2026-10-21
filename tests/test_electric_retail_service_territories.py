@@ -56,6 +56,13 @@ class ElectricRetailTerritoryTests(unittest.TestCase):
         metadata = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(metadata["columns"]["geometry"]["crs"]["id"]["code"], 3857)
 
+    def test_small_projected_source_ring_is_preserved_without_cancellation(self):
+        ring = [[-13577933.2139, 5444174.9482], [-13577933.1975, 5444175.0673],
+                [-13577933.1778, 5444175.0924], [-13577933.2139, 5444174.9482]]
+        geometry = source._polygon_from_esri({"rings": [ring]})
+        self.assertGreater(geometry.area, 0)
+        self.assertEqual(list(geometry.exterior.coords), [tuple(point) for point in ring])
+
     def test_source_item_must_remain_the_verified_frozen_distribution(self):
         item = {
             "id": source.ITEM_ID, "owner": "NBAM_Org", "ownerId": "owner-id",
@@ -109,6 +116,8 @@ class ElectricRetailTerritoryTests(unittest.TestCase):
         self.assertTrue(electric_retail_service_territories_population_complete(candidate).passed)
         candidate.update(null_geometry_count=0, invalid_geometry_count=0)
         self.assertTrue(electric_retail_service_territories_geometry_valid(candidate).passed)
+        candidate["invalid_geometry_count"] = 1
+        self.assertFalse(electric_retail_service_territories_geometry_valid(candidate).passed)
         self.assertFalse(electric_retail_service_territories_release_pending(candidate).passed)
         self.assertEqual(electric_retail_service_territories_preservation_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
