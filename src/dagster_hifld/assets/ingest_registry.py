@@ -5,6 +5,7 @@ assets are derived automatically from this registry.
 """
 
 from dagster_hifld.assets.usgs import usgs_aquifers
+from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -68,6 +69,7 @@ from dagster_hifld.assets.census_county_subdivisions import census_county_subdiv
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 
 hifld_ingest_assets = [
+    noaa_current_dart,
     nces_colleges_universities,
     usgs_aquifers,
     noaa_12nm_territorial_sea,
