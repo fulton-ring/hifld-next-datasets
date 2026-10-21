@@ -75,6 +75,11 @@ from dagster_hifld.assets.census_primary_roads import (
     census_primary_roads_source_complete,
     census_primary_roads_draft_schedule,
 )
+from dagster_hifld.assets.usace_pontoon_areas import (
+    usace_pontoon_areas_complete,
+    usace_pontoon_areas_draft_job,
+    usace_pontoon_areas_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -476,6 +481,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_complete,
         principal_ports_source_complete,
         usace_berths_areas_complete,
+        usace_pontoon_areas_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -489,6 +495,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
+        usace_pontoon_areas_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -505,6 +512,7 @@ defs = Definitions(
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
+        usace_pontoon_areas_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
