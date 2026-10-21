@@ -31,7 +31,11 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.epa_frs_common import (
+    STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity,
+    validate_staged_release_derivatives,
+)
 from dagster_hifld.validation import sha256_file
 
 SLUG = 'consolidated-cities'
@@ -317,9 +321,13 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
         if (root/name).read_bytes()!=value: raise ConsolidatedCityQuarantineError('cached_source_owned_bytes_drift:'+name)
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     snapshot='metadata/source/version_'+digest((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'
-    derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}|STAGED_RELEASE_DERIVATIVE_NAMES
     if actual-(expected_names|{READY}|derivatives) or not (expected_names|{READY}).issubset(actual):
         raise ConsolidatedCityQuarantineError('cached_unknown_or_missing_object')
+    try:
+        validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc:
+        raise ConsolidatedCityQuarantineError('cached_staged_release_documents_invalid') from exc
     for name,pin in ready['objects'].items():
         if sha256_file(root/name)!=pin: raise ConsolidatedCityQuarantineError('cached_source_object_changed:'+name)
     for name in ['metadata/source/source_manifest.json',snapshot]:
