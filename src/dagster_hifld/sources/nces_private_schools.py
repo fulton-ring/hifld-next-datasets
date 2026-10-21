@@ -442,6 +442,7 @@ def capture_private_schools(storage: StagingStorageResource, *, version: str, ca
         "publisher": "National Center for Education Statistics (NCES)", "agency": "U.S. Department of Education",
         "source_url": SOURCE_URL, "license": None, "source_modified": None, "date_issued": None,
         "date_modified": SOURCE_RELEASE, "processor": "HIFLD Next", "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"],
         "inputs": [input_record],
         "transformations": [{"operation": "NCES EDGE shapefile attributes and EPSG:4326 points to GeoParquet",
                               "parameters": {"source_fields": "all native DBF fields preserved in original order and types",

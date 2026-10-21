@@ -2,6 +2,8 @@ import unittest
 import json
 
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_draft_schedule
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.source_manifest import CATALOG_METADATA_FIELDS
 from dagster_hifld.sources.nces_private_schools import (
     EXPECTED_COUNT,
     EXPECTED_FIELDS,
@@ -71,6 +73,37 @@ class NcesPrivateSchoolsSourceContractTest(unittest.TestCase):
     def test_geometry_and_refresh_policy_preserve_pending_state(self):
         self.assertEqual(_point_wkb(-71.25, 42.5).hex(), "01010000000000000000d051c00000000000404540")
         self.assertEqual(nces_private_schools_draft_schedule.default_status.value, "STOPPED")
+
+    def test_versioned_processing_identity_survives_provenance_projection(self):
+        scheme = "sha256-packaged-dagster-hifld-v1"
+        manifest = {
+            "schema_version": 1,
+            "processor": "HIFLD Next",
+            "code_commit": "packaged-sha256:" + "0" * 64,
+            "code_identity_scheme": scheme,
+            "inputs": [{
+                "input_id": "nces-private-schools",
+                "producer": "National Center for Education Statistics",
+                "host": "nces.ed.gov",
+                "role": "producer_publication",
+                "canonical_url": SOURCE_URL,
+                "retrieval_url": SOURCE_URL,
+                "retrieved_at": "2026-10-20T03:44:19Z",
+                "sha256": "a" * 64,
+                "bytes": 1,
+                "license": "review pending",
+                "attribution": "review pending",
+                "release_date": None,
+                "release_date_unknown_reason": "Source collection period does not establish a producer release date.",
+            }],
+            "transformations": [{"operation": "NCES native fields and points to GeoParquet"}],
+            "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
+                "reason": "native fields retained",
+                "objects": [{"path": "geoparquet/private-schools.parquet", "bytes": 1, "sha256": "b" * 64}],
+            }}},
+        }
+        self.assertIn("code_identity_scheme", CATALOG_METADATA_FIELDS)
+        self.assertEqual(provenance_projection(manifest)["code_identity_scheme"], scheme)
 
 
 if __name__ == "__main__":

@@ -63,5 +63,6 @@
     "rights/attribution approval",
     "release approval"
   ],
-  "refresh": "Registered refresh schedule is STOPPED. No publication or source acceptance."
+  "refresh": "Registered refresh schedule is STOPPED. No publication or source acceptance.",
+  "processing_identity_scheme": "sha256-packaged-dagster-hifld-v1"
 }
