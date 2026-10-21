@@ -83,6 +83,8 @@ from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_f
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
+from dagster_hifld.assets.epa_facilities import epa_facilities
+from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 
@@ -166,4 +168,6 @@ hifld_ingest_assets = [
     electric_retail_service_territories_preservation_candidate,
     epa_emergency_response_rmp_facilities,
     epa_frs_sic_powerplants,
+    epa_facilities,
+    epa_facilities_labels,
 ]
