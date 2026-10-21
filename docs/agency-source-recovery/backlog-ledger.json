@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "fulton-ring/hifld-next-datasets",
   "generated_utc_date": "2026-10-21",
-  "source_commit": "436d49e78f183f386079e414a12307a3b270e966",
+  "source_commit": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
   "scope": "415 inventory dataset issues #2-416 plus coordinator issue #417",
   "coverage": {
     "inventory_rows": 415,
@@ -23,12 +23,12 @@
       "no_open_pr_in_recovered_catalog": "Historical 2026-10-20 snapshot only; do not present as current.",
       "classification": "Historical 2026-10-20 PR association snapshot; superseded for current open-PR mapping by fresh_open_pr_census. A missing current open PR is not evidence of source infeasibility."
     },
-    "snapshot_note": "415 rows remain. PR-search/open-PR association totals are historical only; latest named PR states and row categories are refreshed separately. Missing current open PR is not evidence of infeasibility.",
+    "snapshot_note": "415 rows remain. PR-search/open-PR association totals are historical only; latest named PR and issue statuses refreshed separately. Main registration count is 52 STOPPED schedules (52 mapped inventory issues); this is a code registration count, not feasibility, review readiness, acceptance, or release capacity.",
     "ledger_based_progress_counts": {
       "inventory_issues": 415,
       "external_decision_or_source_evidence_blocker_label": 11,
-      "needs_triage_no_recovered_pipeline_pr": 266,
-      "prior_pr_evidence_needs_reconciliation": 107,
+      "needs_triage_no_recovered_pipeline_pr": 262,
+      "prior_pr_evidence_needs_reconciliation": 89,
       "definitions": {
         "issues_with_current_or_historical_pr_reference": "Distinct issue records with current_pr, a row-level observed_open_prs association, or an explicitly recorded merged priority PR in latest_verified_checkpoint; includes research/tracking PRs and is not a count of open pipeline PRs.",
         "external_decision_or_source_evidence_blocker_label": "Rows whose blocker_type is external_decision_or_source_evidence. This is a ledger label, not a permanent source-impossibility finding.",
@@ -42,8 +42,8 @@
       },
       "caveat": "Ledger status/evidence categories overlap and do not measure feasibility, readiness or acceptance. Main registration is separate. No fresh global census.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
-      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 29,
-      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 42,
+      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 39,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 43,
       "latest_checkpoint_priority_evidence_issues": [
         2,
         3,
@@ -63,6 +63,7 @@
         29,
         30,
         31,
+        33,
         34,
         35,
         37,
@@ -88,12 +89,12 @@
       "current_open_pr_records": null,
       "current_open_pr_records_mapped_to_inventory": null,
       "inventory_issues_without_mapped_open_pr": null,
-      "code_merged_issue_open_acceptance_gated": 33,
+      "code_merged_issue_open_acceptance_gated": 39,
       "last_open_pr_census_mapped_issues_2026_10_21T1414Z": 129,
       "last_open_pr_census_unmapped_issues_2026_10_21T1414Z": 286,
-      "current_count_status": "No fresh full census; named PR and issue statuses only. Historical 14:14 census remains historical and open-PR totals are unset.",
-      "ledger_status_counts_recorded_at": "2026-10-21T17:17:54Z",
-      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 38,
+      "current_count_status": "No fresh full census. Named PR/issue readbacks only; historical 14:14 census remains historical.",
+      "ledger_status_counts_recorded_at": "2026-10-21T18:08:12Z",
+      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 39,
       "code_merged_issue_open_acceptance_gated_issue_numbers": [
         2,
         6,
@@ -111,8 +112,14 @@
         29,
         30,
         31,
+        33,
         34,
+        35,
         37,
+        38,
+        39,
+        40,
+        41,
         261,
         275,
         276,
@@ -129,8 +136,8 @@
         335,
         363
       ],
-      "main_registered_schedule_count": 39,
-      "main_registered_schedule_issue_count": 39,
+      "main_registered_schedule_count": 52,
+      "main_registered_schedule_issue_count": 52,
       "main_registered_schedule_mapping_issues": [
         2,
         3,
@@ -144,9 +151,22 @@
         16,
         17,
         19,
+        20,
         21,
+        26,
         27,
+        28,
+        29,
+        30,
+        31,
+        33,
+        34,
+        35,
         37,
+        38,
+        39,
+        40,
+        41,
         181,
         253,
         257,
@@ -1814,10 +1834,11 @@
       "evidence_refs": [
         "Issue comment 6321990550; reported exact source head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53. Worker-supplied run IDs and scope are recorded in the comment; review pending.",
         "Source PR #438 exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53, review 5603542372; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication.",
-        "Only #29 confirmed to reject catalog-generated resolved-provenance/source-manifest sidecars; no recapture needed, fix active."
+        "Only #29 confirmed to reject catalog-generated resolved-provenance/source-manifest sidecars; no recapture needed, fix active.",
+        "PR #606 exact head f21d04ea0eb54bc03b71037cf9d83403a94ceded review 5603988235; final source/catalog/post-catalog cache runs and 574-row/38-file preservation verified; automatically merged by #609 ancestry."
       ],
-      "blocker_type": "implementation_corrective_fix_and_acceptance_pending",
-      "live_issue_updated_at": "2026-10-21T17:51:20Z",
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T18:07:11Z",
       "live_issue_created_at": "2026-10-19T01:57:38Z",
       "live_issue_comment_count": 11,
       "live_labels": [],
@@ -1825,22 +1846,28 @@
       "observed_open_prs": [],
       "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
-        438
+        438,
+        606
       ],
-      "status_note": "PR #438 exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue remains OPEN, schedule STOPPED. #29 alone has a confirmed CBRS cache-sidecar defect: validator rejects catalog-generated resolved_provenance and content-derived source-manifest files. Narrow fix active, no recapture needed.",
-      "current_head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+      "status_note": "PR #438 implementation was already integrated through #600. Corrective PR #606 exact head f21d04ea0eb54bc03b71037cf9d83403a94ceded was reviewed (5603988235) and automatically marked merged through #609 ancestry. Final no-Git source/catalog/post-catalog refresh runs ac7d058e-fc8c-4f35-8362-b8fe24e811d4, f46e0eb4-1797-4602-b38e-cc6af8d1de97, and 451b058d-e160-408e-9b25-cd81f1d9fdd0 succeeded for 574 rows; 38 candidate files were unchanged. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; all 52 schedules STOPPED. Issue OPEN; no acceptance, activation or publication.",
+      "current_head": "f21d04ea0eb54bc03b71037cf9d83403a94ceded",
       "latest_work_update": {
-        "recorded_at": "2026-10-21T17:52:00Z",
+        "recorded_at": "2026-10-21T18:08:12Z",
         "state": "code_merged_issue_open_acceptance_gated",
-        "pr": 438,
-        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
-        "review": 5603542372,
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
-        "notes": "PR #438 exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue remains OPEN, schedule STOPPED. #29 alone has a confirmed CBRS cache-sidecar defect: validator rejects catalog-generated resolved_provenance and content-derived source-manifest files. Narrow fix active, no recapture needed."
+        "pr": 606,
+        "head": "f21d04ea0eb54bc03b71037cf9d83403a94ceded",
+        "review": 5603988235,
+        "integration_pr": 609,
+        "integration_head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "integration_tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+        "integration_review": 5604078573,
+        "ci": "build-only success; publish skipped",
+        "issue_state": "open",
+        "notes": "PR #438 implementation was already integrated through #600. Corrective PR #606 exact head f21d04ea0eb54bc03b71037cf9d83403a94ceded was reviewed (5603988235) and automatically marked merged through #609 ancestry. Final no-Git source/catalog/post-catalog refresh runs ac7d058e-fc8c-4f35-8362-b8fe24e811d4, f46e0eb4-1797-4602-b38e-cc6af8d1de97, and 451b058d-e160-408e-9b25-cd81f1d9fdd0 succeeded for 574 rows; 38 candidate files were unchanged. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; all 52 schedules STOPPED. Issue OPEN; no acceptance, activation or publication."
       },
       "main_registration": {
-        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "snapshot_main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
         "schedule_ref": "fws_cbrs_map_panels_draft_refresh_schedule",
         "job_ref": "fws_cbrs_map_panels_draft_refresh_job",
         "asset_refs": [
@@ -1851,10 +1878,11 @@
           "src/dagster_hifld/definitions.py",
           "src/dagster_hifld/assets/fws_map_panels.py"
         ],
-        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED.",
+        "integration_pr": 609
       },
       "latest_known_pr_states": {
-        "recorded_at": "2026-10-21T17:52:00Z",
+        "recorded_at": "2026-10-21T18:08:12Z",
         "canonical_pr": {
           "pr": 438,
           "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
@@ -1864,16 +1892,36 @@
           "review": 5603542372
         },
         "integration_pr": {
-          "pr": 600,
-          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
-          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "pr": 609,
+          "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+          "base": "436d49e78f183f386079e414a12307a3b270e966",
           "state": "closed_merged",
-          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
-          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
-          "root_review": 5603690424,
-          "ci": "build-only success"
+          "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+          "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+          "root_review": 5604078573,
+          "ci": "build-only success; publish skipped"
         },
-        "issue_state": "open"
+        "issue_state": "open",
+        "corrective_fix_pr": {
+          "pr": 606,
+          "head": "f21d04ea0eb54bc03b71037cf9d83403a94ceded",
+          "state": "closed_merged",
+          "merged_via": "PR #609 ancestry",
+          "merge_commit": "4868193cfd812fbd1ecca945464cd973b55bd30d",
+          "review": 5603988235
+        }
+      },
+      "historical_pr_candidates": [
+        438
+      ],
+      "canonical_pr": 438,
+      "corrective_fix_pr": 606,
+      "move_label_request": {
+        "label": "move:needs-decision",
+        "requested_at": "2026-10-21T18:06Z",
+        "current_label_readback": [],
+        "issue_state_readback": "open",
+        "note": "One-shot board request submitted. A missing label in current readback is consistent with event consumption; direct Projects Status readback was not available."
       }
     },
     {
@@ -2062,19 +2110,84 @@
       "title": "Census Block Groups",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/33",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T01:57:59Z",
+      "current_pr": 603,
+      "reviewed_head": "d6a4028b351092b336252e4ee10f38b1227523da",
+      "evidence_refs": [
+        "Canonical clean-main PR #603 exact head d6a4028b351092b336252e4ee10f38b1227523da review 5603918139; automatically marked merged through #609 ancestry into main 4f184eaa0020a71bb355a18bd70af64e7a95aea1."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T18:07:07Z",
       "live_issue_created_at": "2026-10-19T01:57:59Z",
       "live_issue_comment_count": 0,
-      "live_labels": [],
+      "live_labels": [
+        "move:needs-decision"
+      ],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "historical_pr_candidates": [],
+      "canonical_pr": 603,
+      "corrective_fix_pr": null,
+      "current_pr_candidates": [
+        603
+      ],
+      "current_head": "d6a4028b351092b336252e4ee10f38b1227523da",
+      "status_note": "Canonical pipeline PR #603 exact head d6a4028b351092b336252e4ee10f38b1227523da (review 5603918139) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; schedule census_block_groups_draft_schedule is STOPPED. Earlier source/catalog/cache evidence is scoped to 993f25499ace0df4da3185d8a510550e9693899e; final delta adds integrity checks and those runtime/gate runs were not repeated. Issue OPEN; source/currentness, baseline, rights, schema/ID, coverage and release remain unapproved.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 603,
+        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+        "review": 5603918139,
+        "integration_pr": 609,
+        "integration_head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "integration_tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+        "integration_review": 5604078573,
+        "ci": "build-only success; publish skipped",
+        "issue_state": "open",
+        "notes": "Canonical pipeline PR #603 exact head d6a4028b351092b336252e4ee10f38b1227523da (review 5603918139) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; schedule census_block_groups_draft_schedule is STOPPED. Earlier source/catalog/cache evidence is scoped to 993f25499ace0df4da3185d8a510550e9693899e; final delta adds integrity checks and those runtime/gate runs were not repeated. Issue OPEN; source/currentness, baseline, rights, schema/ID, coverage and release remain unapproved."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "canonical_pr": {
+          "pr": 603,
+          "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+          "state": "closed_merged",
+          "merged_via": "PR #609 ancestry",
+          "merge_commit": "4fbe89b3b6c430f44090a35d9bf0772e5bb902d9",
+          "review": 5603918139
+        },
+        "integration_pr": {
+          "pr": 609,
+          "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+          "base": "436d49e78f183f386079e414a12307a3b270e966",
+          "state": "closed_merged",
+          "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+          "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+          "root_review": 5604078573,
+          "ci": "build-only success; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+        "schedule_ref": "census_block_groups_draft_schedule",
+        "default_status_in_code": "STOPPED",
+        "integration_pr": 609,
+        "mapping_basis": "Definitions.loadable schedule in the 52-schedule main tree; root independently verified all STOPPED."
+      },
+      "move_label_request": {
+        "label": "move:needs-decision",
+        "requested_at": "2026-10-21T18:06Z",
+        "current_label_readback": [
+          "move:needs-decision"
+        ],
+        "issue_state_readback": "open",
+        "note": "One-shot board request submitted. A missing label in current readback is consistent with event consumption; direct Projects Status readback was not available."
+      }
     },
     {
       "issue": 34,
@@ -2166,19 +2279,84 @@
       "title": "Census Tracts",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/35",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T01:58:05Z",
+      "current_pr": 604,
+      "reviewed_head": "1acb376592ae853e7635b40de044048996fd2314",
+      "evidence_refs": [
+        "Canonical clean-main PR #604 exact head 1acb376592ae853e7635b40de044048996fd2314 review 5603867622; automatically marked merged through #609 ancestry into main 4f184eaa0020a71bb355a18bd70af64e7a95aea1."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T18:07:02Z",
       "live_issue_created_at": "2026-10-19T01:58:05Z",
       "live_issue_comment_count": 0,
-      "live_labels": [],
+      "live_labels": [
+        "move:needs-decision"
+      ],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "historical_pr_candidates": [],
+      "canonical_pr": 604,
+      "corrective_fix_pr": null,
+      "current_pr_candidates": [
+        604
+      ],
+      "current_head": "1acb376592ae853e7635b40de044048996fd2314",
+      "status_note": "Canonical pipeline PR #604 exact head 1acb376592ae853e7635b40de044048996fd2314 (review 5603867622) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; census_tracts_draft_schedule is STOPPED. Final no-Git source/catalog/post-catalog cache runs 52ebef61-23f8-429d-bc73-1ec9cd01783b, 0051f903-ff8b-451e-acce-b9169940afb1, and 2721d890-a331-4494-8b3f-32b7d3645fa7 succeeded for 85,529 features. Gate evidence remains scoped to the earlier candidate identity. Issue OPEN; source equivalence, baseline, schema/ID, coverage, rights and release remain pending.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 604,
+        "head": "1acb376592ae853e7635b40de044048996fd2314",
+        "review": 5603867622,
+        "integration_pr": 609,
+        "integration_head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "integration_tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+        "integration_review": 5604078573,
+        "ci": "build-only success; publish skipped",
+        "issue_state": "open",
+        "notes": "Canonical pipeline PR #604 exact head 1acb376592ae853e7635b40de044048996fd2314 (review 5603867622) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; census_tracts_draft_schedule is STOPPED. Final no-Git source/catalog/post-catalog cache runs 52ebef61-23f8-429d-bc73-1ec9cd01783b, 0051f903-ff8b-451e-acce-b9169940afb1, and 2721d890-a331-4494-8b3f-32b7d3645fa7 succeeded for 85,529 features. Gate evidence remains scoped to the earlier candidate identity. Issue OPEN; source equivalence, baseline, schema/ID, coverage, rights and release remain pending."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "canonical_pr": {
+          "pr": 604,
+          "head": "1acb376592ae853e7635b40de044048996fd2314",
+          "state": "closed_merged",
+          "merged_via": "PR #609 ancestry",
+          "merge_commit": "a82564567023f8172f9f86689773b8b3f7b57fb5",
+          "review": 5603867622
+        },
+        "integration_pr": {
+          "pr": 609,
+          "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+          "base": "436d49e78f183f386079e414a12307a3b270e966",
+          "state": "closed_merged",
+          "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+          "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+          "root_review": 5604078573,
+          "ci": "build-only success; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+        "schedule_ref": "census_tracts_draft_schedule",
+        "default_status_in_code": "STOPPED",
+        "integration_pr": 609,
+        "mapping_basis": "Definitions.loadable schedule in the 52-schedule main tree; root independently verified all STOPPED."
+      },
+      "move_label_request": {
+        "label": "move:needs-decision",
+        "requested_at": "2026-10-21T18:06Z",
+        "current_label_readback": [
+          "move:needs-decision"
+        ],
+        "issue_state_readback": "open",
+        "note": "One-shot board request submitted. A missing label in current readback is consistent with event consumption; direct Projects Status readback was not available."
+      }
     },
     {
       "issue": 36,
@@ -2308,33 +2486,98 @@
       "title": "Colleges and Universities",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/38",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 444,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T15:07:47Z",
+      "current_pr": 602,
+      "reviewed_head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+      "evidence_refs": [
+        "Canonical clean-main PR #602 exact head c63f0a254364a79f93e4a5cd4ea842612e0c4a39 review 5603872439; automatically marked merged through #609 ancestry into main 4f184eaa0020a71bb355a18bd70af64e7a95aea1."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T18:07:10Z",
       "live_issue_created_at": "2026-10-19T01:58:14Z",
-      "live_issue_comment_count": 14,
-      "live_labels": [],
+      "live_issue_comment_count": 15,
+      "live_labels": [
+        "move:needs-decision"
+      ],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 444,
           "title": "Draft NCES colleges pipeline with durable provenance and bounded staging",
-          "state": "open",
           "head_branch": "codex/cloud-dataset-38",
           "head_sha": "980c833795f7d7e8077fe227f1d8b967802f411a",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "association_method": "exact_dataset_issue_branch"
+          "association_method": "exact_dataset_issue_branch",
+          "note": "Older stacked PR remains open and noncanonical; clean-main PR #602 is the integrated implementation."
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
+        444,
+        602
+      ],
+      "historical_pr_candidates": [
         444
-      ]
+      ],
+      "canonical_pr": 602,
+      "corrective_fix_pr": null,
+      "current_head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+      "status_note": "Canonical clean-main pipeline PR #602 exact head c63f0a254364a79f93e4a5cd4ea842612e0c4a39 (limited-delta review 5603872439) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; colleges_source_integrity_monthly is STOPPED. Its no-Git source/cache/catalog and gate evidence is explicitly scoped to earlier runtime commit 571dbc4c0ab644af0115ad5bece19781abe3ee63, not a rerun of the final integration head. Older stacked PR #444 remains open/noncanonical. Issue OPEN; successor, source, rights, baseline, contract and release remain pending.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 602,
+        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "review": 5603872439,
+        "integration_pr": 609,
+        "integration_head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "integration_tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+        "integration_review": 5604078573,
+        "ci": "build-only success; publish skipped",
+        "issue_state": "open",
+        "notes": "Canonical clean-main pipeline PR #602 exact head c63f0a254364a79f93e4a5cd4ea842612e0c4a39 (limited-delta review 5603872439) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; colleges_source_integrity_monthly is STOPPED. Its no-Git source/cache/catalog and gate evidence is explicitly scoped to earlier runtime commit 571dbc4c0ab644af0115ad5bece19781abe3ee63, not a rerun of the final integration head. Older stacked PR #444 remains open/noncanonical. Issue OPEN; successor, source, rights, baseline, contract and release remain pending."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "canonical_pr": {
+          "pr": 602,
+          "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+          "state": "closed_merged",
+          "merged_via": "PR #609 ancestry",
+          "merge_commit": "b83be01fae44d812dbdd00b7a3500c74fff3fcf0",
+          "review": 5603872439
+        },
+        "integration_pr": {
+          "pr": 609,
+          "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+          "base": "436d49e78f183f386079e414a12307a3b270e966",
+          "state": "closed_merged",
+          "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+          "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+          "root_review": 5604078573,
+          "ci": "build-only success; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+        "schedule_ref": "colleges_source_integrity_monthly",
+        "default_status_in_code": "STOPPED",
+        "integration_pr": 609,
+        "mapping_basis": "Definitions.loadable schedule in the 52-schedule main tree; root independently verified all STOPPED."
+      },
+      "move_label_request": {
+        "label": "move:needs-decision",
+        "requested_at": "2026-10-21T18:06Z",
+        "current_label_readback": [
+          "move:needs-decision"
+        ],
+        "issue_state_readback": "open",
+        "note": "One-shot board request submitted. A missing label in current readback is consistent with event consumption; direct Projects Status readback was not available."
+      }
     },
     {
       "issue": 39,
@@ -2342,33 +2585,98 @@
       "title": "Colleges and Universities Campuses",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/39",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 456,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T16:56:31Z",
+      "current_pr": 601,
+      "reviewed_head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+      "evidence_refs": [
+        "Canonical clean-main PR #601 exact head 43af185c35db7591d2d9fcdfb5ea3b488b34c67d review 5603776940; automatically marked merged through #609 ancestry into main 4f184eaa0020a71bb355a18bd70af64e7a95aea1."
+      ],
+      "blocker_type": "source_continuity_rights_and_acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T18:07:14Z",
       "live_issue_created_at": "2026-10-19T01:58:17Z",
       "live_issue_comment_count": 11,
-      "live_labels": [],
+      "live_labels": [
+        "move:needs-decision"
+      ],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 456,
           "title": "Draft: reconstruct historical ORNL campus polygons with gated local pipeline (#39)",
-          "state": "open",
           "head_branch": "codex/cloud-dataset-39",
           "head_sha": "caa2ff53c741556dbfe832472bb10d6f77a08725",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "association_method": "exact_dataset_issue_branch"
+          "association_method": "exact_dataset_issue_branch",
+          "note": "Older stacked PR remains open and noncanonical; clean-main PR #601 is the integrated implementation."
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
+        456,
+        601
+      ],
+      "historical_pr_candidates": [
         456
-      ]
+      ],
+      "canonical_pr": 601,
+      "corrective_fix_pr": null,
+      "current_head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+      "status_note": "Canonical clean-main pipeline PR #601 exact head 43af185c35db7591d2d9fcdfb5ea3b488b34c67d (review 5603776940) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; ornl_campus_historical_integrity is STOPPED. Registered false-quality and empty-approval refusal runs preserved the populated fixture. Historical archives, changed-successor continuity, rights and release acceptance remain pending. Older stacked PR #456 remains open/noncanonical; issue OPEN.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 601,
+        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "review": 5603776940,
+        "integration_pr": 609,
+        "integration_head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "integration_tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+        "integration_review": 5604078573,
+        "ci": "build-only success; publish skipped",
+        "issue_state": "open",
+        "notes": "Canonical clean-main pipeline PR #601 exact head 43af185c35db7591d2d9fcdfb5ea3b488b34c67d (review 5603776940) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; ornl_campus_historical_integrity is STOPPED. Registered false-quality and empty-approval refusal runs preserved the populated fixture. Historical archives, changed-successor continuity, rights and release acceptance remain pending. Older stacked PR #456 remains open/noncanonical; issue OPEN."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "canonical_pr": {
+          "pr": 601,
+          "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+          "state": "closed_merged",
+          "merged_via": "PR #609 ancestry",
+          "merge_commit": "097fcbb2045d639291aeb9b1f882035732b387d4",
+          "review": 5603776940
+        },
+        "integration_pr": {
+          "pr": 609,
+          "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+          "base": "436d49e78f183f386079e414a12307a3b270e966",
+          "state": "closed_merged",
+          "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+          "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+          "root_review": 5604078573,
+          "ci": "build-only success; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+        "schedule_ref": "ornl_campus_historical_integrity",
+        "default_status_in_code": "STOPPED",
+        "integration_pr": 609,
+        "mapping_basis": "Definitions.loadable schedule in the 52-schedule main tree; root independently verified all STOPPED."
+      },
+      "move_label_request": {
+        "label": "move:needs-decision",
+        "requested_at": "2026-10-21T18:06Z",
+        "current_label_readback": [
+          "move:needs-decision"
+        ],
+        "issue_state_readback": "open",
+        "note": "One-shot board request submitted. A missing label in current readback is consistent with event consumption; direct Projects Status readback was not available."
+      }
     },
     {
       "issue": 40,
@@ -2376,34 +2684,98 @@
       "title": "Combined Statistical Areas",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/40",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 436,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T23:33:07Z",
+      "current_pr": 605,
+      "reviewed_head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+      "evidence_refs": [
+        "Canonical clean-main PR #605 exact head 0c06f1df446c710eee37a0e057e478b0a17ddaf7 review 5603894518; automatically marked merged through #609 ancestry into main 4f184eaa0020a71bb355a18bd70af64e7a95aea1."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T18:07:19Z",
       "live_issue_created_at": "2026-10-19T01:58:20Z",
       "live_issue_comment_count": 10,
-      "live_labels": [],
+      "live_labels": [
+        "move:needs-decision"
+      ],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 436,
           "title": "Draft Census CSA reconstruction pipeline with native fidelity gates",
-          "state": "open",
           "head_branch": "codex/cloud-dataset-40",
           "head_sha": "0e7b6fc8f60ccd6c73086b2cdf075e2993936e08",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "association_method": "exact_dataset_issue_branch"
+          "association_method": "exact_dataset_issue_branch",
+          "note": "Older stacked PR remains open and noncanonical; clean-main PR #605 is the integrated implementation."
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Canonical clean-main pipeline PR #605 exact head 0c06f1df446c710eee37a0e057e478b0a17ddaf7 (root review 5603894518) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; csa_source_integrity_monthly is STOPPED. Final no-Git source/catalog/post-catalog cache runs be8408af-e6d1-4b2a-8fb7-eb65c50cfd84, acda47c6-76f9-42af-930b-0b13f08e82aa, and b79a06e5-975a-453f-af3e-68e64cbaa0dc succeeded for 184 features; the 2024 vintage, OID representation, baseline, lineage, rights and release remain undecided. Older stacked PR #436 remains open/noncanonical; issue OPEN.",
       "current_pr_candidates": [
+        436,
+        605
+      ],
+      "historical_pr_candidates": [
         436
-      ]
+      ],
+      "canonical_pr": 605,
+      "corrective_fix_pr": null,
+      "current_head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 605,
+        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "review": 5603894518,
+        "integration_pr": 609,
+        "integration_head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "integration_tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+        "integration_review": 5604078573,
+        "ci": "build-only success; publish skipped",
+        "issue_state": "open",
+        "notes": "Canonical clean-main pipeline PR #605 exact head 0c06f1df446c710eee37a0e057e478b0a17ddaf7 (root review 5603894518) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; csa_source_integrity_monthly is STOPPED. Final no-Git source/catalog/post-catalog cache runs be8408af-e6d1-4b2a-8fb7-eb65c50cfd84, acda47c6-76f9-42af-930b-0b13f08e82aa, and b79a06e5-975a-453f-af3e-68e64cbaa0dc succeeded for 184 features; the 2024 vintage, OID representation, baseline, lineage, rights and release remain undecided. Older stacked PR #436 remains open/noncanonical; issue OPEN."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "canonical_pr": {
+          "pr": 605,
+          "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+          "state": "closed_merged",
+          "merged_via": "PR #609 ancestry",
+          "merge_commit": "1d499b34eca062b368dce9bd16b34640c6859546",
+          "review": 5603894518
+        },
+        "integration_pr": {
+          "pr": 609,
+          "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+          "base": "436d49e78f183f386079e414a12307a3b270e966",
+          "state": "closed_merged",
+          "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+          "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+          "root_review": 5604078573,
+          "ci": "build-only success; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+        "schedule_ref": "csa_source_integrity_monthly",
+        "default_status_in_code": "STOPPED",
+        "integration_pr": 609,
+        "mapping_basis": "Definitions.loadable schedule in the 52-schedule main tree; root independently verified all STOPPED."
+      },
+      "move_label_request": {
+        "label": "move:needs-decision",
+        "requested_at": "2026-10-21T18:06Z",
+        "current_label_readback": [
+          "move:needs-decision"
+        ],
+        "issue_state_readback": "open",
+        "note": "One-shot board request submitted. A missing label in current readback is consistent with event consumption; direct Projects Status readback was not available."
+      }
     },
     {
       "issue": 41,
@@ -2411,46 +2783,94 @@
       "title": "Consolidated Cities",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/41",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 441,
-      "reviewed_head": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+      "current_pr": 607,
+      "reviewed_head": "153fac997395ca0e1776b0c21870b4b901f95edb",
       "evidence_refs": [
-        "PR #441 current head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4; runtime head 26032a01c516342d41c1eaeb053acb88d6e2db88; review 6264560879; cleanup 6272862110. Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+        "PR #441 current head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4; runtime head 26032a01c516342d41c1eaeb053acb88d6e2db88; review 6264560879; cleanup 6272862110. Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved.",
+        "Canonical clean-main PR #607 exact head 153fac997395ca0e1776b0c21870b4b901f95edb review 5604020035; automatically marked merged through #609 ancestry into main 4f184eaa0020a71bb355a18bd70af64e7a95aea1."
       ],
       "blocker_type": "source_continuity_rights_and_acceptance_decisions_pending",
-      "live_issue_updated_at": "2026-10-21T11:59:08Z",
+      "live_issue_updated_at": "2026-10-21T18:07:36Z",
       "live_issue_created_at": "2026-10-19T01:58:23Z",
-      "live_issue_comment_count": 9,
+      "live_issue_comment_count": 10,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 441,
           "title": "Draft: reconstruct all Census consolidated cities with authenticated provenance gates",
-          "state": "open",
           "head_branch": "codex/cloud-dataset-41",
           "head_sha": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "association_method": "exact_dataset_issue_branch"
+          "association_method": "exact_dataset_issue_branch",
+          "note": "Older stacked PR remains open and noncanonical; clean-main PR #607 is the integrated implementation."
         }
       ],
-      "status": "native_pipeline_evidence_reviewed_issue_open_acceptance_gated",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
+        441,
+        607
+      ],
+      "current_head": "153fac997395ca0e1776b0c21870b4b901f95edb",
+      "status_note": "Canonical clean-main pipeline PR #607 exact head 153fac997395ca0e1776b0c21870b4b901f95edb (review 5604020035) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; concity_source_integrity_schedule is STOPPED. Final source/catalog/cache and registered refusal-gate evidence is documented in PR #607; no source succession, rights, baseline/schema/ID contract or release acceptance is asserted. Older stacked PR #441 remains open/noncanonical; issue OPEN.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 607,
+        "head": "153fac997395ca0e1776b0c21870b4b901f95edb",
+        "review": 5604020035,
+        "integration_pr": 609,
+        "integration_head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "integration_tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+        "integration_review": 5604078573,
+        "ci": "build-only success; publish skipped",
+        "issue_state": "open",
+        "notes": "Canonical clean-main pipeline PR #607 exact head 153fac997395ca0e1776b0c21870b4b901f95edb (review 5604020035) was automatically marked merged through #609 ancestry. Main integration #609 merged as 1d2aee5c37625481786ec4ec522e7220a25685a7; concity_source_integrity_schedule is STOPPED. Final source/catalog/cache and registered refusal-gate evidence is documented in PR #607; no source succession, rights, baseline/schema/ID contract or release acceptance is asserted. Older stacked PR #441 remains open/noncanonical; issue OPEN."
+      },
+      "historical_pr_candidates": [
         441
       ],
-      "current_head": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
-      "status_note": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved.",
-      "latest_work_update": {
-        "recorded_at": "2026-10-21T17:52:00Z",
-        "state": "native_pipeline_evidence_reviewed_issue_open_acceptance_gated",
-        "pr": 441,
-        "head": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
-        "runtime_head": "26032a01c516342d41c1eaeb053acb88d6e2db88",
-        "review": 6264560879,
-        "cleanup_comment": 6272862110,
-        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+      "canonical_pr": 607,
+      "corrective_fix_pr": null,
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T18:08:12Z",
+        "canonical_pr": {
+          "pr": 607,
+          "head": "153fac997395ca0e1776b0c21870b4b901f95edb",
+          "state": "closed_merged",
+          "merged_via": "PR #609 ancestry",
+          "merge_commit": "9eec21462efa2badbfdaccae605416508b58d360",
+          "review": 5604020035
+        },
+        "integration_pr": {
+          "pr": 609,
+          "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+          "base": "436d49e78f183f386079e414a12307a3b270e966",
+          "state": "closed_merged",
+          "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+          "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+          "root_review": 5604078573,
+          "ci": "build-only success; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+        "schedule_ref": "concity_source_integrity_schedule",
+        "default_status_in_code": "STOPPED",
+        "integration_pr": 609,
+        "mapping_basis": "Definitions.loadable schedule in the 52-schedule main tree; root independently verified all STOPPED."
+      },
+      "move_label_request": {
+        "label": "move:needs-decision",
+        "requested_at": "2026-10-21T18:06Z",
+        "current_label_readback": [],
+        "issue_state_readback": "open",
+        "note": "One-shot board request submitted. A missing label in current readback is consistent with event consumption; direct Projects Status readback was not available."
       }
     },
     {
@@ -12967,6 +13387,33 @@
         605
       ],
       "full_census": false
+    },
+    "post_609_integration": {
+      "integration_609": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+      "merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+      "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+      "root_review": 5604078573,
+      "ci": "build success; publish skipped",
+      "integration_599": {
+        "head": "f32d89944f3e7dd09603ffc34a05f2bdf536e169",
+        "merge": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+        "tree": "cd2a1f0d6ba136d2b88f1b09c570b5acb98672e6",
+        "review": 5604063783,
+        "ci": "build success; publish skipped"
+      },
+      "issues_open": [
+        29,
+        33,
+        35,
+        38,
+        39,
+        40,
+        41,
+        417
+      ],
+      "schedules_stopped": 52,
+      "no_full_census": true,
+      "pending_323_active": true
     }
   },
   "repository_level_blockers": [
@@ -13000,209 +13447,242 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T17:52:00Z",
-    "source": "Parent-verified PR #600 integration/review/build and named PR/issue readbacks; retained prior review/run evidence for #41/#42/#601-#605. No new data runs or full census.",
-    "scope_note": "415 rows preserved; PR #600 integrated seven exact reviewed heads; seven issues remain OPEN. Main has 46 dataset schedules STOPPED. No acceptance, issue closure, activation or publication. 14:14 census historical.",
-    "main_latest": "436d49e78f183f386079e414a12307a3b270e966",
-    "main_tree": "1a163d95ca1a6299e991665f955dc22a65119619",
-    "integration_600": {
-      "pr": 600,
+    "recorded_at": "2026-10-21T18:08:12Z",
+    "source": "Parent-confirmed #609 and #599 merges, GitHub PR/issue metadata readbacks, and root integration review/build results; no new source runs or full census.",
+    "scope_note": "All 415 inventory rows preserved. PR #609 integrated seven reviewed heads (six new schedule-bearing datasets plus #29 corrective cache fix); PR #599 then merged shared staged-publish code. Main is 4f184eaa0020a71bb355a18bd70af64e7a95aea1 with 52 unique schedules, all STOPPED. Issues #29, #33, #35, #38, #39, #40, #41 and #417 remain OPEN. Move:needs-decision was requested for the seven datasets and #417; current labels show five pending labels and two likely consumed one-shot events. No project Status readback, issue closure, source acceptance, release approval, schedule activation or publication is claimed. Historical 14:14 census remains historical.",
+    "main_latest": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+    "main_tree": "cd2a1f0d6ba136d2b88f1b09c570b5acb98672e6",
+    "integration_609": {
+      "pr": 609,
       "state": "closed_merged",
-      "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-      "head": "98f80e6b07836332e9ced300da16e029aa03096d",
-      "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
-      "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
-      "root_review": 5603690424,
-      "ci": "build-only success; publish skipped",
-      "schedules": "46 STOPPED"
+      "base": "436d49e78f183f386079e414a12307a3b270e966",
+      "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+      "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+      "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+      "root_review": 5604078573,
+      "ci_run": 39649066652,
+      "ci_build_job": 119392277916,
+      "ci": "build success; publish skipped",
+      "source_heads_preserved": [
+        "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "d6a4028b351092b336252e4ee10f38b1227523da",
+        "1acb376592ae853e7635b40de044048996fd2314",
+        "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "f21d04ea0eb54bc03b71037cf9d83403a94ceded",
+        "153fac997395ca0e1776b0c21870b4b901f95edb"
+      ],
+      "source_owned_blobs": "Root independently verified 32 non-registration blobs and all seven reviewed source-head ancestors; additive registration resolutions only. PR #602 contributes the two reviewed documentation_url catalog-metadata allowlist lines.",
+      "definitions_check": "52 unique STOPPED schedules verified in combined Definitions; prior 46 retained, six new schedules added for #33/#35/#38/#39/#40/#41; #29 corrective fix adds no schedule.",
+      "no_issue_closing_directives": true
+    },
+    "integration_599": {
+      "pr": 599,
+      "state": "closed_merged",
+      "base": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+      "head": "f32d89944f3e7dd09603ffc34a05f2bdf536e169",
+      "merge_commit": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+      "tree": "cd2a1f0d6ba136d2b88f1b09c570b5acb98672e6",
+      "review": 5604063783,
+      "ci_run": 39648728723,
+      "ci_build_job": 119391127433,
+      "ci": "build success; publish skipped",
+      "scope": "Shared staged-candidate publish support; issue #417 remains open and incomplete pending actual baseline, contracts, rights and real pilot. Source adapters declared unsupported remain blocked."
     },
     "source_prs_auto_merged": [
       {
-        "issue": 20,
-        "pr": 431,
-        "head": "09b598485fcd8ca8519855af02331172dd976807",
-        "review": 5603303945,
+        "issue": 33,
+        "pr": 603,
+        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+        "review": 5603918139,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "4fbe89b3b6c430f44090a35d9bf0772e5bb902d9",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 26,
-        "pr": 596,
-        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
-        "review": 5603543308,
+        "issue": 35,
+        "pr": 604,
+        "head": "1acb376592ae853e7635b40de044048996fd2314",
+        "review": 5603867622,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "a82564567023f8172f9f86689773b8b3f7b57fb5",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 28,
-        "pr": 594,
-        "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
-        "review": 5603413457,
+        "issue": 38,
+        "pr": 602,
+        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "review": 5603872439,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "b83be01fae44d812dbdd00b7a3500c74fff3fcf0",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 29,
-        "pr": 438,
-        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
-        "review": 5603542372,
+        "issue": 39,
+        "pr": 601,
+        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "review": 5603776940,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "097fcbb2045d639291aeb9b1f882035732b387d4",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 30,
-        "pr": 439,
-        "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
-        "review": 5603551632,
+        "issue": 40,
+        "pr": 605,
+        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "review": 5603894518,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "1d499b34eca062b368dce9bd16b34640c6859546",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 31,
-        "pr": 598,
-        "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
-        "review": 5603522426,
+        "issue": 41,
+        "pr": 607,
+        "head": "153fac997395ca0e1776b0c21870b4b901f95edb",
+        "review": 5604020035,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
-        "issue_state": "open",
-        "canonical": true
-      },
-      {
-        "issue": 34,
-        "pr": 597,
-        "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
-        "review": 5603531492,
-        "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "9eec21462efa2badbfdaccae605416508b58d360",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       }
     ],
-    "cache_audit": {
-      "only_confirmed_issue": 29,
-      "detail": "Only #29 rejects catalog-generated provenance/source-manifest sidecars; fix active, no new capture. #26/#28/#30/#31 accept them."
-    },
-    "evidence_reconciliation_41_42": {
-      "41": {
-        "p": 441,
-        "h": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
-        "runtime": "26032a01c516342d41c1eaeb053acb88d6e2db88",
-        "review": 6264560879,
-        "cleanup": 6272862110,
-        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+    "corrective_fix_prs_auto_merged": [
+      {
+        "issue": 29,
+        "pr": 606,
+        "head": "f21d04ea0eb54bc03b71037cf9d83403a94ceded",
+        "review": 5603988235,
+        "state": "closed_merged",
+        "merge_commit": "4868193cfd812fbd1ecca945464cd973b55bd30d",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "issue_state": "open",
+        "canonical": false,
+        "role": "corrective_fix; main canonical pipeline remains PR #438"
+      }
+    ],
+    "issue_readbacks": {
+      "29": {
+        "state": "open",
+        "labels": [],
+        "updated_at": "2026-10-21T18:07:11Z",
+        "comments": 11
       },
-      "42": {
-        "p": 453,
-        "h": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
-        "runtime": "041c4a7088758a0023fed7bad3856ee3c9d27237",
-        "review": 6266833755,
-        "cleanup": 6272904141,
-        "notes": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved."
+      "33": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:07Z",
+        "comments": 0
+      },
+      "35": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:02Z",
+        "comments": 0
+      },
+      "38": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:10Z",
+        "comments": 15
+      },
+      "39": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:14Z",
+        "comments": 11
+      },
+      "40": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:19Z",
+        "comments": 10
+      },
+      "41": {
+        "state": "open",
+        "labels": [],
+        "updated_at": "2026-10-21T18:07:36Z",
+        "comments": 10
       }
     },
     "board_sync": {
-      "workflow_run": 39647433014,
-      "state": "success",
-      "needs_decision": [
-        6,
-        9,
-        16,
-        19,
-        26,
-        30
-      ],
-      "in_progress": [
+      "request_label": "move:needs-decision",
+      "requested_for": [
         29,
+        33,
         35,
+        38,
         39,
-        323
+        40,
+        41,
+        417
       ],
-      "prior_one_shot_consumed": [
-        20,
-        28,
-        31,
-        34
-      ]
+      "readback_at": "2026-10-21T18:07Z",
+      "current_label_present_on": [
+        33,
+        35,
+        38,
+        39,
+        40,
+        417
+      ],
+      "label_absent_after_request_on": [
+        29,
+        41
+      ],
+      "interpretation": "One-shot labels are absent on #29 and #41, consistent with sync consumption; direct Project Status was not queried. Do not claim unverified current Status values."
     },
-    "pending_pipeline_integration": {
-      "status": "Five reviewed source PRs pending additive integration; current schedule count stays 46.",
-      "PR601": {
-        "issue": 39,
-        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
-        "review": 5603776940
-      },
-      "PR602": {
-        "issue": 38,
-        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
-        "review": 5603872439,
-        "scope": "limited delta; runtime 571dbc4c0ab644af0115ad5bece19781abe3ee63"
-      },
-      "PR603": {
-        "issue": 33,
-        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
-        "review": 5603918139,
-        "tree": "e1404e6d25d80f1c58c005d54916b875c6ccce51",
-        "runtime": "993f25499ace0df4da3185d8a510550e9693899e"
-      },
-      "PR604": {
-        "issue": 35,
-        "head": "1acb376592ae853e7635b40de044048996fd2314",
-        "review": 5603867622,
-        "features": 85529,
-        "tests": 8
-      },
-      "PR605": {
-        "issue": 40,
-        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
-        "review": 5603894518,
-        "features": 184,
-        "fixture_objects": 15,
-        "tests": 12
-      },
-      "all_five_if_integrated_schedules": 51
+    "coordination_issue_417": {
+      "state": "open",
+      "label_request": "move:needs-decision added",
+      "integration_pr": 599,
+      "integration_head": "f32d89944f3e7dd09603ffc34a05f2bdf536e169",
+      "main_merge": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+      "review": 5604063783,
+      "ci": "build success; publish skipped",
+      "remaining": "Shared verification remains incomplete pending accepted baselines/contracts, rights decisions and a real pilot; source adapters declared unsupported remain blocked. No production data published. Parent requested an issue integration comment; comment publication is not claimed in this ledger checkpoint."
     },
-    "paid_poll": {
-      "at": "2026-10-21T17:41:29Z",
-      "implementation_run": 39645303470,
-      "review_run": 39645298886,
-      "current_state": "not refreshed",
-      "admissions": "paused",
-      "inference_guard_usd": 25,
-      "actual_spend": "unknown",
-      "compute_excluded": true
+    "pending_work": {
+      "pr_323": "Parent reports implementation job active; no new paid admissions claimed.",
+      "pr_608": "Conveyor Areas reviewed and ready for a future integration batch; not included in #609."
     },
+    "historical_census_note": "14:14 UTC open-PR census remains historical; no fresh full census or current global open-PR total claimed.",
     "controls": {
-      "no_capture": true,
-      "no_materialization": true,
-      "no_full_suite": true,
-      "no_issue_closure": true,
-      "no_acceptance": true,
-      "no_publication": true,
-      "no_paid_dispatch": true
+      "source_capture": "none",
+      "materializations": "none",
+      "release_gates": "none",
+      "full_suite": "not run",
+      "issue_closures": "dataset issues remain open; source PRs automatically marked merged through ancestry",
+      "release_acceptance": "none",
+      "production_publication": "none",
+      "paid_admissions": "none reported after merge; PR #323 active per parent update"
     }
   },
   "pr_search_snapshot_records": [
@@ -14646,209 +15126,242 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-21T17:52:00Z",
-    "source": "Parent-verified PR #600 integration/review/build and named PR/issue readbacks; retained prior review/run evidence for #41/#42/#601-#605. No new data runs or full census.",
-    "scope_note": "415 rows preserved; PR #600 integrated seven exact reviewed heads; seven issues remain OPEN. Main has 46 dataset schedules STOPPED. No acceptance, issue closure, activation or publication. 14:14 census historical.",
-    "main_latest": "436d49e78f183f386079e414a12307a3b270e966",
-    "main_tree": "1a163d95ca1a6299e991665f955dc22a65119619",
-    "integration_600": {
-      "pr": 600,
+    "recorded_at": "2026-10-21T18:08:12Z",
+    "source": "Parent-confirmed #609 and #599 merges, GitHub PR/issue metadata readbacks, and root integration review/build results; no new source runs or full census.",
+    "scope_note": "All 415 inventory rows preserved. PR #609 integrated seven reviewed heads (six new schedule-bearing datasets plus #29 corrective cache fix); PR #599 then merged shared staged-publish code. Main is 4f184eaa0020a71bb355a18bd70af64e7a95aea1 with 52 unique schedules, all STOPPED. Issues #29, #33, #35, #38, #39, #40, #41 and #417 remain OPEN. Move:needs-decision was requested for the seven datasets and #417; current labels show five pending labels and two likely consumed one-shot events. No project Status readback, issue closure, source acceptance, release approval, schedule activation or publication is claimed. Historical 14:14 census remains historical.",
+    "main_latest": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+    "main_tree": "cd2a1f0d6ba136d2b88f1b09c570b5acb98672e6",
+    "integration_609": {
+      "pr": 609,
       "state": "closed_merged",
-      "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-      "head": "98f80e6b07836332e9ced300da16e029aa03096d",
-      "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
-      "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
-      "root_review": 5603690424,
-      "ci": "build-only success; publish skipped",
-      "schedules": "46 STOPPED"
+      "base": "436d49e78f183f386079e414a12307a3b270e966",
+      "head": "995f41e5d69016ddab0872ba94c5a16a9f39a7f9",
+      "merge_commit": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+      "tree": "6cf03a3a055ceeee1866b738b3659c402d348d71",
+      "root_review": 5604078573,
+      "ci_run": 39649066652,
+      "ci_build_job": 119392277916,
+      "ci": "build success; publish skipped",
+      "source_heads_preserved": [
+        "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "d6a4028b351092b336252e4ee10f38b1227523da",
+        "1acb376592ae853e7635b40de044048996fd2314",
+        "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "f21d04ea0eb54bc03b71037cf9d83403a94ceded",
+        "153fac997395ca0e1776b0c21870b4b901f95edb"
+      ],
+      "source_owned_blobs": "Root independently verified 32 non-registration blobs and all seven reviewed source-head ancestors; additive registration resolutions only. PR #602 contributes the two reviewed documentation_url catalog-metadata allowlist lines.",
+      "definitions_check": "52 unique STOPPED schedules verified in combined Definitions; prior 46 retained, six new schedules added for #33/#35/#38/#39/#40/#41; #29 corrective fix adds no schedule.",
+      "no_issue_closing_directives": true
+    },
+    "integration_599": {
+      "pr": 599,
+      "state": "closed_merged",
+      "base": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+      "head": "f32d89944f3e7dd09603ffc34a05f2bdf536e169",
+      "merge_commit": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+      "tree": "cd2a1f0d6ba136d2b88f1b09c570b5acb98672e6",
+      "review": 5604063783,
+      "ci_run": 39648728723,
+      "ci_build_job": 119391127433,
+      "ci": "build success; publish skipped",
+      "scope": "Shared staged-candidate publish support; issue #417 remains open and incomplete pending actual baseline, contracts, rights and real pilot. Source adapters declared unsupported remain blocked."
     },
     "source_prs_auto_merged": [
       {
-        "issue": 20,
-        "pr": 431,
-        "head": "09b598485fcd8ca8519855af02331172dd976807",
-        "review": 5603303945,
+        "issue": 33,
+        "pr": 603,
+        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+        "review": 5603918139,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "4fbe89b3b6c430f44090a35d9bf0772e5bb902d9",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 26,
-        "pr": 596,
-        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
-        "review": 5603543308,
+        "issue": 35,
+        "pr": 604,
+        "head": "1acb376592ae853e7635b40de044048996fd2314",
+        "review": 5603867622,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "a82564567023f8172f9f86689773b8b3f7b57fb5",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 28,
-        "pr": 594,
-        "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
-        "review": 5603413457,
+        "issue": 38,
+        "pr": 602,
+        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "review": 5603872439,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "b83be01fae44d812dbdd00b7a3500c74fff3fcf0",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 29,
-        "pr": 438,
-        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
-        "review": 5603542372,
+        "issue": 39,
+        "pr": 601,
+        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "review": 5603776940,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "097fcbb2045d639291aeb9b1f882035732b387d4",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 30,
-        "pr": 439,
-        "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
-        "review": 5603551632,
+        "issue": 40,
+        "pr": 605,
+        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "review": 5603894518,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "1d499b34eca062b368dce9bd16b34640c6859546",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       },
       {
-        "issue": 31,
-        "pr": 598,
-        "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
-        "review": 5603522426,
+        "issue": 41,
+        "pr": 607,
+        "head": "153fac997395ca0e1776b0c21870b4b901f95edb",
+        "review": 5604020035,
         "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
-        "issue_state": "open",
-        "canonical": true
-      },
-      {
-        "issue": 34,
-        "pr": 597,
-        "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
-        "review": 5603531492,
-        "state": "closed_merged",
-        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
-        "integration_pr": 600,
-        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "merge_commit": "9eec21462efa2badbfdaccae605416508b58d360",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
         "issue_state": "open",
         "canonical": true
       }
     ],
-    "cache_audit": {
-      "only_confirmed_issue": 29,
-      "detail": "Only #29 rejects catalog-generated provenance/source-manifest sidecars; fix active, no new capture. #26/#28/#30/#31 accept them."
-    },
-    "evidence_reconciliation_41_42": {
-      "41": {
-        "p": 441,
-        "h": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
-        "runtime": "26032a01c516342d41c1eaeb053acb88d6e2db88",
-        "review": 6264560879,
-        "cleanup": 6272862110,
-        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+    "corrective_fix_prs_auto_merged": [
+      {
+        "issue": 29,
+        "pr": 606,
+        "head": "f21d04ea0eb54bc03b71037cf9d83403a94ceded",
+        "review": 5603988235,
+        "state": "closed_merged",
+        "merge_commit": "4868193cfd812fbd1ecca945464cd973b55bd30d",
+        "integration_pr": 609,
+        "integration_merge": "1d2aee5c37625481786ec4ec522e7220a25685a7",
+        "issue_state": "open",
+        "canonical": false,
+        "role": "corrective_fix; main canonical pipeline remains PR #438"
+      }
+    ],
+    "issue_readbacks": {
+      "29": {
+        "state": "open",
+        "labels": [],
+        "updated_at": "2026-10-21T18:07:11Z",
+        "comments": 11
       },
-      "42": {
-        "p": 453,
-        "h": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
-        "runtime": "041c4a7088758a0023fed7bad3856ee3c9d27237",
-        "review": 6266833755,
-        "cleanup": 6272904141,
-        "notes": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved."
+      "33": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:07Z",
+        "comments": 0
+      },
+      "35": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:02Z",
+        "comments": 0
+      },
+      "38": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:10Z",
+        "comments": 15
+      },
+      "39": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:14Z",
+        "comments": 11
+      },
+      "40": {
+        "state": "open",
+        "labels": [
+          "move:needs-decision"
+        ],
+        "updated_at": "2026-10-21T18:07:19Z",
+        "comments": 10
+      },
+      "41": {
+        "state": "open",
+        "labels": [],
+        "updated_at": "2026-10-21T18:07:36Z",
+        "comments": 10
       }
     },
     "board_sync": {
-      "workflow_run": 39647433014,
-      "state": "success",
-      "needs_decision": [
-        6,
-        9,
-        16,
-        19,
-        26,
-        30
-      ],
-      "in_progress": [
+      "request_label": "move:needs-decision",
+      "requested_for": [
         29,
+        33,
         35,
+        38,
         39,
-        323
+        40,
+        41,
+        417
       ],
-      "prior_one_shot_consumed": [
-        20,
-        28,
-        31,
-        34
-      ]
+      "readback_at": "2026-10-21T18:07Z",
+      "current_label_present_on": [
+        33,
+        35,
+        38,
+        39,
+        40,
+        417
+      ],
+      "label_absent_after_request_on": [
+        29,
+        41
+      ],
+      "interpretation": "One-shot labels are absent on #29 and #41, consistent with sync consumption; direct Project Status was not queried. Do not claim unverified current Status values."
     },
-    "pending_pipeline_integration": {
-      "status": "Five reviewed source PRs pending additive integration; current schedule count stays 46.",
-      "PR601": {
-        "issue": 39,
-        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
-        "review": 5603776940
-      },
-      "PR602": {
-        "issue": 38,
-        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
-        "review": 5603872439,
-        "scope": "limited delta; runtime 571dbc4c0ab644af0115ad5bece19781abe3ee63"
-      },
-      "PR603": {
-        "issue": 33,
-        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
-        "review": 5603918139,
-        "tree": "e1404e6d25d80f1c58c005d54916b875c6ccce51",
-        "runtime": "993f25499ace0df4da3185d8a510550e9693899e"
-      },
-      "PR604": {
-        "issue": 35,
-        "head": "1acb376592ae853e7635b40de044048996fd2314",
-        "review": 5603867622,
-        "features": 85529,
-        "tests": 8
-      },
-      "PR605": {
-        "issue": 40,
-        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
-        "review": 5603894518,
-        "features": 184,
-        "fixture_objects": 15,
-        "tests": 12
-      },
-      "all_five_if_integrated_schedules": 51
+    "coordination_issue_417": {
+      "state": "open",
+      "label_request": "move:needs-decision added",
+      "integration_pr": 599,
+      "integration_head": "f32d89944f3e7dd09603ffc34a05f2bdf536e169",
+      "main_merge": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
+      "review": 5604063783,
+      "ci": "build success; publish skipped",
+      "remaining": "Shared verification remains incomplete pending accepted baselines/contracts, rights decisions and a real pilot; source adapters declared unsupported remain blocked. No production data published. Parent requested an issue integration comment; comment publication is not claimed in this ledger checkpoint."
     },
-    "paid_poll": {
-      "at": "2026-10-21T17:41:29Z",
-      "implementation_run": 39645303470,
-      "review_run": 39645298886,
-      "current_state": "not refreshed",
-      "admissions": "paused",
-      "inference_guard_usd": 25,
-      "actual_spend": "unknown",
-      "compute_excluded": true
+    "pending_work": {
+      "pr_323": "Parent reports implementation job active; no new paid admissions claimed.",
+      "pr_608": "Conveyor Areas reviewed and ready for a future integration batch; not included in #609."
     },
+    "historical_census_note": "14:14 UTC open-PR census remains historical; no fresh full census or current global open-PR total claimed.",
     "controls": {
-      "no_capture": true,
-      "no_materialization": true,
-      "no_full_suite": true,
-      "no_issue_closure": true,
-      "no_acceptance": true,
-      "no_publication": true,
-      "no_paid_dispatch": true
+      "source_capture": "none",
+      "materializations": "none",
+      "release_gates": "none",
+      "full_suite": "not run",
+      "issue_closures": "dataset issues remain open; source PRs automatically marked merged through ancestry",
+      "release_acceptance": "none",
+      "production_publication": "none",
+      "paid_admissions": "none reported after merge; PR #323 active per parent update"
     }
   },
   "previous_verified_checkpoint_2026_10_21T1455Z": {
@@ -15894,8 +16407,8 @@
     }
   },
   "ledger_status_counts_recorded_at": "2026-10-21T17:52:00Z",
-  "main_registered_schedule_count": 46,
-  "main_registered_schedule_issue_count": 46,
+  "main_registered_schedule_count": 52,
+  "main_registered_schedule_issue_count": 52,
   "main_registered_schedule_mapping_issues": [
     2,
     3,
@@ -15917,8 +16430,14 @@
     29,
     30,
     31,
+    33,
     34,
+    35,
     37,
+    38,
+    39,
+    40,
+    41,
     181,
     253,
     257,
@@ -15944,12 +16463,12 @@
     335,
     363
   ],
-  "main_registered_schedule_default_configuration": "All 46 schedule definitions in current main 436d49e78f183f386079e414a12307a3b270e966 configure DefaultScheduleStatus.STOPPED; live scheduler not queried.",
+  "main_registered_schedule_default_configuration": "Root independently validated the combined Definitions at main 4f184eaa0020a71bb355a18bd70af64e7a95aea1: 52 unique schedule definitions, all DefaultScheduleStatus.STOPPED; live scheduler status not queried.",
   "main_registration_snapshot": {
-    "main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+    "main_sha": "4f184eaa0020a71bb355a18bd70af64e7a95aea1",
     "definitions_file": "src/dagster_hifld/definitions.py",
-    "configured_schedule_count": 46,
-    "mapped_inventory_issue_count": 46,
+    "configured_schedule_count": 52,
+    "mapped_inventory_issue_count": 52,
     "mapped_issue_ids": [
       2,
       3,
@@ -15971,8 +16490,14 @@
       29,
       30,
       31,
+      33,
       34,
+      35,
       37,
+      38,
+      39,
+      40,
+      41,
       181,
       253,
       257,
@@ -16000,9 +16525,21 @@
     ],
     "all_default_status_stopped": true,
     "live_scheduler_status_queried": false,
-    "method": "Definitions schedule list, linked jobs and asset/key refs mapped to inventory; registration only."
+    "new_schedule_mappings": {
+      "33": "census_block_groups_draft_schedule",
+      "35": "census_tracts_draft_schedule",
+      "38": "colleges_source_integrity_monthly",
+      "39": "ornl_campus_historical_integrity",
+      "40": "csa_source_integrity_monthly",
+      "41": "concity_source_integrity_schedule"
+    },
+    "issue_29_corrective_fix": {
+      "pr": 606,
+      "adds_schedule": false
+    },
+    "method": "Root independently loaded combined Definitions and verified 52 unique schedules STOPPED; new schedule mappings from reviewed per-card registrations; no source/materialization/gate reruns."
   },
-  "current_count_status": "No fresh census; named readbacks only. 14:14 census remains historical; current open-PR total unset.",
+  "current_count_status": "No fresh full census; named PR and issue readbacks only. Historical 14:14 census remains historical; current open-PR total unset.",
   "previous_verified_checkpoint_2026_10_21T1717Z": {
     "recorded_at": "2026-10-21T17:17:54Z",
     "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
@@ -16433,6 +16970,418 @@
       "all_default_status_stopped": true,
       "live_scheduler_status_queried": false,
       "method": "Read current Definitions.schedules list, each schedule job reference, and selected asset/key refs; matched dataset-specific names to inventory issue IDs. This is source registration, not runtime activation or pipeline acceptance."
+    }
+  },
+  "previous_verified_checkpoint_2026_10_21T1752Z": {
+    "recorded_at": "2026-10-21T17:52:00Z",
+    "source": "Parent-verified PR #600 integration/review/build and named PR/issue readbacks; retained prior review/run evidence for #41/#42/#601-#605. No new data runs or full census.",
+    "scope_note": "415 rows preserved; PR #600 integrated seven exact reviewed heads; seven issues remain OPEN. Main has 46 dataset schedules STOPPED. No acceptance, issue closure, activation or publication. 14:14 census historical.",
+    "main_latest": "436d49e78f183f386079e414a12307a3b270e966",
+    "main_tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+    "integration_600": {
+      "pr": 600,
+      "state": "closed_merged",
+      "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+      "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+      "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+      "root_review": 5603690424,
+      "ci": "build-only success; publish skipped",
+      "schedules": "46 STOPPED"
+    },
+    "source_prs_auto_merged": [
+      {
+        "issue": 20,
+        "pr": 431,
+        "head": "09b598485fcd8ca8519855af02331172dd976807",
+        "review": 5603303945,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 26,
+        "pr": 596,
+        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+        "review": 5603543308,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 28,
+        "pr": 594,
+        "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+        "review": 5603413457,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 29,
+        "pr": 438,
+        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+        "review": 5603542372,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 30,
+        "pr": 439,
+        "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+        "review": 5603551632,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 31,
+        "pr": 598,
+        "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+        "review": 5603522426,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 34,
+        "pr": 597,
+        "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+        "review": 5603531492,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      }
+    ],
+    "cache_audit": {
+      "only_confirmed_issue": 29,
+      "detail": "Only #29 rejects catalog-generated provenance/source-manifest sidecars; fix active, no new capture. #26/#28/#30/#31 accept them."
+    },
+    "evidence_reconciliation_41_42": {
+      "41": {
+        "p": 441,
+        "h": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+        "runtime": "26032a01c516342d41c1eaeb053acb88d6e2db88",
+        "review": 6264560879,
+        "cleanup": 6272862110,
+        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+      },
+      "42": {
+        "p": 453,
+        "h": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+        "runtime": "041c4a7088758a0023fed7bad3856ee3c9d27237",
+        "review": 6266833755,
+        "cleanup": 6272904141,
+        "notes": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved."
+      }
+    },
+    "board_sync": {
+      "workflow_run": 39647433014,
+      "state": "success",
+      "needs_decision": [
+        6,
+        9,
+        16,
+        19,
+        26,
+        30
+      ],
+      "in_progress": [
+        29,
+        35,
+        39,
+        323
+      ],
+      "prior_one_shot_consumed": [
+        20,
+        28,
+        31,
+        34
+      ]
+    },
+    "pending_pipeline_integration": {
+      "status": "Five reviewed source PRs pending additive integration; current schedule count stays 46.",
+      "PR601": {
+        "issue": 39,
+        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "review": 5603776940
+      },
+      "PR602": {
+        "issue": 38,
+        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "review": 5603872439,
+        "scope": "limited delta; runtime 571dbc4c0ab644af0115ad5bece19781abe3ee63"
+      },
+      "PR603": {
+        "issue": 33,
+        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+        "review": 5603918139,
+        "tree": "e1404e6d25d80f1c58c005d54916b875c6ccce51",
+        "runtime": "993f25499ace0df4da3185d8a510550e9693899e"
+      },
+      "PR604": {
+        "issue": 35,
+        "head": "1acb376592ae853e7635b40de044048996fd2314",
+        "review": 5603867622,
+        "features": 85529,
+        "tests": 8
+      },
+      "PR605": {
+        "issue": 40,
+        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "review": 5603894518,
+        "features": 184,
+        "fixture_objects": 15,
+        "tests": 12
+      },
+      "all_five_if_integrated_schedules": 51
+    },
+    "paid_poll": {
+      "at": "2026-10-21T17:41:29Z",
+      "implementation_run": 39645303470,
+      "review_run": 39645298886,
+      "current_state": "not refreshed",
+      "admissions": "paused",
+      "inference_guard_usd": 25,
+      "actual_spend": "unknown",
+      "compute_excluded": true
+    },
+    "controls": {
+      "no_capture": true,
+      "no_materialization": true,
+      "no_full_suite": true,
+      "no_issue_closure": true,
+      "no_acceptance": true,
+      "no_publication": true,
+      "no_paid_dispatch": true
+    }
+  },
+  "previous_evidence_update_2026_10_21T1752Z": {
+    "recorded_at": "2026-10-21T17:52:00Z",
+    "source": "Parent-verified PR #600 integration/review/build and named PR/issue readbacks; retained prior review/run evidence for #41/#42/#601-#605. No new data runs or full census.",
+    "scope_note": "415 rows preserved; PR #600 integrated seven exact reviewed heads; seven issues remain OPEN. Main has 46 dataset schedules STOPPED. No acceptance, issue closure, activation or publication. 14:14 census historical.",
+    "main_latest": "436d49e78f183f386079e414a12307a3b270e966",
+    "main_tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+    "integration_600": {
+      "pr": 600,
+      "state": "closed_merged",
+      "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+      "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+      "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+      "root_review": 5603690424,
+      "ci": "build-only success; publish skipped",
+      "schedules": "46 STOPPED"
+    },
+    "source_prs_auto_merged": [
+      {
+        "issue": 20,
+        "pr": 431,
+        "head": "09b598485fcd8ca8519855af02331172dd976807",
+        "review": 5603303945,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 26,
+        "pr": 596,
+        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+        "review": 5603543308,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 28,
+        "pr": 594,
+        "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+        "review": 5603413457,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 29,
+        "pr": 438,
+        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+        "review": 5603542372,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 30,
+        "pr": 439,
+        "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+        "review": 5603551632,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 31,
+        "pr": 598,
+        "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+        "review": 5603522426,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 34,
+        "pr": 597,
+        "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+        "review": 5603531492,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      }
+    ],
+    "cache_audit": {
+      "only_confirmed_issue": 29,
+      "detail": "Only #29 rejects catalog-generated provenance/source-manifest sidecars; fix active, no new capture. #26/#28/#30/#31 accept them."
+    },
+    "evidence_reconciliation_41_42": {
+      "41": {
+        "p": 441,
+        "h": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+        "runtime": "26032a01c516342d41c1eaeb053acb88d6e2db88",
+        "review": 6264560879,
+        "cleanup": 6272862110,
+        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+      },
+      "42": {
+        "p": 453,
+        "h": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+        "runtime": "041c4a7088758a0023fed7bad3856ee3c9d27237",
+        "review": 6266833755,
+        "cleanup": 6272904141,
+        "notes": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved."
+      }
+    },
+    "board_sync": {
+      "workflow_run": 39647433014,
+      "state": "success",
+      "needs_decision": [
+        6,
+        9,
+        16,
+        19,
+        26,
+        30
+      ],
+      "in_progress": [
+        29,
+        35,
+        39,
+        323
+      ],
+      "prior_one_shot_consumed": [
+        20,
+        28,
+        31,
+        34
+      ]
+    },
+    "pending_pipeline_integration": {
+      "status": "Five reviewed source PRs pending additive integration; current schedule count stays 46.",
+      "PR601": {
+        "issue": 39,
+        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "review": 5603776940
+      },
+      "PR602": {
+        "issue": 38,
+        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "review": 5603872439,
+        "scope": "limited delta; runtime 571dbc4c0ab644af0115ad5bece19781abe3ee63"
+      },
+      "PR603": {
+        "issue": 33,
+        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+        "review": 5603918139,
+        "tree": "e1404e6d25d80f1c58c005d54916b875c6ccce51",
+        "runtime": "993f25499ace0df4da3185d8a510550e9693899e"
+      },
+      "PR604": {
+        "issue": 35,
+        "head": "1acb376592ae853e7635b40de044048996fd2314",
+        "review": 5603867622,
+        "features": 85529,
+        "tests": 8
+      },
+      "PR605": {
+        "issue": 40,
+        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "review": 5603894518,
+        "features": 184,
+        "fixture_objects": 15,
+        "tests": 12
+      },
+      "all_five_if_integrated_schedules": 51
+    },
+    "paid_poll": {
+      "at": "2026-10-21T17:41:29Z",
+      "implementation_run": 39645303470,
+      "review_run": 39645298886,
+      "current_state": "not refreshed",
+      "admissions": "paused",
+      "inference_guard_usd": 25,
+      "actual_spend": "unknown",
+      "compute_excluded": true
+    },
+    "controls": {
+      "no_capture": true,
+      "no_materialization": true,
+      "no_full_suite": true,
+      "no_issue_closure": true,
+      "no_acceptance": true,
+      "no_publication": true,
+      "no_paid_dispatch": true
     }
   }
 }
