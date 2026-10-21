@@ -202,8 +202,11 @@ class AquifersTests(unittest.TestCase):
 
     @unittest.skipUnless(CAPTURES.joinpath('zip.body').exists(), 'optional complete real capture not installed')
     def test_missing_duplicate_lossy_types_columns_and_geometry_reject(self):
-        with fiona.open(CAPTURES/'zip/us_aquifers.shp') as original:
-            rows=[{'properties':dict(r['properties']),'geometry':mapping(shape(r['geometry']))} for r in original]
+        with tempfile.TemporaryDirectory() as extracted:
+            with source.zipfile.ZipFile(CAPTURES/'zip.body') as archive:
+                archive.extractall(extracted)
+            with fiona.open(Path(extracted)/'us_aquifers.shp') as original:
+                rows=[{'properties':dict(r['properties']),'geometry':mapping(shape(r['geometry']))} for r in original]
         class Stream:
             schema={'properties':source.SCHEMA,'geometry':'Polygon'}
             crs='EPSG:4269'
