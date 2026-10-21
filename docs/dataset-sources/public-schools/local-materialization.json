@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "classification": "Isolated draft source/catalog/gate verification. No release, baseline, contract, or historical equivalence acceptance.",
+  "code_commit": "91c47f859f01f25606ec27a3a232863383324be7",
+  "code_tree": "record with commit 6690cd9; source implementation first committed b9287f1",
+  "runtime": {
+    "git_metadata_present": false,
+    "git_executable_available": false,
+    "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "code_commit": "packaged-sha256:417e1a813b6e4557e9f4092a10a4ce4e55635c6e253c9428d28e77975c219030",
+    "working_tree_status": "unknown",
+    "python": "3.12.14",
+    "pyarrow": "23.0.1",
+    "proj": "9.5.1",
+    "geos": "3.13.1"
+  },
+  "source_capture": {
+    "kind": "replay of retained official NCES response; no second request was made",
+    "capture_directory": "/workspace/work/hifld-coordinator/281/capture",
+    "observed_at": "2026-10-20T03:50:42.902339+00:00",
+    "source_url": "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_PUBLICSCH_2425.zip",
+    "http_status": 200,
+    "decoded_bytes": 30448565,
+    "decoded_sha256": "9dc51ecd5cdf6e38bdb679f7ac95e2bf73ee3fb48718b8612cf830800cffb288",
+    "wire_bytes": 30448565,
+    "wire_sha256": "9dc51ecd5cdf6e38bdb679f7ac95e2bf73ee3fb48718b8612cf830800cffb288",
+    "candidate_version": "vf251ad8608c35c414c908e81d45fadfb",
+    "candidate_prefix": "public-schools/public-schools/vf251ad8608c35c414c908e81d45fadfb",
+    "feature_count": 102178,
+    "identifier": "NCESSCH; 102178 unique sorted 12-character strings; canonical JSON SHA-256 2fa37754051a457c280f089eba68d6b42b54dd680780e00f6d56bd103e6c02a3",
+    "geometry": "102178 valid 2D Point geometries, EPSG:4326; source X/Y and LAT/LON agree within 1e-12 degrees",
+    "native_attributes": "All 23 fields retained in source order and native physical types; every field crosschecked across all 102178 rows against the archive TXT member",
+    "candidate_geoparquet": {
+      "bytes": 6563017,
+      "sha256": "287cf32e965d6856c5c0e14d4e12169c3f1d9c7514182e72fa53bc66756cacd7"
+    }
+  },
+  "dagster_runs": {
+    "source": {
+      "run_id": "1099b9f3-6dc0-4edd-9f81-75b50dbbd0aa",
+      "success": true,
+      "registered_population_check": true
+    },
+    "cache_replay": {
+      "run_id": "f8fcfb04-29c2-47c3-b622-794d9a708805",
+      "success": true,
+      "reused_same_candidate": true,
+      "candidate_parquet_sha256_before_and_after": "287cf32e965d6856c5c0e14d4e12169c3f1d9c7514182e72fa53bc66756cacd7"
+    },
+    "catalog": {
+      "run_id": "a496fde5-ecdd-4a6d-a4f0-cd5ab5d15112",
+      "success": true,
+      "registered_quality_check": true,
+      "quality_check_passed": true,
+      "invalid_geometry_count": 0,
+      "null_geometry_count": 0,
+      "feature_count": 102178
+    },
+    "negative_quality_fixture": {
+      "run_id": "21bfe254-0abd-45eb-9198-872abb8d92b2",
+      "success": false,
+      "scope": "isolated copied candidate: one point geometry set null and matching output byte pins updated; all original candidate files and published fixture untouched",
+      "quality_check_passed": false,
+      "registered_quality_check_passed": false,
+      "null_geometry_count": 1,
+      "promote_started": false
+    },
+    "release_approval_gate": {
+      "run_id": "94082427-1955-49c3-a061-e466b5e91444",
+      "success": false,
+      "empty_registry": "/workspace/work/281-evidence/approval-registry.json",
+      "registry_schema_valid": true,
+      "failure": "missing_or_ambiguous_exact_object_approval:public-schools/public-schools/vf251ad8608c35c414c908e81d45fadfb/geoparquet/public-schools.parquet",
+      "verify_failed": true,
+      "promote_started": false
+    }
+  },
+  "preservation": {
+    "persistent_dagster_home_and_run_database": "/workspace/work/281-evidence/dagster",
+    "persistent_run_record": "/workspace/work/281-evidence/run-record.json",
+    "isolated_local_staging": "/workspace/work/281-evidence/staging",
+    "populated_published_fixture": "/workspace/work/281-evidence/published/fixture/previous-release.bin",
+    "published_fixture_sha256_before_and_after": "d7a84178c8c754e455bd4d84cf513b0cde40417ca6ae45d43d8bc934e3161c7d",
+    "published_fixture_unchanged": true,
+    "production_publication": false
+  },
+  "acceptance_flags": {
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "historical_hifld_equivalence_accepted": false,
+    "baseline_comparison_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "schedule_activated": false
+  },
+  "limitations": [
+    "This run validates complete extraction from one retained NCES 2024-25 distribution only; the historical HIFLD 2022-23 rows were not recovered or compared.",
+    "The source archive Last-Modified timestamp is server file metadata and is not treated as a producer release date.",
+    "The registered release refusal is exact-object approval enforcement; no production dataset was promoted."
+  ],
+  "base_commit": "ec102654516996c1a7e9c94048a4eef2ec9c032b"
+}
