@@ -16,6 +16,12 @@ from dagster import (
 
 from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
+from dagster_hifld.assets.epa_disaster_debris import (
+    epa_disaster_debris_complete,
+    epa_disaster_debris_draft_job,
+    epa_disaster_debris_draft_schedule,
+    epa_disaster_debris_recovery_data,
+)
 from dagster_hifld.assets.crushed_stone import (
     crushed_stone_preservation_job,
     crushed_stone_preservation_schedule,
@@ -783,9 +789,10 @@ def _configured_sensors():
 
 
 defs = Definitions(
-    assets=hifld_dataset_assets,
+    assets=[*hifld_dataset_assets, epa_disaster_debris_recovery_data],
     asset_checks=[
         *hifld_asset_checks,
+        epa_disaster_debris_complete,
         arc_regions_full_quality,
         eia_power_plants_complete,
         gcca_warehouses_geometry_complete,
@@ -842,6 +849,7 @@ defs = Definitions(
     ],
     jobs=[
         elsd_source_integrity_job,
+        epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
         census_tracts_draft_job,
@@ -911,6 +919,7 @@ defs = Definitions(
     ],
     schedules=[
         elsd_source_integrity_schedule,
+        epa_disaster_debris_draft_schedule,
         colleges_source_integrity_schedule,
         usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
