@@ -36,6 +36,11 @@ from dagster_hifld.construction_state import canonical_construction_bundle, load
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.sources.epa_frs_common import (
+    STAGED_RELEASE_DERIVATIVE_NAMES,
+    _validate_cached_catalog_sidecars,
+    validate_staged_release_derivatives,
+)
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
@@ -396,9 +401,12 @@ def reconcile_cache(storage,prefix,version,table,audit,captures,identity,pin,ori
     ready=strict_json((root/READY).read_bytes())
     if ready.get('version')!=version or ready.get('approved')is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise EpaRegionsQuarantineError('ready_identity_or_closed_source_inventory_drift')
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'
-    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot,*STAGED_RELEASE_DERIVATIVE_NAMES}
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derivatives) or not (names|{READY}).issubset(actual) or any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise EpaRegionsQuarantineError('unknown_missing_or_linked_candidate_object')
+    actual_keys={f'{prefix}/{name}' for name in actual}
+    _validate_cached_catalog_sidecars(storage,prefix,actual_keys)
+    validate_staged_release_derivatives(storage,prefix,actual_keys)
     for name,body in expected.items():
         if (root/name).read_bytes()!=body:raise EpaRegionsQuarantineError('source_owned_report_wrapper_placeholder_or_raw_provenance_drift:'+name)
     for name,sha in ready['objects'].items():
