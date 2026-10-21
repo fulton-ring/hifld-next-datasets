@@ -37,6 +37,11 @@ RAW_KEY = f"_raw-captures/{DATASET_SLUG}/{SOURCE_SHA256}/original.gdb.zip"
 RAW_RECEIPT_KEY = RAW_KEY + ".receipt.json"
 OUTPUT_NAME = f"{DATASET_SLUG}.parquet"
 READY_ROSTER = "metadata/ready_roster.json"
+DOWNSTREAM_METADATA = frozenset({
+    "metadata/quality_manifest.json",
+    "metadata/data_dictionary.json",
+    "metadata/resolved_provenance.json",
+})
 EXPECTED_NAMES = ("OBJECTID", "GEOID", "GEOIDFQ", "NAMELSAD", "ALAND", "AWATER", "INTPTLAT", "INTPTLON", "SHAPE")
 EXPECTED_TYPES = (pa.int64(), pa.string(), pa.string(), pa.string(), pa.float64(), pa.float64(), pa.string(), pa.string(), pa.binary())
 EXPECTED_NATIVE_FIELDS = {
@@ -348,16 +353,18 @@ def _file_roster(root: Path, *, exclude: frozenset[str] = frozenset()) -> dict[s
             raise CensusTractsError("candidate_contains_symlink")
         if path.is_dir():
             continue
-        if rel in exclude:
-            continue
         if not path.is_file() or path.stat().st_nlink != 1:
             raise CensusTractsError("candidate_contains_nonregular_or_linked_file")
+        if rel in exclude:
+            continue
         roster[rel] = {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
     return roster
 
 
 def _check_file_roster(root: Path, expected: dict[str, dict[str, object]]) -> None:
-    if _file_roster(root, exclude=frozenset({READY_ROSTER})) != expected:
+    # Catalog writes these three derived sidecars after source materialization;
+    # they are not part of the source-owned immutable candidate roster.
+    if _file_roster(root, exclude=DOWNSTREAM_METADATA | frozenset({READY_ROSTER})) != expected:
         raise CensusTractsError("existing_candidate_file_roster_changed")
 
 

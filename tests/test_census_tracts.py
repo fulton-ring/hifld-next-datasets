@@ -124,7 +124,7 @@ class CensusTractsTests(unittest.TestCase):
         self.assertEqual(manifest["prebuilt_output_policy"]["formats"]["geoparquet"]["objects"][0]["bytes"], 1234)
         self.assertNotIn("promotion_allowed", manifest)
 
-    def test_ready_roster_accepts_identical_files_without_rewriting_them(self):
+    def test_ready_roster_accepts_catalog_sidecars_without_rewriting_candidate(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "metadata").mkdir()
@@ -133,9 +133,13 @@ class CensusTractsTests(unittest.TestCase):
             (root / "geoparquet/candidate.parquet").write_bytes(b"immutable output bytes")
             expected = source._file_roster(root)
             before = {name: (root / name).stat().st_mtime_ns for name in expected}
+            (root / "metadata/quality_manifest.json").write_bytes(b"catalog quality")
+            (root / "metadata/data_dictionary.json").write_bytes(b"catalog dictionary")
+            (root / "metadata/resolved_provenance.json").write_bytes(b"catalog provenance")
             source._check_file_roster(root, expected)
             after = {name: (root / name).stat().st_mtime_ns for name in expected}
             self.assertEqual(after, before)
+            self.assertTrue((root / "metadata/quality_manifest.json").exists())
 
     def test_ready_roster_fails_closed_on_tampered_or_added_file(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -149,6 +153,22 @@ class CensusTractsTests(unittest.TestCase):
                 source._check_file_roster(root, expected)
             candidate.write_bytes(b"original")
             (root / "extra.bin").write_bytes(b"unexpected")
+            with self.assertRaisesRegex(source.CensusTractsError, "file_roster_changed"):
+                source._check_file_roster(root, expected)
+
+    def test_ready_roster_rejects_source_tamper_after_catalog_sidecars(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "metadata").mkdir()
+            candidate = root / "metadata/source.json"
+            candidate.write_bytes(b"original")
+            expected = source._file_roster(root)
+            for name in source.DOWNSTREAM_METADATA:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"catalog-owned")
+            source._check_file_roster(root, expected)
+            candidate.write_bytes(b"tampered")
             with self.assertRaisesRegex(source.CensusTractsError, "file_roster_changed"):
                 source._check_file_roster(root, expected)
 
