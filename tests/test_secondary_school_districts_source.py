@@ -5,6 +5,7 @@ import json
 import unittest
 import zipfile
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -41,8 +42,9 @@ class SecondarySchoolDistrictsSourceTests(unittest.TestCase):
     def test_build_geoparquet_preserves_all_attributes_ids_and_native_wkb(self):
         source_table = self._table()
         ids = [1, 2]
-        with patch.object(source, "EXPECTED_COUNT", 2):
-            body, schema = source._build_geoparquet(source_table, ids)
+        body, schema = source._build_geoparquet(
+            source_table, ids, config=replace(source.CONFIG, expected_count=2)
+        )
         result = pq.read_table(pa.BufferReader(body))
         self.assertEqual(result.column_names, source.EXPECTED_OUTPUT_FIELDS)
         self.assertEqual(result.column("OBJECTID").to_pylist(), ids)
@@ -106,7 +108,7 @@ class SecondarySchoolDistrictsSourceTests(unittest.TestCase):
                 kwargs["retain_wire"](b"partial-wire-body")
                 raise error
 
-            with patch.object(source, "capture_http_response", side_effect=interrupted):
+            with patch.object(source._shared, "capture_http_response", side_effect=interrupted):
                 with self.assertRaises(ValueError):
                     source._capture_archive(storage, "vpartial", Client())
             partial = storage.objects["raw/source_archive.partial.zip"]
