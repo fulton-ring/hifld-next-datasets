@@ -275,9 +275,43 @@ def _validate_existing_catalog(storage: StagingStorageResource, prefix: str,
     if any(storage.read_key(key) != source_manifest for key in required):
         raise EMSQuarantineError("cached_catalog_source_manifest_snapshot_drift")
     try:
-        from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
-        _validate_cached_catalog_sidecars(storage, prefix, actual)
-    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+        from dagster_hifld.catalog import summarize_staged_catalog
+        from dagster_hifld.provenance import provenance_projection
+        from dagster_hifld.source_manifest import load_resolved_source_manifest
+        dataset, file_slug, version = prefix.split("/")
+        source = load_resolved_source_manifest(storage, dataset, file_slug, version)
+        summary = summarize_staged_catalog(storage, dataset, file_slug, version,
+                                           dataset, source_metadata=source.metadata)
+
+        def read_json(key: str) -> object:
+            before = storage.object_snapshot(key)
+            if before is None:
+                raise ValueError("cached_catalog_sidecar_missing")
+            value = json.loads(storage.read_key(key))
+            if storage.object_snapshot(key) != before:
+                raise ValueError("cached_catalog_sidecar_changed_during_validation")
+            return value
+
+        if (read_json(quality_key) != summary.quality_manifest
+                or read_json(dictionary_key) != summary.data_dictionary):
+            raise ValueError("cached_catalog_sidecar_recomputation_mismatch")
+        resolved_key = f"{prefix}/metadata/resolved_provenance.json"
+        expected_resolved = provenance_projection(summary.data_dictionary)
+        if (resolved_key in actual) != (expected_resolved is not None):
+            raise ValueError("cached_catalog_resolved_provenance_presence_mismatch")
+        if expected_resolved is not None and read_json(resolved_key) != expected_resolved:
+            raise ValueError("cached_catalog_resolved_provenance_mismatch")
+        authored = {f"{prefix}/metadata/source/{name}" for name in
+                    ("quality_manifest.json", "data_dictionary.json")}
+        present_authored = actual & authored
+        if present_authored not in (set(), authored):
+            raise ValueError("cached_catalog_authored_sidecar_pair_incomplete")
+        if present_authored and (read_json(next(k for k in authored if k.endswith("quality_manifest.json")))
+                                 != summary.quality_manifest
+                                 or read_json(next(k for k in authored if k.endswith("data_dictionary.json")))
+                                 != summary.data_dictionary):
+            raise ValueError("cached_catalog_authored_sidecar_recomputation_mismatch")
+    except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise EMSQuarantineError("cached_catalog_sidecar_recomputation_failed") from exc
 
 
