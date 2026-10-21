@@ -24,6 +24,7 @@ from dagster_hifld.assets.publish import publish_version, verify_release
 from dagster_hifld.checks import publish_catalog_quality_manifest
 from dagster_hifld.definitions import defs as registered_defs
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.portolan.release import read_staged_release
 from dagster_hifld.release_approval import verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
@@ -116,6 +117,16 @@ def step_started(case: dict[str, Any], suffix: str) -> bool:
     return any(step == suffix or step.endswith("__" + suffix) for step in case["step_starts"])
 
 
+def validate_gate_selection(selected_assets: list[str]) -> None:
+    """Keep this proof scoped to the explicitly selected gate assets."""
+    expected = {"publish/verify", "publish/promote"}
+    if set(selected_assets) != expected:
+        raise AssertionError(
+            "registered gate proof must select only verify and promote; "
+            f"got {sorted(selected_assets)}"
+        )
+
+
 def is_exact_approval_failure(event: dict[str, Any]) -> bool:
     verify_step = event["step_key"] == "verify" or event["step_key"].endswith("__verify")
     return verify_step and "missing_or_ambiguous_exact_object_approval" in event.get("error", "")
@@ -180,8 +191,7 @@ def run_gate_case(
     selected_assets = sorted(
         key.to_user_string() for key in job_def.asset_layer.selected_asset_keys
     )
-    if not {"publish/verify", "publish/promote"}.issubset(selected_assets):
-        raise AssertionError(f"registered verify and promote were not both selected: {selected_assets}")
+    validate_gate_selection(selected_assets)
     with DagsterInstance.from_config(str(home)) as instance:
         instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition])
         result = job_def.execute_in_process(
@@ -221,6 +231,60 @@ def copy_candidate(source: Path, case_root: Path, prefix: str) -> Path:
     destination.parent.mkdir(parents=True)
     shutil.copytree(source, destination)
     return destination
+
+
+def ensure_release_metadata_prerequisite(candidate: Path, prefix: str) -> dict[str, Any]:
+    """Add a synthetic semver Collection to the isolated approval copy only.
+
+    Current verification requires a staged release Collection before it can
+    reach exact-object approval. This proof fixture does not materialize that
+    asset or represent source, release, or acceptance evidence.
+    """
+    dataset, file_slug, _ = validate_prefix(prefix)
+    collection_path = candidate / "collection.json"
+    kind = "existing_candidate_collection"
+    if not collection_path.exists():
+        version = "0.0.0-gate-proof"
+        document = {
+            "type": "Collection",
+            "stac_version": "1.1.0",
+            "stac_extensions": [
+                "https://stac-extensions.github.io/version/v1.2.0/schema.json"
+            ],
+            "id": f"hifld/{dataset}/{file_slug}/{version}",
+            "version": version,
+            "description": (
+                "Synthetic registered-gate prerequisite only; no source claims, "
+                "release acceptance, or publishable catalog."
+            ),
+            "license": "other",
+            "links": [],
+            "assets": {},
+            "extent": {
+                "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                "temporal": {"interval": [[None, None]]},
+            },
+        }
+        payload = json.dumps(document, sort_keys=True, indent=2).encode() + b"\n"
+        with collection_path.open("xb") as stream:
+            stream.write(payload)
+        kind = "synthetic_gate_only"
+
+    # Use the production parser for the exact prerequisite, not an ad hoc
+    # approximation of its semver/path validation.
+    staging_root = candidate.parents[2]
+    storage = StagingStorageResource(
+        use_local=True, local_dir=str(staging_root), prefix="", backend="local"
+    )
+    document, destination_prefix = read_staged_release(storage, prefix)
+    return {
+        "kind": kind,
+        "path": str(collection_path),
+        "sha256": file_sha256(collection_path),
+        "version": document["version"],
+        "id": document["id"],
+        "destination_prefix": destination_prefix,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -272,6 +336,20 @@ def main(argv: list[str] | None = None) -> int:
     copied_inventory = inventory(approval_candidate)
     if copied_inventory != original_candidate_inventory:
         raise AssertionError("approval case candidate copy differs from the supplied candidate")
+    release_metadata = ensure_release_metadata_prerequisite(approval_candidate, prefix)
+    approval_prepared_inventory = inventory(approval_candidate)
+    changed_for_release_metadata = sorted(
+        relative for relative in set(copied_inventory) | set(approval_prepared_inventory)
+        if copied_inventory.get(relative) != approval_prepared_inventory.get(relative)
+    )
+    expected_metadata_change = (
+        ["collection.json"] if release_metadata["kind"] == "synthetic_gate_only" else []
+    )
+    if changed_for_release_metadata != expected_metadata_change:
+        raise AssertionError(
+            "approval case may add only its isolated synthetic release Collection: "
+            f"{changed_for_release_metadata}"
+        )
 
     published_dir = run_root / "synthetic-published-storage"
     published_before = create_synthetic_published_fixture(published_dir)
@@ -338,6 +416,9 @@ def main(argv: list[str] | None = None) -> int:
         "staging_prefix": prefix,
         "candidate_inventory_sha256": inventory_sha256(original_candidate_inventory),
         "candidate_copy_inventory_sha256": inventory_sha256(copied_inventory),
+        "approval_case_inventory_sha256": inventory_sha256(approval_prepared_inventory),
+        "approval_case_release_metadata": release_metadata,
+        "approval_case_release_metadata_changed_files": changed_for_release_metadata,
         "candidate_source_manifest_sha256": file_sha256(source_manifest),
         "candidate_source_code_commit": source_manifest_data.get("code_commit"),
         "false_quality_changed_files": changed,
