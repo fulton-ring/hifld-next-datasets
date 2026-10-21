@@ -221,6 +221,19 @@ def _validate_metadata(service: dict, layer: dict) -> None:
             or layer.get("fields") != EXPECTED_FIELDS
             or layer.get("maxRecordCount") != 2000):
         raise ValueError("source_layer_schema_or_limit_drift")
+    # The layer may omit these optional flags, but must not declare a
+    # dimensional geometry that the candidate cannot preserve. Page queries
+    # request Z and M explicitly and reject any returned extra ordinates.
+    for key in ("hasZ", "hasM"):
+        if key in layer and (type(layer[key]) is not bool or layer[key] is not False):
+            raise ValueError("source_layer_dimensions_drift")
+    # ArcGIS distinguishes the layer's sourceSpatialReference from the
+    # spatialReference repeated on its extent and query responses. Validate
+    # the source declaration itself so a well-formed extent cannot mask drift.
+    layer_crs = layer.get("sourceSpatialReference")
+    if layer_crs is None:
+        raise ValueError("source_layer_source_crs_missing")
+    _validate_spatial_reference(layer_crs, "source_layer")
     extent = layer.get("extent")
     if not isinstance(extent, dict):
         raise ValueError("source_extent_missing")
@@ -417,7 +430,8 @@ def _preserve_original_receipts(captures: dict[str, tuple[bytes, dict]],
 def _stable_layer(layer: dict) -> dict:
     """Project the data-bearing layer metadata; server-drawn symbology is volatile."""
     return {key: layer.get(key) for key in
-            ("id", "name", "type", "geometryType", "fields", "maxRecordCount", "extent")}
+            ("id", "name", "type", "geometryType", "sourceSpatialReference", "hasZ", "hasM",
+             "fields", "maxRecordCount", "extent")}
 
 
 def capture_state_capitols(storage: StagingStorageResource, *, version: str,
@@ -464,8 +478,8 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 for index, start in enumerate(range(0, len(ids), BATCH_SIZE)):
                     page_ids = ids[start:start + BATCH_SIZE]
                     url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*",
-                                  "returnGeometry": "true", "orderByFields": "OBJECTID ASC",
-                                  "f": "json"})
+                                  "returnGeometry": "true", "returnZ": "true", "returnM": "true",
+                                  "orderByFields": "OBJECTID ASC", "f": "json"})
                     captures[f"page_{index:03d}"] = _capture(client, url, root, f"page_{index:03d}")
                 for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
                                   ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),

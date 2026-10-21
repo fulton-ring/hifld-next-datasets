@@ -69,6 +69,7 @@ def fixture_layer():
         "geometryType": "esriGeometryPoint",
         "fields": source.EXPECTED_FIELDS,
         "maxRecordCount": 2000,
+        "sourceSpatialReference": {"wkid": 102100, "latestWkid": 3857},
         "extent": {"xmin": 2.0, "ymin": 3.0, "xmax": 4.0, "ymax": 5.0,
                    "spatialReference": {"wkid": 102100, "latestWkid": 3857}},
     }
@@ -194,6 +195,10 @@ class StateCapitolsValidationTests(unittest.TestCase):
         features[0]["geometry"] = {"x": 2.0, "y": 3.0, "z": 0.0}
         with self.assertRaisesRegex(ValueError, "source_geometry_structure_drift"):
             self.fixture_population(features)
+        features = fixture_features()
+        features[0]["geometry"] = {"x": 2.0, "y": 3.0, "m": 10.0}
+        with self.assertRaisesRegex(ValueError, "source_geometry_structure_drift"):
+            self.fixture_population(features)
 
     def test_null_state_and_roster_drift_fails_closed(self):
         features = fixture_features()
@@ -230,6 +235,12 @@ class StateCapitolsValidationTests(unittest.TestCase):
                 source._validate_metadata(service, {**layer, "geometryType": "esriGeometryPolyline"})
             with self.assertRaisesRegex(ValueError, "source_layer_schema_or_limit_drift"):
                 source._validate_metadata(service, {**layer, "maxRecordCount": 1000})
+            with self.assertRaisesRegex(ValueError, "source_layer_crs_drift"):
+                source._validate_metadata(service, {**layer, "sourceSpatialReference": {"wkid": 4326}})
+            with self.assertRaisesRegex(ValueError, "source_layer_dimensions_drift"):
+                source._validate_metadata(service, {**layer, "hasZ": True})
+            with self.assertRaisesRegex(ValueError, "source_layer_dimensions_drift"):
+                source._validate_metadata(service, {**layer, "hasM": 1})
             drifted = json.loads(json.dumps(layer))
             drifted["fields"][8]["type"] = "esriFieldTypeString"
             with self.assertRaisesRegex(ValueError, "source_layer_schema_or_limit_drift"):
