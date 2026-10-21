@@ -33,6 +33,21 @@ def synthetic_captures():
 
 
 class EpaEezTests(unittest.TestCase):
+    def test_cached_catalog_sidecars_reject_changed_quality_and_dictionary(self):
+        quality={'version':'v1','feature_count':10,'bounds':[-180.,-17.,180.,75.],
+            'geometry_type':'Mixed','invalid_geometry_count':0,'null_geometry_count':0,
+            'quality_check_passed':True,'columns_hash':'source-columns'}
+        dictionary={'name':f.SLUG,'columns':[{'name':'OBJECTID','type':'integer','nativeArrowType':'int64'}],
+            'featureCount':10,'nativeGeometryColumn':'Shape','originalArrowSchema':'source-schema'}
+        quality_body=f._catalog_document_bytes(quality);dictionary_body=f._catalog_document_bytes(dictionary)
+        f._validate_catalog_sidecar_bytes(quality_body,dictionary_body,quality,dictionary)
+        changed_quality={**quality,'quality_check_passed':False}
+        with self.assertRaisesRegex(ValueError,'cached_quality_manifest_drift'):
+            f._validate_catalog_sidecar_bytes(f._catalog_document_bytes(changed_quality),dictionary_body,quality,dictionary)
+        changed_dictionary={**dictionary,'columns':[{'name':'OBJECTID','type':'string','nativeArrowType':'string'}]}
+        with self.assertRaisesRegex(ValueError,'cached_data_dictionary_drift'):
+            f._validate_catalog_sidecar_bytes(quality_body,f._catalog_document_bytes(changed_dictionary),quality,dictionary)
+
     def test_all_original_attributes_shape_name_native_types_nulls_and_rings(self):
         table,a=f.decode_page(page());self.assertEqual(table.column_names,[d['name']for d in f.FIELD_DEFINITIONS]);self.assertEqual(table['OBJECTID'].type,pa.int64());self.assertEqual(table['Shape_Length'].type,pa.float64());self.assertEqual(table['FIRST_CONTACT'][0].as_py(),' 001 literal contact ');self.assertEqual(table['Shape'].null_count,1);self.assertEqual(a,{'rings':3,'vertices':15})
         geometry=shapely.from_wkb(table['Shape'][0].as_py());self.assertEqual(geometry.geom_type,'MultiPolygon');self.assertEqual(len(shapely.get_parts(geometry)),2)

@@ -36,6 +36,8 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.catalog import summarize_staged_catalog
+from dagster_hifld.sources.epa_frs_common import validate_staged_release_derivatives
 from dagster_hifld.validation import sha256_file
 
 SLUG='epa-region-boundaries-exclusive-economic-zone-eez'
@@ -319,19 +321,56 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
     if not(names|{READY}).issubset(roster):raise EpaEezQuarantineError('missing_candidate_object')
     if not cached and roster!=names|{READY}:raise EpaEezQuarantineError('private_candidate_roster_drift')
     if cached:
-        allowed={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json','metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'}
-        if roster-(names|{READY}|allowed):raise EpaEezQuarantineError('unknown_cached_object')
-        for name in roster-(names|{READY}):strict_json(candidate_bytes(root,name))
-        for name in('metadata/source/source_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'):
-            if name in roster and candidate_bytes(root,name)!=encode(manifest):raise EpaEezQuarantineError('cached_source_snapshot_drift')
-        if 'metadata/resolved_provenance.json'in roster:
-            if storage is None:raise EpaEezQuarantineError('resolved_provenance_requires_explicit_storage_context')
-            projected=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
-            if encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(projected):raise EpaEezQuarantineError('cached_resolved_provenance_drift')
+        if storage is None:raise EpaEezQuarantineError('cached_candidate_requires_explicit_storage_context')
+        _validate_cached_catalog(root,storage,version,names|{READY},roster)
     for n,b in expected.items():
         if candidate_bytes(root,n)!=b:raise EpaEezQuarantineError('candidate_source_bytes_drift:'+n)
     if candidate_bytes(root,READY)!=encode(ready):raise EpaEezQuarantineError('candidate_ready_drift')
     validate_output(root,table)
+
+
+def _catalog_document_bytes(value):
+    return json.dumps(value,sort_keys=True,indent=2).encode('utf-8')
+
+
+def _validate_catalog_sidecar_bytes(quality_body,dictionary_body,quality,dictionary):
+    if quality_body!=_catalog_document_bytes(quality):raise EpaEezQuarantineError('cached_quality_manifest_drift')
+    if dictionary_body!=_catalog_document_bytes(dictionary):raise EpaEezQuarantineError('cached_data_dictionary_drift')
+
+
+def _validate_cached_catalog(root,storage,version,base_roster,roster):
+    """Accept only source pins, exact catalog derivatives, and a valid release trio.
+
+    Recompute the catalog from the pinned native GeoParquet. Catalog-owned
+    quality and dictionary sidecars therefore cannot alter gate outcomes while
+    the source cache claims to be unchanged.
+    """
+    prefix=f'{SLUG}/{SLUG}/{version}'
+    actual_keys={storage._ensure_prefixed(f'{prefix}/{name}')for name in roster}
+    try:release_names=validate_staged_release_derivatives(storage,prefix,actual_keys)
+    except (OSError,UnicodeError,ValueError,TypeError)as exc:raise EpaEezQuarantineError('invalid_cached_release_derivatives')from exc
+    release_names={key.removeprefix(storage._ensure_prefixed(prefix).rstrip('/')+'/')for key in release_names}
+    catalog_names={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/resolved_provenance.json',
+        'metadata/source/source_manifest.json','metadata/source/version_'+digest(candidate_bytes(root,'metadata/source_manifest.json'))+'_source_manifest.json'}
+    present=(roster-base_roster)-release_names
+    if present and present!=catalog_names:raise EpaEezQuarantineError('incomplete_or_unknown_cached_catalog_roster')
+    expected_roster=set(base_roster)|release_names
+    if present:
+        expected_roster|=catalog_names
+        source_manifest=candidate_bytes(root,'metadata/source_manifest.json')
+        manifest_snapshot='metadata/source/version_'+digest(source_manifest)+'_source_manifest.json'
+        if(candidate_bytes(root,'metadata/source/source_manifest.json')!=source_manifest
+            or candidate_bytes(root,manifest_snapshot)!=source_manifest):raise EpaEezQuarantineError('cached_source_manifest_snapshot_drift')
+        resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
+        projection=provenance_projection(resolved.metadata)
+        if projection is None:raise EpaEezQuarantineError('cached_resolved_provenance_missing')
+        if candidate_bytes(root,'metadata/resolved_provenance.json')!=_catalog_document_bytes(projection):
+            raise EpaEezQuarantineError('cached_resolved_provenance_drift')
+        try:summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
+        except (OSError,UnicodeError,ValueError,TypeError)as exc:raise EpaEezQuarantineError('cached_catalog_recomputation_failed')from exc
+        _validate_catalog_sidecar_bytes(candidate_bytes(root,'metadata/quality_manifest.json'),
+            candidate_bytes(root,'metadata/data_dictionary.json'),summary.quality_manifest,summary.data_dictionary)
+    if roster!=expected_roster:raise EpaEezQuarantineError('unknown_or_incomplete_cached_object_roster')
 
 
 def stage_epa_eez(storage,*,capture_dir=None):
