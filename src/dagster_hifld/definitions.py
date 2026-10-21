@@ -33,6 +33,10 @@ from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
 )
+from dagster_hifld.assets.usace_overhead_pipeline_lines import (
+    usace_overhead_pipeline_lines_complete,
+    usace_overhead_pipeline_lines_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -428,10 +432,10 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete,
                   usace_administrative_areas_complete, usace_navigation_marks_areas_complete,
-                  usace_obstruction_lines_complete, usace_overhead_cables_complete],
+                  usace_obstruction_lines_complete, usace_overhead_cables_complete, usace_overhead_pipeline_lines_complete],
     schedules=[epa_power_generation_draft_schedule, usace_administrative_areas_draft_schedule,
                usace_navigation_marks_areas_draft_schedule, usace_obstruction_lines_draft_schedule,
-               usace_overhead_cables_draft_schedule],
+               usace_overhead_cables_draft_schedule, usace_overhead_pipeline_lines_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
