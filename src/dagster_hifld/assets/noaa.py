@@ -35,21 +35,57 @@ _CONTIGUOUS_ZONE_DATASET_SLUG = "24nm-contiguous-zone"
 _CONTIGUOUS_ZONE_FILE_SLUG = "24nm-contiguous-zone"
 
 
+# Proposed layer1 snapshot pins are review boundaries, never accepted contracts.
+_TERRITORIAL_SEA_EXPECTED_FIELDS = {'OBJECTID': 'esriFieldTypeOID', 'BOUND_ID': 'esriFieldTypeString', 'REGION': 'esriFieldTypeString', 'FEAT_TYPE': 'esriFieldTypeString', 'PUB_DATE': 'esriFieldTypeDate', 'APPRV_DATE': 'esriFieldTypeDate', 'LEGAL_AUTH': 'esriFieldTypeString', 'AOR': 'esriFieldTypeString', 'NOTE': 'esriFieldTypeString', 'SUPP_INFO': 'esriFieldTypeString', 'UNILATERAL': 'esriFieldTypeDouble', 'RULEID': 'esriFieldTypeInteger', 'SHAPE': 'esriFieldTypeGeometry'}
+_TERRITORIAL_SEA_EXPECTED_FINGERPRINTS = {'schema': '0cd5c0563b87a395fb872c67760a73f437864d14f137a6df5e45355862278e9c', 'identifiers': '3f90e56430d4225dd86ba13f1210569634160380882ee7a89c5b42be96dbcd0e', 'geometry': '13fa7f34b60762082e10dcbe3b74395da2dfac987c45b9459f258110ada76053', 'coverage': '46aed74e392fa38868a05d3b9a2add452da6bab93f886ab181539764e8888d4e'}
+
+
+
+
 @asset(
     key=AssetKey(["ingest", _TERRITORIAL_SEA_DATASET_SLUG, _TERRITORIAL_SEA_FILE_SLUG]),
     group_name="noaa",
     compute_kind="http",
-    description="12NM Territorial Sea (HIFLD inventory). Publisher: National Oceanic and Atmospheric Administration. NOAA depicts on nautical charts the limits of the 12 NM Territorial Sea, 24 NM Contiguous Zone, and 200 NM EEZ from the U.S. normal baseline. Source: maritimeboundaries.noaa.gov.",
+    config_schema={
+        "allow_unapproved_local_draft": Field(bool, default_value=False),
+        "capture_directory": Field(str, default_value=""),
+    },
+    description="Draft NOAA Territorial Sea adapter: bounded raw extraction, native typed candidate and local catalog source; real source/contract acceptance and production promotion remain blocked.",
 )
 def noaa_12nm_territorial_sea(context, staging_storage: StagingStorageResource) -> dict:
-    version = build_version_id(context)
-    return download_convert_and_stage(
-        [(_TERRITORIAL_SEA_URL, _TERRITORIAL_SEA_NAME)],
-        _TERRITORIAL_SEA_DATASET_SLUG,
-        _TERRITORIAL_SEA_FILE_SLUG,
-        version,
-        staging_storage,
+    if not context.op_config["allow_unapproved_local_draft"]:
+        raise ValueError("Territorial Sea draft adapter requires explicit allow_unapproved_local_draft; this is not acceptance")
+    directory = context.op_config["capture_directory"]
+    if directory:
+        root = Path(directory)
+        receipts = json.loads((root / "receipts.json").read_text())
+        captures = {}
+        for receipt in receipts:
+            name = receipt["capture"]
+            if name not in {"layer", "count_before", "features", "ids_before", "ids_after", "count_after", "geojson"}:
+                raise ValueError("Unknown NOAA receipt capture")
+            raw = (root / (name + ".json")).read_bytes()
+            if receipt["sha256"] != hashlib.sha256(raw).hexdigest() or receipt["bytes"] != len(raw) or receipt["http_status"] != 200:
+                raise ValueError("NOAA replay receipt checksum/length/status mismatch")
+            if name in captures:
+                raise ValueError("Duplicate NOAA replay receipt")
+            captures[name] = raw
+    else:
+        captures, receipts = fetch_noaa_layer(_NOAA_MAPSERVER_BASE + "/1")
+    result = stage_noaa_candidate(
+        staging=staging_storage,
+        expected_layer_url=_NOAA_MAPSERVER_BASE + "/1",
+        dataset_slug=_TERRITORIAL_SEA_DATASET_SLUG,
+        file_slug=_TERRITORIAL_SEA_FILE_SLUG,
+        captures=captures,
+        receipts=receipts,
+        expected_fields=_TERRITORIAL_SEA_EXPECTED_FIELDS,
+        expected_fingerprints=_TERRITORIAL_SEA_EXPECTED_FINGERPRINTS,
+        expected_count=87,
+        code_commit=context.run_tags.get("hifld/source_code_commit"),
     )
+    context.add_output_metadata({"version": result["version"], "feature_count": result["feature_count"], "candidate_sha256": result["candidate_sha256"], "promotion_approved": False})
+    return result
 
 
 # Proposed source snapshot pins are review boundaries, not accepted contracts.
@@ -134,6 +170,27 @@ noaa_eez_draft_refresh_job = define_asset_job(
 noaa_eez_draft_weekly_schedule = ScheduleDefinition(
     name="noaa_eez_draft_weekly",
     job=noaa_eez_draft_refresh_job,
+    cron_schedule="0 6 * * 1",
+    execution_timezone="America/New_York",
+    default_status=DefaultScheduleStatus.STOPPED,
+    description="Stopped weekly Monday 06:00 America/New_York local-draft refresh; activation requires an explicit operator action.",
+)
+
+
+# Scheduling is reviewable configuration only; no schedule is activated here.
+# The source job stages local drafts and never selects catalog/publish/promotion.
+noaa_territorial_draft_refresh_job = define_asset_job(
+    "noaa_territorial_draft_refresh",
+    selection=AssetSelection.assets(noaa_12nm_territorial_sea.key),
+    config={"ops": {noaa_12nm_territorial_sea.op.name: {
+        "config": {"allow_unapproved_local_draft": True}
+    }}},
+    tags={"hifld/draft": "true", "hifld/promotion": "disabled"},
+    description="Refresh an unapproved NOAA Territorial Sea draft in local staging only; source extraction only, no publication.",
+)
+noaa_territorial_draft_weekly_schedule = ScheduleDefinition(
+    name="noaa_territorial_draft_weekly",
+    job=noaa_territorial_draft_refresh_job,
     cron_schedule="0 6 * * 1",
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,

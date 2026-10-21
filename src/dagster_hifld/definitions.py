@@ -25,6 +25,11 @@ from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_draft_job,
     eia_power_plants_draft_schedule,
 )
+from dagster_hifld.assets.gcca_warehouse_directory import (
+    gcca_warehouses_geometry_complete,
+    gcca_warehouses_draft_job,
+    gcca_warehouses_draft_schedule,
+)
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
@@ -36,6 +41,10 @@ from dagster_hifld.assets.noaa_contiguous import (
 from dagster_hifld.assets.noaa import (
     noaa_eez_draft_refresh_job,
     noaa_eez_draft_weekly_schedule,
+)
+from dagster_hifld.assets.noaa import (
+    noaa_territorial_draft_refresh_job,
+    noaa_territorial_draft_weekly_schedule,
 )
 from dagster_hifld.assets.usace_pylon_areas import (
     usace_pylon_areas_draft_schedule,
@@ -55,6 +64,11 @@ from dagster_hifld.assets.nces_public_schools import (
     nces_public_schools_complete,
     nces_public_schools_draft_job,
     nces_public_schools_draft_schedule,
+)
+from dagster_hifld.assets.proposed_critical_habitat import (
+    proposed_critical_habitat_complete,
+    proposed_critical_habitat_draft_job,
+    proposed_critical_habitat_draft_schedule,
 )
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
@@ -79,6 +93,11 @@ from dagster_hifld.assets.us_county_boundaries import (
     us_county_boundaries_draft_job,
     us_county_boundaries_draft_schedule,
     us_county_boundaries_source_complete,
+)
+from dagster_hifld.assets.coastlines_usace_ienc import (
+    coastlines_usace_ienc_complete,
+    coastlines_usace_ienc_draft_job,
+    coastlines_usace_ienc_draft_schedule,
 )
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
@@ -540,6 +559,7 @@ defs = Definitions(
     asset_checks=[
         *hifld_asset_checks,
         eia_power_plants_complete,
+        gcca_warehouses_geometry_complete,
         census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
@@ -556,15 +576,18 @@ defs = Definitions(
         usace_pontoon_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
+        proposed_critical_habitat_complete,
         usace_pile_locations_complete,
         usace_pipeline_areas_complete,
         nces_private_schools_complete,
         nces_public_schools_complete,
+        coastlines_usace_ienc_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
+        noaa_territorial_draft_refresh_job,
         noaa_contiguous_draft_refresh_job,
         usace_pylon_areas_draft_job,
         pylon_locations_draft_refresh_job,
@@ -581,12 +604,15 @@ defs = Definitions(
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
+        gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
+        proposed_critical_habitat_draft_job,
         usace_pile_locations_draft_job,
         usace_pipeline_areas_draft_job,
         nces_private_schools_draft_job,
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
+        coastlines_usace_ienc_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -594,6 +620,7 @@ defs = Definitions(
         usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
+        noaa_territorial_draft_weekly_schedule,
         noaa_contiguous_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
         recommended_tracks_draft_schedule,
@@ -612,11 +639,14 @@ defs = Definitions(
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
+        gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
+        proposed_critical_habitat_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_pipeline_areas_draft_schedule,
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
+        coastlines_usace_ienc_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
