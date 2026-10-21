@@ -373,7 +373,7 @@ class CBRSTests(unittest.TestCase):
     def test_missing_outside_state_journal_precedes_detach_and_blocks_cold_rebase(self):
         with tempfile.TemporaryDirectory() as d:
             storage=StagingStorageResource(local_dir=d);captures,manifest,files=synthetic_context(storage)
-            identity={'files':files};fingerprint=s.sha(s.encode(identity));version='v0.0.0-draft-journal'
+            identity=s.processing_identity();fingerprint=s.sha(s.encode(identity));version='v0.0.0-draft-journal'
             prefix=f'{s.SLUG}/{s.SLUG}/{version}';target=Path(d,prefix)
             target.mkdir(parents=True);(target/'prior.bin').write_bytes(b'EXPLICIT_SYNTHETIC_PRIOR')
             before=s.candidate_inventory(target)
