@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "inventory_id": "pontoon-areas-usace-ienc",
+  "title": "Pontoon Areas (USACE IENC)",
+  "agency": "U.S. Army Corps of Engineers",
+  "publisher": "USACE Army Geospatial Center (IENC); the parent IENC item is cataloged by USDOT BTS",
+  "crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "hifld_inventory_row": "pontoon-areas-usace-ienc, Pontoon Areas (USACE IENC)",
+    "archive_url": "https://www.datalumos.org/datalumos/project/239792/version/V1/view",
+    "archive_source_modified": "2025-04-08",
+    "archive_source_date": "2018-04-16",
+    "archive_role": "Historical HIFLD/DataLumos copy; portal modification date is not a current producer release date.",
+    "historical_id_and_geometry_match": "Not established; DataLumos page currently returned HTTP 403, and no historical file bytes were recovered in this run."
+  },
+  "source_relationship": "The USDOT BTS IENC item explicitly links USACE/AGC IENC bi-monthly distribution, the complete master geodatabase, and the official IENC Feature Classes service. The exact PONTOON_AREA layer is published by USACE IENC / AGC. This supports an official distribution path; exact continuity with the historical HIFLD/DataLumos entry is not established.",
+  "bts_item": {
+    "id": "3607d485a9854d6fa458bf507058ceae",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "url": "https://www.arcgis.com/home/item.html?id=3607d485a9854d6fa458bf507058ceae",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "claims": "USACE/AGC updates IENC bi-monthly; links official Feature Classes service and master file geodatabase; warns chart-derived data may contain inaccuracies."
+  },
+  "official_landing": "https://ienccloud.us/",
+  "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73",
+  "master_geodatabase_url": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+  "observed": {
+    "layer_id": 73,
+    "layer_name": "PONTOON_AREA",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "feature_count": 607,
+    "native_OBJECTID": "607 integer IDs, 1 through 607",
+    "native_OBJECTID_sha256_canonical_json": "58a5e4ae968b986b58149fcbb1bd7f90d5efe35aae32efd0ca9a0ccdbf33939b",
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "name": "SHAPE",
+        "type": "esriFieldTypeGeometry"
+      },
+      {
+        "name": "Object_Name",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Information",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Date",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Indication",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Feature_ID",
+        "type": "esriFieldTypeString",
+        "length": 254
+      }
+    ],
+    "layer_extent": {
+      "xmin": -96.13541759999998,
+      "ymin": 33.97566980000005,
+      "xmax": -79.87675289999999,
+      "ymax": 44.570524000000034
+    },
+    "source_release_date": null,
+    "release_date_unknown_reason": "The layer declares no source edition or release date. BTS describes parent IENC updates as bi-monthly; that cadence does not date this layer snapshot.",
+    "native_feature_id_duplicate_count": 1,
+    "native_feature_id_distinct_count": 606
+  },
+  "capture_policy": "Retain decoded ESRI JSON response bodies, exact HTTP wire bodies, request receipts, native IDs, field declarations, attributes, rings and coordinate order. Candidate GeoParquet preserves declared source field types and native EPSG:4326 geometry without reprojection or repair.",
+  "completeness_policy": "Check source directory and layer identity, all declared field names/types, CRS representations, pinned layer extent, independent count/ID rosters before and after extraction, all explicit-ID pages, native attribute types, geometry structure/ordinates/validity and complete feature ID roster. Quarantine incomplete captures and drift.",
+  "coverage_scope": "Complete observed IENC PONTOON_AREA chart feature class for inland navigation coverage. Not a national census of pontoons or all navigable-waterway structures.",
+  "proposed_contract": {
+    "status": "Draft only; maintainer approval required.",
+    "native_identifier": "OBJECTID integer, unchanged; Feature_ID string, unchanged including source duplicates if any.",
+    "attributes": "Preserve all 6 non-geometry source attributes and values; no silent drop or mapping.",
+    "geometry": "Polygon in EPSG:4326, all source rings and coordinates unchanged.",
+    "unexpected_source_drift": "Quarantine and request maintainer review."
+  },
+  "approval": {
+    "historical_baseline_and_continuity": false,
+    "source_release_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "attribution": false,
+    "release": false
+  },
+  "capture_evidence": {
+    "captured_at": "2026-10-20T03:33:18.841886+00:00",
+    "complete": true,
+    "capture_directory": "/workspace/work/273/work/lifecycle/captures/v20261020T033315Z-a3ba435efe4c4fefacbea0bb7951f45e",
+    "requests": 14,
+    "raw_body_wire_receipt_artifacts": 42,
+    "source_id_sha256": "58a5e4ae968b986b58149fcbb1bd7f90d5efe35aae32efd0ca9a0ccdbf33939b",
+    "source_record_sha256": "e634d430cccc6a8ebfcbaf3b69baac2ab48c293ff9d3d395da29164b21441d33",
+    "source_geometry_sha256": "a45a37768ee1cc19c8ffecd582000427eb076021a4c993421f6b405738a72c81",
+    "source_schema_sha256": "374a21be701d54c1dea5a0c413cfa00f43e2a988d0390dfc0b7501d2fa2ac48e",
+    "source_capture_sha256": "218646e91813b2a9932be692acdffd552de0dc51a582dd7a824edb437101e2b9",
+    "vertex_count": 6629,
+    "geometry_valid_count": 607,
+    "geometry_empty_count": 0,
+    "geometry_invalid_count": 0,
+    "feature_id_duplicate_rows": 1,
+    "feature_id_duplicates_preserved": true
+  },
+  "materialization_evidence": {
+    "processing_code_head": "361bb97",
+    "source_run_id": "a5a28eef-3462-45a5-894a-dc0b3f055b3d",
+    "catalog_run_id": "7d26688a-76ba-469b-ad89-3cff7373879a",
+    "post_catalog_cache_replay_run_id": "c57ff54f-5954-4676-9803-a43f6224033a",
+    "post_catalog_cache_replay_reused": true,
+    "candidate_version": "va5b5ff283db78ffbac3d09185074fa1c",
+    "candidate_prefix": "pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/va5b5ff283db78ffbac3d09185074fa1c",
+    "geoparquet_sha256": "88c6f3fdf05847d0122f1eaf948ea3f8821a38ec7e0270a8cb06ad84cd299c2f",
+    "geoparquet_rows": 607,
+    "geoparquet_physical_types": {
+      "OBJECTID": "int64",
+      "Object_Name": "string",
+      "Information": "string",
+      "Source_Date": "string",
+      "Source_Indication": "string",
+      "Source_Dataset": "string",
+      "Feature_ID": "string",
+      "geometry": "binary"
+    },
+    "geometry_crs": {
+      "authority": "EPSG",
+      "code": 4326
+    },
+    "all_native_attribute_values_identical": true,
+    "native_polygon_wkb_identical_after_esri_conversion": true,
+    "catalog_quality": {
+      "passed": true,
+      "scope": "all_rows",
+      "feature_count": 607,
+      "geometry_type": "Polygon",
+      "null_geometries": 0,
+      "empty_geometries": 0,
+      "invalid_geometries": 0,
+      "unparseable_geometries": 0
+    },
+    "verifier_run_id": "3c1af18b-c501-4c31-86ee-b90e72d5f91b",
+    "verifier_success": false,
+    "verifier_refusal_reason": "dagster_hifld.release_approval.ReleaseApprovalError: missing_or_ambiguous_exact_object_approval:pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/va5b5ff283db78ffbac3d09185074fa1c/geoparquet/pontoon-areas-usace-ienc.parquet",
+    "approval_registry_empty": true,
+    "approval_registry_outside_source_and_published_roots": true,
+    "published_inventory_unchanged": true,
+    "published_inventory_count": 1,
+    "schedule": "STOPPED",
+    "production_publication": false
+  },
+  "official_layer_item": {
+    "id": "5dcd2aa185d34ef4b7de100653fd04f8",
+    "owner": "usace_agc_dkd",
+    "access": "public",
+    "title": "PONTOON_AREA",
+    "type": "Map Service",
+    "url": "https://www.arcgis.com/home/item.html?id=5dcd2aa185d34ef4b7de100653fd04f8",
+    "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer",
+    "item_modified_is_release_date": false
+  },
+  "archive_denial_observation": {
+    "observed_at": "2026-10-20",
+    "url": "https://www.datalumos.org/datalumos/project/239792/version/V1/view",
+    "http_status": 403,
+    "interpretation": "Access denial for this research session; it does not imply the archive is unavailable or the current USACE source is dead."
+  }
+}
