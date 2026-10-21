@@ -49,6 +49,12 @@ from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_population_complete,
 )
 
+from dagster_hifld.assets.courthouses_usgs import (
+    courthouses_draft_job,
+    courthouses_draft_schedule,
+    courthouses_population_complete,
+)
+
 from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_complete,
     eia_power_plants_draft_job,
@@ -720,6 +726,7 @@ defs = Definitions(
         census_block_groups_source_complete,
         census_tracts_source_complete,
         quaternary_fault_lines_population_complete,
+        courthouses_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
@@ -756,6 +763,7 @@ defs = Definitions(
         usgs_aquifers_draft_refresh_job,
         census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
+        courthouses_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
         noaa_territorial_draft_refresh_job,
@@ -811,6 +819,7 @@ defs = Definitions(
         colleges_source_integrity_schedule,
         usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
+        courthouses_draft_schedule,
         census_primary_roads_draft_schedule,
         census_block_groups_draft_schedule,
         census_tracts_draft_schedule,
