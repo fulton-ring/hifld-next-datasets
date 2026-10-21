@@ -60,7 +60,13 @@ class EPAFRSArcGISTableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=False) as client:
                 captured, manifest, receipts = capture_table(client, profile, Path(tmp))
+                replayed, replay_manifest, replay_receipts = capture_table(
+                    client, profile, Path(tmp), replay_captures=True
+                )
         self.assertEqual(captured, rows)
+        self.assertEqual(replayed, rows)
+        self.assertEqual(replay_receipts, receipts)
+        self.assertEqual(replay_manifest["rows_captured"], 2)
         self.assertTrue(manifest["source_ids_equal_before_after"])
         self.assertEqual(manifest["rows_captured"], 2)
         self.assertEqual(manifest["relationship"][0]["name"], "POWERPLANT_LAYER")
