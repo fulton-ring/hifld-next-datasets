@@ -1,0 +1,7 @@
+# Overhead Pipeline Lines (USACE IENC)
+
+The inventory record is an exact HIFLD card for `OVERHEAD_PIPELINE_LINE`. The current official distribution path is the USDOT BTS IENC item (`3607d485a9854d6fa458bf507058ceae`) linking the USACE IENC Feature Classes service and master geodatabase. The live service identifies layer 44, Polyline, EPSG:4326, 14 non-geometry fields, and 92 features with OBJECTIDs 1–92. The item describes twice-monthly IENC delivery; it does not date this layer's current release.
+
+`src/dagster_hifld/sources/usace_overhead_pipeline_lines.py` captures the exact service directory, layer/service metadata, count and ID rosters before and after, and bounded feature responses with decoded/wire bytes and receipts. The local Dagster asset writes a pinned native GeoParquet candidate and raw evidence into isolated local staging. Completeness is a blocking asset check; refresh is stopped. Every acceptance flag remains false, so the normal publication verifier refuses release until independent source, rights, baseline, schema, ID, geometry, coverage, and release decisions are recorded.
+
+The HIFLD v1.0.0 GeoParquet comparison is historical evidence only: it contains 92 rows but no `Feature_ID`; nine of twelve shared source attributes differ on at least one row and all 92 geometries differ. This is a changed edition, not continuity proof. No coverage or identifier mapping is accepted.
