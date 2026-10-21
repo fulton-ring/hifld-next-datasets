@@ -157,6 +157,7 @@ def _source_manifest(capture, audit, processing):
         'publisher':'Bureau of Transportation Statistics (USDOT_BTS; official distributor)',
         'source_url':SERVICE, 'source_modified':audit['editing_info'], 'schema_version':1,
         'processor':'HIFLD Next', 'processing_identity':processing, 'code_commit':processing['code_commit'],
+        'code_commit_kind':processing['code_commit_kind'],
         'original_retrieval_receipts':audit['canonical_retrieval_receipts'],
         'inputs':_release_inputs(capture, audit),
         'transformations':[{'name':'raw ArcGIS point to native-CRS GeoJSON + typed GeoParquet + Arrow-stream typed GeoPackage', 'attribute_mapping':'identity; no omissions; epoch-ms dates retained as integers', 'acceptance':'unapproved'}],
@@ -188,11 +189,27 @@ def processing_identity():
     fingerprint = hashlib.sha256(json.dumps({'installed_pipeline_sha256': pipeline,
         'versions': versions}, sort_keys=True).encode()).hexdigest()
     root = Path(__file__).resolve().parents[3]
-    result = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True)
-    commit = result.stdout.strip() if result.returncode == 0 else None
-    dirty = subprocess.run(['git', '-C', str(root), 'diff', '--quiet', '--', 'src/dagster_hifld'], capture_output=True).returncode
+    commit = None
+    working_tree_modified = None
+    try:
+        result = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True)
+    except FileNotFoundError:
+        result = None
+    if result is not None and result.returncode == 0:
+        observed_commit = result.stdout.strip()
+        if re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', observed_commit):
+            commit = observed_commit
+            try:
+                status = subprocess.run(['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=all', '--', 'src/dagster_hifld'], capture_output=True, text=True)
+            except FileNotFoundError:
+                status = None
+            if status is not None and status.returncode == 0:
+                working_tree_modified = bool(status.stdout.strip())
+    code_commit_kind = 'git_commit' if commit is not None else 'installed_processing_fingerprint_not_vcs_commit'
+    code_commit = commit or f'installed-processing-sha256:{fingerprint}'
     return {'builder_fingerprint': fingerprint, 'installed_pipeline_sha256': pipeline,
-        'code_commit': commit, 'working_tree_modified': dirty != 0, 'versions': versions,
+        'code_commit': code_commit, 'code_commit_kind': code_commit_kind,
+        'working_tree_modified': working_tree_modified, 'versions': versions,
         'meaning': 'Original processing identity; replay does not invent a new upstream retrieval.'}
 
 

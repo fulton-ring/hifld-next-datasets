@@ -5,6 +5,7 @@ import http.client
 import io
 import json
 import pathlib
+import shutil
 import tempfile
 import unittest
 import urllib.error
@@ -12,6 +13,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from dagster import DagsterInstance
+from dagster_hifld.assets import fuel_stations as fuel_stations_module
 from dagster_hifld.assets.fuel_stations import (
     SLUG, SERVICE, _capture_json, build_candidate, inspect_capture,
     stage_fuel_capture, bts_alternative_fueling_stations, UNSUPPORTED_OUTPUT_FORMATS,
@@ -42,6 +44,44 @@ class FuelReviewBoundaryTests(unittest.TestCase):
         with DagsterInstance.ephemeral() as instance:
             return job.execute_in_process(instance=instance,resources={'staging_storage':resource},
                 run_config={'ops':{bts_alternative_fueling_stations.op.name:{'config':config}}},raise_on_error=False)
+
+    def test_packaged_identity_without_git_keeps_fingerprint_in_valid_provenance(self):
+        runtime_root=self.root/'runtime-image'
+        module_path=runtime_root/'src/dagster_hifld/assets/fuel_stations.py'
+        module_path.parent.mkdir(parents=True)
+        shutil.copy2(pathlib.Path(fuel_stations_module.__file__),module_path)
+        self.assertFalse((runtime_root/'.git').exists())
+        with patch.object(fuel_stations_module,'__file__',str(module_path)):
+            # A Git binary with no repository must fall back without claiming a
+            # clean tree; a runtime with no Git executable must do the same.
+            identity=processing_identity()
+            self.assertEqual(identity['code_commit_kind'],'installed_processing_fingerprint_not_vcs_commit')
+            self.assertRegex(identity['code_commit'],r'^installed-processing-sha256:[0-9a-f]{64}$')
+            self.assertIsNone(identity['working_tree_modified'])
+            manifest=_source_manifest(self.capture,inspect_capture(self.capture),identity)
+            validate_release_provenance(manifest)
+            self.assertEqual(manifest['code_commit'],identity['code_commit'])
+            self.assertEqual(manifest['code_commit_kind'],identity['code_commit_kind'])
+            with patch.object(fuel_stations_module.subprocess,'run',side_effect=FileNotFoundError('git unavailable')):
+                unavailable=processing_identity()
+            self.assertEqual(unavailable['code_commit'],identity['code_commit'])
+            self.assertIsNone(unavailable['working_tree_modified'])
+            validate_release_provenance(_source_manifest(self.capture,inspect_capture(self.capture),unavailable))
+
+    def test_processing_identity_preserves_an_observed_git_commit_and_tree_state(self):
+        commit='a'*40
+        responses=[SimpleNamespace(returncode=0,stdout=commit+'\n'),SimpleNamespace(returncode=0,stdout='')]
+        with patch.object(fuel_stations_module.subprocess,'run',side_effect=responses) as run:
+            identity=processing_identity()
+        self.assertEqual(run.call_count,2)
+        self.assertEqual(identity['code_commit'],commit)
+        self.assertEqual(identity['code_commit_kind'],'git_commit')
+        self.assertIs(identity['working_tree_modified'],False)
+        responses=[SimpleNamespace(returncode=0,stdout=commit+'\n'),
+                   SimpleNamespace(returncode=0,stdout='?? src/dagster_hifld/untracked.py\n')]
+        with patch.object(fuel_stations_module.subprocess,'run',side_effect=responses):
+            dirty=processing_identity()
+        self.assertIs(dirty['working_tree_modified'],True)
 
     def test_published_resource_rejected_before_helper_or_registered_job_capture_or_write(self):
         published=PublishedStorageResource(local_dir=str(self.root/'published'),use_local=True)
