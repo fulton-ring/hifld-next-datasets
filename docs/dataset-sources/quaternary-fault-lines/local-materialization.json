@@ -2,13 +2,13 @@
   "schema_version": 1,
   "dataset_slug": "quaternary-fault-lines",
   "file_slug": "quaternary-fault-lines",
-  "version": "v20261021T033518Z",
-  "code_commit": "f875d59045fb16aa9f3080f15941a064615210ad",
-  "staging_root": "/agent-data/staging (disposable local isolated state)",
-  "dagster_home": "/agent-data/dagster",
-  "ingest_run_id": "8596176c-905d-4904-ac8b-b2abfe9e4fc5",
-  "catalog_run_id": "441d6f26-2b2b-42c7-9dcd-5d5214c49f39",
-  "capture_mode": "complete capture replayed from /tmp/hifld-qfl-capture/57403c4720e648529a4667642e13d0d0",
+  "version": "v20261021T140135Z",
+  "code_commit": "0ea74229fccb7e19114249e6f33abcd554038ac7",
+  "staging_root": "/workspace/work/285-source-audit/staging",
+  "dagster_home": "/workspace/work/285-source-audit/dagster-home",
+  "ingest_run_id": "95c07fea-67af-42ac-842e-1fbe9f096209",
+  "catalog_run_id": "cb7e06d0-14fa-43ef-afbc-01cc438f5f61",
+  "capture_mode": "fresh complete API capture from the official USGS National Database FeatureServer layer 21; captured and staged by the registered Dagster asset",
   "source_feature_count": 112809,
   "source_id_sha256": "9918f4432ae51ff5a78ce8fde86976181f70c79106a4daa63f5b1e85f4b663d9",
   "source_record_sha256": "ce2b8535e87ee3a495735c404d1f9d2a5d7dc63c29789f5441ab12cea9e2ab8d",
@@ -20,9 +20,10 @@
     "sha256": "dc4a6b3a45d061e8cc2c414fb9a7f87c6fda245fa1440ecf2c05989a298f5eb8"
   },
   "raw_evidence": {
+    "path": "/workspace/work/285-source-audit/staging/quaternary-fault-lines/quaternary-fault-lines/v20261021T140135Z/raw",
     "artifact_count": 1146,
-    "bytes": 137363456,
-    "note": "573 JSON response bodies plus 573 checksummed receipts retained under raw/"
+    "bytes": 136342844,
+    "note": "573 response bodies plus 573 checksummed request receipts; capture_manifest.json is retained beside the raw/ directory."
   },
   "catalog": {
     "asset": "publish/catalog",
@@ -35,15 +36,73 @@
     "columns_hash": "8a407a194979fabfee3f3c3323088f7ba45e29a99fba29fb90a9f2a5651dab32"
   },
   "checks": {
-    "focused_source_tests": "6 passed",
-    "ingest_asset_check": "quaternary_fault_lines_population_complete passed",
-    "catalog_asset_check": "quality_manifest passed",
+    "focused_source_tests": "8 passed (tests.test_quaternary_fault_lines_source)",
+    "registered_ingest_asset_check": "quaternary_fault_lines_population_complete passed; 112809 records and exact ID/record hashes",
+    "catalog_asset_check": "quality_manifest passed; 112809 MultiLineString rows; invalid_geometry_count=0; null_geometry_count=0",
+    "native_geometry_and_attributes": "exact full population parity against retained API pages; all 25 attribute fields, stable IDs and native XY vertices",
+    "registered_quality_failure_gate": "failed quality check blocked promotion against populated fixture; all 20 existing published fixture objects preserved (synthetic-only harness)",
     "publication": "not attempted; candidate remains unapproved and no release approval registry entry exists"
   },
   "blockers": [
     "DataLumos project page returned anonymous HTTP 403 Cloudflare challenge; archive contents were not compared.",
     "DHS crosswalk record-level match was not independently re-fetched.",
-    "The service's 2020 release label is not a dated data-release identifier.",
+    "The service 2020 release label is not a dated data-release identifier.",
+    "API/SHP matching count is not proof of record-level parity or HIFLD archive equivalence; FileGDB is a distinct variant.",
     "Schema/ID contract, HIFLD archive equivalence, coverage, rights, attribution, and release approval require a maintainer decision."
-  ]
+  ],
+  "code_identity_scheme": "git-commit-blobs-v1",
+  "capture": {
+    "path": "/workspace/work/285-source-audit/api-capture/v20261021T140135Z/002bdaad198d47f88f843ec20013e33c",
+    "pages": 565,
+    "page_bodies_and_receipts": 573,
+    "total_files_including_capture_manifest": 1147,
+    "response_body_bytes": 135202992,
+    "capture_manifest_sha256": "6f6f929c70a1ba36792e50203c1ebbf43dc479e9d7ade3f087e293b1ff652c83",
+    "source_manifest_path": "/workspace/work/285-source-audit/staging/quaternary-fault-lines/quaternary-fault-lines/v20261021T140135Z/metadata/source/source_manifest.json",
+    "source_manifest_bytes": 1403629,
+    "source_manifest_sha256": "ec6b1bee7ab7b0008453817489408a2ec259427bfff3348c0cc6cdf8130d8789"
+  },
+  "native_parity": {
+    "result": "exact",
+    "compared": "all 112809 records, stable IDs, every source attribute and every native XY path/vertex against the complete captured API pages and typed candidate Parquet",
+    "source_attribute_fields": 25,
+    "geometry_type": "MultiLineString",
+    "spatial_reference": "EPSG:3857",
+    "paths": 113166,
+    "vertices": 993315,
+    "candidate_bytes": 15622886,
+    "candidate_sha256": "dc4a6b3a45d061e8cc2c414fb9a7f87c6fda245fa1440ecf2c05989a298f5eb8"
+  },
+  "cache_replay": {
+    "result": "same-version replay reused immutable staged objects; all 1150 object hashes remained unchanged",
+    "different-bytes-same-version": "refused by immutable_staged_object_changed",
+    "verification": "focused source unit test plus direct replay from retained capture"
+  },
+  "dagster_evidence": {
+    "registered_ingest_job": "quaternary_fault_lines_draft_refresh",
+    "ingest_run_id": "95c07fea-67af-42ac-842e-1fbe9f096209",
+    "catalog_asset": "publish/catalog",
+    "catalog_run_id": "cb7e06d0-14fa-43ef-afbc-01cc438f5f61",
+    "runs_database": "/workspace/work/285-source-audit/dagster-home/history/runs.db",
+    "run_logs": "/workspace/work/285-source-audit/dagster-home/storage",
+    "processing_identity": "git-commit-blobs-v1 bound to code commit 0ea74229fccb7e19114249e6f33abcd554038ac7"
+  },
+  "quality_gate_evidence": {
+    "harness": "/workspace/work/285-source-audit/quality-gate",
+    "integration_result": "/workspace/work/285-source-audit/quality-gate/integration_result.json",
+    "dagster_home": "/workspace/work/285-source-audit/quality-gate/dagster",
+    "baseline_fixture_success_run_id": "1ea9b68a-2f15-4ff0-8e5f-5a1b102b8eed",
+    "failed_quality_run_id": "0e775249-a9eb-42b8-aef8-e5f37601747d",
+    "failed_quality_run": "registered native graph failed at publish__catalog_quality_manifest; promotion did not run; all 20 pre-existing published fixture objects were preserved",
+    "staged_mutation_refusal_run_id": "fc70e830-ef4b-46bd-81ed-217a83d15ce4",
+    "unapproved_candidate_refusal_run_id": "0ad6a062-a0e2-45f3-b12d-ea890fc873d6",
+    "scope": "isolated synthetic fixture only; no release acceptance"
+  },
+  "source_comparison": {
+    "official_package": "/workspace/work/285-source-audit/Qfaults_GIS.zip",
+    "package_sha256": "447eadc5926256710d988c30e5996ba540604caa0154f9746c48bad637926893",
+    "inspection": "SHP Qfaults_US_Database: 112809 EPSG:4326 LineString, 23 truncated DBF attributes, no native OBJECTID, 65743 null section_id; FileGDB Qfaults_2020: 112944 EPSG:4326 MultiLineString, OBJECTID 1-112944, no null geometry, 23 attributes and lacks API archive_pdf.",
+    "comparison_packet": "/workspace/work/285-source-audit/source-audit.json",
+    "interpretation": "These are distinct official products/variants; matching API and SHP counts do not establish feature parity or HIFLD archive continuity. The API source remains the selected candidate and was not replaced by ZIP/GDB."
+  }
 }
