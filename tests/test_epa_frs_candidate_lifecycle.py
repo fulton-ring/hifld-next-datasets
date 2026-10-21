@@ -50,7 +50,7 @@ class EpaFrsCandidateLifecycleTests(unittest.TestCase):
                 "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
             }
             objects = {
-                "geoparquet/native.parquet": b"synthetic parquet candidate",
+                "geoparquet/epa-frs-eia-860-power-generation-facilities-by-source.parquet": b"synthetic parquet candidate",
                 "metadata/candidate_ready.json": json.dumps({"approved": False, "version": version}).encode(),
                 "metadata/source_manifest.json": b'{"approved":false,"fixture":true}',
                 "raw/source.body": raw,
@@ -94,7 +94,7 @@ class EpaFrsCandidateLifecycleTests(unittest.TestCase):
             self.assertTrue(_verify_first_candidate(
                 storage, prefix, state_key, version, fingerprint, identity,
                 {"source_record_sha256": record_sha, "source_schema_sha256": schema_sha},
-                set(objects), objects["geoparquet/native.parquet"],
+                set(objects), objects["geoparquet/epa-frs-eia-860-power-generation-facilities-by-source.parquet"],
             )["reused"])
             rogue = Path(tmp) / prefix / "raw/unsealed.body"
             rogue.write_bytes(b"unsealed")
