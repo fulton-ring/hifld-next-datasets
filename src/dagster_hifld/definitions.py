@@ -32,6 +32,10 @@ from dagster_hifld.assets.usace_pylon_areas import (
     usace_pylon_areas_draft_schedule,
     usace_pylon_areas_complete,
 )
+from dagster_hifld.assets.principal_ports import (
+    principal_ports_source_complete,
+    principal_ports_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -446,7 +450,8 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=[*hifld_asset_checks, usace_pylon_areas_complete, usace_overhead_pipeline_lines_complete],
+    asset_checks=[*hifld_asset_checks, usace_pylon_areas_complete,
+                  usace_overhead_pipeline_lines_complete, principal_ports_source_complete],
     jobs=[
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
@@ -466,6 +471,7 @@ defs = Definitions(
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
+        principal_ports_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

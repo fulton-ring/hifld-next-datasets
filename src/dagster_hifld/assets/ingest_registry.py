@@ -21,6 +21,7 @@ from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
 from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
+from dagster_hifld.assets.principal_ports import principal_ports_usace
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -39,4 +40,5 @@ hifld_ingest_assets = [
     usace_pylon_locations_usace_ienc,
     usace_overhead_pipeline_lines_usace_ienc,
     census_secondary_school_districts,
+    principal_ports_usace,
 ]
