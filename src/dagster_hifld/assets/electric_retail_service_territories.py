@@ -60,6 +60,18 @@ def electric_retail_service_territories_population_complete(candidate: dict) -> 
     })
 
 
+@asset_check(asset=electric_retail_service_territories_preservation_candidate, blocking=True)
+def electric_retail_service_territories_geometry_valid(candidate: dict) -> AssetCheckResult:
+    nulls = candidate.get("null_geometry_count")
+    invalid = candidate.get("invalid_geometry_count")
+    return AssetCheckResult(
+        passed=type(nulls) is int and type(invalid) is int and nulls == 0 and invalid == 0,
+        metadata={"null_geometry_count": nulls if type(nulls) is int else -1,
+                  "invalid_geometry_count": invalid if type(invalid) is int else -1,
+                  "geometry_repair_applied": False},
+    )
+
+
 @asset_check(asset=electric_retail_service_territories_preservation_candidate, blocking=False)
 def electric_retail_service_territories_release_pending(candidate: dict) -> AssetCheckResult:
     return AssetCheckResult(

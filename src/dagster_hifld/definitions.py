@@ -199,6 +199,7 @@ from dagster_hifld.assets.usace_data_coverage_areas import (
 )
 from dagster_hifld.assets.electric_retail_service_territories import (
     electric_retail_service_territories_population_complete,
+    electric_retail_service_territories_geometry_valid,
     electric_retail_service_territories_release_pending,
     electric_retail_service_territories_preservation_job,
     electric_retail_service_territories_preservation_schedule,
@@ -805,6 +806,7 @@ defs = Definitions(
         usace_crane_locations_release,
         usace_data_coverage_areas_complete,
         electric_retail_service_territories_population_complete,
+        electric_retail_service_territories_geometry_valid,
         electric_retail_service_territories_release_pending,
     ],
     jobs=[

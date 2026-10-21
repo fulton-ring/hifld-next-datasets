@@ -11,6 +11,7 @@ from shapely.wkb import loads as from_wkb
 from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.electric_retail_service_territories import (
     electric_retail_service_territories_population_complete,
+    electric_retail_service_territories_geometry_valid,
     electric_retail_service_territories_preservation_schedule,
     electric_retail_service_territories_release_pending,
 )
@@ -79,6 +80,8 @@ class ElectricRetailTerritoryTests(unittest.TestCase):
         candidate = {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
                      "release_accepted": False}
         self.assertTrue(electric_retail_service_territories_population_complete(candidate).passed)
+        candidate.update(null_geometry_count=0, invalid_geometry_count=0)
+        self.assertTrue(electric_retail_service_territories_geometry_valid(candidate).passed)
         self.assertFalse(electric_retail_service_territories_release_pending(candidate).passed)
         self.assertEqual(electric_retail_service_territories_preservation_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)

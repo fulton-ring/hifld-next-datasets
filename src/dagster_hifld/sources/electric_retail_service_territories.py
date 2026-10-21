@@ -24,6 +24,8 @@ from dagster_hifld.sources.epa_frs_common import processing_identity, write_immu
 DATASET_SLUG = "electric-retail-service-territories"
 FILE_SLUG = DATASET_SLUG
 EXPECTED_COUNT = 2931
+EXPECTED_ID_SHA256 = "e1038f98577ee9a103ce0d390e47ddb896ea1f4775ff89f90b6d7d264443e5e4"
+EXPECTED_SCHEMA_SHA256 = "9a6ff3ef2ca1fe63f0dd39df8d69d8ff3568fca08db5be209c99df0d6202f69d"
 PAGE_SIZE = 100
 SOURCE_EDIT_EPOCH_MS = 1755786120272  # 2025-08-21; service snapshot/edit timestamp, not release date.
 FEATURE_LAYER_URL = (
@@ -367,6 +369,8 @@ def capture_electric_retail_service_territories(
         layer_params = {"f": "pjson"}
         layer, body, wire, request_body, receipt = _capture_request(client, root, "layer_before", "GET", FEATURE_LAYER_URL, layer_params, budget, replay, captures)
         fields = _validate_layer(layer)
+        if _sha(_canonical(fields)) != EXPECTED_SCHEMA_SHA256:
+            raise ValueError("source_schema_frozen_edition_drift")
         count_params = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
         count_before, body, wire, request_body, receipt = _capture_request(client, root, "count_before", "GET", FEATURE_LAYER_URL + "/query", count_params, budget, replay, captures)
         id_params = {"where": "1=1", "returnIdsOnly": "true", "f": "json"}
@@ -378,6 +382,8 @@ def capture_electric_retail_service_territories(
         ids = sorted(ids)
         if len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
             raise ValueError("source_id_roster_invalid")
+        if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
+            raise ValueError("source_id_frozen_edition_drift")
         processed: list[tuple[dict, object]] = []
         for offset in range(0, len(ids), PAGE_SIZE):
             wanted = ids[offset:offset + PAGE_SIZE]
