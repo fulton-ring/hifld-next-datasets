@@ -1,9 +1,12 @@
 import hashlib
+import importlib.metadata
+import json
 import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from unittest.mock import patch
 
 from dagster_hifld.construction_provenance import (
@@ -150,3 +153,52 @@ class ConstructionProvenanceTests(unittest.TestCase):
             root = Path(directory) / "repo"; sha, files = fixture(root, object_format="sha256")
             validate_construction_code_identity(root, sha, files)
             self.assert_code("construction_invalid_commit", root, sha[:40], files)
+
+    def test_versioned_packaged_identity_is_recomputed_without_git(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "src/dagster_hifld"
+            package.mkdir(parents=True)
+            (package / "runtime.py").write_bytes(b"runtime bytes\n")
+            (root / "pyproject.toml").write_bytes(b"project metadata\n")
+            (root / "uv.lock").write_bytes(b"locked dependencies\n")
+            files = {
+                path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sorted([*package.rglob("*"), root / "pyproject.toml", root / "uv.lock"])
+                if path.is_file()
+            }
+            distributions = [
+                {"name": distribution.metadata["Name"], "version": distribution.version}
+                for distribution in importlib.metadata.distributions()
+                if distribution.metadata.get("Name") and distribution.version
+            ]
+            distributions.sort(key=lambda item: (item["name"].casefold(), item["name"], item["version"]))
+            identity = {
+                "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+                "working_tree_status": "unknown", "files": files,
+                "installed_distributions": distributions,
+                "python": "3.12.0", "pyarrow": "1.0", "proj": "1.0", "geos": "1.0",
+            }
+            fields = ("code_identity_scheme", "working_tree_status", "files", "installed_distributions",
+                      "python", "pyarrow", "proj", "geos")
+            body = json.dumps({key: identity[key] for key in fields}, sort_keys=True,
+                              separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+            code_commit = "packaged-sha256:" + hashlib.sha256(body).hexdigest()
+            with patch("dagster_hifld.construction_provenance._packaged_runtime_versions", return_value={
+                    "python": identity["python"], "pyarrow": identity["pyarrow"],
+                    "proj": identity["proj"], "geos": identity["geos"],
+            }):
+                validate_construction_code_identity(root, code_commit, files, identity=identity)
+            with patch("dagster_hifld.construction_provenance._packaged_runtime_versions", return_value={
+                    "python": "changed", "pyarrow": identity["pyarrow"],
+                    "proj": identity["proj"], "geos": identity["geos"],
+            }), self.assertRaisesRegex(ConstructionCodeIdentityError, "construction_packaged_runtime_versions_changed"):
+                validate_construction_code_identity(root, code_commit, files, identity=identity)
+            self.assert_code("construction_invalid_commit", root, code_commit, files)
+
+            (package / "runtime.py").write_bytes(b"changed runtime bytes\n")
+            with patch("dagster_hifld.construction_provenance._packaged_runtime_versions", return_value={
+                    "python": identity["python"], "pyarrow": identity["pyarrow"],
+                    "proj": identity["proj"], "geos": identity["geos"],
+            }), self.assertRaisesRegex(ConstructionCodeIdentityError, "construction_packaged_file_hash_mismatch"):
+                validate_construction_code_identity(root, code_commit, files, identity=identity)

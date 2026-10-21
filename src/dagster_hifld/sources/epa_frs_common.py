@@ -7,8 +7,10 @@ the first-construction CAS contract.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import platform
+import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,7 +26,14 @@ from dagster_hifld.construction_state import (
     load_first_construction,
     seal_first_construction,
 )
-from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_provenance import (
+    _MAX_BLOB_BYTES,
+    _MAX_FILES,
+    _MAX_TOTAL_BLOB_BYTES,
+    _MAX_TOTAL_PATH_BYTES,
+    _MAX_PATH_BYTES,
+    validate_construction_code_identity,
+)
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
@@ -112,17 +121,117 @@ def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> N
         raise ValueError("immutable_staged_object_changed:" + key)
 
 
+CODE_IDENTITY_GIT = "git-commit-blobs-v1"
+CODE_IDENTITY_PACKAGED = "sha256-packaged-dagster-hifld-v1"
+
+
+def _packaged_files(root: Path) -> dict[str, str]:
+    package = root / "src/dagster_hifld"
+    if not package.is_dir() or package.is_symlink():
+        package = root / "dagster_hifld"
+        package_prefix = "dagster_hifld"
+    else:
+        package_prefix = "src/dagster_hifld"
+    if not package.is_dir() or package.is_symlink():
+        raise ValueError("processing_source_package_missing")
+    files = {}
+    total_size = 0
+
+    def add_file(path: Path, name: str) -> None:
+        nonlocal total_size
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("processing_source_nonregular_file")
+        if before.st_size > _MAX_BLOB_BYTES or total_size + before.st_size > _MAX_TOTAL_BLOB_BYTES:
+            raise ValueError("processing_source_size_limit")
+        digest = sha256_file(path)
+        after = path.lstat()
+        if (after.st_dev != before.st_dev or after.st_ino != before.st_ino
+                or after.st_size != before.st_size or after.st_mtime_ns != before.st_mtime_ns):
+            raise ValueError("processing_source_changed_during_hash")
+        total_size += before.st_size
+        files[name] = digest
+
+    for path in sorted(package.rglob("*")):
+        if "__pycache__" in path.parts:
+            continue
+        if path.is_symlink():
+            raise ValueError("processing_source_symlink_unsupported")
+        if not path.is_file():
+            continue
+        relative = path.relative_to(package).as_posix()
+        add_file(path, f"{package_prefix}/{relative}")
+    if not files:
+        raise ValueError("processing_source_package_missing")
+    for name in ("pyproject.toml", "uv.lock"):
+        if not (root / name).is_file():
+            raise ValueError("processing_dependency_input_missing:" + name)
+        add_file(root / name, name)
+    files = dict(sorted(files.items()))
+    if len(files) > _MAX_FILES:
+        raise ValueError("processing_source_file_limit")
+    total_path_bytes = sum(len(name.encode("utf-8")) + 1 for name in files)
+    if (any(len(name.encode("utf-8")) > _MAX_PATH_BYTES for name in files)
+            or total_path_bytes > _MAX_TOTAL_PATH_BYTES):
+        raise ValueError("processing_source_path_limit")
+    return files
+
+
+def _installed_distributions() -> list[dict[str, str]]:
+    result = []
+    for distribution in importlib.metadata.distributions():
+        name = distribution.metadata.get("Name")
+        version = distribution.version
+        if name and version:
+            result.append({"name": name, "version": version})
+    return sorted(result, key=lambda item: (item["name"].casefold(), item["name"], item["version"]))
+
+
+def _identity_payload(identity: Mapping[str, object]) -> dict[str, object]:
+    return {key: identity[key] for key in (
+        "code_identity_scheme", "working_tree_status", "files", "installed_distributions",
+        "python", "pyarrow", "proj", "geos",
+    )}
+
+
+def _packaged_digest(identity: Mapping[str, object]) -> str:
+    return _sha(_canonical(_identity_payload(identity)))
+
+
 def processing_identity(repo_root: Path) -> dict[str, object]:
-    """Bind the candidate to the committed code and exact runtime versions."""
+    """Bind candidates to exact Git blobs or a versioned installed package identity.
+
+    A packaged runtime without Git records an explicitly non-Git digest over
+    every installed Dagster source file, the project and lock files, and the
+    complete installed Python distribution/version inventory.
+    """
     root = Path(repo_root).resolve()
-    files = {str(path.relative_to(root)): sha256_file(path)
-             for path in sorted(root.joinpath("src/dagster_hifld").rglob("*.py"))}
-    files.update({name: sha256_file(root / name) for name in ("pyproject.toml", "uv.lock")})
-    return {
-        "code_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
-        "files": files, "python": platform.python_version(), "pyarrow": pa.__version__,
+    versions = {
+        "python": platform.python_version(), "pyarrow": pa.__version__,
         "proj": pyproj.proj_version_str, "geos": shapely.geos_version_string,
     }
+    git_metadata = root / ".git"
+    if git_metadata.exists() or git_metadata.is_symlink():
+        files = {str(path.relative_to(root)): sha256_file(path)
+                 for path in sorted(root.joinpath("src/dagster_hifld").rglob("*.py"))}
+        files.update({name: sha256_file(root / name) for name in ("pyproject.toml", "uv.lock")})
+        status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=root,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+        working_tree_status = ("clean" if status.returncode == 0 and not status.stdout else
+                               "dirty" if status.returncode == 0 else "unknown")
+        return {"code_identity_scheme": CODE_IDENTITY_GIT, "working_tree_status": working_tree_status,
+                "code_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
+                "files": files, **versions}
+
+    identity: dict[str, object] = {
+        "code_identity_scheme": CODE_IDENTITY_PACKAGED,
+        "working_tree_status": "unknown",
+        "files": _packaged_files(root),
+        "installed_distributions": _installed_distributions(),
+        **versions,
+    }
+    identity["code_commit"] = f"packaged-sha256:{_packaged_digest(identity)}"
+    return identity
 
 
 def quarantine_incomplete_capture(storage: StagingStorageResource, capture_root: Path,
@@ -210,5 +319,5 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
                 or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
                 or receipt_body != _canonical(dict(receipt)) + b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
-    validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"])
+    validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"], identity=identity)
     return {"version": version, "reused": True}

@@ -266,7 +266,7 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                 or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
                 or receipt_body != _canonical(receipt)+b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
             "source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
             "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
@@ -325,7 +325,7 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
     manifest = {
       "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS/EIA-860 power generation layer. EPA service describes EIA data vintage as June 2014; currentness and successor decision are pending.",
       "publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"license":"https://www.usa.gov/publicdomain/label/1.0/",
-      "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
+      "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],
       "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":EPA_FRS_DATA_SOURCES_URL if name == "epa_data_sources_page" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"https://www.usa.gov/publicdomain/label/1.0/","attribution":"ArcGIS item attribution: USEPA FRS, EIA. Item metadata states EPA-generated works are generally public domain; rights review remains pending.","release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in sorted(captures.items())],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"feature_layer_id":LAYER_ID,"source_fields":"all 59 fields preserved in producer order and declared physical types","source_ids":"Preserve each OBJECTID, OBJECTID_1, REGISTRY_ID and EIA identifiers unchanged","geometry":"Esri point x/y retained as WKB at EPSG:3857; no reprojection or repair","candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
       "lineage":"EPA_GEO ArcGIS item 2a1459ac9b03469e87c2e7785cc188a9 serves exact layer 4. EPA FRS identifies EIA-860 as its source; see https://www.epa.gov/frs/frs-data-sources. The service says the EIA-860 input was most-current as of June 2014. The ArcGIS item modification date is not a release date.",
@@ -364,5 +364,5 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
             raise ValueError("candidate_output_physical_readback_failed:"+name)
     payload = {"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}
