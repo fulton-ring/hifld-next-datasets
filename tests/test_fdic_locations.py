@@ -15,6 +15,11 @@ FIXTURE=Path(__file__).parent/'fixtures/fdic_locations/representative_native_rec
 
 def rows():return list(json.loads(FIXTURE.read_text())['records'].values())
 
+def write_manifest_snapshots(root,manifest):
+    snapshot='metadata/source/version_'+s.digest(manifest)+'_source_manifest.json'
+    for name in ['metadata/source/source_manifest.json',snapshot]:
+        path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(manifest)
+
 class FdicLocationsTests(unittest.TestCase):
     def test_real_structural_records_preserve_every_primitive_presence_and_null(self):
         original=rows();collection,quality=s.point_collection(original);decoded=s.strict_json(s.encode(collection))
@@ -58,6 +63,7 @@ class FdicLocationsTests(unittest.TestCase):
             storage=StagingStorageResource(local_dir=temporary);root=Path(temporary)/'synthetic';root.mkdir();(root/'geojson').mkdir();(root/'metadata').mkdir()
             expected={s.GEOJSON_KEY:body,'metadata/source_manifest.json':s.encode({'synthetic':True})}
             for name,payload in expected.items():(root/name).write_bytes(payload)
+            write_manifest_snapshots(root,expected['metadata/source_manifest.json'])
             ready={'version':'v0.0.0-synthetic','processing_fingerprint':'a'*64,'approved':False,'objects':{name:{'sha256':s.digest(payload),'bytes':len(payload)}for name,payload in expected.items()}}
             (root/s.READY).write_bytes(s.encode(ready));s.reconcile_cache(storage,'synthetic',expected,'v0.0.0-synthetic','a'*64)
             changed=s.strict_json(body);changed['features'][0]['properties']['UNINUM']=str(changed['features'][0]['properties']['UNINUM']);bad=s.encode(changed)
@@ -69,6 +75,7 @@ class FdicLocationsTests(unittest.TestCase):
             storage=StagingStorageResource(local_dir=temporary);root=Path(temporary)/'synthetic';(root/'metadata').mkdir(parents=True);(root/'candidate').mkdir()
             expected={'candidate/payload.json':s.encode({'native':True}),'metadata/source_manifest.json':s.encode({'schema_version':1})}
             for name,payload in expected.items():(root/name).write_bytes(payload)
+            write_manifest_snapshots(root,expected['metadata/source_manifest.json'])
             quality={'version':'v1','quality_check_passed':False,'feature_count':3,'nested':{'bounds':[1,2,3,4]}}
             dictionary={'schema_version':1,'columns':[{'name':'BANK_ID','types':{'string':3},'presence':{'absent':0,'null':1}}]}
             for name,value in [('metadata/quality_manifest.json',quality),('metadata/data_dictionary.json',dictionary)]:
@@ -83,6 +90,50 @@ class FdicLocationsTests(unittest.TestCase):
                 altered['columns'][0]['presence']['absent']=9
                 (root/'metadata/data_dictionary.json').write_bytes(s.encode(altered))
                 with self.assertRaisesRegex(ValueError,'catalog_sidecar_semantic_drift:metadata/data_dictionary.json'):
+                    s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
+
+    def test_manifest_snapshots_required_and_source_catalog_snapshots_remain_optional(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            storage=StagingStorageResource(local_dir=temporary);root=Path(temporary)/'synthetic';(root/'metadata').mkdir(parents=True)
+            manifest=s.encode({'schema_version':1});expected={'candidate/payload.json':s.encode({'native':True}),'metadata/source_manifest.json':manifest}
+            for name,payload in expected.items():(root/name).parent.mkdir(parents=True,exist_ok=True);(root/name).write_bytes(payload)
+            write_manifest_snapshots(root,manifest)
+            quality={'quality_check_passed':False};dictionary={'columns':[]}
+            for name,value in [('metadata/quality_manifest.json',quality),('metadata/data_dictionary.json',dictionary)]:
+                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(s.encode(value))
+            version='v0.0.0-synthetic';fingerprint='a'*64
+            ready={'version':version,'processing_fingerprint':fingerprint,'approved':False,'objects':{name:{'sha256':s.digest(payload),'bytes':len(payload)}for name,payload in expected.items()}}
+            (root/s.READY).write_bytes(s.encode(ready))
+            summary=Mock(quality_manifest=quality,data_dictionary=dictionary)
+            with patch.object(s,'load_resolved_source_manifest',return_value=Mock(metadata={})),patch.object(s,'summarize_staged_catalog',return_value=summary):
+                # Catalog snapshots copied only when source-authored files existed are not fabricated.
+                s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
+                for name in ['metadata/source/source_manifest.json','metadata/source/version_'+s.digest(manifest)+'_source_manifest.json']:
+                    body=(root/name).read_bytes();(root/name).unlink()
+                    with self.assertRaisesRegex(ValueError,'missing_authored_manifest_snapshot'):
+                        s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
+                    (root/name).write_bytes(body)
+
+    def test_nonnull_provenance_sidecar_presence_is_enforced(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            storage=StagingStorageResource(local_dir=temporary);root=Path(temporary)/'synthetic';(root/'metadata').mkdir(parents=True)
+            manifest=s.encode({'schema_version':1});expected={'candidate/payload.json':s.encode({'native':True}),'metadata/source_manifest.json':manifest}
+            for name,payload in expected.items():(root/name).parent.mkdir(parents=True,exist_ok=True);(root/name).write_bytes(payload)
+            write_manifest_snapshots(root,manifest)
+            quality={'quality_check_passed':False};dictionary={'columns':[]}
+            for name,value in [('metadata/quality_manifest.json',quality),('metadata/data_dictionary.json',dictionary)]:
+                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(s.encode(value))
+            version='v0.0.0-synthetic';fingerprint='a'*64
+            ready={'version':version,'processing_fingerprint':fingerprint,'approved':False,'objects':{name:{'sha256':s.digest(payload),'bytes':len(payload)}for name,payload in expected.items()}}
+            (root/s.READY).write_bytes(s.encode(ready))
+            summary=Mock(quality_manifest=quality,data_dictionary=dictionary)
+            with patch.object(s,'load_resolved_source_manifest',return_value=Mock(metadata={'processor':'present'})),patch.object(s,'provenance_projection',return_value={'processor':'present'}),patch.object(s,'summarize_staged_catalog',return_value=summary):
+                with self.assertRaisesRegex(ValueError,'resolved_provenance_presence_mismatch'):
+                    s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
+                provenance=root/'metadata/resolved_provenance.json';provenance.write_bytes(s.encode({'processor':'present'}))
+                s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
+                provenance.unlink()
+                with self.assertRaisesRegex(ValueError,'resolved_provenance_presence_mismatch'):
                     s.reconcile_cache(storage,'synthetic',expected,version,fingerprint)
 
     def test_canonical_ready_rejects_false_as_integer(self):

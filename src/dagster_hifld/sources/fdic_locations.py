@@ -459,11 +459,12 @@ def reconcile_cache(storage,prefix,expected,version,fp):
         'metadata/data_dictionary.json','metadata/quality_manifest.json','metadata/resolved_provenance.json'}
     actual={str(p.relative_to(root))for p in root.rglob('*')if p.is_file()};owned=set(expected)
     if actual-(owned|{READY}|downstream)or not(owned|{READY}).issubset(actual):raise FdicQuarantineError('unrostered_or_missing_candidate_object')
-    for name in ['metadata/source/source_manifest.json',snapshot]:
-        if(root/name).exists()and(root/name).read_bytes()!=expected['metadata/source_manifest.json']:raise FdicQuarantineError('authored_manifest_snapshot_changed')
-    if(root/'metadata/resolved_provenance.json').exists():
-        resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
-        if encode(strict_json((root/'metadata/resolved_provenance.json').read_bytes()))!=encode(resolved):raise FdicQuarantineError('resolved_provenance_changed')
+    authored_catalog_pair={'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'}
+    source_authored_catalog=authored_catalog_pair.intersection(owned)
+    if source_authored_catalog and source_authored_catalog!=authored_catalog_pair:
+        raise FdicQuarantineError('incomplete_authored_catalog_roster')
+    if source_authored_catalog and not source_authored_catalog.issubset(actual):
+        raise FdicQuarantineError('missing_authored_catalog_snapshot')
     catalog_paths={
         'metadata/quality_manifest.json':'quality_manifest',
         'metadata/source/quality_manifest.json':'quality_manifest',
@@ -474,8 +475,17 @@ def reconcile_cache(storage,prefix,expected,version,fp):
     if catalog_present:
         if not {'metadata/quality_manifest.json','metadata/data_dictionary.json'}.issubset(actual):
             raise FdicQuarantineError('incomplete_catalog_sidecar_pair')
-        resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
-        summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
+        for name in ['metadata/source/source_manifest.json',snapshot]:
+            if name not in actual:raise FdicQuarantineError('missing_authored_manifest_snapshot:'+name)
+            if(root/name).read_bytes()!=expected['metadata/source_manifest.json']:raise FdicQuarantineError('authored_manifest_snapshot_changed')
+        resolved_metadata=load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata
+        resolved=provenance_projection(resolved_metadata)
+        provenance_path=root/'metadata/resolved_provenance.json'
+        if (resolved is not None) != (provenance_path.relative_to(root).as_posix() in actual):
+            raise FdicQuarantineError('resolved_provenance_presence_mismatch')
+        if resolved is not None and encode(strict_json(bounded_regular_read(provenance_path,20_000_000)))!=encode(resolved):
+            raise FdicQuarantineError('resolved_provenance_changed')
+        summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved_metadata)
         canonical_catalog={'quality_manifest':summary.quality_manifest,'data_dictionary':summary.data_dictionary}
         for name in sorted(catalog_present):
             actual_catalog=strict_json(bounded_regular_read(root/name,20_000_000))
