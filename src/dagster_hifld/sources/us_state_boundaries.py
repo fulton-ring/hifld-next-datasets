@@ -330,6 +330,19 @@ def capture_us_state_boundaries(
     if version != candidate_version(identity):
         raise ValueError("candidate_version_identity_mismatch")
     body, receipt, wire, receipt_bytes = _capture(capture_directory, staging_storage, version)
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    receipt_raw_key = f"{prefix}/raw/source.receipt.json"
+    staged_receipt_snapshot = staging_storage.object_snapshot(receipt_raw_key)
+    if staged_receipt_snapshot is not None:
+        # Unchanged refreshes reuse the staged candidate unchanged: the earlier
+        # dated observation stays authoritative while the fresh response must
+        # still match every pinned receipt field before it is discarded.
+        prior_receipt = json.loads(staging_storage.read_key(receipt_raw_key))
+        fresh_without_time = {key: value for key, value in receipt.items() if key != "observed_at"}
+        prior_without_time = {key: value for key, value in prior_receipt.items() if key != "observed_at"}
+        if fresh_without_time != prior_without_time:
+            raise ValueError("staged_capture_receipt_identity_drift")
+        receipt, receipt_bytes = prior_receipt, staging_storage.read_key(receipt_raw_key)
     frame, audit = _inspect_archive_data(body)
     parquet = _geoparquet(frame)
     parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
@@ -339,12 +352,10 @@ def capture_us_state_boundaries(
         name: int((frame.geometry.geom_type == name).sum())
         for name in sorted(set(frame.geometry.geom_type.astype(str)))
     }
-    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     archive_key = f"{prefix}/raw/source.body"
     before = staging_storage.object_snapshot(archive_key)
     write_immutable(staging_storage, archive_key, body)
     wire_key = f"{prefix}/raw/source.wire"
-    receipt_raw_key = f"{prefix}/raw/source.receipt.json"
     write_immutable(staging_storage, wire_key, wire)
     write_immutable(staging_storage, receipt_raw_key, receipt_bytes)
     after = staging_storage.object_snapshot(archive_key)
