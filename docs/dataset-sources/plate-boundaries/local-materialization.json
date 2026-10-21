@@ -43,5 +43,31 @@
   },
   "published_inventory_preserved": true,
   "source_release_accepted": false,
-  "production_publication_performed": false
+  "production_publication_performed": false,
+  "no_git_runtime": {
+    "runtime_source_tree_commit": "0d62ade42d5a6a2c918cddfbb16ae1f134a90b39",
+    "runtime_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "runtime_working_tree_status": "unknown",
+    "runtime_git_metadata_present": false,
+    "retained_capture_artifact_count": 61,
+    "retained_capture_replay_byte_identical": true,
+    "candidate_version": "vc8b35110fff453176eaeec25a8edb22d",
+    "candidate_parquet_sha256": "528aefd76705d66e2d1abd3153052cb63726a3b7433f8dadfdbc7215635d3492",
+    "candidate_parquet_bytes": 95874,
+    "source_run_id": "f5e512d4-a150-4432-a136-84b83d9e7069",
+    "cache_replay_run_id": "e8569eab-978a-4edd-99ea-506493df300f",
+    "catalog_quality_pass_run_id": "98b03b21-3952-4979-9086-46e9ce47aae1",
+    "populated_quality_failure_run_id": "b8a4ae2e-df2a-4313-9a9f-19d5bd84d631",
+    "populated_quality_failure": {
+      "invalid_geometry_count": 1,
+      "blocking_quality_check_passed": false,
+      "published_inventory_preserved": true
+    },
+    "empty_approval_verify_run_id": "d419642b-9e91-4b0a-aa56-99c0c3da2239",
+    "empty_approval_reason": "missing_or_ambiguous_exact_object_approval:plate-boundaries/plate-boundaries/vc8b35110fff453176eaeec25a8edb22d/geoparquet/plate-boundaries.parquet",
+    "empty_approval_published_inventory_preserved": true,
+    "evidence_directory": "/workspace/work/271-clean-evidence",
+    "release_accepted": false,
+    "production_publication_performed": false
+  }
 }
