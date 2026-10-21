@@ -41,11 +41,12 @@ from dagster_hifld.conversion import (
 )
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
-from dagster_hifld.release_approval import require_release_approval
+from dagster_hifld.release_approval import require_release_approval, _registry as load_release_approvals
 from dagster_hifld.sources.usace_pylon_locations import (
     DATASET_SLUG as USACE_PYLON_LOCATIONS_DATASET_SLUG,
     compare_generated_geoparquet as compare_usace_pylon_locations_geoparquet,
 )
+from dagster_hifld.portolan.release import read_staged_release
 from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
@@ -219,6 +220,8 @@ def _copy_version_files(
     file_slug: str,
     version: str,
 ) -> list[str]:
+    load_release_approvals(staging_storage, published_storage)
+    _, destination_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
     legacy = _legacy_unknown_shapefile_archive(
         staging_storage, dataset_slug, file_slug, version, keys
@@ -240,10 +243,10 @@ def _copy_version_files(
         staging_storage,
         published_storage,
         [
-            (key, _logical_version_key(dataset_slug, file_slug, version, relative_key))
+            (key, f"{destination_prefix}/{relative_key}")
             for key, relative_key in selected_pairs
         ],
-        version_prefix=f"{dataset_slug}/{file_slug}/{version}",
+        version_prefix=destination_prefix,
     )
     return sorted(copied)
 
@@ -1390,6 +1393,7 @@ def _output_for_partition(
     partitions_def=PUBLISH_PARTITIONS,
     group_name="publish",
     deps=[
+        AssetKey(["publish", "release_metadata"]),
         AssetKey(["publish", "catalog"]),
         AssetKey(["publish", "formats", "geopackage"]),
         AssetKey(["publish", "formats", "geoparquet"]),
@@ -1403,14 +1407,16 @@ def verify_release(
     staging_storage: StagingStorageResource,
     published_storage: PublishedStorageResource,
 ) -> Output[dict]:
+    load_release_approvals(staging_storage, published_storage)
     dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
     prefix = f"{dataset_slug}/{file_slug}/{version}"
-    pairs = [(key, _logical_version_key(dataset_slug, file_slug, version, relative))
+    _, destination_prefix = read_staged_release(staging_storage, prefix)
+    pairs = [(key, f"{destination_prefix}/{relative}")
              for key, relative in _archive_only_pairs(staging_storage, dataset_slug, file_slug, version,
                                                      staging_storage.list_keys(dataset_slug, file_slug, version))
              if Path(relative).parts[0] != "unknown"]
     require_release_approval(staging_storage, published_storage, pairs)
-    return Output({"version": version, "verified_inventory": prefix}, metadata={"acceptance": "exact_manual_release_decision"})
+    return Output({"version": destination_prefix.rsplit("/", 1)[1], "verified_inventory": prefix}, metadata={"acceptance": "exact_manual_release_decision"})
 
 
 @asset(
@@ -1440,15 +1446,17 @@ def publish_version(
         file_slug,
         version,
     )
+    _, destination_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
     outputs = [
         PublishedFormatOutput(
             file_slug,
-            Path(key.removeprefix(f"{dataset_slug}/{file_slug}/{version}/")).parts[0],
+            Path(key.removeprefix(published_storage._ensure_prefixed(destination_prefix) + "/")).parts[0],
             key,
         )
         for key in copied
     ]
-    return _output_for_partition(context, outputs, "version")
+    output = _output_for_partition(context, outputs, "version")
+    return Output({**output.value, "version": destination_prefix.rsplit("/", 1)[1]}, metadata=output.metadata)
 
 
 @asset(
@@ -1548,6 +1556,6 @@ publish_assets = [
     publish_shapefile_zip,
 ]
 
-from dagster_hifld.assets.portolan import publish_portolan_catalog
+from dagster_hifld.assets.portolan import publish_portolan_catalog, prepare_release_metadata
 
-publish_assets.append(publish_portolan_catalog)
+publish_assets.extend([prepare_release_metadata, publish_portolan_catalog])
