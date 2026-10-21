@@ -147,7 +147,7 @@ def _validate_metadata(metadata: dict) -> None:
     if metadata.get("copyrightText") != "USACE IENC":
         raise ValueError("source_copyright_declaration_drift")
     for dim in ("hasZ", "hasM"):
-        if metadata.get(dim) is True:
+        if metadata.get(dim) is not False:
             raise ValueError("source_dimension_drift")
     declarations = metadata.get("fields")
     if not isinstance(declarations, list) or any(not isinstance(field, dict) for field in declarations):
@@ -378,6 +378,9 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
                     or not isinstance(page.get("features"), list)
                     or len(page["features"]) != len(requested)):
                 raise ValueError("source_page_incomplete")
+            for dim in ("hasZ", "hasM"):
+                if dim in page and (type(page[dim]) is not bool or page[dim] is not False):
+                    raise ValueError("source_page_dimension_drift")
             _validate_crs(page.get("spatialReference"), "source_page_crs_drift")
             page_fields = page.get("fields")
             expected_attributes = [{"name": name, "type": kind} for name, kind in ATTRIBUTE_FIELDS]
@@ -453,7 +456,8 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         "agency": "US Army Corps of Engineers (source service declaration)",
         "source_url": LAYER_URL, "license": None, "source_modified": None,
         "date_issued": None, "date_modified": None, "processor": "HIFLD Next",
-        "code_commit": identity["code_commit"], "inputs": inputs,
+        "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "native_esri_polyline_to_geojson_and_geoparquet_candidate",
             "parameters": {"attributes": "all declared source attributes and IDs retained without mapping",
                 "geometry": "source path coordinates retained at EPSG:4326; no reprojection, simplification, repair, or geocoding",

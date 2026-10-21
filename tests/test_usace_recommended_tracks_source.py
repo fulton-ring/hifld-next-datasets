@@ -28,10 +28,11 @@ def _canonical(value):
 
 
 class IencFixture:
-    def __init__(self, expected_count=2, *, count_after=None, schema_drift=False):
+    def __init__(self, expected_count=2, *, count_after=None, schema_drift=False, page_flags=None):
         self.expected_count = expected_count
         self.count_after = count_after if count_after is not None else expected_count
         self.schema_drift = schema_drift
+        self.page_flags = page_flags or {}
         self.ids = list(range(1, expected_count + 1))
         self.extent = {"xmin": -10.0, "ymin": -10.0, "xmax": 10.0, "ymax": 10.0,
                        "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
@@ -95,7 +96,7 @@ class IencFixture:
                 value = {"geometryType": "esriGeometryPolyline",
                          "spatialReference": {"wkid": 4326, "latestWkid": 4326},
                          "fields": self.fields,
-                         "features": [self.feature(identity) for identity in ids]}
+                         "features": [self.feature(identity) for identity in ids], **self.page_flags}
         else:
             raise AssertionError(f"unexpected URL {request.url}")
         body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
@@ -160,6 +161,7 @@ class RecommendedTracksSourceTests(unittest.TestCase):
         self.assertEqual(table.num_rows, 2)
         self.assertEqual(audit["objectid_sha256"], hashlib.sha256(_canonical([1, 2])).hexdigest())
         self.assertFalse(manifest["approved"])
+        self.assertEqual(manifest["code_identity_scheme"], "test")
         self.assertIn("succession", manifest["lineage"].lower())
         self.assertFalse(json.loads(self.storage.read_key(prefix + "/metadata/candidate_ready.json"))["release_accepted"])
         with patch("dagster_hifld.assets.usace_recommended_tracks.EXPECTED_COUNT", 2), \
@@ -187,6 +189,21 @@ class RecommendedTracksSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_schema_drift"):
             self._capture(fixture)
         self.assertTrue(self.storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}"))
+
+    def test_page_z_or_m_declarations_fail_before_geometry_build(self):
+        for flags in ({"hasZ": True}, {"hasM": "false"}):
+            with self.subTest(flags=flags):
+                fixture = IencFixture(page_flags=flags)
+                with self.assertRaisesRegex(ValueError, "source_page_dimension_drift"):
+                    self._capture(fixture)
+                quarantine = self.storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}")
+                self.assertTrue(any("page_000000.body" in key for key in quarantine))
+
+    def test_metadata_dimension_declarations_must_be_boolean_false(self):
+        metadata = IencFixture().metadata()
+        metadata["hasZ"] = "false"
+        with self.assertRaisesRegex(ValueError, "source_dimension_drift"):
+            source._validate_metadata(metadata)
 
     def test_registered_source_gate_rejects_corrupt_population_audit(self):
         version = "v1.0.0-test"
