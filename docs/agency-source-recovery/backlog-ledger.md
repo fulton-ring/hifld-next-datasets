@@ -1,6 +1,6 @@
 # Dataset reconstruction backlog ledger
 
-This ledger tracks all415dataset issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. All415issue states were fetched; none were closed by this work.
+This ledger tracks all 415 dataset inventory issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. Earlier PR search counts are historical snapshots, not current open-PR counts. Issue #417 remains open; no issue was closed and no production data was published.
 
 Existing priority PRs #420/#3, #419/#4, #427/#10 and #428/#11 were recovered with their prior exact-head reviews and runtime evidence. They were not rebuilt. Shared verifier #417 was resumed at reviewed4dfbe33:22focused tests passed; synthetic verify/promote run23663675-bfd2-4cfa-8ff2-c9aa35952259 succeeded and staged-drift runa7c4751b-eec6-4bae-9f65-ab24805b817e refused promotion, preserving14fixture objects. Synthetic mechanics do not approve real dataset baselines.
 
@@ -49,3 +49,23 @@ The user authorized the existing paid queues under the <=$25/day **inference** g
 | #284 Pylon Locations | Implementation39599138325 admitted; official4,079-point source inspected | Await actual saved pipeline/run evidence |
 
 Shared #417 is at `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0`, independently reviewed scoped fixes (review5599552229), with actual synthetic success `d054f1c6-2fe8-46f5-a332-47924cdcb9bc` and drift refusal `cd59e479-c18b-4647-aeaf-99f45e6644ad`. Baseline/configuration and unsupported arbitrary transformation accounting remain blocked; this does not complete #417. The branch advanced only after #283 pinned its original checkout. No merges, closures or production publication.
+
+
+## Latest verified checkpoint — 2026-10-21 13:18 UTC
+
+The 415-issue inventory remains intact. Earlier PR counts are historical search snapshots and are not current open-PR totals.
+
+| Work | Verified state |
+| --- | --- |
+| Shared verifier #421 / issue #417 | Head `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0` merged as `df0e0c3db6c63015c8f98788c4f9f2b90e8991c3`; fail-closed scope is limited to literal GeoJSON. Issue #417 remains open. |
+| NOAA #420 / issue #3 | Head `0e05c81e1a2ce15e6cfdfa705ff82010971b5466`, merge `7f456f5d6d9c8d3ed2c7d0796b04f26537f38918`; tested merged tree `311609f286322807cbe11a43da3694966d9fa824`, root review 5600251607. Issues #3 and #10 remain OPEN; schedules stopped, no approvals or publication. |
+| FAA #427 / issue #10 | Head `4a20188d477412d1c4ad835db4f030fd52da9e0b`, merge `7c83fc66a14b51854ebe8911ffa5ead86d2529e8`; includes `uv.lock` runtime copy. |
+| NOAA #419 / issue #4 | Native integration remains ongoing. |
+| Fueling #428 / issue #11 | Head `eb6163b8e43933b1760fb23ee76b638734d0abe0`; packaged runtime fix, 41 tests and CI pass; waiting on #419 integration. |
+| Issue #25 | Replacement tracking PR #544. |
+| Roads #546 / issue #275 | Head `eb8448f77d19e37d798032f339b1f7f8b793ec86`; packaged hash fix, 14 tests; source/cache/catalog runs and root review 5599755431 are recorded. Parent #260 chain blocks merge. |
+| Subbarrios #548 / issue #282 | Head `502a00aedcc4d664b4fa2d772d0c6dfc449f28cf`; independent paid review passed despite cleanup failure run 39599895858. Do not retry. Parent #271 chain blocks merge. |
+| Pylon Areas #556 / issue #283 | Saved head `e1bcef4fa76c8a3eb4705d152482d307707f11cf` after run 39597542093 failed trusted handoff. Native review recovery is scheduled. Worker reports 6,440 polygons and four run IDs; raw GKE retention is unverified. |
+| Pylon Locations / issue #284 | Run 39599138325 failed without a saved commit; native recovery is active. |
+
+At 13:18 UTC there were no active paid jobs and new paid admissions were held. The `<= $25/day` inference guard is unchanged; actual spend is unknown and the guard excludes GKE/Actions compute. Verified code merges are authorized. Issue closure, release acceptance and production publication remain unauthorized.
