@@ -15,6 +15,18 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.faa import (
+    faa_airspace_draft_refresh_job,
+    faa_airspace_draft_refresh_schedule,
+)
+from dagster_hifld.assets.noaa_contiguous import (
+    noaa_contiguous_draft_refresh_job,
+    noaa_contiguous_draft_refresh_schedule,
+)
+from dagster_hifld.assets.noaa import (
+    noaa_eez_draft_refresh_job,
+    noaa_eez_draft_weekly_schedule,
+)
 from dagster_hifld.assets.fuel_stations import (
     fuel_stations_draft_refresh_job,
     fuel_stations_draft_refresh_schedule,
@@ -413,8 +425,8 @@ def _configured_sensors():
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=hifld_asset_checks,
-    jobs=[fuel_stations_draft_refresh_job],
-    schedules=[fuel_stations_draft_refresh_schedule],
+    jobs=[faa_airspace_draft_refresh_job, noaa_eez_draft_refresh_job, noaa_contiguous_draft_refresh_job, fuel_stations_draft_refresh_job],
+    schedules=[faa_airspace_draft_refresh_schedule, noaa_eez_draft_weekly_schedule, noaa_contiguous_draft_refresh_schedule, fuel_stations_draft_refresh_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
