@@ -34,6 +34,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
 from dagster_hifld.validation import sha256_file
 
 SLUG = 'ferry-routes-1'
@@ -367,6 +368,11 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity):
     derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
     if actual-(expected_names|{READY}|derivatives) or not (expected_names|{READY}).issubset(actual):
         raise FerryRouteQuarantineError('cached_unknown_or_missing_object')
+    source_manifest_snapshots={f'{prefix}/metadata/source/source_manifest.json',f'{prefix}/{snapshot}'}
+    found_source_manifest_snapshots={f'{prefix}/{name}' for name in actual}&source_manifest_snapshots
+    if found_source_manifest_snapshots not in (set(),source_manifest_snapshots):
+        raise FerryRouteQuarantineError('cached_catalog_source_snapshot_incomplete')
+    _validate_cached_catalog_sidecars(storage,prefix,{f'{prefix}/{name}' for name in actual})
     for name,pin in ready['objects'].items():
         if digest(candidate_bytes(root,name))!=pin: raise FerryRouteQuarantineError('cached_source_object_changed:'+name)
     for name in ['metadata/source/source_manifest.json',snapshot]:

@@ -19,6 +19,8 @@ import pyarrow.parquet as pq
 import pyogrio
 import shapely
 
+from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import ferry_routes as f
 
 CAPTURE=os.environ.get('FERRY_ROUTES_TEST_CAPTURE_DIR')
@@ -136,6 +138,17 @@ class FerryOriginalCaptureTests(unittest.TestCase):
         self.assertEqual(self.table['vessel4_id'].type,pa.string());self.assertEqual(self.audit['operator_count'],160)
         self.assertEqual(self.table['OBJECTID'].to_pylist(),list(range(1,965)));self.assertEqual(set(self.table['census_year'].to_pylist()),{2020})
         f.reconcile_outputs(self.root,self.table);self.assertTrue(self.refresh()['reused'])
+    def test_catalog_cache_recomputes_metadata_and_requires_snapshot_pair(self):
+        snapshot_source_metadata(self.storage,f.SLUG,f.SLUG,self.output['version'])
+        resolved=load_resolved_source_manifest(self.storage,f.SLUG,f.SLUG,self.output['version'])
+        summary=summarize_staged_catalog(self.storage,f.SLUG,f.SLUG,self.output['version'],f.SLUG,source_metadata=resolved.metadata)
+        write_catalog_metadata(self.storage,dataset_slug=f.SLUG,file_slug=f.SLUG,version=self.output['version'],quality_dict=summary.quality_manifest,dictionary_dict=summary.data_dictionary)
+        backup=self.path.parent/'candidate-with-catalog-sidecars';shutil.copytree(self.root,backup,copy_function=shutil.copy2)
+        quality=self.root/'metadata/quality_manifest.json';doc=json.loads(quality.read_text());doc['feature_count']+=1;quality.write_bytes(f.encode(doc))
+        self.reject('cached_catalog_metadata_mismatch')
+        shutil.copytree(backup,self.root,copy_function=shutil.copy2)
+        (self.root/'metadata/source/source_manifest.json').unlink()
+        self.reject('cached_catalog_source_snapshot_incomplete')
     def test_missing_duplicate_renamed_or_retyped_identifier_rejected(self):
         for table in [self.table.drop(['OBJECTID']),self.table.set_column(0,'OBJECTID',pa.array([1]*964)),self.table.set_column(0,'OBJECTID',pa.array([str(v)for v in range(1,965)]))]:
             with self.assertRaises(f.FerryRouteQuarantineError):f.validate_table(table)
