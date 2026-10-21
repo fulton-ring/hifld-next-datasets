@@ -29,6 +29,11 @@ from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_schedule,
 )
 
+from dagster_hifld.assets.census_consolidated_cities import (
+    concity_source_integrity_job,
+    concity_source_integrity_schedule,
+)
+
 from dagster_hifld.assets.bts import (
     amtrak_draft_refresh_job,
     amtrak_draft_refresh_schedule,
@@ -730,6 +735,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
+        concity_source_integrity_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -778,6 +784,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
+        concity_source_integrity_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
