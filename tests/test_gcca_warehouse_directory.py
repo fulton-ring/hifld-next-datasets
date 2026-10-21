@@ -41,7 +41,7 @@ class GCCAWarehouseDirectoryTests(unittest.TestCase):
 
     def test_complete_category_and_us_projection_keep_missing_geometry_row(self):
         rows = [
-            _row("us-has-geometry", "United States", {"type": "Point", "coordinates": [-120.0, 38.0]}),
+            _row("us-has-geometry", "United States", {"type": "point", "coordinates": [-120.0, 38.0]}),
             _row("us-missing-geometry", "United States", None),
             _row("foreign", "Canada", {"type": "Point", "coordinates": [-100.0, 50.0]}),
         ]

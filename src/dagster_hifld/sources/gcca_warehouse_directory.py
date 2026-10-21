@@ -226,7 +226,7 @@ def _validate_and_project(rows: list[dict], source_total: int, facet_meta: dict)
             geo = fields.get("location_geo")
             if geo is None:
                 geometry_null += 1
-            elif (not isinstance(geo, dict) or geo.get("type") != "Point"
+            elif (not isinstance(geo, dict) or not isinstance(geo.get("type"), str) or geo["type"].casefold() != "point"
                   or not isinstance(geo.get("coordinates"), list) or len(geo["coordinates"]) != 2
                   or any(type(value) not in (int, float) or not math.isfinite(value) for value in geo["coordinates"])):
                 geometry_invalid += 1
