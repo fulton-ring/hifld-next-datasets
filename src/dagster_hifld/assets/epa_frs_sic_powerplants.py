@@ -167,6 +167,7 @@ def _reuse(storage: StagingStorageResource, *, version: str, identity: dict[str,
 
 def capture_epa_frs_sic_table(staging_storage: StagingStorageResource, *,
                               offline_replay_version: str | None = None,
+                              offline_capture_version: str | None = None,
                               client: httpx.Client | None = None) -> dict[str, Any]:
     """Capture fresh source evidence before any versioned cache reuse."""
     if not isinstance(staging_storage, StagingStorageResource) or isinstance(staging_storage, PublishedStorageResource):
@@ -174,6 +175,8 @@ def capture_epa_frs_sic_table(staging_storage: StagingStorageResource, *,
     repo_root = Path(__file__).parents[3]
     identity = processing_identity(repo_root)
     identity_fingerprint = _sha(_canonical(identity))
+    if offline_replay_version and offline_capture_version:
+        raise EPAFRSSICError("choose_cached_reuse_or_retained_capture_replay")
     if offline_replay_version:
         return _reuse(staging_storage, version=offline_replay_version, identity=identity,
                       fingerprint=identity_fingerprint, offline=True)
@@ -182,8 +185,25 @@ def capture_epa_frs_sic_table(staging_storage: StagingStorageResource, *,
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     owned_client = client is None
     active = client or httpx.Client(follow_redirects=False, timeout=60.0)
+    capture_mode = "live_source_capture"
     try:
-        rows, manifest, captures = capture_table(active, PROFILE, capture_root)
+        if offline_capture_version:
+            capture_mode = "offline_retained_source_replay"
+            source_prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, offline_capture_version)
+            source_manifest = json.loads(staging_storage.read_key(f"{source_prefix}/metadata/source_capture.json"))
+            retained_names = set(source_manifest.get("response_receipts", {}))
+            expected_names = {"service", "service_after", "table_before", "count_before", "ids_before",
+                              "table_after", "count_after", "ids_after", "page_000"}
+            if retained_names != expected_names:
+                raise EPAFRSSICError("retained_capture_roster_invalid")
+            capture_root.mkdir(parents=True, exist_ok=True)
+            for name in retained_names:
+                for suffix in ("body", "wire", "receipt.json"):
+                    payload = staging_storage.read_key(f"{source_prefix}/raw/{name}.{suffix}")
+                    (capture_root / f"{name}.{suffix}").write_bytes(payload)
+            rows, manifest, captures = capture_table(active, PROFILE, capture_root, replay_captures=True)
+        else:
+            rows, manifest, captures = capture_table(active, PROFILE, capture_root)
     except Exception as exc:
         for receipt_path in sorted(capture_root.glob("*.receipt.json")) if capture_root.exists() else []:
             name = receipt_path.name.removesuffix(".receipt.json")
@@ -234,7 +254,8 @@ def capture_epa_frs_sic_table(staging_storage: StagingStorageResource, *,
                             ("receipt.json", _canonical(receipt) + b"\n")):
             objects[f"raw/{name}.{suffix}"] = raw
         capture_objects.append({"name": name, "bytes": len(body), "sha256": _sha(body)})
-    manifest.update({"captured_at": datetime.now(timezone.utc).isoformat(),
+    manifest.update({"captured_at": min(receipt["observed_at"] for _, receipt in captures.values()),
+                     "capture_mode": capture_mode,
                      "source_record_sha256": record_sha, "source_schema_sha256": schema_sha,
                      "source_ids_sha256": ids_sha, "source_triplets_sha256": triplets_sha,
                      "published_candidate_count": PUBLISHED_ROWS,
@@ -300,14 +321,18 @@ def capture_epa_frs_sic_table(staging_storage: StagingStorageResource, *,
 
 class EPAFRSSICConfig(Config):
     offline_replay_version: str = ""
+    offline_capture_version: str = ""
 
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="epa", compute_kind="http",
        description="Exact EPA SIC table 15 as a nonspatial candidate; vintage and published membership block release.")
 def epa_frs_sic_powerplants(context, config: EPAFRSSICConfig,
                             staging_storage: StagingStorageResource) -> dict:
-    result = capture_epa_frs_sic_table(staging_storage,
-                                       offline_replay_version=config.offline_replay_version or None)
+    result = capture_epa_frs_sic_table(
+        staging_storage,
+        offline_replay_version=config.offline_replay_version or None,
+        offline_capture_version=config.offline_capture_version or None,
+    )
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,
         [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])])
     context.add_output_metadata(result)
