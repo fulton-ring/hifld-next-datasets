@@ -41,6 +41,11 @@ from dagster_hifld.assets.principal_ports import (
     principal_ports_source_complete,
     principal_ports_draft_schedule,
 )
+from dagster_hifld.assets.usace_overhead_cables import (
+    usace_overhead_cables_complete,
+    usace_overhead_cables_draft_schedule,
+    usace_overhead_cables_draft_job,
+)
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -466,6 +471,7 @@ defs = Definitions(
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         principal_ports_source_complete,
+        usace_overhead_cables_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -477,6 +483,7 @@ defs = Definitions(
         recommended_tracks_draft_job,
         fuel_stations_draft_refresh_job,
         usace_overhead_pipeline_lines_draft_job,
+        usace_overhead_cables_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
     ],
@@ -490,6 +497,7 @@ defs = Definitions(
         recommended_tracks_draft_schedule,
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
+        usace_overhead_cables_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
