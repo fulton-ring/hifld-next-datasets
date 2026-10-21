@@ -268,6 +268,7 @@ def generate_data_dictionary(
             "inputs",
             "transformations",
             "code_commit",
+            "code_identity_scheme",
             "lineage",
             "unsupported_output_formats",
             "prebuilt_output_policy",
