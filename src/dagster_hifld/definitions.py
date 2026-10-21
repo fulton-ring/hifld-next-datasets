@@ -20,6 +20,11 @@ from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_schedule,
     quaternary_fault_lines_population_complete,
 )
+from dagster_hifld.assets.ornl_power_plants import (
+    eia_power_plants_complete,
+    eia_power_plants_draft_job,
+    eia_power_plants_draft_schedule,
+)
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
@@ -46,9 +51,24 @@ from dagster_hifld.assets.bsee_ocs_platforms import (
     bsee_ocs_platforms_draft_job,
     bsee_ocs_platforms_draft_schedule,
 )
+from dagster_hifld.assets.nces_public_schools import (
+    nces_public_schools_complete,
+    nces_public_schools_draft_job,
+    nces_public_schools_draft_schedule,
+)
+from dagster_hifld.assets.usace_overhead_cables import (
+    usace_overhead_cables_complete,
+    usace_overhead_cables_draft_schedule,
+    usace_overhead_cables_draft_job,
+)
 from dagster_hifld.assets.usace_berths_areas import (
     usace_berths_areas_complete,
     usace_berths_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_pipeline_areas import (
+    usace_pipeline_areas_complete,
+    usace_pipeline_areas_draft_job,
+    usace_pipeline_areas_draft_schedule,
 )
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
@@ -64,6 +84,21 @@ from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_complete,
     usace_caution_areas_draft_schedule,
     usace_caution_areas_draft_job,
+)
+from dagster_hifld.assets.usace_pile_locations import (
+    usace_pile_locations_complete,
+    usace_pile_locations_draft_job,
+    usace_pile_locations_draft_schedule,
+)
+from dagster_hifld.assets.usace import (
+    usace_navigation_marks_areas_complete,
+    usace_navigation_marks_areas_draft_job,
+    usace_navigation_marks_areas_draft_schedule,
+)
+from dagster_hifld.assets.plate_boundaries import (
+    plate_boundaries_draft_job,
+    plate_boundaries_draft_schedule,
+    plate_boundaries_population_complete,
 )
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
@@ -99,11 +134,6 @@ from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
-)
-from dagster_hifld.assets.nces_public_schools import (
-    nces_public_schools_complete,
-    nces_public_schools_draft_job,
-    nces_public_schools_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -499,18 +529,24 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[
         *hifld_asset_checks,
+        eia_power_plants_complete,
         census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
+        usace_navigation_marks_areas_complete,
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
+        usace_overhead_cables_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_pontoon_areas_complete,
+        plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
+        usace_pile_locations_complete,
+        usace_pipeline_areas_complete,
         nces_public_schools_complete,
     ],
     jobs=[
@@ -523,13 +559,19 @@ defs = Definitions(
         recommended_tracks_draft_job,
         fuel_stations_draft_refresh_job,
         usace_overhead_pipeline_lines_draft_job,
+        usace_overhead_cables_draft_job,
         usace_obstruction_lines_draft_job,
+        usace_navigation_marks_areas_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
         usace_pontoon_areas_draft_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
+        plate_boundaries_draft_job,
+        eia_power_plants_draft_job,
         bsee_ocs_platforms_draft_job,
+        usace_pile_locations_draft_job,
+        usace_pipeline_areas_draft_job,
         nces_public_schools_draft_job,
     ],
     schedules=[
@@ -543,7 +585,9 @@ defs = Definitions(
         recommended_tracks_draft_schedule,
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
+        usace_overhead_cables_draft_schedule,
         usace_obstruction_lines_draft_schedule,
+        usace_navigation_marks_areas_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
@@ -551,7 +595,11 @@ defs = Definitions(
         usace_pontoon_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
+        plate_boundaries_draft_schedule,
+        eia_power_plants_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
+        usace_pile_locations_draft_schedule,
+        usace_pipeline_areas_draft_schedule,
         nces_public_schools_draft_schedule,
     ],
     sensors=_configured_sensors(),
