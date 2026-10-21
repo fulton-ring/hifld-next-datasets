@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,7 +19,8 @@ class CheckTests(unittest.TestCase):
     def test_quality_checks_target_catalog_assets(self):
         for check_def in hifld_asset_checks:
             spec = next(iter(check_def.check_specs))
-            self.assertEqual(spec.asset_key.path[:2], ["publish", "catalog"])
+            self.assertIn(spec.asset_key.path[:2], [["publish", "catalog"], ["publish", "verify"]])
+            self.assertTrue(spec.blocking)
 
     def test_manifest_backed_checks_cover_backfill_and_census_assets(self):
         asset_paths = {
@@ -26,7 +28,7 @@ class CheckTests(unittest.TestCase):
             for check_def in hifld_asset_checks
         }
 
-        self.assertEqual(asset_paths, {("publish", "catalog")})
+        self.assertEqual(asset_paths, {("publish", "catalog"), ("publish", "verify")})
         self.assertEqual(len(hifld_asset_checks), 2)
 
     def test_read_quality_check_result_reads_manifest(self):
@@ -55,7 +57,7 @@ class CheckTests(unittest.TestCase):
             self.assertTrue(result.passed)
             self.assertEqual(result.metadata["feature_count"].value, 5)
 
-    def test_publish_quality_check_reports_warning_severity_for_invalid_geometry(self):
+    def test_publish_quality_check_reports_error_severity_for_invalid_geometry(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             metadata_dir = Path(tmpdir) / "nfhl" / "area" / "v1.0.0" / "metadata"
             metadata_dir.mkdir(parents=True)
@@ -71,7 +73,7 @@ class CheckTests(unittest.TestCase):
             result = publish_catalog_quality_manifest(context, resource)
 
             self.assertFalse(result.passed)
-            self.assertEqual(result.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(result.severity, AssetCheckSeverity.ERROR)
             self.assertEqual(result.metadata["invalid_geometry_count"].value, 40)
 
     def test_read_quality_check_result_passes_expected_all_null_geometry_manifest(self):
@@ -94,7 +96,7 @@ class CheckTests(unittest.TestCase):
             self.assertTrue(result.passed)
             self.assertEqual(result.metadata["spatial_status"].value, "all_null_geometry")
 
-    def test_baseline_check_skips_when_partition_is_baseline(self):
+    def test_baseline_partition_does_not_self_approve(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
             result = read_baseline_comparison_result(
@@ -103,8 +105,8 @@ class CheckTests(unittest.TestCase):
                 file_slug="bar",
                 version=BASELINE_VERSION,
             )
-            self.assertTrue(result.passed)
-            self.assertEqual(result.metadata["reason"].value, "is_baseline")
+            self.assertFalse(result.passed)
+            self.assertEqual(result.metadata["reason"].value, "missing_full_data_comparison")
 
     def test_baseline_check_no_baseline_when_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -115,10 +117,15 @@ class CheckTests(unittest.TestCase):
                 file_slug="bar",
                 version="v999",
             )
-            self.assertTrue(result.passed)
-            self.assertEqual(result.metadata["reason"].value, "no_baseline")
+            self.assertFalse(result.passed)
+            self.assertEqual(result.metadata["reason"].value, "missing_full_data_comparison")
+            blocked = Path(tmpdir) / "foo" / "bar" / "v999" / "metadata" / "baseline_comparison.json"
+            evidence = json.loads(blocked.read_text())
+            self.assertEqual(evidence["status"], "blocked")
+            self.assertEqual(evidence["reason_codes"], ["missing_comparison_configuration"])
+            self.assertEqual(evidence["acceptance"], "not_established_by_comparison")
 
-    def test_baseline_check_passes_when_aligned(self):
+    def test_equal_sampled_manifests_do_not_establish_full_data_acceptance(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             cols = '{"columns": [{"name": "id"}, {"name": "geom", "type": "geometry"}]}'
@@ -134,9 +141,8 @@ class CheckTests(unittest.TestCase):
             result = read_baseline_comparison_result(
                 resource, dataset_slug="ds", file_slug="f", version="v999"
             )
-            self.assertTrue(result.passed)
-            self.assertTrue(result.metadata["columns_ok"].value)
-            self.assertTrue(result.metadata["rows_ok"].value)
+            self.assertFalse(result.passed)
+            self.assertEqual(result.metadata["reason"].value, "missing_full_data_comparison")
 
     def test_baseline_check_fails_on_dropped_column(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -164,7 +170,7 @@ class CheckTests(unittest.TestCase):
                 resource, dataset_slug="ds", file_slug="f", version="v999"
             )
             self.assertFalse(result.passed)
-            self.assertFalse(result.metadata["columns_ok"].value)
+            self.assertEqual(result.metadata["reason"].value, "missing_full_data_comparison")
 
     def test_baseline_check_fails_on_row_delta(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -187,7 +193,7 @@ class CheckTests(unittest.TestCase):
                 resource, dataset_slug="ds", file_slug="f", version="v999"
             )
             self.assertFalse(result.passed)
-            self.assertFalse(result.metadata["rows_ok"].value)
+            self.assertEqual(result.metadata["reason"].value, "missing_full_data_comparison")
 
 
 if __name__ == "__main__":
