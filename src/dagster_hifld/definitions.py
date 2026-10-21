@@ -18,6 +18,10 @@ from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
+from dagster_hifld.assets.usgs import (
+    usgs_aquifers_draft_refresh_job,
+    usgs_aquifers_draft_refresh_schedule,
+)
 from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_job,
     aiannh_source_integrity_refresh_schedule,
@@ -616,6 +620,7 @@ defs = Definitions(
         usace_airport_area_release,
     ],
     jobs=[
+        usgs_aquifers_draft_refresh_job,
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
@@ -653,6 +658,7 @@ defs = Definitions(
         amtrak_draft_refresh_job,
     ],
     schedules=[
+        usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
         census_primary_roads_draft_schedule,
         usace_pylon_areas_draft_schedule,

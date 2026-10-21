@@ -4,6 +4,7 @@ Keep source-specific ingest assets explicit. Downstream catalog/publish/check
 assets are derived automatically from this registry.
 """
 
+from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -49,6 +50,7 @@ from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 
 hifld_ingest_assets = [
+    usgs_aquifers,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
