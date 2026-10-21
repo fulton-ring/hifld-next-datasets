@@ -76,36 +76,31 @@ class EpaFrsCandidateLifecycleTests(unittest.TestCase):
             self.assertEqual(reused, {"version": version, "reused": True})
             self.assertEqual(set(storage.list_prefix(prefix)), {f"{prefix}/{name}" for name in objects})
 
-            # A completed catalog must not invalidate an intact source cache.
-            manifest = objects["metadata/source_manifest.json"]
-            derived = {
-                "metadata/quality_manifest.json": b'{"quality_check_passed":false}',
-                "metadata/data_dictionary.json": b'{"fixture":true}',
-                "metadata/resolved_provenance.json": b'{"fixture":true}',
-                "metadata/source/source_manifest.json": manifest,
-                "metadata/source/version_" + hashlib.sha256(manifest).hexdigest() + "_source_manifest.json": manifest,
-            }
-            for name, body in derived.items():
-                write_immutable(storage, f"{prefix}/{name}", body)
-            def reuse():
-                return verify_cached_candidate(storage, repo, state_key, prefix, version,
-                    fingerprint, identity, record_sha, schema_sha, descriptors, {"source": receipt})
-            self.assertTrue(reuse()["reused"])
             self.assertTrue(_verify_first_candidate(
                 storage, prefix, state_key, version, fingerprint, identity,
                 {"source_record_sha256": record_sha, "source_schema_sha256": schema_sha},
                 set(objects), objects["geoparquet/epa-frs-eia-860-power-generation-facilities-by-source.parquet"],
             )["reused"])
+
+            # Catalog derivatives are validated semantically by the shared
+            # helper; this source-only fixture must not bless placeholder JSON.
+            def reuse():
+                return verify_cached_candidate(storage, repo, state_key, prefix, version,
+                    fingerprint, identity, record_sha, schema_sha, descriptors, {"source": receipt})
             rogue = Path(tmp) / prefix / "raw/unsealed.body"
             rogue.write_bytes(b"unsealed")
             with self.assertRaisesRegex(ValueError, "storage_roster_changed"):
                 reuse()
             rogue.unlink()
-            snapshot_path = Path(tmp) / prefix / "metadata/source/source_manifest.json"
-            snapshot_path.write_bytes(b"changed snapshot")
-            with self.assertRaisesRegex(ValueError, "catalog_source_snapshot_changed"):
+            for name, body in {
+                "metadata/quality_manifest.json": b'{"quality_check_passed":false}',
+                "metadata/data_dictionary.json": b'{"fixture":true}',
+            }.items():
+                write_immutable(storage, f"{prefix}/{name}", body)
+            with self.assertRaises(ValueError):
                 reuse()
-            snapshot_path.write_bytes(manifest)
+            (Path(tmp) / prefix / "metadata/quality_manifest.json").unlink()
+            (Path(tmp) / prefix / "metadata/data_dictionary.json").unlink()
             source_path = Path(tmp) / prefix / "raw/source.body"
             source_path.write_bytes(b"mutated source")
             with self.assertRaisesRegex(ValueError, "object_integrity_failed"):
