@@ -1,0 +1,179 @@
+{
+  "candidate": {
+    "all_release_and_acceptance_flags_false": true,
+    "approved": false,
+    "baseline_accepted": false,
+    "baseline_comparison": null,
+    "promotion_allowed": false,
+    "quality_passed": true,
+    "rights_accepted": false,
+    "rights_review": "pending",
+    "source_acceptance": "pending",
+    "source_release_date": null,
+    "staging_prefix": "dry-docks-usace-ienc/dry-docks-usace-ienc/vcf2c5ff8dd2192028b588a3494f4da88",
+    "unsupported_formats": {
+      "geopackage": "No accepted historical schema/ID contract or pinned native GDB byte comparison.",
+      "pmtiles": "No projection, simplification, or display transformation approved.",
+      "shapefile_zip": "No approved schema mapping or field-width and precision review."
+    },
+    "version": "vcf2c5ff8dd2192028b588a3494f4da88"
+  },
+  "capture": {
+    "capture_bytes": 58172,
+    "complete": true,
+    "manifest_sha256": "2fa402044ca8c668ab4357ded9c3d84ee63039dcd73bbeab2b4d712f054d22d9",
+    "path": "/tmp/58-dry-docks-capture-20261021",
+    "raw_outputs_staged": true,
+    "receipt_times": {
+      "count_after": "2026-10-21T19:51:52.005290+00:00",
+      "count_before": "2026-10-21T19:51:50.882765+00:00",
+      "ids_after": "2026-10-21T19:51:52.087728+00:00",
+      "ids_before": "2026-10-21T19:51:51.489624+00:00",
+      "layer_after": "2026-10-21T19:51:51.925599+00:00",
+      "layer_before": "2026-10-21T19:51:50.807291+00:00",
+      "page_0000": "2026-10-21T19:51:51.839303+00:00",
+      "service_after": "2026-10-21T19:51:52.169794+00:00",
+      "service_before": "2026-10-21T19:51:50.581396+00:00",
+      "service_directory": "2026-10-21T19:52:43.987960+00:00"
+    },
+    "request_names": [
+      "count_after",
+      "count_before",
+      "ids_after",
+      "ids_before",
+      "layer_after",
+      "layer_before",
+      "page_0000",
+      "service_after",
+      "service_before",
+      "service_directory"
+    ],
+    "response_body_wire_receipts_retained": true
+  },
+  "dagster_runs": {
+    "catalog": {
+      "feature_count": 2,
+      "invalid_geometry_count": 0,
+      "quality_check": "passed",
+      "result": "success",
+      "run_id": "28844e20-3c11-4857-bbeb-0ec8c43cf500"
+    },
+    "post_catalog_cache_replay": {
+      "candidate_file_count": 40,
+      "hash_and_mtime_unchanged": true,
+      "result": "success",
+      "reused": true,
+      "run_id": "8035614c-e3fd-41dc-a528-e0a1426bf09e"
+    },
+    "registered_gates": {
+      "candidate_unchanged": true,
+      "empty_approval_registry": {
+        "promote_started": false,
+        "quality_check": "passed",
+        "run_id": "bb27cb9c-2e41-4598-b78f-06402de92684",
+        "verify_error": "missing_or_ambiguous_exact_object_approval",
+        "verify_started": true
+      },
+      "false_quality": {
+        "promote_started": false,
+        "quality_check": "failed_as_expected",
+        "run_id": "d85171b2-df54-4c6d-addf-ecf5f1f70c77",
+        "verify_started": false
+      },
+      "published_fixture_unchanged": true,
+      "synthetic_published_fixture_objects": 3
+    },
+    "source": {
+      "blocking_completeness_check": "passed",
+      "result": "success",
+      "run_id": "7bc951ea-297e-499c-ab19-d0a1dc89decc"
+    }
+  },
+  "inventory_id": "dry-docks-usace-ienc-2",
+  "issue": 58,
+  "limitations": [
+    "The live service observation does not establish an agency release date.",
+    "The source covers two records in a local Ohio River area, not a national inventory.",
+    "Historical DataLumos V1 equivalence, compatibility/baseline, schema/ID acceptance, freshness, and rights remain unreviewed.",
+    "No release or production publication was performed."
+  ],
+  "observed_scope": {
+    "complete_source_layer_population": true,
+    "crs": "EPSG:4326",
+    "description": "Two observed dry-dock polygons in a local Ohio River area. Not a national dry-dock inventory.",
+    "extent": {
+      "xmax": -84.69419449999998,
+      "xmin": -84.69766069999997,
+      "ymax": 39.11002610000003,
+      "ymin": 39.10799640000005
+    },
+    "feature_count": 2,
+    "feature_ids": [
+      "U3 1589847816 00001",
+      "U3 1392960548 00001"
+    ],
+    "geometry_sha256": "d51e8a8f98f5bfc84835bc513fe556c76eab4cf6754e08fcf631ff2a2972a8f5",
+    "geometry_type": "esriGeometryPolygon",
+    "ids_sha256": "49a64717d5d4cb19952e6eac2946415cf6879adacf9908e7d872332d32c6e684",
+    "native_parity": {
+      "arrow_types": {
+        "Depth_Value_1": "string",
+        "Feature_ID": "string",
+        "Horizontal_Clearance": "string",
+        "Horizontal_Length": "string",
+        "Horizontal_Width": "string",
+        "Information": "string",
+        "OBJECTID": "int64",
+        "Object_Name": "string",
+        "Scale_Minimum": "int32",
+        "Source_Dataset": "string",
+        "Source_Date": "string",
+        "Source_Indication": "string",
+        "geometry": "binary"
+      },
+      "attributes_exact": true,
+      "candidate_parquet_sha256": "e13613645eeecc12eeedb94ce7de69ffff4a9ac0a876ed383366e6ea3fa5e346",
+      "ordered_native_wkb_exact": true
+    },
+    "native_vertices": 10,
+    "object_ids": [
+      1,
+      2
+    ],
+    "records_sha256": "48b9014e2faefe68ce510dcebe1591367f4d4edfb048e4a7c33b81589f40dc78",
+    "schema_sha256": "a583da6299d18ef4291ca157b29b0030013b484e278e98a2f8d75c8da50bda13"
+  },
+  "published_data": {
+    "only_synthetic_fixture_used": true,
+    "production_publication": false
+  },
+  "runtime": {
+    "code_identity": "packaged-sha256:348dd28e16643ba1a20bbdd52e79c88267d143f292bb32c7bdc40c9a541d9b61",
+    "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "dagster_home": "/tmp/58-evidence/dagster-home",
+    "git_metadata_present": false,
+    "packaged_file_count": 167,
+    "packaged_runtime_root": "/tmp/58-no-git-runtime",
+    "processing_identity_path": "/tmp/58-evidence/staging/dry-docks-usace-ienc/dry-docks-usace-ienc/vcf2c5ff8dd2192028b588a3494f4da88/metadata/processing_identity.json",
+    "runtime_versions": {
+      "geos": "3.13.1",
+      "proj": "9.5.1",
+      "pyarrow": "23.0.1",
+      "python": "3.12.14"
+    },
+    "source_run_db": "/tmp/58-evidence/dagster-home/history/runs.db",
+    "working_tree_status": "unknown"
+  },
+  "source": {
+    "archive_comparison": "not performed; current service capture is not asserted equivalent to historical HIFLD archive.",
+    "archive_reference": "https://www.datalumos.org/datalumos/project/239064/version/V1/view",
+    "layer_id": 65,
+    "layer_name": "DRY_DOCK_AREA",
+    "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DRY_DOCK_AREA/MapServer/65",
+    "mapserver_copyright": "USACE IENC",
+    "observed_at": "2026-10-21T19:52:43.987960+00:00",
+    "producer": "USACE Inland Electronic Navigational Charts (IENC)",
+    "service_directory_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+    "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DRY_DOCK_AREA/MapServer"
+  }
+}

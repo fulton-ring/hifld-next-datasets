@@ -1,0 +1,7 @@
+# Data Coverage Areas (USACE IENC)
+
+The draft reads layer 63, `DATA_COVERAGE_AREA`, from the [official USACE IENC Feature Classes service](https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DATA_COVERAGE_AREA/MapServer). The Army Geospatial Center's [IENC Product Downloads page](https://www.agc.army.mil/What-we-do/Inland-Electronic-Navigation-Charts-IENC/Product-Downloads/) identifies the IENC product channel. This is the complete observed layer population, not a claim that it is identical to the archived HIFLD inventory or a nationwide coverage dataset.
+
+The retained bounded REST capture was observed on 2026-10-21. The before/after service, layer, count, and OBJECTID responses agree: 317 features with OBJECTIDs 1–317, in EPSG:4326. All five string attributes, native polygon rings, and request receipts are retained. The layer has 109 `Coverage` and 208 `No Coverage` features. Its metadata and the per-feature `Source_Date` values do not declare a dataset release date.
+
+The candidate creates GeoJSON and GeoParquet from the captured native polygons without reprojection, geometry repair, simplification, or row filtering. `OBJECTID` and `Feature_ID` are preserved as observed; neither has an approved published identifier contract. Historical HIFLD mapping, baseline comparison, edition continuity, coverage interpretation, rights, and release approval remain pending. The refresh schedule is registered as stopped.
