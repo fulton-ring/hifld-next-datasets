@@ -6,6 +6,20 @@ Existing priority PRs #420/#3, #419/#4, #427/#10 and #428/#11 were recovered wit
 
 The recent checkpoint below distinguishes completed reviewed drafts, review revisions, active work and evidenced external blockers. A docs-only research branch does not complete a feasible pipeline. Missing baseline/contract approval permits draft implementation and local testing; it blocks release. Other issue records still need triage or reconciliation of prior work; they are not silently classified as blocked.
 
+### Latest verified checkpoint — 2026-10-21 15:40 UTC
+
+All 415 inventory rows remain represented. This is a named PR/status update, not a fresh repository census; the 14:14 open-PR census remains historical and must not be presented as current. Source issues remain open. No issue closure, release acceptance, schedule activation or production publication occurred.
+
+PR #569 for issue #253 merged from exact reviewed head `5d363edf618471ddcb78c227f67bda08f21aa0a0` at `f623e89f22bd2f17fa04deba1e26a69bc9ed5e0f`; merged tree `1cdbf113af62d7ff97fe6865d625abd7dfc71261`, review 5602057919, build passed. It is the canonical implementation; issue #253 remains open with its canonical marker. The older #527 stack is retained as noncanonical.
+
+PR #570 for issue #257 merged from exact head `24a4c9e7c5d74c938a1769f747b152a3e92eb6ab` at `7224d1653522cc2e15b1d6d8f5f895874b821836`; tree `92277c2365a7a58965b5ddcc15121da195db6807`. Reviews 5602071536 and 5602120267. Root verified the Docker build and every post step completed through `Complete` at 15:31:09 UTC although the check/run API still showed `in_progress`; discrepancy is recorded in review 5602232189. Expected-head merge succeeded without override. Issue #257 remains open with canonical marker and Needs decision.
+
+At the shared worker checkpoint, base advanced from `FF741f` to `f623e89f22bd2f17fa04deba1e26a69bc9ed5e0f` after a zero-active-paid-job check; checkpoint `b57ff17` remained unchanged. The `f623e89` tree loaded definitions in a no-Git packaged runtime with 88 assets registered and all 17 draft schedules STOPPED. The later reported main merge is `7224d165…`.
+
+Named clean-main reviews remain pending final integration: #571/#273 at reported head prefix `24022607…` (review 5602058748, final integration underway); #572/#260 at `cef852506300a3693803646cc5f8f35ae8e4bf73` (review 5602173882); #573/#269 at `cc18bc6da7084581ef46ade53ceebe614141584f` (review 5602215548); and #574/#181 at `c742f153418bea625b5e4ad03224c395f0536054` (review 5602249231). PR #575/#270 at `3fa88b234212c43073f58f0d39dffa519659c479` had reviewer pass reported, with root review recording pending. #574 remains a draft from its instructed `0e702d3` base pending the designated newer-main integration window. #271 Plate Boundaries clean implementation at head prefix `0d62ade` has runtime proof complete; PR publication is pending and `shared_gate_fixes` owns it.
+
+No paid jobs were active at the 15:26 UTC report. New paid admissions remain paused; the inference guard remains $25/day, actual spend is unknown, and compute costs are excluded. No fresh PR census was run.
+
 ### Latest verified checkpoint — 2026-10-21 15:22 UTC
 
 The ledger remains scoped to all 415 inventory issues (#2–416). The five named issues below were checked individually through the GitHub API and are still open. The 14:14 open-PR census remains a historical snapshot; no new full census was run. Board markers are supervisor-reported; the issue API currently shows no GitHub labels for these five issues.
