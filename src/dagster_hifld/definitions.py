@@ -130,6 +130,11 @@ from dagster_hifld.assets.proposed_critical_habitat import (
     proposed_critical_habitat_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_dam_lines import (
+    usace_dam_lines_complete,
+    usace_dam_lines_draft_job,
+    usace_dam_lines_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
@@ -740,6 +745,7 @@ defs = Definitions(
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
         usace_overhead_cables_complete,
+        usace_dam_lines_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         us_county_boundaries_source_complete,
@@ -779,6 +785,7 @@ defs = Definitions(
         fuel_stations_draft_refresh_job,
         usace_overhead_pipeline_lines_draft_job,
         usace_overhead_cables_draft_job,
+        usace_dam_lines_draft_job,
         usace_obstruction_lines_draft_job,
         usace_administrative_areas_draft_job,
         usace_navigation_marks_areas_draft_job,
@@ -839,6 +846,7 @@ defs = Definitions(
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
         usace_overhead_cables_draft_schedule,
+        usace_dam_lines_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_administrative_areas_draft_schedule,
         usace_navigation_marks_areas_draft_schedule,
