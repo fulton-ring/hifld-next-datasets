@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import platform
 import struct
 import time
 from datetime import datetime, timezone
-from importlib.metadata import version as package_version
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pyarrow as pa
@@ -16,6 +15,8 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely import wkb
 from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.sources.epa_frs_common import processing_identity
 
 DATASET_SLUG = "distance-marks-usace-ienc-2"
 FILE_SLUG = DATASET_SLUG
@@ -47,6 +48,19 @@ def _digest(body: bytes) -> str:
 
 
 def _request(client: httpx.Client, params: dict[str, object], staging, version_key: str, name: str, budget: list[int]) -> dict:
+    retained = getattr(client, "retained_capture", None)
+    if retained is not None:
+        body, wire, receipt = retained.read_response(name, params)
+        budget[0] += len(body) + len(wire)
+        if budget[0] > 128_000_000:
+            raise ValueError("source_total_capture_budget_exceeded")
+        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.json", body)
+        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.wire", wire)
+        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.receipt.json", _json_bytes(receipt))
+        parsed = json.loads(body)
+        if not isinstance(parsed, dict) or "error" in parsed:
+            raise ValueError(f"invalid_arcgis_response:{name}")
+        return parsed
     url = LAYER_URL if name == "layer" else LAYER_URL + "/query"
     for attempt in range(3):
         raw_parts: list[bytes] = []
@@ -211,6 +225,116 @@ def _make_parquet(metadata: dict, features: list[dict]) -> bytes:
     return sink.getvalue().to_pybytes()
 
 
+class _RetainedCaptureClient:
+    """Read immutable successful responses from an earlier retained capture."""
+
+    def __init__(self, staging, source_version: str):
+        self.staging = staging
+        self.source_version = source_version
+        self.retained_capture = self
+
+    def read_response(self, name: str, params: dict[str, object]):
+        root = self.staging.build_target_location(DATASET_SLUG, FILE_SLUG, self.source_version, "")
+        body_key = root + f"raw/{name}.json"
+        wire_key = root + f"raw/{name}.wire"
+        receipt_key = root + f"raw/{name}.receipt.json"
+        try:
+            body, wire = self.staging.read_key(body_key), self.staging.read_key(wire_key)
+            receipt = json.loads(self.staging.read_key(receipt_key))
+        except (OSError, ValueError) as exc:
+            raise ValueError("retained_source_response_missing:" + name) from exc
+        if (receipt.get("method") != "GET" or receipt.get("complete") is not True
+                or type(receipt.get("status")) is not int or not 200 <= receipt["status"] < 300
+                or receipt.get("bytes") != len(body) or receipt.get("wire_bytes") != len(wire)
+                or receipt.get("sha256") != _digest(body) or receipt.get("wire_sha256") != _digest(wire)):
+            raise ValueError("retained_source_receipt_mismatch:" + name)
+        parsed_url = urlsplit(receipt.get("url", ""))
+        if parsed_url.scheme != "https" or parsed_url.netloc != "ienccloud.us" or parsed_url.path != urlsplit(LAYER_URL if name == "layer" else LAYER_URL + "/query").path:
+            raise ValueError("retained_source_request_identity_mismatch:" + name)
+        query = parse_qs(parsed_url.query, keep_blank_values=True)
+        for key, value in params.items():
+            expected = str(value).lower() if isinstance(value, bool) else str(value)
+            if query.get(key) != [expected]:
+                raise ValueError("retained_source_request_parameters_mismatch:" + name)
+        return body, wire, receipt
+
+
+def _write_source_manifest(staging, version_key: str, metadata: dict, identity: dict,
+                           source_record_sha256: str, raw_source_version: str | None) -> dict:
+    prefix = staging.build_target_location(DATASET_SLUG, FILE_SLUG, version_key, "")
+    inputs = []
+    retry_receipts = []
+    for key in staging.list_keys(DATASET_SLUG, FILE_SLUG, version_key):
+        marker = "/raw/"
+        if marker not in key or not key.endswith(".receipt.json"):
+            continue
+        name = key.split(marker, 1)[1][:-len(".receipt.json")]
+        receipt = json.loads(staging.read_key(key))
+        if ".attempt_" in name:
+            retry_receipts.append({"artifact": f"raw/{name}.receipt.json", "status": receipt["status"],
+                                   "sha256": receipt["sha256"], "wire_sha256": receipt["wire_sha256"]})
+            continue
+        if receipt.get("complete") is not True or not 200 <= receipt.get("status", 0) < 300:
+            raise ValueError("manifest_contains_failed_source_input")
+        request_url = receipt["url"]
+        input_id = f"{name}:{receipt['sha256']}"
+        inputs.append({
+            "input_id": input_id, "producer": "USACE IENC (service metadata claim; authority acceptance pending)",
+            "host": urlsplit(request_url).hostname, "role": "producer_publication",
+            "canonical_url": LAYER_URL, "retrieval_url": request_url,
+            "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+            "bytes": receipt["bytes"], "sha256": receipt["sha256"], "raw_path": f"raw/{name}.json",
+            "license": "Unresolved; rights review pending.",
+            "attribution": "USACE IENC (service copyright metadata; rights review pending).",
+            "release_date": None,
+            "release_date_unknown_reason": "The observed service layer does not identify an immutable producer release date.",
+        })
+    if raw_source_version:
+        source_root = staging.build_target_location(DATASET_SLUG, FILE_SLUG, raw_source_version, "")
+        for key in staging.list_keys(DATASET_SLUG, FILE_SLUG, raw_source_version):
+            if "/raw/" not in key or ".attempt_" not in key or not key.endswith(".receipt.json"):
+                continue
+            receipt = json.loads(staging.read_key(key))
+            retry_receipts.append({"artifact": key[len(source_root):], "status": receipt["status"],
+                                   "sha256": receipt["sha256"], "wire_sha256": receipt["wire_sha256"]})
+    if not inputs:
+        raise ValueError("source_manifest_inputs_missing")
+    manifest = {
+        "schema_version": 1, "processor": "HIFLD Next", "approved": False,
+        "title": "Distance Marks (USACE IENC) — unaccepted native snapshot draft",
+        "description": "Complete observed DISTANCE_MARK_POINT service layer candidate. IENC chart-service coverage is not a nationwide distance-mark inventory. Source edition, HIFLD continuity, rights, schema/ID contract, baseline, and release decisions remain pending.",
+        "agency": "US Army Corps of Engineers (IENC service claim; authority acceptance pending)",
+        "publisher": "USACE IENC (service metadata claim)", "source_url": LAYER_URL,
+        "documentation_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+        "license": "Rights review pending.", "date_issued": None, "date_modified": None,
+        "code_commit": identity["code_commit"], "code_identity_scheme": identity["code_identity_scheme"],
+        "processing_code": identity, "inputs": inputs,
+        "transformations": [{"operation": "Complete ESRI JSON distance-mark point capture to typed GeoParquet evidence candidate",
+                             "parameters": {"attributes": "All declared nongeometry fields and values retained in source order; source declared Waterway_Distance double represented as Arrow float64.",
+                                            "identifiers": "OBJECTID retained exactly; Feature_ID retained as an original attribute; no synthetic identifier.",
+                                            "geometry": "Source XY preserved as float64 coordinates and point WKB in EPSG:4326; no reprojection or repair.",
+                                            "candidate_status": "Unaccepted draft; no output or release format approval implied."}}],
+        "lineage": {"scope": "Complete observed DISTANCE_MARK_POINT layer only; no national or HIFLD archive coverage equivalence asserted.",
+                    "layer_id": 10, "source_description": metadata.get("description"),
+                    "source_copyright_text": metadata.get("copyrightText"),
+                    "source_release_date_known": False, "source_record_sha256": source_record_sha256,
+                    "raw_capture_mode": "retained_response_replay" if raw_source_version else "live_http_capture",
+                    "retained_source_capture_version": raw_source_version,
+                    "failed_retry_responses": retry_receipts,
+                    "source_contract_accepted": False, "schema_contract_accepted": False,
+                    "id_contract_accepted": False, "coverage_accepted": False,
+                    "rights_accepted": False, "baseline_accepted": False, "release_accepted": False},
+        "unsupported_output_formats": {
+            "shapefile_zip": "No approved field-name, type, or geometry conversion mapping exists.",
+            "geopackage": "No approved container-schema or release mapping exists.",
+            "pmtiles": "No approved reprojection, quantization, or visualization mapping exists.",
+        },
+    }
+    validate_provenance(manifest)
+    staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/source_manifest.json", _json_bytes(manifest))
+    return manifest
+
+
 def compare_generated_geoparquet(staging, version_key: str) -> dict[str, object]:
     """Require the generic typed GeoParquet candidate to preserve every native row."""
     prefix = staging.build_target_location(DATASET_SLUG, FILE_SLUG, version_key, "")
@@ -252,7 +376,8 @@ def compare_generated_geoparquet(staging, version_key: str) -> dict[str, object]
             "exact_xy_and_attributes": True}
 
 
-def _capture(staging, version_key: str, client: httpx.Client | None = None) -> dict:
+def _capture(staging, version_key: str, client: httpx.Client | None = None,
+             raw_source_version: str | None = None) -> dict:
     """Fetch, validate, and stage one complete native point population."""
     owned = client is None
     client = client or httpx.Client(timeout=60, follow_redirects=False)
@@ -315,10 +440,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
         ]})
         staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"geojson/{FILE_SLUG}.geojson", geojson)
         staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"metadata/native_candidate/{FILE_SLUG}.parquet", parquet)
-        processor_identity = {"package": "hifld-next-datasets", "version": package_version("hifld-next-datasets"),
-                              "capture_module_sha256": _digest(Path(__file__).read_bytes()),
-                              "runtime_package_source_sha256": _packaged_code_sha256(),
-                              "python": platform.python_version(), "runtime": "Dagster packaged runtime"}
+        processor_identity = processing_identity(Path(__file__).parents[3])
         staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/native_capture.json", _json_bytes({
             "source_layer": LAYER_URL,
             "service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
@@ -333,7 +455,9 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
             "source_record_sha256": row_digest, "parquet_sha256": _digest(parquet), "geojson_sha256": _digest(geojson),
             "native_crs": "EPSG:4326", "field_schema": SOURCE_SCHEMA, "attribute_fields": FIELDS, "pages": pages,
             "code_identity": processor_identity, "coverage_statement": "Complete observed DISTANCE_MARK_POINT layer in the official IENC chart service; nationwide coverage is not established.",
-            "refresh_semantics": "Each run captures a fresh source snapshot; retained captures are evidence and are not replayed as a cache.",
+            "capture_mode": "retained_response_replay" if raw_source_version else "live_http_capture",
+            "retained_source_capture_version": raw_source_version,
+            "refresh_semantics": "Default runs capture a fresh source snapshot. An explicit retained_response_replay is an evidence-only reprocessing operation, not a cache or currentness claim.",
             "historical_hifld_continuity_accepted": False,
             "source_contract_accepted": False,
             "schema_contract_accepted": False,
@@ -342,6 +466,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
             "rights_accepted": False,
             "release_accepted": False,
         }))
+        _write_source_manifest(staging, version_key, metadata, processor_identity, row_digest, raw_source_version)
         return {"feature_count": len(features), "ids_sha256": ids_digest, "records_sha256": row_digest,
                 "parquet_sha256": _digest(parquet), "release_accepted": False}
     finally:
@@ -349,21 +474,15 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
             client.close()
 
 
-def _packaged_code_sha256() -> str:
-    root = Path(__file__).parents[1]
-    digest = hashlib.sha256()
-    for path in sorted(root.rglob("*.py")):
-        relative = path.relative_to(root).as_posix().encode("utf-8")
-        body = path.read_bytes()
-        digest.update(len(relative).to_bytes(8, "big") + relative)
-        digest.update(len(body).to_bytes(8, "big") + body)
-    return digest.hexdigest()
-
-
-def capture(staging, version_key: str, client: httpx.Client | None = None) -> dict:
+def capture(staging, version_key: str, client: httpx.Client | None = None,
+            retained_source_version: str | None = None) -> dict:
     """Retain failed attempts as quarantine evidence before propagating failure."""
     try:
-        return _capture(staging, version_key, client)
+        if retained_source_version is not None:
+            if client is not None:
+                raise ValueError("retained_replay_does_not_accept_http_client")
+            client = _RetainedCaptureClient(staging, retained_source_version)
+        return _capture(staging, version_key, client, retained_source_version)
     except Exception as exc:
         error = str(exc).split(":", 1)[0]
         staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/quarantine.json", _json_bytes({

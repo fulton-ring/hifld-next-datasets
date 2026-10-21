@@ -108,6 +108,26 @@ class DistanceMarkCaptureTests(unittest.TestCase):
         self.assertTrue(receipt["complete"])
         self.assertTrue(storage.object_exists(prefix + "raw/page_0003200.json"))
 
+    def test_retained_capture_replay_reuses_original_bodies_and_emits_provenance(self):
+        temporary = tempfile.TemporaryDirectory(prefix="distance-marks-replay-")
+        self.addCleanup(temporary.cleanup)
+        storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
+        with httpx.Client(transport=ArcGISFixture()) as client:
+            live = source.capture(storage, "v20261021T000000Z", client=client)
+        original_prefix = storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", "")
+        original_receipt = json.loads(storage.read_key(original_prefix + "raw/page_0000000.receipt.json"))
+        replay = source.capture(storage, "v20261021T000001Z", retained_source_version="v20261021T000000Z")
+        replay_prefix = storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000001Z", "")
+        replay_receipt = json.loads(storage.read_key(replay_prefix + "raw/page_0000000.receipt.json"))
+        self.assertEqual(live["parquet_sha256"], replay["parquet_sha256"])
+        self.assertEqual(live["records_sha256"], replay["records_sha256"])
+        self.assertEqual(original_receipt, replay_receipt)
+        manifest = json.loads(storage.read_key(replay_prefix + "metadata/source_manifest.json"))
+        self.assertEqual(manifest["code_identity_scheme"], "git-commit-blobs-v1")
+        self.assertEqual(manifest["lineage"]["retained_source_capture_version"], "v20261021T000000Z")
+        self.assertEqual(manifest["lineage"]["release_accepted"], False)
+        self.assertEqual(len(manifest["inputs"]), 43)
+
     def test_before_after_id_drift_refuses_a_candidate(self):
         transport = ArcGISFixture(changed_after=True)
         temporary = tempfile.TemporaryDirectory(prefix="distance-marks-drift-")

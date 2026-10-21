@@ -1,7 +1,7 @@
 """Native IENC distance-mark capture; refresh is proposal-only and stopped by default."""
 
 from dagster import (
-    AssetKey, AssetSelection, DefaultScheduleStatus, MetadataValue, RunRequest, SkipReason,
+    AssetKey, AssetSelection, DefaultScheduleStatus, Field, MetadataValue, RunRequest, SkipReason,
     asset, define_asset_job, schedule,
 )
 
@@ -24,6 +24,12 @@ _DESCRIPTION = (
     group_name="usace",
     compute_kind="http",
     description=_DESCRIPTION,
+    config_schema={
+        "retained_source_version": Field(
+            str, is_required=False, default_value="",
+            description="Optional retained source version for explicit evidence-only replay; omitted runs fetch a fresh snapshot.",
+        ),
+    },
 )
 def usace_distance_marks_usace_ienc(context, staging_storage: StagingStorageResource) -> dict:
     if isinstance(staging_storage, PublishedStorageResource) or not staging_storage.use_local or staging_storage.bucket:
@@ -31,7 +37,8 @@ def usace_distance_marks_usace_ienc(context, staging_storage: StagingStorageReso
     version = build_version_id(context)
     if staging_storage.list_keys(DATASET_SLUG, FILE_SLUG, version):
         raise ValueError("source_capture_version_already_exists")
-    result = capture(staging_storage, version)
+    retained_version = context.op_config.get("retained_source_version") or None
+    result = capture(staging_storage, version, retained_source_version=retained_version)
     context.add_output_metadata({
         "feature_count": MetadataValue.int(result["feature_count"]),
         "source_ids_sha256": MetadataValue.text(result["ids_sha256"]),
