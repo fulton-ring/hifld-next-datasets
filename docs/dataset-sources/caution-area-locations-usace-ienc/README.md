@@ -1,0 +1,5 @@
+# Caution Area Locations (USACE IENC)
+
+The candidate uses the complete observed `CAUTION_AREA_POINT` layer 7 from the USACE IENC Feature Classes service. The 2026-10-21 capture contains 36 rows, all declared attributes, native EPSG:4326 point coordinates, and exact before/after object-ID rosters. The prior 2026-10-20 capture used BTS item `3607d485a9854d6fa458bf507058ceae`; that item later returned anonymous-access denial. Current public PDF item `7ec34864c8804468a9cf52d437fe4b6c` repeats the IENC distribution claims and links the same service and master geodatabase. Its relationship to the former map-service item is recorded for maintainer review and remains unaccepted.
+
+Historical archive equivalence, release date, freshness, schema and identifier contracts, coverage policy, rights, and attribution remain unresolved. No geometry repair, reprojection, release, or production publication is approved. The scheduled refresh remains STOPPED. Exact capture metadata and hashes are in [source.json](source.json); raw capture bodies and receipts remain in the local evidence packet.
