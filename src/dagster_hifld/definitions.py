@@ -199,6 +199,11 @@ from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_schedule,
 )
 
+from dagster_hifld.assets.usace_distance_marks import (
+    distance_marks_draft_refresh_job,
+    distance_marks_draft_refresh_schedule,
+)
+
 from dagster_hifld.assets.usace_recommended_tracks import (
     recommended_tracks_draft_job,
     recommended_tracks_draft_schedule,
@@ -763,6 +768,7 @@ defs = Definitions(
         noaa_dart_draft_refresh_job,
         usace_pylon_areas_draft_job,
         pylon_locations_draft_refresh_job,
+        distance_marks_draft_refresh_job,
         recommended_tracks_draft_job,
         fuel_stations_draft_refresh_job,
         usace_overhead_pipeline_lines_draft_job,
@@ -821,6 +827,7 @@ defs = Definitions(
         noaa_contiguous_draft_refresh_schedule,
         noaa_dart_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
+        distance_marks_draft_refresh_schedule,
         recommended_tracks_draft_schedule,
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
