@@ -72,6 +72,10 @@ from dagster_hifld.assets.puerto_rico_subbarrios import (
     puerto_rico_subbarrios_draft_schedule,
     puerto_rico_subbarrios_source_complete,
 )
+from dagster_hifld.assets.census_primary_roads import (
+    census_primary_roads_source_complete,
+    census_primary_roads_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -466,6 +470,7 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[
         *hifld_asset_checks,
+        census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
@@ -489,6 +494,7 @@ defs = Definitions(
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
+        census_primary_roads_draft_schedule,
         usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
