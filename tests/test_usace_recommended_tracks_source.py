@@ -205,6 +205,15 @@ class RecommendedTracksSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_dimension_drift"):
             source._validate_metadata(metadata)
 
+    def test_metadata_dimension_flags_may_be_omitted(self):
+        fixture = IencFixture()
+        metadata = fixture.metadata()
+        metadata.pop("hasZ")
+        metadata.pop("hasM")
+        with patch.object(source, "EXPECTED_EXTENT", {
+                key: fixture.extent[key] for key in ("xmin", "ymin", "xmax", "ymax")}):
+            source._validate_metadata(metadata)
+
     def test_registered_source_gate_rejects_corrupt_population_audit(self):
         version = "v1.0.0-test"
         prefix = self.storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, version, "")

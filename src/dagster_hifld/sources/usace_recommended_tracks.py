@@ -147,7 +147,7 @@ def _validate_metadata(metadata: dict) -> None:
     if metadata.get("copyrightText") != "USACE IENC":
         raise ValueError("source_copyright_declaration_drift")
     for dim in ("hasZ", "hasM"):
-        if metadata.get(dim) is not False:
+        if dim in metadata and (type(metadata[dim]) is not bool or metadata[dim] is not False):
             raise ValueError("source_dimension_drift")
     declarations = metadata.get("fields")
     if not isinstance(declarations, list) or any(not isinstance(field, dict) for field in declarations):
