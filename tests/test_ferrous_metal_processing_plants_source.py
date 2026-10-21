@@ -11,10 +11,13 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import httpx
+import geopandas as gpd
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.catalog import CatalogSummary, generate_data_dictionary, write_catalog_metadata
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import ferrous_metal_processing_plants as source
 from dagster_hifld.sources.epa_frs_common import capture_get
 
@@ -177,7 +180,7 @@ class FerrousValidationTests(unittest.TestCase):
         values.update(overrides)
         return patch.multiple(source, **values)
 
-    def test_typed_geoparquet_preserves_native_values_ids_and_unknown_crs(self):
+    def test_typed_geoparquet_preserves_native_values_ids_and_source_crs(self):
         members = fixture_members()
         with patched_pins(members)[0], self.pinned():
             rows = source._decode_dbf(members["minop4x020.dbf"])
@@ -203,8 +206,10 @@ class FerrousValidationTests(unittest.TestCase):
                          [(-77.8651, 34.3562), (-81.6779, 39.5843)])
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
-        self.assertIsNone(geo["columns"]["geometry"]["crs"])
-        self.assertIn(b"North American Datum of 1983",
+        from pyproj import CRS
+        self.assertEqual(CRS.from_user_input(geo["columns"]["geometry"]["crs"]),
+                         CRS.from_epsg(4269))
+        self.assertIn(b"EPSG:4269",
                       table.schema.metadata[b"native_crs_declaration"])
         self.assertEqual(audit["source_feature_count"], 2)
         self.assertEqual(audit["plant_min_counts"], {"P": 1, "M/P": 1})
@@ -294,6 +299,11 @@ class FerrousValidationTests(unittest.TestCase):
             "<title>Some Other Layer - Direct Download</title>")
         with self.assertRaisesRegex(ValueError, "producer_metadata_marker_drift"):
             source._validate_metadata_xml(xml.encode("ascii"))
+        for marker in source.EXPECTED_XML_MARKERS[3:]:
+            with self.subTest(marker=marker), self.assertRaisesRegex(
+                    ValueError, "producer_metadata_marker_drift"):
+                source._validate_metadata_xml(build_metadata_xml().decode("ascii").replace(
+                    marker, "", 1).encode("ascii"))
 
 
 class FerrousCaptureCustodyTests(unittest.TestCase):
@@ -364,7 +374,8 @@ class FerrousEndToEndTests(unittest.TestCase):
             prefix = f"{first['dataset_slug']}/{first['file_slug']}/{first['version']}"
             keys = set(storage.list_prefix(prefix))
             self.assertIn(f"{prefix}/geoparquet/ferrous-metal-processing-plants.parquet", keys)
-            self.assertIn(f"{prefix}/shapefile/minop4x020.shp", keys)
+            self.assertNotIn(f"{prefix}/shapefile/minop4x020.shp", keys)
+            self.assertIn(f"{prefix}/raw/minop4x020.shp", keys)
             self.assertIn(f"{prefix}/raw/national_atlas_package.body", keys)
             self.assertIn(f"{prefix}/raw/minop4x020.dbf", keys)
             ready = json.loads(storage.read_key(f"{prefix}/metadata/candidate_ready.json"))
@@ -393,6 +404,44 @@ class FerrousEndToEndTests(unittest.TestCase):
                              parquet)
             state_key = f"_construction-state/ferrous-metal-processing-plants/{first['version']}.json"
             self.assertIsNotNone(storage.object_snapshot(state_key))
+
+    def test_catalog_cache_revalidates_canonical_metadata_and_source_snapshots(self):
+        with TemporaryDirectory() as tmp:
+            run, storage, _members = self._captured(tmp)
+            first = run(version="v1")
+            prefix = f"{first['dataset_slug']}/{first['file_slug']}/{first['version']}"
+            snapshot_source_metadata(storage, first["dataset_slug"], first["file_slug"], first["version"])
+            resolved = load_resolved_source_manifest(
+                storage, first["dataset_slug"], first["file_slug"], first["version"]
+            )
+            quality = {"version": "v1", "feature_count": first["feature_count"],
+                       "quality_check_passed": True}
+            dictionary = generate_data_dictionary(
+                gpd.GeoDataFrame(), first["dataset_slug"], source_metadata=resolved.metadata,
+            )
+            summary = CatalogSummary(quality, dictionary)
+            write_catalog_metadata(
+                storage, first["dataset_slug"], first["file_slug"], first["version"],
+                summary.quality_manifest, summary.data_dictionary,
+            )
+            quality_key = f"{prefix}/metadata/quality_manifest.json"
+            original_quality = storage.read_key(quality_key)
+            tampered_quality = json.loads(original_quality)
+            tampered_quality["feature_count"] += 1
+            storage.write_key(quality_key, json.dumps(tampered_quality).encode())
+            with patch("dagster_hifld.sources.epa_frs_common.summarize_staged_catalog",
+                       return_value=summary):
+                with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
+                    run(version="v2")
+            storage.write_key(quality_key, original_quality)
+
+            snapshots = sorted((Path(tmp) / prefix / "metadata/source").glob("*source_manifest.json"))
+            self.assertEqual(len(snapshots), 2)
+            snapshots[0].unlink()
+            with patch("dagster_hifld.sources.epa_frs_common.summarize_staged_catalog",
+                       return_value=summary):
+                with self.assertRaisesRegex(ValueError, "cached_catalog_source_snapshot_incomplete"):
+                    run(version="v3")
 
     def test_drifted_archive_bytes_fail_closed_and_are_quarantined(self):
         with TemporaryDirectory() as tmp:

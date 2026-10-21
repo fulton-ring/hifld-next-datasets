@@ -31,6 +31,7 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
+from pyproj import CRS
 from shapely import from_wkb, is_empty, is_valid, total_bounds
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -111,11 +112,18 @@ EXPECTED_XML_MARKERS = (
     "<title>Ferrous Metal Processing Plants - Direct Download</title>",
     "<pubdate>200512</pubdate>",
     "<onlink>http://dds.cr.usgs.gov/pub/data/nationalatlas/minop4x020_nt00021.tar.gz</onlink>",
+    "<geogunit>Decimal degrees</geogunit>",
+    "<horizdn>North American Datum of 1983</horizdn>",
+    "<ellips>GRS1980</ellips>",
+    "<semiaxis>6378137</semiaxis>",
+    "<denflat>298.257222</denflat>",
 )
 NATIVE_CRS_DECLARATION = (
-    "The package ships no .prj sidecar; the bundled producer metadata declares "
-    "geographic coordinates on the North American Datum of 1983. Coordinates are "
-    "retained unchanged with no datum correction and no synthesized PRJ."
+    "The package ships no .prj sidecar; the pinned USGS FGDC XML for the "
+    "Ferrous Metal Processing Plants layer declares Decimal degrees, North "
+    "American Datum of 1983, GRS1980, semiaxis 6378137 m, and inverse flattening "
+    "298.257222. These producer parameters identify native EPSG:4269. Coordinates "
+    "are retained unchanged with no reprojection or synthesized PRJ."
 )
 MAX_PACKAGE_BYTES = 4_000_000
 MAX_METADATA_BYTES = 1_000_000
@@ -299,10 +307,19 @@ def _validate_metadata_xml(body: bytes) -> dict[str, object]:
     for marker in EXPECTED_XML_MARKERS:
         if marker not in text:
             raise ValueError("producer_metadata_marker_drift:" + marker.split('"')[0][:60])
+    if not all(marker in text for marker in EXPECTED_XML_MARKERS[3:]):
+        raise ValueError("producer_metadata_crs_declaration_drift")
     return {"document_format": "FGDC XML metadata served live by USGS",
             "declared_title": "Ferrous Metal Processing Plants - Direct Download",
             "declared_publication_date": "200512",
-            "declared_online_linkage": ORIGINAL_PACKAGE_URL}
+            "declared_online_linkage": ORIGINAL_PACKAGE_URL,
+            "declared_coordinate_system": "geographic",
+            "declared_coordinate_units": "Decimal degrees",
+            "declared_horizontal_datum": "North American Datum of 1983",
+            "declared_ellipsoid": "GRS1980",
+            "declared_semimajor_axis_m": 6378137,
+            "declared_inverse_flattening": 298.257222,
+            "native_epsg": 4269}
 
 
 def _validate_population(rows: list[dict[str, object]], wkbs: list[bytes]) -> tuple[list[dict[str, object]], dict]:
@@ -377,10 +394,9 @@ def _parquet_bytes(rows: list[dict[str, object]], wkbs: list[bytes]) -> bytes:
             "columns": {"geometry": {
                 "encoding": "WKB",
                 "geometry_types": ["Point"],
-                # No .prj exists in the package and no datum correction is
-                # approved; a null GeoParquet CRS records the unknown CRS
-                # instead of asserting OGC:CRS84/WGS84.
-                "crs": None,
+                # The pinned USGS FGDC XML identifies NAD83; source coordinates
+                # are retained as-is, without reprojection.
+                "crs": CRS.from_epsg(4269).to_json_dict(),
             }},
         }),
         b"native_crs_declaration": NATIVE_CRS_DECLARATION.encode("utf-8"),
@@ -631,8 +647,6 @@ def capture_ferrous_metal_processing_plants(storage: StagingStorageResource, *, 
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n",
     }
-    for name in SHAPEFILE_MEMBERS:
-        outputs[f"shapefile/{name}"] = extracted[name]
     for name, (body, _receipt) in captures.items():
         _b, wire, _r = _load_capture(root, name)
         outputs[f"raw/{name}.body"] = body

@@ -15,11 +15,11 @@
   `MINOP4X020 N(2,0)`, `COMMODITY C(26)`, `SITE_NAME C(29)`, `COMPANY_NA C(57)`, `STATE_LOCA C(14)`, `COUNTY C(12)`, `LATITUDE N(9,3)`, `LONGITUDE N(11,3)`, `PLANT_MIN C(10)`.
 - Original IDs `MINOP4X020` 1..39 in DBF order and SHP record order; DBF record indices and SHP record numbers are separate physical identity columns. No substitute row identifiers are generated.
 - Native SHP point coordinates carry more precision than the declared 0.000278-degree attribute resolution; the maximum per-record coordinate-vs-attribute delta (about 0.0012 degrees) is recorded in the audit and is not corrected or reconciled.
-- CRS: the package ships no PRJ and the producer metadata declares geographic coordinates on the North American Datum of 1983. The candidate records a null GeoParquet CRS plus that declaration; no datum correction, no synthesized PRJ, no WGS84 assertion.
+- CRS: the package ships no PRJ. The pinned USGS FGDC XML for this exact layer declares Decimal degrees, North American Datum of 1983, GRS1980, semiaxis 6378137 m, and inverse flattening 298.257222. These producer parameters identify native EPSG:4269; the candidate records that CRS and preserves source X/Y values without reprojection or a synthesized PRJ. CRS metadata validation fails closed if any pinned declaration changes.
 
 ## Proposed (unapproved) contract
 
-- Raw evidence: full tar.gz package, USGS metadata XML, every wire body, extracted masters, and hash-pinned receipts under `raw/`; preserved masters under `shapefile/`.
+- Raw evidence: full tar.gz package, USGS metadata XML, every wire body, extracted masters, and hash-pinned receipts under `raw/`. Original shapefile masters remain only under `raw/`; they are not emitted as a canonical shapefile deliverable because no approved ZIP archive exists.
 - Candidate output: one typed GeoParquet (`geoparquet/ferrous-metal-processing-plants.parquet`) with the nine declared fields at declared decimal widths/scales plus the two physical identity columns and native WKB points. Shapefile ZIP, GeoPackage, and PMTiles are unsupported outputs pending an approved mapping.
 - Every acceptance flag (`source_release_accepted`, freshness, schema/ID contract, coverage, rights, mapping, baseline, release) is false. Publication requires maintainer source, baseline, schema/ID, rights, and release approvals; a potential-breaking-change decision is required before any contract is accepted.
 
