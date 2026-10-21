@@ -208,6 +208,18 @@ class DartMechanicsTests(TestCase):
     def test_published_storage_or_remote_backend_cannot_run_unapproved_source(self):
         for storage in (PublishedStorageResource(local_dir=self.tmp.name,use_local=True),StagingStorageResource(bucket='not-real',use_local=False)):
             with self.assertRaisesRegex(source.DartQuarantineError,'draft_requires'):source.stage_current_dart_candidate(storage,capture_dir=CAPTURES)
+
+    def test_registered_asset_refresh_job_and_stopped_schedule(self):
+        from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+        from dagster_hifld.assets.noaa_current_dart import noaa_current_dart, noaa_dart_draft_refresh_schedule
+        from dagster_hifld.definitions import defs
+
+        self.assertEqual(sum(asset is noaa_current_dart for asset in hifld_ingest_assets), 1)
+        job = defs.resolve_job_def('noaa_dart_draft_refresh')
+        self.assertIn('ingest__current_dart_deployments__current_dart_deployments', job.graph.node_names())
+        self.assertIn(noaa_dart_draft_refresh_schedule, defs.schedules)
+        self.assertEqual(noaa_dart_draft_refresh_schedule.default_status.value, 'STOPPED')
+
     def test_partial_or_wrong_wire_length_is_retained_and_bounded(self):
         original=httpx.Client;calls=[]
         def handle(request):
