@@ -87,6 +87,7 @@ from dagster_hifld.assets.usace_pile_locations import (
 )
 from dagster_hifld.assets.usace import (
     usace_navigation_marks_areas_complete,
+    usace_navigation_marks_areas_draft_job,
     usace_navigation_marks_areas_draft_schedule,
 )
 from dagster_hifld.assets.plate_boundaries import (
@@ -554,6 +555,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         usace_overhead_cables_draft_job,
         usace_obstruction_lines_draft_job,
+        usace_navigation_marks_areas_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
         usace_pontoon_areas_draft_job,
