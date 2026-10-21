@@ -71,7 +71,7 @@ class AviationTests(unittest.TestCase):
         self.assertNotEqual(identity['code_identity_scheme'], 'git-commit-blobs-v1')
         with (packaged / 'src/dagster_hifld/aviation_extract.py').open('ab') as stream:
             stream.write(b'\n# changed after identity construction\n')
-        with self.assertRaisesRegex(ValueError, 'construction_packaged_identity'):
+        with self.assertRaisesRegex(ValueError, 'construction_packaged_file_hash_mismatch'):
             from dagster_hifld.construction_provenance import validate_construction_code_identity
             validate_construction_code_identity(
                 packaged, identity['code_commit'], identity['files'], identity=identity,
