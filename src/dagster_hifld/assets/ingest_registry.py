@@ -28,6 +28,7 @@ from dagster_hifld.assets.secondary_school_districts import census_secondary_sch
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
+from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -53,4 +54,5 @@ hifld_ingest_assets = [
     principal_ports_usace,
     census_unified_school_districts,
     puerto_rico_subbarrios_census,
+    usace_caution_areas_usace_ienc,
 ]
