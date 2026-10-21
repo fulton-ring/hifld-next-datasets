@@ -183,12 +183,13 @@
         "run_id": "01ec92cf-b19f-4976-a833-03e69053f734",
         "verify_started": false
       },
-      "quality_valid_but_empty_approval_registry": {
+      "quality_valid_but_approval_registry_absent": {
+        "approval_registry_configured": false,
         "promote_started": false,
         "published_inventory_unchanged": true,
         "quality_check_passed": true,
         "run_id": "ec199e4a-ef02-450e-b617-79ed272d9f36",
-        "verify_refused_empty_registry": true,
+        "verify_refused_missing_registry": true,
         "verify_started": true
       },
       "same_populated_fixture_object_count": 20
@@ -231,7 +232,7 @@
     "pmtiles_materialized": true,
     "publish_promote": "selected but blocked by verify failure; not executed, not materialized",
     "shapefile_zip_materialized": true,
-    "verify_outcome": "failed as required: ReleaseApprovalError missing_independent_release_approval_registry (empty approval registry; no promotion authorized)",
+    "verify_outcome": "failed as required: ReleaseApprovalError missing_independent_release_approval_registry (no approval registry was configured; no promotion authorized)",
     "verify_step": "publish__verify"
   },
   "id_contract_accepted": false,
