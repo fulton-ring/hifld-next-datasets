@@ -327,7 +327,8 @@ def capture_usace_overhead_pipeline_lines(storage: StagingStorageResource, *, ve
         "description": "Complete current official USACE IENC OVERHEAD_PIPELINE_LINE layer; faithful candidate, not accepted for release.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
-        "processor": "HIFLD Next", "code_commit": identity["code_commit"], "inputs": inputs,
+        "processor": "HIFLD Next", "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "Esri XY Polyline to GeoParquet WKB candidate", "parameters": {
             "source_fields": "all declared attributes retained in source order and declared types",
             "source_ids": "OBJECTID and Feature_ID retained unchanged", "source_crs": "EPSG:4326",
@@ -395,7 +396,9 @@ def capture_usace_overhead_pipeline_lines(storage: StagingStorageResource, *, ve
     seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
         "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "capture_receipts": receipts, "objects": descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
+    )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": EXPECTED_COUNT, "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,

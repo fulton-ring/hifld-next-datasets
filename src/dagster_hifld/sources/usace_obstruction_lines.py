@@ -421,7 +421,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
         "description":"Complete current OBSTRUCTION_LINE feature class from the official USACE IENC Feature Classes service; unapproved faithful candidate. Observed coverage is limited to records returned by this layer.",
         "publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,
         "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next",
-        "code_commit":identity["code_commit"],"inputs":inputs,
+        "code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,
         "transformations":[{"operation":"Esri JSON Polyline to GeoParquet WKB candidate; source XY ordinates and path order preserved",
            "parameters":{"feature_count":EXPECTED_COUNT,"source_fields":"all declared non-geometry fields retained in source order and declared types",
              "source_ids":"OBJECTID and Feature_ID preserved unchanged","source_crs":"EPSG:4326","source_geometry":"2D paths exactly as captured; no projection, repair or line simplification",
@@ -487,7 +487,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
         "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "capture_receipts":receipts,"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
         "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":1,"source_id_max":EXPECTED_COUNT,
         "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],
