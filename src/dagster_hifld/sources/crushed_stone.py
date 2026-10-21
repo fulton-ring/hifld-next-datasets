@@ -33,6 +33,7 @@ import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.portolan.release import read_staged_release
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -338,9 +339,21 @@ def reconcile_cache(storage,prefix,version,table,published_ids,audit,captures,id
     # JSON/dict equality must not equate a boolean with numeric zero or one.
     validate_ready_metadata((root/READY).read_bytes(),version,captures,identity,objects)
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'
-    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    release_documents={'collection.json','README.md','AGENTS.md'}
+    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}|release_documents
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derivatives) or not (names|{READY}).issubset(actual) or any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise CrushedStoneQuarantineError('unknown_missing_or_linked_candidate_object')
+    found_release_documents=actual&release_documents
+    if found_release_documents and found_release_documents!=release_documents:raise CrushedStoneQuarantineError('incomplete_staged_release_documents')
+    if found_release_documents:
+        try:
+            read_staged_release(storage,prefix)
+            for name in ('README.md','AGENTS.md'):
+                body=(root/name).read_bytes()
+                if not 0<len(body)<=2*1024*1024:raise ValueError('staged_release_document_size')
+                body.decode('utf-8')
+        except (OSError,UnicodeError,ValueError,TypeError) as exc:
+            raise CrushedStoneQuarantineError('invalid_staged_release_documents') from exc
     for name,body in expected.items():
         if (root/name).read_bytes()!=body:raise CrushedStoneQuarantineError('source_owned_report_raw_provenance_or_published_ID_drift:'+name)
     for name,sha in objects.items():
