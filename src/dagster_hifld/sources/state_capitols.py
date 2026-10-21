@@ -607,9 +607,22 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
         "transformations": [{
             "operation": "Native ESRI point feature capture to typed GeoParquet WKB",
             "parameters": {
-                "source_fields": ("All declared attributes retained in declared types; the JSON query "
+                "source_fields": ("All declared attribute names and values are retained. The JSON query "
                                   "response lowercases attribute keys and this transform restores the "
-                                  "declared source field names without changing any value."),
+                                  "declared source field names. Output Arrow scalar types follow the "
+                                  "explicit source-to-output mapping below; physical source type identity "
+                                  "is not asserted."),
+                "source_field_type_mapping": [
+                    {
+                        "source_name": field["name"],
+                        "source_esri_type": field["type"],
+                        "output_arrow_type": str(_ARROW_TYPES[field["type"]]),
+                        **({"unit": "epoch_milliseconds"}
+                           if field["type"] == "esriFieldTypeDate" else {}),
+                    }
+                    for field in EXPECTED_FIELDS
+                    if field["type"] != "esriFieldTypeGeometry"
+                ],
                 "source_ids": ("OBJECTID, GLOBALID, PERMANENT_IDENTIFIER, and GNIS_ID retained unchanged; "
                                "no substitute row identifiers."),
                 "source_crs": "EPSG:3857",

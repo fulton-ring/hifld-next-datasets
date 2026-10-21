@@ -414,6 +414,15 @@ class StateCapitolsEndToEndTests(unittest.TestCase):
             manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
             self.assertFalse(manifest["approved"])
             self.assertEqual(manifest["inputs"][0]["role"], "producer_publication")
+            field_mapping = manifest["transformations"][0]["parameters"]["source_field_type_mapping"]
+            mapping_by_name = {item["source_name"]: item for item in field_mapping}
+            self.assertEqual(mapping_by_name["OBJECTID"]["source_esri_type"], "esriFieldTypeOID")
+            self.assertEqual(mapping_by_name["OBJECTID"]["output_arrow_type"], "int64")
+            self.assertEqual(mapping_by_name["FTYPE"]["source_esri_type"], "esriFieldTypeInteger")
+            self.assertEqual(mapping_by_name["FTYPE"]["output_arrow_type"], "int64")
+            self.assertEqual(mapping_by_name["LOADDATE"]["source_esri_type"], "esriFieldTypeDate")
+            self.assertEqual(mapping_by_name["LOADDATE"]["output_arrow_type"], "int64")
+            self.assertEqual(mapping_by_name["LOADDATE"]["unit"], "epoch_milliseconds")
             parquet = storage.read_key(f"{prefix}/geoparquet/state-capitols.parquet")
 
             second = run(version="v2")
