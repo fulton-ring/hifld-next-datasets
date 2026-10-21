@@ -1,0 +1,92 @@
+{
+  "acceptance": {
+    "candidate_ready_approved": false,
+    "coverage_accepted": false,
+    "freshness_accepted": false,
+    "id_contract_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "rights_accepted": false,
+    "schema_contract_accepted": false,
+    "source_release_accepted": false
+  },
+  "candidate_inventory_manifest": "candidate-inventory.json",
+  "catalog": {
+    "approval_only_promotion_started": false,
+    "approval_only_quality_check_selected": false,
+    "approval_only_run_id": "356d71ab-d1c5-44c2-aeae-b387933ac00a",
+    "approval_only_verify_error": "missing_or_ambiguous_exact_object_approval",
+    "feature_count": 5778,
+    "invalid_geometry_count": 2,
+    "normal_quality_gate_blocked_verify_and_promote": true,
+    "normal_quality_gate_run_id": "723fce93-7d3d-4e34-9a73-fc58418e824b",
+    "null_geometry_count": 0,
+    "quality_check_passed": false,
+    "run_id": "6e294360-8886-4456-a4cb-00ac8b006507",
+    "success": false
+  },
+  "dataset_slug": "depth-areas-usace-ienc-2",
+  "file_slug": "depth-areas-usace-ienc-2",
+  "history": {
+    "capture_root": "/tmp/54-evidence/runtime-final/staging/depth-areas-usace-ienc-2/depth-areas-usace-ienc-2/v18b4ab0978fa0c88268c1f8bd3068bc8/raw",
+    "dagster_history_root": "/tmp/54-evidence/runtime-final/dagster-home/history",
+    "failed_oversized_and_adaptive_attempts_retained": true,
+    "registered_gate_history_root": "/tmp/54-evidence/runtime-final/registered-gates",
+    "source_recaptured_during_resume": false
+  },
+  "ingest": {
+    "registered_completion_check": "passed",
+    "run_id": "50e24ab1-37f9-4a26-af53-d94c86213d06",
+    "success": true
+  },
+  "native_parity": {
+    "all_attribute_rows_exact": true,
+    "all_wkb_geometry_rows_exact": true,
+    "candidate_object_bytes": 167118332,
+    "candidate_object_sha256": "b6ae47aae6036a824ef68dee3cd9cc72a64f97b40dcf3f5ad41f3fd895665c82",
+    "capture_revalidated": true,
+    "crs_epsg": 4326,
+    "interpretation": "Both invalid topologies exist in the source raw rings and match candidate WKB exactly; no adapter ring regrouping, repair, row removal, or substitution was applied.",
+    "invalid_geometries": [
+      {
+        "objectid": 5665,
+        "raw_ring_count": 216,
+        "reason": "Ring Self-intersection[-91.23369 43.6678440000001]",
+        "source_raw_rings_equal_candidate_geometry": true
+      },
+      {
+        "objectid": 5669,
+        "raw_ring_count": 74,
+        "reason": "Ring Self-intersection[-91.261985 43.594727]",
+        "source_raw_rings_equal_candidate_geometry": true
+      }
+    ],
+    "rows": 5778
+  },
+  "preservation": {
+    "candidate_inventory_file_count": 265,
+    "candidate_inventory_sha256": "86bb9da4d8ef159e1d76f633a814f780b1fb1ed7290b4ddb841af50c50e0b911",
+    "candidate_unchanged": true,
+    "synthetic_published_fixture_inventory_sha256": "177ba8b297cb1e529d648ba4069a9b5635cccf43fb65e9dc96aae66622485034",
+    "synthetic_published_fixture_object_count": 3,
+    "synthetic_published_fixture_unchanged": true
+  },
+  "schema_version": 1,
+  "source": {
+    "attribute_fields": 6,
+    "capture_batches": 74,
+    "feature_count": 5778,
+    "publisher": "USACE IENC service",
+    "raw_capture_artifacts": 265,
+    "return_true_curves_requested": true,
+    "source_capture_sha256": "e71d3f4decbe5e820b669a493b9a0dc9772ea13cf377f9b9de19bd5f586a4f1f",
+    "source_geometry_sha256": "32a9de29aaa25fecd4688b0203c23890dd94372877db4ae61720233ad2b4a79a",
+    "source_id_sha256": "b3f5daae6c2a30af51ca89fb68353fd6a5bf0e75b9133a594940ac430accc28e",
+    "source_record_sha256": "9352fdfd3b1e612e57912d13e2eafc812e5734f9d748f5f81f36f2adbfca8765",
+    "source_schema_sha256": "0d219b4daa13f769b152fd88ae219e3bd12544f3d31a3e3fbdf90763f94e96f2",
+    "spatial_reference": "EPSG:4326",
+    "true_curve_capability": true,
+    "vertex_count": 12620217
+  },
+  "version": "v18b4ab0978fa0c88268c1f8bd3068bc8"
+}
