@@ -76,6 +76,10 @@ from dagster_hifld.assets.epa_power_generation import (
     epa_power_generation_draft_job,
     epa_power_generation_draft_schedule,
 )
+from dagster_hifld.assets.epa_small_scale import (
+    epa_small_scale_source_integrity_job,
+    epa_small_scale_source_integrity_schedule,
+)
 
 from dagster_hifld.assets.gcca_warehouse_directory import (
     gcca_warehouses_geometry_complete,
@@ -880,6 +884,7 @@ defs = Definitions(
         epa_facilities_labels_full_quality,
     ],
     jobs=[
+        epa_small_scale_source_integrity_job,
         elsd_source_integrity_job,
         epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
@@ -955,6 +960,7 @@ defs = Definitions(
         epa_facilities_labels_draft_job,
     ],
     schedules=[
+        epa_small_scale_source_integrity_schedule,
         elsd_source_integrity_schedule,
         epa_disaster_debris_draft_schedule,
         colleges_source_integrity_schedule,
