@@ -319,6 +319,7 @@ def capture_epa_frs_naics_table(
     staging_storage: StagingStorageResource,
     *,
     offline_replay_version: str | None = None,
+    capture_directory: str | Path | None = None,
     client: httpx.Client | None = None,
 ) -> dict[str, Any]:
     """Observe the source before content-addressed reuse; offline replay is explicit."""
@@ -331,7 +332,8 @@ def capture_epa_frs_naics_table(
         return _reuse_candidate(staging_storage, version=offline_replay_version, identity=identity,
                                 fingerprint=fingerprint, offline=True)
 
-    capture_root = Path("/tmp/hifld-native-reconstruction/70/captures") / f"refresh-{uuid4().hex}"
+    capture_base = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/70/captures")
+    capture_root = capture_base / f"refresh-{uuid4().hex}"
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     owned_client = client is None
     active_client = client or httpx.Client(follow_redirects=False, timeout=60.0)
@@ -453,6 +455,7 @@ def capture_epa_frs_naics_table(
 
 class EPAFRSNAICSConfig(Config):
     offline_replay_version: str = ""
+    capture_directory: str = ""
 
 
 @asset(
@@ -464,7 +467,9 @@ class EPAFRSNAICSConfig(Config):
 def epa_frs_naics_powerplants(context, config: EPAFRSNAICSConfig,
                               staging_storage: StagingStorageResource) -> dict:
     result = capture_epa_frs_naics_table(
-        staging_storage, offline_replay_version=config.offline_replay_version or None
+        staging_storage,
+        offline_replay_version=config.offline_replay_version or None,
+        capture_directory=config.capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
