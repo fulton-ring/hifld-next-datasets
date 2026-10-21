@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "fulton-ring/hifld-next-datasets",
   "generated_utc_date": "2026-10-21",
-  "source_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+  "source_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
   "scope": "415 inventory dataset issues #2-416 plus coordinator issue #417",
   "coverage": {
     "inventory_rows": 415,
@@ -26,9 +26,9 @@
     "snapshot_note": "All 415 inventory rows remain. Current main has 65 mapped registered dataset schedules, all STOPPED; this is a code-registration count, not pipeline feasibility, review readiness, acceptance or release capacity. PR census totals are historical only.",
     "ledger_based_progress_counts": {
       "inventory_issues": 415,
-      "external_decision_or_source_evidence_blocker_label": 11,
-      "needs_triage_no_recovered_pipeline_pr": 253,
-      "prior_pr_evidence_needs_reconciliation": 86,
+      "external_decision_or_source_evidence_blocker_label": 13,
+      "needs_triage_no_recovered_pipeline_pr": 246,
+      "prior_pr_evidence_needs_reconciliation": 83,
       "definitions": {
         "issues_with_current_or_historical_pr_reference": "Distinct issue records with current_pr, a row-level observed_open_prs association, or an explicitly recorded merged priority PR in latest_verified_checkpoint; includes research/tracking PRs and is not a count of open pipeline PRs.",
         "external_decision_or_source_evidence_blocker_label": "Rows whose blocker_type is external_decision_or_source_evidence. This is a ledger label, not a permanent source-impossibility finding.",
@@ -40,10 +40,10 @@
         "inventory_issues_without_mapped_open_pr": "Historical 14:14 UTC census arithmetic only; not a current count or feasibility/capacity estimate.",
         "code_merged_issue_open_acceptance_gated": "Count of dataset rows whose explicit status is code_merged_issue_open_acceptance_gated. It is not the number of registered schedules, reviewed candidates, releases, or accepted datasets."
       },
-      "caveat": "Ledger categories overlap and are not measures of feasibility, readiness or acceptance. Row-derived code-merged/open/gated count and current main STOPPED schedule count are distinct. No fresh global census or capacity estimate is claimed.",
+      "caveat": "Categories are ledger-based and overlap; no readiness or feasibility estimate is made. Current STOPPED schedule registrations are separate from acceptance and release state. No fresh global census was performed.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
-      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 51,
-      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 55,
+      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 59,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 63,
       "latest_checkpoint_priority_evidence_issues": [
         2,
         3,
@@ -82,7 +82,15 @@
         51,
         52,
         53,
+        54,
+        56,
+        57,
         58,
+        59,
+        60,
+        61,
+        62,
+        64,
         261,
         275,
         276,
@@ -101,7 +109,7 @@
       "current_open_pr_records": null,
       "current_open_pr_records_mapped_to_inventory": null,
       "inventory_issues_without_mapped_open_pr": null,
-      "code_merged_issue_open_acceptance_gated": 52,
+      "code_merged_issue_open_acceptance_gated": 62,
       "last_open_pr_census_mapped_issues_2026_10_21T1414Z": 129,
       "last_open_pr_census_unmapped_issues_2026_10_21T1414Z": 286,
       "current_count_status": "No fresh full census. Named PR/issue readbacks only; historical 14:14 census remains historical.",
@@ -142,7 +150,16 @@
         51,
         52,
         53,
+        54,
+        56,
+        57,
         58,
+        59,
+        60,
+        63,
+        64,
+        65,
+        66,
         261,
         275,
         276,
@@ -158,10 +175,11 @@
         307,
         323,
         335,
-        363
+        363,
+        369
       ],
-      "main_registered_schedule_count": 65,
-      "main_registered_schedule_issue_count": 65,
+      "main_registered_schedule_count": 75,
+      "main_registered_schedule_issue_count": 75,
       "main_registered_schedule_mapping_issues": [
         2,
         3,
@@ -202,7 +220,16 @@
         51,
         52,
         53,
+        54,
+        56,
+        57,
         58,
+        59,
+        60,
+        63,
+        64,
+        65,
+        66,
         181,
         253,
         257,
@@ -227,11 +254,13 @@
         307,
         323,
         335,
-        363
+        363,
+        369
       ],
       "main_registered_schedule_default_configuration": "All 39 schedule definitions in current main source snapshot 20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1 configure DefaultScheduleStatus.STOPPED; no live scheduler-instance status was queried.",
       "main_registration_audit_source": "Current main src/dagster_hifld/definitions.py schedules list, linked job selections and asset/key refs; no 415-issue network census.",
-      "latest_checkpoint_priority_exact_head_review_or_local_run_evidence": 39
+      "latest_checkpoint_priority_exact_head_review_or_local_run_evidence": 39,
+      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 59
     },
     "current_open_pr_census": {
       "recorded_at": "2026-10-21T14:14:32Z",
@@ -249,8 +278,8 @@
       "association_scope": "Mapping establishes branch association only, not code quality, feasibility, implementation, review, run success, source acceptance, or release readiness.",
       "multiple_open_pr_issue_count": 0
     },
-    "main_registered_schedule_count": 65,
-    "main_registered_schedule_issue_count": 65,
+    "main_registered_schedule_count": 75,
+    "main_registered_schedule_issue_count": 75,
     "main_registered_schedule_mapping_issues": [
       2,
       3,
@@ -291,7 +320,16 @@
       51,
       52,
       53,
+      54,
+      56,
+      57,
       58,
+      59,
+      60,
+      63,
+      64,
+      65,
+      66,
       181,
       253,
       257,
@@ -316,11 +354,13 @@
       307,
       323,
       335,
-      363
+      363,
+      369
     ],
     "main_registered_schedule_default_configuration": "Root verified current main Definitions after PR #625: 65 unique schedules, all DefaultScheduleStatus.STOPPED; live scheduler status not queried.",
     "main_registration_audit_source": "Current main Definitions after PR #625; root independently validated 65 unique registered schedules, all STOPPED. This is code registration only, not feasibility or release readiness.",
-    "ledger_status_counts_recorded_at": "2026-10-21T20:01:31Z"
+    "ledger_status_counts_recorded_at": "2026-10-21T20:01:31Z",
+    "current_ledger_checkpoint": "PR #638 merged at 7bb8146b36731b30e5495ddc3015e8fa09afe194; 75 unique STOPPED schedules; 50 candidate pipelines merged this stretch. Newly integrated rows #63/#65/#66/#369 are acceptance-gated. Issues #61/#62 retain named external source/lineage blockers. All 415 rows preserved; no new global census."
   },
   "coordination_issue_417": {
     "issue": 417,
@@ -4046,19 +4086,67 @@
       "title": "Depth Areas (USACE IENC)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/54",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 630,
+      "reviewed_head": "871a8e6c314c60662371b70ba411d107eab07261",
+      "evidence_refs": [
+        "PR #630 exact head 871a8e6c314c60662371b70ba411d107eab07261; independent review 5605763027; merged through PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; schedule usace_depth_areas_draft_refresh_schedule is STOPPED. Draft captures observed official USACE IENC Depth Areas; two invalid native polygons remain unchanged; source and release acceptance pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T01:59:09Z",
       "live_issue_created_at": "2026-10-19T01:59:09Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #630 head 871a8e6c314c60662371b70ba411d107eab07261 merged through reviewed integration PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; usace_depth_areas_draft_refresh_schedule is STOPPED. Draft captures observed official USACE IENC Depth Areas; two invalid native polygons remain unchanged; source and release acceptance pending. Issue remains open; no release acceptance or production publication is claimed.",
+      "canonical_pr": 630,
+      "current_head": "871a8e6c314c60662371b70ba411d107eab07261",
+      "current_pr_candidates": [
+        630
+      ],
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 630,
+        "head": "871a8e6c314c60662371b70ba411d107eab07261",
+        "review": 5605763027,
+        "integration_pr": 632,
+        "integration_merge": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "integration_review": 5605850836,
+        "ci_job": 119468792081,
+        "ci": "passed; publish skipped",
+        "issue_state": "open",
+        "notes": "Draft captures observed official USACE IENC Depth Areas; two invalid native polygons remain unchanged; source and release acceptance pending."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "canonical_pr": {
+          "pr": 630,
+          "head": "871a8e6c314c60662371b70ba411d107eab07261",
+          "state": "closed_merged",
+          "merged_via": "PR #632 ancestry",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605763027
+        },
+        "integration_pr": {
+          "pr": 632,
+          "state": "closed_merged",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605850836,
+          "ci_job": 119468792081,
+          "ci": "passed; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "schedule_ref": "usace_depth_areas_draft_refresh_schedule",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Main e942ac883991403a7e299494d8fd73ed761b6a7c plus PR #632; parent verified 71 unique schedules, all STOPPED."
+      }
     },
     {
       "issue": 55,
@@ -4100,19 +4188,67 @@
       "title": "Distance Marks (USACE IENC)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/56",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 626,
+      "reviewed_head": "b4b40ae4b826e4f3854a1bf1e2b20a168852249d",
+      "evidence_refs": [
+        "PR #626 exact head b4b40ae4b826e4f3854a1bf1e2b20a168852249d; independent review 5605534244; merged through PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; schedule distance_marks_draft_refresh_schedule is STOPPED. 7,453-row DISTANCE_MARK_POINT layer; source equivalence, schema/ID, coverage, rights, and release acceptance pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T01:59:15Z",
       "live_issue_created_at": "2026-10-19T01:59:15Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #626 head b4b40ae4b826e4f3854a1bf1e2b20a168852249d merged through reviewed integration PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; distance_marks_draft_refresh_schedule is STOPPED. 7,453-row DISTANCE_MARK_POINT layer; source equivalence, schema/ID, coverage, rights, and release acceptance pending. Issue remains open; no release acceptance or production publication is claimed.",
+      "canonical_pr": 626,
+      "current_head": "b4b40ae4b826e4f3854a1bf1e2b20a168852249d",
+      "current_pr_candidates": [
+        626
+      ],
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 626,
+        "head": "b4b40ae4b826e4f3854a1bf1e2b20a168852249d",
+        "review": 5605534244,
+        "integration_pr": 632,
+        "integration_merge": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "integration_review": 5605850836,
+        "ci_job": 119468792081,
+        "ci": "passed; publish skipped",
+        "issue_state": "open",
+        "notes": "7,453-row DISTANCE_MARK_POINT layer; source equivalence, schema/ID, coverage, rights, and release acceptance pending."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "canonical_pr": {
+          "pr": 626,
+          "head": "b4b40ae4b826e4f3854a1bf1e2b20a168852249d",
+          "state": "closed_merged",
+          "merged_via": "PR #632 ancestry",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605534244
+        },
+        "integration_pr": {
+          "pr": 632,
+          "state": "closed_merged",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605850836,
+          "ci_job": 119468792081,
+          "ci": "passed; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "schedule_ref": "distance_marks_draft_refresh_schedule",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Main e942ac883991403a7e299494d8fd73ed761b6a7c plus PR #632; parent verified 71 unique schedules, all STOPPED."
+      }
     },
     {
       "issue": 57,
@@ -4120,19 +4256,67 @@
       "title": "Docks",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/57",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 627,
+      "reviewed_head": "6734cfc4cde312b608d48ec342010cfef9ea03a2",
+      "evidence_refs": [
+        "PR #627 exact head 6734cfc4cde312b608d48ec342010cfef9ea03a2; independent review 5605737383; merged through PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; schedule docks_usace_bts_draft_refresh_schedule is STOPPED. 20,563-row Docks source; native longitude -186.77586799999997 retained and quality failure visible; acceptance pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T01:59:19Z",
       "live_issue_created_at": "2026-10-19T01:59:19Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #627 head 6734cfc4cde312b608d48ec342010cfef9ea03a2 merged through reviewed integration PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; docks_usace_bts_draft_refresh_schedule is STOPPED. 20,563-row Docks source; native longitude -186.77586799999997 retained and quality failure visible; acceptance pending. Issue remains open; no release acceptance or production publication is claimed.",
+      "canonical_pr": 627,
+      "current_head": "6734cfc4cde312b608d48ec342010cfef9ea03a2",
+      "current_pr_candidates": [
+        627
+      ],
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 627,
+        "head": "6734cfc4cde312b608d48ec342010cfef9ea03a2",
+        "review": 5605737383,
+        "integration_pr": 632,
+        "integration_merge": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "integration_review": 5605850836,
+        "ci_job": 119468792081,
+        "ci": "passed; publish skipped",
+        "issue_state": "open",
+        "notes": "20,563-row Docks source; native longitude -186.77586799999997 retained and quality failure visible; acceptance pending."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "canonical_pr": {
+          "pr": 627,
+          "head": "6734cfc4cde312b608d48ec342010cfef9ea03a2",
+          "state": "closed_merged",
+          "merged_via": "PR #632 ancestry",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605737383
+        },
+        "integration_pr": {
+          "pr": 632,
+          "state": "closed_merged",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605850836,
+          "ci_job": 119468792081,
+          "ci": "passed; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "schedule_ref": "docks_usace_bts_draft_refresh_schedule",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Main e942ac883991403a7e299494d8fd73ed761b6a7c plus PR #632; parent verified 71 unique schedules, all STOPPED."
+      }
     },
     {
       "issue": 58,
@@ -4198,19 +4382,67 @@
       "title": "Dumping Ground Areas (USACE IENC)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/59",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 628,
+      "reviewed_head": "22cd60c1b62f6edd63707ca64e2a566748b6d3a3",
+      "evidence_refs": [
+        "PR #628 exact head 22cd60c1b62f6edd63707ca64e2a566748b6d3a3; independent review 5605779280; merged through PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; schedule usace_dumping_ground_areas_draft_schedule is STOPPED. One local polygon; true curves requested and curveRings fail closed; nationwide scope not claimed; acceptance pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T01:59:25Z",
       "live_issue_created_at": "2026-10-19T01:59:25Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #628 head 22cd60c1b62f6edd63707ca64e2a566748b6d3a3 merged through reviewed integration PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; usace_dumping_ground_areas_draft_schedule is STOPPED. One local polygon; true curves requested and curveRings fail closed; nationwide scope not claimed; acceptance pending. Issue remains open; no release acceptance or production publication is claimed.",
+      "canonical_pr": 628,
+      "current_head": "22cd60c1b62f6edd63707ca64e2a566748b6d3a3",
+      "current_pr_candidates": [
+        628
+      ],
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 628,
+        "head": "22cd60c1b62f6edd63707ca64e2a566748b6d3a3",
+        "review": 5605779280,
+        "integration_pr": 632,
+        "integration_merge": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "integration_review": 5605850836,
+        "ci_job": 119468792081,
+        "ci": "passed; publish skipped",
+        "issue_state": "open",
+        "notes": "One local polygon; true curves requested and curveRings fail closed; nationwide scope not claimed; acceptance pending."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "canonical_pr": {
+          "pr": 628,
+          "head": "22cd60c1b62f6edd63707ca64e2a566748b6d3a3",
+          "state": "closed_merged",
+          "merged_via": "PR #632 ancestry",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605779280
+        },
+        "integration_pr": {
+          "pr": 632,
+          "state": "closed_merged",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605850836,
+          "ci_job": 119468792081,
+          "ci": "passed; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "schedule_ref": "usace_dumping_ground_areas_draft_schedule",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Main e942ac883991403a7e299494d8fd73ed761b6a7c plus PR #632; parent verified 71 unique schedules, all STOPPED."
+      }
     },
     {
       "issue": 60,
@@ -4218,19 +4450,67 @@
       "title": "Dynamic Buoys (USACE IENC)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/60",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 629,
+      "reviewed_head": "ee2e5e2cca2643ff8a3439d5c374d82f9f220885",
+      "evidence_refs": [
+        "PR #629 exact head ee2e5e2cca2643ff8a3439d5c374d82f9f220885; independent review 5605741789; merged through PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; schedule usace_dynamic_buoys_draft_schedule is STOPPED. Draft captures observed USACE IENC layer; all source, scope, rights, contract, and release gates remain pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T01:59:28Z",
       "live_issue_created_at": "2026-10-19T01:59:28Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #629 head ee2e5e2cca2643ff8a3439d5c374d82f9f220885 merged through reviewed integration PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; usace_dynamic_buoys_draft_schedule is STOPPED. Draft captures observed USACE IENC layer; all source, scope, rights, contract, and release gates remain pending. Issue remains open; no release acceptance or production publication is claimed.",
+      "canonical_pr": 629,
+      "current_head": "ee2e5e2cca2643ff8a3439d5c374d82f9f220885",
+      "current_pr_candidates": [
+        629
+      ],
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 629,
+        "head": "ee2e5e2cca2643ff8a3439d5c374d82f9f220885",
+        "review": 5605741789,
+        "integration_pr": 632,
+        "integration_merge": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "integration_review": 5605850836,
+        "ci_job": 119468792081,
+        "ci": "passed; publish skipped",
+        "issue_state": "open",
+        "notes": "Draft captures observed USACE IENC layer; all source, scope, rights, contract, and release gates remain pending."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "canonical_pr": {
+          "pr": 629,
+          "head": "ee2e5e2cca2643ff8a3439d5c374d82f9f220885",
+          "state": "closed_merged",
+          "merged_via": "PR #632 ancestry",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605741789
+        },
+        "integration_pr": {
+          "pr": 632,
+          "state": "closed_merged",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605850836,
+          "ci_job": 119468792081,
+          "ci": "passed; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "schedule_ref": "usace_dynamic_buoys_draft_schedule",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Main e942ac883991403a7e299494d8fd73ed761b6a7c plus PR #632; parent verified 71 unique schedules, all STOPPED."
+      }
     },
     {
       "issue": 61,
@@ -4242,15 +4522,24 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Issue comment 6325545654; DOI crosswalk and archived payload returned HTTP 403 Cloudflare challenges; Data.gov test returned 404; reachable community ArcGIS copy is not authoritative and its lineage/rights/equivalence remain unresolved. Evidence JSON SHA-256 5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548."
+      ],
+      "blocker_type": "external_decision_or_source_evidence",
       "live_issue_updated_at": "2026-10-19T01:59:31Z",
       "live_issue_created_at": "2026-10-19T01:59:31Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "external_source_lineage_decision",
+      "status_note": "Issue comment 6325545654; DOI crosswalk and archived payload returned HTTP 403 Cloudflare challenges; Data.gov test returned 404; reachable community ArcGIS copy is not authoritative and its lineage/rights/equivalence remain unresolved. Evidence JSON SHA-256 5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "external_source_lineage_decision",
+        "comment": 6325545654,
+        "notes": "Issue comment 6325545654; DOI crosswalk and archived payload returned HTTP 403 Cloudflare challenges; Data.gov test returned 404; reachable community ArcGIS copy is not authoritative and its lineage/rights/equivalence remain unresolved. Evidence JSON SHA-256 5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548."
+      }
     },
     {
       "issue": 62,
@@ -4262,15 +4551,24 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Issue comment 6325585454; archived DataLumos payload returned HTTP 403 Cloudflare challenge; Data.gov search test returned 404; reachable 2021 community ArcGIS copy has 94 polygons/19 fields but is not verified DOE/ORNL distribution or equivalent to archived edition; lineage/rights remain unresolved. Evidence JSON SHA-256 fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc."
+      ],
+      "blocker_type": "external_decision_or_source_evidence",
       "live_issue_updated_at": "2026-10-19T01:59:35Z",
       "live_issue_created_at": "2026-10-19T01:59:35Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "external_source_lineage_decision",
+      "status_note": "Issue comment 6325585454; archived DataLumos payload returned HTTP 403 Cloudflare challenge; Data.gov search test returned 404; reachable 2021 community ArcGIS copy has 94 polygons/19 fields but is not verified DOE/ORNL distribution or equivalent to archived edition; lineage/rights remain unresolved. Evidence JSON SHA-256 fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "external_source_lineage_decision",
+        "comment": 6325585454,
+        "notes": "Issue comment 6325585454; archived DataLumos payload returned HTTP 403 Cloudflare challenge; Data.gov search test returned 404; reachable 2021 community ArcGIS copy has 94 polygons/19 fields but is not verified DOE/ORNL distribution or equivalent to archived edition; lineage/rights remain unresolved. Evidence JSON SHA-256 fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc."
+      }
     },
     {
       "issue": 63,
@@ -4278,19 +4576,31 @@
       "title": "Electric Retail Service Territories",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/63",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 634,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Source PR #634 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; source exact head is preserved as an ancestor. Main is at 75 unique schedules, all STOPPED. Source, baseline, coverage, schema/ID, rights and release acceptance remain pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T01:59:38Z",
       "live_issue_created_at": "2026-10-19T01:59:38Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Pipeline for issue #63 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T21:02:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 634,
+        "integration_pr": 638,
+        "integration_merge": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+        "issue_state": "open",
+        "notes": "Pipeline for issue #63 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending."
+      }
     },
     {
       "issue": 64,
@@ -4298,12 +4608,14 @@
       "title": "Elementary School Districts",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/64",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 455,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 631,
+      "reviewed_head": "96b4ecce40726c64450d3f9f08f5476619ef92c6",
+      "evidence_refs": [
+        "PR #631 exact head 96b4ecce40726c64450d3f9f08f5476619ef92c6; independent review 5605808162; merged through PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; schedule census_elementary_school_districts_draft_schedule is STOPPED. PR #631 source pipeline is integrated through #632; prior issue-associated PR #455 record is preserved for reconciliation and may remain open."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T15:45:40Z",
       "live_issue_created_at": "2026-10-19T01:59:41Z",
       "live_issue_comment_count": 12,
@@ -4321,11 +4633,54 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence. Fresh census maps current open PR #455 (branch codex/cloud-dataset-64); exact head/base are stored in observed_open_prs.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #631 head 96b4ecce40726c64450d3f9f08f5476619ef92c6 merged through reviewed integration PR #632 at fe47ac7b204ea4b8fd809cd725383786a5e2d46c; census_elementary_school_districts_draft_schedule is STOPPED. PR #631 source pipeline is integrated through #632; prior issue-associated PR #455 record is preserved for reconciliation and may remain open. Issue remains open; no release acceptance or production publication is claimed.",
       "current_pr_candidates": [
-        455
-      ]
+        455,
+        631
+      ],
+      "canonical_pr": 631,
+      "current_head": "96b4ecce40726c64450d3f9f08f5476619ef92c6",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 631,
+        "head": "96b4ecce40726c64450d3f9f08f5476619ef92c6",
+        "review": 5605808162,
+        "integration_pr": 632,
+        "integration_merge": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "integration_review": 5605850836,
+        "ci_job": 119468792081,
+        "ci": "passed; publish skipped",
+        "issue_state": "open",
+        "notes": "PR #631 source pipeline is integrated through #632; prior issue-associated PR #455 record is preserved for reconciliation and may remain open."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T20:41:19Z",
+        "canonical_pr": {
+          "pr": 631,
+          "head": "96b4ecce40726c64450d3f9f08f5476619ef92c6",
+          "state": "closed_merged",
+          "merged_via": "PR #632 ancestry",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605808162
+        },
+        "integration_pr": {
+          "pr": 632,
+          "state": "closed_merged",
+          "merge_commit": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+          "review": 5605850836,
+          "ci_job": 119468792081,
+          "ci": "passed; publish skipped"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+        "schedule_ref": "census_elementary_school_districts_draft_schedule",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Main e942ac883991403a7e299494d8fd73ed761b6a7c plus PR #632; parent verified 71 unique schedules, all STOPPED."
+      }
     },
     {
       "issue": 65,
@@ -4333,12 +4688,14 @@
       "title": "EPA Disaster Debris Recovery Data",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/65",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 484,
+      "current_pr": 635,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Source PR #635 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; source exact head is preserved as an ancestor. Main is at 75 unique schedules, all STOPPED. Source, baseline, coverage, schema/ID, rights and release acceptance remain pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T21:49:40Z",
       "live_issue_created_at": "2026-10-19T01:59:45Z",
       "live_issue_comment_count": 0,
@@ -4356,11 +4713,20 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Pipeline for issue #65 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending.",
       "current_pr_candidates": [
         484
-      ]
+      ],
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T21:02:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 635,
+        "integration_pr": 638,
+        "integration_merge": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+        "issue_state": "open",
+        "notes": "Pipeline for issue #65 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending."
+      }
     },
     {
       "issue": 66,
@@ -4368,12 +4734,14 @@
       "title": "EPA Emergency Response (ER) Risk Management Plan (RMP) Facilities",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/66",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 487,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Source PR #487 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; source exact head is preserved as an ancestor. Main is at 75 unique schedules, all STOPPED. Source, baseline, coverage, schema/ID, rights and release acceptance remain pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T22:57:23Z",
       "live_issue_created_at": "2026-10-19T01:59:49Z",
       "live_issue_comment_count": 6,
@@ -4391,11 +4759,20 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Pipeline for issue #66 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending.",
       "current_pr_candidates": [
         487
-      ]
+      ],
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T21:02:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 487,
+        "integration_pr": 638,
+        "integration_merge": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+        "issue_state": "open",
+        "notes": "Pipeline for issue #66 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending."
+      }
     },
     {
       "issue": 67,
@@ -13135,19 +13512,31 @@
       "title": "US State Boundaries",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/369",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 633,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Source PR #633 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; source exact head is preserved as an ancestor. Main is at 75 unique schedules, all STOPPED. Source, baseline, coverage, schema/ID, rights and release acceptance remain pending."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T02:21:32Z",
       "live_issue_created_at": "2026-10-19T02:21:32Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Pipeline for issue #369 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T21:02:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 633,
+        "integration_pr": 638,
+        "integration_merge": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+        "issue_state": "open",
+        "notes": "Pipeline for issue #369 integrated by PR #638 into main 7bb8146b36731b30e5495ddc3015e8fa09afe194; issue remains open and all acceptance gates remain pending."
+      }
     },
     {
       "issue": 370,
@@ -14115,6 +14504,17 @@
     "recorded_utc_date": "2026-10-21",
     "source": "coordinator and dataset worker reports, with PR/issue references where available",
     "dataset_issue_assignments": {
+      "42": "Construction Minerals Operations; canonical PR #610 exact head 0004a9dd7dc2dfdcff96cd9030d3f40261a79061, integrated by #617; issue OPEN/Needsdecision.",
+      "44": "Conveyor Areas; canonical PR #608 exact head 75b98beea63918806961cac37914ec66ff378520, integrated by #617; issue OPEN/Needsdecision.",
+      "45": "County Subdivisions; canonical PR #611 exact head 3e54fc302740375e0d72a4e8c5bdb6fb70133a17, integrated by #617; issue OPEN/Needsdecision.",
+      "46": "Courthouses; PR #612 exact head 3d8b6f03c2d226e68dfee6dd4d25301537877556 merged through #623; issue OPEN/Needsdecision.",
+      "47": "Crane Locations; canonical PR #615 exact head b723024f743ad030549107c24485b6327aa4282c, integrated by #617; issue OPEN/Needsdecision.",
+      "48": "Crushed Stone; PR #616 exact head 7e40592c3be076a2d8e12d3a6fdff117e341ae1b merged through #623; issue OPEN/Needsdecision.",
+      "49": "Current DART Deployments; PR #618 exact head 2fe68b3f8519e94e77ec32337c0ec357d0ce7b8d merged at b7402c5; issue OPEN/Needsdecision.",
+      "50": "Dam Lines; PR #620 exact head 4aef57a7009342e625a51f2453f32410fd62b757 merged through #623; issue OPEN/Needsdecision.",
+      "51": "Data Coverage Areas; PR #622 exact head 33493fb15ce5bc93a1224666f0eb86ede688a1d6 merged through #623; issue OPEN/Needsdecision.",
+      "52": "Data Quality Areas; PR #621 exact head 36a73aab7934856a59cc8f0c366f42cbf54c14e6 merged through #623; issue OPEN/Needsdecision.",
+      "53": "Daymark Locations; PR #624 exact head f93968b847a804552bddf0efa66f017327beec47 merged directly to main; independent review 5605449621 and build-only CI passed; issue OPEN/Needsdecision.",
       "261": "dataset_11; PR531 head 4be341a",
       "262": "dataset_10; NOAA Overview",
       "263": "dataset_3; PAD-US Manager Name research commit c0817be; official package access blocked",
@@ -14124,18 +14524,7 @@
       "267": "worker dataset_4 active research; commit 97c062814a02b03c957ad6c6271c37d24144a0a7; EIA-815 is not a verified location feed",
       "268": "next dataset_11",
       "269": "next dataset_265",
-      "42": "Construction Minerals Operations; canonical PR #610 exact head 0004a9dd7dc2dfdcff96cd9030d3f40261a79061, integrated by #617; issue OPEN/Needsdecision.",
-      "44": "Conveyor Areas; canonical PR #608 exact head 75b98beea63918806961cac37914ec66ff378520, integrated by #617; issue OPEN/Needsdecision.",
-      "45": "County Subdivisions; canonical PR #611 exact head 3e54fc302740375e0d72a4e8c5bdb6fb70133a17, integrated by #617; issue OPEN/Needsdecision.",
-      "47": "Crane Locations; canonical PR #615 exact head b723024f743ad030549107c24485b6327aa4282c, integrated by #617; issue OPEN/Needsdecision.",
-      "323": "State Capitols; PR #613 exact head 26c2093ec32db1f04e73bec3c2e36d8fc4bbab7f merged at 946b766; issue OPEN/Needsdecision.",
-      "49": "Current DART Deployments; PR #618 exact head 2fe68b3f8519e94e77ec32337c0ec357d0ce7b8d merged at b7402c5; issue OPEN/Needsdecision.",
-      "46": "Courthouses; PR #612 exact head 3d8b6f03c2d226e68dfee6dd4d25301537877556 merged through #623; issue OPEN/Needsdecision.",
-      "48": "Crushed Stone; PR #616 exact head 7e40592c3be076a2d8e12d3a6fdff117e341ae1b merged through #623; issue OPEN/Needsdecision.",
-      "50": "Dam Lines; PR #620 exact head 4aef57a7009342e625a51f2453f32410fd62b757 merged through #623; issue OPEN/Needsdecision.",
-      "51": "Data Coverage Areas; PR #622 exact head 33493fb15ce5bc93a1224666f0eb86ede688a1d6 merged through #623; issue OPEN/Needsdecision.",
-      "52": "Data Quality Areas; PR #621 exact head 36a73aab7934856a59cc8f0c366f42cbf54c14e6 merged through #623; issue OPEN/Needsdecision.",
-      "53": "Daymark Locations; PR #624 exact head f93968b847a804552bddf0efa66f017327beec47 merged directly to main; independent review 5605449621 and build-only CI passed; issue OPEN/Needsdecision."
+      "323": "State Capitols; PR #613 exact head 26c2093ec32db1f04e73bec3c2e36d8fc4bbab7f merged at 946b766; issue OPEN/Needsdecision."
     },
     "issue_417": "comment 6282335069: 22 focused tests, synthetic Dagster runs 23663675-bfd2-4cfa-8ff2-c9aa35952259 and a7c4751b-eec6-4bae-9f65-ab24805b817e; synthetic only",
     "pr_529": {
@@ -14392,190 +14781,94 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T20:03:04Z",
-    "source": "Parent merge confirmation and named GitHub readbacks for main, PRs #623/#624/#625 and source PRs #612/#616/#620/#621/#622/#624/#625; issues #46/#48/#50/#51/#52/#53/#55 read; no 415-item census or source reruns.",
-    "scope_note": "All 415 inventory rows remain preserved. PR #623 integrated five reviewed pipelines; PR #624/#53 and PR #625/#58 are now merged. Current main has 65 registered dataset schedules, all STOPPED. The named issues remain OPEN; source PR merges and code registration are not source acceptance or release approval. No production publication is claimed.",
-    "main_latest": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-    "main_tree": "896ccfe49366b817716f4c59dd77b18c120ef771",
-    "integration_623": {
-      "pr": 623,
+    "recorded_at": "2026-10-21T21:02:00Z",
+    "source": "Parent main merge confirmation and named PR #638 readback; no global 415 census.",
+    "main_latest": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+    "integration_638": {
+      "pr": 638,
       "state": "closed_merged",
-      "head": "eeeedfb38983c0fc45c55d1b9b890ff00bdffd34",
-      "merge_commit": "4d3d5c27f9ac11036933eb1b04f4d68fc6ac6954",
-      "tree": "c75ef35d3b51b77d83bca27b81b60e079425065d",
-      "base": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
-      "review": 5605409998,
-      "ci_run": 39665552929,
-      "ci_build_job": 119449509562,
-      "ci": "build success; publish skipped",
-      "source_prs": [
-        612,
-        616,
-        620,
-        621,
-        622
+      "merge_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+      "review": 5606143080,
+      "ci_job": 119481280069,
+      "ci": "passed; publish skipped",
+      "registered_schedules": 75,
+      "all_stopped": true,
+      "integrated_issue_sources": [
+        {
+          "issue": 63,
+          "pr": 634
+        },
+        {
+          "issue": 65,
+          "pr": 635
+        },
+        {
+          "issue": 66,
+          "pr": 487
+        },
+        {
+          "issue": 369,
+          "pr": 633
+        }
       ],
-      "source_owned_blob_count": 27,
-      "verification": "All five source-head ancestors, 27 owned blobs and additive registration diffs independently verified."
+      "verification": "Source heads preserved as ancestors; final native integration reviewed; no production publication."
     },
-    "direct_merges": {
-      "613": {
-        "issue": 323,
-        "head": "26c2093ec32db1f04e73bec3c2e36d8fc4bbab7f",
-        "merge_commit": "946b766ef28910d7446bf3bd54c4c1ef765ff40c",
-        "review": 5604548785,
-        "issue_state": "open"
-      },
-      "618": {
-        "issue": 49,
-        "head": "2fe68b3f8519e94e77ec32337c0ec357d0ce7b8d",
-        "merge_commit": "b7402c556ee271581342f38d64005324f5fd9771",
-        "review": 5604489645,
-        "issue_state": "open"
-      },
-      "624": {
-        "issue": 53,
-        "head": "f93968b847a804552bddf0efa66f017327beec47",
-        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
-        "review": 5605449621,
-        "ci_build_job": 119450725225,
-        "ci": "build success; publish skipped",
-        "issue_state": "open"
-      },
-      "625": {
-        "issue": 58,
-        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
-        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-        "review": 5605504298,
-        "ci": "passed",
-        "issue_state": "open",
-        "schedule": "usace_dry_docks_draft_refresh_schedule"
-      }
+    "previous_checkpoint_through_632": {
+      "main": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+      "tree": "939a2ecbefb35ee93902c469598900cac680aa17",
+      "schedules": 71,
+      "review": 5605850836,
+      "ci_job": 119468792081
     },
-    "shared_cache_fix": {
-      "pr": 619,
-      "head": "224fd7d5ff6e218f226b135ad4e63895a3bf9844",
-      "merge_commit": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
-      "review": 5605325702,
-      "scope": "Validated release-metadata source-cache compatibility; issue #417 remains incomplete."
+    "issue_61": {
+      "state": "open",
+      "comment": 6325545654,
+      "evidence_sha256": "5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548",
+      "decision_required": "Archive/crosswalk anonymous access blocked; community source lineage and rights unaccepted."
     },
-    "source_prs_auto_merged": [
+    "issue_62": {
+      "state": "open",
+      "comment": 6325585454,
+      "evidence_sha256": "fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc",
+      "decision_required": "Archived payload access blocked; community source lineage and historical equivalence unverified."
+    },
+    "issue_comments_after_632": [
       {
-        "issue": 46,
-        "pr": 612,
-        "head": "3d8b6f03c2d226e68dfee6dd4d25301537877556",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 54,
+        "comment": 6326307673
       },
       {
-        "issue": 48,
-        "pr": 616,
-        "head": "7e40592c3be076a2d8e12d3a6fdff117e341ae1b",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 57,
+        "comment": 6326308487
       },
       {
-        "issue": 50,
-        "pr": 620,
-        "head": "4aef57a7009342e625a51f2453f32410fd62b757",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 59,
+        "comment": 6326309340
       },
       {
-        "issue": 51,
-        "pr": 622,
-        "head": "33493fb15ce5bc93a1224666f0eb86ede688a1d6",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 60,
+        "comment": 6326310150
       },
       {
-        "issue": 52,
-        "pr": 621,
-        "head": "36a73aab7934856a59cc8f0c366f42cbf54c14e6",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
-      },
-      {
-        "issue": 53,
-        "pr": 624,
-        "head": "f93968b847a804552bddf0efa66f017327beec47",
-        "state": "closed_merged",
-        "merged_via": "direct main merge",
-        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
-        "issue_state": "open"
-      },
-      {
-        "issue": 58,
-        "pr": 625,
-        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
-        "state": "closed_merged",
-        "merged_via": "direct main merge",
-        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-        "review": 5605504298,
-        "issue_state": "open"
+        "issue": 64,
+        "comment": 6326311121
       }
     ],
-    "issues_open": [
-      46,
-      48,
-      50,
-      51,
-      52,
-      53,
-      58
-    ],
-    "needs_decision_label_readbacks": {
-      "46": [
-        "move:needs-decision"
+    "authorized_issue_comment_label_batch": {
+      "issues": [
+        46,
+        48,
+        50,
+        51,
+        52,
+        53
       ],
-      "48": [],
-      "50": [
-        "move:needs-decision"
-      ],
-      "51": [],
-      "52": [
-        "move:needs-decision"
-      ],
-      "53": [],
-      "58": []
+      "status": "completed_successfully",
+      "blocked": false
     },
-    "issue_update_write_status": {
-      "requested": "Add canonical integration comment and move:needs-decision catch-up for #46/#48/#50/#51/#52/#53.",
-      "written": false,
-      "reason": "Automatic review rejected the REST batch as posting internal repository/review/CI metadata and mutating labels without specific authorization for that export; it explicitly prohibited workaround or indirect execution. No issue comments or labels were written in this checkpoint.",
-      "remaining": "Canonical issue comments remain pending for #46/#48/#50/#51/#52/#53; move:needs-decision label is absent on #48/#51/#53 at latest readback. Do not retry by indirect route; parent will explain the blocked catch-up."
-    },
-    "issue_55": {
-      "state": "open",
-      "comment_ref": 6325192820,
-      "blocker": "Parent reports concrete blockers recorded in this existing comment. Historical local archive recovery is not freshly verified and is not claimed here.",
-      "needs_decision_request": "Parent reports request made; current readback labels empty."
-    },
-    "issue_417": "Open and incomplete; PR #619 cache fix does not complete shared verification acceptance.",
-    "historical_pr_census": "No fresh census; prior counts remain historical.",
-    "inventory_rows": 415,
-    "main_registered_schedules": 65,
-    "all_schedules_default_stopped": true,
-    "row_structured_exact_head_review_plus_local_run_bundle": 5,
-    "code_merged_issue_open_acceptance_gated_rows": 52,
-    "no_issue_closure_or_release_acceptance": true,
-    "no_source_gate_reruns": true,
-    "issue_58": {
-      "state": "open",
-      "pr": 625,
-      "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
-      "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-      "review": 5605504298,
-      "schedule": "usace_dry_docks_draft_refresh_schedule",
-      "issue_comment": "None observed in current issue readback; no comment written in this checkpoint.",
-      "acceptance": "Pending source release date, historical baseline, schema/ID, coverage and rights decisions."
-    },
-    "source_pr_status_confirmation": "Root live readback: #612, #616, #620, #621, #622, #624 and #625 all state=closed, merged=true; dataset issue states remain open."
+    "open_pr_census": null,
+    "all_inventory_rows_preserved": 415,
+    "production_publication": false
   },
   "pr_search_snapshot_records": [
     {
@@ -16018,190 +16311,94 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-21T20:03:04Z",
-    "source": "Parent merge confirmation and named GitHub readbacks for main, PRs #623/#624/#625 and source PRs #612/#616/#620/#621/#622/#624/#625; issues #46/#48/#50/#51/#52/#53/#55 read; no 415-item census or source reruns.",
-    "scope_note": "All 415 inventory rows remain preserved. PR #623 integrated five reviewed pipelines; PR #624/#53 and PR #625/#58 are now merged. Current main has 65 registered dataset schedules, all STOPPED. The named issues remain OPEN; source PR merges and code registration are not source acceptance or release approval. No production publication is claimed.",
-    "main_latest": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-    "main_tree": "896ccfe49366b817716f4c59dd77b18c120ef771",
-    "integration_623": {
-      "pr": 623,
+    "recorded_at": "2026-10-21T21:02:00Z",
+    "source": "Parent main merge confirmation and named PR #638 readback; no global 415 census.",
+    "main_latest": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+    "integration_638": {
+      "pr": 638,
       "state": "closed_merged",
-      "head": "eeeedfb38983c0fc45c55d1b9b890ff00bdffd34",
-      "merge_commit": "4d3d5c27f9ac11036933eb1b04f4d68fc6ac6954",
-      "tree": "c75ef35d3b51b77d83bca27b81b60e079425065d",
-      "base": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
-      "review": 5605409998,
-      "ci_run": 39665552929,
-      "ci_build_job": 119449509562,
-      "ci": "build success; publish skipped",
-      "source_prs": [
-        612,
-        616,
-        620,
-        621,
-        622
+      "merge_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+      "review": 5606143080,
+      "ci_job": 119481280069,
+      "ci": "passed; publish skipped",
+      "registered_schedules": 75,
+      "all_stopped": true,
+      "integrated_issue_sources": [
+        {
+          "issue": 63,
+          "pr": 634
+        },
+        {
+          "issue": 65,
+          "pr": 635
+        },
+        {
+          "issue": 66,
+          "pr": 487
+        },
+        {
+          "issue": 369,
+          "pr": 633
+        }
       ],
-      "source_owned_blob_count": 27,
-      "verification": "All five source-head ancestors, 27 owned blobs and additive registration diffs independently verified."
+      "verification": "Source heads preserved as ancestors; final native integration reviewed; no production publication."
     },
-    "direct_merges": {
-      "613": {
-        "issue": 323,
-        "head": "26c2093ec32db1f04e73bec3c2e36d8fc4bbab7f",
-        "merge_commit": "946b766ef28910d7446bf3bd54c4c1ef765ff40c",
-        "review": 5604548785,
-        "issue_state": "open"
-      },
-      "618": {
-        "issue": 49,
-        "head": "2fe68b3f8519e94e77ec32337c0ec357d0ce7b8d",
-        "merge_commit": "b7402c556ee271581342f38d64005324f5fd9771",
-        "review": 5604489645,
-        "issue_state": "open"
-      },
-      "624": {
-        "issue": 53,
-        "head": "f93968b847a804552bddf0efa66f017327beec47",
-        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
-        "review": 5605449621,
-        "ci_build_job": 119450725225,
-        "ci": "build success; publish skipped",
-        "issue_state": "open"
-      },
-      "625": {
-        "issue": 58,
-        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
-        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-        "review": 5605504298,
-        "ci": "passed",
-        "issue_state": "open",
-        "schedule": "usace_dry_docks_draft_refresh_schedule"
-      }
+    "previous_checkpoint_through_632": {
+      "main": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+      "tree": "939a2ecbefb35ee93902c469598900cac680aa17",
+      "schedules": 71,
+      "review": 5605850836,
+      "ci_job": 119468792081
     },
-    "shared_cache_fix": {
-      "pr": 619,
-      "head": "224fd7d5ff6e218f226b135ad4e63895a3bf9844",
-      "merge_commit": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
-      "review": 5605325702,
-      "scope": "Validated release-metadata source-cache compatibility; issue #417 remains incomplete."
+    "issue_61": {
+      "state": "open",
+      "comment": 6325545654,
+      "evidence_sha256": "5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548",
+      "decision_required": "Archive/crosswalk anonymous access blocked; community source lineage and rights unaccepted."
     },
-    "source_prs_auto_merged": [
+    "issue_62": {
+      "state": "open",
+      "comment": 6325585454,
+      "evidence_sha256": "fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc",
+      "decision_required": "Archived payload access blocked; community source lineage and historical equivalence unverified."
+    },
+    "issue_comments_after_632": [
       {
-        "issue": 46,
-        "pr": 612,
-        "head": "3d8b6f03c2d226e68dfee6dd4d25301537877556",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 54,
+        "comment": 6326307673
       },
       {
-        "issue": 48,
-        "pr": 616,
-        "head": "7e40592c3be076a2d8e12d3a6fdff117e341ae1b",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 57,
+        "comment": 6326308487
       },
       {
-        "issue": 50,
-        "pr": 620,
-        "head": "4aef57a7009342e625a51f2453f32410fd62b757",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 59,
+        "comment": 6326309340
       },
       {
-        "issue": 51,
-        "pr": 622,
-        "head": "33493fb15ce5bc93a1224666f0eb86ede688a1d6",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
+        "issue": 60,
+        "comment": 6326310150
       },
       {
-        "issue": 52,
-        "pr": 621,
-        "head": "36a73aab7934856a59cc8f0c366f42cbf54c14e6",
-        "state": "closed_merged",
-        "merged_via": "PR #623 ancestry",
-        "issue_state": "open"
-      },
-      {
-        "issue": 53,
-        "pr": 624,
-        "head": "f93968b847a804552bddf0efa66f017327beec47",
-        "state": "closed_merged",
-        "merged_via": "direct main merge",
-        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
-        "issue_state": "open"
-      },
-      {
-        "issue": 58,
-        "pr": 625,
-        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
-        "state": "closed_merged",
-        "merged_via": "direct main merge",
-        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-        "review": 5605504298,
-        "issue_state": "open"
+        "issue": 64,
+        "comment": 6326311121
       }
     ],
-    "issues_open": [
-      46,
-      48,
-      50,
-      51,
-      52,
-      53,
-      58
-    ],
-    "needs_decision_label_readbacks": {
-      "46": [
-        "move:needs-decision"
+    "authorized_issue_comment_label_batch": {
+      "issues": [
+        46,
+        48,
+        50,
+        51,
+        52,
+        53
       ],
-      "48": [],
-      "50": [
-        "move:needs-decision"
-      ],
-      "51": [],
-      "52": [
-        "move:needs-decision"
-      ],
-      "53": [],
-      "58": []
+      "status": "completed_successfully",
+      "blocked": false
     },
-    "issue_update_write_status": {
-      "requested": "Add canonical integration comment and move:needs-decision catch-up for #46/#48/#50/#51/#52/#53.",
-      "written": false,
-      "reason": "Automatic review rejected the REST batch as posting internal repository/review/CI metadata and mutating labels without specific authorization for that export; it explicitly prohibited workaround or indirect execution. No issue comments or labels were written in this checkpoint.",
-      "remaining": "Canonical issue comments remain pending for #46/#48/#50/#51/#52/#53; move:needs-decision label is absent on #48/#51/#53 at latest readback. Do not retry by indirect route; parent will explain the blocked catch-up."
-    },
-    "issue_55": {
-      "state": "open",
-      "comment_ref": 6325192820,
-      "blocker": "Parent reports concrete blockers recorded in this existing comment. Historical local archive recovery is not freshly verified and is not claimed here.",
-      "needs_decision_request": "Parent reports request made; current readback labels empty."
-    },
-    "issue_417": "Open and incomplete; PR #619 cache fix does not complete shared verification acceptance.",
-    "historical_pr_census": "No fresh census; prior counts remain historical.",
-    "inventory_rows": 415,
-    "main_registered_schedules": 65,
-    "all_schedules_default_stopped": true,
-    "row_structured_exact_head_review_plus_local_run_bundle": 5,
-    "code_merged_issue_open_acceptance_gated_rows": 52,
-    "no_issue_closure_or_release_acceptance": true,
-    "no_source_gate_reruns": true,
-    "issue_58": {
-      "state": "open",
-      "pr": 625,
-      "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
-      "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
-      "review": 5605504298,
-      "schedule": "usace_dry_docks_draft_refresh_schedule",
-      "issue_comment": "None observed in current issue readback; no comment written in this checkpoint.",
-      "acceptance": "Pending source release date, historical baseline, schema/ID, coverage and rights decisions."
-    },
-    "source_pr_status_confirmation": "Root live readback: #612, #616, #620, #621, #622, #624 and #625 all state=closed, merged=true; dataset issue states remain open."
+    "open_pr_census": null,
+    "all_inventory_rows_preserved": 415,
+    "production_publication": false
   },
   "previous_verified_checkpoint_2026_10_21T1455Z": {
     "recorded_at": "2026-10-21T14:55:39Z",
@@ -17245,9 +17442,9 @@
       "paid_dispatch": "none active at reported poll"
     }
   },
-  "ledger_status_counts_recorded_at": "2026-10-21T20:03:04Z",
-  "main_registered_schedule_count": 65,
-  "main_registered_schedule_issue_count": 65,
+  "ledger_status_counts_recorded_at": "2026-10-21T21:02:00Z",
+  "main_registered_schedule_count": 75,
+  "main_registered_schedule_issue_count": 75,
   "main_registered_schedule_mapping_issues": [
     2,
     3,
@@ -17288,7 +17485,16 @@
     51,
     52,
     53,
+    54,
+    56,
+    57,
     58,
+    59,
+    60,
+    63,
+    64,
+    65,
+    66,
     181,
     253,
     257,
@@ -17313,9 +17519,10 @@
     307,
     323,
     335,
-    363
+    363,
+    369
   ],
-  "main_registered_schedule_default_configuration": "Root independently validated combined Definitions at main afb6dc9f3baff9f5a809b55a5ace12126c167705: 64 unique schedule definitions, all DefaultScheduleStatus.STOPPED; live scheduler status not queried.",
+  "main_registered_schedule_default_configuration": "All 75 unique dataset schedules in main 7bb8146b36731b30e5495ddc3015e8fa09afe194 configure DefaultScheduleStatus.STOPPED; no live scheduler-instance status was queried.",
   "main_registration_snapshot": {
     "main_sha": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
     "definitions_file": "src/dagster_hifld/definitions.py",
@@ -17394,20 +17601,31 @@
       "42": "construction_minerals_draft_schedule",
       "44": "usace_conveyor_areas_draft_schedule",
       "45": "county_subdivisions_draft_refresh_schedule",
-      "47": "usace_crane_locations_draft_schedule",
-      "323": "state_capitols_draft_refresh_schedule",
-      "49": "noaa_dart_draft_refresh_schedule",
       "46": "courthouses_draft_schedule",
+      "47": "usace_crane_locations_draft_schedule",
       "48": "crushed_stone_preservation_schedule",
+      "49": "noaa_dart_draft_refresh_schedule",
       "50": "usace_dam_lines_draft_schedule",
       "51": "usace_data_coverage_areas_draft_schedule",
       "52": "usace_data_quality_areas_draft_schedule",
       "53": "usace_daymark_locations_draft_schedule",
-      "58": "usace_dry_docks_draft_refresh_schedule"
+      "58": "usace_dry_docks_draft_refresh_schedule",
+      "323": "state_capitols_draft_refresh_schedule"
     },
-    "method": "Root verified current main Definitions after PR #625; 65 unique registered schedules, all STOPPED."
+    "method": "Root verified current main Definitions after PR #625; 65 unique registered schedules, all STOPPED.",
+    "main": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+    "tree": "939a2ecbefb35ee93902c469598900cac680aa17",
+    "registered_schedule_count": 75,
+    "registered_schedule_issue_count": 75,
+    "issue_56_schedule": "distance_marks_draft_refresh_schedule",
+    "issue_54_schedule": "usace_depth_areas_draft_refresh_schedule",
+    "issue_57_schedule": "docks_usace_bts_draft_refresh_schedule",
+    "issue_59_schedule": "usace_dumping_ground_areas_draft_schedule",
+    "issue_60_schedule": "usace_dynamic_buoys_draft_schedule",
+    "issue_64_schedule": "census_elementary_school_districts_draft_refresh_schedule",
+    "all_default_stopped": true
   },
-  "current_count_status": "No fresh full census; named PR and issue readbacks only. Historical 14:14 census remains historical; current open-PR total unset.",
+  "current_count_status": "No fresh global 415-row census. Named current main readback: 75 unique STOPPED schedules at 7bb8146b36731b30e5495ddc3015e8fa09afe194; 50 candidate pipelines merged this stretch; open-PR census totals remain unset.",
   "previous_verified_checkpoint_2026_10_21T1717Z": {
     "recorded_at": "2026-10-21T17:17:54Z",
     "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
@@ -19142,14 +19360,11 @@
       "note": "PR #619 cache compatibility fix merged; broader verifier acceptance remains incomplete."
     },
     "needs_decision_label_readbacks": {
-      "323": [
-        "move:needs-decision"
-      ],
-      "49": [],
       "46": [
         "move:needs-decision"
       ],
       "48": [],
+      "49": [],
       "50": [
         "move:needs-decision"
       ],
@@ -19157,6 +19372,9 @@
         "move:needs-decision"
       ],
       "52": [
+        "move:needs-decision"
+      ],
+      "323": [
         "move:needs-decision"
       ]
     },
@@ -19298,14 +19516,11 @@
       "note": "PR #619 cache compatibility fix merged; broader verifier acceptance remains incomplete."
     },
     "needs_decision_label_readbacks": {
-      "323": [
-        "move:needs-decision"
-      ],
-      "49": [],
       "46": [
         "move:needs-decision"
       ],
       "48": [],
+      "49": [],
       "50": [
         "move:needs-decision"
       ],
@@ -19313,6 +19528,9 @@
         "move:needs-decision"
       ],
       "52": [
+        "move:needs-decision"
+      ],
+      "323": [
         "move:needs-decision"
       ]
     },
@@ -19396,14 +19614,11 @@
       53
     ],
     "needs_decision_label_readbacks": {
-      "323": [
-        "move:needs-decision"
-      ],
-      "49": [],
       "46": [
         "move:needs-decision"
       ],
       "48": [],
+      "49": [],
       "50": [
         "move:needs-decision"
       ],
@@ -19414,6 +19629,9 @@
         "move:needs-decision"
       ],
       "53": [
+        "move:needs-decision"
+      ],
+      "323": [
         "move:needs-decision"
       ]
     },
@@ -19492,14 +19710,11 @@
       53
     ],
     "needs_decision_label_readbacks": {
-      "323": [
-        "move:needs-decision"
-      ],
-      "49": [],
       "46": [
         "move:needs-decision"
       ],
       "48": [],
+      "49": [],
       "50": [
         "move:needs-decision"
       ],
@@ -19510,6 +19725,9 @@
         "move:needs-decision"
       ],
       "53": [
+        "move:needs-decision"
+      ],
+      "323": [
         "move:needs-decision"
       ]
     },
@@ -19825,5 +20043,377 @@
     "code_merged_issue_open_acceptance_gated_rows": 51,
     "no_issue_closure_or_release_acceptance": true,
     "no_source_gate_reruns": true
+  },
+  "previous_verified_checkpoint_20261021T2001Z": {
+    "recorded_at": "2026-10-21T20:03:04Z",
+    "source": "Parent merge confirmation and named GitHub readbacks for main, PRs #623/#624/#625 and source PRs #612/#616/#620/#621/#622/#624/#625; issues #46/#48/#50/#51/#52/#53/#55 read; no 415-item census or source reruns.",
+    "scope_note": "All 415 inventory rows remain preserved. PR #623 integrated five reviewed pipelines; PR #624/#53 and PR #625/#58 are now merged. Current main has 65 registered dataset schedules, all STOPPED. The named issues remain OPEN; source PR merges and code registration are not source acceptance or release approval. No production publication is claimed.",
+    "main_latest": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+    "main_tree": "896ccfe49366b817716f4c59dd77b18c120ef771",
+    "integration_623": {
+      "pr": 623,
+      "state": "closed_merged",
+      "head": "eeeedfb38983c0fc45c55d1b9b890ff00bdffd34",
+      "merge_commit": "4d3d5c27f9ac11036933eb1b04f4d68fc6ac6954",
+      "tree": "c75ef35d3b51b77d83bca27b81b60e079425065d",
+      "base": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
+      "review": 5605409998,
+      "ci_run": 39665552929,
+      "ci_build_job": 119449509562,
+      "ci": "build success; publish skipped",
+      "source_prs": [
+        612,
+        616,
+        620,
+        621,
+        622
+      ],
+      "source_owned_blob_count": 27,
+      "verification": "All five source-head ancestors, 27 owned blobs and additive registration diffs independently verified."
+    },
+    "direct_merges": {
+      "613": {
+        "issue": 323,
+        "head": "26c2093ec32db1f04e73bec3c2e36d8fc4bbab7f",
+        "merge_commit": "946b766ef28910d7446bf3bd54c4c1ef765ff40c",
+        "review": 5604548785,
+        "issue_state": "open"
+      },
+      "618": {
+        "issue": 49,
+        "head": "2fe68b3f8519e94e77ec32337c0ec357d0ce7b8d",
+        "merge_commit": "b7402c556ee271581342f38d64005324f5fd9771",
+        "review": 5604489645,
+        "issue_state": "open"
+      },
+      "624": {
+        "issue": 53,
+        "head": "f93968b847a804552bddf0efa66f017327beec47",
+        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
+        "review": 5605449621,
+        "ci_build_job": 119450725225,
+        "ci": "build success; publish skipped",
+        "issue_state": "open"
+      },
+      "625": {
+        "issue": 58,
+        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
+        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+        "review": 5605504298,
+        "ci": "passed",
+        "issue_state": "open",
+        "schedule": "usace_dry_docks_draft_refresh_schedule"
+      }
+    },
+    "shared_cache_fix": {
+      "pr": 619,
+      "head": "224fd7d5ff6e218f226b135ad4e63895a3bf9844",
+      "merge_commit": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
+      "review": 5605325702,
+      "scope": "Validated release-metadata source-cache compatibility; issue #417 remains incomplete."
+    },
+    "source_prs_auto_merged": [
+      {
+        "issue": 46,
+        "pr": 612,
+        "head": "3d8b6f03c2d226e68dfee6dd4d25301537877556",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 48,
+        "pr": 616,
+        "head": "7e40592c3be076a2d8e12d3a6fdff117e341ae1b",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 50,
+        "pr": 620,
+        "head": "4aef57a7009342e625a51f2453f32410fd62b757",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 51,
+        "pr": 622,
+        "head": "33493fb15ce5bc93a1224666f0eb86ede688a1d6",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 52,
+        "pr": 621,
+        "head": "36a73aab7934856a59cc8f0c366f42cbf54c14e6",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 53,
+        "pr": 624,
+        "head": "f93968b847a804552bddf0efa66f017327beec47",
+        "state": "closed_merged",
+        "merged_via": "direct main merge",
+        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
+        "issue_state": "open"
+      },
+      {
+        "issue": 58,
+        "pr": 625,
+        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
+        "state": "closed_merged",
+        "merged_via": "direct main merge",
+        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+        "review": 5605504298,
+        "issue_state": "open"
+      }
+    ],
+    "issues_open": [
+      46,
+      48,
+      50,
+      51,
+      52,
+      53,
+      58
+    ],
+    "needs_decision_label_readbacks": {
+      "46": [
+        "move:needs-decision"
+      ],
+      "48": [],
+      "50": [
+        "move:needs-decision"
+      ],
+      "51": [],
+      "52": [
+        "move:needs-decision"
+      ],
+      "53": [],
+      "58": []
+    },
+    "issue_update_write_status": {
+      "requested": "Add canonical integration comment and move:needs-decision catch-up for #46/#48/#50/#51/#52/#53.",
+      "written": false,
+      "reason": "Automatic review rejected the REST batch as posting internal repository/review/CI metadata and mutating labels without specific authorization for that export; it explicitly prohibited workaround or indirect execution. No issue comments or labels were written in this checkpoint.",
+      "remaining": "Canonical issue comments remain pending for #46/#48/#50/#51/#52/#53; move:needs-decision label is absent on #48/#51/#53 at latest readback. Do not retry by indirect route; parent will explain the blocked catch-up."
+    },
+    "issue_55": {
+      "state": "open",
+      "comment_ref": 6325192820,
+      "blocker": "Parent reports concrete blockers recorded in this existing comment. Historical local archive recovery is not freshly verified and is not claimed here.",
+      "needs_decision_request": "Parent reports request made; current readback labels empty."
+    },
+    "issue_417": "Open and incomplete; PR #619 cache fix does not complete shared verification acceptance.",
+    "historical_pr_census": "No fresh census; prior counts remain historical.",
+    "inventory_rows": 415,
+    "main_registered_schedules": 65,
+    "all_schedules_default_stopped": true,
+    "row_structured_exact_head_review_plus_local_run_bundle": 5,
+    "code_merged_issue_open_acceptance_gated_rows": 52,
+    "no_issue_closure_or_release_acceptance": true,
+    "no_source_gate_reruns": true,
+    "issue_58": {
+      "state": "open",
+      "pr": 625,
+      "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
+      "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+      "review": 5605504298,
+      "schedule": "usace_dry_docks_draft_refresh_schedule",
+      "issue_comment": "None observed in current issue readback; no comment written in this checkpoint.",
+      "acceptance": "Pending source release date, historical baseline, schema/ID, coverage and rights decisions."
+    },
+    "source_pr_status_confirmation": "Root live readback: #612, #616, #620, #621, #622, #624 and #625 all state=closed, merged=true; dataset issue states remain open."
+  },
+  "previous_evidence_update_20261021T2001Z": {
+    "recorded_at": "2026-10-21T20:03:04Z",
+    "source": "Parent merge confirmation and named GitHub readbacks for main, PRs #623/#624/#625 and source PRs #612/#616/#620/#621/#622/#624/#625; issues #46/#48/#50/#51/#52/#53/#55 read; no 415-item census or source reruns.",
+    "scope_note": "All 415 inventory rows remain preserved. PR #623 integrated five reviewed pipelines; PR #624/#53 and PR #625/#58 are now merged. Current main has 65 registered dataset schedules, all STOPPED. The named issues remain OPEN; source PR merges and code registration are not source acceptance or release approval. No production publication is claimed.",
+    "main_latest": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+    "main_tree": "896ccfe49366b817716f4c59dd77b18c120ef771",
+    "integration_623": {
+      "pr": 623,
+      "state": "closed_merged",
+      "head": "eeeedfb38983c0fc45c55d1b9b890ff00bdffd34",
+      "merge_commit": "4d3d5c27f9ac11036933eb1b04f4d68fc6ac6954",
+      "tree": "c75ef35d3b51b77d83bca27b81b60e079425065d",
+      "base": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
+      "review": 5605409998,
+      "ci_run": 39665552929,
+      "ci_build_job": 119449509562,
+      "ci": "build success; publish skipped",
+      "source_prs": [
+        612,
+        616,
+        620,
+        621,
+        622
+      ],
+      "source_owned_blob_count": 27,
+      "verification": "All five source-head ancestors, 27 owned blobs and additive registration diffs independently verified."
+    },
+    "direct_merges": {
+      "613": {
+        "issue": 323,
+        "head": "26c2093ec32db1f04e73bec3c2e36d8fc4bbab7f",
+        "merge_commit": "946b766ef28910d7446bf3bd54c4c1ef765ff40c",
+        "review": 5604548785,
+        "issue_state": "open"
+      },
+      "618": {
+        "issue": 49,
+        "head": "2fe68b3f8519e94e77ec32337c0ec357d0ce7b8d",
+        "merge_commit": "b7402c556ee271581342f38d64005324f5fd9771",
+        "review": 5604489645,
+        "issue_state": "open"
+      },
+      "624": {
+        "issue": 53,
+        "head": "f93968b847a804552bddf0efa66f017327beec47",
+        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
+        "review": 5605449621,
+        "ci_build_job": 119450725225,
+        "ci": "build success; publish skipped",
+        "issue_state": "open"
+      },
+      "625": {
+        "issue": 58,
+        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
+        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+        "review": 5605504298,
+        "ci": "passed",
+        "issue_state": "open",
+        "schedule": "usace_dry_docks_draft_refresh_schedule"
+      }
+    },
+    "shared_cache_fix": {
+      "pr": 619,
+      "head": "224fd7d5ff6e218f226b135ad4e63895a3bf9844",
+      "merge_commit": "658fc884d3dc6c504f4202a141c926eac6d0ef6b",
+      "review": 5605325702,
+      "scope": "Validated release-metadata source-cache compatibility; issue #417 remains incomplete."
+    },
+    "source_prs_auto_merged": [
+      {
+        "issue": 46,
+        "pr": 612,
+        "head": "3d8b6f03c2d226e68dfee6dd4d25301537877556",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 48,
+        "pr": 616,
+        "head": "7e40592c3be076a2d8e12d3a6fdff117e341ae1b",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 50,
+        "pr": 620,
+        "head": "4aef57a7009342e625a51f2453f32410fd62b757",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 51,
+        "pr": 622,
+        "head": "33493fb15ce5bc93a1224666f0eb86ede688a1d6",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 52,
+        "pr": 621,
+        "head": "36a73aab7934856a59cc8f0c366f42cbf54c14e6",
+        "state": "closed_merged",
+        "merged_via": "PR #623 ancestry",
+        "issue_state": "open"
+      },
+      {
+        "issue": 53,
+        "pr": 624,
+        "head": "f93968b847a804552bddf0efa66f017327beec47",
+        "state": "closed_merged",
+        "merged_via": "direct main merge",
+        "merge_commit": "afb6dc9f3baff9f5a809b55a5ace12126c167705",
+        "issue_state": "open"
+      },
+      {
+        "issue": 58,
+        "pr": 625,
+        "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
+        "state": "closed_merged",
+        "merged_via": "direct main merge",
+        "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+        "review": 5605504298,
+        "issue_state": "open"
+      }
+    ],
+    "issues_open": [
+      46,
+      48,
+      50,
+      51,
+      52,
+      53,
+      58
+    ],
+    "needs_decision_label_readbacks": {
+      "46": [
+        "move:needs-decision"
+      ],
+      "48": [],
+      "50": [
+        "move:needs-decision"
+      ],
+      "51": [],
+      "52": [
+        "move:needs-decision"
+      ],
+      "53": [],
+      "58": []
+    },
+    "issue_update_write_status": {
+      "requested": "Add canonical integration comment and move:needs-decision catch-up for #46/#48/#50/#51/#52/#53.",
+      "written": false,
+      "reason": "Automatic review rejected the REST batch as posting internal repository/review/CI metadata and mutating labels without specific authorization for that export; it explicitly prohibited workaround or indirect execution. No issue comments or labels were written in this checkpoint.",
+      "remaining": "Canonical issue comments remain pending for #46/#48/#50/#51/#52/#53; move:needs-decision label is absent on #48/#51/#53 at latest readback. Do not retry by indirect route; parent will explain the blocked catch-up."
+    },
+    "issue_55": {
+      "state": "open",
+      "comment_ref": 6325192820,
+      "blocker": "Parent reports concrete blockers recorded in this existing comment. Historical local archive recovery is not freshly verified and is not claimed here.",
+      "needs_decision_request": "Parent reports request made; current readback labels empty."
+    },
+    "issue_417": "Open and incomplete; PR #619 cache fix does not complete shared verification acceptance.",
+    "historical_pr_census": "No fresh census; prior counts remain historical.",
+    "inventory_rows": 415,
+    "main_registered_schedules": 65,
+    "all_schedules_default_stopped": true,
+    "row_structured_exact_head_review_plus_local_run_bundle": 5,
+    "code_merged_issue_open_acceptance_gated_rows": 52,
+    "no_issue_closure_or_release_acceptance": true,
+    "no_source_gate_reruns": true,
+    "issue_58": {
+      "state": "open",
+      "pr": 625,
+      "head": "2272cb6bfb5085891586f89250dcb7ddc1a54c4c",
+      "merge_commit": "c79bce5f09323a209b54c8921fc7d41285fa24d7",
+      "review": 5605504298,
+      "schedule": "usace_dry_docks_draft_refresh_schedule",
+      "issue_comment": "None observed in current issue readback; no comment written in this checkpoint.",
+      "acceptance": "Pending source release date, historical baseline, schema/ID, coverage and rights decisions."
+    },
+    "source_pr_status_confirmation": "Root live readback: #612, #616, #620, #621, #622, #624 and #625 all state=closed, merged=true; dataset issue states remain open."
   }
 }
