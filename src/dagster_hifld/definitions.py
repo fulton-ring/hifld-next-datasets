@@ -46,6 +46,10 @@ from dagster_hifld.assets.bsee_ocs_platforms import (
     bsee_ocs_platforms_draft_job,
     bsee_ocs_platforms_draft_schedule,
 )
+from dagster_hifld.assets.usace_berths_areas import (
+    usace_berths_areas_complete,
+    usace_berths_areas_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -477,6 +481,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_complete,
         principal_ports_source_complete,
         bsee_ocs_platforms_complete,
+        usace_berths_areas_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -505,6 +510,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
+        usace_berths_areas_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         bsee_ocs_platforms_draft_schedule,
     ],
