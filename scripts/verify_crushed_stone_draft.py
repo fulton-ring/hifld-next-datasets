@@ -18,6 +18,9 @@ for name in ('dagster','staging','published'):(runtime/name).mkdir(parents=True)
 (runtime/'dagster/dagster.yaml').write_text('telemetry:\n  enabled: false\n')
 for key in ('HIFLD_STAGING_BUCKET','HIFLD_DATASETS_BUCKET','KUBERNETES_SERVICE_HOST','HIFLD_RELEASE_APPROVALS'):os.environ.pop(key,None)
 os.environ.update(DAGSTER_HOME=str(runtime/'dagster'),HIFLD_STAGING_DIR=str(runtime/'staging'),HIFLD_DATASETS_DIR=str(runtime/'published'),HIFLD_CRUSHED_STONE_CAPTURE_DIR=str(captures),HIFLD_CRUSHED_STONE_PACKAGE_ID='stanford-cs268nn2622-preservation-as-provided-v1',HIFLD_SHADOW_MANUAL_ONLY='1')
+# This isolated harness supplies a non-routable HTTPS root to satisfy the
+# Portolan HTTPS-link contract; it is not a real public storage endpoint.
+os.environ['HIFLD_PORTOLAN_PUBLIC_ROOT']='https://example.invalid'
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import Definitions,AssetSelection,define_asset_job,DagsterInstance
@@ -82,7 +85,7 @@ with DagsterInstance.get() as instance:
     again=run('complete_native_byte_idempotent_reuse');assert again.output_for_node(asset.op.name)['reused'] and files(root)==before
     instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[prefix])
     for cycle in (1,2):
-        result=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False);errors=record('normal_catalog_'+str(cycle)+'_real_missing_independent_approval',result)
+        result=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False,run_config={'ops':{'publish__release_metadata':{'config':{'version':'v0.0.0-draft'}}}});errors=record('normal_catalog_'+str(cycle)+'_real_missing_independent_approval',result)
         assert not result.success and errors and all('missing_independent_release_approval_registry' in error for error in errors),errors
         assert snap(published)==prior;run('source_after_catalog_'+str(cycle));assert native.read_bytes()==gold
     full=source.acquire(staging,str(captures),source.PACKAGE);table,published_ids,audit=source.inspect_captures(full);source.verify_outputs(root,table,published_ids);assert pq.read_table(native).equals(source.expected_parquet(table),check_metadata=True)
@@ -95,7 +98,7 @@ with DagsterInstance.get() as instance:
     badprefix=prefix+'-synthetic-null-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot);badnative=badroot/f'geoparquet/{source.SLUG}.parquet';badtable=pq.read_table(badnative);values=badtable['geometry'].to_pylist();values[0]=None
     index=badtable.schema.get_field_index('geometry');badtable=badtable.set_column(index,pa.field('geometry',pa.binary(),nullable=True),pa.array(values,pa.binary()));badnative.write_bytes(source.parquet_bytes(badtable))
     badmanifest=json.loads((badroot/'metadata/source_manifest.json').read_bytes());pin=badmanifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0];pin.update(sha256=source.sha256_file(badnative),bytes=badnative.stat().st_size);(badroot/'metadata/source_manifest.json').write_bytes(source.encode(badmanifest));shutil.rmtree(badroot/'metadata/source');(badroot/'metadata/resolved_provenance.json').unlink()
-    instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[badprefix]);result=graph.execute_in_process(instance=instance,partition_key=badprefix,raise_on_error=False);record('synthetic_null_geometry_quality_gate_preserves_prior',result);assert not result.success and any(not check.passed for check in result.get_asset_check_evaluations()) and snap(published)==prior
+    instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[badprefix]);result=graph.execute_in_process(instance=instance,partition_key=badprefix,raise_on_error=False,run_config={'ops':{'publish__release_metadata':{'config':{'version':'v0.0.0-draft'}}}});record('synthetic_null_geometry_quality_gate_preserves_prior',result);assert not result.success and any(not check.passed for check in result.get_asset_check_evaluations()) and snap(published)==prior
     for label in ('unknown_metadata','self_repinned_native_parquet','coforged_original_receipt','missing_original_CAS','all_original_witnesses_missing'):
         ready=json.loads((root/source.READY).read_bytes());restore=None
         if label=='unknown_metadata':(root/'metadata/unexpected.json').write_bytes(b'{"approved":true}');expected='unknown_missing_or_linked_candidate_object'
