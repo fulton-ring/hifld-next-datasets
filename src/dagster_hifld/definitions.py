@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.colleges_universities import (
+    colleges_source_integrity_job,
+    colleges_source_integrity_schedule,
+)
 from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
@@ -27,6 +31,16 @@ from dagster_hifld.assets.usgs import (
 from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_job,
     aiannh_source_integrity_refresh_schedule,
+)
+
+from dagster_hifld.assets.census_consolidated_cities import (
+    concity_source_integrity_job,
+    concity_source_integrity_schedule,
+)
+
+from dagster_hifld.assets.construction_minerals import (
+    construction_minerals_draft_job,
+    construction_minerals_draft_schedule,
 )
 
 from dagster_hifld.assets.bts import (
@@ -217,6 +231,15 @@ from dagster_hifld.assets.census_primary_roads import (
     census_primary_roads_draft_schedule,
 )
 
+from dagster_hifld.assets.census_block_groups import (
+    census_block_groups_source_complete,
+    census_block_groups_draft_schedule,
+)
+from dagster_hifld.assets.census_tracts import (
+    census_tracts_source_complete,
+    census_tracts_draft_job,
+    census_tracts_draft_schedule,
+)
 from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
@@ -261,11 +284,15 @@ from dagster_hifld.assets.census_designated_places import (
     cdp_source_integrity_schedule,
 )
 
-from dagster_hifld.assets.construction_minerals import (
-    construction_minerals_draft_job,
-    construction_minerals_draft_schedule,
+from dagster_hifld.assets.campus_preservation import (
+    campus_historical_full_quality,
+    ornl_campus_historical_integrity_schedule,
+    ornl_campus_historical_reconstruction_job,
 )
-
+from dagster_hifld.assets.combined_statistical_areas import (
+    csa_source_integrity_job,
+    csa_source_integrity_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -665,6 +692,8 @@ defs = Definitions(
         gcca_warehouses_geometry_complete,
         red_cross_headquarters_source_population,
         census_primary_roads_source_complete,
+        census_block_groups_source_complete,
+        census_tracts_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
@@ -690,9 +719,12 @@ defs = Definitions(
         usace_airport_area_complete,
         usace_airport_area_quality,
         usace_airport_area_release,
+        campus_historical_full_quality,
     ],
     jobs=[
+        colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
+        census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
@@ -735,12 +767,18 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
+        ornl_campus_historical_reconstruction_job,
+        csa_source_integrity_job,
+        concity_source_integrity_job,
         construction_minerals_draft_job,
     ],
     schedules=[
+        colleges_source_integrity_schedule,
         usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
         census_primary_roads_draft_schedule,
+        census_block_groups_draft_schedule,
+        census_tracts_draft_schedule,
         usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
@@ -776,6 +814,7 @@ defs = Definitions(
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
+        ornl_campus_historical_integrity_schedule,
         amtrak_draft_refresh_schedule,
         faa_aviation_draft_refresh_schedule,
         ibc_boundary_draft_refresh_schedule,
@@ -784,6 +823,8 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
+        csa_source_integrity_schedule,
+        concity_source_integrity_schedule,
         construction_minerals_draft_schedule,
     ],
     sensors=_configured_sensors(),

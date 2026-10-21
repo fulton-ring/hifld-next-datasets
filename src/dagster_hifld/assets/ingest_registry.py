@@ -12,6 +12,8 @@ from dagster_hifld.assets.noaa import (
 from dagster_hifld.assets.noaa_contiguous import noaa_24nm_contiguous_zone
 from dagster_hifld.assets.census_bureau import census_bureau_aiannh_areas
 from dagster_hifld.assets.census_primary_roads import census_bureau_primary_roads
+from dagster_hifld.assets.census_block_groups import census_bureau_block_groups
+from dagster_hifld.assets.census_tracts import census_bureau_tracts
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
 from dagster_hifld.assets.red_cross import red_cross_american_red_cross_divisions
 from dagster_hifld.assets.arc_regions import arc_regions
@@ -48,6 +50,7 @@ from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_
 from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_current
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
+from dagster_hifld.assets.campus_preservation import ornl_campus_historical_preservation
 
 from dagster_hifld.assets.ibc import ibc_canada_us_border
 from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
@@ -56,13 +59,18 @@ from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.census_designated_places import census_designated_places
 from dagster_hifld.assets.construction_minerals import construction_minerals_preservation_candidate
+from dagster_hifld.assets.colleges_universities import nces_colleges_universities
+from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
+from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
 
 hifld_ingest_assets = [
-    construction_minerals_preservation_candidate,
+    nces_colleges_universities,
     usgs_aquifers,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
+    census_bureau_block_groups,
+    census_bureau_tracts,
     usace_pontoon_areas_usace_ienc,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -108,4 +116,8 @@ hifld_ingest_assets = [
     fws_cbrs_prohibitions,
     fws_cbrs_units,
     census_designated_places,
+    ornl_campus_historical_preservation,
+    census_combined_statistical_areas,
+    census_consolidated_cities,
+    construction_minerals_preservation_candidate,
 ]

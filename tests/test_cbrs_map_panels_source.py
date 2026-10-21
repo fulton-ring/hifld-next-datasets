@@ -15,9 +15,11 @@ from unittest.mock import patch
 
 import pyarrow.parquet as pq
 from dagster import DefaultScheduleStatus
+from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels, fws_cbrs_map_panels_draft_refresh_schedule
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import cbrs_map_panels as s
 
 _CAPTURE_ENV = 'HIFLD_CBRS_MAP_PANELS_TEST_CAPTURE_DIR'
@@ -26,6 +28,25 @@ def captures(): return {n:((CAPTURE/(n+'.body')).read_bytes(),json.loads((CAPTUR
 
 @unittest.skipUnless(os.environ.get(_CAPTURE_ENV), 'complete original CBRS captures opt-in required; see docs/dataset-sources/cbrs-map-panels-1/README.md')
 class PanelsTests(unittest.TestCase):
+    def test_refresh_reuses_candidate_after_registered_catalog_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store=StagingStorageResource(local_dir=tmp)
+            result=s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE)
+            version=result['version']
+            snapshot_source_metadata(store,s.SLUG,s.SLUG,version)
+            resolved=load_resolved_source_manifest(store,s.SLUG,s.SLUG,version)
+            summary=summarize_staged_catalog(store,s.SLUG,s.SLUG,version,s.SLUG,
+                                             source_metadata=resolved.metadata)
+            write_catalog_metadata(store,s.SLUG,s.SLUG,version,
+                                   summary.quality_manifest,summary.data_dictionary)
+            root=Path(tmp,s.SLUG,s.SLUG,version)
+            for relative in ('metadata/quality_manifest.json','metadata/data_dictionary.json',
+                             'metadata/resolved_provenance.json','metadata/source/source_manifest.json'):
+                self.assertTrue((root/relative).is_file(),relative)
+            digest=s.sha((root/'metadata/source_manifest.json').read_bytes())
+            self.assertTrue((root/'metadata/source'/f'version_{digest}_source_manifest.json').is_file())
+            self.assertEqual(s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE),result)
+
     def test_complete_original(self):
         rows,audit,_=s.inspect_source(captures())
         self.assertEqual(len(rows),574);self.assertEqual(audit['invalid_geometry_count'],0)
