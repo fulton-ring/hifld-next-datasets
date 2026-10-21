@@ -10,6 +10,7 @@ from dagster_hifld.assets.noaa import (
 )
 from dagster_hifld.assets.noaa_contiguous import noaa_24nm_contiguous_zone
 from dagster_hifld.assets.census_bureau import census_bureau_aiannh_areas
+from dagster_hifld.assets.census_primary_roads import census_bureau_primary_roads
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
 from dagster_hifld.assets.red_cross import red_cross_american_red_cross_divisions
 from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facilities
@@ -29,6 +30,7 @@ from dagster_hifld.assets.unified_school_districts import census_unified_school_
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
+    census_bureau_primary_roads,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
