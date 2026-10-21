@@ -19,6 +19,10 @@ from dagster_hifld.assets.epa_power_generation import (
     epa_frs_eia_860_power_generation_complete,
     epa_power_generation_draft_schedule,
 )
+from dagster_hifld.assets.census_primary_roads import (
+    census_primary_roads_source_complete,
+    census_primary_roads_draft_schedule,
+)
 from dagster_hifld.assets.usace import (
     usace_administrative_areas_complete,
     usace_administrative_areas_draft_schedule,
@@ -427,9 +431,11 @@ def _configured_sensors():
 defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[*hifld_asset_checks, epa_frs_eia_860_power_generation_complete,
+                  census_primary_roads_source_complete,
                   usace_administrative_areas_complete, usace_navigation_marks_areas_complete,
                   usace_obstruction_lines_complete, usace_overhead_cables_complete],
-    schedules=[epa_power_generation_draft_schedule, usace_administrative_areas_draft_schedule,
+    schedules=[census_primary_roads_draft_schedule, epa_power_generation_draft_schedule,
+               usace_administrative_areas_draft_schedule,
                usace_navigation_marks_areas_draft_schedule, usace_obstruction_lines_draft_schedule,
                usace_overhead_cables_draft_schedule],
     sensors=_configured_sensors(),
