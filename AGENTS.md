@@ -123,6 +123,14 @@ supervisor inspection. Existing PRs retain their actual branch and dependency;
 new implementations start from `codex/cloud-verification-417`. Fork PRs are never
 review candidates. Shared framework gates such as #417 require separate supervision.
 
+Existing work needs a trusted issue/PR association. The implementation handoff
+records `<!-- hifld-agent-pr:v1 issue=282 pr=548 -->` on the assigned issue after
+checking the actual pushed branch/head against the PR. For legacy work, the
+supervisor verifies the relationship and records the same marker before resuming.
+Only matching markers from verified repository writers/admins are accepted;
+public cross-references cannot select a PR. An existing unassociated PR holds
+new work for reconciliation instead of creating a duplicate.
+
 The dispatcher requires a separate `AGENT_CONTROLLER_TOKEN` Actions secret here:
 a fine-grained token owned by `fulton-ring`, selecting **only hifld-next-iac**,
 with **Actions read/write** and automatic metadata access. Its owner must be an
