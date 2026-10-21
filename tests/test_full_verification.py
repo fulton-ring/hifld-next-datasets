@@ -17,7 +17,10 @@ from dagster_hifld.assets.publish import (
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
-from dagster_hifld.release_approval import ReleaseApprovalError, _storage_identity, verifier_implementation_sha256
+from dagster_hifld.release_approval import (
+    ReleaseApprovalError, _direct_jsonl_adapter_code_sha256, _storage_identity,
+    require_release_approval, verifier_implementation_sha256,
+)
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import _merge_manifest_layers, load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.provenance import provenance_projection
@@ -81,11 +84,14 @@ def accepted_fixture(root):
                                baseline_reference=baseline_reference(root / "baseline.jsonl"))
     source.write("synthetic", "points", "vtest", "geojson/source.geojson",
                  json.dumps({"type": "FeatureCollection", "features": [feature()]}).encode())
+    raw_source = source._ensure_prefixed(f"{prefix}/geojson/source.geojson")
+    raw_source_sha = source.sha256_key(raw_source)
+    raw_source_bytes = source.key_size(raw_source)
     manifest = {"schema_version": 1, "processor": "HIFLD Next", "code_commit": "synthetic-only",
                 "transformations": [], "inputs": [{"input_id": "fixture", "producer": "Synthetic Agency",
                 "host": "example.invalid", "role": "producer_publication", "canonical_url": "https://example.invalid/data",
                 "retrieval_url": "https://example.invalid/data", "release_date_unknown_reason": "synthetic",
-                "retrieved_at": "2026-10-19T00:00:00Z", "sha256": sha256_file(candidate), "bytes": candidate.stat().st_size,
+                "retrieved_at": "2026-10-19T00:00:00Z", "sha256": raw_source_sha, "bytes": raw_source_bytes,
                 "license": "synthetic", "attribution": "Synthetic Agency"}]}
     for name, value in (("source_manifest.json", manifest), ("quality_manifest.json", {"quality_check_passed": True}),
                         ("data_dictionary.json", {"agency": "Synthetic Agency", **manifest}),
@@ -105,7 +111,9 @@ def accepted_fixture(root):
              "staged_objects": objects, "published_objects": objects,
              "candidate_comparison_input": {"key": f"{prefix}/metadata/candidate.records.jsonl",
                  "sha256": sha256_file(candidate), "bytes": candidate.stat().st_size, "adapter": report["adapter"],
-                 "derivation": {"code_sha256": "synthetic-fixture-builder", "parameters": {"mode": "reviewed_feature_collection_to_jsonl"},
+                 "derivation": {"code_sha256": _direct_jsonl_adapter_code_sha256(),
+                                "parameters": {"mode": "direct_geojson_feature_collection_to_jsonl_v1",
+                                               "input_order": [f"{prefix}/geojson/source.geojson"]},
                                 "source_objects": {f"{prefix}/geojson/source.geojson": objects[f"{prefix}/geojson/source.geojson"]}}}}
     registry = root / "approvals.json"
     registry.write_text(json.dumps({"schema_version": 1, "releases": [entry]}))
@@ -389,6 +397,44 @@ class ReleaseBoundaryTests(unittest.TestCase):
                     with self.assertRaises(ReleaseApprovalError):
                         _copy_version_files(source, target, "synthetic", "points", "vtest")
                 self.assertEqual(target.list_prefix(), [])
+
+    def test_jsonl_pass_cannot_claim_unaccounted_source_to_output_custody(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source, target, registry = accepted_fixture(root)
+            prior = target.write_key("previous/accepted.bin", b"accepted bytes")
+            before = target.sha256_key(prior)
+            prefix = "synthetic/points/vtest"
+            candidate = root / "staging" / prefix / "metadata/candidate.records.jsonl"
+            baseline = root / "baseline.jsonl"
+            unrelated = [feature("101"), feature("102"), feature("103")]
+            stream(candidate, unrelated)
+            stream(baseline, unrelated)
+            report = compare_full_rows(
+                baseline, candidate, CONTRACT, candidate.parent,
+                baseline_sha256=sha256_file(baseline), candidate_sha256=sha256_file(candidate),
+                baseline_reference=baseline_reference(baseline),
+            )
+            self.assertEqual(report["status"], "pass")
+
+            value = json.loads(registry.read_text())
+            entry = value["releases"][0]
+            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
+            candidate_key = f"{prefix}/metadata/candidate.records.jsonl"
+            entry.update(
+                baseline=report["baseline"], contract_sha256=report["contract_sha256"],
+                report_sha256=objects[f"{prefix}/metadata/baseline_comparison.json"],
+                staged_objects=objects, published_objects=objects,
+            )
+            entry["candidate_comparison_input"].update(
+                sha256=objects[candidate_key], bytes=candidate.stat().st_size,
+            )
+            registry.write_text(json.dumps(value))
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                with self.assertRaisesRegex(ReleaseApprovalError, "jsonl_candidate_feature_differs_from_source"):
+                    require_release_approval(source, target, [(candidate_key, candidate_key)])
+            self.assertEqual(target.sha256_key(prior), before)
+            self.assertEqual(target.list_prefix(), [prior])
 
     def test_storage_resource_subclass_cannot_bypass_release_gate(self):
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):

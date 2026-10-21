@@ -12,12 +12,14 @@ import json
 import os
 import re
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 
 from dagster_hifld.provenance import provenance_projection, validate_provenance
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason, prebuilt_output_keys
 from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, NativeReadLimits, _code_digest, _digest, compare_native_inputs, reader_versions
+from dagster_hifld.validation import _no_duplicate_members, typed_value
 
 
 class ReleaseApprovalError(ValueError):
@@ -208,6 +210,8 @@ def require_release_approval(
                 _require_downloadable_evidence(entry, prefix, field_sidecar)
             if "native_inputs" in report:
                 _require_native_evidence(report, entry, source, prefix)
+            else:
+                _require_executable_jsonl_derivation(entry, source, prefix)
             checked.add(entry_id)
         normalized_source = source._ensure_prefixed(source_key)
         if normalized_source not in snapshots:
@@ -318,6 +322,88 @@ def _require_native_evidence(report: dict, entry: dict, source: StagingStorageRe
             or physical.get("equal") is not equal or (not equal and report.get("status") == "pass")):
         raise ReleaseApprovalError("native_report_physical_schema_unmatched")
     _replay_native_originals(report, entry, source, prefix)
+
+
+def _direct_jsonl_adapter_code_sha256() -> str:
+    """Code pin for the one JSONL custody route this verifier executes itself."""
+    digest = hashlib.sha256()
+    for path in (Path(__file__), Path(__file__).with_name("validation.py")):
+        body = path.read_bytes()
+        digest.update(len(body).to_bytes(8, "big"))
+        digest.update(body)
+    return digest.hexdigest()
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non_finite_json_constant:{value}")
+
+
+def _require_executable_jsonl_derivation(entry: dict, source: StagingStorageResource, prefix: str) -> None:
+    """Verify every JSONL comparison row is a lossless direct source feature.
+
+    This supports ordered concatenation of pinned GeoJSON Feature Collections
+    only. Joins, filters, aggregation and arbitrary normalization need an
+    executable native receipt/lineage adapter; manifest text and row counts
+    alone cannot establish custody.
+    """
+    candidate = entry.get("candidate_comparison_input", {})
+    derivation = candidate.get("derivation", {})
+    params = derivation.get("parameters", {})
+    source_objects = derivation.get("source_objects", {})
+    if (derivation.get("code_sha256") != _direct_jsonl_adapter_code_sha256()
+            or not isinstance(source_objects, dict) or not source_objects
+            or not isinstance(params, dict) or params.get("mode") != "direct_geojson_feature_collection_to_jsonl_v1"):
+        raise ReleaseApprovalError("jsonl_derivation_has_no_executable_accounting")
+    input_order = params.get("input_order")
+    if (set(params) != {"mode", "input_order"} or not isinstance(input_order, list) or not input_order
+            or len(input_order) > 64
+            or len(input_order) != len(set(input_order)) or set(input_order) != set(source_objects)
+            or any(not isinstance(key, str) or not key.endswith(".geojson") for key in input_order)):
+        raise ReleaseApprovalError("jsonl_derivation_input_roster_invalid")
+    dataset_slug, file_slug, version = prefix.split("/")
+    manifest = load_resolved_source_manifest(source, dataset_slug, file_slug, version).metadata
+    if manifest.get("transformations") != []:
+        raise ReleaseApprovalError("jsonl_transform_requires_executable_native_lineage")
+
+    byte_limit = 64 * 1024 * 1024
+    candidate_key = candidate.get("key")
+    if not isinstance(candidate_key, str) or source.key_size(candidate_key) > byte_limit:
+        raise ReleaseApprovalError("jsonl_candidate_exceeds_direct_adapter_budget")
+    candidate_bytes = source.read_key(candidate_key)
+    if hashlib.sha256(candidate_bytes).hexdigest() != candidate.get("sha256") or len(candidate_bytes) != candidate.get("bytes"):
+        raise ReleaseApprovalError("jsonl_candidate_changed_during_lineage_check")
+    consumed_bytes = len(candidate_bytes)
+    candidate_lines = candidate_bytes.splitlines()
+    position = 0
+    try:
+        for key in input_order:
+            if source.key_size(key) > byte_limit:
+                raise ReleaseApprovalError("jsonl_source_exceeds_direct_adapter_budget")
+            body = source.read_key(key)
+            if hashlib.sha256(body).hexdigest() != source_objects[key] or len(body) > byte_limit:
+                raise ReleaseApprovalError("jsonl_source_changed_during_lineage_check")
+            consumed_bytes += len(body)
+            if consumed_bytes > byte_limit:
+                raise ReleaseApprovalError("jsonl_derivation_exceeds_direct_adapter_budget")
+            collection = json.loads(body, parse_float=Decimal, object_pairs_hook=_no_duplicate_members,
+                                    parse_constant=_reject_json_constant)
+            if (not isinstance(collection, dict) or set(collection) != {"type", "features"}
+                    or collection.get("type") != "FeatureCollection" or not isinstance(collection["features"], list)):
+                raise ReleaseApprovalError("jsonl_source_is_not_supported_feature_collection")
+            for feature in collection["features"]:
+                if not isinstance(feature, dict) or set(feature) != {"type", "properties", "geometry"}:
+                    raise ReleaseApprovalError("jsonl_source_feature_has_unsupported_members")
+                if position >= len(candidate_lines) or not candidate_lines[position]:
+                    raise ReleaseApprovalError("jsonl_candidate_omits_source_feature")
+                row = json.loads(candidate_lines[position], parse_float=Decimal,
+                                 object_pairs_hook=_no_duplicate_members, parse_constant=_reject_json_constant)
+                if typed_value(row) != typed_value(feature):
+                    raise ReleaseApprovalError("jsonl_candidate_feature_differs_from_source")
+                position += 1
+        if position != len(candidate_lines):
+            raise ReleaseApprovalError("jsonl_candidate_contains_unaccounted_features")
+    except (ValueError, TypeError, UnicodeDecodeError, RecursionError) as exc:
+        raise ReleaseApprovalError("jsonl_source_to_output_accounting_failed:" + str(exc)) from exc
 
 
 def _replay_native_originals(report: dict, entry: dict, source: StagingStorageResource, prefix: str) -> None:
