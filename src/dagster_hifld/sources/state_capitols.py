@@ -209,7 +209,8 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
 def _validate_metadata(service: dict, layer: dict) -> None:
     if (not str(service.get("serviceDescription", "")).startswith(SERVICE_DESCRIPTION_PREFIX)
             or service.get("mapName") != SERVICE_MAP_NAME
-            or service.get("currentVersion") not in ("11.3", "11.4")):
+            or not (isinstance(service.get("currentVersion"), (int, float))
+                    and abs(service.get("currentVersion") - 11.3) < 1e-9)):
         raise ValueError("official_usgs_service_identity_drift")
     advertised = {(entry.get("id"), entry.get("name")) for entry in service.get("layers", [])}
     if (LAYER_ID, LAYER_NAME) not in advertised:

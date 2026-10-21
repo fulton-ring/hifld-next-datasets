@@ -78,7 +78,7 @@ def fixture_service():
     return {
         "serviceDescription": "USGS Structures from The National Map test",
         "mapName": source.SERVICE_MAP_NAME,
-        "currentVersion": "11.3",
+        "currentVersion": 11.3,
         "layers": [{"id": 6, "name": "State Capitols"},
                    {"id": 41, "name": "State Capitols"}],
     }
