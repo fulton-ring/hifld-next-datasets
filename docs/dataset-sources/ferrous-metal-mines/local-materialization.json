@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-21T22:32:00Z",
+  "fixture": "synthetic preserved producer archive fixture built in-repo by tests/test_ferrous_metal_mines.py builders; the real DataLumos/producer archive is anonymously inaccessible, so no real archive bytes are claimed",
+  "environment": {
+    "dagster_home": "isolated temporary DAGSTER_HOME",
+    "staging": "isolated temporary local staging (HIFLD_STAGING_DIR equivalent resource)",
+    "published": "isolated temporary local published root"
+  },
+  "ingest_run": {
+    "run_id": "c3f11f46-0fb3-41e5-a7c2-da053168e640",
+    "command": "dagster materialize [ingest ferrous-metal-mines asset, blocking check] via DagsterInstance.ephemeral with explicit preserved-capture config",
+    "success": true,
+    "asset_check": "ferrous_metal_mines_population_complete passed",
+    "version": "ved5123c192896a05f3914412ff0facac",
+    "feature_count": 2,
+    "source_record_sha256": "adc44e8566711665766167ad332f7d387419844c2ca7ad0636e297ed3340c4b1",
+    "source_geometry_sha256": "b3669c9da4ee46c35e50731576982f1e28e2baab4b737fbdeb1053fac7911bfd",
+    "source_schema_sha256": "8963152cb6981067681006b0db4561b13df2850fea5742cc17e154fc4c8b742a"
+  },
+  "cache_replay_run": {
+    "run_id": "ee3e1538-6cda-4f34-8856-f356e52688ad",
+    "success": true,
+    "reused": true,
+    "version": "ved5123c192896a05f3914412ff0facac"
+  },
+  "catalog_run": {
+    "run_id": "2ff9d598-783d-4f34-ad05-de1007e8d7ca",
+    "success": true,
+    "publish_partition": "ferrous-metal-mines/ferrous-metal-mines/ved5123c192896a05f3914412ff0facac",
+    "quality_check_passed": true,
+    "spatial_status": "spatial",
+    "null_geometry_count": 0,
+    "unparseable_geometry_count": 0,
+    "native_crs": "NAD83 (EPSG:6269 datum, GRS 1980 ellipsoid)",
+    "attribute_types_preserved": ["decimal128(9,3) LATITUDE", "decimal128(11,3) LONGITUDE"]
+  },
+  "promotion_refusal": {
+    "command": "dagster_hifld.release_approval.require_release_approval(staging, published, geoparquet object pair)",
+    "result": "refused: ReleaseApprovalError: missing_independent_release_approval_registry",
+    "published_inventory_before_and_after": "0 objects; unchanged"
+  },
+  "staged_object_count": 21,
+  "notes": "Real-archive ingestion, real baseline comparison, and coverage/vintage verification remain blocked on the inaccessible DataLumos archive; the draft refresh schedule is defined and stopped."
+}

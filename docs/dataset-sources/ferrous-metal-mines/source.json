@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "inventory_id": "ferrous-metal-mines",
+  "title": "Ferrous Metal Mines",
+  "agency": "US Geological Survey",
+  "source_relationship": "retired producer publication: USGS National Atlas of the United States layer minop3x020 (Minerals Information Team), explicitly legacy and not updated; the producer direct-download archive was removed from dds.cr.usgs.gov and no maintained successor feed is asserted",
+  "source_url": "https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/minop3x020.xml",
+  "original_download_url": "http://dds.cr.usgs.gov/pub/data/nationalatlas/minop3x020_nt00020.tar.gz",
+  "original_download_status_2026-10-21": "404 (https); http returns redirect only; data removed from the live Data Distribution Service",
+  "producer_metadata_document": {
+    "format": "FGDC XML metadata",
+    "bytes": 18347,
+    "sha256": "8302b0f0028247f00d0a96a3b9d537c2e8db712f2425e09a2f1fc1317f94a232",
+    "observed_2026-10-21": "live and byte-pinned in the draft pipeline",
+    "title": "Ferrous Metal Mines - Direct Download",
+    "pubdate": "200512",
+    "publisher": "U.S. Geological Survey, National Atlas of the United States",
+    "horizontal_datum": "North American Datum of 1983",
+    "distribution_format": "Shapefile"
+  },
+  "declared_attributes": ["Minop3x020", "Commodity", "Site_name", "Company_na", "State_loca", "County", "Latitude", "Longitude", "Plant_min"],
+  "historical_crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "relationship": "DHS crosswalk points to the historical HIFLD layer; exact record-level match not established"
+  },
+  "historical_archive": {
+    "repository": "DataLumos / ICPSR",
+    "study_id": "239022",
+    "url": "https://www.datalumos.org/datalumos/project/239022/version/V1/view",
+    "archive_note": "Inventoried HIFLD archive; anonymous HTTP access returns a Cloudflare challenge (403, cf-mitigated: challenge) observed 2026-10-21; no API path bypasses the challenge",
+    "inventory_modification_date": "2024-04-09",
+    "inventory_source_period": "2017-12-18"
+  },
+  "mirrors_checked_2026-10-21": [
+    {
+      "candidate": "Natural Resources Canada open maps ftp (6250_ferrous_metal_mines_2003.zip)",
+      "url": "https://ftp.geogratis.gc.ca/pub/nrcan_rncan/raster/atlas_6_ed/eng/6250_ferrous_metal_mines_2003.zip",
+      "verdict": "third-party raster plates only (JPG/PDF/metadata XML); not the vector layer; not a substitute"
+    },
+    {
+      "candidate": "USGS Mineral Resource Data System (mrdata.usgs.gov)",
+      "verdict": "different producer dataset with different IDs; substitution requires an explicit maintainer decision"
+    }
+  ],
+  "wayback_2026-10-21": "archive.org services returned 'Temporarily Offline'; no usable snapshot fetch was possible during this session",
+  "feature_count": "unknown until an accessible preserved capture is supplied",
+  "proposed_schema_contract": {
+    "status": "draft; maintainer approval required",
+    "dbf_field_roster": ["MINOP3X020", "COMMODITY", "SITE_NAME", "COMPANY_NA", "STATE_LOCA", "COUNTY", "LATITUDE", "LONGITUDE", "PLANT_MIN"],
+    "field_kinds": ["N", "C", "C", "C", "C", "C", "N", "N", "C"],
+    "id_fields": ["MINOP3X020", "source_fid", "source_shp_record_number"],
+    "geometry": "native SHP Point WKB, native CRS from .prj, no reprojection",
+    "numeric_preservation": "fixed-point decimal width/scale from DBF declarations; no float substitution",
+    "unexpected_columns": "any missing, renamed, or extra column fails closed into quarantine"
+  },
+  "pipeline": {
+    "asset_key": "ingest/ferrous-metal-mines/ferrous-metal-mines",
+    "mode": "explicit preserved producer archive capture required; no default fetch, no archive polling",
+    "geoparquet_output": "geoparquet/ferrous-metal-mines.parquet",
+    "release_gates": "approved:false; source/baseline/schema/ID/coverage/rights/mapping/release acceptance all pending"
+  }
+}
