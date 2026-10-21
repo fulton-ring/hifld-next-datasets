@@ -44,6 +44,34 @@ class UsaceAdministrativeAreasTests(unittest.TestCase):
             self.assertNotIn(b"X-Amz-Signature", (root / "bts_pdf.receipt.json").read_bytes())
             self.assertNotIn(b"temporary", (root / "bts_pdf.receipt.json").read_bytes())
 
+    def test_zero_byte_redirect_retains_empty_body_and_wire_with_matching_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = Mock()
+            signed_url = "https://www.arcgis.com/itemdata/folder/7ec/IENC.pdf?temporary=signature"
+            response = httpx.Response(
+                200, stream=httpx.ByteStream(b""),
+                request=httpx.Request("GET", signed_url),
+            )
+            client.stream.return_value = nullcontext(response)
+            body, receipt = _fetch_retry(
+                client,
+                "https://www.arcgis.com/sharing/rest/content/items/7ec/data",
+                root,
+                "bts_pdf",
+                [0],
+                allow_arcgis_item_redirect=True,
+            )
+            self.assertEqual(body, b"")
+            self.assertTrue(receipt["complete_body"])
+            self.assertEqual(receipt["bytes"], 0)
+            self.assertEqual(receipt["sha256"], hashlib.sha256(b"").hexdigest())
+            self.assertEqual(receipt["wire_bytes"], 0)
+            self.assertEqual(receipt["wire_sha256"], hashlib.sha256(b"").hexdigest())
+            self.assertEqual((root / "bts_pdf.body").read_bytes(), b"")
+            self.assertEqual((root / "bts_pdf.wire").read_bytes(), b"")
+            self.assertNotIn(b"temporary", (root / "bts_pdf.receipt.json").read_bytes())
+
     def test_midstream_transport_failure_is_receipted_and_retry_roster_is_sealed(self):
         class BrokenStream(httpx.SyncByteStream):
             def __iter__(self):

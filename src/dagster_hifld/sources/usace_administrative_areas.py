@@ -75,6 +75,10 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
     for path in (body_path, wire_path):
         path.unlink(missing_ok=True)
+        # Streaming callbacks are not invoked for a valid zero-byte response.
+        # Create both artifacts up front so the receipt and digest verification
+        # still describe the exact empty body/wire instead of failing on read.
+        path.write_bytes(b"")
     hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
     sizes = {"body": 0, "wire": 0}
     budget_start=budget[0]
