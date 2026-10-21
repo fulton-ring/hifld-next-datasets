@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.crushed_stone import (
+    crushed_stone_preservation_job,
+    crushed_stone_preservation_schedule,
+)
 from dagster_hifld.assets.colleges_universities import (
     colleges_source_integrity_job,
     colleges_source_integrity_schedule,
@@ -814,6 +818,7 @@ defs = Definitions(
         construction_minerals_draft_job,
         county_subdivisions_draft_refresh_job,
         usace_crane_locations_draft_job,
+        crushed_stone_preservation_job,
     ],
     schedules=[
         colleges_source_integrity_schedule,
@@ -875,6 +880,7 @@ defs = Definitions(
         construction_minerals_draft_schedule,
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
+        crushed_stone_preservation_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

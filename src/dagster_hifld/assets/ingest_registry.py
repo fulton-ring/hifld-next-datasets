@@ -6,6 +6,7 @@ assets are derived automatically from this registry.
 
 from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
+from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -71,6 +72,7 @@ from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 
 hifld_ingest_assets = [
     noaa_current_dart,
+    usgs_crushed_stone_preservation,
     nces_colleges_universities,
     usgs_aquifers,
     noaa_12nm_territorial_sea,
