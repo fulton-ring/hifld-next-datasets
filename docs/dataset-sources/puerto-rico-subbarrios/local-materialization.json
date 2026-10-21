@@ -195,6 +195,33 @@
       "same_populated_fixture_object_count": 20
     },
     "registered_dagster_runs": {
+      "catalog_provenance_replay": {
+        "branch_head": "7a8e4fdff175f14db94688ab35ba32c58b3277b3",
+        "candidate_version": "v851ec1f176c75312848b43135fbd3831",
+        "data_dictionary_processing_code": {
+          "scheme": "sha256-packaged-dagster_hifld-py-v1",
+          "sha256": "9b959680fcc9c6324282f19a3e0ce9eafa5065d024945fb90bbe72ce177cae65"
+        },
+        "data_dictionary_sha256_after": "7df765a84f5c6c4a3c5671657aeb6a547e75d12af0cb71a805b7182ee9bb61a5",
+        "data_dictionary_sha256_before": "a05faa26c250e533d375397b3f015688c59a913ef59407285a38953c0d47bb70",
+        "evidence_path": "/workspace/work/282-clean-evidence/final/catalog-provenance-replay.json",
+        "log_path": "/workspace/work/282-clean-evidence/final/catalog-provenance-replay.log",
+        "no_git_runtime": true,
+        "quality_manifest_sha256": "d172d2e326e7b7eded3dea3ce3e39d2ba11116d3f1893e6d46cc1ca616488b0a",
+        "quality_manifest_unchanged": true,
+        "resolved_provenance_processing_code": {
+          "scheme": "sha256-packaged-dagster_hifld-py-v1",
+          "sha256": "9b959680fcc9c6324282f19a3e0ce9eafa5065d024945fb90bbe72ce177cae65"
+        },
+        "resolved_provenance_sha256_after": "066df2afe21f0912a0cc67e573ef2debe0107fd237818b87e85d9da04249cd72",
+        "resolved_provenance_sha256_before": "171241a91c2404c999893c6b0423b250ce63f2a3d849702d2c102ada17da6c10",
+        "run_id": "c5ce8a6b-4000-45bf-809f-1690c99a3cc0",
+        "success": true,
+        "source_manifest_processing_code": {
+          "scheme": "sha256-packaged-dagster_hifld-py-v1",
+          "sha256": "9b959680fcc9c6324282f19a3e0ce9eafa5065d024945fb90bbe72ce177cae65"
+        }
+      },
       "catalog_and_formats_run_success": false,
       "candidate_prefix": "puerto-rico-subbarrios/puerto-rico-subbarrios/v851ec1f176c75312848b43135fbd3831",
       "candidate_version": "v851ec1f176c75312848b43135fbd3831",
