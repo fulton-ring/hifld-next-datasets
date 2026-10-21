@@ -505,7 +505,9 @@ def capture_private_schools(storage: StagingStorageResource, *, version: str, ca
         "source_schema_sha256": audit["source_schema_sha256"],
         "capture_receipts": {name: receipt for name, receipt in receipts.items()}, "objects": descriptors,
     })
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
+    )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": candidate_version,
             "feature_count": EXPECTED_COUNT, "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
