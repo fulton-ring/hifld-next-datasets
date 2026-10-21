@@ -18,7 +18,8 @@ import shapely
 
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity as shared_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as shared_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "census-tracts-2"
@@ -44,7 +45,7 @@ DOWNSTREAM_METADATA = frozenset({
     "metadata/source/source_manifest.json",
     "metadata/source/data_dictionary.json",
     "metadata/source/quality_manifest.json",
-})
+}) | STAGED_RELEASE_DERIVATIVE_NAMES
 EXPECTED_NAMES = ("OBJECTID", "GEOID", "GEOIDFQ", "NAMELSAD", "ALAND", "AWATER", "INTPTLAT", "INTPTLON", "SHAPE")
 EXPECTED_TYPES = (pa.int64(), pa.string(), pa.string(), pa.string(), pa.float64(), pa.float64(), pa.string(), pa.string(), pa.binary())
 EXPECTED_NATIVE_FIELDS = {
@@ -425,6 +426,14 @@ def _verify_ready_roster(root: Path, *, identity: dict[str, object], fingerprint
     }:
         raise CensusTractsError("existing_candidate_file_roster_incomplete")
     _check_file_roster(root, expected_files)
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    class CandidateStorage:
+        def read_key(self, key): return (root / key.removeprefix(prefix + "/")).read_bytes()
+    try:
+        files = {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()}
+        validate_staged_release_derivatives(CandidateStorage(), prefix, {f"{prefix}/{name}" for name in files})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc:
+        raise CensusTractsError("invalid_staged_release_derivatives") from exc
 
     def read_json(relative: str) -> dict[str, object]:
         try:

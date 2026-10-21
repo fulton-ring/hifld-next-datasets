@@ -40,6 +40,8 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "pylon-areas-usace-ienc"
@@ -655,9 +657,10 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
             "metadata/source/source_manifest.json",
             f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json",
         }
-    allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names}
+    allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names | STAGED_RELEASE_DERIVATIVE_NAMES}
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
+    validate_staged_release_derivatives(storage, prefix, actual_keys)
     for name in snapshot_names:
         key = f"{prefix}/{name}"
         if key not in actual_keys:

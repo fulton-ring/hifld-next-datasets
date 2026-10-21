@@ -40,7 +40,8 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest, prebuil
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 
 SLUG = 'cbrs-units-2'
 URL = 'https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip'
@@ -529,7 +530,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
         'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json',
         'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',
-        'metadata/source/version_'+sha((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'}
+        'metadata/source/version_'+sha((root/'metadata/source_manifest.json').read_bytes())+'_source_manifest.json'}|STAGED_RELEASE_DERIVATIVE_NAMES
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise CBRSQuarantineError('linked_candidate_object')
@@ -537,6 +538,8 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     expected=set(ready['objects'])|{'metadata/cbrs_units_candidate_ready.json'}
     if not expected.issubset(actual) or actual-expected-allowed_derivatives:
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CBRSQuarantineError('invalid_staged_release_derivatives') from exc
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     expected_manifest=provenance(cached,identity=identity,prebuilt_body=derive_native_parquet_bytes(rows,audit))
     expected_manifest['processing_fingerprint']=sha(encode(identity))

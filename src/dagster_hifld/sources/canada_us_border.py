@@ -34,7 +34,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
-from dagster_hifld.sources.epa_frs_common import processing_identity as _shared_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as _shared_processing_identity, validate_staged_release_derivatives)
 
 FIDELITY_FILES = ('baseline_comparison.json','baseline_comparison.md','baseline_differences.jsonl','baseline_field_changes.jsonl')
 SLUG = 'canada-and-us-border'
@@ -386,7 +387,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
         'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json',
         'metadata/source/source_manifest.json','metadata/source/data_dictionary.json',
-        'metadata/source/quality_manifest.json',authored_snapshot}
+        'metadata/source/quality_manifest.json',authored_snapshot}|STAGED_RELEASE_DERIVATIVE_NAMES
     for name in ['metadata/source/source_manifest.json',authored_snapshot]:
         if (root/name).exists() and (root/name).read_bytes()!=manifest_body:
             raise BoundaryQuarantineError('cached_authored_manifest_snapshot_differs')
@@ -397,6 +398,8 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     expected=set(ready['objects'])|{'metadata/canada_us_border_candidate_ready.json'}
     if not expected.issubset(actual) or actual-expected-allowed_derivatives:
         raise BoundaryQuarantineError('existing_candidate_unrostered_or_missing_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise BoundaryQuarantineError('invalid_staged_release_derivatives') from exc
     cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in URLS}
     expected_manifest=provenance(cached)
     if any(cached[name][0]!=captures[name][0] for name in URLS):

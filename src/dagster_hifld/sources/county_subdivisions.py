@@ -35,7 +35,8 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 SLUG='county-subdivisions-1'
@@ -332,9 +333,11 @@ def source_payloads(receipt,pointer,identity,audit,manifest):
 def reconcile_cache(storage,target,version,path,audit,identity,pin,original):
     receipt,pointer,manifest=original;expected=source_payloads(receipt,pointer,identity,audit,manifest);names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'};ready=strict_json((target/READY).read_bytes())
     if set(ready)!={'version','approved','processing_fingerprint','source_sha256','objects'} or ready.get('source_sha256')!=SHA256 or ready.get('version')!=version or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise CountySubdivisionQuarantineError('ready_identity_roster_drift')
-    snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json';derived={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json';derived={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}|STAGED_RELEASE_DERIVATIVE_NAMES
     actual={str(p.relative_to(target)) for p in target.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derived) or not (names|{READY}).issubset(actual):raise CountySubdivisionQuarantineError('unknown_or_missing_candidate_object')
+    try: validate_staged_release_derivatives(storage,SLUG+'/'+SLUG+'/'+version,{f'{SLUG}/{SLUG}/{version}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CountySubdivisionQuarantineError('invalid_staged_release_derivatives') from exc
     for n,b in expected.items():
         if (target/n).read_bytes()!=b:raise CountySubdivisionQuarantineError('source_owned_payload_or_wrapper_drift:'+n)
     for n,h in ready['objects'].items():

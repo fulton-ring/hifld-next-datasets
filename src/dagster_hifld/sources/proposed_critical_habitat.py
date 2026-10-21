@@ -32,8 +32,8 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, content_derived_version, processing_identity,
-    write_immutable,
+    STAGED_RELEASE_DERIVATIVE_NAMES, candidate_prefix, content_derived_version,
+    processing_identity, validate_staged_release_derivatives, write_immutable,
 )
 from dagster_hifld.validation import sha256_file
 
@@ -632,12 +632,13 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
         expected_keys={f"{prefix}/{k}" for k in first_objects}
         derived={"metadata/quality_manifest.json","metadata/data_dictionary.json",
                  "metadata/resolved_provenance.json","metadata/source/quality_manifest.json",
-                 "metadata/source/data_dictionary.json","metadata/source/source_manifest.json"}
+                 "metadata/source/data_dictionary.json","metadata/source/source_manifest.json"}|STAGED_RELEASE_DERIVATIVE_NAMES
         source_manifest=first_objects.get("metadata/source_manifest.json")
         if source_manifest:
             derived.add(f"metadata/source/version_{source_manifest['sha256']}_source_manifest.json")
         if not expected_keys <= actual_keys or actual_keys-expected_keys-{f"{prefix}/{x}" for x in derived}:
             raise ValueError("cached_candidate_storage_roster_changed")
+        validate_staged_release_derivatives(storage,prefix,actual_keys)
         for name,descriptor in first_objects.items():
             key=f"{prefix}/{name}"; snapshot=storage.object_snapshot(key)
             if snapshot is None or descriptor != {"bytes":snapshot.size,"sha256":storage.sha256_key(key)} or storage.object_snapshot(key)!=snapshot:

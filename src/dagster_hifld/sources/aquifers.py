@@ -36,7 +36,8 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
-from dagster_hifld.sources.epa_frs_common import processing_identity as package_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as package_processing_identity, validate_staged_release_derivatives)
 
 SLUG = 'aquifers'
 URL = 'https://water.usgs.gov/GIS/dsdl/aquifers_us.zip'
@@ -449,7 +450,7 @@ def validate_cached_candidate(storage: StagingStorageResource, version: str, rec
     authored_snapshot='metadata/source/version_'+sha(authored_body)+'_source_manifest.json'
     downstream = {authored_snapshot, 'metadata/resolved_provenance.json', 'metadata/data_dictionary.json', 'metadata/quality_manifest.json',
                   'metadata/source/source_manifest.json',
-                  'metadata/source/data_dictionary.json', 'metadata/source/quality_manifest.json'}
+                  'metadata/source/data_dictionary.json', 'metadata/source/quality_manifest.json'} | STAGED_RELEASE_DERIVATIVE_NAMES
     present = set()
     for item in path.rglob('*'):
         if item.is_symlink():
@@ -462,6 +463,8 @@ def validate_cached_candidate(storage: StagingStorageResource, version: str, rec
             or present - names - {marker} - downstream or ready.get('version') != version
             or ready.get('status') != 'working_draft_candidate_ready'):
         raise AquifersQuarantineError('existing_candidate_inventory_conflict')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in present})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise AquifersQuarantineError('invalid_staged_release_derivatives') from exc
     for name in ('metadata/source/source_manifest.json',authored_snapshot):
         if name in present and storage.read_key(f'{prefix}/{name}')!=authored_body:
             raise AquifersQuarantineError('cached_authored_manifest_snapshot_drift')

@@ -35,7 +35,8 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import processing_identity as shared_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as shared_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 SLUG='census-designated-places'
@@ -273,8 +274,10 @@ def reconcile_cache(storage,prefix,version,path,table,audit,receipt,identity,par
     if ready.get('version')!=version or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise CDPQuarantineError('ready_identity_or_source_owned_roster_drift')
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'
-    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}|STAGED_RELEASE_DERIVATIVE_NAMES
     if actual-(names|{READY}|derivatives) or not (names|{READY}).issubset(actual) or any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise CDPQuarantineError('unknown_missing_or_aliased_candidate_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CDPQuarantineError('invalid_staged_release_derivatives') from exc
     for name,body in expected.items():
         if (root/name).read_bytes()!=body:raise CDPQuarantineError('source_owned_report_wrapper_placeholder_or_provenance_drift:'+name)
     for name,pin in ready['objects'].items():

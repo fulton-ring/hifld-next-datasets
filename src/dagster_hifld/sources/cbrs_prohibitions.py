@@ -39,7 +39,8 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 
 SLUG = 'cbrs-prohibitions-1'
 URL = 'https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip'
@@ -440,7 +441,7 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     hashed_snapshot=f'metadata/source/version_{sha(canonical_manifest)}_source_manifest.json'
     allowed_derivatives={hashed_snapshot,'metadata/resolved_provenance.json','metadata/quality_manifest.json','metadata/data_dictionary.json',
         'metadata/geoparquet_layout.json','metadata/source/source_manifest.json',
-        'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}
+        'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}|STAGED_RELEASE_DERIVATIVE_NAMES
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise CBRSQuarantineError('linked_candidate_object')
@@ -466,6 +467,8 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
     validate_release_provenance(manifest)
     if not expected.issubset(actual) or actual-expected-allowed_derivatives:
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CBRSQuarantineError('invalid_staged_release_derivatives') from exc
     hashed_manifest=root/hashed_snapshot
     if hashed_manifest.exists() and hashed_manifest.read_bytes()!=canonical_manifest:
         raise CBRSQuarantineError('cached_hashed_provenance_snapshot_differs')

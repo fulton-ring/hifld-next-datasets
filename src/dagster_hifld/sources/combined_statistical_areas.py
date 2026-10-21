@@ -29,7 +29,8 @@ import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 SLUG = 'combined-statistical-areas-3'
@@ -300,9 +301,14 @@ def validate_cached_candidate_inventory(root,expected):
     downstream={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json',
         'metadata/resolved_provenance.json','metadata/source/source_manifest.json',
         'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',
-        manifest_snapshot,f'geoparquet/{SLUG}.parquet'}
+        manifest_snapshot,f'geoparquet/{SLUG}.parquet'} | STAGED_RELEASE_DERIVATIVE_NAMES
     if source_actual!=expected or actual-expected-downstream or any(p.is_symlink() for p in root.rglob('*')):
         raise CSAQuarantineError('immutable_candidate_inventory_conflict')
+    prefix=f'{SLUG}/{SLUG}/{root.name}'
+    class CandidateStorage:
+        def read_key(self,key): return (root/key.removeprefix(prefix+'/')).read_bytes()
+    try: validate_staged_release_derivatives(CandidateStorage(),prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CSAQuarantineError('invalid_staged_release_derivatives') from exc
     for snapshot in ('metadata/source/source_manifest.json',manifest_snapshot):
         path=root/snapshot
         if path.exists() and (not path.is_file() or path.read_bytes()!=authored_manifest):
