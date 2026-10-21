@@ -5,6 +5,7 @@ assets are derived automatically from this registry.
 """
 
 from dagster_hifld.assets.usgs import usgs_aquifers
+from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
@@ -98,6 +99,7 @@ from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 
 hifld_ingest_assets = [
+    fema_regional_offices,
     epa_eez,
     epa_regions_with_eez,
     epa_large_scale_regions,
