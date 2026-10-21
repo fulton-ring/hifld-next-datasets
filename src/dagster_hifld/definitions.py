@@ -152,6 +152,11 @@ from dagster_hifld.assets.usace_berths_areas import (
     usace_berths_areas_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_dry_docks import (
+    usace_dry_docks_complete,
+    usace_dry_docks_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_pipeline_areas import (
     usace_pipeline_areas_complete,
     usace_pipeline_areas_draft_job,
@@ -765,6 +770,7 @@ defs = Definitions(
         usace_dam_lines_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
+        usace_dry_docks_complete,
         us_county_boundaries_source_complete,
         usace_pontoon_areas_complete,
         plate_boundaries_population_complete,
@@ -876,6 +882,7 @@ defs = Definitions(
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
+        usace_dry_docks_draft_schedule,
         us_county_boundaries_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
