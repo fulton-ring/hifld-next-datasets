@@ -52,6 +52,13 @@ ARROW_TYPES = {
     "esriFieldTypeDate": pa.timestamp("ms", tz="UTC"),
     "esriFieldTypeDouble": pa.float64(), "esriFieldTypeSingle": pa.float32(),
 }
+ESRI_TO_ARROW_TYPE = {
+    "esriFieldTypeOID": "int64", "esriFieldTypeInteger": "int64",
+    "esriFieldTypeSmallInteger": "int32", "esriFieldTypeString": "string",
+    "esriFieldTypeGUID": "string", "esriFieldTypeGlobalID": "string",
+    "esriFieldTypeDate": "timestamp[ms, UTC]", "esriFieldTypeDouble": "float64",
+    "esriFieldTypeSingle": "float32",
+}
 
 
 def _canonical(value: object) -> bytes:
@@ -122,6 +129,39 @@ def _sr(value: object, label: str) -> None:
         raise ValueError("courthouses_spatial_reference_drift:" + label)
 
 
+def _validate_page_metadata(page: dict, label: str) -> None:
+    if page.get("geometryType") != "esriGeometryPoint":
+        raise ValueError("courthouses_page_geometry_type_drift:" + label)
+    _sr(page.get("spatialReference"), "page:" + label)
+
+
+def _validate_point_geometry(geometry: object) -> None:
+    if not isinstance(geometry, dict):
+        raise ValueError("courthouses_point_geometry_drift")
+    if "z" in geometry or "m" in geometry:
+        raise ValueError("courthouses_unhandled_z_or_m_ordinate")
+    if set(geometry) - {"x", "y", "spatialReference"}:
+        raise ValueError("courthouses_point_geometry_drift")
+    if type(geometry.get("x")) not in (int, float) or type(geometry.get("y")) not in (int, float):
+        raise ValueError("courthouses_point_geometry_drift")
+    if not math.isfinite(geometry["x"]) or not math.isfinite(geometry["y"]):
+        raise ValueError("courthouses_nonfinite_geometry")
+    if geometry.get("spatialReference") is not None:
+        _sr(geometry["spatialReference"], "feature")
+
+
+def _validate_dimensions_probe(probe: dict, expected_oid: int) -> None:
+    _validate_page_metadata(probe, "dimensions_probe")
+    features = probe.get("features")
+    if not isinstance(features, list) or len(features) != 1:
+        raise ValueError("courthouses_dimensions_probe_population_drift")
+    attributes = features[0].get("attributes")
+    if (not isinstance(attributes, dict)
+            or {str(key).upper(): value for key, value in attributes.items()}.get("OBJECTID") != expected_oid):
+        raise ValueError("courthouses_dimensions_probe_population_drift")
+    _validate_point_geometry(features[0].get("geometry"))
+
+
 def _fields(layer: dict) -> list[dict]:
     fields = layer.get("fields")
     if (layer.get("id") != LAYER_ID or layer.get("name") != "Courthouses"
@@ -162,6 +202,12 @@ def _validate_request_scope(name: str, receipt: dict, ids: list[int]) -> None:
     elif name.startswith("ids_"):
         expected_path, expected = urlsplit(LAYER_URL).path + "/query", {
             "where": ["1=1"], "returnIdsOnly": ["true"], "f": ["json"]}
+    elif name == "dimensions_probe":
+        if not ids:
+            raise ValueError("courthouses_dimensions_probe_without_ids")
+        expected_path, expected = urlsplit(LAYER_URL).path + "/query", {
+            "objectIds": [str(ids[0])], "outFields": ["OBJECTID"], "returnGeometry": ["true"],
+            "returnZ": ["true"], "returnM": ["true"], "f": ["json"]}
     elif name.startswith("page_"):
         start = int(name.removeprefix("page_"))
         page_ids = ids[start:start + BATCH_SIZE]
@@ -169,7 +215,8 @@ def _validate_request_scope(name: str, receipt: dict, ids: list[int]) -> None:
             raise ValueError("courthouses_unexpected_page:" + name)
         expected_path, expected = urlsplit(LAYER_URL).path + "/query", {
             "objectIds": [",".join(map(str, page_ids))], "outFields": ["*"],
-            "returnGeometry": ["true"], "orderByFields": ["OBJECTID ASC"], "f": ["json"]}
+            "returnGeometry": ["true"], "returnZ": ["true"], "returnM": ["true"],
+            "orderByFields": ["OBJECTID ASC"], "f": ["json"]}
     else:
         raise ValueError("courthouses_unexpected_capture_name:" + name)
     if parsed.path != expected_path or params != expected:
@@ -196,15 +243,20 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, list[dic
     expected_page_names = {f"page_{start:05d}" for start in range(0, EXPECTED_COUNT, BATCH_SIZE)}
     if {name for name in docs if name.startswith("page_")} != expected_page_names:
         raise ValueError("courthouses_page_receipt_roster_drift")
+    if "dimensions_probe" not in docs:
+        raise ValueError("courthouses_dimensions_probe_missing")
     for name, (_body, receipt) in captures.items():
         _validate_request_scope(name, receipt, ids_before)
+    _validate_dimensions_probe(docs["dimensions_probe"], ids_before[0])
     features = []
     seen = set()
     names = [f["name"] for f in fields]
     bounds = [math.inf, math.inf, -math.inf, -math.inf]
     missing_geometry = []
     for name in sorted(n for n in docs if n.startswith("page_")):
-        rows = docs[name].get("features")
+        page = docs[name]
+        _validate_page_metadata(page, name)
+        rows = page.get("features")
         start = int(name.rsplit("_", 1)[1])
         expected = ids_before[start:start + BATCH_SIZE]
         if not isinstance(rows, list) or len(rows) != len(expected) or docs[name].get("exceededTransferLimit"):
@@ -239,12 +291,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, list[dic
             if geometry is None:
                 missing_geometry.append(oid)
             else:
-                if set(geometry) - {"x", "y", "spatialReference"} or type(geometry.get("x")) not in (int, float) or type(geometry.get("y")) not in (int, float):
-                    raise ValueError("courthouses_point_geometry_drift")
-                if not math.isfinite(geometry["x"]) or not math.isfinite(geometry["y"]):
-                    raise ValueError("courthouses_nonfinite_geometry")
-                if geometry.get("spatialReference") is not None:
-                    _sr(geometry["spatialReference"], "feature")
+                _validate_point_geometry(geometry)
                 bounds[0] = min(bounds[0], geometry["x"]); bounds[1] = min(bounds[1], geometry["y"])
                 bounds[2] = max(bounds[2], geometry["x"]); bounds[3] = max(bounds[3], geometry["y"])
             features.append(feature)
@@ -256,7 +303,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, list[dic
         "record_sha256": _sha(_canonical([f["attributes"] for f in features])),
         "geometry_sha256": _sha(_canonical([f.get("geometry") for f in features])),
         "native_crs": "EPSG:3857", "native_bounds": bounds,
-        "field_names": names,
+        "field_names": names, "source_field_declarations": fields,
         "null_counts": {field["name"]: sum(f["attributes"][field["name"]] is None for f in features) for field in fields},
     }
     return layer, features, audit
@@ -353,11 +400,15 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
                         or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT):
                     raise ValueError("courthouses_initial_id_population_drift")
                 ids = sorted(ids)
+                probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
+                                    "returnZ": "true", "returnM": "true", "f": "json"})
+                captures["dimensions_probe"] = _capture(client, probe_url, root, "dimensions_probe", retained)
+                retained += captures["dimensions_probe"][1]["bytes"] + captures["dimensions_probe"][1]["wire_bytes"]
                 for start in range(0, len(ids), BATCH_SIZE):
                     page_ids = ids[start:start + BATCH_SIZE]
                     name = f"page_{start:05d}"
                     url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*", "returnGeometry": "true",
-                                  "orderByFields": "OBJECTID ASC", "f": "json"})
+                                  "returnZ": "true", "returnM": "true", "orderByFields": "OBJECTID ASC", "f": "json"})
                     captures[name] = _capture(client, url, root, name, retained)
                     retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
                 for name, url in [("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
@@ -396,14 +447,15 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
         "processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],
         "processing_identity":identity,"inputs":inputs,
         "transformations":[{"operation":"Native ArcGIS point feature capture to typed GeoParquet WKB","parameters":{
-            "attributes":"All 19 declared layer attributes retained in native fields and types, including OBJECTID and GLOBALID.",
+            "attributes":"All 19 declared layer attributes retained. Source ESRI declarations are recorded verbatim in source_audit; output Arrow types use the explicit esri_to_arrow_type_mapping below. No schema conversion contract is approved.",
             "geometry":"Native EPSG:3857 points preserved; no reprojection, geocoding, repair, or row dropping.",
             "source_population":"Exact OBJECTID roster and count captured before and after all pages; complete current layer only.",
             "historical_comparison":"DataLumos HIFLD OPEN 2024 archive retrieval returned HTTP 403; no equivalence asserted."}}],
         "lineage":{"layer_id":LAYER_ID,"layer_name":"Courthouses","native_crs":"EPSG:3857","feature_count":EXPECTED_COUNT,
             "source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],"source_record_sha256":audit["record_sha256"],
             "source_geometry_sha256":audit["geometry_sha256"],"service_refresh_observed":service_info.get("copyrightText"),"release_date":None,
-            "hifld_2024_equivalence":"unverified","observed_archive_scope":"USGS and DHS HIFLD OPEN Courthouses, DataLumos V1 (2024 data period); archive access returned 403"},
+            "hifld_2024_equivalence":"unverified","observed_archive_scope":"USGS and DHS HIFLD OPEN Courthouses, DataLumos V1 (2024 data period); archive access returned 403",
+            "esri_to_arrow_type_mapping":{field["type"]:ESRI_TO_ARROW_TYPE[field["type"]] for field in fields}},
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Retains native attributes and EPSG:3857 point geometry.",
             "objects":[{"path":parquet_path,"bytes":len(parquet),"sha256":_sha(parquet)}]}}},
         "unsupported_output_formats":{"geopackage":"No conversion contract approved.","shapefile_zip":"No field conversion contract approved.","pmtiles":"No tiling or release policy approved."},

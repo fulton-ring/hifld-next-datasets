@@ -17,24 +17,30 @@ crosswalk and historical equivalence remain unverified. No equivalence or migrat
 ## Complete current-layer candidate
 
 On 2026-10-21, before and after witnesses agreed on 3,713 features and the complete OBJECTID
-roster. Sixteen bounded service/query responses preserve the service and layer metadata, counts,
+roster. Seventeen bounded service/query responses preserve the service and layer metadata, counts,
 ID rosters, eight pages of 500 or fewer features, decoded bodies, original wire bodies, and
-hash-pinned receipts. The current response JSON lowercases attribute member names even though
+hash-pinned receipts. Each page explicitly requests `returnZ=true` and `returnM=true`; a separate
+one-feature query uses the same flags to verify coordinate dimensionality. The layer metadata
+omits `hasZ` and `hasM`, and the page spatial reference includes `vcsWkid=5703`; the probe response
+contains only `x` and `y`, and the adapter rejects any captured `z` or `m` ordinate. The current
+response JSON lowercases attribute member names even though
 the layer declaration uses uppercase field names; the raw responses retain those exact spellings,
 and the candidate maps those keys to the declared uppercase schema without altering values.
 
 All 19 declared attributes are retained, including OBJECTID, PERMANENT_IDENTIFIER, and GLOBALID.
-All 3,713 native EPSG:3857 points are present. The candidate does not geocode, reproject, repair,
-or drop records. The only processing is typed GeoParquet construction with native WKB points.
+All 3,713 EPSG:3857 points are present. The candidate does not geocode, reproject, repair,
+or drop records. The source ESRI field declarations are retained verbatim in the source audit;
+the GeoParquet output uses the explicit ESRI-to-Arrow mapping in `source.json` and the resolved
+source manifest. No schema conversion contract is approved.
 Parquet readback compares every attribute value and every point WKB against the retained service
 responses. The complete ID, schema, record, and geometry digests are pinned in the audit file.
 Nulls are retained, including ADMINTYPE on every row, SOURCE_FEATUREID on 3,711 rows,
 ADDRESSBUILDINGNAME on 3,691 rows, and GNIS_ID on 3,712 rows.
 
-The current-layer candidate is `v20261021T181055Z` under `courthouses-3/courthouses-3/` in the
+The current-layer candidate is `v20261021T182734Z` under `courthouses-3/courthouses-3/` in the
 isolated evidence staging directory. Its typed GeoParquet is 409,338 bytes with SHA-256
 `805cdc8e26265caa6c905bc10b6134555698a4ab3acb5f4ed1c88d100e6dd8f5`. Replaying the retained
-capture after cataloging produced a separate timestamped candidate with byte-identical source
+capture after cataloging produced `v20261021T182812Z` with byte-identical source
 outputs and no additional network requests. This replay uses immutable writes; it is not a
 cross-run cache claim.
 

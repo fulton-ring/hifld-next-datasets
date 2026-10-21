@@ -2,52 +2,63 @@
   "schema_version": 1,
   "classification": "local isolated draft-candidate materialization; no production publication",
   "source_capture": {
-    "captured_at": "2026-10-21T18:05:44Z to 2026-10-21T18:06:13Z",
-    "capture_directory": "/workspace/work/46-evidence/capture/v20261021T180544Z/e8174c2324c0431494675ee47a03f17e",
-    "capture_manifest": "/workspace/work/46-evidence/capture/v20261021T180544Z/e8174c2324c0431494675ee47a03f17e/capture_manifest.json",
-    "response_count": 16,
+    "captured_at": "2026-10-21T18:21:20Z to 2026-10-21T18:21:56Z",
+    "capture_directory": "/workspace/work/46-evidence/capture/v20261021T182300Z/v20261021T182120Z/8e741b7ccf404c23a060b657aa4140bf",
+    "capture_manifest": "/workspace/work/46-evidence/capture/v20261021T182300Z/v20261021T182120Z/8e741b7ccf404c23a060b657aa4140bf/capture_manifest.json",
+    "capture_manifest_sha256": "77b41586bed218f0fea54f20d18ffd3a906457728f2bdf794464fac72fca200b",
+    "response_count": 17,
     "all_http_status_200": true,
     "decoded_and_wire_bodies_retained": true,
     "feature_count": 3713,
     "source_id_sha256": "74572c24d43b5723c7629a2801a7908893f2cc9f312da75d532c15ca7eab9a74",
     "source_record_sha256": "8dcbd0f3ed5e5dc00b47b21170d0dfc3a4d078d5564453c2435bbd5192bcbebc",
     "source_geometry_sha256": "70c73276c4264ffb63e79b7255aa3e3525d5176698cf1fcecd1252534371e34b",
-    "source_schema_sha256": "b79051d26944526813fb9aa915d12e8063addc736505fc0875cfaea1216a53e1"
+    "source_schema_sha256": "b79051d26944526813fb9aa915d12e8063addc736505fc0875cfaea1216a53e1",
+    "dimensions_probe": "dimensions_probe.body requests returnZ=true and returnM=true; response contains x/y only despite vcsWkid=5703; all 3,713 pages also request both flags and contain no z/m ordinates",
+    "prior_capture_retained": "/workspace/work/46-evidence/capture/v20261021T180544Z/e8174c2324c0431494675ee47a03f17e"
   },
   "final_packaged_runtime": {
     "runtime_package": "/workspace/work/46-evidence/runtime-no-git",
     "git_metadata_present": false,
     "identity_scheme": "sha256-packaged-dagster-hifld-v1",
     "working_tree_status": "unknown",
-    "code_commit": "packaged-sha256:fb1b9985d471a04ad99f30d10ba8010c0e0310e74536e9d018ac1602a44c19dd",
+    "code_commit": "packaged-sha256:e7e71e18d36303289a90aedb6b4fa134da563f95af271cdec9e03ed3950edecf",
     "identity_file_count": 144,
-    "identity_validation": "passed; installed Python/pyarrow/PROJ/GEOS versions were recomputed by the shared validator"
+    "identity_validation": "registered source materialization passed shared validator; installed Python/pyarrow/PROJ/GEOS versions were recomputed",
+    "versions": {
+      "python": "3.12.14",
+      "pyarrow": "23.0.1",
+      "proj": "9.5.1",
+      "geos": "3.13.1"
+    }
   },
   "registered_runs": {
     "source": {
-      "run_id": "d4bcd5a0-32d0-45d5-8e10-a4087f4973e3",
-      "version": "v20261021T181055Z",
+      "run_id": "65bbe407-a353-4540-9989-0503983d66e8",
+      "version": "v20261021T182734Z",
       "status": "SUCCESS",
       "feature_count": 3713,
       "source_population_complete": true,
       "replayed_retained_capture": true
     },
     "catalog_and_quality": {
-      "run_id": "bd42d89b-e9db-40be-b086-b8458a2866af",
-      "version": "v20261021T181055Z",
+      "run_id": "60e55cf6-5b47-41ff-a0a8-6edb054d9ca2",
+      "version": "v20261021T182734Z",
       "status": "SUCCESS",
-      "quality_check_passed": true,
-      "invalid_geometry_count": 0,
-      "null_geometry_count": 0
+      "quality_check_passed": true
     },
     "post_catalog_refresh": {
-      "run_id": "5366b9b1-cb6c-4704-84df-0593870b292c",
-      "version": "v20261021T181135Z",
+      "run_id": "c0bebc24-0d51-4ee8-9d78-d969f3756bbd",
+      "version": "v20261021T182812Z",
       "status": "SUCCESS",
-      "staging_directory": "/tmp/hifld-46-postcatalog",
       "replayed_retained_capture": true,
       "additional_network_requests": 0,
       "source_outputs_unchanged": true
+    },
+    "previous_registered_runs": {
+      "source": "d4bcd5a0-32d0-45d5-8e10-a4087f4973e3",
+      "catalog": "bd42d89b-e9db-40be-b086-b8458a2866af",
+      "post_catalog_refresh": "5366b9b1-cb6c-4704-84df-0593870b292c"
     }
   },
   "release_gate_runs": {
@@ -74,15 +85,21 @@
       "published_inventory_count": 14,
       "published_fixture_receipt": "/workspace/work/46-evidence/gates/published_fixture.json"
     },
-    "scope_note": "Gate graphs used the earlier packaged code identity before final receipt-scope and full readback assertions were added. Native candidate bytes, source hashes, catalog quality logic, verifier, promotion controls, and gate paths were unchanged. Gate run and inventory evidence is retained at /workspace/work/46-evidence/runtime/false_quality_gate.json and /workspace/work/46-evidence/runtime/empty_approval_gate.json."
+    "scope_note": "These registered gate graphs retain the earlier packaged identity and source manifest. No gate rerun was made for this source-only fidelity follow-up. Candidate GeoParquet bytes, catalog quality logic, verifier, promotion controls, and gate definitions are unchanged; the new capture request scope and source manifest mapping are documented in fidelity_followup_final.json. The gate runs and fixture inventory remain at /workspace/work/46-evidence/runtime/false_quality_gate.json, /workspace/work/46-evidence/runtime/empty_approval_gate.json, and /workspace/work/46-evidence/gates/published_fixture.json."
   },
   "candidate_storage": {
-    "source_version_directory": "/workspace/work/46-evidence/staging-no-git/courthouses-3/courthouses-3/v20261021T181055Z",
-    "catalog_quality_manifest": "/workspace/work/46-evidence/staging-no-git/courthouses-3/courthouses-3/v20261021T181055Z/metadata/quality_manifest.json",
-    "post_catalog_source_version_directory": "/tmp/hifld-46-postcatalog/courthouses-3/courthouses-3/v20261021T181135Z",
-    "verification_packet": "/workspace/work/46-evidence/runtime/final_lifecycle_verification.json",
-    "persistent_dagster_home": "/workspace/work/46-evidence/dagster_home"
+    "source_version_directory": "/workspace/work/46-evidence/staging-final/courthouses-3/courthouses-3/v20261021T182734Z",
+    "catalog_quality_manifest": "/workspace/work/46-evidence/staging-final/courthouses-3/courthouses-3/v20261021T182734Z/metadata/quality_manifest.json",
+    "post_catalog_source_version_directory": "/workspace/work/46-evidence/staging-final/courthouses-3/courthouses-3/v20261021T182812Z",
+    "verification_packet": "/workspace/work/46-evidence/runtime/fidelity_followup_final.json",
+    "persistent_dagster_home": "/workspace/work/46-evidence/dagster_home",
+    "ephemeral_materialization_storage": "/tmp/hifld-46-stage-final"
   },
   "production_publication": false,
-  "release_approval_registry": "empty"
+  "release_approval_registry": "empty",
+  "final_fidelity_validation": {
+    "packet": "/workspace/work/46-evidence/runtime/fidelity_followup_final.json",
+    "status": "passed",
+    "focus": "per-page geometryType/spatialReference enforcement, explicit Z/M request and readback, ESRI-to-Arrow mapping provenance, no-Git source/catalog/post-catalog lifecycle"
+  }
 }
