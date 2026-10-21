@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import collections
 import hashlib
-import importlib.metadata
 import io
 import shutil
 import fcntl
@@ -18,7 +17,6 @@ import re
 import sqlite3
 import stat
 import struct
-import subprocess
 import tempfile
 import zipfile
 from dataclasses import asdict
@@ -40,6 +38,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
+from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 
 SLUG = 'cbrs-buffer-zone-1'
 URL = 'https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip'
@@ -218,8 +217,9 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     return captures
 
 
-def provenance(captures: dict) -> dict:
+def provenance(captures: dict, identity: dict | None = None) -> dict:
     # Validate the complete original capture bundle before any canonical candidate writes.
+    identity = identity or processing_identity()
     for name,url in URLS.items(): validate_receipt(*captures[name],url)
     if b'/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip' not in captures['fws_download'][0]:
         raise CBRSQuarantineError('official_distribution_link_changed')
@@ -238,7 +238,8 @@ def provenance(captures: dict) -> dict:
             'lineage':'Producer-hosted full distribution and official supporting pages; not a third-party archive or self-claimed delegation.',
             'authority_evidence':LANDING})
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,
-        'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
+        'code_commit':identity['code_commit'],
+        'code_identity_scheme':identity['code_identity_scheme'],
         'title':'CBRS Buffer Zone — faithful producer-source working draft',
         'publisher':'U.S. Fish and Wildlife Service','agency':'U.S. Fish and Wildlife Service',
         'source_url':LANDING,'license':METADATA,'date_issued':'2024-12-19','inputs':inputs,
@@ -254,14 +255,10 @@ def provenance(captures: dict) -> dict:
 
 
 def processing_identity() -> dict:
-    """Installed source, lock/project, Python, Python distributions and native engines."""
-    root = Path(__file__).parents[3]
-    sources = sorted(root.joinpath('src/dagster_hifld').rglob('*.py'))
-    return {'python': platform.python_version(), 'implementation': platform.python_implementation(),
-            'platform': platform.platform(),
-            'distributions': sorted((d.metadata['Name'], d.version) for d in importlib.metadata.distributions()),
-            'gdal': fiona.__gdal_version__, 'geos': shapely.geos_version_string, 'proj': pyproj.proj_version_str,
-            'files': {str(p.relative_to(root)): sha256_file(p) for p in sources + [root / 'uv.lock', root / 'pyproject.toml']},
+    """Git or explicit installed-package identity plus native processing engines."""
+    identity = packaged_processing_identity(Path(__file__).parents[3])
+    return {**identity, 'implementation': platform.python_implementation(),
+            'platform': platform.platform(), 'gdal': fiona.__gdal_version__,
             'verifier_sha256': verifier_implementation_sha256()}
 
 
@@ -509,7 +506,8 @@ def observed_trust_loss(storage: StagingStorageResource, version: str, fingerpri
 
 
 def original_provenance_bundle(storage: StagingStorageResource, version: str,
-                               captures: dict, manifest: dict, processing_files: dict, *, create: bool=False) -> tuple[dict,dict]:
+                               captures: dict, manifest: dict, processing_files: dict, *,
+                               identity: dict | None = None, create: bool=False) -> tuple[dict,dict]:
     """Pin first construction outside the candidate, under the stable version lock.
 
     Later equal-body observations and docs-only commits cannot rewrite the original
@@ -517,6 +515,7 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
     """
     key=f'_source-provenance/{SLUG}/{version}/bundle.json'
     started=key+'.first-construction.json'
+    identity = identity or processing_identity()
     if not storage.object_exists(key):
         if storage.object_exists(started):
             raise CBRSQuarantineError('missing_original_construction_bundle_after_first_construction')
@@ -524,7 +523,7 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
             raise CBRSQuarantineError('orphaned_original_construction_evidence_without_history')
         if not create:
             raise CBRSQuarantineError('missing_original_construction_provenance_bundle')
-        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files)
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],processing_files,identity=identity)
         bundle={'manifest':manifest,'captures':{name:{
             'body_key':f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',
             'receipt':receipt} for name,(body,receipt) in captures.items()}}
@@ -554,13 +553,13 @@ def original_provenance_bundle(storage: StagingStorageResource, version: str,
         if body!=captures[name][0]:
             raise CBRSQuarantineError('original_construction_capture_bytes_changed')
         original[name]=(body,item['receipt'])
-    expected_manifest=provenance(original)
+    expected_manifest=provenance(original,identity)
     expected_manifest['processing_fingerprint']=manifest['processing_fingerprint']
     actual=bundle['manifest']
     validate_release_provenance(actual)
     if set(actual)!=set(expected_manifest) or any(actual[k]!=v for k,v in expected_manifest.items() if k!='code_commit'):
         raise CBRSQuarantineError('original_construction_manifest_drift')
-    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files)
+    validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],processing_files,identity=identity)
     expected_marker={'schema_version':1,'version':version,
         'processing_fingerprint':actual['processing_fingerprint'],
         'original_bundle_sha256':sha(bundle_body),
@@ -647,7 +646,7 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
             identity=strict_json(payloads['metadata/processing_identity.json'])
             captures={name:(payloads[f'raw/captures/{name}.body'],
                 strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
-            _,original=original_provenance_bundle(storage,ready['version'],captures,manifest,identity['files'],create=True)
+            _,original=original_provenance_bundle(storage,ready['version'],captures,manifest,identity['files'],identity=identity,create=True)
             if original!=manifest:
                 raise CBRSQuarantineError('concurrent_original_construction_manifest_changed')
             os.rename(tmp,target)
@@ -660,12 +659,12 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
     captures = acquire(storage,capture_dir)
     body,receipt = captures['official_zip']
     try:
-        manifest=provenance(captures)
+        identity = processing_identity()
+        manifest=provenance(captures,identity)
         with tempfile.TemporaryDirectory(prefix='cbrs_buffer-source-') as tmp:
             directory = Path(tmp)
             rows, audit, members = inspect_archive(body, directory)
             records = b''.join(encode(r) for r in rows)
-            identity = processing_identity()
             fingerprint = sha(encode(identity))
             capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
             version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
@@ -677,7 +676,7 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                     can_detach=True
                     try:
                         try:
-                            captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
+                            captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'],identity=identity)
                             observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest)
                         except (ValueError,TypeError,KeyError,OSError,RuntimeError):
                             try:observed_trust_loss(storage,version,fingerprint,candidate=target)
@@ -711,10 +710,10 @@ def stage_cbrs_buffer_candidate(storage: StagingStorageResource, *, capture_dir:
                 bundle_key=f'_source-provenance/{SLUG}/{version}/bundle.json'
                 if (storage.object_exists(bundle_key) or storage.object_exists(bundle_key+'.first-construction.json')
                         or storage.list_prefix(bundle_key+'.evidence/') or observed_trust_loss(storage,version,fingerprint)):
-                    captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'])
+                    captures,manifest=original_provenance_bundle(storage,version,captures,manifest,identity['files'],identity=identity)
                     observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest)
                 else:
-                    validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+                    validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
                 body,receipt=captures['official_zip']
             geopackage = directory / f'{SLUG}.gpkg'
             write_native_geopackage(rows,geopackage)

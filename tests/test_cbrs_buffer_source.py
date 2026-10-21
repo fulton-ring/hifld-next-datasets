@@ -112,6 +112,18 @@ class CBRSTests(unittest.TestCase):
                     try:s.stage_cbrs_buffer_candidate(StagingStorageResource(local_dir=d),capture_dir=CAPTURE)
                     finally:self.assertFalse(Path(d,s.SLUG).exists())
 
+    def test_packaged_provenance_identity_is_explicit_without_git(self):
+        captures=self.structural_captures()
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'src').mkdir();shutil.copytree(Path(s.__file__).parents[1],root/'src/dagster_hifld')
+            for name in ('pyproject.toml','uv.lock'):shutil.copy(Path(__file__).parents[1]/name,root/name)
+            self.assertFalse((root/'.git').exists())
+            identity=s.packaged_processing_identity(root)
+            manifest=s.provenance(captures,identity)
+            self.assertEqual(manifest['code_identity_scheme'],'sha256-packaged-dagster-hifld-v1')
+            self.assertEqual(manifest['code_commit'],identity['code_commit'])
+            s.validate_construction_code_identity(root,identity['code_commit'],identity['files'],identity=identity)
+
     def test_strict_json_error_array_nested_duplicate_nonfinite(self):
         for body in [b'[]',b'{"error":{}}',b'{"a":1,"a":2}',b'{"a":{"b":1,"b":2}}',b'{"a":NaN}']:
             with self.assertRaises(ValueError):s.strict_json(body)
@@ -435,7 +447,7 @@ class CBRSTests(unittest.TestCase):
             self.assertTrue(s.observed_trust_loss(storage,version,fingerprint,restored_manifest=manifest))
 
     def test_failed_observed_loss_journal_preserves_untrusted_candidate_on_retries(self):
-        captures=self.structural_captures();identity={'synthetic':True,'files':{}}
+        captures=self.structural_captures();identity={'synthetic':True,'files':{},'code_commit':'fixture','code_identity_scheme':'fixture'}
         fingerprint=s.sha(s.encode(identity));capture_pin=s.sha(s.encode({n:s.sha(body)for n,(body,_)in captures.items()}))
         version='v0.0.0-draft-cbrs20241219-'+capture_pin[:16]+'-'+fingerprint[:16]
         with tempfile.TemporaryDirectory() as d:
