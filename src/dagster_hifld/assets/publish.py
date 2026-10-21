@@ -41,6 +41,10 @@ from dagster_hifld.conversion import (
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.release_approval import require_release_approval
+from dagster_hifld.sources.usace_pylon_locations import (
+    DATASET_SLUG as USACE_PYLON_LOCATIONS_DATASET_SLUG,
+    compare_generated_geoparquet as compare_usace_pylon_locations_geoparquet,
+)
 from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
@@ -1468,7 +1472,11 @@ def publish_geoparquet(
         file_slug,
         version,
     )
-    return _output_for_partition(context, outputs, "geoparquet")
+    output = _output_for_partition(context, outputs, "geoparquet")
+    if dataset_slug == USACE_PYLON_LOCATIONS_DATASET_SLUG:
+        parity = compare_usace_pylon_locations_geoparquet(staging_storage, version)
+        return Output(output.value, metadata={**output.metadata, "native_parity": parity})
+    return output
 
 
 @asset(
