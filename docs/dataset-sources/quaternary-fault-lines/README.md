@@ -16,7 +16,9 @@ cited historical reference, not a verified current source.
 Schema/ID contract, HIFLD archive equivalence, coverage, rights, attribution, and release approval
 remain open. The pipeline is a draft candidate producer only: it preserves every declared attribute
 and raw response body, pins the complete ID/record/geometry/schema digests, and refuses to promote
-on any drift. No production data is published.
+on any drift. New captures use bounded streaming and retain both original wire and decoded response
+bytes plus receipts; the retained 2026 capture predates that path and remains decoded-body-only, with
+no retrofitted or invented wire bytes. No production data is published.
 
 The official USGS Faults page also links a downloadable GIS archive (retrieved 2026-10-21;
 SHA-256 `447eadc5926256710d988c30e5996ba540604caa0154f9746c48bad637926893`). It contains a

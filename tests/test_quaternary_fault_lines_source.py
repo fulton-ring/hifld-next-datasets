@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import httpx
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
@@ -67,6 +68,108 @@ def fixture():
     }
     pages = {"page_000": {"spatialReference": {"wkid": 3857}, "features": features}}
     return ids, layer, pages
+
+
+class DeliveredStream(httpx.SyncByteStream):
+    def __init__(self, blocks, error=None):
+        self.blocks = blocks
+        self.error = error
+        self.reads = 0
+
+    def __iter__(self):
+        for block in self.blocks:
+            self.reads += 1
+            yield block
+        self.reads += 1
+        if self.error is not None:
+            raise self.error
+
+
+class QuaternaryFaultLinesCaptureCustodyTests(unittest.TestCase):
+    def _attempt(self, root, *, blocks, status=200, error=None, retained=0):
+        stream = DeliveredStream(blocks, error)
+        transport = httpx.MockTransport(lambda request: httpx.Response(
+            status, headers={"content-type": "application/json"}, stream=stream,
+        ))
+        root.mkdir(parents=True, exist_ok=True)
+        url = "https://earthquake.usgs.gov/example?f=json"
+        with httpx.Client(transport=transport) as client, self.assertRaisesRegex(
+            ValueError, "incomplete_source_capture"
+        ):
+            source._capture(client, url, root, "page_000", retained)
+        wire = (root / "page_000.wire").read_bytes()
+        body = (root / "page_000.body").read_bytes()
+        receipt = json.loads((root / "page_000.receipt.json").read_bytes())
+        return stream, wire, body, receipt
+
+    def test_non_200_response_body_and_wire_are_retained_before_refusal(self):
+        with TemporaryDirectory() as tmp:
+            payload = b'{"error":"temporarily unavailable"}'
+            _, wire, body, receipt = self._attempt(Path(tmp) / "capture", blocks=[payload], status=503)
+        self.assertEqual(wire, payload)
+        self.assertEqual(body, payload)
+        self.assertEqual(receipt["status"], 503)
+        self.assertTrue(receipt["complete_body"])
+        self.assertEqual(receipt["wire_sha256"], hashlib.sha256(wire).hexdigest())
+        self.assertEqual(receipt["sha256"], hashlib.sha256(body).hexdigest())
+
+    def test_partial_transport_bytes_and_receipt_are_retained_before_refusal(self):
+        with TemporaryDirectory() as tmp:
+            payload = b'{"features":[{"OBJECTID":1}'
+            _, wire, body, receipt = self._attempt(
+                Path(tmp) / "capture", blocks=[payload],
+                error=httpx.ReadError("simulated interrupted response"),
+            )
+        self.assertEqual(wire, payload)
+        self.assertEqual(body, payload)
+        self.assertEqual(receipt["status"], 200)
+        self.assertFalse(receipt["complete_body"])
+        self.assertEqual(receipt["error_code"], "transport_error")
+        self.assertEqual(receipt["wire_sha256"], hashlib.sha256(wire).hexdigest())
+        self.assertEqual(receipt["sha256"], hashlib.sha256(body).hexdigest())
+
+    def test_per_response_limit_preserves_delivered_wire_and_incomplete_receipt(self):
+        with TemporaryDirectory() as tmp, patch.object(source, "MAX_RESPONSE_BYTES", 4):
+            payload = b"oversized-wire-block"
+            _, wire, body, receipt = self._attempt(Path(tmp) / "capture", blocks=[payload])
+        self.assertEqual(wire, payload)
+        self.assertEqual(body, b"")
+        self.assertFalse(receipt["complete_body"])
+        self.assertEqual(receipt["error_code"], "wire_limit_exceeded")
+        self.assertEqual(receipt["wire_bytes"], len(wire))
+
+    def test_cumulative_reservation_stops_before_read_and_persists_failure_receipt(self):
+        with TemporaryDirectory() as tmp, patch.object(source, "MAX_CAPTURE_BYTES", 12):
+            stream, wire, body, receipt = self._attempt(
+                Path(tmp) / "capture", blocks=[b"payload"], retained=12,
+            )
+        self.assertEqual(stream.reads, 0)
+        self.assertEqual((wire, body), (b"", b""))
+        self.assertFalse(receipt["complete_body"])
+        self.assertEqual(receipt["error_code"], "reserve_error")
+
+    def test_new_wire_receipt_replays_and_legacy_decoded_only_capture_stays_legacy(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "legacy.body").write_bytes(b"old decoded body")
+            (root / "legacy.receipt.json").write_bytes(json.dumps({
+                "status": 200, "bytes": 16, "sha256": hashlib.sha256(b"old decoded body").hexdigest(),
+            }).encode())
+            body, receipt = source._load_capture(root, "legacy")
+            self.assertEqual(body, b"old decoded body")
+            self.assertNotIn("wire_bytes", receipt)
+            (root / "new.body").write_bytes(b"decoded")
+            (root / "new.wire").write_bytes(b"original wire")
+            (root / "new.receipt.json").write_bytes(json.dumps({
+                "status": 200, "bytes": 7, "sha256": hashlib.sha256(b"decoded").hexdigest(),
+                "wire_bytes": 13, "wire_sha256": hashlib.sha256(b"original wire").hexdigest(),
+            }).encode())
+            body, receipt = source._load_capture(root, "new")
+            self.assertEqual(body, b"decoded")
+            self.assertEqual(receipt["wire_bytes"], 13)
+            (root / "new.wire").write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "capture_wire_receipt_invalid"):
+                source._load_capture(root, "new")
 
 
 class QuaternaryFaultLinesSourceTests(unittest.TestCase):

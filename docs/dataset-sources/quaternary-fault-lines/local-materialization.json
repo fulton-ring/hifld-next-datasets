@@ -36,7 +36,7 @@
     "columns_hash": "8a407a194979fabfee3f3c3323088f7ba45e29a99fba29fb90a9f2a5651dab32"
   },
   "checks": {
-    "focused_source_tests": "8 passed (tests.test_quaternary_fault_lines_source)",
+    "focused_source_tests": "35 passed across tests.test_quaternary_fault_lines_source, tests.test_http_capture, and tests.test_usace_overhead_pipeline_lines",
     "registered_ingest_asset_check": "quaternary_fault_lines_population_complete passed; 112809 records and exact ID/record hashes",
     "catalog_asset_check": "quality_manifest passed; 112809 MultiLineString rows; invalid_geometry_count=0; null_geometry_count=0",
     "native_geometry_and_attributes": "exact full population parity against retained API pages; all 25 attribute fields, stable IDs and native XY vertices",
@@ -104,5 +104,26 @@
     "inspection": "SHP Qfaults_US_Database: 112809 EPSG:4326 LineString, 23 truncated DBF attributes, no native OBJECTID, 65743 null section_id; FileGDB Qfaults_2020: 112944 EPSG:4326 MultiLineString, OBJECTID 1-112944, no null geometry, 23 attributes and lacks API archive_pdf.",
     "comparison_packet": "/workspace/work/285-source-audit/source-audit.json",
     "interpretation": "These are distinct official products/variants; matching API and SHP counts do not establish feature parity or HIFLD archive continuity. The API source remains the selected candidate and was not replaced by ZIP/GDB."
+  },
+  "dataset_specific_gate_proof": {
+    "harness": "/workspace/work/285-source-audit/qfl-gate-proof-final",
+    "integration_result": "/workspace/work/285-source-audit/qfl-gate-proof-final/integration_result.json",
+    "quality_failed_candidate_copy": "/workspace/work/285-source-audit/qfl-gate-proof-final/quality-failed/staging/quaternary-fault-lines/quaternary-fault-lines/v20261021T140135Z",
+    "quality_failed_run_id": "4de98fdd-6cf8-46bd-a375-2764e724c213",
+    "quality_failed_check": "registered publish/catalog:quality_manifest check failed on the real 112809-feature candidate copy after only metadata/quality_manifest.json was changed to false; publish__verify and publish__promote did not start",
+    "quality_passing_candidate_copy": "/workspace/work/285-source-audit/qfl-gate-proof-final/approval-refused/staging/quaternary-fault-lines/quaternary-fault-lines/v20261021T140135Z",
+    "approval_refused_run_id": "591aa8de-aab7-480c-a196-b29988b3fb49",
+    "approval_refused_check_and_gate": "registered QFL quality_manifest check passed for 112809 rows; publish__verify started and failed on the external empty approval registry; publish__promote did not start",
+    "external_approval_registry": "/workspace/work/285-source-audit/qfl-gate-proof-final/empty-external-approval-registry.json (schema_version 1, releases [])",
+    "published_fixture_object_count": 20,
+    "published_fixture_inventory_sha256_before_and_after": "66102ab0b0aff374fe6489a450eb3e815ade4af786cdddbc3b534aa32c11757e",
+    "fixture_unchanged": true,
+    "scope": "Real QFL candidate copies in isolated local staging; existing synthetic published fixture only. No catalog/format recomputation, source acquisition, promotion, or acceptance."
+  },
+  "capture_custody": {
+    "actual_retained_capture": "legacy decoded-body-only capture; the 573 response bodies and 573 receipts were retained and their existing bytes/timestamps remain unchanged; no original wire bodies were present and none were synthesized",
+    "new_capture_path": "streamed through shared bounded HTTP capture, with cumulative wire+decoded reservation, persisted wire and decoded bytes plus receipts, and incomplete/non-200/error captures refused before candidate creation",
+    "new_mocked_tests": "oversized per-response body, cumulative reservation refusal, non-200 response, partial transport, new wire replay validation, and legacy decoded-only replay validation",
+    "new_capture_not_executed": "No second source capture was performed."
   }
 }

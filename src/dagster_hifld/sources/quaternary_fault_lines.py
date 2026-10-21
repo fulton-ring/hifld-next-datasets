@@ -28,7 +28,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
+from dagster_hifld.sources.epa_frs_common import capture_get, processing_identity, write_immutable
 
 DATASET_SLUG = FILE_SLUG = "quaternary-fault-lines"
 PUBLISHER = "U.S. Geological Survey Earthquake Hazards Program"
@@ -139,24 +139,18 @@ def _validate_spatial_reference(value: object, label: str) -> None:
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str, retained: int) -> tuple[bytes, dict]:
-    response = client.get(url)
-    body = response.content
-    if response.status_code != 200:
-        raise ValueError(f"source_http_status_drift:{name}:{response.status_code}")
-    if len(body) > MAX_RESPONSE_BYTES or retained + len(body) > MAX_CAPTURE_BYTES:
-        raise ValueError("source_capture_budget_exceeded")
-    receipt = {
-        "url": url,
-        "status": response.status_code,
-        "bytes": len(body),
-        "sha256": _sha(body),
-        "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "content_type": response.headers.get("content-type"),
-        "content_length": response.headers.get("content-length"),
-    }
-    (root / f"{name}.body").write_bytes(body)
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    return body, receipt
+    if type(retained) is not int or retained < 0 or retained > MAX_CAPTURE_BYTES:
+        raise ValueError("source_capture_budget_invalid")
+
+    def reserve(progress) -> None:
+        # Counts all persisted decoded and original wire bytes from earlier requests,
+        # plus this response's acknowledged bytes and the next bounded read/decode.
+        prospective = (retained + progress.wire_bytes_retained
+                       + progress.decoded_bytes_retained + progress.reserve_bytes)
+        if prospective > MAX_CAPTURE_BYTES:
+            raise OSError("source_capture_budget_exceeded")
+
+    return capture_get(client, url, root, name, max_bytes=MAX_RESPONSE_BYTES, reserve=reserve)
 
 
 def _load_capture(root: Path, name: str) -> tuple[bytes, dict]:
@@ -164,6 +158,16 @@ def _load_capture(root: Path, name: str) -> tuple[bytes, dict]:
     receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
     if receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body) or receipt.get("status") != 200:
         raise ValueError("capture_receipt_invalid:" + name)
+    wire_path = root / f"{name}.wire"
+    if "wire_bytes" in receipt:
+        if (not wire_path.is_file() or wire_path.is_symlink()):
+            raise ValueError("capture_wire_receipt_invalid:" + name)
+        wire = wire_path.read_bytes()
+        if receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire):
+            raise ValueError("capture_wire_receipt_invalid:" + name)
+    elif wire_path.exists():
+        # Legacy decoded-only captures never had a wire-byte pin; do not infer one.
+        raise ValueError("legacy_capture_has_unpinned_wire:" + name)
     return body, receipt
 
 
@@ -381,7 +385,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
                                   ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                                   ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))):
                     captures[name] = _capture(client, url, root, name, retained)
-                    retained += len(captures[name][0])
+                    retained += captures[name][1]["bytes"] + captures[name][1].get("wire_bytes", 0)
                 ids = json.loads(captures["ids_before"][0]).get("objectIds")
                 if not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA:
                     raise ValueError("source_seed_id_roster_drift")
@@ -392,13 +396,13 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
                                   "orderByFields": "OBJECTID ASC", "f": "json"})
                     name = f"page_{index:03d}"
                     captures[name] = _capture(client, url, root, name, retained)
-                    retained += len(captures[name][0])
+                    retained += captures[name][1]["bytes"] + captures[name][1].get("wire_bytes", 0)
                 for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
                                   ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                                   ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
                                   ("service_after", SERVICE_URL + "?f=pjson")):
                     captures[name] = _capture(client, url, root, name, retained)
-                    retained += len(captures[name][0])
+                    retained += captures[name][1]["bytes"] + captures[name][1].get("wire_bytes", 0)
             docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
             _validate_metadata(docs["service_before"], docs["layer_before"])
             if docs["service_after"] != docs["service_before"] or docs["layer_after"] != docs["layer_before"]:
@@ -461,6 +465,8 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         "http_status": receipt["status"],
         "bytes": receipt["bytes"],
         "sha256": receipt["sha256"],
+        **({"wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"]}
+           if "wire_bytes" in receipt else {"wire_capture": "legacy_decoded_only_not_available"}),
         "release_date": None,
         "release_date_unknown_reason": "The USGS Qfaults service declares a 2020 map release but no dated data-release or edition identifier.",
         "license": "Rights review pending.",
@@ -490,7 +496,8 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
                 "source_ids": "OBJECTID retained unchanged; no substitute row identifiers.",
                 "source_crs": "EPSG:3857",
                 "geometry": "All XY paths and vertex order preserved without reprojection, repair, or simplification.",
-                "raw_evidence": "Every JSON response body and checksummed receipt retained under raw/.",
+                "raw_evidence": ("New capture versions retain original wire bytes, decoded response bodies, and receipts under raw/. "
+                                 "Legacy decoded-only replays retain their original bodies and receipts; no wire bytes are synthesized."),
                 "candidate_status": "unapproved; archive equivalence, current edition, schema, rights, coverage, and release decisions pending",
             },
         }],
@@ -515,9 +522,12 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
     }
-    for name, (body, _receipt) in captures.items():
+    for name, (body, receipt) in captures.items():
         outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipts[name]) + b"\n"
+        wire_path = root / f"{name}.wire"
+        if "wire_bytes" in receipt:
+            outputs[f"raw/{name}.wire"] = wire_path.read_bytes()
+        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     for name, body in sorted(outputs.items()):
         write_immutable(storage, f"{prefix}/{name}", body)
     ready = {
