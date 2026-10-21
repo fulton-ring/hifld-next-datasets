@@ -49,6 +49,8 @@ EXPECTED_COUNT = 5778
 EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 EXPECTED_ID_SHA256 = "b3f5daae6c2a30af51ca89fb68353fd6a5bf0e75b9133a594940ac430accc28e"
 PAGE_SIZE = 200
+PAGE_SIZE_AFTER_14 = 100
+PAGE_SIZE_TRANSITION_ID = 2801
 MAX_BODY_BYTES = 32_000_000
 MAX_CAPTURE_BYTES = 1_200_000_000
 EXPECTED_FIELDS = [
@@ -298,8 +300,7 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
             ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
             ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
+    for index, page_ids in enumerate(_page_batches(ids)):
         urls.append((f"page_{index:03d}", _query({"objectIds":",".join(map(str,page_ids)),
             "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
             "returnTrueCurves":"true", "outSR":"4326", "f":"json"})))
@@ -309,6 +310,17 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
                  ("service_after", SERVICE_URL + "?f=pjson"),
                  ("service_directory_after", SERVICE_DIRECTORY_URL)])
     return urls
+
+
+def _page_batches(ids: list[int]) -> list[list[int]]:
+    """Keep already retained 200-ID pages and bound later large responses at 100 IDs."""
+    batches=[]
+    split_index=PAGE_SIZE_TRANSITION_ID-1
+    for start in range(0,min(len(ids),split_index),PAGE_SIZE):
+        batches.append(ids[start:start+PAGE_SIZE])
+    for start in range(split_index,len(ids),PAGE_SIZE_AFTER_14):
+        batches.append(ids[start:start+PAGE_SIZE_AFTER_14])
+    return batches
 
 
 def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
@@ -376,7 +388,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_id_population_drift")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if pages != [f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE)]:
+    batches=_page_batches(EXPECTED_IDS)
+    if pages != [f"page_{index:03d}" for index in range(len(batches))]:
         raise ValueError("source_page_roster_incomplete")
     for index, name in enumerate(pages):
         page=docs[name]
@@ -384,7 +397,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             raise ValueError("source_page_error_or_truncation")
         _validate_spatial_reference(page.get("spatialReference"), "source_page")
         rows=page.get("features")
-        expected_ids = EXPECTED_IDS[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
+        expected_ids = batches[index]
         if not isinstance(rows,list) or len(rows) != len(expected_ids):
             raise ValueError("source_page_population_incomplete:" + name)
         page_ids = [row.get("attributes", {}).get("OBJECTID") for row in rows

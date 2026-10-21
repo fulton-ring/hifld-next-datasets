@@ -64,11 +64,14 @@ def _docs(ids: list[int] | None = None) -> dict[str, dict]:
         "ids_before": {"objectIds": object_ids},
         "ids_after": {"objectIds": object_ids},
     }
-    for index, start in enumerate(range(0, len(features), source.PAGE_SIZE)):
+    batches = source._page_batches(object_ids)
+    offset = 0
+    for index, page_ids in enumerate(batches):
         captures[f"page_{index:03d}"] = {
             "spatialReference": spatial_reference,
-            "features": features[start:start + source.PAGE_SIZE],
+            "features": features[offset:offset + len(page_ids)],
         }
+        offset += len(page_ids)
     return captures
 
 
