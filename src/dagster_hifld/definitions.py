@@ -15,6 +15,9 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.fema_regions import (
+    fema_regions_draft_job, fema_regions_draft_schedule, fema_regions_full_quality,
+)
 from dagster_hifld.assets.epa_eez import (
     epa_eez_draft_job,
     epa_eez_draft_schedule,
@@ -926,6 +929,7 @@ defs = Definitions(
         epa_regions_with_eez_full_quality,
         epa_frs_toxic_release_inventory_complete,
         epa_frs_tsca_complete,
+        fema_regions_full_quality,
     ],
     jobs=[
         elsd_source_integrity_job,
@@ -1008,6 +1012,7 @@ defs = Definitions(
         epa_regions_with_eez_draft_job,
         epa_frs_tri_draft_job,
         epa_tsca_draft_job,
+        fema_regions_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
@@ -1095,6 +1100,7 @@ defs = Definitions(
         epa_regions_with_eez_draft_schedule,
         epa_frs_tri_draft_schedule,
         epa_tsca_draft_schedule,
+        fema_regions_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
