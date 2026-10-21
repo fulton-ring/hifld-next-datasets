@@ -32,6 +32,7 @@ from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.fdic_locations import fdic_locations_official
 from dagster_hifld.assets.fema_regions import fema_regions_official
 from dagster_hifld.assets.ferc_regions import ferc_historical_preservation
+from dagster_hifld.assets.fuds_division_boundaries import fuds_program_division_boundaries
 from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.epa_regions import epa_regions
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
@@ -108,6 +109,7 @@ hifld_ingest_assets = [
     fdic_locations_official,
     fema_regions_official,
     ferc_historical_preservation,
+    fuds_program_division_boundaries,
     fema_regional_offices,
     epa_sems_interests,
     epa_eez,

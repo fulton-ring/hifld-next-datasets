@@ -37,6 +37,10 @@ from dagster_hifld.assets.ferc_regions import (
     ferc_historical_integrity_schedule,
     ferc_historical_reconstruction_job,
 )
+from dagster_hifld.assets.fuds_division_boundaries import (
+    fuds_division_draft_schedule,
+    fuds_program_division_boundaries_complete,
+)
 from dagster_hifld.assets.epa_eez import (
     epa_eez_draft_job,
     epa_eez_draft_schedule,
@@ -960,6 +964,7 @@ defs = Definitions(
         fdic_locations_full_quality,
         fema_regions_full_quality,
         ferc_historical_full_quality,
+        fuds_program_division_boundaries_complete,
     ],
     jobs=[
         epa_large_scale_source_integrity_job,
@@ -1146,6 +1151,7 @@ defs = Definitions(
         fdic_locations_draft_schedule,
         fema_regions_draft_schedule,
         ferc_historical_integrity_schedule,
+        fuds_division_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
