@@ -297,7 +297,11 @@ def _geo_parquet(rows: list[dict]) -> bytes:
 
 
 def _capture_live(root: Path) -> tuple[list[dict], int, dict, dict[str, dict[str, object]]]:
-    root.mkdir(parents=True, exist_ok=False)
+    if root.exists():
+        if not root.is_dir() or any(root.iterdir()):
+            raise ValueError("unsealed_capture_attempt_exists")
+    else:
+        root.mkdir(parents=True, exist_ok=False)
     captures: dict[str, dict[str, object]] = {}
     with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=15),
                       headers={"User-Agent": "hifld-next-datasets/gcca-warehouse-draft"}) as client:
