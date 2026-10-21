@@ -1,6 +1,7 @@
 """Small explicit synthetic polygons; complete official capture is an external input."""
 import copy,json,os,struct,tempfile,unittest,math
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 import httpx,shapely
 import pyarrow as pa
@@ -105,6 +106,15 @@ class LargeScaleTests(unittest.TestCase):
                 for name,body in f.source_payloads(captures,identity,audit,manifest).items():f.write_private(root,name,body)
                 ready={'approved':False,'version':version,'processing_fingerprint':f.digest(f.encode(identity)),'capture_fingerprint':f.source_fingerprint(captures),'objects':{str(p.relative_to(root)):f.sha256_file(p)for p in root.rglob('*')if p.is_file()}};f.write_private(root,f.READY,f.encode(ready));storage=StagingStorageResource(local_dir=d)
                 f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                quality={'quality_check_passed':True,'feature_count':2,'native_crs':'EPSG:4269'};dictionary={'schema_version':1,'columns':[{'name':'OBJECTID','source':'EPA'}]}
+                f.write_private(root,'metadata/quality_manifest.json',f.encode(quality));f.write_private(root,'metadata/data_dictionary.json',f.encode(dictionary))
+                with mock.patch.object(f,'load_resolved_source_manifest',return_value=SimpleNamespace(metadata={})),mock.patch.object(f,'summarize_staged_catalog',return_value=SimpleNamespace(quality_manifest=quality,data_dictionary=dictionary)):
+                    f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                    for sidecar_name,field,value in [('metadata/quality_manifest.json','quality_check_passed',False),('metadata/data_dictionary.json','columns',[{'name':'TAMPERED'}])]:
+                        original=f.candidate_bytes(root,sidecar_name);changed=json.loads(original);changed[field]=value;f.write_private(root,sidecar_name,f.encode(changed))
+                        with self.assertRaisesRegex(ValueError,'cached_catalog_metadata_mismatch'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                        f.write_private(root,sidecar_name,original)
+                (root/'metadata/quality_manifest.json').unlink();(root/'metadata/data_dictionary.json').unlink()
                 bad=dict(ready);bad['approved']=0;f.write_private(root,f.READY,f.encode(bad))
                 with self.assertRaisesRegex(ValueError,'candidate_ready_drift'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
                 f.write_private(root,f.READY,f.encode(ready));f.write_private(root,'metadata/source/source_manifest.json',b'{"approved":true}')

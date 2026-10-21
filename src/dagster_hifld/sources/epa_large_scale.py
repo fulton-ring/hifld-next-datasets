@@ -29,6 +29,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
@@ -222,10 +223,24 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
         for name in roster-(names|{READY}):strict_json(candidate_bytes(root,name))
         for name in('metadata/source/source_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'):
             if name in roster and candidate_bytes(root,name)!=encode(manifest):raise EpaLargeScaleQuarantineError('cached_source_snapshot_drift')
-        if 'metadata/resolved_provenance.json'in roster:
-            if storage is None:raise EpaLargeScaleQuarantineError('resolved_provenance_requires_explicit_storage_context')
-            projected=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
-            if encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(projected):raise EpaLargeScaleQuarantineError('cached_resolved_provenance_drift')
+        catalog_names={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/resolved_provenance.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'}
+        found_catalog=roster&catalog_names
+        if found_catalog:
+            if storage is None:raise EpaLargeScaleQuarantineError('cached_catalog_requires_explicit_storage_context')
+            flat={'metadata/quality_manifest.json','metadata/data_dictionary.json'}
+            source={'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'}
+            if not flat.issubset(roster) or bool(roster&source) and not source.issubset(roster):
+                raise EpaLargeScaleQuarantineError('cached_catalog_metadata_incomplete')
+            resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
+            summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
+            if strict_json(candidate_bytes(root,'metadata/quality_manifest.json'))!=summary.quality_manifest or strict_json(candidate_bytes(root,'metadata/data_dictionary.json'))!=summary.data_dictionary:
+                raise EpaLargeScaleQuarantineError('cached_catalog_metadata_mismatch')
+            for name,expected_sidecar in (('metadata/source/quality_manifest.json',summary.quality_manifest),('metadata/source/data_dictionary.json',summary.data_dictionary)):
+                if name in roster and strict_json(candidate_bytes(root,name))!=expected_sidecar:
+                    raise EpaLargeScaleQuarantineError('cached_catalog_source_snapshot_drift')
+            projected=provenance_projection(resolved.metadata)
+            if ('metadata/resolved_provenance.json'in roster)!=(projected is not None):raise EpaLargeScaleQuarantineError('cached_resolved_provenance_drift')
+            if projected is not None and strict_json(candidate_bytes(root,'metadata/resolved_provenance.json'))!=projected:raise EpaLargeScaleQuarantineError('cached_resolved_provenance_drift')
     for n,b in expected.items():
         if candidate_bytes(root,n)!=b:raise EpaLargeScaleQuarantineError('candidate_source_bytes_drift:'+n)
     if candidate_bytes(root,READY)!=encode(ready):raise EpaLargeScaleQuarantineError('candidate_ready_drift')
