@@ -177,6 +177,18 @@ class FullPopulationTests(unittest.TestCase):
                 row = {**feature(), "geometry": geom}
                 self.assertEqual(comparison(Path(d), [row], [row])["status"], "fail")
 
+    def test_crs84_coordinates_outside_geographic_domain_fail(self):
+        contract = {**CONTRACT, "crs": "OGC:CRS84"}
+        outside = feature(x=200)
+        with tempfile.TemporaryDirectory() as d:
+            report = comparison(Path(d), [outside], [outside], contract)
+            self.assertEqual(report["status"], "fail")
+            self.assertGreater(report["populations"]["baseline"]["invalid_records"], 0)
+        with tempfile.TemporaryDirectory() as d:
+            valid = feature(x=180)
+            report = comparison(Path(d), [valid], [valid], contract)
+            self.assertEqual(report["status"], "pass")
+
     def test_deep_json_parser_error_replaces_stale_pass_report(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
