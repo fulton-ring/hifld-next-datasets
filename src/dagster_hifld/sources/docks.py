@@ -280,13 +280,8 @@ def capture(staging, version, client=None, replay_version=None):
                  or not (-180 <= feature["geometry"]["x"] <= 180)
                  or not (-90 <= feature["geometry"]["y"] <= 90))
             for feature in features)
-        staging.write(DATASET_SLUG, FILE_SLUG, version, f"metadata/native_candidate/{FILE_SLUG}.parquet", parquet)
-        geojson = _canonical({"type":"FeatureCollection","features":[
-            {"type":"Feature","id":feature["attributes"]["OBJECTID"],"properties":feature["attributes"],
-             "geometry":None if feature.get("geometry") is None else
-                {"type":"Point","coordinates":[feature["geometry"]["x"],feature["geometry"]["y"]]}}
-            for feature in features]})
-        staging.write(DATASET_SLUG, FILE_SLUG, version, f"geojson/{FILE_SLUG}.geojson", geojson)
+        parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+        staging.write(DATASET_SLUG, FILE_SLUG, version, parquet_path, parquet)
         ids_sha = _sha(_canonical(ids)); schema_sha = _sha(_canonical([(f["name"], f["type"]) for f in fields]))
         source_record_sha = _sha(_canonical([f["attributes"] for f in features]))
         identity = processing_identity(Path(__file__).parents[3])
@@ -305,14 +300,15 @@ def capture(staging, version, client=None, replay_version=None):
             "source_schema_sha256":schema_sha,"source_record_sha256":source_record_sha,"feature_count":len(features),
             "fields":[{"name":f["name"],"type":f["type"],"alias":f.get("alias"),"length":f.get("length"),"nullable":f.get("nullable")} for f in fields],
             "capture_pages":pages,"attribute_preservation":"Every ArcGIS attribute is retained with source name, order, type, and nulls; source JSON pages are retained verbatim.",
-            "transformation":"ArcGIS point geometry encoded as little-endian WKB in NAD83; native_x/native_y preserve reported coordinates without reprojection.",
-            "unsupported_output_formats":{"geopackage":"No output field mapping or baseline compatibility approval.","shapefile_zip":"Field-name/value coercion is unapproved.","pmtiles":"No display transformation is approved."},
+            "transformation":"All declared ArcGIS attributes retain native names and values. The canonical GeoPackage encodes source point XY with EPSG:4269 CRS; the sidecar native GeoParquet carries WKB and exact native_x/native_y. No reprojection, row repair, filtering, or HIFLD-equivalence claim.",
+            "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Source-faithful typed attributes and original point XY are retained with explicit EPSG:4269 metadata; this is an unapproved candidate, not release evidence.","objects":[{"path":parquet_path,"sha256":_sha(parquet),"bytes":len(parquet)}]}}},
+            "unsupported_output_formats":{"shapefile_zip":"Field-name/value coercion is unapproved.","geopackage":"No output field mapping or baseline compatibility approval.","pmtiles":"No display transformation is approved."},
             "release_accepted":False,"promotion_allowed":False}
         staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/source_manifest.json", _canonical(manifest))
         staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/native_capture.json", _canonical({
             "layer_url":LAYER_URL,"capture_started_at":datetime.now(timezone.utc).isoformat(),"feature_count":len(features),
             "count_before":before_count,"count_after":after_count,"ids_sha256":ids_sha,"schema_sha256":schema_sha,
-            "record_attributes_sha256":source_record_sha,"native_parquet_sha256":_sha(parquet),"geojson_sha256":_sha(geojson),"native_crs":"EPSG:4269",
+            "record_attributes_sha256":source_record_sha,"native_parquet_sha256":_sha(parquet),"native_crs":"EPSG:4269",
             "pages":pages,"capture_started_at":source_capture_started_at,"processed_at":datetime.now(timezone.utc).isoformat(),
             "replayed_from_version":replay_version,"capture_budget_bytes":budget[0],"source_edit_timestamp_epoch_ms":layer.get("editingInfo",{}).get("dataLastEditDate"),"catalog_description_count":"nearly 12,000",
             "api_observed_count":len(features),"catalog_api_count_discrepancy":True,"geometries_outside_epsg4326_coordinate_domain_preserved":invalid_coordinate_count,
