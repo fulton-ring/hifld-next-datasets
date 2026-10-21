@@ -6,6 +6,18 @@ Existing priority PRs #420/#3, #419/#4, #427/#10 and #428/#11 were recovered wit
 
 The recent checkpoint below distinguishes completed reviewed drafts, review revisions, active work and evidenced external blockers. A docs-only research branch does not complete a feasible pipeline. Missing baseline/contract approval permits draft implementation and local testing; it blocks release. Other issue records still need triage or reconciliation of prior work; they are not silently classified as blocked.
 
+### Latest verified checkpoint — 2026-10-21 16:34 UTC
+
+All 415 inventory rows remain preserved. Integration PR #586 merged exact head `77262c0c2600aa740e63be3192bb648b3608c91e` to main as `8d916cd5cc91a0b06a0ebcdfc24fdf44c8be7210` (tree `1e15264581342ab785e86c1b104490fb72b88ce8`), from base `8cd91b4a4fc5c32765e8871962fbd0287adca9e9`. Root integration review 5602898656 and CI build passed. Root verified 19 source-owned blobs, four reviewed source ancestors, additive registrations, Definitions load and 32 STOPPED schedules. Shared worker branch `codex/cloud-verification-417` fast-forwarded without force from `ec102654` to `8d916cd`; root reports no active paid jobs.
+
+GitHub automatically marked the original source PRs #418/#2, #583/#279, #582/#280 and #584/#37 merged through #586 ancestry. Their exact heads and review references are in JSON. Issues #2, #37, #279 and #280 remain OPEN. Canonical issue comments were updated: #2 comment 6321109730, #279 6321111333, #280 6321113263, #37 6321115581. `move:needs-decision` was requested; latest API reads showed the label on #2 and #37, and absent on #279 and #280. Code merge does not approve source, baseline, rights, geometry, schema, coverage or release decisions.
+
+#279 Proposed Critical Habitat: final technical review 5602868385 passed exact PR #583 head `e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc`. Corrected false-quality run `c4443585-dd46-4338-8d52-78d0e372c804` and empty-approval run `fca83134-c84a-4987-8533-6d783e3ae0aa` preserved all 14 published objects (hash `3bb485f4ad2391077fcbd3dd9be59d0e04f121ded07795428200d31edec67011`). All 70 FileGDB OBJECTIDs/26 attributes and native WKB match; missing original createReplica POST receipt is disclosed.
+
+#280 Public Refrigerated Warehouses: PR #582 exact head `28447861d818c0af8a264d2cddb4cedf599a2ce5` passed scoped review 5602844755. Unknown CRS and one missing-geometry row remain; native catalog/release fail closed. #2 PR #418 exact head `22576c3b1ee74650b079110d0a9835355295918f` review 5602850868 is integrated. #37 PR #584 exact head `7b4fd657b0278f5624234712aa80eb7aa4f235ac` passed focused review 5602859770 with prior fidelity review retained; older stacked #542 remains open and noncanonical.
+
+No fresh global PR census, new source capture/materialization, full-suite run, issue closure, release acceptance or production publication is claimed. Historical 14:14 counts remain historical only.
+
 ### Latest verified checkpoint — 2026-10-21 16:29 UTC
 
 All 415 inventory rows remain preserved. This named-status refresh is not a new open-PR census; the 14:14 census remains historical. Live metadata confirms integration PR #585 merged at `8cd91b4a4fc5c32765e8871962fbd0287adca9e9` with tree `e23f822b8dd6dc646bb6f6299986efc2a5889d0f`, from integration head `8c11f067b1f95ed009f1ee3d824ad0c01a8942f3` based on `ec102654516996c1a7e9c94048a4eef2ec9c032b`. Root review 5602837517 and CI build passed. Root verified 16 source-owned blobs and all three original source-head ancestors; only additive `ingest_registry.py` and `definitions.py` resolutions differ. Combined definitions load passed with 91 ingest assets, 23 checks, 25 jobs and 28 schedules, all STOPPED.
