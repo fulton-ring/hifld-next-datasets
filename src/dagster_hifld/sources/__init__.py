@@ -1,1 +1,1 @@
-"""Dataset-specific source extraction and immutable draft construction."""
+"""Explicit producer-specific candidate acquisition and validation."""
