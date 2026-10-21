@@ -1,11 +1,14 @@
 # FWS CBRS Map Panels draft
 
 - Official landing: https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data
-- Candidate endpoint: https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer/5/query
-- Local job: `fws_cbrs_map_panels_draft_refresh_job`; schedule remains stopped.
-- Blockers: feed publication date is unknown; use limits and FWS share-back/attribution terms require review.
-- Archived research and all original captured test inputs: `/workspace/work/hifld-coordinator/artifacts/issue-29-removed-research-docs-44d3150d4398.tar.gz`.
-- Archive SHA256: `ef8619e786de209d0edb4bfe0b557caee3979694d09a4f4c3d23bb1efad4cb68`.
-- Four capture-independent mechanics tests stay in the default run; full-capture tests require `HIFLD_CBRS_MAP_PANELS_TEST_CAPTURE_DIR`.
-- Opt in: `HIFLD_CBRS_MAP_PANELS_TEST_CAPTURE_DIR=/workspace/work/hifld-coordinator/29/artifact-cleanup-29/original-complete-captures PYTHONPATH=src:tests:. /workspace/hifld-worker-worktrees/19/.venv/bin/python -m unittest discover -s tests -p test_cbrs_map_panels_source.py`.
-- Draft only; no source, legal, baseline, or release acceptance is implied.
+- Candidate is the exact FWS-linked delegated USGS CBRS Mapper MapServer layer 5, `CBRS Map Panels`. The retained native REST observation contains 574 polygons, 13 source attributes, native EPSG:4269 coordinates, and matching before/after count and full OBJECTID rosters.
+- Registered local job: `fws_cbrs_map_panels_draft_refresh`; its monthly schedule remains stopped. It rejects remote storage.
+- Packaged construction provenance uses the shared Git-or-installed-package identity. A packaged runtime records a `packaged-sha256:` identity over installed source, dependency lockfiles, and runtime inventory; it does not claim a Git commit.
+- The retained observation was collected on 2026-10-19. Replay preserves those original receipt timestamps and does not claim a new acquisition or producer release date.
+- The feed publication date is unknown. FWS use limits and share-back/attribution terms, the complete historical baseline, date/null/title field mappings, and release acceptance remain unresolved. No source or release approval is asserted.
+- Four capture-independent mechanics tests run by default. Complete-capture tests accept an explicitly supplied retained capture directory:
+
+  ```bash
+  HIFLD_CBRS_MAP_PANELS_TEST_CAPTURE_DIR="$CAPTURE_DIR" \
+    PYTHONPATH=src:tests:. uv run python -m unittest discover -s tests -p 'test_cbrs_map_panels_source.py'
+  ```
