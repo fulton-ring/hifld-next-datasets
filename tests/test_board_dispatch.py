@@ -58,6 +58,25 @@ class FakeAPI:
 
 
 class BoardDispatchTests(unittest.TestCase):
+    def test_two_reviews_pause_further_automatic_cycles_for_supervisor(self):
+        class StopAPI(FakeAPI):
+            def __init__(self):
+                super().__init__([run(1, sha='b'*40), run(2, sha='c'*40)])
+                self.current_status = 'Ready'
+                self.moves = []
+            def __call__(self, kind, path, data=None):
+                if kind == 'repo' and data is not None:
+                    self.moves.append((path, data))
+                    return {}
+                return super().__call__(kind, path, data)
+        api = StopAPI()
+        self.assertEqual(dispatch.dispatch_cards([card(status='Ready')], api, now=NOW), [])
+        self.assertEqual(api.posts, [])
+        self.assertEqual(api.moves[-1][1], {'labels': ['move:needs-decision']})
+        api = StopAPI()
+        self.assertEqual(dispatch.dispatch_cards([card(status='Ready')], api, now=NOW, dry_run=True), [])
+        self.assertEqual(api.moves, [])
+
     def test_review_slots_are_independent_of_six_busy_workers(self):
         busy = [run(n, role='implementation', issue=900+n, status='in_progress') for n in range(6)]
         api = FakeAPI(busy)
