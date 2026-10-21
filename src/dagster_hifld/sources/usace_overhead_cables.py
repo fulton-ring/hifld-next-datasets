@@ -338,7 +338,7 @@ def capture_usace_overhead_cables(storage: StagingStorageResource, *, version: s
             "official_service_directory": SERVICE_DIRECTORY_URL,
             "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
             "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
-            "succession_status": "unaccepted; earlier BTS map-service item became anonymously unreadable and the current public PDF catalog item links the same producer service, but continuity of the catalog record and layer edition has not been approved",
+            "succession_status": "unaccepted; the current public PDF catalog item links the producer service, while a prior draft cited a different BTS item; continuity of the catalog record and layer edition has not been approved",
             "basis": "The captured BTS PDF record identifies the IENC program, describes USACE/Army Geospatial Center updates, and explicitly links the USACE IENC Feature Classes service and master file geodatabase. The queried layer's own service metadata identifies copyright USACE IENC; the direct service response, not the PDF item, supplies the captured geometry and attributes."}}
            if name == "bts_item" else {})}
         for name, receipt in sorted(receipts.items())]
@@ -346,14 +346,15 @@ def capture_usace_overhead_cables(storage: StagingStorageResource, *, version: s
         "description": "Complete observed USACE IENC OVERHEAD_CABLE_LINE layer; catalog-item succession, layer edition, historical continuity, and release remain unaccepted.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
-        "processor": "HIFLD Next", "code_commit": identity["code_commit"], "inputs": inputs,
+        "processor": "HIFLD Next", "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "Esri XY Polyline to GeoParquet WKB candidate", "parameters": {
             "source_fields": "all declared attributes retained in source order and declared types",
             "source_ids": "OBJECTID and Feature_ID retained unchanged", "source_crs": "EPSG:4326",
             "geometry": "2D path order and coordinates preserved; no reprojection, repair, or simplification",
             "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
-        "lineage": f"Current public BTS IENC PDF item {BTS_ITEM_ID} links the official USACE IENC Feature Classes service and master geodatabase. The prior BTS map-service item {PRIOR_BTS_ITEM_ID} became anonymously unreadable and is no longer present in anonymous search; the PDF record is a proposed successor, with catalog and layer-edition continuity pending review. This candidate captures the complete directly queried service layer {LAYER_ID} OVERHEAD_CABLE_LINE only; it makes no claim of historical HIFLD/FEMA equivalence or nationwide terrestrial coverage.",
+        "lineage": f"Current public BTS IENC PDF item {BTS_ITEM_ID} links the USACE IENC Feature Classes service and master geodatabase. A prior draft cited BTS map-service item {PRIOR_BTS_ITEM_ID}; the relationship between the records and continuity of the layer edition remain unapproved. This candidate captures the complete directly queried service layer {LAYER_ID} OVERHEAD_CABLE_LINE only; it makes no claim of historical HIFLD/FEMA equivalence or nationwide terrestrial coverage.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native attributes, IDs and 2D paths are retained in a typed candidate.",
             "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
         "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
