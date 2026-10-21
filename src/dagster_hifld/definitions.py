@@ -39,6 +39,13 @@ from dagster_hifld.assets.usgs import (
     usgs_aquifers_draft_refresh_schedule,
 )
 
+from dagster_hifld.assets.epa_frs_naics_powerplants import (
+    epa_frs_naics_complete,
+    epa_frs_naics_draft_job,
+    epa_frs_naics_draft_schedule,
+    epa_frs_naics_published_membership_compatible,
+)
+
 from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_job,
     aiannh_source_integrity_refresh_schedule,
@@ -817,6 +824,8 @@ defs = Definitions(
         epa_disaster_debris_complete,
         arc_regions_full_quality,
         eia_power_plants_complete,
+        epa_frs_naics_complete,
+        epa_frs_naics_published_membership_compatible,
         gcca_warehouses_geometry_complete,
         red_cross_headquarters_source_population,
         census_primary_roads_source_complete,
@@ -904,6 +913,7 @@ defs = Definitions(
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
+        epa_frs_naics_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
         proposed_critical_habitat_draft_job,
@@ -985,6 +995,7 @@ defs = Definitions(
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
+        epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
         proposed_critical_habitat_draft_schedule,
