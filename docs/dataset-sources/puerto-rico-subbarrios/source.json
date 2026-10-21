@@ -68,7 +68,8 @@
   },
   "refresh_cadence": "annual, tied to the Census TIGER/Line late-year postings of SUBBARRIO under a new TIGER{year} directory",
   "output_format_exclusions": {
-    "geopackage": "Withheld: the source layer mixes Polygon (143) and MultiPolygon (2). The inherited chunked GeoPackage writer declares the layer geometry from its first chunk and then appends incompatible geometries, violating the GeoPackage geometry-type contract. No GeoPackage output is staged or promoted unless a geometry-type-preserving writer is approved."
+    "geopackage": "Withheld: the source layer mixes Polygon (143) and MultiPolygon (2). The inherited chunked GeoPackage writer declares the layer geometry from its first chunk and then appends incompatible geometries, violating the GeoPackage geometry-type contract. No GeoPackage output is staged or promoted unless a geometry-type-preserving writer is approved.",
+    "pmtiles": "Withheld: PMTiles is a lossy tiled representation that may simplify or omit source coordinates and does not preserve the full source attribute schema. No dataset-specific loss, zoom, or attribute-selection policy has been approved."
   },
   "idempotency": "content-derived version from pinned zip sha256 plus processing code identity; re-running with the same bytes reuses the sealed candidate",
   "completeness_gate": "pinned byte-level sha256/length of the exact zip, full archive extraction, 145 unique GEOIDs, no null/empty/invalid geometry",

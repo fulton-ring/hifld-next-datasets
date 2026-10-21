@@ -300,6 +300,7 @@ def capture_puerto_rico_subbarrios(
         "lineage": "Official Census Bureau Geography Division TIGER/Line SUBBARRIO product (producer publication). The DHS crosswalk row matches this exact URL; the DataLumos archive item 240631 V2 is the archived HIFLD copy and is retained only as a labeled fallback (HTTP 403 to automated retrieval on 2026-10-21).",
         "unsupported_output_formats": {
             "geopackage": "The source layer mixes Polygon (143) and MultiPolygon (2) geometry. The inherited chunked GeoPackage writer declares the layer's geometry from its first chunk and then appends incompatible geometries, producing a file that violates the GeoPackage geometry-type contract. GeoPackage output is withheld until a geometry-type-preserving writer is approved.",
+            "pmtiles": "PMTiles is a lossy tiled representation that may simplify or omit source coordinates and does not preserve the full source attribute schema. No dataset-specific loss, zoom, or attribute-selection policy has been approved, so PMTiles output is withheld.",
         },
     }
     manifest_key = f"{prefix}/metadata/source_manifest.json"

@@ -144,6 +144,9 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
             reason = unsupported_output_reason(resolved.metadata, "geopackage")
             self.assertIsNotNone(reason)
             self.assertIn("MultiPolygon", reason)
+            pmtiles_reason = unsupported_output_reason(resolved.metadata, "pmtiles")
+            self.assertIsNotNone(pmtiles_reason)
+            self.assertIn("lossy", pmtiles_reason)
 
     def test_archive_capture_rejects_changed_bytes(self):
         body = b"not the pinned Census archive"
