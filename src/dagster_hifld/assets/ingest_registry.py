@@ -5,6 +5,7 @@ assets are derived automatically from this registry.
 """
 
 from dagster_hifld.assets.usgs import usgs_aquifers
+from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
 from dagster_hifld.assets.noaa import (
@@ -133,6 +134,7 @@ hifld_ingest_assets = [
     usace_dumping_ground_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
+    epa_frs_eia_860_power_generation_facilities_by_source,
     nces_private_schools_2023_24,
     nces_public_schools,
     gcca_warehouses_current,

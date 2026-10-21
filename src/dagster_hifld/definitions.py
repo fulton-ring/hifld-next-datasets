@@ -65,6 +65,11 @@ from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_draft_job,
     eia_power_plants_draft_schedule,
 )
+from dagster_hifld.assets.epa_power_generation import (
+    epa_frs_eia_860_power_generation_complete,
+    epa_power_generation_draft_job,
+    epa_power_generation_draft_schedule,
+)
 
 from dagster_hifld.assets.gcca_warehouse_directory import (
     gcca_warehouses_geometry_complete,
@@ -781,6 +786,7 @@ defs = Definitions(
         *hifld_asset_checks,
         arc_regions_full_quality,
         eia_power_plants_complete,
+        epa_frs_eia_860_power_generation_complete,
         gcca_warehouses_geometry_complete,
         red_cross_headquarters_source_population,
         census_primary_roads_source_complete,
@@ -860,6 +866,7 @@ defs = Definitions(
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
+        epa_power_generation_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
         proposed_critical_habitat_draft_job,
@@ -934,6 +941,7 @@ defs = Definitions(
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
+        epa_power_generation_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
         proposed_critical_habitat_draft_schedule,
