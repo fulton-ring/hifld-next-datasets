@@ -87,8 +87,15 @@ def accepted_fixture(root):
     raw_source = source._ensure_prefixed(f"{prefix}/geojson/source.geojson")
     raw_source_sha = source.sha256_key(raw_source)
     raw_source_bytes = source.key_size(raw_source)
+    adapter_code = _direct_jsonl_adapter_code_sha256()
+    input_order = [f"{prefix}/geojson/source.geojson"]
     manifest = {"schema_version": 1, "processor": "HIFLD Next", "code_commit": "synthetic-only",
-                "transformations": [], "inputs": [{"input_id": "fixture", "producer": "Synthetic Agency",
+                "transformations": [], "lineage": {"schema_version": 1,
+                "adapter": "direct_geojson_feature_collection_to_jsonl_v1", "code_sha256": adapter_code,
+                "input_order": input_order, "source_objects": {input_order[0]: raw_source_sha},
+                "output": {"key": f"{prefix}/metadata/candidate.records.jsonl",
+                           "sha256": sha256_file(candidate), "bytes": candidate.stat().st_size}},
+                "inputs": [{"input_id": "fixture", "producer": "Synthetic Agency",
                 "host": "example.invalid", "role": "producer_publication", "canonical_url": "https://example.invalid/data",
                 "retrieval_url": "https://example.invalid/data", "release_date_unknown_reason": "synthetic",
                 "retrieved_at": "2026-10-19T00:00:00Z", "sha256": raw_source_sha, "bytes": raw_source_bytes,
@@ -111,7 +118,7 @@ def accepted_fixture(root):
              "staged_objects": objects, "published_objects": objects,
              "candidate_comparison_input": {"key": f"{prefix}/metadata/candidate.records.jsonl",
                  "sha256": sha256_file(candidate), "bytes": candidate.stat().st_size, "adapter": report["adapter"],
-                 "derivation": {"code_sha256": _direct_jsonl_adapter_code_sha256(),
+                 "derivation": {"code_sha256": adapter_code,
                                 "parameters": {"mode": "direct_geojson_feature_collection_to_jsonl_v1",
                                                "input_order": [f"{prefix}/geojson/source.geojson"]},
                                 "source_objects": {f"{prefix}/geojson/source.geojson": objects[f"{prefix}/geojson/source.geojson"]}}}}
@@ -417,6 +424,21 @@ class ReleaseBoundaryTests(unittest.TestCase):
             )
             self.assertEqual(report["status"], "pass")
 
+            manifest_key = f"{prefix}/metadata/source_manifest.json"
+            manifest = json.loads(source.read_key(manifest_key))
+            manifest["lineage"]["output"] = {
+                "key": f"{prefix}/metadata/candidate.records.jsonl",
+                "sha256": sha256_file(candidate), "bytes": candidate.stat().st_size,
+            }
+            source.write_key(manifest_key, json.dumps(manifest).encode())
+            snapshot_source_metadata(source, "synthetic", "points", "vtest")
+            projection = provenance_projection(
+                load_resolved_source_manifest(source, "synthetic", "points", "vtest").metadata
+            )
+            source.write_key(f"{prefix}/metadata/resolved_provenance.json", json.dumps(projection).encode())
+            source.write_key(f"{prefix}/metadata/data_dictionary.json",
+                             json.dumps({"agency": "Synthetic Agency", **projection}).encode())
+
             value = json.loads(registry.read_text())
             entry = value["releases"][0]
             objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
@@ -424,6 +446,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
             entry.update(
                 baseline=report["baseline"], contract_sha256=report["contract_sha256"],
                 report_sha256=objects[f"{prefix}/metadata/baseline_comparison.json"],
+                provenance_sha256=objects[f"{prefix}/metadata/source_manifest.json"],
                 staged_objects=objects, published_objects=objects,
             )
             entry["candidate_comparison_input"].update(

@@ -364,6 +364,16 @@ def _require_executable_jsonl_derivation(entry: dict, source: StagingStorageReso
     manifest = load_resolved_source_manifest(source, dataset_slug, file_slug, version).metadata
     if manifest.get("transformations") != []:
         raise ReleaseApprovalError("jsonl_transform_requires_executable_native_lineage")
+    expected_lineage = {
+        "schema_version": 1,
+        "adapter": "direct_geojson_feature_collection_to_jsonl_v1",
+        "code_sha256": derivation["code_sha256"],
+        "input_order": input_order,
+        "source_objects": source_objects,
+        "output": {"key": candidate.get("key"), "sha256": candidate.get("sha256"), "bytes": candidate.get("bytes")},
+    }
+    if manifest.get("lineage") != expected_lineage:
+        raise ReleaseApprovalError("jsonl_executable_lineage_missing_from_runtime_provenance")
 
     byte_limit = 64 * 1024 * 1024
     candidate_key = candidate.get("key")
