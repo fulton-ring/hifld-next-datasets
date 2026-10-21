@@ -80,6 +80,7 @@ from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_a
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.epa_facilities import epa_facilities
+from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 
 hifld_ingest_assets = [
@@ -158,4 +159,5 @@ hifld_ingest_assets = [
     docks_usace_bts,
     usace_depth_areas_usace_ienc,
     epa_facilities,
+    epa_facilities_labels,
 ]
