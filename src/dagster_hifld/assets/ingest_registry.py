@@ -26,6 +26,7 @@ from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
+from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_features
@@ -80,14 +81,19 @@ from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ien
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
+from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.epa_facilities import epa_facilities
 from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
+from dagster_hifld.assets.epa_eez import epa_eez
+from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 
 hifld_ingest_assets = [
+    epa_eez,
+    epa_regions_with_eez,
     census_elementary_districts,
     noaa_current_dart,
     usgs_crushed_stone_preservation,
@@ -111,6 +117,7 @@ hifld_ingest_assets = [
     bts_alternative_fueling_stations,
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
+    epa_frs_naics_powerplants,
     bsee_ocs_platforms,
     proposed_critical_habitat_features,
     usace_navigation_marks_areas_usace_ienc,
@@ -166,6 +173,7 @@ hifld_ingest_assets = [
     usace_depth_areas_usace_ienc,
     electric_retail_service_territories_preservation_candidate,
     epa_emergency_response_rmp_facilities,
+    epa_frs_sic_powerplants,
     epa_facilities,
     epa_facilities_labels,
 ]

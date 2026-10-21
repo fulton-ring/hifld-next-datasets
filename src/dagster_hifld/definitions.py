@@ -15,6 +15,16 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.epa_eez import (
+    epa_eez_draft_job,
+    epa_eez_draft_schedule,
+    epa_eez_full_quality,
+)
+from dagster_hifld.assets.epa_regions_with_eez import (
+    epa_regions_with_eez_draft_job,
+    epa_regions_with_eez_draft_schedule,
+    epa_regions_with_eez_full_quality,
+)
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
 from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_complete,
@@ -37,6 +47,13 @@ from dagster_hifld.assets.arc_regions import (
 from dagster_hifld.assets.usgs import (
     usgs_aquifers_draft_refresh_job,
     usgs_aquifers_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.epa_frs_naics_powerplants import (
+    epa_frs_naics_complete,
+    epa_frs_naics_draft_job,
+    epa_frs_naics_draft_schedule,
+    epa_frs_naics_published_membership_compatible,
 )
 
 from dagster_hifld.assets.census_bureau import (
@@ -232,6 +249,13 @@ from dagster_hifld.assets.epa_rmp_facilities import (
     epa_emergency_response_rmp_facilities_complete,
     epa_rmp_facilities_draft_job,
     epa_rmp_facilities_draft_schedule,
+)
+
+from dagster_hifld.assets.epa_frs_sic_powerplants import (
+    epa_frs_sic_complete,
+    epa_frs_sic_draft_job,
+    epa_frs_sic_draft_schedule,
+    epa_frs_sic_published_membership_compatible,
 )
 
 from dagster_hifld.assets.usace_caution_areas import (
@@ -823,6 +847,8 @@ defs = Definitions(
         arc_regions_full_quality,
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
+        epa_frs_naics_complete,
+        epa_frs_naics_published_membership_compatible,
         gcca_warehouses_geometry_complete,
         red_cross_headquarters_source_population,
         census_primary_roads_source_complete,
@@ -870,6 +896,8 @@ defs = Definitions(
         usace_crane_locations_release,
         usace_data_coverage_areas_complete,
         epa_emergency_response_rmp_facilities_complete,
+        epa_frs_sic_complete,
+        epa_frs_sic_published_membership_compatible,
         docks_source_population_complete,
         docks_source_geometry_quality,
         docks_release_acceptance_pending,
@@ -878,6 +906,8 @@ defs = Definitions(
         electric_retail_service_territories_release_pending,
         epa_facilities_full_quality,
         epa_facilities_labels_full_quality,
+        epa_eez_full_quality,
+        epa_regions_with_eez_full_quality,
     ],
     jobs=[
         elsd_source_integrity_job,
@@ -911,6 +941,7 @@ defs = Definitions(
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
         epa_power_generation_draft_job,
+        epa_frs_naics_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
         proposed_critical_habitat_draft_job,
@@ -949,10 +980,13 @@ defs = Definitions(
         crushed_stone_preservation_job,
         usace_data_coverage_areas_draft_job,
         epa_rmp_facilities_draft_job,
+        epa_frs_sic_draft_job,
         docks_draft_job,
         electric_retail_service_territories_preservation_job,
         epa_facilities_draft_job,
         epa_facilities_labels_draft_job,
+        epa_eez_draft_job,
+        epa_regions_with_eez_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
@@ -993,6 +1027,7 @@ defs = Definitions(
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
         epa_power_generation_draft_schedule,
+        epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
         proposed_critical_habitat_draft_schedule,
@@ -1030,9 +1065,12 @@ defs = Definitions(
         electric_retail_service_territories_preservation_schedule,
         usace_data_coverage_areas_draft_schedule,
         epa_rmp_facilities_draft_schedule,
+        epa_frs_sic_draft_schedule,
         docks_draft_schedule,
         epa_facilities_draft_schedule,
         epa_facilities_labels_draft_schedule,
+        epa_eez_draft_schedule,
+        epa_regions_with_eez_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
