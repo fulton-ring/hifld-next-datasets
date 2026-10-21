@@ -9,8 +9,12 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from dagster_hifld.assets.epa_frs_naics_powerplants import TABLE_PROFILE
-from dagster_hifld.sources.epa_frs_arcgis_table import ArcGISTableCaptureError, capture_table
+from dagster_hifld.assets.epa_frs_naics_powerplants import TABLE_PROFILE, _typed_parquet
+from dagster_hifld.sources.epa_frs_arcgis_table import (
+    ArcGISTableCaptureError,
+    capture_table,
+    validate_catalog_derivatives,
+)
 
 
 class EPAFRSArcGISTableTests(unittest.TestCase):
@@ -109,6 +113,40 @@ class EPAFRSArcGISTableTests(unittest.TestCase):
             with httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=False) as client:
                 with self.assertRaisesRegex(ArcGISTableCaptureError, "source_final_page_exceeded_transfer_limit"):
                     capture_table(client, profile, Path(tmp))
+
+    def test_catalog_quality_and_native_schema_are_bound_to_captured_rows(self):
+        rows = [
+            {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "NAICS_CODE": "002211",
+             "PRIMARY_INDICATOR": "PRIMARY"},
+            {"OBJECTID": 2, "REGISTRY_ID": None, "NAICS_CODE": "22",
+             "PRIMARY_INDICATOR": "UNKNOWN"},
+        ]
+        fields = tuple({"name": name, "type": esri_type, "nullable": nullable, "length": length}
+                       for name, esri_type, nullable, length in TABLE_PROFILE.fields)
+        native = _typed_parquet(rows, fields)
+        quality = {
+            "feature_count": 2, "quality_check_passed": True, "geometry_type": None,
+            "spatial_status": "non_spatial_source", "invalid_geometry_count": 0,
+            "null_geometry_count": 0,
+        }
+        dictionary = {"columns": [
+            {"name": "OBJECTID", "type": "integer", "numNullValues": 0},
+            {"name": "REGISTRY_ID", "type": "string", "numNullValues": 1, "length": 12},
+            {"name": "NAICS_CODE", "type": "string", "numNullValues": 0, "length": 6},
+            {"name": "PRIMARY_INDICATOR", "type": "string", "numNullValues": 0, "length": 7},
+        ]}
+        result = validate_catalog_derivatives(
+            replace(TABLE_PROFILE, expected_rows=2), rows, native,
+            json.dumps(quality).encode(), json.dumps(dictionary).encode(),
+        )
+        self.assertEqual(result["feature_count"], 2)
+        self.assertTrue(result["nonspatial"])
+        quality["quality_check_passed"] = False
+        with self.assertRaisesRegex(ArcGISTableCaptureError, "cached_catalog_quality_semantics_changed"):
+            validate_catalog_derivatives(
+                replace(TABLE_PROFILE, expected_rows=2), rows, native,
+                json.dumps(quality).encode(), json.dumps(dictionary).encode(),
+            )
 
 
 if __name__ == "__main__":

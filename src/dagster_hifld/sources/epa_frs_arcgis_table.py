@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +11,8 @@ from typing import Any, Mapping
 from urllib.parse import urlencode
 
 import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from dagster_hifld.sources.epa_frs_common import capture_get
 
@@ -54,6 +57,87 @@ class ArcGISTableProfile:
 
 class ArcGISTableCaptureError(ValueError):
     """The source table is incomplete, malformed, or has drifted."""
+
+
+def validate_catalog_derivatives(
+    profile: ArcGISTableProfile,
+    source_records: list[dict[str, Any]],
+    native_parquet: bytes,
+    quality_manifest_bytes: bytes,
+    data_dictionary_bytes: bytes,
+) -> dict[str, Any]:
+    """Bind catalog quality/schema claims to the exact sealed nonspatial table."""
+    try:
+        quality = json.loads(quality_manifest_bytes)
+        dictionary = json.loads(data_dictionary_bytes)
+        table = pq.read_table(io.BytesIO(native_parquet))
+    except (ValueError, pa.ArrowException) as exc:
+        raise ArcGISTableCaptureError("cached_catalog_derivative_is_invalid") from exc
+
+    if (table.num_rows != profile.expected_rows or len(source_records) != profile.expected_rows
+            or table.schema.names != list(profile.field_names)
+            or table.to_pylist() != source_records):
+        raise ArcGISTableCaptureError("cached_native_table_values_or_roster_changed")
+    expected_arrow_types = {
+        "esriFieldTypeOID": pa.int64(),
+        "esriFieldTypeString": pa.string(),
+    }
+    expected_dictionary_types = {
+        "esriFieldTypeOID": "integer",
+        "esriFieldTypeString": "string",
+    }
+    for index, (name, esri_type, nullable, length) in enumerate(profile.fields):
+        if esri_type not in expected_arrow_types:
+            raise ArcGISTableCaptureError("cached_native_field_type_not_supported")
+        native_field = table.schema.field(index)
+        if (native_field.name != name or native_field.type != expected_arrow_types[esri_type]
+                or native_field.nullable is not nullable):
+            raise ArcGISTableCaptureError("cached_native_schema_changed")
+        metadata = native_field.metadata or {}
+        original = metadata.get(b"original_esri_field")
+        if original is not None:
+            original_field = json.loads(original)
+            if (original_field.get("name") != name or original_field.get("type") != esri_type
+                    or original_field.get("nullable") is not nullable
+                    or original_field.get("length") != length):
+                raise ArcGISTableCaptureError("cached_native_source_field_metadata_changed")
+
+    schema_metadata = table.schema.metadata or {}
+    if (schema_metadata.get(b"hifld:geometry") != b"absent"
+            or schema_metadata.get(b"hifld:source_url") != profile.table_url.encode()
+            or schema_metadata.get(b"hifld:source_table") != profile.table_name.encode()
+            or "geometry" in table.schema.names):
+        raise ArcGISTableCaptureError("cached_native_format_or_geometry_changed")
+
+    if (quality.get("feature_count") != profile.expected_rows
+            or quality.get("quality_check_passed") is not True
+            or quality.get("geometry_type") is not None
+            or quality.get("spatial_status") != "non_spatial_source"
+            or quality.get("invalid_geometry_count") != 0
+            or quality.get("null_geometry_count") != 0):
+        raise ArcGISTableCaptureError("cached_catalog_quality_semantics_changed")
+
+    columns = dictionary.get("columns")
+    if not isinstance(columns, list) or [item.get("name") for item in columns] != list(profile.field_names):
+        raise ArcGISTableCaptureError("cached_catalog_column_roster_changed")
+    for field, column in zip(profile.fields, columns):
+        name, esri_type, _nullable, length = field
+        expected_nulls = sum(row[name] is None for row in source_records)
+        observed_length = (
+            max((len(row[name]) for row in source_records if isinstance(row[name], str)), default=0)
+            if esri_type == "esriFieldTypeString" else None
+        )
+        if (column.get("type") != expected_dictionary_types.get(esri_type)
+                or column.get("numNullValues") != expected_nulls
+                or (length is not None and column.get("length") != observed_length)):
+            raise ArcGISTableCaptureError("cached_catalog_column_semantics_changed:" + name)
+    return {
+        "feature_count": table.num_rows,
+        "columns": table.schema.names,
+        "nonspatial": True,
+        "quality_check_passed": quality["quality_check_passed"],
+        "catalog_mode": quality.get("catalog_mode"),
+    }
 
 
 def _canonical(value: object) -> bytes:
