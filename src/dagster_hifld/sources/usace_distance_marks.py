@@ -13,7 +13,6 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely import wkb
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.sources.epa_frs_common import processing_identity
@@ -333,47 +332,6 @@ def _write_source_manifest(staging, version_key: str, metadata: dict, identity: 
     validate_provenance(manifest)
     staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/source_manifest.json", _json_bytes(manifest))
     return manifest
-
-
-def compare_generated_geoparquet(staging, version_key: str) -> dict[str, object]:
-    """Require the generic typed GeoParquet candidate to preserve every native row."""
-    prefix = staging.build_target_location(DATASET_SLUG, FILE_SLUG, version_key, "")
-    native_key = prefix + f"metadata/native_candidate/{FILE_SLUG}.parquet"
-    candidate = pq.read_table(pa.BufferReader(staging.read_key(native_key)))
-    generated_keys = [key for key in staging.list_keys(DATASET_SLUG, FILE_SLUG, version_key)
-                      if key.startswith(prefix + "geoparquet/") and key.endswith(".parquet")]
-    if not generated_keys:
-        raise ValueError("native_parity_generated_geoparquet_missing")
-    output_tables = [pq.read_table(pa.BufferReader(staging.read_key(key))) for key in generated_keys]
-    output = pa.concat_tables(output_tables, promote_options="permissive") if len(output_tables) > 1 else output_tables[0]
-    source_ids = candidate.column("OBJECTID").to_pylist()
-    output_ids = output.column("OBJECTID").to_pylist() if "OBJECTID" in output.column_names else None
-    if output_ids is None or len(source_ids) != EXPECTED_COUNT or len(output_ids) != EXPECTED_COUNT:
-        raise ValueError("native_parity_feature_count_or_id_missing")
-    if sorted(source_ids) != sorted(output_ids) or len(set(output_ids)) != len(output_ids):
-        raise ValueError("native_parity_object_id_roster_drift")
-    source_by_id = {identity: index for index, identity in enumerate(source_ids)}
-    output_by_id = {identity: index for index, identity in enumerate(output_ids)}
-    attribute_names = [name for name, _ in FIELDS]
-    for name, kind in FIELDS:
-        if name not in output.column_names or candidate.schema.field(name).type != output.schema.field(name).type:
-            raise ValueError("native_parity_attribute_schema_drift:" + name)
-        left, right = candidate.column(name).to_pylist(), output.column(name).to_pylist()
-        if any(left[source_by_id[identity]] != right[output_by_id[identity]] for identity in source_by_id):
-            raise ValueError("native_parity_attribute_value_drift:" + name)
-    if "geometry" not in output.column_names:
-        raise ValueError("native_parity_geometry_missing")
-    xs, ys = candidate.column("native_x").to_pylist(), candidate.column("native_y").to_pylist()
-    geometries = output.column("geometry").to_pylist()
-    for identity, source_index in source_by_id.items():
-        point = wkb.loads(geometries[output_by_id[identity]])
-        if point.geom_type != "Point" or point.x != xs[source_index] or point.y != ys[source_index]:
-            raise ValueError("native_parity_exact_xy_drift")
-    return {"feature_count": len(source_ids), "attribute_fields": attribute_names,
-            "id_sha256": _digest(_json_bytes(sorted(source_ids))),
-            "candidate_sha256": _digest(staging.read_key(native_key)),
-            "geoparquet_sha256": [_digest(staging.read_key(key)) for key in generated_keys],
-            "exact_xy_and_attributes": True}
 
 
 def _capture(staging, version_key: str, client: httpx.Client | None = None,
