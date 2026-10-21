@@ -38,6 +38,7 @@ from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_c
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
+from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -71,4 +72,5 @@ hifld_ingest_assets = [
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
     usace_pipeline_areas_usace_ienc,
+    plate_boundaries_usgs,
 ]

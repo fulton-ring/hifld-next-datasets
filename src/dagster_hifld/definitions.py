@@ -84,6 +84,11 @@ from dagster_hifld.assets.usace import (
     usace_navigation_marks_areas_complete,
     usace_navigation_marks_areas_draft_schedule,
 )
+from dagster_hifld.assets.plate_boundaries import (
+    plate_boundaries_draft_job,
+    plate_boundaries_draft_schedule,
+    plate_boundaries_population_complete,
+)
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
@@ -526,6 +531,7 @@ defs = Definitions(
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_pontoon_areas_complete,
+        plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
         usace_pile_locations_complete,
         usace_pipeline_areas_complete,
@@ -547,6 +553,7 @@ defs = Definitions(
         usace_pontoon_areas_draft_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
+        plate_boundaries_draft_job,
         bsee_ocs_platforms_draft_job,
         usace_pile_locations_draft_job,
         usace_pipeline_areas_draft_job,
@@ -572,6 +579,7 @@ defs = Definitions(
         usace_pontoon_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
+        plate_boundaries_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_pipeline_areas_draft_schedule,
