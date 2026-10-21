@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "inventory_id": "quaternary-fault-lines",
+  "title": "Quaternary Fault Lines",
+  "agency": "U.S. Geological Survey",
+  "producer": "U.S. Geological Survey Earthquake Hazards Program",
+  "source_relationship": "official producer-hosted USGS Qfaults service; exact equivalence to the 2024 HIFLD archive and the 2020 service edition is unresolved",
+  "source_url": "https://earthquake.usgs.gov/arcgis/rest/services/haz/Qfaults/MapServer/21",
+  "service_url": "https://earthquake.usgs.gov/arcgis/rest/services/haz/Qfaults/MapServer",
+  "query_url": "https://earthquake.usgs.gov/arcgis/rest/services/haz/Qfaults/MapServer/21/query",
+  "historical_crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "relationship": "DHS crosswalk DOI is cited by the inventory; the exact record-level row was not independently re-fetched because the DataLumos project page returned an anonymous HTTP 403 challenge."
+  },
+  "historical_archive": {
+    "repository": "DataLumos / ICPSR",
+    "study_id": "240586",
+    "url": "https://www.datalumos.org/datalumos/project/240586/version/V1/view",
+    "inventory_date": "2024-03-12",
+    "archive_inventory_modified": "2025-04-08",
+    "archive_note": "The inventory date and archive modification date are not source release dates. The DataLumos view returned an anonymous Cloudflare challenge, so the archived file was not downloaded or compared in this audit."
+  },
+  "upstream_lineage": [
+    "USGS Quaternary Fault and Fold Database (Qfaults)",
+    "USGS Earthquake Hazards Program Qfaults 2020 map release service"
+  ],
+  "service": {
+    "layer_id": 21,
+    "layer_name": "National Database",
+    "service_map_name": "2020 Release",
+    "geometry_type": "esriGeometryPolyline",
+    "native_crs": "EPSG:3857",
+    "max_record_count": 2000,
+    "feature_count_observed_2026-10-21": 112809,
+    "native_id": "OBJECTID",
+    "native_id_count": 112809,
+    "native_id_min": 1,
+    "native_id_max": 115128,
+    "native_id_sha256": "9918f4432ae51ff5a78ce8fde86976181f70c79106a4daa63f5b1e85f4b663d9",
+    "extent_epsg3857": {
+      "xmin": -20037507.0672,
+      "ymin": 2127432.182599999,
+      "xmax": 20037507.067199998,
+      "ymax": 11317901.5467
+    },
+    "fields": [
+      {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+      {"name": "Shape", "type": "esriFieldTypeGeometry"},
+      {"name": "fault_name", "type": "esriFieldTypeString", "length": 100},
+      {"name": "section_name", "type": "esriFieldTypeString", "length": 100},
+      {"name": "fault_id", "type": "esriFieldTypeString", "length": 10},
+      {"name": "section_id", "type": "esriFieldTypeString", "length": 1},
+      {"name": "Location", "type": "esriFieldTypeString", "length": 100},
+      {"name": "linetype", "type": "esriFieldTypeString", "length": 50},
+      {"name": "age", "type": "esriFieldTypeString", "length": 50},
+      {"name": "dip_direction", "type": "esriFieldTypeString", "length": 50},
+      {"name": "slip_rate", "type": "esriFieldTypeString", "length": 100},
+      {"name": "slip_sense", "type": "esriFieldTypeString", "length": 50},
+      {"name": "mapped_scale", "type": "esriFieldTypeString", "length": 50},
+      {"name": "class", "type": "esriFieldTypeString", "length": 50},
+      {"name": "mapped_certainty", "type": "esriFieldTypeString", "length": 200},
+      {"name": "strike", "type": "esriFieldTypeString", "length": 50},
+      {"name": "total_fault_length", "type": "esriFieldTypeInteger"},
+      {"name": "cooperators", "type": "esriFieldTypeString", "length": 200},
+      {"name": "earthquake", "type": "esriFieldTypeString", "length": 200},
+      {"name": "last_review", "type": "esriFieldTypeDate"},
+      {"name": "fault_url", "type": "esriFieldTypeString", "length": 500},
+      {"name": "symbology", "type": "esriFieldTypeString", "length": 100},
+      {"name": "ref_id", "type": "esriFieldTypeString", "length": 50},
+      {"name": "Fault_ID_num", "type": "esriFieldTypeInteger"},
+      {"name": "Shape_Length", "type": "esriFieldTypeDouble"},
+      {"name": "archive_pdf", "type": "esriFieldTypeString", "length": 255}
+    ],
+    "observed_null_counts_2026-10-21": {
+      "OBJECTID": 0, "fault_name": 0, "section_name": 0, "fault_id": 0,
+      "section_id": 0, "Location": 0, "linetype": 0, "age": 0,
+      "dip_direction": 793, "slip_rate": 717, "slip_sense": 715,
+      "mapped_scale": 0, "class": 434, "mapped_certainty": 0, "strike": 434,
+      "total_fault_length": 21950, "cooperators": 0, "earthquake": 754,
+      "last_review": 934, "fault_url": 310, "symbology": 0, "ref_id": 0,
+      "Fault_ID_num": 0, "Shape_Length": 0, "archive_pdf": 0
+    }
+  },
+  "capture_2026-10-21": {
+    "method": "565 anonymous GET requests: service/layer metadata, before/after counts and object-ID rosters, and 565 explicit-ID geometry pages of 200 IDs each; f=json, no outSR override.",
+    "response_features": 112809,
+    "source_id_sha256": "9918f4432ae51ff5a78ce8fde86976181f70c79106a4daa63f5b1e85f4b663d9",
+    "source_record_sha256": "ce2b8535e87ee3a495735c404d1f9d2a5d7dc63c29789f5441ab12cea9e2ab8d",
+    "source_geometry_sha256": "a86afbdc44a9a138c007ca95a8f85020716055e7d2d8cb82f672a8ffac21ec93",
+    "source_schema_sha256": "e77beb61938c9b3ff2a3852a7437bd8079cf47bf0899f24b3be82e94d8c2d86b",
+    "native_vertex_count": 993315,
+    "native_xy_bounds": [-20037507.0672, 2127432.182599999, 20037507.067199998, 11317901.5467],
+    "completeness": "complete for the observed live 112,809-feature roster; not proof of date, HIFLD archive equality, or a newly issued scientific edition",
+    "single_request_limit": "200 IDs per request succeeded; 1,000 IDs returned HTTP 413, so the pipeline uses 200-ID batches.",
+    "release_date": null,
+    "release_date_unknown_reason": "The service declares a 2020 map release but does not expose a dated data-release or edition identifier; the inventory/archive dates are not release dates."
+  },
+  "proposed_schema_contract": {
+    "status": "draft; maintainer approval required",
+    "preserve_all_declared_attributes": true,
+    "preserve_native_id": "OBJECTID, unchanged; no substitute row identifiers",
+    "preserve_value_domains": "last_review retained as source epoch milliseconds; string leading zeros and numeric precision retained",
+    "geometry": "all native polyline XY paths in EPSG:3857 retained without reprojection, repair, or simplification",
+    "unexpected_fields_or_types": "quarantine for review; do not drop or expand the published schema silently",
+    "publication": "blocked pending source acceptance, schema/ID contract, baseline comparison, coverage/rights review, and release approval"
+  },
+  "approval": {
+    "source_acceptance": false,
+    "baseline_acceptance": false,
+    "source_vintage_acceptance": false,
+    "schema_contract_acceptance": false,
+    "id_contract_acceptance": false,
+    "coverage_acceptance": false,
+    "rights_acceptance": false,
+    "release_acceptance": false
+  },
+  "pipeline_implementation": {
+    "candidate_status": "draft; local materialization evidence recorded separately",
+    "dagster_schedule": "defined and stopped",
+    "release": "candidate remains unapproved; no production publication"
+  }
+}
