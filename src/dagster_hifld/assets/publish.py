@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -1291,13 +1292,30 @@ def run_local_version_pipeline(
         file_slug,
         version,
     )
+    source_metadata = dict(resolved_manifest.metadata)
+    if dataset_slug == USACE_PYLON_LOCATIONS_DATASET_SLUG:
+        capture_key = staging_storage.build_target_location(
+            dataset_slug, file_slug, version, "metadata/native_capture.json"
+        )
+        capture_bytes = staging_storage.read_key(capture_key)
+        capture_evidence = json.loads(capture_bytes)
+        source_metadata["capture_evidence"] = {
+            "metadata_key": capture_key,
+            "metadata_sha256": hashlib.sha256(capture_bytes).hexdigest(),
+            "source_layer": capture_evidence["source_layer"],
+            "feature_count": capture_evidence["feature_count"],
+            "source_record_sha256": capture_evidence["source_record_sha256"],
+            "code_identity": capture_evidence["code_identity"],
+            "release_accepted": False,
+            "refresh_semantics": "Each run captures a fresh source snapshot; retained captures are evidence and are not replayed as a cache.",
+        }
     summary = summarize_staged_catalog(
         staging_storage,
         dataset_slug,
         file_slug,
         version,
         dataset_slug,
-        source_metadata=resolved_manifest.metadata,
+        source_metadata=source_metadata,
     )
     write_catalog_metadata(
         staging_storage,

@@ -12,10 +12,13 @@ from dagster_hifld.sources import usace_pylon_locations as source
 
 
 class ArcGISFixture(httpx.BaseTransport):
-    def __init__(self, *, changed_after=False, schema_drift=False):
+    def __init__(self, *, changed_after=False, schema_drift=False, changed_page_crs=False, changed_feature_crs=False, geometry_z=False):
         self.ids = list(range(1, source.EXPECTED_COUNT + 1))
         self.changed_after = changed_after
         self.schema_drift = schema_drift
+        self.changed_page_crs = changed_page_crs
+        self.changed_feature_crs = changed_feature_crs
+        self.geometry_z = geometry_z
         self.id_calls = 0
 
     def handle_request(self, request):
@@ -38,8 +41,14 @@ class ArcGISFixture(httpx.BaseTransport):
             features = []
             for identity in requested:
                 attrs = {name: (identity if name == "OBJECTID" else 123 if name == "Scale_Minimum" else "" if name != "Feature_ID" else f"id-{identity}") for name, _ in source.FIELDS}
-                features.append({"attributes": attrs, "geometry": {"x": -79.5 + identity / 100000, "y": 40.0, "spatialReference": {"wkid": 4326}}})
-            data = {"features": features, "exceededTransferLimit": False}
+                geometry = {"x": -79.5 + identity / 100000, "y": 40.0,
+                            "spatialReference": {"wkid": 3857 if self.changed_feature_crs else 4326}}
+                if self.geometry_z:
+                    geometry["z"] = 100.0
+                features.append({"attributes": attrs, "geometry": geometry})
+            data = {"features": features, "exceededTransferLimit": False,
+                    "geometryType": "esriGeometryPoint", "spatialReference": {"wkid": 3857 if self.changed_page_crs else 4326},
+                    "fields": [{"name": name, "type": typ} for name, typ in source.SOURCE_SCHEMA]}
         return httpx.Response(200, stream=httpx.ByteStream(json.dumps(data).encode()), request=request, headers={"content-type": "application/json"})
 
 
@@ -99,6 +108,55 @@ class PylonLocationCaptureTests(unittest.TestCase):
                 source.capture(storage, "v20261021T000000Z", client=client)
         self.assertEqual(transport.id_calls, 0)
         self.assertTrue(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", "metadata/quarantine.json")))
+
+    def test_conflicting_page_crs_refuses_before_candidate(self):
+        transport = ArcGISFixture(changed_page_crs=True)
+        temporary = tempfile.TemporaryDirectory(prefix="pylon-page-crs-")
+        self.addCleanup(temporary.cleanup)
+        storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
+        with httpx.Client(transport=transport) as client:
+            with self.assertRaisesRegex(ValueError, "source_crs_drift"):
+                source.capture(storage, "v20261021T000000Z", client=client)
+        self.assertFalse(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+
+    def test_conflicting_feature_crs_refuses_before_candidate(self):
+        transport = ArcGISFixture(changed_feature_crs=True)
+        temporary = tempfile.TemporaryDirectory(prefix="pylon-feature-crs-")
+        self.addCleanup(temporary.cleanup)
+        storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
+        with httpx.Client(transport=transport) as client:
+            with self.assertRaisesRegex(ValueError, "source_crs_drift"):
+                source.capture(storage, "v20261021T000000Z", client=client)
+        self.assertFalse(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+
+    def test_unexpected_z_ordinate_refuses_instead_of_dropping_it(self):
+        transport = ArcGISFixture(geometry_z=True)
+        temporary = tempfile.TemporaryDirectory(prefix="pylon-z-ordinate-")
+        self.addCleanup(temporary.cleanup)
+        storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
+        with httpx.Client(transport=transport) as client:
+            with self.assertRaisesRegex(ValueError, "source_dimension_drift"):
+                source.capture(storage, "v20261021T000000Z", client=client)
+        self.assertFalse(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+
+    def test_normal_repository_registers_pylon_refresh_and_preserves_existing_refreshes(self):
+        from dagster import AssetKey, DefaultScheduleStatus
+        from dagster_hifld.definitions import defs
+
+        repository = defs.get_repository_def()
+        expected = {
+            "faa_airspace_draft_refresh",
+            "noaa_eez_draft_refresh",
+            "noaa_contiguous_draft_refresh",
+            "pylon_locations_usace_ienc_draft_refresh",
+        }
+        self.assertTrue(expected.issubset({job.name for job in repository.get_all_jobs()}))
+        job = repository.get_job("pylon_locations_usace_ienc_draft_refresh")
+        self.assertEqual(set(job.asset_layer.executable_asset_keys), {
+            AssetKey(["ingest", source.DATASET_SLUG, source.FILE_SLUG])
+        })
+        schedule = repository.get_schedule_def("pylon_locations_draft_refresh_schedule")
+        self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
 
 
 if __name__ == "__main__":

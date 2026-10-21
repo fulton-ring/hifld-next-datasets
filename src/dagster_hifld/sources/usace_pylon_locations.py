@@ -96,25 +96,36 @@ def _metadata(client: httpx.Client, staging, version_key: str, budget: list[int]
     if isinstance(value.get("extent"), dict):
         refs.append(value["extent"].get("spatialReference"))
     for ref in refs:
-        if not isinstance(ref, dict):
-            raise ValueError("source_crs_drift")
-        codes = [ref[key] for key in ("wkid", "latestWkid") if key in ref]
-        if not codes or any(type(code) is not int or code != 4326 for code in codes):
-            raise ValueError("source_crs_drift")
-        for key in ("wkt", "wkt2"):
-            if key in ref:
-                try:
-                    same_crs = pyproj.CRS.from_wkt(ref[key]).equals(pyproj.CRS.from_epsg(4326), ignore_axis_order=True)
-                except Exception as exc:
-                    raise ValueError("source_crs_drift") from exc
-                if not same_crs:
-                    raise ValueError("source_crs_drift")
+        _validate_crs(ref)
+    _validate_dimensions(value)
     fields = value.get("fields")
     expected = [{"name": name, "type": kind} for name, kind in SOURCE_SCHEMA]
     actual = [{"name": field.get("name"), "type": field.get("type")} for field in fields or []]
     if actual != expected:
         raise ValueError("source_schema_drift")
     return value
+
+
+def _validate_crs(ref: object) -> None:
+    if not isinstance(ref, dict):
+        raise ValueError("source_crs_drift")
+    codes = [ref[key] for key in ("wkid", "latestWkid") if key in ref]
+    if not codes or any(type(code) is not int or code != 4326 for code in codes):
+        raise ValueError("source_crs_drift")
+    for key in ("wkt", "wkt2"):
+        if key in ref:
+            try:
+                same_crs = pyproj.CRS.from_wkt(ref[key]).equals(pyproj.CRS.from_epsg(4326), ignore_axis_order=True)
+            except Exception as exc:
+                raise ValueError("source_crs_drift") from exc
+            if not same_crs:
+                raise ValueError("source_crs_drift")
+
+
+def _validate_dimensions(declaration: dict) -> None:
+    for name in ("hasZ", "hasM"):
+        if name in declaration and (type(declaration[name]) is not bool or declaration[name]):
+            raise ValueError("source_dimension_drift")
 
 
 def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> list[int]:
@@ -249,6 +260,15 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
             page = result.get("features")
             if not isinstance(page, list) or len(page) > metadata["maxRecordCount"] or result.get("exceededTransferLimit") is True:
                 raise ValueError(f"source_incomplete_page:{offset}")
+            if result.get("geometryType") != "esriGeometryPoint":
+                raise ValueError("source_page_geometry_type_drift")
+            _validate_dimensions(result)
+            if not isinstance(result.get("fields"), list):
+                raise ValueError("source_page_schema_drift")
+            actual_fields = [{"name": field.get("name"), "type": field.get("type")} for field in result["fields"]]
+            if actual_fields != [{"name": name, "type": kind} for name, kind in SOURCE_SCHEMA]:
+                raise ValueError("source_page_schema_drift")
+            _validate_crs(result.get("spatialReference"))
             page_ids = [f.get("attributes", {}).get("OBJECTID") for f in page]
             if page_ids != requested:
                 raise ValueError(f"source_page_id_or_order_drift:{offset}")
@@ -257,8 +277,12 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
                 if not isinstance(attributes, dict) or set(attributes) != {name for name, _ in FIELDS}:
                     raise ValueError("source_page_attribute_roster_drift")
                 geometry = feature.get("geometry")
-                if not isinstance(geometry, dict) or geometry.get("spatialReference", {}).get("wkid", 4326) != 4326:
+                if not isinstance(geometry, dict):
                     raise ValueError("source_page_crs_drift")
+                if "z" in geometry or "m" in geometry:
+                    raise ValueError("source_dimension_drift")
+                if "spatialReference" in geometry:
+                    _validate_crs(geometry["spatialReference"])
             features.extend(page)
             pages.append({"offset": offset, "requested_ids": requested, "returned_ids": page_ids, "count": len(page)})
         after = _id_snapshot(client, staging, version_key, "ids_after", budget)
@@ -288,6 +312,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
             "source_record_sha256": row_digest, "parquet_sha256": _digest(parquet), "geojson_sha256": _digest(geojson),
             "native_crs": "EPSG:4326", "field_schema": SOURCE_SCHEMA, "attribute_fields": FIELDS, "pages": pages,
             "code_identity": processor_identity, "coverage_statement": "Official IENC chart service only; nationwide coverage is not established.",
+            "refresh_semantics": "Each run captures a fresh source snapshot; retained captures are evidence and are not replayed as a cache.",
             "release_accepted": False,
         }))
         return {"feature_count": len(features), "ids_sha256": ids_digest, "records_sha256": row_digest,
