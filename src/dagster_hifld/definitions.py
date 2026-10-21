@@ -18,6 +18,10 @@ from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
+from dagster_hifld.assets.census_bureau import (
+    aiannh_source_integrity_refresh_job,
+    aiannh_source_integrity_refresh_schedule,
+)
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
@@ -32,6 +36,11 @@ from dagster_hifld.assets.gcca_warehouse_directory import (
     gcca_warehouses_geometry_complete,
     gcca_warehouses_draft_job,
     gcca_warehouses_draft_schedule,
+)
+from dagster_hifld.assets.red_cross_headquarters import (
+    red_cross_headquarters_draft_job,
+    red_cross_headquarters_draft_schedule,
+    red_cross_headquarters_source_population,
 )
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
@@ -123,6 +132,9 @@ from dagster_hifld.assets.usace_pile_locations import (
     usace_pile_locations_draft_schedule,
 )
 from dagster_hifld.assets.usace import (
+    usace_administrative_areas_complete,
+    usace_administrative_areas_draft_job,
+    usace_administrative_areas_draft_schedule,
     usace_navigation_marks_areas_complete,
     usace_navigation_marks_areas_draft_job,
     usace_navigation_marks_areas_draft_schedule,
@@ -564,12 +576,14 @@ defs = Definitions(
         arc_regions_full_quality,
         eia_power_plants_complete,
         gcca_warehouses_geometry_complete,
+        red_cross_headquarters_source_population,
         census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
+        usace_administrative_areas_complete,
         usace_navigation_marks_areas_complete,
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
@@ -600,6 +614,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         usace_overhead_cables_draft_job,
         usace_obstruction_lines_draft_job,
+        usace_administrative_areas_draft_job,
         usace_navigation_marks_areas_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
@@ -618,6 +633,8 @@ defs = Definitions(
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
         arc_regions_draft_job,
+        aiannh_source_integrity_refresh_job,
+        red_cross_headquarters_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -633,6 +650,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         usace_overhead_cables_draft_schedule,
         usace_obstruction_lines_draft_schedule,
+        usace_administrative_areas_draft_schedule,
         usace_navigation_marks_areas_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
@@ -653,6 +671,8 @@ defs = Definitions(
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
         arc_regions_draft_schedule,
+        aiannh_source_integrity_refresh_schedule,
+        red_cross_headquarters_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

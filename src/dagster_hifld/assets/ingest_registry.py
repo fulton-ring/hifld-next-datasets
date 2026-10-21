@@ -14,6 +14,7 @@ from dagster_hifld.assets.census_primary_roads import census_bureau_primary_road
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
 from dagster_hifld.assets.red_cross import red_cross_american_red_cross_divisions
 from dagster_hifld.assets.arc_regions import arc_regions
+from dagster_hifld.assets.red_cross_headquarters import red_cross_headquarters
 from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facilities
 from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
@@ -56,6 +57,7 @@ hifld_ingest_assets = [
     noaa_24nm_contiguous_zone,
     red_cross_american_red_cross_divisions,
     arc_regions,
+    red_cross_headquarters,
     faa_airspace_boundaries,
     faa_aviation_facilities,
     bts_amtrak_stations,
