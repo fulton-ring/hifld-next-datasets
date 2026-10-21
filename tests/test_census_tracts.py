@@ -129,13 +129,21 @@ class CensusTractsTests(unittest.TestCase):
             root = Path(temp)
             (root / "metadata").mkdir()
             (root / "geoparquet").mkdir()
-            (root / "metadata/source.json").write_bytes(b"immutable metadata\n")
+            source_manifest = root / "metadata/source_manifest.json"
+            source_manifest.write_bytes(b"immutable metadata\n")
             (root / "geoparquet/candidate.parquet").write_bytes(b"immutable output bytes")
             expected = source._file_roster(root)
             before = {name: (root / name).stat().st_mtime_ns for name in expected}
             (root / "metadata/quality_manifest.json").write_bytes(b"catalog quality")
             (root / "metadata/data_dictionary.json").write_bytes(b"catalog dictionary")
             (root / "metadata/resolved_provenance.json").write_bytes(b"catalog provenance")
+            snapshot_dir = root / "metadata/source"
+            snapshot_dir.mkdir()
+            snapshot_dir.joinpath("source_manifest.json").write_bytes(source_manifest.read_bytes())
+            snapshot_dir.joinpath("data_dictionary.json").write_bytes(b"previous catalog dictionary")
+            snapshot_dir.joinpath("quality_manifest.json").write_bytes(b"previous catalog quality")
+            digest = source.sha256_file(source_manifest)
+            snapshot_dir.joinpath(f"version_{digest}_source_manifest.json").write_bytes(source_manifest.read_bytes())
             source._check_file_roster(root, expected)
             after = {name: (root / name).stat().st_mtime_ns for name in expected}
             self.assertEqual(after, before)
@@ -160,13 +168,18 @@ class CensusTractsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "metadata").mkdir()
-            candidate = root / "metadata/source.json"
+            candidate = root / "metadata/source_manifest.json"
             candidate.write_bytes(b"original")
             expected = source._file_roster(root)
             for name in source.DOWNSTREAM_METADATA:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"catalog-owned")
+            snapshot_dir = root / "metadata/source"
+            snapshot_dir.mkdir(exist_ok=True)
+            snapshot_dir.joinpath("source_manifest.json").write_bytes(candidate.read_bytes())
+            digest = source.sha256_file(candidate)
+            snapshot_dir.joinpath(f"version_{digest}_source_manifest.json").write_bytes(candidate.read_bytes())
             source._check_file_roster(root, expected)
             candidate.write_bytes(b"tampered")
             with self.assertRaisesRegex(source.CensusTractsError, "file_roster_changed"):

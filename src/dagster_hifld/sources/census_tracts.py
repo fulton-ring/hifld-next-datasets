@@ -41,6 +41,9 @@ DOWNSTREAM_METADATA = frozenset({
     "metadata/quality_manifest.json",
     "metadata/data_dictionary.json",
     "metadata/resolved_provenance.json",
+    "metadata/source/source_manifest.json",
+    "metadata/source/data_dictionary.json",
+    "metadata/source/quality_manifest.json",
 })
 EXPECTED_NAMES = ("OBJECTID", "GEOID", "GEOIDFQ", "NAMELSAD", "ALAND", "AWATER", "INTPTLAT", "INTPTLON", "SHAPE")
 EXPECTED_TYPES = (pa.int64(), pa.string(), pa.string(), pa.string(), pa.float64(), pa.float64(), pa.string(), pa.string(), pa.binary())
@@ -363,8 +366,14 @@ def _file_roster(root: Path, *, exclude: frozenset[str] = frozenset()) -> dict[s
 
 def _check_file_roster(root: Path, expected: dict[str, dict[str, object]]) -> None:
     # Catalog writes these three derived sidecars after source materialization;
-    # they are not part of the source-owned immutable candidate roster.
-    if _file_roster(root, exclude=DOWNSTREAM_METADATA | frozenset({READY_ROSTER})) != expected:
+    # snapshot_source_metadata also pins the authored manifest and any existing
+    # catalog documents under metadata/source/ before generating new sidecars.
+    allowed = set(DOWNSTREAM_METADATA)
+    source_manifest = root / "metadata/source_manifest.json"
+    if source_manifest.is_file() and not source_manifest.is_symlink():
+        digest = sha256_file(source_manifest)
+        allowed.add(f"metadata/source/version_{digest}_source_manifest.json")
+    if _file_roster(root, exclude=frozenset(allowed | {READY_ROSTER})) != expected:
         raise CensusTractsError("existing_candidate_file_roster_changed")
 
 
