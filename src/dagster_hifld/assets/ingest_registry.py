@@ -15,6 +15,7 @@ from dagster_hifld.assets.noaa import (
     noaa_200nm_eez_and_maritime_boundaries,
 )
 from dagster_hifld.assets.noaa_contiguous import noaa_24nm_contiguous_zone
+from dagster_hifld.assets.bts_ferry_routes import bts_ferry_routes
 from dagster_hifld.assets.census_bureau import census_bureau_aiannh_areas
 from dagster_hifld.assets.census_primary_roads import census_bureau_primary_roads
 from dagster_hifld.assets.census_block_groups import census_bureau_block_groups
