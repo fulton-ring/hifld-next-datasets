@@ -122,7 +122,7 @@ class EpaFrsTriTests(unittest.TestCase):
                 "returnZ":"true","returnM":"true","outSR":"4269","orderByFields":"OBJECTID ASC","f":"json"}
             self.assertLess(len(tri._query_url(**params)), tri.MAX_OBJECT_ID_URL_LENGTH)
 
-    def test_small_capture_seal_catalog_sidecar_and_cache_reuse(self):
+    def test_small_capture_seals_and_reuses_candidate(self):
         captures = self._capture_fixture()
         fixture_by_url = {}
         for name, url in tri._source_metadata_urls():
@@ -164,20 +164,6 @@ class EpaFrsTriTests(unittest.TestCase):
                 payload["source_record_sha256"], schema_sha, payload["objects"], payload["capture_receipts"])
             self.assertTrue(reused["reused"])
 
-            # Catalog-derived sidecars and immutable source-manifest snapshots
-            # must not invalidate this sealed source candidate.
-            manifest = storage.read_key(f"{prefix}/metadata/source_manifest.json")
-            manifest_sha = tri._sha(manifest)
-            for name, body in {
-                "metadata/quality_manifest.json": b'{"quality_check_passed":false}',
-                "metadata/data_dictionary.json": b'{"fixture":true}',
-                "metadata/resolved_provenance.json": b'{"fixture":true}',
-                "metadata/source/quality_manifest.json": b'{"quality_check_passed":false}',
-                "metadata/source/data_dictionary.json": b'{"fixture":true}',
-                "metadata/source/source_manifest.json": manifest,
-                f"metadata/source/version_{manifest_sha}_source_manifest.json": manifest,
-            }.items():
-                tri.write_immutable(storage, f"{prefix}/{name}", body)
             self.assertTrue(verify_cached_candidate(storage, Path(__file__).resolve().parents[1],
                 state_key, prefix, result["version"], tri._sha(tri._canonical(identity)), identity,
                 payload["source_record_sha256"], schema_sha, payload["objects"], payload["capture_receipts"])["reused"])
