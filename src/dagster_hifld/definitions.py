@@ -277,6 +277,9 @@ from dagster_hifld.assets.campus_preservation import (
     campus_historical_full_quality,
     ornl_campus_historical_integrity_schedule,
     ornl_campus_historical_reconstruction_job,
+from dagster_hifld.assets.combined_statistical_areas import (
+    csa_source_integrity_job,
+    csa_source_integrity_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -753,6 +756,7 @@ defs = Definitions(
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
         ornl_campus_historical_reconstruction_job,
+        csa_source_integrity_job,
     ],
     schedules=[
         colleges_source_integrity_schedule,
@@ -805,6 +809,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
+        csa_source_integrity_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
