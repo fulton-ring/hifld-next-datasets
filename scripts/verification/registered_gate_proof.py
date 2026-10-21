@@ -152,6 +152,7 @@ def run_gate_case(
     prefix: str,
     published_dir: Path,
     approvals_path: Path | None,
+    include_quality_check: bool = True,
 ) -> dict[str, Any]:
     staging_dir = case_root / "staging"
     candidate_dir = staging_dir.joinpath(*prefix.split("/"))
@@ -174,12 +175,12 @@ def run_gate_case(
         use_local=True, local_dir=str(published_dir), prefix="", backend="local"
     )
     partition = build_publish_partition_key(*prefix.split("/"))
+    selection = AssetSelection.assets(verify_release, publish_version)
+    if include_quality_check:
+        selection = selection | AssetSelection.checks(publish_catalog_quality_manifest)
     job = define_asset_job(
         f"registered_gate_proof_{name.replace('-', '_')}",
-        selection=(
-            AssetSelection.checks(publish_catalog_quality_manifest)
-            | AssetSelection.assets(verify_release, publish_version)
-        ),
+        selection=selection,
     )
     harness_defs = type(registered_defs)(
         assets=registered_defs.assets,
@@ -229,7 +230,9 @@ def run_gate_case(
 def copy_candidate(source: Path, case_root: Path, prefix: str) -> Path:
     destination = case_root / "staging" / Path(*prefix.split("/"))
     destination.parent.mkdir(parents=True)
-    shutil.copytree(source, destination)
+    # Candidate payloads can be multi-gigabyte. Hard-link the isolated inputs;
+    # every mutation in this harness is a newly created metadata file.
+    shutil.copytree(source, destination, copy_function=os.link)
     return destination
 
 
@@ -311,8 +314,8 @@ def main(argv: list[str] | None = None) -> int:
     if not original_candidate_inventory:
         raise ValueError("candidate contains no files")
     quality = json.loads(quality_file.read_text(encoding="utf-8"))
-    if quality.get("quality_check_passed") is not True:
-        raise ValueError("candidate must start with a passing quality manifest")
+    if quality.get("quality_check_passed") is not False:
+        raise ValueError("candidate must retain its actual failed quality manifest")
 
     source_manifest_data = json.loads(source_manifest.read_text(encoding="utf-8"))
     failed_root = run_root / "quality-failed"
@@ -320,17 +323,15 @@ def main(argv: list[str] | None = None) -> int:
     failed_candidate = copy_candidate(candidate, failed_root, prefix)
     failed_quality_path = failed_candidate / "metadata" / "quality_manifest.json"
     failed_quality = json.loads(failed_quality_path.read_text(encoding="utf-8"))
-    failed_quality["quality_check_passed"] = False
-    failed_quality_path.write_text(
-        json.dumps(failed_quality, sort_keys=True, indent=2) + "\n", encoding="utf-8"
-    )
+    if failed_quality.get("quality_check_passed") is not False:
+        raise ValueError("source candidate must retain its actual failed quality manifest")
     failed_inventory = inventory(failed_candidate)
     changed = sorted(
         relative for relative in set(original_candidate_inventory) | set(failed_inventory)
         if original_candidate_inventory.get(relative) != failed_inventory.get(relative)
     )
-    if changed != ["metadata/quality_manifest.json"]:
-        raise AssertionError(f"false-quality case must differ only in the quality manifest: {changed}")
+    if changed:
+        raise AssertionError(f"quality-failed case must preserve candidate exactly: {changed}")
 
     approval_candidate = copy_candidate(candidate, approval_root, prefix)
     copied_inventory = inventory(approval_candidate)
@@ -383,10 +384,13 @@ def main(argv: list[str] | None = None) -> int:
         prefix=prefix,
         published_dir=published_dir,
         approvals_path=approvals_path,
+        include_quality_check=False,
     )
     approval_checks = approval_case["quality_check_evaluations"]
-    if len(approval_checks) != 1 or approval_checks[0]["passed"] is not True:
-        raise AssertionError(f"registered quality check did not pass: {approval_checks}")
+    if approval_checks:
+        raise AssertionError(f"approval-only graph unexpectedly selected quality check: {approval_checks}")
+    if "publish/catalog" in approval_case["selected_assets"]:
+        raise AssertionError("approval-only graph unexpectedly selected the catalog asset")
     if not step_started(approval_case, "verify"):
         raise AssertionError("registered verify step did not start for empty approval registry")
     if step_started(approval_case, "promote"):
@@ -407,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     if source_after != original_candidate_inventory:
         raise AssertionError("input candidate was modified")
     result = {
-        "purpose": "registered gates only; no source or catalog materialization, acceptance, or production publication",
+        "purpose": "normal failed-quality refusal and separate approval-only refusal with quality checks omitted; no acceptance or production publication",
         "harness_checkout_head": harness_checkout_head(),
         "harness_script_sha256": file_sha256(Path(__file__).resolve()),
         "registered_pipeline_implementation_sha256": verifier_implementation_sha256(),
@@ -421,8 +425,8 @@ def main(argv: list[str] | None = None) -> int:
         "approval_case_release_metadata_changed_files": changed_for_release_metadata,
         "candidate_source_manifest_sha256": file_sha256(source_manifest),
         "candidate_source_code_commit": source_manifest_data.get("code_commit"),
-        "false_quality_changed_files": changed,
-        "false_quality_run": quality_case,
+        "quality_failed_candidate_changed_files": changed,
+        "quality_failed_run": quality_case,
         "empty_approval_run": approval_case,
         "empty_approval_registry": str(approvals_path),
         "synthetic_published_fixture_object_count": len(published_before),
