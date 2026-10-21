@@ -8,7 +8,6 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import struct
 from pathlib import Path
 from unittest.mock import patch
@@ -31,12 +30,13 @@ from dagster_hifld.sources import crushed_stone as source
 from dagster_hifld.release_approval import validate_release_provenance
 
 staging=StagingStorageResource(local_dir=str(runtime/'staging'),use_local=True);published=PublishedStorageResource(local_dir=str(runtime/'published'),use_local=True)
-published.write_key('synthetic-prior-release-fixture.bin',b'local-preservation-fixture-only-not-accepted-real-data')
+for index in range(14):
+    published.write_key(f'synthetic-prior-release-fixture/{index:02d}.bin',f'isolated synthetic fixture object {index:02d}; not accepted production data'.encode())
 def snap(storage):return {k:storage.sha256_key(k) for k in storage.list_prefix()}
 def files(root):return {str(p.relative_to(root)):source.sha256_file(p) for p in root.rglob('*') if p.is_file()}
 prior=snap(published);keys=[k for k in normal.resolve_asset_graph().get_all_asset_keys() if k.path[0]=='publish']
 defs=Definitions(assets=normal.assets,asset_checks=normal.asset_checks,resources={'staging_storage':staging,'published_storage':published},jobs=[define_asset_job('crushed_stone_normal_graph',selection=AssetSelection.assets(*keys))])
-report={'code_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(source.__file__).parents[3],text=True).strip(),'module':source.__file__,'runtime':str(runtime),'package_id':source.PACKAGE,'source_accepted':False,'release_accepted':False,'prior_release':'synthetic local fixture only, not a real accepted release','runs':[]}
+report={'execution_code_identity':source.processing_identity(),'module':source.__file__,'runtime':str(runtime),'package_id':source.PACKAGE,'source_accepted':False,'release_accepted':False,'prior_release':'14-object synthetic local fixture only, not a real accepted release','runs':[]}
 def record(kind,result):
     errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
     report['runs'].append({'kind':kind,'run_id':result.run_id,'success':result.success,'errors':errors,'materializations':[e.asset_key.to_user_string() for e in result.get_asset_materialization_events()],'checks':[{'name':e.check_name,'passed':e.passed} for e in result.get_asset_check_evaluations()]})
