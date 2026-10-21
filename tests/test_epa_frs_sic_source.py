@@ -1,294 +1,188 @@
-import hashlib
 import json
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from unittest.mock import patch
+from urllib.parse import urlsplit
 
-import httpx
+import pyarrow as pa
 import pyarrow.parquet as pq
+from dataclasses import replace
 
-from dagster_hifld.assets.epa_frs_sic_powerplants import (
-    DATASET_SLUG, FILE_SLUG, PROFILE, _canonical, _reuse, _schema_sha, _sha, _typed_parquet,
-)
-from dagster_hifld.catalog import summarize_staged_catalog
-from dagster_hifld.construction_state import seal_first_construction
-from dagster_hifld.native_verification import normalize_native_input
-from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, canonical_construction_bundle, processing_identity,
-)
-from dagster_hifld.sources.epa_frs_arcgis_table import (
-    ArcGISTableCaptureError, _metadata_contract, capture_table,
-)
+from dagster_hifld.sources import epa_frs_sic as sic
+from dagster_hifld.sources.epa_frs_common import candidate_prefix
 
 
-class EPAFRSSICTests(unittest.TestCase):
-    def test_registered_cache_reuse_rejects_tampered_catalog_quality(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            storage = StagingStorageResource(use_local=True, local_dir=str(root), prefix="", backend="local")
-            version = "v-cache-quality-regression"
-            prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-            fields = [
-                {"name": name, "type": esri_type, "nullable": nullable, "length": length}
-                for name, esri_type, nullable, length in PROFILE.fields
-            ]
-            rows = [
-                {"OBJECTID": object_id, "REGISTRY_ID": f"{object_id:012d}",
-                 "SIC_CODE": f"{object_id % 10000:04d}", "PRIMARY_INDICATOR": "PRIMARY"}
-                for object_id in range(1, PROFILE.expected_rows + 1)
-            ]
-            objects: dict[str, dict[str, object]] = {}
+class EpaFrsSicSourceTests(unittest.TestCase):
+    def _fields(self):
+        fields = []
+        for name, kind, nullable, length in sic.PROFILE.fields:
+            fields.append({"name": name, "type": kind, "alias": name,
+                           "length": length, "nullable": nullable})
+        return fields
 
-            def stage(name: str, body: bytes) -> None:
-                storage.write_key(f"{prefix}/{name}", body)
-                objects[name] = {"bytes": len(body), "sha256": _sha(body)}
+    def _features(self):
+        rows = []
+        for oid, acrnm, sys_id, code, indicator in ((7, "ICIS", "46748", "4213", "SECONDARY"),
+                                                    (11, "NPDES", "GAR372473", "1521", "PRIMARY")):
+            attrs = {"OBJECTID": oid, "PGM_SYS_ACRNM": acrnm, "PGM_SYS_ID": sys_id,
+                     "SIC_CODE": code, "PRIMARY_INDICATOR": indicator,
+                     "KEY_FIELD": f"{acrnm}{sys_id}"}
+            rows.append({"attributes": attrs, "geometry": None})
+        return rows
 
-            stage("unknown/" + FILE_SLUG + ".parquet", _typed_parquet(rows, tuple(fields)))
-            source_manifest = {
-                "title": "EPA FRS SIC cache regression fixture",
-                "description": "Synthetic nonspatial test fixture.",
-                "source_url": PROFILE.table_url,
-                "source_vintage": PROFILE.source_vintage,
-                "native_geometry": "absent",
-                "refresh_status": "STOPPED",
-            }
-            stage("metadata/source_manifest.json", _canonical(source_manifest))
-            identity = processing_identity(Path(__file__).parents[1])
-            fingerprint = _sha(_canonical(identity))
-            stage("metadata/processing_identity.json", _canonical(identity))
-            stage("metadata/source_ids.json", _canonical(list(range(1, PROFILE.expected_rows + 1))))
-            stage("metadata/published_candidate_ids.json", _canonical(list(range(1, PROFILE.expected_rows + 1))))
-            stage("metadata/source_capture.json", _canonical({"refresh_status": "STOPPED"}))
-            stage("metadata/source_audit.json", _canonical({"drift_reasons": []}))
-            stage("metadata/candidate_ready.json", _canonical({"status": "READY"}))
+    def _small_profile(self):
+        return replace(sic.PROFILE, expected_rows=2)
 
-            receipts = {}
-            for name in ("service", "service_after", "table_before", "count_before", "ids_before",
-                         "table_after", "count_after", "ids_after", "page_000"):
-                body = b"{}"
-                receipt = {"complete_body": True, "status": 200, "bytes": len(body), "sha256": _sha(body),
-                           "wire_bytes": len(body), "wire_sha256": _sha(body)}
-                receipts[name] = receipt
-                stage(f"raw/{name}.body", body)
-                stage(f"raw/{name}.wire", body)
-                stage(f"raw/{name}.receipt.json", _canonical(receipt) + b"\n")
-
-            resolved = load_resolved_source_manifest(storage, DATASET_SLUG, FILE_SLUG, version).metadata
-            summary = summarize_staged_catalog(
-                storage, DATASET_SLUG, FILE_SLUG, version, DATASET_SLUG, source_metadata=resolved
-            )
-            quality_key = f"{prefix}/metadata/quality_manifest.json"
-            storage.write_key(quality_key, _canonical(summary.quality_manifest))
-            storage.write_key(f"{prefix}/metadata/data_dictionary.json", _canonical(summary.data_dictionary))
-
-            payload = {
-                "processing_identity": identity,
-                "source_record_sha256": _sha(_canonical(rows)),
-                "source_schema_sha256": _schema_sha(fields),
-                "capture_receipts": receipts,
-                "objects": objects,
-            }
-            state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-            seal_first_construction(
-                storage, state_key, version, fingerprint,
-                canonical_construction_bundle(version, fingerprint, payload),
-            )
-
-            self.assertTrue(_reuse(storage, version=version, identity=identity,
-                                   fingerprint=fingerprint, offline=True)["offline_replay"])
-            tampered = dict(summary.quality_manifest)
-            tampered["quality_check_passed"] = False
-            storage.write_key(quality_key, _canonical(tampered))
-            with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
-                _reuse(storage, version=version, identity=identity, fingerprint=fingerprint, offline=True)
-
-    def test_hosted_epa_item_allows_undeclared_join_only_with_exact_item_identity(self):
-        profile = replace(
-            PROFILE, service_url="https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_Wastewater/FeatureServer",
-            table_id=2, table_name="Integrated Compliance Information System (ICIS) Wastewater Treatment Plants SIC Codes",
-            expected_rows=1, relationship_name=None, related_table_id=None,
-            relationship_key=None, relationship_cardinality=None, source_vintage=None,
-            portal_item_id="item-1", portal_item_owner="EPA_GEO", portal_item_title="ICIS WWTP",
-        )
-        fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
-                  for name, esri_type, nullable, length in profile.fields]
-        service = {"description": "EPA maintained ICIS wastewater source.", "tables": [
-            {"id": profile.table_id, "name": profile.table_name}]}
-        table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-                 "relationships": []}
-        row = {"OBJECTID": 9, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-               "PRIMARY_INDICATOR": "PRIMARY"}
-        portal_item = {"id": "item-1", "owner": "EPA_GEO", "title": "ICIS WWTP",
-                       "type": "Feature Service", "url": profile.service_url, "modified": 123}
-
-        class JSONStream(httpx.SyncByteStream):
-            def __init__(self, payload):
-                self.body = json.dumps(payload, separators=(",", ":")).encode()
-
-            def __iter__(self):
-                yield self.body
-
-            def close(self):
-                return None
-
-        def respond(request):
-            path = urlparse(str(request.url)).path
-            query = parse_qs(urlparse(str(request.url)).query)
-            if "/sharing/rest/content/items/" in path:
-                payload = portal_item
-            elif path.rstrip("/").endswith("FeatureServer"):
-                payload = service
-            elif path.endswith(f"/{profile.table_id}"):
-                payload = table
-            elif query.get("returnCountOnly") == ["true"]:
-                payload = {"count": 1}
-            elif query.get("returnIdsOnly") == ["true"]:
-                payload = {"objectIds": [9]}
-            else:
-                payload = {"features": [{"attributes": row}]}
-            return httpx.Response(200, stream=JSONStream(payload),
-                                  headers={"content-type": "application/json"})
-
-        with tempfile.TemporaryDirectory() as tmp:
-            client = httpx.Client(transport=httpx.MockTransport(respond))
-            with client:
-                captured, manifest, _ = capture_table(client, profile, Path(tmp))
-        self.assertEqual(captured, [row])
-        self.assertIsNone(manifest["declared_relationship_contract"])
-        self.assertEqual(manifest["relationship"], [])
-        self.assertEqual(manifest["portal_item"]["owner"], "EPA_GEO")
-
-        for bad_item in ({**portal_item, "owner": "mirror"},
-                         {**portal_item, "url": "https://example.invalid/service"}):
-            def bad_respond(request, item=bad_item):
-                path = urlparse(str(request.url)).path
-                if "/sharing/rest/content/items/" in path:
-                    return httpx.Response(200, stream=JSONStream(item),
-                                          headers={"content-type": "application/json"})
-                return respond(request)
-            with tempfile.TemporaryDirectory() as tmp:
-                client = httpx.Client(transport=httpx.MockTransport(bad_respond))
-                with client, self.assertRaisesRegex(ArcGISTableCaptureError,
-                                                    "source_portal_item_identity_changed"):
-                    capture_table(client, profile, Path(tmp))
-
-    def test_hosted_item_identity_and_relationship_contracts_are_all_or_none(self):
-        with self.assertRaisesRegex(ValueError, "portal_item_contract_must_be_complete"):
-            replace(PROFILE, portal_item_id="item-1")
-        with self.assertRaisesRegex(ValueError, "relationship_contract_must_be_complete_or_undeclared"):
-            replace(PROFILE, relationship_name=None)
-        with self.assertRaisesRegex(ValueError, "source_identity_contract_required"):
-            replace(PROFILE, source_vintage=None)
-
-    def test_complete_source_capture_brackets_exact_ids_and_retains_receipts(self):
-        profile = replace(PROFILE, expected_rows=2)
-        fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
-                  for name, esri_type, nullable, length in profile.fields]
-        table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-                 "relationships": [{"name": profile.relationship_name,
-                                    "relatedTableId": profile.related_table_id,
-                                    "keyField": profile.relationship_key,
-                                    "cardinality": profile.relationship_cardinality}]}
-        service = {"description": "EIA data as of June 2014.",
-                   "tables": [{"id": profile.table_id, "name": profile.table_name}]}
-        rows = [
-            {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-             "PRIMARY_INDICATOR": "PRIMARY"},
-            {"OBJECTID": 2, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-             "PRIMARY_INDICATOR": "SECONDARY"},
-        ]
-
-        class JSONStream(httpx.SyncByteStream):
-            def __init__(self, payload):
-                self.body = json.dumps(payload, separators=(",", ":")).encode()
-
-            def __iter__(self):
-                yield self.body
-
-            def close(self):
-                return None
-
-        def respond(request):
-            path = urlparse(str(request.url)).path
-            query = parse_qs(urlparse(str(request.url)).query)
-            if path.endswith("/MapServer"):
-                payload = service
-            elif path.endswith("/15"):
-                payload = table
-            elif query.get("returnCountOnly") == ["true"]:
-                payload = {"count": 2}
-            elif query.get("returnIdsOnly") == ["true"]:
-                payload = {"objectIds": [1, 2]}
-            else:
-                payload = {"features": [{"attributes": row} for row in rows]}
-            return httpx.Response(200, stream=JSONStream(payload), headers={"content-type": "application/json"})
-
-        with tempfile.TemporaryDirectory() as tmp:
-            client = httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=False)
-            with client:
-                captured, manifest, receipts = capture_table(client, profile, Path(tmp))
-            self.assertEqual(captured, rows)
-            self.assertTrue(manifest["source_ids_equal_before_after"])
-            self.assertEqual(manifest["rows_captured"], 2)
-            self.assertEqual(set(receipts), {"service", "table_before", "count_before", "ids_before",
-                "page_000", "table_after", "service_after", "count_after", "ids_after"})
-            self.assertTrue(all(receipt["complete_body"] for receipt in manifest["response_receipts"].values()))
-
-    def test_exact_nonspatial_schema_and_native_values_survive_parquet(self):
-        fields = [
-            {"name": name, "type": esri_type, "nullable": nullable, "length": length}
-            for name, esri_type, nullable, length in PROFILE.fields
-        ]
-        metadata = {
-            "name": PROFILE.table_name,
-            "geometryType": None,
-            "fields": fields,
-            "relationships": [{"name": PROFILE.relationship_name,
-                               "relatedTableId": PROFILE.related_table_id,
-                               "keyField": PROFILE.relationship_key,
-                               "cardinality": PROFILE.relationship_cardinality}],
+    def _docs(self, fields, features):
+        ids = [row["attributes"]["OBJECTID"] for row in features]
+        table = {"name": sic.TABLE_NAME, "fields": fields, "relationships": []}
+        service = {"tables": [{"id": sic.TABLE_ID, "name": sic.TABLE_NAME}],
+                   "description": "FRS interest service"}
+        portal = {"id": sic.ITEM_ID, "owner": "EPA_GEO", "title": sic.PORTAL_ITEM_TITLE,
+                  "type": "Feature Service", "url": sic.SERVICE_URL, "access": "public"}
+        return {
+            "count_probe": {"count": len(ids)},
+            "service": service, "service_after": service,
+            "portal_item": portal,
+            "table_before": table, "table_after": table,
+            "count_before": {"count": len(ids)}, "count_after": {"count": len(ids)},
+            "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
+            "pages": features,
         }
-        self.assertEqual(len(_metadata_contract(metadata, PROFILE)), 4)
-        changed = {**metadata, "fields": fields + [{"name": "EXTRA", "type": "esriFieldTypeString",
-                                                    "nullable": True, "length": 4}]}
-        with self.assertRaisesRegex(ArcGISTableCaptureError, "source_table_schema_changed"):
-            _metadata_contract(changed, PROFILE)
 
-        rows = [
-            {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-             "PRIMARY_INDICATOR": "PRIMARY"},
-            {"OBJECTID": 2, "REGISTRY_ID": None, "SIC_CODE": "OWNE",
-             "PRIMARY_INDICATOR": "UNKNOWN"},
-        ]
+    def _url_body(self, url, docs):
+        path, _, raw_query = url.partition("?")
+        params = dict(pair.split("=", 1) for pair in raw_query.split("&")) if raw_query else {}
+        if "/content/items/" in path:
+            return json.dumps(docs["portal_item"]).encode()
+        if path == sic.SERVICE_URL:
+            return json.dumps(docs["service"]).encode()
+        if path == sic.TABLE_URL:
+            return json.dumps(docs["table_before"]).encode()
+        if path != sic.TABLE_URL + "/query":
+            raise AssertionError("unexpected fixture URL " + url)
+        if params.get("returnCountOnly") == "true":
+            return json.dumps(docs["count_before"]).encode()
+        if params.get("returnIdsOnly") == "true":
+            return json.dumps(docs["ids_before"]).encode()
+        offset = int(params["resultOffset"])
+        page_size = int(params["resultRecordCount"])
+        features = docs["pages"][offset:offset + page_size]
+        return json.dumps({"features": features}).encode()
+
+    def _fake_get_factory(self, docs):
+        def fake_get(_client, url, capture_root, name, *, max_bytes):
+            body = self._url_body(url, docs)
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-10-21T00:00:00+00:00", "status": 200,
+                       "complete_body": True, "bytes": len(body), "sha256": sic._sha(body),
+                       "wire_bytes": len(body), "wire_sha256": sic._sha(body),
+                       "content_encoding": "identity", "content_length": len(body),
+                       "error_code": None}
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.body").write_bytes(body)
+            return body, receipt
+        return fake_get
+
+    def _run_capture(self, tmp, docs):
+        with patch.object(sic, "EXPECTED_ROWS", len(docs["pages"])), \
+                patch.object(sic, "PROFILE", self._small_profile()), \
+                patch.object(sic, "capture_get", side_effect=self._fake_get_factory(docs)):
+            storage = sic.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            return sic.capture_epa_frs_sic(storage, version="fixture-v1", capture_directory=tmp)
+
+    def test_complete_exact_roster_builds_unapproved_nonspatial_candidate(self):
+        fields, features = self._fields(), self._features()
+        docs = self._docs(fields, features)
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "table.parquet"
-            body = _typed_parquet(rows, tuple(fields))
-            path.write_bytes(body)
-            table = pq.read_table(path)
-            self.assertEqual(table.to_pylist(), rows)
-            self.assertEqual(table.schema.names, list(PROFILE.field_names))
-            self.assertEqual(str(table.schema.field("SIC_CODE").type), "string")
-            self.assertIs(table.schema.field("OBJECTID").nullable, False)
-            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
-                             hashlib.sha256(body).hexdigest())
-            with tempfile.TemporaryDirectory() as evidence_root:
-                receipt = normalize_native_input(
-                    {"schema_version": 1, "format": "parquet", "root": tmp,
-                     "objects": [{"key": "table.parquet", "sha256": hashlib.sha256(body).hexdigest(),
-                                  "bytes": len(body), "rows": len(rows)}]},
-                    {"schema_version": 1, "status": "proposed", "geometry": False, "crs": None,
-                     "id_fields": ["OBJECTID"], "coverage_fields": ["REGISTRY_ID"]},
-                    Path(evidence_root) / "native-evidence",
-                )
-                self.assertEqual(receipt["status"], "complete")
-                self.assertIs(receipt["policy"]["geometry"], False)
-                normalized = [json.loads(line) for line in
-                              (Path(evidence_root) / "native-evidence" / "normalized_records.jsonl").read_text().splitlines()]
-                self.assertTrue(all(row["geometry"] is None for row in normalized))
+            result = self._run_capture(tmp, docs)
+            self.assertEqual(result["row_count"], 2)
+            self.assertTrue(result["source_population_complete"])
+            self.assertFalse(result["release_accepted"])
+            prefix = candidate_prefix(sic.DATASET_SLUG, sic.FILE_SLUG, result["version"])
+            table = pq.read_table(Path(tmp) / f"{prefix}/{sic.NATIVE_PATH}")
+            self.assertEqual(table.schema.names, list(sic.EXPECTED_FIELD_NAMES))
+            self.assertEqual(table.column("SIC_CODE").to_pylist(), ["4213", "1521"])
+            self.assertEqual(table.schema.field("OBJECTID").type, pa.int64())
+            self.assertEqual(table.schema.metadata[b"hifld:geometry"], b"absent")
+            self.assertEqual(table.schema.field("KEY_FIELD").nullable, True)
+            self.assertEqual(table.schema.field("SIC_CODE").nullable, False)
+            audit = json.loads((Path(tmp) / f"{prefix}/metadata/source_audit.json").read_bytes())
+            self.assertTrue(audit["source_population_complete"])
+            self.assertFalse(audit["release_accepted"])
+
+    def test_rejects_source_count_drift(self):
+        docs = self._docs(self._fields(), self._features())
+        docs["count_before"] = {"count": 3}
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(sic, "EXPECTED_ROWS", 2), \
+                patch.object(sic, "PROFILE", self._small_profile()), \
+                patch.object(sic, "capture_get", side_effect=self._fake_get_factory(docs)):
+            storage = sic.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(Exception, "source_count_and_id_roster_disagree"):
+                sic.capture_epa_frs_sic(storage, version="fixture-drift", capture_directory=tmp)
+
+    def test_rejects_source_schema_drift(self):
+        fields = self._fields()
+        fields[3]["length"] = 8
+        docs = self._docs(fields, self._features())
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(sic, "EXPECTED_ROWS", 2), \
+                patch.object(sic, "PROFILE", self._small_profile()), \
+                patch.object(sic, "capture_get", side_effect=self._fake_get_factory(docs)):
+            storage = sic.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(Exception, "source_table_schema_changed"):
+                sic.capture_epa_frs_sic(storage, version="fixture-schema", capture_directory=tmp)
+
+    def test_quarantines_incomplete_page_capture(self):
+        docs = self._docs(self._fields(), self._features())
+
+        def broken_get(_client, url, capture_root, name, *, max_bytes):
+            if "resultOffset=0" in url:
+                body = json.dumps({"features": docs["pages"][:1]}).encode()
+                receipt = {"method": "GET", "url": url, "final_url": url,
+                           "observed_at": "2026-10-21T00:00:00+00:00", "status": 200,
+                           "complete_body": True, "bytes": len(body), "sha256": sic._sha(body),
+                           "wire_bytes": len(body), "wire_sha256": sic._sha(body),
+                           "content_encoding": "identity", "content_length": len(body),
+                           "error_code": None}
+                (capture_root / f"{name}.wire").write_bytes(body)
+                (capture_root / f"{name}.body").write_bytes(body)
+                return body, receipt
+            return self._fake_get_factory(docs)(_client, url, capture_root, name, max_bytes=max_bytes)
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(sic, "EXPECTED_ROWS", 2), \
+                patch.object(sic, "PROFILE", self._small_profile()), \
+                patch.object(sic, "capture_get", side_effect=broken_get):
+            storage = sic.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(Exception, "source_page_row_count_incomplete"):
+                sic.capture_epa_frs_sic(storage, version="fixture-partial", capture_directory=tmp)
+            quarantined = list((Path(tmp) / "_quarantine" / sic.DATASET_SLUG).iterdir())
+            self.assertEqual(len(quarantined), 1)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ArcGISTableCaptureError")
+            self.assertTrue((quarantined[0] / "raw" / "page_000.body").exists())
+
+    def test_second_identical_capture_reuses_sealed_candidate(self):
+        docs = self._docs(self._fields(), self._features())
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._run_capture(tmp, docs)
+            second = self._run_capture(tmp, docs)
+            self.assertTrue(second["reused"])
+            self.assertEqual(first["version"], second["version"])
+            self.assertEqual(first["source_record_sha256"], second["source_record_sha256"])
+            prefix = candidate_prefix(sic.DATASET_SLUG, sic.FILE_SLUG, first["version"])
+            state_key = f"_construction-state/{sic.DATASET_SLUG}/{first['version']}.json"
+            bundle = json.loads(sic.load_first_construction(_storage(tmp), state_key,
+                first["version"], sic._sha(sic._canonical(
+                    sic.processing_identity(Path(sic.__file__).parents[3])))))
+            self.assertEqual(bundle["payload"]["source_record_sha256"], first["source_record_sha256"])
+
+
+def _storage(tmp):
+    return sic.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
 
 
 if __name__ == "__main__":

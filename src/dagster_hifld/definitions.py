@@ -516,6 +516,12 @@ from dagster_hifld.assets.epa_facilities_labels import (
     epa_facilities_labels_draft_job,
     epa_facilities_labels_draft_schedule,
 )
+from dagster_hifld.assets.epa_frs_sic import (
+    epa_frs_sic_codes_complete,
+    epa_frs_sic_codes_draft_job,
+    epa_frs_sic_codes_draft_schedule,
+    epa_frs_sic_codes_publication_gates_pending,
+)
 from dagster_hifld.assets.epa_frs_tri import (
     epa_frs_toxic_release_inventory_complete,
     epa_frs_tri_draft_job,
@@ -973,6 +979,8 @@ defs = Definitions(
         epa_eez_full_quality,
         epa_regions_with_eez_full_quality,
         epa_frs_toxic_release_inventory_complete,
+        epa_frs_sic_codes_complete,
+        epa_frs_sic_codes_publication_gates_pending,
         epa_frs_tsca_complete,
         fdic_locations_full_quality,
         fema_regions_full_quality,
@@ -1067,6 +1075,7 @@ defs = Definitions(
         epa_eez_draft_job,
         epa_regions_with_eez_draft_job,
         epa_frs_tri_draft_job,
+        epa_frs_sic_codes_draft_job,
         epa_tsca_draft_job,
         fdic_locations_draft_job,
         fema_regions_draft_job,
@@ -1166,6 +1175,7 @@ defs = Definitions(
         epa_eez_draft_schedule,
         epa_regions_with_eez_draft_schedule,
         epa_frs_tri_draft_schedule,
+        epa_frs_sic_codes_draft_schedule,
         epa_tsca_draft_schedule,
         fdic_locations_draft_schedule,
         fema_regions_draft_schedule,
