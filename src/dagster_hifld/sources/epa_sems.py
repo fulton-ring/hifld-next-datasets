@@ -27,10 +27,9 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
-from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
 from dagster_hifld.validation import sha256_file
 from urllib.parse import urlencode
 
@@ -229,12 +228,26 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
         allowed={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json','metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'}
         if roster-(names|{READY}|allowed):raise SEMSQuarantineError('unknown_cached_object')
         for name in roster-(names|{READY}):strict_json(candidate_bytes(root,name))
+        snapshot_names={'metadata/source/source_manifest.json',
+            'metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'}
+        catalog_sidecars={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/resolved_provenance.json',
+            'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'}
         for name in('metadata/source/source_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'):
             if name in roster and candidate_bytes(root,name)!=encode(manifest):raise SEMSQuarantineError('cached_source_snapshot_drift')
-        if 'metadata/resolved_provenance.json'in roster:
-            if storage is None:raise SEMSQuarantineError('resolved_provenance_requires_explicit_storage_context')
-            projected=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
-            if encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(projected):raise SEMSQuarantineError('cached_resolved_provenance_drift')
+        if roster & snapshot_names and roster & snapshot_names != snapshot_names:
+            raise SEMSQuarantineError('cached_source_manifest_snapshot_incomplete')
+        if roster & catalog_sidecars:
+            if not {'metadata/quality_manifest.json','metadata/data_dictionary.json'}<=roster:
+                raise SEMSQuarantineError('cached_catalog_metadata_incomplete')
+            if roster & snapshot_names != snapshot_names:
+                raise SEMSQuarantineError('cached_source_manifest_snapshot_incomplete')
+        if roster & catalog_sidecars:
+            if storage is None:raise SEMSQuarantineError('catalog_validation_requires_explicit_storage_context')
+            prefix=f'{SLUG}/{SLUG}/{version}'
+            actual_keys={storage._ensure_prefixed(f'{prefix}/{name}') for name in roster}
+            try:_validate_cached_catalog_sidecars(storage,prefix,actual_keys)
+            except (OSError,UnicodeError,TypeError,ValueError) as exc:
+                raise SEMSQuarantineError('cached_catalog_sidecar_semantics_invalid') from exc
     for n,b in expected.items():
         if candidate_bytes(root,n)!=b:raise SEMSQuarantineError('candidate_source_bytes_drift:'+n)
     if candidate_bytes(root,READY)!=encode(ready):raise SEMSQuarantineError('candidate_ready_drift')

@@ -11,7 +11,10 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import AssetKey, DefaultScheduleStatus
+from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import epa_sems as f
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.epa_sems import epa_sems_source_integrity_schedule
@@ -149,6 +152,56 @@ class SEMSTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'candidate_ready_drift'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
             f.write_private(root,f.READY,f.encode(ready));f.write_private(root,'metadata/source/source_manifest.json',b'{"approved":true}')
             with self.assertRaisesRegex(ValueError,'cached_source_snapshot_drift'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+
+    def test_cached_catalog_is_canonical_and_required_snapshots_cannot_disappear(self):
+        with tempfile.TemporaryDirectory()as d:
+            base=Path(d);version='v0.0.0-draft-explicit-catalog-synthetic';root=base/f.SLUG/f.SLUG/version
+            (root/'geoparquet').mkdir(parents=True);table=decode(page())
+            parquet=root/'geoparquet'/f'{f.SLUG}.parquet';pq.write_table(f.parquet_table(table),parquet,compression='zstd')
+            identity={'fixture':'explicit synthetic two-row canonical catalog'};audit={};captures={}
+            for name,url in f.URLS.items():
+                body=('Explicit synthetic input '+name).encode()
+                captures[name]=(body,{'url':url,'final_url':url,'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,'observed_at':'2026-10-19T00:00:00+00:00'})
+            manifest=f.manifest_for(captures,identity,{'bytes':parquet.stat().st_size,'sha256':f.sha256_file(parquet)})
+            for name,body in f.source_payloads(captures,identity,audit,manifest).items():f.write_private(root,name,body)
+            ready={'approved':False,'version':version,'processing_fingerprint':f.digest(f.encode(identity)),
+                'capture_fingerprint':f.source_fingerprint(captures),'objects':{str(p.relative_to(root)):f.sha256_file(p)for p in root.rglob('*')if p.is_file()}}
+            f.write_private(root,f.READY,f.encode(ready));storage=StagingStorageResource(local_dir=d)
+
+            # Reproduce the registered catalog lifecycle using the same production
+            # snapshot, summarizer and writer functions as publish/catalog.
+            snapshot_source_metadata(storage,f.SLUG,f.SLUG,version)
+            resolved=load_resolved_source_manifest(storage,f.SLUG,f.SLUG,version)
+            summary=summarize_staged_catalog(storage,f.SLUG,f.SLUG,version,f.SLUG,source_metadata=resolved.metadata)
+            write_catalog_metadata(storage,f.SLUG,f.SLUG,version,summary.quality_manifest,summary.data_dictionary)
+            projection_path=root/'metadata/resolved_provenance.json'
+            self.assertTrue(projection_path.is_file())
+            f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+
+            quality_path=root/'metadata/quality_manifest.json';quality_original=quality_path.read_bytes()
+            quality=json.loads(quality_original);quality['quality_check_passed']=not quality['quality_check_passed']
+            f.write_private(root,'metadata/quality_manifest.json',f.encode(quality))
+            with self.assertRaisesRegex(ValueError,'cached_catalog_sidecar_semantics_invalid'):
+                f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+            f.write_private(root,'metadata/quality_manifest.json',quality_original)
+
+            dictionary_path=root/'metadata/data_dictionary.json';dictionary_original=dictionary_path.read_bytes()
+            dictionary=json.loads(dictionary_original);dictionary['columns'][0]['name']='TAMPERED_COLUMN'
+            f.write_private(root,'metadata/data_dictionary.json',f.encode(dictionary))
+            with self.assertRaisesRegex(ValueError,'cached_catalog_sidecar_semantics_invalid'):
+                f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+            f.write_private(root,'metadata/data_dictionary.json',dictionary_original)
+
+            projection_path.unlink()
+            with self.assertRaisesRegex(ValueError,'cached_catalog_sidecar_semantics_invalid'):
+                f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+            projection=provenance_projection(resolved.metadata)
+            f.write_private(root,'metadata/resolved_provenance.json',f.encode(projection))
+
+            source_snapshot=root/('metadata/source/version_'+f.digest(f.encode(manifest))+'_source_manifest.json')
+            source_snapshot.unlink()
+            with self.assertRaisesRegex(ValueError,'cached_source_manifest_snapshot_incomplete'):
+                f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
 
 
 @unittest.skipUnless(os.environ.get('EPA_SEMS_TEST_CAPTURE_DIR'),'Complete official real capture is explicit external input')
