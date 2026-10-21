@@ -4,6 +4,7 @@ import gzip
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import sqlite3
 import struct
@@ -258,10 +259,12 @@ class CBRSTests(unittest.TestCase):
             (capture/(name+'.body')).write_bytes(body)
             (capture/(name+'.receipt.json')).write_bytes(s.encode({'requested_url':s.URLS[name],'final_url':s.URLS[name],'status':200,'byte_length':len(body),'sha256':s.sha(body),'observed_at':'2026-10-19T00:00:00+00:00','fixture':'synthetic only'}))
         storage=StagingStorageResource(local_dir=str(root/'staging'));captures=s.acquire(storage,capture)
-        repo=Path(__file__).parents[1];commit=s.subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
-        identity={'files':{'pyproject.toml':s.sha(s.subprocess.check_output(['git','show',commit+':pyproject.toml'],cwd=repo))}}
+        repo=Path(__file__).parents[1];commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
+        identity=s.processing_identity()
+        identity.update(code_identity_scheme='git-commit-blobs-v1',working_tree_status='unknown',code_commit=commit,
+            files={'pyproject.toml':s.sha(subprocess.check_output(['git','show',commit+':pyproject.toml'],cwd=repo))})
         native=root/'synthetic.parquet';native.write_bytes(b'opaque synthetic prebuilt bytes, not a native dataset')
-        manifest=s.provenance(captures);manifest.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=s.native_prebuilt_policy(native))
+        manifest=s.provenance(captures,identity);manifest.update(processing_fingerprint=s.sha(s.encode(identity)),prebuilt_output_policy=s.native_prebuilt_policy(native))
         payloads={'metadata/source_manifest.json':s.encode(manifest),'geoparquet/'+s.SLUG+'.parquet':native.read_bytes(),'raw/retrieval.json':s.encode(captures['official_zip'][1])}
         payloads.update({f'raw/captures/{name}.receipt.json':s.encode(receipt) for name,(_,receipt) in captures.items()})
         ready={'version':version,'objects':{name:s.sha(value) for name,value in payloads.items()}}
@@ -282,7 +285,7 @@ class CBRSTests(unittest.TestCase):
             self.assertEqual(storage.read_key(key),original)
             self.assertEqual(s.strict_json(later_payloads['metadata/source_manifest.json']),manifest)
             self.assertEqual(s.strict_json(later_payloads['raw/retrieval.json']),captures['official_zip'][1])
-            wrong_identity={'files':{'pyproject.toml':'0'*64}}
+            wrong_identity={'code_identity_scheme':'git-commit-blobs-v1','files':{'pyproject.toml':'0'*64}}
             with self.assertRaisesRegex(ValueError,'construction_processing_blob_hash_mismatch'):s.validate_construction_commit(manifest,wrong_identity)
 
     def test_shared_history_loss_repeated_cold_refusal_and_explicit_recovery(self):
@@ -318,7 +321,7 @@ class CBRSTests(unittest.TestCase):
             s.validate_construction_commit(manifest,identity)
             for changed in ['0'*40,'f'*40,manifest['code_commit'].upper()]:
                 with self.subTest(commit=changed),self.assertRaises(ValueError):s.validate_construction_commit({**manifest,'code_commit':changed},identity)
-            wrong={'files':{'pyproject.toml':'0'*64}}
+            wrong={'code_identity_scheme':'git-commit-blobs-v1','files':{'pyproject.toml':'0'*64}}
             with self.assertRaisesRegex(ValueError,'construction_processing_blob_hash_mismatch'):s.validate_construction_commit(manifest,wrong)
 
     def test_private_failure_precedes_any_first_state_seal(self):

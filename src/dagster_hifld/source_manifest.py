@@ -38,6 +38,8 @@ CATALOG_METADATA_FIELDS = (
     "inputs",
     "transformations",
     "code_commit",
+    "processing_code",
+    "code_identity_scheme",
     "lineage",
     "unsupported_output_formats",
     "prebuilt_output_policy",
@@ -107,7 +109,7 @@ def load_resolved_source_manifest(
         layers.append((source_name, key, _compact_manifest(parsed)))
         layer_receipts.append({"layer": source_name, "manifest_key": key, "sha256": hashlib.sha256(raw).hexdigest(),
                                "snapshot": f"metadata/source/{source_name}_{hashlib.sha256(raw).hexdigest()}_source_manifest.json",
-                               **{field: parsed[field] for field in ("processor", "code_commit", "transformations") if field in parsed},
+                               **{field: parsed[field] for field in ("processor", "code_commit", "code_identity_scheme", "transformations") if field in parsed},
                                "input_ids": [item.get("input_id") for item in parsed.get("inputs", []) if isinstance(item, dict)] if isinstance(parsed.get("inputs", []), list) else []})
 
     inventory = _inventory_metadata_for(dataset_slug, file_slug, version)

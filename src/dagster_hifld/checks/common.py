@@ -55,6 +55,22 @@ def read_baseline_comparison_result(
     """Require an exact independently accepted report, never sampled count parity."""
     key = f"{dataset_slug}/{file_slug}/{version}/metadata/baseline_comparison.json"
     if not staging_storage.object_exists(key):
+        # Leave durable, explicit evidence that the normal catalog graph reached
+        # the comparison gate but had no independently pinned baseline/config.
+        # Never overwrite an existing report or infer acceptance from catalog
+        # quality metadata.
+        blocked = {
+            "schema_version": 1,
+            "status": "blocked",
+            "reason_codes": ["missing_comparison_configuration"],
+            "acceptance": "not_established_by_comparison",
+            "dataset_slug": dataset_slug,
+            "file_slug": file_slug,
+            "version": version,
+        }
+        staging_storage.write_key_if_unchanged(
+            key, json.dumps(blocked, sort_keys=True).encode("utf-8"), expected_snapshot=None
+        )
         return AssetCheckResult(passed=False, metadata={"reason": "missing_full_data_comparison"})
     try:
         # Use configured destination solely to match the independent decision.

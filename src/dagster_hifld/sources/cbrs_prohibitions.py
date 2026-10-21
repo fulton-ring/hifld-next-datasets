@@ -7,18 +7,15 @@ from __future__ import annotations
 
 import collections
 import hashlib
-import importlib.metadata
 import io
 import fcntl
 import os
 import json
-import platform
 import re
 import shutil
 import sqlite3
 import stat
 import struct
-import subprocess
 import tempfile
 import zipfile
 from contextlib import contextmanager
@@ -37,11 +34,12 @@ from shapely.geometry import mapping, shape
 from dagster_hifld.construction_provenance import ConstructionCodeIdentityError, validate_construction_code_identity
 from dagster_hifld.construction_state import (ConstructionStateError, canonical_construction_bundle, load_first_construction, seal_first_construction)
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
+from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 
 SLUG = 'cbrs-prohibitions-1'
 URL = 'https://www.fws.gov/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip'
@@ -258,7 +256,8 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     return captures
 
 
-def provenance(captures: dict) -> dict:
+def provenance(captures: dict, identity: dict | None = None) -> dict:
+    identity = identity or processing_identity()
     # Validate the complete original capture bundle before any canonical candidate writes.
     for name,url in URLS.items(): validate_receipt(*captures[name],url)
     if b'/sites/default/files/documents/2024-12/20241219-cbrs-boundaries.zip' not in captures['fws_download'][0]:
@@ -278,7 +277,8 @@ def provenance(captures: dict) -> dict:
             'lineage':'Producer-hosted full distribution and official supporting pages; not a third-party archive or self-claimed delegation.',
             'authority_evidence':LANDING})
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,
-        'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
+        'code_commit':identity['code_commit'],'code_identity_scheme':identity['code_identity_scheme'],
+        'working_tree_status':identity['working_tree_status'],
         'title':'CBRS Prohibitions — faithful producer-source working draft',
         'publisher':'U.S. Fish and Wildlife Service','agency':'U.S. Fish and Wildlife Service',
         'source_url':LANDING,'license':METADATA,'date_issued':'2024-12-19','inputs':inputs,
@@ -294,15 +294,8 @@ def provenance(captures: dict) -> dict:
 
 
 def processing_identity() -> dict:
-    """Installed source, lock/project, Python, Python distributions and native engines."""
-    root = Path(__file__).parents[3]
-    sources = sorted(root.joinpath('src/dagster_hifld').rglob('*.py'))
-    return {'python': platform.python_version(), 'implementation': platform.python_implementation(),
-            'platform': platform.platform(),
-            'distributions': sorted((d.metadata['Name'], d.version) for d in importlib.metadata.distributions()),
-            'gdal': fiona.__gdal_version__, 'geos': shapely.geos_version_string, 'proj': pyproj.proj_version_str,
-            'files': {str(p.relative_to(root)): sha256_file(p) for p in sources + [root / 'uv.lock', root / 'pyproject.toml']},
-            'verifier_sha256': verifier_implementation_sha256()}
+    """Bind installed processing files to Git blobs or explicit packaged identity."""
+    return packaged_processing_identity(Path(__file__).parents[3])
 
 
 def inspect_archive(body: bytes, directory: Path) -> tuple[list[dict], dict, dict[str, bytes]]:
@@ -584,8 +577,8 @@ def preflight_construction_history_held(storage: StagingStorageResource,version:
 
 
 def validate_construction_commit(manifest: dict,identity: dict) -> None:
-    """Delegate canonical reachable Git/blob binding; this is not execution proof."""
-    try:validate_construction_code_identity(Path(__file__).parents[3],manifest.get('code_commit'),identity['files'])
+    """Validate Git blob or packaged runtime identity; not execution proof."""
+    try:validate_construction_code_identity(Path(__file__).parents[3],manifest.get('code_commit'),identity['files'],identity=identity)
     except ConstructionCodeIdentityError as exc:
         raise CBRSQuarantineError('original_construction_commit:'+exc.code) from exc
 
@@ -629,7 +622,7 @@ def load_construction_bundle(storage: StagingStorageResource,version: str,
         if storage.read_key(body_key)!=body or storage.read_key(receipt_key)!=encode(receipt):
             raise CBRSQuarantineError('original_construction_capture_depot_bytes_drift')
         original[name]=(body,receipt)
-    manifest=bundle['manifest'];expected=provenance(original)
+    manifest=bundle['manifest'];expected=provenance(original,identity)
     expected.update(processing_fingerprint=sha(encode(identity)),prebuilt_output_policy=expected_manifest['prebuilt_output_policy'])
     if set(manifest)!=set(expected) or any(manifest.get(k)!=v for k,v in expected.items() if k!='code_commit'):
         raise CBRSQuarantineError('original_construction_manifest_drift')
@@ -696,8 +689,8 @@ def stage_cbrs_prohibitions_candidate(storage: StagingStorageResource, *, captur
     captures = acquire(storage,capture_dir)
     body,receipt = captures['official_zip']
     try:
-        manifest=provenance(captures)
         identity = processing_identity()
+        manifest=provenance(captures,identity)
         fingerprint = sha(encode(identity))
         capture_fingerprint=sha(encode({name:sha(value[0]) for name,value in captures.items()}))
         version = f'v0.0.0-draft-cbrs20241219-{capture_fingerprint[:16]}-{fingerprint[:16]}'
@@ -753,8 +746,9 @@ def stage_cbrs_prohibitions_candidate(storage: StagingStorageResource, *, captur
                 'geometry': mapping(shapely.from_wkb(r['geometry']))}) for r in pq.read_table(parquet).to_pylist()))
             if decoded.read_bytes() != records or not pq.read_schema(parquet).equals(table.schema, check_metadata=True):
                 raise CBRSQuarantineError('typed_parquet_physical_or_full_row_fidelity_failure')
-            commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parents[3], text=True).strip()
-            manifest.update(code_commit=commit,processing_fingerprint=fingerprint,prebuilt_output_policy=native_prebuilt_policy(parquet))
+            manifest.update(code_commit=identity['code_commit'],code_identity_scheme=identity['code_identity_scheme'],
+                working_tree_status=identity['working_tree_status'],processing_fingerprint=fingerprint,
+                prebuilt_output_policy=native_prebuilt_policy(parquet))
             validate_release_provenance(manifest)
             payloads = {f'raw/{ARCHIVE_NAME}': body, 'raw/retrieval.json': encode(receipt),
                 f'geopackage/{SLUG}.gpkg': geopackage.read_bytes(), 'candidate/typed-source.parquet': parquet.read_bytes(), f'geoparquet/{SLUG}.parquet':parquet.read_bytes(),
