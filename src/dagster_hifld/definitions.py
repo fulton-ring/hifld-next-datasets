@@ -15,6 +15,11 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.quaternary_fault_lines import (
+    quaternary_fault_lines_draft_job,
+    quaternary_fault_lines_draft_schedule,
+    quaternary_fault_lines_population_complete,
+)
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
@@ -28,9 +33,9 @@ from dagster_hifld.assets.noaa import (
     noaa_eez_draft_weekly_schedule,
 )
 from dagster_hifld.assets.usace_pylon_areas import (
-    usace_pylon_areas_draft_job,
     usace_pylon_areas_draft_schedule,
     usace_pylon_areas_complete,
+    usace_pylon_areas_draft_job,
 )
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
@@ -75,11 +80,6 @@ from dagster_hifld.source_formats import (
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
 )
-from dagster_hifld.assets.usace_pylon_areas import (
-    usace_pylon_areas_complete,
-    usace_pylon_areas_draft_schedule,
-)
-
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -455,9 +455,15 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=[*hifld_asset_checks, usace_pylon_areas_complete,
-                  usace_recommended_tracks_complete, usace_overhead_pipeline_lines_complete],
+    asset_checks=[
+        *hifld_asset_checks,
+        quaternary_fault_lines_population_complete,
+        usace_pylon_areas_complete,
+        usace_recommended_tracks_complete,
+        usace_overhead_pipeline_lines_complete,
+    ],
     jobs=[
+        quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
         noaa_contiguous_draft_refresh_job,
@@ -470,6 +476,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_job,
     ],
     schedules=[
+        quaternary_fault_lines_draft_schedule,
         usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
