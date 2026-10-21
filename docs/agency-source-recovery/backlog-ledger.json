@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "fulton-ring/hifld-next-datasets",
   "generated_utc_date": "2026-10-21",
-  "source_commit": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+  "source_commit": "436d49e78f183f386079e414a12307a3b270e966",
   "scope": "415 inventory dataset issues #2-416 plus coordinator issue #417",
   "coverage": {
     "inventory_rows": 415,
@@ -40,10 +40,10 @@
         "inventory_issues_without_mapped_open_pr": "Historical 14:14 UTC census arithmetic only; not a current count or feasibility/capacity estimate.",
         "code_merged_issue_open_acceptance_gated": "Count of dataset rows whose explicit status is code_merged_issue_open_acceptance_gated. It is not the number of registered schedules, reviewed candidates, releases, or accepted datasets."
       },
-      "caveat": "Status/evidence categories are ledger-based and not mutually exclusive readiness or feasibility measures. The row-derived code-merged/open/gated count and current main schedule registration count are separate concepts. No current open-PR census or readiness/capacity total is claimed.",
+      "caveat": "Ledger status/evidence categories overlap and do not measure feasibility, readiness or acceptance. Main registration is separate. No fresh global census.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
       "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 29,
-      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 33,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 42,
       "latest_checkpoint_priority_evidence_issues": [
         2,
         3,
@@ -61,7 +61,16 @@
         27,
         28,
         29,
+        30,
+        31,
+        34,
+        35,
         37,
+        38,
+        39,
+        40,
+        41,
+        42,
         261,
         275,
         276,
@@ -79,12 +88,12 @@
       "current_open_pr_records": null,
       "current_open_pr_records_mapped_to_inventory": null,
       "inventory_issues_without_mapped_open_pr": null,
-      "code_merged_issue_open_acceptance_gated": 26,
+      "code_merged_issue_open_acceptance_gated": 33,
       "last_open_pr_census_mapped_issues_2026_10_21T1414Z": 129,
       "last_open_pr_census_unmapped_issues_2026_10_21T1414Z": 286,
       "current_count_status": "No fresh full census; named PR and issue statuses only. Historical 14:14 census remains historical and open-PR totals are unset.",
       "ledger_status_counts_recorded_at": "2026-10-21T17:17:54Z",
-      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 29,
+      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 38,
       "code_merged_issue_open_acceptance_gated_issue_numbers": [
         2,
         6,
@@ -94,8 +103,15 @@
         16,
         17,
         19,
+        20,
         21,
+        26,
         27,
+        28,
+        29,
+        30,
+        31,
+        34,
         37,
         261,
         275,
@@ -157,7 +173,8 @@
         363
       ],
       "main_registered_schedule_default_configuration": "All 39 schedule definitions in current main source snapshot 20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1 configure DefaultScheduleStatus.STOPPED; no live scheduler-instance status was queried.",
-      "main_registration_audit_source": "Current main src/dagster_hifld/definitions.py schedules list, linked job selections and asset/key refs; no 415-issue network census."
+      "main_registration_audit_source": "Current main src/dagster_hifld/definitions.py schedules list, linked job selections and asset/key refs; no 415-issue network census.",
+      "latest_checkpoint_priority_exact_head_review_or_local_run_evidence": 38
     },
     "current_open_pr_census": {
       "recorded_at": "2026-10-21T14:14:32Z",
@@ -1263,39 +1280,73 @@
       "title": "Aviation Facilities",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/20",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 431,
       "reviewed_head": "09b598485fcd8ca8519855af02331172dd976807",
       "evidence_refs": [
-        "PR #431 exact head 09b598485fcd8ca8519855af02331172dd976807; independent review PASS 5603303945. Full native 19,427-row/91-field source, Parquet/GPKG parity and registered gate refusal evidence are scoped in PR body; source authority, CRS, schema/ID, rights, baseline and release decisions remain open."
+        "PR #431 exact head 09b598485fcd8ca8519855af02331172dd976807; independent review PASS 5603303945. Full native 19,427-row/91-field source, Parquet/GPKG parity and registered gate refusal evidence are scoped in PR body; source authority, CRS, schema/ID, rights, baseline and release decisions remain open.",
+        "Source PR #431 exact head 09b598485fcd8ca8519855af02331172dd976807, review 5603303945; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication."
       ],
       "blocker_type": "acceptance_decisions_pending",
-      "live_issue_updated_at": "2026-10-21T16:50:19Z",
+      "live_issue_updated_at": "2026-10-21T17:47:56Z",
       "live_issue_created_at": "2026-10-19T01:57:08Z",
-      "live_issue_comment_count": 10,
-      "live_labels": [
-        "move:in-progress"
-      ],
+      "live_issue_comment_count": 11,
+      "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 431,
-          "title": "Draft: reconstruct Aviation Facilities with typed source pipeline and release gates",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-20",
-          "head_sha": "09b598485fcd8ca8519855af02331172dd976807",
-          "base_branch": "main",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "native_pipeline_exact_head_review_pass_release_gates_pending",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         431
       ],
-      "status_note": "PR #431 remains open at exact head 09b598485fcd8ca8519855af02331172dd976807; independent technical review PASS 5603303945. Native source and local registered quality/approval refusal evidence are recorded. Package/CRS/crosswalk/baseline/schema/rights and release acceptance remain unresolved; do not treat review as release approval.",
-      "current_head": "09b598485fcd8ca8519855af02331172dd976807"
+      "status_note": "PR #431 exact head 09b598485fcd8ca8519855af02331172dd976807 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #20 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded.",
+      "current_head": "09b598485fcd8ca8519855af02331172dd976807",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 431,
+        "head": "09b598485fcd8ca8519855af02331172dd976807",
+        "review": 5603303945,
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "notes": "PR #431 exact head 09b598485fcd8ca8519855af02331172dd976807 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #20 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "schedule_ref": "faa_aviation_draft_refresh_schedule",
+        "job_ref": "faa_aviation_draft_refresh_job",
+        "asset_refs": [
+          "faa_aviation_facilities"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/faa.py"
+        ],
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "canonical_pr": {
+          "pr": 431,
+          "head": "09b598485fcd8ca8519855af02331172dd976807",
+          "state": "closed_merged",
+          "merged_via": "PR #600 ancestry",
+          "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "review": 5603303945
+        },
+        "integration_pr": {
+          "pr": 600,
+          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "state": "closed_merged",
+          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+          "root_review": 5603690424,
+          "ci": "build-only success"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 21,
@@ -1511,49 +1562,84 @@
       "title": "Canada and US Border",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/26",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 596,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T16:30:40Z",
+      "reviewed_head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+      "evidence_refs": [
+        "Source PR #596 exact head 4a788c8840212d3ca101798a6d93ba81a85ee6d5, review 5603543308; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication.",
+        "Root audit confirms this catalog consumer accepts generated resolved-provenance/source-manifest sidecars; no defect outstanding."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T17:51:18Z",
       "live_issue_created_at": "2026-10-19T01:57:28Z",
-      "live_issue_comment_count": 16,
+      "live_issue_comment_count": 17,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 435,
-          "title": "Draft: reconstruct complete IBC Canada–US border with provenance and release gates",
           "state": "open",
           "head_branch": "codex/cloud-dataset-26",
           "head_sha": "52e479e0a2c81325b61bcd2ac36c6dda15c8e9bb",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
           "association_method": "exact_dataset_issue_branch"
-        },
-        {
-          "pr": 596,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/596",
-          "title": "Clean-main recovery for issue #26 Canada and US Border",
-          "state": "open",
-          "merged": false,
-          "head_branch": "codex/26-clean-main",
-          "head_sha": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
-          "base_branch": "main",
-          "draft": true,
-          "association_method": "exact_issue_pr_verified",
-          "canonical": true
         }
       ],
-      "status": "native_clean_main_exact_head_review_in_progress",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         435,
         596
       ],
-      "status_note": "Clean-main PR #596 is open at exact head 4a788c8840212d3ca101798a6d93ba81a85ee6d5, based on main 839da1d8bfaf03cf386cba71dde1f6198de28fbd. Root review is ongoing. The retained complete official source proof covers 574 unique OBJECTIDs, 13 attributes, 8 inputs, EPSG:4269; all 30 candidate rows and five attributes plus ordered WKB match in typed Parquet and GeoPackage. Registered false-quality and empty-approval refusal runs preserve the 14-object fixture. Source currentness, baseline/ID mapping, wrapper/schema, licence and legal interpretation remain unaccepted.",
-      "current_head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5"
+      "status_note": "PR #596 exact head 4a788c8840212d3ca101798a6d93ba81a85ee6d5 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #26 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded.",
+      "current_head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 596,
+        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+        "review": 5603543308,
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "notes": "PR #596 exact head 4a788c8840212d3ca101798a6d93ba81a85ee6d5 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #26 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "schedule_ref": "ibc_boundary_draft_refresh_schedule",
+        "job_ref": "ibc_boundary_draft_refresh_job",
+        "asset_refs": [
+          "ibc_canada_us_border"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/ibc.py"
+        ],
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "canonical_pr": {
+          "pr": 596,
+          "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+          "state": "closed_merged",
+          "merged_via": "PR #600 ancestry",
+          "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "review": 5603543308
+        },
+        "integration_pr": {
+          "pr": 600,
+          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "state": "closed_merged",
+          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+          "root_review": 5603690424,
+          "ci": "build-only success"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 27,
@@ -1635,51 +1721,85 @@
       "title": "CBRS Buffer Zone",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/28",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 594,
       "reviewed_head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
       "evidence_refs": [
-        "PR #594 exact-head independent review PASS 5603413457; registered false-quality and empty-approval runs 62102e85-9e5e-4133-a585-d3ebfa953ff0 and dcf5c73f-87dd-48e9-8e44-34ddd7004566; PR body states populated synthetic fixture unchanged."
+        "PR #594 exact-head independent review PASS 5603413457; registered false-quality and empty-approval runs 62102e85-9e5e-4133-a585-d3ebfa953ff0 and dcf5c73f-87dd-48e9-8e44-34ddd7004566; PR body states populated synthetic fixture unchanged.",
+        "Source PR #594 exact head 2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910, review 5603413457; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication.",
+        "Root audit confirms this catalog consumer accepts generated resolved-provenance/source-manifest sidecars; no defect outstanding."
       ],
       "blocker_type": "acceptance_decisions_pending",
-      "live_issue_updated_at": "2026-10-20T00:26:24Z",
+      "live_issue_updated_at": "2026-10-21T17:49:34Z",
       "live_issue_created_at": "2026-10-19T01:57:35Z",
-      "live_issue_comment_count": 26,
+      "live_issue_comment_count": 29,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 437,
-          "title": "Draft: reconstruct FWS CBRS buffers with preserved provenance and gated promotion",
           "state": "open",
           "head_branch": "codex/cloud-dataset-28",
           "head_sha": "a46a75a1c4290a606e7e710efce502314f0069cb",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
           "association_method": "exact_dataset_issue_branch"
-        },
-        {
-          "pr": 594,
-          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/594",
-          "title": "Draft: carry reviewed FWS CBRS buffer pipeline onto current main",
-          "state": "open",
-          "merged": false,
-          "head_branch": "codex/cloud-dataset-28-clean-main",
-          "head_sha": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
-          "base_branch": "main",
-          "draft": true,
-          "association_method": "exact_issue_pr_verified",
-          "canonical": true
         }
       ],
-      "status": "native_full_output_and_registered_gate_proof_exact_head_review_pass_issue_open_acceptance_gated",
-      "status_note": "Open PR #594 exact head 2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910 passed independent review 5603413457. Actual native 1,145-feature parity and no-Git source/catalog proof are recorded. Shared CLI proof completed: false-quality run 62102e85-9e5e-4133-a585-d3ebfa953ff0 stopped before verify/promote; empty-registry run dcf5c73f-87dd-48e9-8e44-34ddd7004566 passed quality, failed verify and did not promote. Synthetic three-object PublishedStorage fixture inventory was unchanged. Zero-width producer values, source use constraints, grain distinction, baseline, IDs/schema and release rights remain unresolved.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #594 exact head 2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #28 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded.",
       "current_pr_candidates": [
         437,
         594
       ],
-      "current_head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910"
+      "current_head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 594,
+        "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+        "review": 5603413457,
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "notes": "PR #594 exact head 2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #28 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "schedule_ref": "fws_cbrs_buffer_draft_refresh_schedule",
+        "job_ref": "fws_cbrs_buffer_draft_refresh_job",
+        "asset_refs": [
+          "fws_cbrs_buffer_zone"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/fws.py"
+        ],
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "canonical_pr": {
+          "pr": 594,
+          "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+          "state": "closed_merged",
+          "merged_via": "PR #600 ancestry",
+          "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "review": 5603413457
+        },
+        "integration_pr": {
+          "pr": 600,
+          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "state": "closed_merged",
+          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+          "root_review": 5603690424,
+          "ci": "build-only success"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 29,
@@ -1687,37 +1807,74 @@
       "title": "CBRS Map Panels",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/29",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 438,
-      "reviewed_head": null,
+      "reviewed_head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
       "evidence_refs": [
-        "Issue comment 6321990550; reported exact source head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53. Worker-supplied run IDs and scope are recorded in the comment; review pending."
+        "Issue comment 6321990550; reported exact source head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53. Worker-supplied run IDs and scope are recorded in the comment; review pending.",
+        "Source PR #438 exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53, review 5603542372; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication.",
+        "Only #29 confirmed to reject catalog-generated resolved-provenance/source-manifest sidecars; no recapture needed, fix active."
       ],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T16:51:07Z",
+      "blocker_type": "implementation_corrective_fix_and_acceptance_pending",
+      "live_issue_updated_at": "2026-10-21T17:51:20Z",
       "live_issue_created_at": "2026-10-19T01:57:38Z",
-      "live_issue_comment_count": 9,
+      "live_issue_comment_count": 11,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 438,
-          "title": "Draft: implement and verify complete CBRS Map Panels pipeline (#29)",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-29",
-          "head_sha": "f34138f3eca86204c541fb144fe29577ba1500a6",
-          "base_branch": "codex/cloud-verification-417",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "native_pipeline_exact_head_review_pending",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         438
       ],
-      "status_note": "Worker reports exact source candidate head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53; independent review is pending. Existing PR #438 remains preserved; no new PR association was verified in this checkpoint. The retained capture has 574 unique OBJECTIDs, 13 attributes, eight complete inputs, EPSG:4269, and 574-row native Parquet/GPKG parity. Registered false-quality run 772fc03f-3afd-4bb4-a4ff-f9414f09a611 and empty-approval run 62d74218-6a0f-478d-84f4-d1734af7433e fail closed before promotion with the 14-object fixture unchanged. Source date, historical baseline, rights and approval remain unresolved.",
-      "current_head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53"
+      "status_note": "PR #438 exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue remains OPEN, schedule STOPPED. #29 alone has a confirmed CBRS cache-sidecar defect: validator rejects catalog-generated resolved_provenance and content-derived source-manifest files. Narrow fix active, no recapture needed.",
+      "current_head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 438,
+        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+        "review": 5603542372,
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "notes": "PR #438 exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue remains OPEN, schedule STOPPED. #29 alone has a confirmed CBRS cache-sidecar defect: validator rejects catalog-generated resolved_provenance and content-derived source-manifest files. Narrow fix active, no recapture needed."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "schedule_ref": "fws_cbrs_map_panels_draft_refresh_schedule",
+        "job_ref": "fws_cbrs_map_panels_draft_refresh_job",
+        "asset_refs": [
+          "fws_cbrs_map_panels"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/fws_map_panels.py"
+        ],
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "canonical_pr": {
+          "pr": 438,
+          "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+          "state": "closed_merged",
+          "merged_via": "PR #600 ancestry",
+          "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "review": 5603542372
+        },
+        "integration_pr": {
+          "pr": 600,
+          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "state": "closed_merged",
+          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+          "root_review": 5603690424,
+          "ci": "build-only success"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 30,
@@ -1725,34 +1882,73 @@
       "title": "CBRS Prohibitions",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/30",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 439,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-20T00:26:31Z",
+      "reviewed_head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+      "evidence_refs": [
+        "Source PR #439 exact head 91fa48d836caa217bc6ab9f5ebccdad309f8ee05, review 5603551632; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication.",
+        "Root audit confirms this catalog consumer accepts generated resolved-provenance/source-manifest sidecars; no defect outstanding."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T17:51:22Z",
       "live_issue_created_at": "2026-10-19T01:57:41Z",
-      "live_issue_comment_count": 21,
+      "live_issue_comment_count": 22,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 439,
-          "title": "Draft: implement faithful CBRS Prohibitions reconstruction pipeline (#30)",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-30",
-          "head_sha": "3a7774452d168a611a58c015113df0369beead00",
-          "base_branch": "codex/cloud-verification-417",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #439 exact head 91fa48d836caa217bc6ab9f5ebccdad309f8ee05 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #30 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded.",
       "current_pr_candidates": [
         439
-      ]
+      ],
+      "current_head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 439,
+        "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+        "review": 5603551632,
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "notes": "PR #439 exact head 91fa48d836caa217bc6ab9f5ebccdad309f8ee05 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #30 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "schedule_ref": "fws_cbrs_prohibitions_draft_refresh_schedule",
+        "job_ref": "fws_cbrs_prohibitions_draft_refresh_job",
+        "asset_refs": [
+          "fws_cbrs_prohibitions"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/fws_prohibitions.py"
+        ],
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "canonical_pr": {
+          "pr": 439,
+          "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+          "state": "closed_merged",
+          "merged_via": "PR #600 ancestry",
+          "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "review": 5603551632
+        },
+        "integration_pr": {
+          "pr": 600,
+          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "state": "closed_merged",
+          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+          "root_review": 5603690424,
+          "ci": "build-only success"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 31,
@@ -1760,21 +1956,23 @@
       "title": "CBRS Units",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/31",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 440,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-20T00:26:38Z",
+      "current_pr": 598,
+      "reviewed_head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+      "evidence_refs": [
+        "Source PR #598 exact head d6239e3ffc1abf4550930a5bc711c454e13c4166, review 5603522426; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication.",
+        "Root audit confirms this catalog consumer accepts generated resolved-provenance/source-manifest sidecars; no defect outstanding."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T17:49:57Z",
       "live_issue_created_at": "2026-10-19T01:57:52Z",
-      "live_issue_comment_count": 19,
+      "live_issue_comment_count": 21,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 440,
-          "title": "Draft: reconstruct native CBRS Units with sealed construction history (#31)",
           "state": "open",
           "head_branch": "codex/cloud-dataset-31",
           "head_sha": "b3a1111d6c04a4a6d100bb769d3fd20743653f17",
@@ -1783,10 +1981,59 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
-        440
-      ]
+        440,
+        598
+      ],
+      "current_head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+      "status_note": "PR #598 exact head d6239e3ffc1abf4550930a5bc711c454e13c4166 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #31 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 598,
+        "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+        "review": 5603522426,
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "notes": "PR #598 exact head d6239e3ffc1abf4550930a5bc711c454e13c4166 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #31 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "schedule_ref": "fws_cbrs_units_draft_refresh_schedule",
+        "job_ref": "fws_cbrs_units_draft_refresh_job",
+        "asset_refs": [
+          "fws_cbrs_units"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/fws_units.py"
+        ],
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "canonical_pr": {
+          "pr": 598,
+          "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+          "state": "closed_merged",
+          "merged_via": "PR #600 ancestry",
+          "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "review": 5603522426
+        },
+        "integration_pr": {
+          "pr": 600,
+          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "state": "closed_merged",
+          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+          "root_review": 5603690424,
+          "ci": "build-only success"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 32,
@@ -1835,21 +2082,22 @@
       "title": "Census Designated Places",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/34",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 445,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-20T00:26:47Z",
+      "current_pr": 597,
+      "reviewed_head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+      "evidence_refs": [
+        "Source PR #597 exact head e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80, review 5603531492; auto-merged by PR #600 ancestry (source merge 98f80e6b07836332e9ced300da16e029aa03096d). Main integration 436d49e78f183f386079e414a12307a3b270e966, tree 1a163d95ca1a6299e991665f955dc22a65119619, root review 5603690424, build-only CI success. Issue OPEN; schedule STOPPED; no acceptance/publication."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T17:49:07Z",
       "live_issue_created_at": "2026-10-19T01:58:02Z",
-      "live_issue_comment_count": 6,
+      "live_issue_comment_count": 7,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
         {
           "pr": 445,
-          "title": "Draft: reconstruct exact Census2024 designated places with native verification gates",
           "state": "open",
           "head_branch": "codex/cloud-dataset-34",
           "head_sha": "c959f614ed7dc19373c1c8df3500a30d895bb3ee",
@@ -1858,11 +2106,59 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "native_implementation_next_active",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
-        445
+        445,
+        597
       ],
-      "status_note": "Coordinator reports this as the next active native card; existing PR #445 remains a historical draft. No new exact head or completion evidence was verified in this checkpoint."
+      "status_note": "PR #597 exact head e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #34 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded.",
+      "current_head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 597,
+        "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+        "review": 5603531492,
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "notes": "PR #597 exact head e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80 automatically merged through #600 ancestry. Main 436d49e78f183f386079e414a12307a3b270e966; review 5603690424 and build-only CI pass. Issue #34 remains OPEN, schedule STOPPED; source, rights, baseline, contract and release decisions pending. Catalog sidecars are accepted; no corrective defect recorded."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+        "schedule_ref": "cdp_source_integrity_schedule",
+        "job_ref": "cdp_source_integrity_job",
+        "asset_refs": [
+          "census_designated_places"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/census_designated_places.py"
+        ],
+        "mapping_basis": "PR #600 Definitions/job/asset registration; root verified 46 schedules STOPPED."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "canonical_pr": {
+          "pr": 597,
+          "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+          "state": "closed_merged",
+          "merged_via": "PR #600 ancestry",
+          "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "review": 5603531492
+        },
+        "integration_pr": {
+          "pr": 600,
+          "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+          "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+          "state": "closed_merged",
+          "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+          "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+          "root_review": 5603690424,
+          "ci": "build-only success"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 35,
@@ -2118,10 +2414,12 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 441,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T17:12:06Z",
+      "reviewed_head": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+      "evidence_refs": [
+        "PR #441 current head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4; runtime head 26032a01c516342d41c1eaeb053acb88d6e2db88; review 6264560879; cleanup 6272862110. Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+      ],
+      "blocker_type": "source_continuity_rights_and_acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T11:59:08Z",
       "live_issue_created_at": "2026-10-19T01:58:23Z",
       "live_issue_comment_count": 9,
       "live_labels": [],
@@ -2138,10 +2436,22 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "native_pipeline_evidence_reviewed_issue_open_acceptance_gated",
       "current_pr_candidates": [
         441
-      ]
+      ],
+      "current_head": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+      "status_note": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "native_pipeline_evidence_reviewed_issue_open_acceptance_gated",
+        "pr": 441,
+        "head": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+        "runtime_head": "26032a01c516342d41c1eaeb053acb88d6e2db88",
+        "review": 6264560879,
+        "cleanup_comment": 6272862110,
+        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+      }
     },
     {
       "issue": 42,
@@ -2152,10 +2462,13 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 453,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T17:14:18Z",
+      "reviewed_head": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+      "evidence_refs": [
+        "PR #453 current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2; runtime head 041c4a7088758a0023fed7bad3856ee3c9d27237; review 6266833755; cleanup 6272904141. Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved.",
+        "Review handoff 6266888770; earlier 21-run lifecycle at c947033."
+      ],
+      "blocker_type": "source_continuity_rights_and_acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T11:59:06Z",
       "live_issue_created_at": "2026-10-19T01:58:27Z",
       "live_issue_comment_count": 10,
       "live_labels": [],
@@ -2172,10 +2485,22 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "native_pipeline_evidence_reviewed_issue_open_acceptance_gated",
       "current_pr_candidates": [
         453
-      ]
+      ],
+      "current_head": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+      "status_note": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-21T17:52:00Z",
+        "state": "native_pipeline_evidence_reviewed_issue_open_acceptance_gated",
+        "pr": 453,
+        "head": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+        "runtime_head": "041c4a7088758a0023fed7bad3856ee3c9d27237",
+        "review": 6266833755,
+        "cleanup_comment": 6272904141,
+        "notes": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved."
+      }
     },
     {
       "issue": 43,
@@ -12556,6 +12881,8 @@
         }
       },
       "active_review_and_integration": {
+        "257": "PR #570 exact head 0ee6116fbbe385db5f5ca3d9815eeed7092f607d, base c12fe55e1342c363804414fb934902ae1d5a688d; exact-head review is the next assigned checkpoint.",
+        "260": "Local head c655da087b94efe0983b620c9cacff67299c59aa waits on #253 helper/main integration.",
         "253_pr569": {
           "state": "open_review_pending",
           "exact_head": "2c090d621117584c5b637d68e061132be45b130e",
@@ -12590,9 +12917,7 @@
             "quality_false": "01ec92cf-b19f-4976-a833-03e69053f734",
             "approval_refusal": "ec199e4a-ef02-450e-b617-79ed272d9f36"
           }
-        },
-        "260": "Local head c655da087b94efe0983b620c9cacff67299c59aa waits on #253 helper/main integration.",
-        "257": "PR #570 exact head 0ee6116fbbe385db5f5ca3d9815eeed7092f607d, base c12fe55e1342c363804414fb934902ae1d5a688d; exact-head review is the next assigned checkpoint."
+        }
       },
       "issue_states_and_board": {
         "issues_checked_open": [
@@ -12605,10 +12930,10 @@
         "verified_at": "2026-10-21T15:15Z",
         "supervisor_reported_project_markers": {
           "21": "Needs decision",
-          "275": "Needs decision",
           "27": "In progress",
-          "282": "In progress",
-          "253": "In progress"
+          "253": "In progress",
+          "275": "Needs decision",
+          "282": "In progress"
         },
         "labels_from_issue_api": []
       },
@@ -12626,7 +12951,23 @@
     "work_issue_282": "PR #568 merged as 0e702d3aaa1b9c0e2fe5b7ab7c019f9a1268ec0e from exact head f16066df5f8d52f03dfd4a8bd3fef528a4d1deb3; root final review 5601992246 and CI passed. Issue remains open with source/vintage, 30-vs-31 coverage, continuity, rights, schema/ID and release pending; older PR #548 remains a noncanonical open stack.",
     "work_issue_21": "Canonical clean-main PR #566 merged as c12fe55e1342c363804414fb934902ae1d5a688d after exact-head review 5601865599 and CI pass; issue remains open with acceptance pending. Older PR #539 remains a noncanonical open stack.",
     "work_issue_275": "Canonical clean-main PR #565 merged as d546af0f00fee62f84ab3eb8434bd1605d474acc after exact-head review 5601776783 and CI pass; issue remains open with acceptance pending. Older PR #546 remains a noncanonical open stack.",
-    "superseded_by": "latest_verified_checkpoint recorded 2026-10-21T15:40:30Z; earlier assignments and PR references are historical."
+    "superseded_by": "latest_verified_checkpoint recorded 2026-10-21T15:40:30Z; earlier assignments and PR references are historical.",
+    "durable_checkpoint": {
+      "recorded_at": "2026-10-21T17:52:00Z",
+      "main": "436d49e78f183f386079e414a12307a3b270e966",
+      "rows": 415,
+      "merged_gated_rows": 33,
+      "stopped_schedules": 46,
+      "only_cache_fix_issue29": true,
+      "pending_integration": [
+        601,
+        602,
+        603,
+        604,
+        605
+      ],
+      "full_census": false
+    }
   },
   "repository_level_blockers": [
     {
@@ -12659,219 +13000,209 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T17:17:54Z",
-    "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
-    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication. Main source definitions configure 39 named dataset schedules STOPPED across 39 inventory issues; this is independent of the row-derived code-merged/open/gated count. #28 exact-head review PASS 5603413457 and registered gate refusal proof completed; #26 PR596 review ongoing; #29 worker reports exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 with review pending.",
-    "main_latest": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-    "main_tree": "fbec46810f0672341afb68e7f16fdc231e51a6c4",
-    "integration_593": {
-      "pr": 593,
+    "recorded_at": "2026-10-21T17:52:00Z",
+    "source": "Parent-verified PR #600 integration/review/build and named PR/issue readbacks; retained prior review/run evidence for #41/#42/#601-#605. No new data runs or full census.",
+    "scope_note": "415 rows preserved; PR #600 integrated seven exact reviewed heads; seven issues remain OPEN. Main has 46 dataset schedules STOPPED. No acceptance, issue closure, activation or publication. 14:14 census historical.",
+    "main_latest": "436d49e78f183f386079e414a12307a3b270e966",
+    "main_tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+    "integration_600": {
+      "pr": 600,
       "state": "closed_merged",
-      "base": "8f0062c34079da3bb6b3743e15e6813774a5e65e",
-      "head": "d620fedc978f84a66e1d47c0389fc8fae201ddc5",
-      "merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-      "tree": "93a504702536ee25ff5587fbce7360ed3c4782a4",
-      "root_review": 5603280260,
-      "ci": "Build-only CI SUCCESS; publish job skipped; combined status not used to infer a pending failure",
-      "schedules": "39 STOPPED",
-      "source": "Parent-verified exact integration tree; API verified PR merge; no new source/materialization run."
+      "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+      "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+      "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+      "root_review": 5603690424,
+      "ci": "build-only success; publish skipped",
+      "schedules": "46 STOPPED"
     },
-    "source_prs_auto_merged": {
-      "589_issue9": {
-        "issue": 9,
-        "pr": 589,
-        "head": "75c8f574898c685476f09ca14e899e9423cf743f",
+    "source_prs_auto_merged": [
+      {
+        "issue": 20,
+        "pr": 431,
+        "head": "09b598485fcd8ca8519855af02331172dd976807",
+        "review": 5603303945,
         "state": "closed_merged",
-        "pr_merge_commit": "3ebb3dbe4b94394557bec6e603ebf9668d7fd5b8",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603147720,
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
         "issue_state": "open",
         "canonical": true
       },
-      "591_issue16": {
-        "issue": 16,
-        "pr": 591,
-        "head": "c871c834726983d4099c523eec2e8b8f28d26c09",
-        "state": "closed_merged",
-        "pr_merge_commit": "e5ebdd6dcf7c3dcf8905d1b0d1188f6214a7dfe3",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603184263,
-        "issue_state": "open",
-        "canonical": true,
-        "superseded_open_pr": 465
-      },
-      "430_issue17": {
-        "issue": 17,
-        "pr": 430,
-        "head": "bbf25bafbc482e195393e380156782376a54581d",
-        "state": "closed_merged",
-        "pr_merge_commit": "2646c99c60f9ee3bdeb06d7cc726e64d17a30d63",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603187902,
-        "issue_state": "open",
-        "canonical": true,
-        "note": "Automatically merged by ancestry; original PR was not manually closed."
-      },
-      "592_issue19": {
-        "issue": 19,
-        "pr": 592,
-        "head": "4296fb38797c5572afe9c930d2aecf7b650010ca",
-        "state": "closed_merged",
-        "pr_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603233533,
-        "issue_state": "open",
-        "canonical": true,
-        "superseded_open_pr": 434
-      }
-    },
-    "integration_595": {
-      "pr": 595,
-      "state": "closed_merged",
-      "head": "4f598d5c423ce4afb4a3d580591f508e5f651eb3",
-      "merge_commit": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-      "root_review": 5603342213,
-      "ci": "Build-only CI SUCCESS; publish job skipped. Do not infer combined-status semantics from skipped publish.",
-      "scope": "Reusable local registered-gate proof CLI; no production gate changes; synthetic populated destination fixture; issue #417 still open/incomplete."
-    },
-    "issue_states": {
-      "9": "open",
-      "16": "open",
-      "17": "open",
-      "19": "open",
-      "24": "open",
-      "20": "open",
-      "26": "open",
-      "28": "open",
-      "29": "open"
-    },
-    "board_sync_requests": {
-      "requested_label": "move:needs-decision",
-      "issues": [
-        9,
-        16,
-        17,
-        19,
-        24
-      ],
-      "readback": "move:needs-decision was present on #9/#16/#19 at latest readback. It was added on #17/#24, then absent in subsequent reads; possible consumption is not confirmed by direct board status. All five issues remained open."
-    },
-    "issue_comment_ids": {
-      "9": 6321798487,
-      "16": 6321799817,
-      "17": 6321445936,
-      "19": 6321801933,
-      "24": 6321593473
-    },
-    "current_work_cards": {
-      "20": {
-        "canonical_pr": 431,
-        "head": "09b598485fcd8ca8519855af02331172dd976807",
-        "state": "exact_head_independent_review_pass_open_acceptance_gated",
-        "review": 5603303945,
-        "notes": "Native 19,427-row/91-field source and local gates scoped in PR body; source/CRS/baseline/schema/rights/release blockers remain."
-      },
-      "24": {
-        "state": "external_source_access_and_scope_decision_blocker",
-        "issue_comment": 6321593473,
-        "notes": "External access/scope decision blocker; comment 6321593473 asks for reachable complete FCC transmitter-site feed or explicit ULS authorization-scope decision."
-      },
-      "26": {
-        "canonical_pr": 596,
+      {
+        "issue": 26,
+        "pr": 596,
         "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
-        "state": "exact_head_review_in_progress",
-        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain.",
-        "review_status": "root exact-head review ongoing"
+        "review": 5603543308,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "28": {
-        "canonical_pr": 594,
+      {
+        "issue": 28,
+        "pr": 594,
         "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
         "review": 5603413457,
-        "state": "exact_head_review_pass_native_and_gates_verified_acceptance_pending",
-        "runs": {
-          "quality_false": "62102e85-9e5e-4133-a585-d3ebfa953ff0",
-          "approval_refusal": "dcf5c73f-87dd-48e9-8e44-34ddd7004566"
-        },
-        "notes": "1,145-feature native proof; source/catalog and registered gates completed; synthetic fixture unchanged; source-use/baseline/grain/release decisions remain."
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "29": {
+      {
+        "issue": 29,
+        "pr": 438,
         "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
-        "state": "exact_head_review_pending",
-        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved.",
-        "review_status": "independent exact-head review pending"
+        "review": 5603542372,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "32": {
-        "state": "triage_active_no_verified_pipeline_pr",
-        "notes": "Coordinator report only; no current pipeline PR/head verified."
+      {
+        "issue": 30,
+        "pr": 439,
+        "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+        "review": 5603551632,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "34": {
-        "state": "native_implementation_next_active",
-        "notes": "Coordinator report only; no new exact head verified."
+      {
+        "issue": 31,
+        "pr": 598,
+        "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+        "review": 5603522426,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 34,
+        "pr": 597,
+        "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+        "review": 5603531492,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      }
+    ],
+    "cache_audit": {
+      "only_confirmed_issue": 29,
+      "detail": "Only #29 rejects catalog-generated provenance/source-manifest sidecars; fix active, no new capture. #26/#28/#30/#31 accept them."
+    },
+    "evidence_reconciliation_41_42": {
+      "41": {
+        "p": 441,
+        "h": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+        "runtime": "26032a01c516342d41c1eaeb053acb88d6e2db88",
+        "review": 6264560879,
+        "cleanup": 6272862110,
+        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+      },
+      "42": {
+        "p": 453,
+        "h": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+        "runtime": "041c4a7088758a0023fed7bad3856ee3c9d27237",
+        "review": 6266833755,
+        "cleanup": 6272904141,
+        "notes": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved."
       }
     },
-    "historical_census": "14:14 UTC only; no current total claimed.",
-    "controls": {
-      "source_capture": "none for ledger/mapping checkpoint",
-      "materializations": "none for ledger/mapping checkpoint",
-      "full_suite": "not run",
-      "issue_closures": "none",
-      "release_acceptance": "none",
-      "production_publication": "none",
-      "paid_dispatch": "No active paid jobs or new paid admissions reported in this checkpoint."
-    },
-    "main_registration_snapshot": {
-      "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-      "definitions_file": "src/dagster_hifld/definitions.py",
-      "configured_schedule_count": 39,
-      "mapped_inventory_issue_count": 39,
-      "mapped_issue_ids": [
-        2,
-        3,
-        4,
+    "board_sync": {
+      "workflow_run": 39647433014,
+      "state": "success",
+      "needs_decision": [
         6,
-        8,
         9,
-        10,
-        11,
-        15,
         16,
-        17,
         19,
-        21,
-        27,
-        37,
-        181,
-        253,
-        257,
-        260,
-        261,
-        269,
-        270,
-        271,
-        273,
-        274,
-        275,
-        276,
-        278,
-        279,
-        280,
-        281,
-        282,
-        283,
-        284,
-        285,
-        290,
-        307,
-        335,
-        363
+        26,
+        30
       ],
-      "all_default_status_stopped": true,
-      "live_scheduler_status_queried": false,
-      "method": "Read current Definitions.schedules list, each schedule job reference, and selected asset/key refs; matched dataset-specific names to inventory issue IDs. This is source registration, not runtime activation or pipeline acceptance."
+      "in_progress": [
+        29,
+        35,
+        39,
+        323
+      ],
+      "prior_one_shot_consumed": [
+        20,
+        28,
+        31,
+        34
+      ]
+    },
+    "pending_pipeline_integration": {
+      "status": "Five reviewed source PRs pending additive integration; current schedule count stays 46.",
+      "PR601": {
+        "issue": 39,
+        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "review": 5603776940
+      },
+      "PR602": {
+        "issue": 38,
+        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "review": 5603872439,
+        "scope": "limited delta; runtime 571dbc4c0ab644af0115ad5bece19781abe3ee63"
+      },
+      "PR603": {
+        "issue": 33,
+        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+        "review": 5603918139,
+        "tree": "e1404e6d25d80f1c58c005d54916b875c6ccce51",
+        "runtime": "993f25499ace0df4da3185d8a510550e9693899e"
+      },
+      "PR604": {
+        "issue": 35,
+        "head": "1acb376592ae853e7635b40de044048996fd2314",
+        "review": 5603867622,
+        "features": 85529,
+        "tests": 8
+      },
+      "PR605": {
+        "issue": 40,
+        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "review": 5603894518,
+        "features": 184,
+        "fixture_objects": 15,
+        "tests": 12
+      },
+      "all_five_if_integrated_schedules": 51
+    },
+    "paid_poll": {
+      "at": "2026-10-21T17:41:29Z",
+      "implementation_run": 39645303470,
+      "review_run": 39645298886,
+      "current_state": "not refreshed",
+      "admissions": "paused",
+      "inference_guard_usd": 25,
+      "actual_spend": "unknown",
+      "compute_excluded": true
+    },
+    "controls": {
+      "no_capture": true,
+      "no_materialization": true,
+      "no_full_suite": true,
+      "no_issue_closure": true,
+      "no_acceptance": true,
+      "no_publication": true,
+      "no_paid_dispatch": true
     }
   },
   "pr_search_snapshot_records": [
@@ -14315,219 +14646,209 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-21T17:17:54Z",
-    "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
-    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication. Main source definitions configure 39 named dataset schedules STOPPED across 39 inventory issues; this is independent of the row-derived code-merged/open/gated count. #28 exact-head review PASS 5603413457 and registered gate refusal proof completed; #26 PR596 review ongoing; #29 worker reports exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 with review pending.",
-    "main_latest": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-    "main_tree": "fbec46810f0672341afb68e7f16fdc231e51a6c4",
-    "integration_593": {
-      "pr": 593,
+    "recorded_at": "2026-10-21T17:52:00Z",
+    "source": "Parent-verified PR #600 integration/review/build and named PR/issue readbacks; retained prior review/run evidence for #41/#42/#601-#605. No new data runs or full census.",
+    "scope_note": "415 rows preserved; PR #600 integrated seven exact reviewed heads; seven issues remain OPEN. Main has 46 dataset schedules STOPPED. No acceptance, issue closure, activation or publication. 14:14 census historical.",
+    "main_latest": "436d49e78f183f386079e414a12307a3b270e966",
+    "main_tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+    "integration_600": {
+      "pr": 600,
       "state": "closed_merged",
-      "base": "8f0062c34079da3bb6b3743e15e6813774a5e65e",
-      "head": "d620fedc978f84a66e1d47c0389fc8fae201ddc5",
-      "merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-      "tree": "93a504702536ee25ff5587fbce7360ed3c4782a4",
-      "root_review": 5603280260,
-      "ci": "Build-only CI SUCCESS; publish job skipped; combined status not used to infer a pending failure",
-      "schedules": "39 STOPPED",
-      "source": "Parent-verified exact integration tree; API verified PR merge; no new source/materialization run."
+      "base": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "head": "98f80e6b07836332e9ced300da16e029aa03096d",
+      "merge_commit": "436d49e78f183f386079e414a12307a3b270e966",
+      "tree": "1a163d95ca1a6299e991665f955dc22a65119619",
+      "root_review": 5603690424,
+      "ci": "build-only success; publish skipped",
+      "schedules": "46 STOPPED"
     },
-    "source_prs_auto_merged": {
-      "589_issue9": {
-        "issue": 9,
-        "pr": 589,
-        "head": "75c8f574898c685476f09ca14e899e9423cf743f",
+    "source_prs_auto_merged": [
+      {
+        "issue": 20,
+        "pr": 431,
+        "head": "09b598485fcd8ca8519855af02331172dd976807",
+        "review": 5603303945,
         "state": "closed_merged",
-        "pr_merge_commit": "3ebb3dbe4b94394557bec6e603ebf9668d7fd5b8",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603147720,
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
         "issue_state": "open",
         "canonical": true
       },
-      "591_issue16": {
-        "issue": 16,
-        "pr": 591,
-        "head": "c871c834726983d4099c523eec2e8b8f28d26c09",
-        "state": "closed_merged",
-        "pr_merge_commit": "e5ebdd6dcf7c3dcf8905d1b0d1188f6214a7dfe3",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603184263,
-        "issue_state": "open",
-        "canonical": true,
-        "superseded_open_pr": 465
-      },
-      "430_issue17": {
-        "issue": 17,
-        "pr": 430,
-        "head": "bbf25bafbc482e195393e380156782376a54581d",
-        "state": "closed_merged",
-        "pr_merge_commit": "2646c99c60f9ee3bdeb06d7cc726e64d17a30d63",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603187902,
-        "issue_state": "open",
-        "canonical": true,
-        "note": "Automatically merged by ancestry; original PR was not manually closed."
-      },
-      "592_issue19": {
-        "issue": 19,
-        "pr": 592,
-        "head": "4296fb38797c5572afe9c930d2aecf7b650010ca",
-        "state": "closed_merged",
-        "pr_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "integration_pr": 593,
-        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
-        "review": 5603233533,
-        "issue_state": "open",
-        "canonical": true,
-        "superseded_open_pr": 434
-      }
-    },
-    "integration_595": {
-      "pr": 595,
-      "state": "closed_merged",
-      "head": "4f598d5c423ce4afb4a3d580591f508e5f651eb3",
-      "merge_commit": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-      "root_review": 5603342213,
-      "ci": "Build-only CI SUCCESS; publish job skipped. Do not infer combined-status semantics from skipped publish.",
-      "scope": "Reusable local registered-gate proof CLI; no production gate changes; synthetic populated destination fixture; issue #417 still open/incomplete."
-    },
-    "issue_states": {
-      "9": "open",
-      "16": "open",
-      "17": "open",
-      "19": "open",
-      "24": "open",
-      "20": "open",
-      "26": "open",
-      "28": "open",
-      "29": "open"
-    },
-    "board_sync_requests": {
-      "requested_label": "move:needs-decision",
-      "issues": [
-        9,
-        16,
-        17,
-        19,
-        24
-      ],
-      "readback": "move:needs-decision was present on #9/#16/#19 at latest readback. It was added on #17/#24, then absent in subsequent reads; possible consumption is not confirmed by direct board status. All five issues remained open."
-    },
-    "issue_comment_ids": {
-      "9": 6321798487,
-      "16": 6321799817,
-      "17": 6321445936,
-      "19": 6321801933,
-      "24": 6321593473
-    },
-    "current_work_cards": {
-      "20": {
-        "canonical_pr": 431,
-        "head": "09b598485fcd8ca8519855af02331172dd976807",
-        "state": "exact_head_independent_review_pass_open_acceptance_gated",
-        "review": 5603303945,
-        "notes": "Native 19,427-row/91-field source and local gates scoped in PR body; source/CRS/baseline/schema/rights/release blockers remain."
-      },
-      "24": {
-        "state": "external_source_access_and_scope_decision_blocker",
-        "issue_comment": 6321593473,
-        "notes": "External access/scope decision blocker; comment 6321593473 asks for reachable complete FCC transmitter-site feed or explicit ULS authorization-scope decision."
-      },
-      "26": {
-        "canonical_pr": 596,
+      {
+        "issue": 26,
+        "pr": 596,
         "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
-        "state": "exact_head_review_in_progress",
-        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain.",
-        "review_status": "root exact-head review ongoing"
+        "review": 5603543308,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "28": {
-        "canonical_pr": 594,
+      {
+        "issue": 28,
+        "pr": 594,
         "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
         "review": 5603413457,
-        "state": "exact_head_review_pass_native_and_gates_verified_acceptance_pending",
-        "runs": {
-          "quality_false": "62102e85-9e5e-4133-a585-d3ebfa953ff0",
-          "approval_refusal": "dcf5c73f-87dd-48e9-8e44-34ddd7004566"
-        },
-        "notes": "1,145-feature native proof; source/catalog and registered gates completed; synthetic fixture unchanged; source-use/baseline/grain/release decisions remain."
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "29": {
+      {
+        "issue": 29,
+        "pr": 438,
         "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
-        "state": "exact_head_review_pending",
-        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved.",
-        "review_status": "independent exact-head review pending"
+        "review": 5603542372,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "32": {
-        "state": "triage_active_no_verified_pipeline_pr",
-        "notes": "Coordinator report only; no current pipeline PR/head verified."
+      {
+        "issue": 30,
+        "pr": 439,
+        "head": "91fa48d836caa217bc6ab9f5ebccdad309f8ee05",
+        "review": 5603551632,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
       },
-      "34": {
-        "state": "native_implementation_next_active",
-        "notes": "Coordinator report only; no new exact head verified."
+      {
+        "issue": 31,
+        "pr": 598,
+        "head": "d6239e3ffc1abf4550930a5bc711c454e13c4166",
+        "review": 5603522426,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      },
+      {
+        "issue": 34,
+        "pr": 597,
+        "head": "e0cdd4540f5b76bb97f58cb0eef8b5dbf33a4d80",
+        "review": 5603531492,
+        "state": "closed_merged",
+        "merge_commit": "98f80e6b07836332e9ced300da16e029aa03096d",
+        "integration_pr": 600,
+        "integration_merge": "436d49e78f183f386079e414a12307a3b270e966",
+        "issue_state": "open",
+        "canonical": true
+      }
+    ],
+    "cache_audit": {
+      "only_confirmed_issue": 29,
+      "detail": "Only #29 rejects catalog-generated provenance/source-manifest sidecars; fix active, no new capture. #26/#28/#30/#31 accept them."
+    },
+    "evidence_reconciliation_41_42": {
+      "41": {
+        "p": 441,
+        "h": "c59fd7dbd52790aacac9e1f0985740d14f1ed7d4",
+        "runtime": "26032a01c516342d41c1eaeb053acb88d6e2db88",
+        "review": 6264560879,
+        "cleanup": 6272862110,
+        "notes": "Runtime/source evidence at 26032a01c516342d41c1eaeb053acb88d6e2db88; prior source/catalog/quality/approval review at 0721d0461715bb3223a47699e5d4fc27fa4a7dff. Current PR head c59fd7dbd52790aacac9e1f0985740d14f1ed7d4 cleanup confirms source/tests unchanged. Review 6264560879: 14 focused tests and registered native/authenticated construction runs. Seven official archives show changed 2026 successor, DOI 403; 8-row comparison 0/8 geometry matches with schema/ID differences. Continuity/acceptance unresolved."
+      },
+      "42": {
+        "p": 453,
+        "h": "c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2",
+        "runtime": "041c4a7088758a0023fed7bad3856ee3c9d27237",
+        "review": 6266833755,
+        "cleanup": 6272904141,
+        "notes": "Implementation review at 041c4a7088758a0023fed7bad3856ee3c9d27237; current head c540c34ac475a29d5fe3ac97c06cc3ac8a9aded2 cleanup confirms code/tests unchanged. Review 6266833755: 766 rows, 6,894 attrs/native WKB, 17 tests, seven registered runs including approval refusal; prior 21-run lifecycle at c947033. Stanford source historical preservation; original USGS endpoint 404; rights/datum/continuity unresolved."
       }
     },
-    "historical_census": "14:14 UTC only; no current total claimed.",
-    "controls": {
-      "source_capture": "none for ledger/mapping checkpoint",
-      "materializations": "none for ledger/mapping checkpoint",
-      "full_suite": "not run",
-      "issue_closures": "none",
-      "release_acceptance": "none",
-      "production_publication": "none",
-      "paid_dispatch": "No active paid jobs or new paid admissions reported in this checkpoint."
-    },
-    "main_registration_snapshot": {
-      "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
-      "definitions_file": "src/dagster_hifld/definitions.py",
-      "configured_schedule_count": 39,
-      "mapped_inventory_issue_count": 39,
-      "mapped_issue_ids": [
-        2,
-        3,
-        4,
+    "board_sync": {
+      "workflow_run": 39647433014,
+      "state": "success",
+      "needs_decision": [
         6,
-        8,
         9,
-        10,
-        11,
-        15,
         16,
-        17,
         19,
-        21,
-        27,
-        37,
-        181,
-        253,
-        257,
-        260,
-        261,
-        269,
-        270,
-        271,
-        273,
-        274,
-        275,
-        276,
-        278,
-        279,
-        280,
-        281,
-        282,
-        283,
-        284,
-        285,
-        290,
-        307,
-        335,
-        363
+        26,
+        30
       ],
-      "all_default_status_stopped": true,
-      "live_scheduler_status_queried": false,
-      "method": "Read current Definitions.schedules list, each schedule job reference, and selected asset/key refs; matched dataset-specific names to inventory issue IDs. This is source registration, not runtime activation or pipeline acceptance."
+      "in_progress": [
+        29,
+        35,
+        39,
+        323
+      ],
+      "prior_one_shot_consumed": [
+        20,
+        28,
+        31,
+        34
+      ]
+    },
+    "pending_pipeline_integration": {
+      "status": "Five reviewed source PRs pending additive integration; current schedule count stays 46.",
+      "PR601": {
+        "issue": 39,
+        "head": "43af185c35db7591d2d9fcdfb5ea3b488b34c67d",
+        "review": 5603776940
+      },
+      "PR602": {
+        "issue": 38,
+        "head": "c63f0a254364a79f93e4a5cd4ea842612e0c4a39",
+        "review": 5603872439,
+        "scope": "limited delta; runtime 571dbc4c0ab644af0115ad5bece19781abe3ee63"
+      },
+      "PR603": {
+        "issue": 33,
+        "head": "d6a4028b351092b336252e4ee10f38b1227523da",
+        "review": 5603918139,
+        "tree": "e1404e6d25d80f1c58c005d54916b875c6ccce51",
+        "runtime": "993f25499ace0df4da3185d8a510550e9693899e"
+      },
+      "PR604": {
+        "issue": 35,
+        "head": "1acb376592ae853e7635b40de044048996fd2314",
+        "review": 5603867622,
+        "features": 85529,
+        "tests": 8
+      },
+      "PR605": {
+        "issue": 40,
+        "head": "0c06f1df446c710eee37a0e057e478b0a17ddaf7",
+        "review": 5603894518,
+        "features": 184,
+        "fixture_objects": 15,
+        "tests": 12
+      },
+      "all_five_if_integrated_schedules": 51
+    },
+    "paid_poll": {
+      "at": "2026-10-21T17:41:29Z",
+      "implementation_run": 39645303470,
+      "review_run": 39645298886,
+      "current_state": "not refreshed",
+      "admissions": "paused",
+      "inference_guard_usd": 25,
+      "actual_spend": "unknown",
+      "compute_excluded": true
+    },
+    "controls": {
+      "no_capture": true,
+      "no_materialization": true,
+      "no_full_suite": true,
+      "no_issue_closure": true,
+      "no_acceptance": true,
+      "no_publication": true,
+      "no_paid_dispatch": true
     }
   },
   "previous_verified_checkpoint_2026_10_21T1455Z": {
@@ -14852,6 +15173,8 @@
         }
       },
       "active_review_and_integration": {
+        "257": "PR #570 exact head 0ee6116fbbe385db5f5ca3d9815eeed7092f607d, base c12fe55e1342c363804414fb934902ae1d5a688d; exact-head review is the next assigned checkpoint.",
+        "260": "Local head c655da087b94efe0983b620c9cacff67299c59aa waits on #253 helper/main integration.",
         "253_pr569": {
           "state": "open_review_pending",
           "exact_head": "2c090d621117584c5b637d68e061132be45b130e",
@@ -14886,9 +15209,7 @@
             "quality_false": "01ec92cf-b19f-4976-a833-03e69053f734",
             "approval_refusal": "ec199e4a-ef02-450e-b617-79ed272d9f36"
           }
-        },
-        "260": "Local head c655da087b94efe0983b620c9cacff67299c59aa waits on #253 helper/main integration.",
-        "257": "PR #570 exact head 0ee6116fbbe385db5f5ca3d9815eeed7092f607d, base c12fe55e1342c363804414fb934902ae1d5a688d; exact-head review is the next assigned checkpoint."
+        }
       },
       "issue_states_and_board": {
         "issues_checked_open": [
@@ -14901,10 +15222,10 @@
         "verified_at": "2026-10-21T15:15Z",
         "supervisor_reported_project_markers": {
           "21": "Needs decision",
-          "275": "Needs decision",
           "27": "In progress",
-          "282": "In progress",
-          "253": "In progress"
+          "253": "In progress",
+          "275": "Needs decision",
+          "282": "In progress"
         },
         "labels_from_issue_api": []
       },
@@ -14976,9 +15297,9 @@
     ],
     "issue_comment_ids": {
       "2": 6321109730,
+      "37": 6321115581,
       "279": 6321111333,
-      "280": 6321113263,
-      "37": 6321115581
+      "280": 6321113263
     },
     "board_sync": {
       "requested_label": "move:needs-decision",
@@ -14986,11 +15307,11 @@
         "2": [
           "move:needs-decision"
         ],
-        "279": [],
-        "280": [],
         "37": [
           "move:needs-decision"
-        ]
+        ],
+        "279": [],
+        "280": []
       },
       "note": "Labels were requested; issue API reads are time-specific and may reflect board event consumption. No Ready/Review admission."
     },
@@ -15002,6 +15323,36 @@
       "active_paid_jobs": 0
     },
     "current_work_cards": {
+      "2": {
+        "recorded_at": "2026-10-21T16:34:00Z",
+        "state": "code_merged_issue_open_acceptance_pending",
+        "canonical_pr": 418,
+        "source_head": "22576c3b1ee74650b079110d0a9835355295918f",
+        "review": 5602850868,
+        "notes": "Original pipeline PR integrated through #586; source/baseline/rights/contract/release decisions remain pending."
+      },
+      "5": {
+        "recorded_at": "2026-10-21T16:29:30Z",
+        "state": "external_phmsa_geometry_coverage_blocker",
+        "pr": 424,
+        "head": "338f85206ce645958bc4c5cc6e5cc2b1219daf08",
+        "notes": "PHMSA candidate lacks usable geometry and does not establish national coverage; external source/coverage decision blocks."
+      },
+      "6": {
+        "recorded_at": "2026-10-21T16:29:30Z",
+        "state": "native_recovery_active",
+        "pr": 423,
+        "head": "1267ccedb2ee8a32c0e51c93ad16b5b6681c655e",
+        "notes": "USACE IENC Administrative Areas native recovery active on existing stacked PR; no acceptance claim."
+      },
+      "37": {
+        "recorded_at": "2026-10-21T16:34:00Z",
+        "state": "code_merged_issue_open_acceptance_pending",
+        "canonical_pr": 584,
+        "source_head": "7b4fd657b0278f5624234712aa80eb7aa4f235ac",
+        "review": 5602859770,
+        "notes": "Clean-main Coastlines implementation integrated through #586; old PR #542 remains stacked/noncanonical. Source succession/rights/baseline/contract/release decisions remain pending."
+      },
       "279": {
         "recorded_at": "2026-10-21T16:34:00Z",
         "state": "code_merged_issue_open_acceptance_pending",
@@ -15021,36 +15372,6 @@
         "source_head": "28447861d818c0af8a264d2cddb4cedf599a2ce5",
         "review": 5602844755,
         "notes": "Unknown CRS and missing geometry remain explicit blockers; no CRS assigned or geometry repaired; source/release acceptance false."
-      },
-      "2": {
-        "recorded_at": "2026-10-21T16:34:00Z",
-        "state": "code_merged_issue_open_acceptance_pending",
-        "canonical_pr": 418,
-        "source_head": "22576c3b1ee74650b079110d0a9835355295918f",
-        "review": 5602850868,
-        "notes": "Original pipeline PR integrated through #586; source/baseline/rights/contract/release decisions remain pending."
-      },
-      "37": {
-        "recorded_at": "2026-10-21T16:34:00Z",
-        "state": "code_merged_issue_open_acceptance_pending",
-        "canonical_pr": 584,
-        "source_head": "7b4fd657b0278f5624234712aa80eb7aa4f235ac",
-        "review": 5602859770,
-        "notes": "Clean-main Coastlines implementation integrated through #586; old PR #542 remains stacked/noncanonical. Source succession/rights/baseline/contract/release decisions remain pending."
-      },
-      "5": {
-        "recorded_at": "2026-10-21T16:29:30Z",
-        "state": "external_phmsa_geometry_coverage_blocker",
-        "pr": 424,
-        "head": "338f85206ce645958bc4c5cc6e5cc2b1219daf08",
-        "notes": "PHMSA candidate lacks usable geometry and does not establish national coverage; external source/coverage decision blocks."
-      },
-      "6": {
-        "recorded_at": "2026-10-21T16:29:30Z",
-        "state": "native_recovery_active",
-        "pr": 423,
-        "head": "1267ccedb2ee8a32c0e51c93ad16b5b6681c655e",
-        "notes": "USACE IENC Administrative Areas native recovery active on existing stacked PR; no acceptance claim."
       }
     },
     "historical_census_note": "14:14 UTC census totals are historical only. No refreshed global open-PR total is claimed.",
@@ -15071,6 +15392,13 @@
     "latest_reported_main": "7224d1653522cc2e15b1d6d8f5f895874b821836",
     "worker_base": "f623e89f22bd2f17fa04deba1e26a69bc9ed5e0f",
     "named_updates": {
+      "181": {
+        "pr": 574,
+        "exact_head": "c742f153418bea625b5e4ad03224c395f0536054",
+        "review": 5602249231,
+        "status": "reviewed_clean_main_draft_integration_pending",
+        "notes": "PR #574 is a draft clean-main candidate from instructed base 0e702d3aaa1b9c0e2fe5b7ab7c019f9a1268ec0e. Source, catalog, cache, no-Git package replay, 109-row native WKB/attribute parity and blocking-gate evidence are recorded in the PR body and /workspace/work/181-evidence. Integration against newer main awaits designated window; no acceptance/publication."
+      },
       "253": {
         "pr": 569,
         "state": "merged_issue_open_acceptance_gated",
@@ -15100,13 +15428,6 @@
         "merge_method": "Expected-head merge; no override.",
         "board_marker": "Needs decision"
       },
-      "181": {
-        "pr": 574,
-        "exact_head": "c742f153418bea625b5e4ad03224c395f0536054",
-        "review": 5602249231,
-        "status": "reviewed_clean_main_draft_integration_pending",
-        "notes": "PR #574 is a draft clean-main candidate from instructed base 0e702d3aaa1b9c0e2fe5b7ab7c019f9a1268ec0e. Source, catalog, cache, no-Git package replay, 109-row native WKB/attribute parity and blocking-gate evidence are recorded in the PR body and /workspace/work/181-evidence. Integration against newer main awaits designated window; no acceptance/publication."
-      },
       "260": {
         "pr": 572,
         "exact_head": "cef852506300a3693803646cc5f8f35ae8e4bf73",
@@ -15128,17 +15449,17 @@
         "status": "review_pass_root_recording_pending_integration_pending",
         "notes": "PR #575 reviewer pass reported; root review record was pending at checkpoint. Exact head retained; integration pending."
       },
+      "271": {
+        "head_sha_prefix": "0d62ade",
+        "status": "implementation_complete_runtime_proof_complete_pending_PR",
+        "notes": "Clean implementation and runtime proof reported complete; shared_gate_fixes owns the implementation. No PR/merge, source acceptance or release acceptance recorded."
+      },
       "273": {
         "pr": 571,
         "exact_head": "24022607",
         "review": 5602058748,
         "status": "reviewed_clean_main_draft_integration_pending",
         "notes": "PR #571 reviewed at exact head 24022607…; final integration underway."
-      },
-      "271": {
-        "head_sha_prefix": "0d62ade",
-        "status": "implementation_complete_runtime_proof_complete_pending_PR",
-        "notes": "Clean implementation and runtime proof reported complete; shared_gate_fixes owns the implementation. No PR/merge, source acceptance or release acceptance recorded."
       }
     },
     "runtime_and_controls": {
@@ -15262,15 +15583,13 @@
       }
     },
     "current_work_cards": {
-      "279": {
+      "2": {
         "recorded_at": "2026-10-21T16:10:47Z",
-        "state": "partial_capture_in_progress",
-        "notes": "FWS source packet being completed via official exports. No completed candidate, review or acceptance is recorded."
-      },
-      "280": {
-        "recorded_at": "2026-10-21T16:10:47Z",
-        "state": "source_investigation_in_progress",
-        "notes": "Source investigation is ongoing; no source verification, pipeline PR or acceptance is recorded in this checkpoint."
+        "state": "selected_current_work_card",
+        "pr": 418,
+        "head": "7f123a9fe8dc56d0eae7f95234791bd6ac41868d",
+        "base": "b9b73e5ef146ace487033f1772945ad7bd06f251",
+        "notes": "Existing NOAA 12NM draft PR #418 remains open and stacked on PR #3; prior runtime packet is retained. No new integration or source acceptance is claimed."
       },
       "37": {
         "recorded_at": "2026-10-21T16:10:47Z",
@@ -15280,13 +15599,15 @@
         "base": "126dae201632ddcc911881a138d0c88af753fcd0",
         "notes": "Existing Coastlines draft PR #542 remains open on its recorded base; this checkpoint does not claim new integration or source acceptance."
       },
-      "2": {
+      "279": {
         "recorded_at": "2026-10-21T16:10:47Z",
-        "state": "selected_current_work_card",
-        "pr": 418,
-        "head": "7f123a9fe8dc56d0eae7f95234791bd6ac41868d",
-        "base": "b9b73e5ef146ace487033f1772945ad7bd06f251",
-        "notes": "Existing NOAA 12NM draft PR #418 remains open and stacked on PR #3; prior runtime packet is retained. No new integration or source acceptance is claimed."
+        "state": "partial_capture_in_progress",
+        "notes": "FWS source packet being completed via official exports. No completed candidate, review or acceptance is recorded."
+      },
+      "280": {
+        "recorded_at": "2026-10-21T16:10:47Z",
+        "state": "source_investigation_in_progress",
+        "notes": "Source investigation is ongoing; no source verification, pipeline PR or acceptance is recorded in this checkpoint."
       }
     },
     "open_issue_readbacks": {
@@ -15357,41 +15678,12 @@
     ],
     "issue_comment_ids": {
       "278": 6320990068,
-      "363": 6320993577,
-      "281": 6320997191
+      "281": 6320997191,
+      "363": 6320993577
     },
     "board_sync": "move:needs-decision requested on all three issues. #278/#363 label seen on API readback; #281 label absent on latest API readback. Root reports catchup sync 39635148122 queued; no Ready/Review admission.",
     "previous_priority_integration_578": "ec102654516996c1a7e9c94048a4eef2ec9c032b",
     "current_work_cards": {
-      "279": {
-        "recorded_at": "2026-10-21T16:29:30Z",
-        "state": "technical_review_pass_candidate_open_acceptance_pending",
-        "pr": 583,
-        "head": "e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc",
-        "review": 5602868385,
-        "quality_run": "c4443585-dd46-4338-8d52-78d0e372c804",
-        "approval_run": "fca83134-c84a-4987-8533-6d783e3ae0aa",
-        "fixture_objects": 14,
-        "fixture_sha256": "3bb485f4ad2391077fcbd3dd9be59d0e04f121ded07795428200d31edec67011",
-        "notes": "PR #583 exact head e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc passed final bounded technical review 5602868385 for data fidelity, packaged no-Git execution and refusal gates. Corrected false-quality c4443585-dd46-4338-8d52-78d0e372c804 and empty-approval fca83134-c84a-4987-8533-6d783e3ae0aa runs preserve all 14 populated PublishedStorage objects byte-for-byte (hash 3bb485f4ad2391077fcbd3dd9be59d0e04f121ded07795428200d31edec67011). Source 70 OBJECTIDs/26 attrs and candidate WKB match retained native FileGDB; missing original createReplica POST receipt disclosed. Review is technical only; source/baseline/rights/contract/coverage/release remain unapproved.",
-        "reviewed_head": "e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc",
-        "formal_review": "5602868385 PASS"
-      },
-      "280": {
-        "recorded_at": "2026-10-21T16:29:30Z",
-        "state": "reviewed_unknown_crs_native_catalog_fail_closed",
-        "pr": 582,
-        "head": "28447861d818c0af8a264d2cddb4cedf599a2ce5",
-        "review": 5602844755,
-        "notes": "Review PASS for scoped CRS and source-field-presence fixes. Native catalog fails closed on unknown CRS; no CRS assigned. 778 U.S. rows retained, 117 optional-field omissions preserved, missing-geometry row kept and source check blocks. Remaining decisions: CRS authority, historical continuity, missing geometry, coverage, rights, release."
-      },
-      "37": {
-        "recorded_at": "2026-10-21T16:29:30Z",
-        "state": "active_narrow_fix",
-        "pr": 542,
-        "head": "f5c7a5daa64b7ed8c86c044963793bd3cbdb8f0d",
-        "notes": "Existing stacked Coastlines PR retained; small fix active."
-      },
       "2": {
         "recorded_at": "2026-10-21T16:29:30Z",
         "state": "review_active",
@@ -15413,6 +15705,35 @@
         "pr": 423,
         "head": "1267ccedb2ee8a32c0e51c93ad16b5b6681c655e",
         "notes": "USACE IENC Administrative Areas native recovery active on existing stacked PR; no acceptance claim."
+      },
+      "37": {
+        "recorded_at": "2026-10-21T16:29:30Z",
+        "state": "active_narrow_fix",
+        "pr": 542,
+        "head": "f5c7a5daa64b7ed8c86c044963793bd3cbdb8f0d",
+        "notes": "Existing stacked Coastlines PR retained; small fix active."
+      },
+      "279": {
+        "recorded_at": "2026-10-21T16:29:30Z",
+        "state": "technical_review_pass_candidate_open_acceptance_pending",
+        "pr": 583,
+        "head": "e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc",
+        "review": 5602868385,
+        "quality_run": "c4443585-dd46-4338-8d52-78d0e372c804",
+        "approval_run": "fca83134-c84a-4987-8533-6d783e3ae0aa",
+        "fixture_objects": 14,
+        "fixture_sha256": "3bb485f4ad2391077fcbd3dd9be59d0e04f121ded07795428200d31edec67011",
+        "notes": "PR #583 exact head e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc passed final bounded technical review 5602868385 for data fidelity, packaged no-Git execution and refusal gates. Corrected false-quality c4443585-dd46-4338-8d52-78d0e372c804 and empty-approval fca83134-c84a-4987-8533-6d783e3ae0aa runs preserve all 14 populated PublishedStorage objects byte-for-byte (hash 3bb485f4ad2391077fcbd3dd9be59d0e04f121ded07795428200d31edec67011). Source 70 OBJECTIDs/26 attrs and candidate WKB match retained native FileGDB; missing original createReplica POST receipt disclosed. Review is technical only; source/baseline/rights/contract/coverage/release remain unapproved.",
+        "reviewed_head": "e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc",
+        "formal_review": "5602868385 PASS"
+      },
+      "280": {
+        "recorded_at": "2026-10-21T16:29:30Z",
+        "state": "reviewed_unknown_crs_native_catalog_fail_closed",
+        "pr": 582,
+        "head": "28447861d818c0af8a264d2cddb4cedf599a2ce5",
+        "review": 5602844755,
+        "notes": "Review PASS for scoped CRS and source-field-presence fixes. Native catalog fails closed on unknown CRS; no CRS assigned. 778 U.S. rows retained, 117 optional-field omissions preserved, missing-geometry row kept and source check blocks. Remaining decisions: CRS authority, historical continuity, missing geometry, coverage, rights, release."
       }
     },
     "historical_census_note": "The 14:14 UTC open-PR census has 132 PRs, 129 mapped and 286 inventory issues without mapped open PR. Those values are historical only and are not updated as a current total because no fresh census was run.",
@@ -15484,9 +15805,9 @@
     ],
     "issue_comment_ids": {
       "2": 6321109730,
+      "37": 6321115581,
       "279": 6321111333,
-      "280": 6321113263,
-      "37": 6321115581
+      "280": 6321113263
     },
     "board_sync": {
       "requested_label": "move:needs-decision",
@@ -15494,11 +15815,11 @@
         "2": [
           "move:needs-decision"
         ],
-        "279": [],
-        "280": [],
         "37": [
           "move:needs-decision"
-        ]
+        ],
+        "279": [],
+        "280": []
       },
       "note": "Labels were requested; issue API reads are time-specific and may reflect board event consumption. No Ready/Review admission."
     },
@@ -15510,6 +15831,36 @@
       "active_paid_jobs": 0
     },
     "current_work_cards": {
+      "2": {
+        "recorded_at": "2026-10-21T16:34:00Z",
+        "state": "code_merged_issue_open_acceptance_pending",
+        "canonical_pr": 418,
+        "source_head": "22576c3b1ee74650b079110d0a9835355295918f",
+        "review": 5602850868,
+        "notes": "Original pipeline PR integrated through #586; source/baseline/rights/contract/release decisions remain pending."
+      },
+      "5": {
+        "recorded_at": "2026-10-21T16:29:30Z",
+        "state": "external_phmsa_geometry_coverage_blocker",
+        "pr": 424,
+        "head": "338f85206ce645958bc4c5cc6e5cc2b1219daf08",
+        "notes": "PHMSA candidate lacks usable geometry and does not establish national coverage; external source/coverage decision blocks."
+      },
+      "6": {
+        "recorded_at": "2026-10-21T16:29:30Z",
+        "state": "native_recovery_active",
+        "pr": 423,
+        "head": "1267ccedb2ee8a32c0e51c93ad16b5b6681c655e",
+        "notes": "USACE IENC Administrative Areas native recovery active on existing stacked PR; no acceptance claim."
+      },
+      "37": {
+        "recorded_at": "2026-10-21T16:34:00Z",
+        "state": "code_merged_issue_open_acceptance_pending",
+        "canonical_pr": 584,
+        "source_head": "7b4fd657b0278f5624234712aa80eb7aa4f235ac",
+        "review": 5602859770,
+        "notes": "Clean-main Coastlines implementation integrated through #586; old PR #542 remains stacked/noncanonical. Source succession/rights/baseline/contract/release decisions remain pending."
+      },
       "279": {
         "recorded_at": "2026-10-21T16:34:00Z",
         "state": "code_merged_issue_open_acceptance_pending",
@@ -15529,36 +15880,6 @@
         "source_head": "28447861d818c0af8a264d2cddb4cedf599a2ce5",
         "review": 5602844755,
         "notes": "Unknown CRS and missing geometry remain explicit blockers; no CRS assigned or geometry repaired; source/release acceptance false."
-      },
-      "2": {
-        "recorded_at": "2026-10-21T16:34:00Z",
-        "state": "code_merged_issue_open_acceptance_pending",
-        "canonical_pr": 418,
-        "source_head": "22576c3b1ee74650b079110d0a9835355295918f",
-        "review": 5602850868,
-        "notes": "Original pipeline PR integrated through #586; source/baseline/rights/contract/release decisions remain pending."
-      },
-      "37": {
-        "recorded_at": "2026-10-21T16:34:00Z",
-        "state": "code_merged_issue_open_acceptance_pending",
-        "canonical_pr": 584,
-        "source_head": "7b4fd657b0278f5624234712aa80eb7aa4f235ac",
-        "review": 5602859770,
-        "notes": "Clean-main Coastlines implementation integrated through #586; old PR #542 remains stacked/noncanonical. Source succession/rights/baseline/contract/release decisions remain pending."
-      },
-      "5": {
-        "recorded_at": "2026-10-21T16:29:30Z",
-        "state": "external_phmsa_geometry_coverage_blocker",
-        "pr": 424,
-        "head": "338f85206ce645958bc4c5cc6e5cc2b1219daf08",
-        "notes": "PHMSA candidate lacks usable geometry and does not establish national coverage; external source/coverage decision blocks."
-      },
-      "6": {
-        "recorded_at": "2026-10-21T16:29:30Z",
-        "state": "native_recovery_active",
-        "pr": 423,
-        "head": "1267ccedb2ee8a32c0e51c93ad16b5b6681c655e",
-        "notes": "USACE IENC Administrative Areas native recovery active on existing stacked PR; no acceptance claim."
       }
     },
     "historical_census_note": "14:14 UTC census totals are historical only. No refreshed global open-PR total is claimed.",
@@ -15570,6 +15891,548 @@
       "release_acceptance": "none",
       "production_publication": "none",
       "paid_dispatch": "none active at reported poll"
+    }
+  },
+  "ledger_status_counts_recorded_at": "2026-10-21T17:52:00Z",
+  "main_registered_schedule_count": 46,
+  "main_registered_schedule_issue_count": 46,
+  "main_registered_schedule_mapping_issues": [
+    2,
+    3,
+    4,
+    6,
+    8,
+    9,
+    10,
+    11,
+    15,
+    16,
+    17,
+    19,
+    20,
+    21,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    34,
+    37,
+    181,
+    253,
+    257,
+    260,
+    261,
+    269,
+    270,
+    271,
+    273,
+    274,
+    275,
+    276,
+    278,
+    279,
+    280,
+    281,
+    282,
+    283,
+    284,
+    285,
+    290,
+    307,
+    335,
+    363
+  ],
+  "main_registered_schedule_default_configuration": "All 46 schedule definitions in current main 436d49e78f183f386079e414a12307a3b270e966 configure DefaultScheduleStatus.STOPPED; live scheduler not queried.",
+  "main_registration_snapshot": {
+    "main_sha": "436d49e78f183f386079e414a12307a3b270e966",
+    "definitions_file": "src/dagster_hifld/definitions.py",
+    "configured_schedule_count": 46,
+    "mapped_inventory_issue_count": 46,
+    "mapped_issue_ids": [
+      2,
+      3,
+      4,
+      6,
+      8,
+      9,
+      10,
+      11,
+      15,
+      16,
+      17,
+      19,
+      20,
+      21,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      34,
+      37,
+      181,
+      253,
+      257,
+      260,
+      261,
+      269,
+      270,
+      271,
+      273,
+      274,
+      275,
+      276,
+      278,
+      279,
+      280,
+      281,
+      282,
+      283,
+      284,
+      285,
+      290,
+      307,
+      335,
+      363
+    ],
+    "all_default_status_stopped": true,
+    "live_scheduler_status_queried": false,
+    "method": "Definitions schedule list, linked jobs and asset/key refs mapped to inventory; registration only."
+  },
+  "current_count_status": "No fresh census; named readbacks only. 14:14 census remains historical; current open-PR total unset.",
+  "previous_verified_checkpoint_2026_10_21T1717Z": {
+    "recorded_at": "2026-10-21T17:17:54Z",
+    "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
+    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication. Main source definitions configure 39 named dataset schedules STOPPED across 39 inventory issues; this is independent of the row-derived code-merged/open/gated count. #28 exact-head review PASS 5603413457 and registered gate refusal proof completed; #26 PR596 review ongoing; #29 worker reports exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 with review pending.",
+    "main_latest": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+    "main_tree": "fbec46810f0672341afb68e7f16fdc231e51a6c4",
+    "integration_593": {
+      "pr": 593,
+      "state": "closed_merged",
+      "base": "8f0062c34079da3bb6b3743e15e6813774a5e65e",
+      "head": "d620fedc978f84a66e1d47c0389fc8fae201ddc5",
+      "merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+      "tree": "93a504702536ee25ff5587fbce7360ed3c4782a4",
+      "root_review": 5603280260,
+      "ci": "Build-only CI SUCCESS; publish job skipped; combined status not used to infer a pending failure",
+      "schedules": "39 STOPPED",
+      "source": "Parent-verified exact integration tree; API verified PR merge; no new source/materialization run."
+    },
+    "source_prs_auto_merged": {
+      "589_issue9": {
+        "issue": 9,
+        "pr": 589,
+        "head": "75c8f574898c685476f09ca14e899e9423cf743f",
+        "state": "closed_merged",
+        "pr_merge_commit": "3ebb3dbe4b94394557bec6e603ebf9668d7fd5b8",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603147720,
+        "issue_state": "open",
+        "canonical": true
+      },
+      "591_issue16": {
+        "issue": 16,
+        "pr": 591,
+        "head": "c871c834726983d4099c523eec2e8b8f28d26c09",
+        "state": "closed_merged",
+        "pr_merge_commit": "e5ebdd6dcf7c3dcf8905d1b0d1188f6214a7dfe3",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603184263,
+        "issue_state": "open",
+        "canonical": true,
+        "superseded_open_pr": 465
+      },
+      "430_issue17": {
+        "issue": 17,
+        "pr": 430,
+        "head": "bbf25bafbc482e195393e380156782376a54581d",
+        "state": "closed_merged",
+        "pr_merge_commit": "2646c99c60f9ee3bdeb06d7cc726e64d17a30d63",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603187902,
+        "issue_state": "open",
+        "canonical": true,
+        "note": "Automatically merged by ancestry; original PR was not manually closed."
+      },
+      "592_issue19": {
+        "issue": 19,
+        "pr": 592,
+        "head": "4296fb38797c5572afe9c930d2aecf7b650010ca",
+        "state": "closed_merged",
+        "pr_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603233533,
+        "issue_state": "open",
+        "canonical": true,
+        "superseded_open_pr": 434
+      }
+    },
+    "integration_595": {
+      "pr": 595,
+      "state": "closed_merged",
+      "head": "4f598d5c423ce4afb4a3d580591f508e5f651eb3",
+      "merge_commit": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "root_review": 5603342213,
+      "ci": "Build-only CI SUCCESS; publish job skipped. Do not infer combined-status semantics from skipped publish.",
+      "scope": "Reusable local registered-gate proof CLI; no production gate changes; synthetic populated destination fixture; issue #417 still open/incomplete."
+    },
+    "issue_states": {
+      "9": "open",
+      "16": "open",
+      "17": "open",
+      "19": "open",
+      "20": "open",
+      "24": "open",
+      "26": "open",
+      "28": "open",
+      "29": "open"
+    },
+    "board_sync_requests": {
+      "requested_label": "move:needs-decision",
+      "issues": [
+        9,
+        16,
+        17,
+        19,
+        24
+      ],
+      "readback": "move:needs-decision was present on #9/#16/#19 at latest readback. It was added on #17/#24, then absent in subsequent reads; possible consumption is not confirmed by direct board status. All five issues remained open."
+    },
+    "issue_comment_ids": {
+      "9": 6321798487,
+      "16": 6321799817,
+      "17": 6321445936,
+      "19": 6321801933,
+      "24": 6321593473
+    },
+    "current_work_cards": {
+      "20": {
+        "canonical_pr": 431,
+        "head": "09b598485fcd8ca8519855af02331172dd976807",
+        "state": "exact_head_independent_review_pass_open_acceptance_gated",
+        "review": 5603303945,
+        "notes": "Native 19,427-row/91-field source and local gates scoped in PR body; source/CRS/baseline/schema/rights/release blockers remain."
+      },
+      "24": {
+        "state": "external_source_access_and_scope_decision_blocker",
+        "issue_comment": 6321593473,
+        "notes": "External access/scope decision blocker; comment 6321593473 asks for reachable complete FCC transmitter-site feed or explicit ULS authorization-scope decision."
+      },
+      "26": {
+        "canonical_pr": 596,
+        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+        "state": "exact_head_review_in_progress",
+        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain.",
+        "review_status": "root exact-head review ongoing"
+      },
+      "28": {
+        "canonical_pr": 594,
+        "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+        "review": 5603413457,
+        "state": "exact_head_review_pass_native_and_gates_verified_acceptance_pending",
+        "runs": {
+          "quality_false": "62102e85-9e5e-4133-a585-d3ebfa953ff0",
+          "approval_refusal": "dcf5c73f-87dd-48e9-8e44-34ddd7004566"
+        },
+        "notes": "1,145-feature native proof; source/catalog and registered gates completed; synthetic fixture unchanged; source-use/baseline/grain/release decisions remain."
+      },
+      "29": {
+        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+        "state": "exact_head_review_pending",
+        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved.",
+        "review_status": "independent exact-head review pending"
+      },
+      "32": {
+        "state": "triage_active_no_verified_pipeline_pr",
+        "notes": "Coordinator report only; no current pipeline PR/head verified."
+      },
+      "34": {
+        "state": "native_implementation_next_active",
+        "notes": "Coordinator report only; no new exact head verified."
+      }
+    },
+    "historical_census": "14:14 UTC only; no current total claimed.",
+    "controls": {
+      "source_capture": "none for ledger/mapping checkpoint",
+      "materializations": "none for ledger/mapping checkpoint",
+      "full_suite": "not run",
+      "issue_closures": "none",
+      "release_acceptance": "none",
+      "production_publication": "none",
+      "paid_dispatch": "No active paid jobs or new paid admissions reported in this checkpoint."
+    },
+    "main_registration_snapshot": {
+      "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "definitions_file": "src/dagster_hifld/definitions.py",
+      "configured_schedule_count": 39,
+      "mapped_inventory_issue_count": 39,
+      "mapped_issue_ids": [
+        2,
+        3,
+        4,
+        6,
+        8,
+        9,
+        10,
+        11,
+        15,
+        16,
+        17,
+        19,
+        21,
+        27,
+        37,
+        181,
+        253,
+        257,
+        260,
+        261,
+        269,
+        270,
+        271,
+        273,
+        274,
+        275,
+        276,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        290,
+        307,
+        335,
+        363
+      ],
+      "all_default_status_stopped": true,
+      "live_scheduler_status_queried": false,
+      "method": "Read current Definitions.schedules list, each schedule job reference, and selected asset/key refs; matched dataset-specific names to inventory issue IDs. This is source registration, not runtime activation or pipeline acceptance."
+    }
+  },
+  "previous_evidence_update_2026_10_21T1717Z": {
+    "recorded_at": "2026-10-21T17:17:54Z",
+    "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
+    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication. Main source definitions configure 39 named dataset schedules STOPPED across 39 inventory issues; this is independent of the row-derived code-merged/open/gated count. #28 exact-head review PASS 5603413457 and registered gate refusal proof completed; #26 PR596 review ongoing; #29 worker reports exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 with review pending.",
+    "main_latest": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+    "main_tree": "fbec46810f0672341afb68e7f16fdc231e51a6c4",
+    "integration_593": {
+      "pr": 593,
+      "state": "closed_merged",
+      "base": "8f0062c34079da3bb6b3743e15e6813774a5e65e",
+      "head": "d620fedc978f84a66e1d47c0389fc8fae201ddc5",
+      "merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+      "tree": "93a504702536ee25ff5587fbce7360ed3c4782a4",
+      "root_review": 5603280260,
+      "ci": "Build-only CI SUCCESS; publish job skipped; combined status not used to infer a pending failure",
+      "schedules": "39 STOPPED",
+      "source": "Parent-verified exact integration tree; API verified PR merge; no new source/materialization run."
+    },
+    "source_prs_auto_merged": {
+      "589_issue9": {
+        "issue": 9,
+        "pr": 589,
+        "head": "75c8f574898c685476f09ca14e899e9423cf743f",
+        "state": "closed_merged",
+        "pr_merge_commit": "3ebb3dbe4b94394557bec6e603ebf9668d7fd5b8",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603147720,
+        "issue_state": "open",
+        "canonical": true
+      },
+      "591_issue16": {
+        "issue": 16,
+        "pr": 591,
+        "head": "c871c834726983d4099c523eec2e8b8f28d26c09",
+        "state": "closed_merged",
+        "pr_merge_commit": "e5ebdd6dcf7c3dcf8905d1b0d1188f6214a7dfe3",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603184263,
+        "issue_state": "open",
+        "canonical": true,
+        "superseded_open_pr": 465
+      },
+      "430_issue17": {
+        "issue": 17,
+        "pr": 430,
+        "head": "bbf25bafbc482e195393e380156782376a54581d",
+        "state": "closed_merged",
+        "pr_merge_commit": "2646c99c60f9ee3bdeb06d7cc726e64d17a30d63",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603187902,
+        "issue_state": "open",
+        "canonical": true,
+        "note": "Automatically merged by ancestry; original PR was not manually closed."
+      },
+      "592_issue19": {
+        "issue": 19,
+        "pr": 592,
+        "head": "4296fb38797c5572afe9c930d2aecf7b650010ca",
+        "state": "closed_merged",
+        "pr_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "integration_pr": 593,
+        "integration_merge_commit": "839da1d8bfaf03cf386cba71dde1f6198de28fbd",
+        "review": 5603233533,
+        "issue_state": "open",
+        "canonical": true,
+        "superseded_open_pr": 434
+      }
+    },
+    "integration_595": {
+      "pr": 595,
+      "state": "closed_merged",
+      "head": "4f598d5c423ce4afb4a3d580591f508e5f651eb3",
+      "merge_commit": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "root_review": 5603342213,
+      "ci": "Build-only CI SUCCESS; publish job skipped. Do not infer combined-status semantics from skipped publish.",
+      "scope": "Reusable local registered-gate proof CLI; no production gate changes; synthetic populated destination fixture; issue #417 still open/incomplete."
+    },
+    "issue_states": {
+      "9": "open",
+      "16": "open",
+      "17": "open",
+      "19": "open",
+      "20": "open",
+      "24": "open",
+      "26": "open",
+      "28": "open",
+      "29": "open"
+    },
+    "board_sync_requests": {
+      "requested_label": "move:needs-decision",
+      "issues": [
+        9,
+        16,
+        17,
+        19,
+        24
+      ],
+      "readback": "move:needs-decision was present on #9/#16/#19 at latest readback. It was added on #17/#24, then absent in subsequent reads; possible consumption is not confirmed by direct board status. All five issues remained open."
+    },
+    "issue_comment_ids": {
+      "9": 6321798487,
+      "16": 6321799817,
+      "17": 6321445936,
+      "19": 6321801933,
+      "24": 6321593473
+    },
+    "current_work_cards": {
+      "20": {
+        "canonical_pr": 431,
+        "head": "09b598485fcd8ca8519855af02331172dd976807",
+        "state": "exact_head_independent_review_pass_open_acceptance_gated",
+        "review": 5603303945,
+        "notes": "Native 19,427-row/91-field source and local gates scoped in PR body; source/CRS/baseline/schema/rights/release blockers remain."
+      },
+      "24": {
+        "state": "external_source_access_and_scope_decision_blocker",
+        "issue_comment": 6321593473,
+        "notes": "External access/scope decision blocker; comment 6321593473 asks for reachable complete FCC transmitter-site feed or explicit ULS authorization-scope decision."
+      },
+      "26": {
+        "canonical_pr": 596,
+        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+        "state": "exact_head_review_in_progress",
+        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain.",
+        "review_status": "root exact-head review ongoing"
+      },
+      "28": {
+        "canonical_pr": 594,
+        "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+        "review": 5603413457,
+        "state": "exact_head_review_pass_native_and_gates_verified_acceptance_pending",
+        "runs": {
+          "quality_false": "62102e85-9e5e-4133-a585-d3ebfa953ff0",
+          "approval_refusal": "dcf5c73f-87dd-48e9-8e44-34ddd7004566"
+        },
+        "notes": "1,145-feature native proof; source/catalog and registered gates completed; synthetic fixture unchanged; source-use/baseline/grain/release decisions remain."
+      },
+      "29": {
+        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+        "state": "exact_head_review_pending",
+        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved.",
+        "review_status": "independent exact-head review pending"
+      },
+      "32": {
+        "state": "triage_active_no_verified_pipeline_pr",
+        "notes": "Coordinator report only; no current pipeline PR/head verified."
+      },
+      "34": {
+        "state": "native_implementation_next_active",
+        "notes": "Coordinator report only; no new exact head verified."
+      }
+    },
+    "historical_census": "14:14 UTC only; no current total claimed.",
+    "controls": {
+      "source_capture": "none for ledger/mapping checkpoint",
+      "materializations": "none for ledger/mapping checkpoint",
+      "full_suite": "not run",
+      "issue_closures": "none",
+      "release_acceptance": "none",
+      "production_publication": "none",
+      "paid_dispatch": "No active paid jobs or new paid admissions reported in this checkpoint."
+    },
+    "main_registration_snapshot": {
+      "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "definitions_file": "src/dagster_hifld/definitions.py",
+      "configured_schedule_count": 39,
+      "mapped_inventory_issue_count": 39,
+      "mapped_issue_ids": [
+        2,
+        3,
+        4,
+        6,
+        8,
+        9,
+        10,
+        11,
+        15,
+        16,
+        17,
+        19,
+        21,
+        27,
+        37,
+        181,
+        253,
+        257,
+        260,
+        261,
+        269,
+        270,
+        271,
+        273,
+        274,
+        275,
+        276,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        290,
+        307,
+        335,
+        363
+      ],
+      "all_default_status_stopped": true,
+      "live_scheduler_status_queried": false,
+      "method": "Read current Definitions.schedules list, each schedule job reference, and selected asset/key refs; matched dataset-specific names to inventory issue IDs. This is source registration, not runtime activation or pipeline acceptance."
     }
   }
 }
