@@ -42,6 +42,10 @@ from dagster_hifld.assets.noaa import (
     noaa_eez_draft_refresh_job,
     noaa_eez_draft_weekly_schedule,
 )
+from dagster_hifld.assets.noaa import (
+    noaa_territorial_draft_refresh_job,
+    noaa_territorial_draft_weekly_schedule,
+)
 from dagster_hifld.assets.usace_pylon_areas import (
     usace_pylon_areas_draft_schedule,
     usace_pylon_areas_complete,
@@ -577,6 +581,7 @@ defs = Definitions(
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
+        noaa_territorial_draft_refresh_job,
         noaa_contiguous_draft_refresh_job,
         usace_pylon_areas_draft_job,
         pylon_locations_draft_refresh_job,
@@ -608,6 +613,7 @@ defs = Definitions(
         usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
+        noaa_territorial_draft_weekly_schedule,
         noaa_contiguous_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
         recommended_tracks_draft_schedule,
