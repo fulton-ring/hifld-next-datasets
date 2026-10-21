@@ -60,10 +60,15 @@ def _docs() -> dict[str, dict]:
         "owner": "USDOT_BTS",
         "title": "Inland Electronic Navigational Charts",
         "description": (
-            "IENC dataset is updated bi-monthly by USACE. Charts can be downloaded "
-            "here: https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/"
-            "USACE_IENC_Master_Service_gdb.zip. Services: https://ienccloud.us/arcgis/rest/"
-            "services/IENC_Feature_Classes"
+            "The Inland Electronic Navigational Charts (IENC) dataset is updated "
+            "bi-monthly by the US Army Corps (USACE)/Army Geospatial Center (AGC), "
+            "and part of U.S. Department of Transportation (USDOT)/Bureau of "
+            "Transportation Statistics (BTS) National Transportation Atlas Database "
+            "(NTAD). These vector data, that make up the charts, can be downloaded "
+            "as a geodatabase here: https://ienccloud.us/ienc/products/files/U37/"
+            "ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip. In addition, "
+            "web mapping services of the feature classes/datasets can be found here: "
+            "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes."
         ),
     }
     directory = {

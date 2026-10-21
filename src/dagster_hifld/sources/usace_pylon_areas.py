@@ -46,8 +46,9 @@ FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PYLONS_AREA/MapServer/69"
 SERVICE_URL = LAYER_URL.rsplit("/", 1)[0]
 SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
 EXPECTED_COUNT = 6440
 EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
@@ -495,7 +496,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "geometry_empty_count": geometry_empty,
         "geometry_invalid_count": len(features) - geometry_valid - geometry_empty,
         "source_coverage_scope": "Complete current official IENC PYLONS_AREA feature class; inland chart coverage only, not a claim of all pylon features nationwide.",
-        "drift_guard": "BTS 3607d485a9854d6fa458bf507058ceae distribution/delegation link, official service-directory membership, service/layer identity, field names/types, CRS, pinned layer extent, page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
+        "drift_guard": "BTS " + BTS_ITEM_ID + " distribution/delegation link (the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), official service-directory membership, service/layer identity, field names/types, CRS, pinned layer extent, page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
 
 
 def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
@@ -768,7 +769,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
                 "source_ids": "OBJECTID (integer) and Feature_ID (string) values retained unchanged, including any duplicates",
                 "geometry": "Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair",
                 "candidate_status": "unapproved; source release, historical baseline, ID/schema/coverage and rights decisions remain pending"}}],
-        "lineage": "USDOT BTS item 3607d485a9854d6fa458bf507058ceae documents bi-monthly USACE/AGC IENC updates and links the official IENCCloud feature-class service and master file geodatabase. This candidate is the exact published PYLONS_AREA layer, not the entire IENC archive.",
+        "lineage": "USDOT BTS item " + BTS_ITEM_ID + " documents bi-monthly USACE/AGC IENC updates and links the official IENCCloud feature-class service and master file geodatabase. The earlier BTS map-service item " + PRIOR_BTS_ITEM_ID + " used by related IENC drafts returned anonymous-access denial (HTTP 403 GWM_0003) on 2026-10-21; succession requires maintainer continuity review. This candidate is the exact published PYLONS_AREA layer, not the entire IENC archive.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Native layer attributes, identifiers and unmodified polygon rings retained as a candidate; release and compatibility decisions remain pending.",
             "objects": [{"path": "geoparquet/pylon-areas-usace-ienc.parquet", "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
