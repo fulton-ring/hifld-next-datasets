@@ -32,7 +32,9 @@ from shapely.geometry import mapping, shape
 
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
@@ -307,9 +309,17 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
                                rows: list[dict],audit: dict,captures: dict,identity: dict,members: dict) -> None:
     """Re-derive source-owned bytes/typed rows; a self-pinned ready receipt is no authority."""
     root=local_candidate_path(storage,prefix)
+    manifest_body=(root/'metadata/source_manifest.json').read_bytes()
+    authored_snapshot='metadata/source/version_'+sha(manifest_body)+'_source_manifest.json'
     # The normal graph adds only these derivative files. Source-owned directories remain exact.
     allowed_derivatives={f'geoparquet/{SLUG}.parquet','metadata/quality_manifest.json',
-        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}
+        'metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json',
+        'metadata/source/source_manifest.json','metadata/source/data_dictionary.json',
+        'metadata/source/quality_manifest.json',authored_snapshot}
+    for relative in ('metadata/source/source_manifest.json',authored_snapshot):
+        snapshot=root/relative
+        if snapshot.exists() and snapshot.read_bytes()!=manifest_body:
+            raise CBRSQuarantineError('cached_authored_manifest_snapshot_differs')
     paths=list(root.rglob('*'))
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in paths):
         raise CBRSQuarantineError('linked_candidate_object')
@@ -324,6 +334,11 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('cached_capture_differs_from_fresh_source')
     manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
     validate_release_provenance(manifest)
+    resolved_file=root/'metadata/resolved_provenance.json'
+    if resolved_file.exists():
+        resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
+        if strict_json(resolved_file.read_bytes())!=resolved:
+            raise CBRSQuarantineError('cached_resolved_provenance_differs')
     # code_commit identifies the original immutable construction, including later docs-only commits.
     if set(manifest)!=set(expected_manifest): raise CBRSQuarantineError('cached_provenance_field_roster_drift')
     for name,value in expected_manifest.items():
