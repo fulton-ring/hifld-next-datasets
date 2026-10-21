@@ -12,7 +12,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import wkb
 from dagster_hifld.catalog import summarize_staged_catalog
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import fuds_division_boundaries as source
 
 
@@ -68,9 +70,14 @@ class FudsDivisionBoundariesTests(unittest.TestCase):
             self.assertEqual(table.column("SE_ANNO_CAD_DATA").to_pylist(),[None,None])
             self.assertTrue(wkb.loads(table.column("geometry")[0].as_py()).equals_exact(
                 source._esri_polygon({"rings":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]}),0))
-            summary=summarize_staged_catalog(storage,source.DATASET_SLUG,source.FILE_SLUG,candidate["version"],"FUDS divisions")
+            snapshot_source_metadata(storage,source.DATASET_SLUG,source.FILE_SLUG,candidate["version"])
+            resolved=load_resolved_source_manifest(storage,source.DATASET_SLUG,source.FILE_SLUG,candidate["version"])
+            summary=summarize_staged_catalog(storage,source.DATASET_SLUG,source.FILE_SLUG,candidate["version"],source.DATASET_SLUG,source_metadata=resolved.metadata)
             storage.write_key(f"{prefix}/metadata/quality_manifest.json",json.dumps(summary.quality_manifest).encode())
             storage.write_key(f"{prefix}/metadata/data_dictionary.json",json.dumps(summary.data_dictionary).encode())
+            projection=provenance_projection(resolved.metadata)
+            if projection is not None:
+                storage.write_key(f"{prefix}/metadata/resolved_provenance.json",json.dumps(projection).encode())
             with patch.object(source,"PAGE_SIZE",1), patch.object(source,"capture_get",side_effect=fake_get):
                 reused=source.capture_fuds_division_boundaries(storage,version="vfixture2",capture_directory=tmp+"/captures")
             self.assertTrue(reused["reused"])
