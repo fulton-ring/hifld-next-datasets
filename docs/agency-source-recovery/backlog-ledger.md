@@ -6,13 +6,27 @@ Existing priority PRs #420/#3, #419/#4, #427/#10 and #428/#11 were recovered wit
 
 The recent checkpoint below distinguishes completed reviewed drafts, review revisions, active work and evidenced external blockers. A docs-only research branch does not complete a feasible pipeline. Missing baseline/contract approval permits draft implementation and local testing; it blocks release. Other issue records still need triage or reconciliation of prior work; they are not silently classified as blocked.
 
+### Latest verified checkpoint — 2026-10-21 15:22 UTC
+
+The ledger remains scoped to all 415 inventory issues (#2–416). The five named issues below were checked individually through the GitHub API and are still open. The 14:14 open-PR census remains a historical snapshot; no new full census was run. Board markers are supervisor-reported; the issue API currently shows no GitHub labels for these five issues.
+
+| Issue | Current code state | Exact evidence and remaining decision |
+| --- | --- | --- |
+| #275 / PR #565 | Merged as `d546af0f00fee62f84ab3eb8434bd1605d474acc` from `40fbb10fd5522c264f6792c6dfb46eaad8e43da8`; tree `74803a19d49321839101490fb22efed23e75648b`; root review 5601776783 and CI passed. | Issue remains open with a Needs decision marker. Historical HIFLD equivalence, crosswalk, rights and release remain unresolved. Older PR #546 remains open on a noncanonical base. |
+| #21 / PR #566 | Merged as `c12fe55e1342c363804414fb934902ae1d5a688d` from `f269cecc0f3762648f90598547c6cfc70fa43b08`; tree `fbf80d19c922bd5b02951b8b5dcf5d938ebe8c8a`; root review 5601865599 and CI passed. | No-Git registered source/catalog/quality and both refusal gates are retained in `/workspace/work/21-clean-evidence`; 1,108 native rows. Issue remains open; freshness, baseline, rights, schema/ID, coverage and release remain pending. Older PR #539 remains open on a noncanonical base. |
+| #27 / PR #567 | Merged as `f5512139d2fa71560e344ebfbb96045e5309353e` from `a12474e870388e680ebe614bb6cc4513d14ca53d`; tree `3c962ef325007deb3f75b2058db440d458c1e246`; root final integration review 5601938949 and CI passed. | Source code runtime evidence is from `8d2a8848f7ec6382174f8003feac48e6c42f13c4`, where it is unchanged by integration: 36-row source/catalog, negative quality and empty-registry refusal runs are recorded. Current PDF item succession remains unapproved. Issue remains open; older PR #540 is a noncanonical stacked branch. |
+| #253 / PR #569 | Open at `2c090d621117584c5b637d68e061132be45b130e`, based on main `d546af0f00fee62f84ab3eb8434bd1605d474acc`; independent review pending. | Source/catalog and packaged no-Git replay cover 16 rows; baseline refusal, false-quality blocking and empty-registry preservation runs are recorded under `/workspace/work/253-evidence`. This verifies candidate and gates, not source/release acceptance. Older PR #527 remains open on a noncanonical base. |
+| #282 / PR #568 | Merged as `0e702d3aaa1b9c0e2fe5b7ab7c019f9a1268ec0e` from exact head `f16066df5f8d52f03dfd4a8bd3fef528a4d1deb3`; tree `7d9e898ce61aa5b5c967cfbb0b251b0c59caf80e`; root final review 5601992246 and CI passed. | No-Git source run, 145-row native parity and provenance replay are retained. False-quality and empty-registry gates preserved the 20-object fixture. Issue remains open; source/vintage, 30-vs-31 coverage, continuity, rights, schema/ID and release remain pending. Older PR #548 remains a noncanonical stacked branch. |
+
+The code-merged issue count now includes #21, #27, #275 and #282. Code merge, passing CI, successful catalog checks and blocked refusal tests do not close issues or approve publication. No production data was published.
+
 | Dataset issue | Draft PR | Current state | Head |
 | --- | --- | --- | --- |
-| #21 | #539 | pipeline_review_pending | 61cbdd6c |
+| #21 | #566 (merged) | code_merged_issue_open_acceptance_gated | f269cecc |
 | #25 | — | in_progress |  |
-| #27 | #540 | pipeline_review_pending | 9d3b1d52 |
+| #27 | #567 (merged) | code_merged_issue_open_acceptance_gated | a12474e8 |
 | #37 | — | in_progress |  |
-| #253 | #527 | reviewed_draft_prior_runtime | 1c6e403b |
+| #253 | #569 | registered_handoff_review_pending | 2c090d62 |
 | #257 | #529 | reviewed_locally_verified_draft | 39f84887 |
 | #260 | #530 | reviewed_draft_prior_runtime | 126dae20 |
 | #261 | #561 (merged) | code_merged_issue_open_acceptance_gated | 0535903d |
@@ -29,6 +43,8 @@ The recent checkpoint below distinguishes completed reviewed drafts, review revi
 | #272 | — | in_progress |  |
 | #273 | — | in_progress |  |
 | #274 | — | in_progress |  |
+| #275 | #565 (merged) | code_merged_issue_open_acceptance_gated | 40fbb10f |
+| #282 | #568 | reviewed_clean_recovery_integration_pending | e201f141 |
 
 Current-head code review and actual runtime scope are separate fields. Documentation or narrowly scoped capture/validation fixes after a recorded graph do not fabricate new run IDs; the ledger preserves the run's real commit and the final review's exact commit. Public historical runtime claims whose raw artifacts vanished in Cloud replacement remain labeled as such.
 
