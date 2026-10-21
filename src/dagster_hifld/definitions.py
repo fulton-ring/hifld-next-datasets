@@ -15,6 +15,11 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.epa_eez import (
+    epa_eez_draft_job,
+    epa_eez_draft_schedule,
+    epa_eez_full_quality,
+)
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
 from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_complete,
@@ -872,6 +877,7 @@ defs = Definitions(
         electric_retail_service_territories_release_pending,
         epa_facilities_full_quality,
         epa_facilities_labels_full_quality,
+        epa_eez_full_quality,
     ],
     jobs=[
         elsd_source_integrity_job,
@@ -946,6 +952,7 @@ defs = Definitions(
         electric_retail_service_territories_preservation_job,
         epa_facilities_draft_job,
         epa_facilities_labels_draft_job,
+        epa_eez_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
@@ -1025,6 +1032,7 @@ defs = Definitions(
         docks_draft_schedule,
         epa_facilities_draft_schedule,
         epa_facilities_labels_draft_schedule,
+        epa_eez_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
