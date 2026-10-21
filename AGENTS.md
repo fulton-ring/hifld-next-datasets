@@ -130,6 +130,11 @@ supervisor verifies the relationship and records the same marker before resuming
 Only matching markers from verified repository writers/admins are accepted;
 public cross-references cannot select a PR. An existing unassociated PR holds
 new work for reconciliation instead of creating a duplicate.
+Review change requests carry a durable exact-head route marker. Both Ready
+consumption and worker admission validate it against the current PR head; stale
+findings cannot authorize new work. A supervisor reselecting existing work records
+a fresh verified association to supersede an older review request. Human-stop
+and parking requests always remain available.
 
 The dispatcher requires a separate `AGENT_CONTROLLER_TOKEN` Actions secret here:
 a fine-grained token owned by `fulton-ring`, selecting **only hifld-next-iac**,

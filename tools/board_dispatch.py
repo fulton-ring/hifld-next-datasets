@@ -9,6 +9,7 @@ import time
 import urllib.parse
 
 from board_sync import FIELDS, MOVE_LABELS, request
+from agent_handoffs import pages, read_handoffs
 
 REPO = 'fulton-ring/hifld-next-datasets'
 CONTROL = 'fulton-ring/hifld-next-iac'
@@ -91,35 +92,17 @@ def cards(api):
     raise ValueError('Project exceeds audit bound')
 
 
-def pages(api, path):
-    result = []
-    for page in range(1, 11):
-        batch = api('repo', f'{path}?per_page=100&page={page}')
-        result.extend(batch)
-        if len(batch) < 100:
-            return result
-    raise ValueError('Issue history exceeds audit bound')
-
-
 def pull_requests(issue, api):
     # A public mention is not ownership. Only a writer's explicit association
     # selects a PR; workers record it in a trusted post-step after saving work.
-    selected, permissions = None, {}
-    marker = re.compile(r'<!-- hifld-agent-pr:v1 issue=' + str(issue) + r' pr=([1-9][0-9]*) -->')
-    for comment in pages(api, f'repos/{REPO}/issues/{issue}/comments'):
-        match = marker.search(comment.get('body') or '')
-        login = (comment.get('user') or {}).get('login')
-        if not match or not login:
-            continue
-        if login not in permissions:
-            permissions[login] = api('repo', f'repos/{REPO}/collaborators/{urllib.parse.quote(login, safe="")}/permission')['permission']
-        if permissions[login] in ('write', 'admin'):
-            selected = int(match[1])
+    handoff = read_handoffs(issue, api)
+    selected = handoff['pr']
     if selected is not None:
         pr = api('repo', f'repos/{REPO}/pulls/{selected}')
         if (pr['state'] != 'open' or not pr['head'].get('repo') or pr['head']['repo']['full_name'] != REPO
                 or pr['base']['repo']['full_name'] != REPO):
             raise ValueError('Selected PR is closed or outside this repository')
+        pr['_review_route'] = handoff['route']
         return [pr]
     # Existing unassociated PRs need supervisor reconciliation; do not create a
     # duplicate pipeline merely because the older handoff lacks the new marker.
@@ -148,6 +131,10 @@ def task_for(card, api):
     if not re.fullmatch('[a-f0-9]{40}', sha):
         raise ValueError('An exact commit is required')
     role = 'review' if card['status'] == 'Review' else 'implementation'
+    route = pr.get('_review_route') if pr else None
+    if role == 'implementation' and route and route['label'] == 'move:ready':
+        if route['pr'] != pr['number'] or route['head'] != sha:
+            raise ValueError('Review requested changes to a different head; supervisor reconciliation required')
     return dict(issue=str(card['number']), role=role, dispatch_head_sha=sha,
                 datasets_ref=sha if role == 'review' else (pr['head']['ref'] if pr else SHARED_BASE),
                 pr_base=pr['base']['ref'] if pr else SHARED_BASE,

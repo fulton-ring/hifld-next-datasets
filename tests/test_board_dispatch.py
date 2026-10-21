@@ -214,6 +214,23 @@ class BoardDispatchTests(unittest.TestCase):
             outcomes += dispatch.dispatch_cards([card(n) for n in range(1, 22)], api, now=NOW + hop * 300)
         self.assertIn('21', [x['issue'] for x in outcomes])
 
+    def test_ready_from_a_review_is_bound_to_reviewed_head_until_reassociated(self):
+        class RoutedAPI(FakeAPI):
+            reassociate = False
+            def __call__(self, kind, path, data=None):
+                result = super().__call__(kind, path, data)
+                if '/comments?' in path:
+                    result.append({'body': f'<!-- hifld-agent-route:v1 issue=282 pr=548 head={SHA} label=move:ready -->', 'user': {'login': 'maintainer'}})
+                    if self.reassociate:
+                        result.append(result[0])
+                return result
+        api = RoutedAPI()
+        api.current_status = 'Ready'
+        api.head = 'b' * 40
+        self.assertEqual(dispatch.dispatch_cards([card(status='Ready')], api, now=NOW), [])
+        api.reassociate = True
+        self.assertEqual(len(dispatch.dispatch_cards([card(status='Ready')], api, now=NOW)), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

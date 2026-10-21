@@ -12,10 +12,10 @@ on:
         type: boolean
         default: true
   pull_request:
-    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tools/board_dispatch.py", "tests/test_board_*.py"]
+    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tools/board_dispatch.py", "tools/agent_handoffs.py", "tests/test_board_*.py"]
   push:
     branches: [main]
-    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tools/board_dispatch.py", "tests/test_board_*.py"]
+    paths: [".github/workflows/board-label-sync.yml", "tools/board_sync.py", "tools/board_dispatch.py", "tools/agent_handoffs.py", "tests/test_board_*.py"]
 
 permissions:
   contents: read
