@@ -35,6 +35,7 @@ from dagster_hifld.assets.unified_school_districts import census_unified_school_
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
+from dagster_hifld.assets.nces_public_schools import nces_public_schools
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
@@ -77,4 +78,5 @@ hifld_ingest_assets = [
     plate_boundaries_usgs,
     eia_power_plants_historical,
     nces_private_schools_2023_24,
+    nces_public_schools,
 ]
