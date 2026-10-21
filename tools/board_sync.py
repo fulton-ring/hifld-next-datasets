@@ -70,6 +70,7 @@ def synchronize(graphql, remove_labels, owner, number, repo, issue=None, dry_run
     options = {x['name']: x['id'] for x in project['status']['options']}
     cursor = None
     found = issue is None
+    failures = []
     for _ in range(10):
         page = graphql(ITEMS, dict(project=project['id'], cursor=cursor))['node']['items']
         for item in page['nodes']:
@@ -79,14 +80,20 @@ def synchronize(graphql, remove_labels, owner, number, repo, issue=None, dry_run
             if issue is not None and content['number'] != issue:
                 continue
             found = True
-            if content['labels']['totalCount'] > 100:
-                raise ValueError('Issue labels exceed the bounded read; requests preserved')
-            labels = {x['name']: x['id'] for x in content['labels']['nodes']}
-            apply_move(graphql, remove_labels, project['id'], project['status']['id'], options,
-                       dict(id=item['id'], issue_id=content['id'], number=content['number']), labels, repo, dry_run)
+            try:
+                if content['labels']['totalCount'] > 100:
+                    raise ValueError('Issue labels exceed the bounded read')
+                labels = {x['name']: x['id'] for x in content['labels']['nodes']}
+                apply_move(graphql, remove_labels, project['id'], project['status']['id'], options,
+                           dict(id=item['id'], issue_id=content['id'], number=content['number']), labels, repo, dry_run)
+            except Exception as error:
+                failures.append(content['number'])
+                print(f"Failed {repo}#{content['number']}: {type(error).__name__}; request preserved")
         if not page['pageInfo']['hasNextPage']:
             if not found:
                 raise ValueError('Issue is not on the configured Project; request preserved')
+            if failures:
+                raise RuntimeError(f'{len(failures)} card(s) could not be synchronized')
             return
         cursor = page['pageInfo']['endCursor']
     raise ValueError('Project exceeds the 1000-item audit bound')

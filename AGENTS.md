@@ -105,5 +105,5 @@ with an exact-commit handoff. Do not use labels to bypass maintainer decisions.
 The workflow runs on supported label additions and every 15 minutes for catch-up.
 Manual runs default to a dry run. It requires repository secret
 `AGENT_BOARD_TOKEN` with organization Projects read/write access (resource owner
-`fulton-ring`); label removal uses the workflow's repository-scoped `GITHUB_TOKEN`.
+`fulton-ring`) and Issues read access to this repository; label removal uses the workflow's repository-scoped `GITHUB_TOKEN`.
 Keep the Project credential out of worker environments. No model key is needed.

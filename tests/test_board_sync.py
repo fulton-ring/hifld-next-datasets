@@ -77,6 +77,26 @@ class BoardSyncTests(unittest.TestCase):
             sync.synchronize(graphql, lambda *args: self.fail('No removal'), 'owner', 2, 'owner/repo')
         self.assertEqual(len(calls), 11)
 
+    def test_one_bad_card_does_not_starve_other_moves(self):
+        project = {'id': 'P', 'status': {'id': 'F', 'options': [{'name': 'Review', 'id': 'R'}]}}
+        def item(number, count):
+            return {'id': str(number), 'content': {'id': str(number), 'number': number,
+                    'repository': {'nameWithOwner': 'owner/repo'},
+                    'labels': {'totalCount': count, 'nodes': [{'id': 'L', 'name': 'move:review'}]}}}
+        writes = []
+        def graphql(query, variables):
+            if query == sync.FIELDS:
+                return {'organization': {'projectV2': project}}
+            if query == sync.ITEMS:
+                return {'node': {'items': {'nodes': [item(1, 101), item(2, 1)],
+                        'pageInfo': {'hasNextPage': False, 'endCursor': None}}}}
+            writes.append(variables['item'])
+        removed = []
+        with self.assertRaisesRegex(RuntimeError, '1 card'):
+            sync.synchronize(graphql, lambda issue, labels: removed.append(issue), 'owner', 2, 'owner/repo')
+        self.assertEqual(writes, ['2'])
+        self.assertEqual(removed, ['2'])
+
 
 if __name__ == '__main__':
     unittest.main()
