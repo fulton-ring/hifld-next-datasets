@@ -186,3 +186,19 @@ The 14:14 UTC open-PR census above is a historical snapshot, not a current open-
 Current native work: #275 is preparing a clean-main replacement. #21 clean-main recovery is assigned to `shared_gate_fixes`. #27 capture-current contains 36 rows and 33 artifacts at `/workspace/work/27-clean-evidence/capture-current`; BTS succession 3607 was denied and newer request 7ec remains unapproved. #282 clean recovery is reported at `69bf278`, preserving PR #548 and prior review evidence.
 
 No paid jobs are active and new paid admissions remain paused. Board preview run 39619944357 succeeded and proposed Needsdecision for #4/#10/#11/#290. Subsequent sync 39621201053 succeeded, moved those four issues to Needsdecision and removed pending labels (the #276 label-event was consumed separately); no paid dispatch occurred. Poll at 14:56 UTC found no active jobs. The inference guard remains `<= $25/day`; actual spend is unknown and compute costs are excluded.
+
+## Main integration checkpoint — 2026-10-21 16:48 UTC
+
+PR #590 merged the reviewed three-pipeline integration. Its exact head was `a429658bc2a2b4c74de60a915fdbfa934dbb60c0`, base `8d916cd5cc91a0b06a0ebcdfc24fdf44c8be7210`, merge commit `8f0062c34079da3bb6b3743e15e6813774a5e65e`, and tree `99c9be12bb35143c75f28d954da59552a160ad49`. Root integration review 5603098250 and Docker build passed; all 35 schedules remain STOPPED. The source PRs were verified as automatically merged through ancestry: #587 for issue #6 (exact head `11b7a967a3afcddd2b6439e34f1c0db1abdde066`, review 5603029688), #426 for issue #8 (exact head `5449073eb72dca1021e205160b6e71056d8dca29`, review 5603037361), and #588 for issue #15 (exact head `e022eadc85a9c2eb5ca3eace924a90f173d1c174`, review 5603079719). Their source PR merge commits are recorded in the JSON ledger. Issues #6, #8 and #15 were verified OPEN; canonical markers and `move:needs-decision` requests are being recorded without closing issues.
+
+| Issue | Current implementation | Remaining decision |
+| --- | --- | --- |
+| #6 Administrative Areas | Canonical clean-main PR #587 integrated through #590. | Authority, historical baseline, ID migration, compatibility and release acceptance remain pending; prior stacked PR #423 remains open and noncanonical. |
+| #8 AIANNH Areas | Canonical PR #426 integrated through #590. | Source/edition, schema/ID, baseline, compatibility and release acceptance remain pending. |
+| #15 Red Cross Headquarters | Canonical clean-main PR #588 integrated through #590; the captured source row with absent geometry is retained. | Publisher authority, edition, Saipan geometry/coverage, rights, baseline, compatibility and release acceptance remain unresolved; research PR #452 remains open. |
+| #9 Airport Areas | PR #589 head `75c8f574898c685476f09ca14e899e9423cf743f`; exact-head review active. | Source and release acceptance remain separate gates. |
+| #17 Amtrak Stations | PR #430 head `bbf25bafbc482e195393e380156782376a54581d`; fresh bounded 1,036-row capture and no-Git source/refresh/catalog runs passed, with complete Parquet and GPKG source-field/native-geometry parity. | PMTiles run `ff615c11-d426-4275-932e-c5fb53cc4885` failed because `tippecanoe` is absent and PMTiles is not declared unsupported. Full format completion and exact-head review/CI remain pending; historical continuity and acceptance remain unresolved. |
+| #19 Aquifers | Native worker reports clean-main candidate prefix `c5fe`, 4,637 features including 20 invalid geometries; awaiting publish. | No completed or published pipeline is claimed. |
+| #16, #20, #26 | Native work is active per coordinator reports. | No new exact heads or completed evidence were supplied in this checkpoint. |
+
+No full census or new source/materialization run was performed for this checkpoint. The 14:14 UTC PR census remains historical only. All 415 inventory rows are preserved. No issue closure, acceptance, schedule activation or production publication is recorded.
