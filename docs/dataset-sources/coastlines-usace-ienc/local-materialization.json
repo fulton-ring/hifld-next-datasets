@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "dataset_slug": "coastlines-usace-ienc",
+  "file_slug": "coastlines-usace-ienc",
+  "version": "v6ec962c60bb6a41e4a35f6a9b01481dc",
+  "runtime_base_commit": "ec102654516996c1a7e9c94048a4eef2ec9c032b",
+  "capture_mode": "One complete live current-source capture through the registered source asset; subsequent cache replay used that retained capture.",
+  "source_feature_count": 22819,
+  "candidate_parquet": {
+    "path": "geoparquet/coastlines-usace-ienc.parquet",
+    "bytes": 43244414,
+    "sha256": "bca10b43c241e03d3b773cbf4939dd2e914b4a361d0e0c84e318094c1b094f46"
+  },
+  "capture_custody": {
+    "path": "/workspace/work/37-clean-evidence/capture/v20261021T161015Z-522c9914ec734f7c8ce936872807816e",
+    "capture_manifest_sha256": "b54806a56a82dbaa04c534d1e49172915f4a6f0ab1c97e3ea9c378f6805ecd4a",
+    "artifacts": 69,
+    "response_body_bytes": 135330707,
+    "wire_bytes": 135330707,
+    "receipt_bytes": 17824,
+    "note": "Capture manifest plus every body, wire response, and receipt are retained outside Git. Bodies and wire bytes have equal hashes for this identity-encoded capture."
+  },
+  "catalog": {
+    "asset": "publish/catalog",
+    "run_id": "61a04aba-035b-412e-b805-262866a3c09f",
+    "success": true,
+    "quality_check_passed": true,
+    "feature_count": 22819,
+    "geometry_type": "LineString",
+    "native_crs": "EPSG:4326",
+    "processing_identity_scheme": "sha256-packaged-dagster-hifld-v1"
+  },
+  "dagster_evidence": {
+    "registered_source_asset": "ingest/coastlines-usace-ienc/coastlines-usace-ienc",
+    "source_run_id": "409c6b58-8a66-47e9-a0e1-30834028bb0a",
+    "source_check": "passed",
+    "cache_replay_run_id": "8ae7ef95-096d-4a61-a25f-85479286d151",
+    "cache_replay": "success; reused the immutable same-version staged candidate",
+    "runtime_root": "/workspace/work/37-clean-evidence/runtime",
+    "runtime_has_git_directory": false,
+    "git_executable_available_on_path": false,
+    "capture_processing_identity": "packaged-sha256:dfe5fd6ca48f9dfa1bd184ee7f25dbaf2bfcfc8afef207f6fe3bb164450b76de",
+    "capture_processing_identity_scope": "Identity of the no-Git runtime used for the retained source and catalog runs; final source documentation and drift-guard wording were added afterward.",
+    "runs_database": "/workspace/work/37-clean-evidence/dagster_home/history/runs.db",
+    "run_storage": "/workspace/work/37-clean-evidence/dagster_home/storage"
+  },
+  "refusal_evidence": {
+    "quality_false_run_id": "74e98732-2bf6-479e-8451-3207bdd0d1a1",
+    "quality_false_result": "Registered quality_manifest check failed against an isolated copy of the real candidate. Verify and promote did not start.",
+    "empty_approval_run_id": "bfb0f462-fe9a-48a8-9b3e-78781d7db1f4",
+    "empty_approval_result": "Schema-valid empty external release registry; registered verify failed for missing exact object approval and promote did not start.",
+    "published_fixture": "The same pre-populated synthetic fixture contained one object before and after each refusal; path, byte count, and SHA-256 were unchanged.",
+    "scope": "Local isolated fixture only. No publication or release acceptance was attempted."
+  },
+  "approval_state": "STOPPED; source succession, currentness baseline, historical equivalence, rights, schema, coverage, and release acceptance remain unapproved."
+}

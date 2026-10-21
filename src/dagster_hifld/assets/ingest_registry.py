@@ -38,6 +38,7 @@ from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
+from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -73,4 +74,5 @@ hifld_ingest_assets = [
     usace_pipeline_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
+    coastlines_usace_ienc,
 ]
