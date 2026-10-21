@@ -1,0 +1,90 @@
+{
+  "inventory_id": "us-county-boundaries-1",
+  "agency": "U.S. Census Bureau",
+  "producer": "U.S. Census Bureau, Geography Division",
+  "publisher": "U.S. Census Bureau (producer publication on www2.census.gov)",
+  "source_relationship": "producer_publication",
+  "landing_url": "https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2023&layergroup=County+%28and+equivalent%29",
+  "machine_download_url": "https://www2.census.gov/geo/tiger/TIGER2023/COUNTY/tl_2023_us_county.zip",
+  "dhs_crosswalk_doi": "10.3886/E241367V1",
+  "crosswalk_match": "matched",
+  "match_evidence": "The inventory row us-county-boundaries-1 cites the Census Bureau county series metadata (series_tl_2023_county.shp.iso.xml) and the TIGER 2024 national geodatabase sub-state download; the DHS HIFLD crosswalk row for US County Boundaries carries the same Census Bureau producer lineage. The DataLumos archive item 240942 V1 is the archived HIFLD copy of the same Census publication and is retained only as a labeled fallback.",
+  "archive_candidates": [
+    {
+      "url": "https://www.datalumos.org/datalumos/project/240942/version/V1/view",
+      "role": "archive",
+      "note": "DataLumos (ICPSR) archived HIFLD copy; inventory modification date 2025-04-08 is an archive edit, not a Census release date. Not used as the pipeline source."
+    }
+  ],
+  "upstream_lineage": "Census TIGER/Line Shapefile series, COUNTY layer (all counties and county equivalents: states, DC, Puerto Rico municipios, island-area equivalents), annual vintage files.",
+  "release_date": null,
+  "release_date_unknown_reason": "The 2023 TIGER/Line vintage year is established, but the exact producer release date was not independently confirmed; the observed HTTP Last-Modified (2023-11-23T02:21:53Z) is recorded as fetch-time metadata only and is not treated as the release date.",
+  "extraction_evidence": {
+    "fetched_at": "2026-10-21T05:39:04Z",
+    "http_status": 200,
+    "bytes": 83451409,
+    "sha256": "692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e",
+    "last_modified": "2023-11-23T02:21:53Z",
+    "complete": true,
+    "transfer_limit_bypassed": "single static ZIP; no pagination",
+    "schema_verified": true,
+    "coverage_verified": true,
+    "geometry_verified": true,
+    "feature_count": 3235,
+    "geoid_unique": true,
+    "geoid_width": 5,
+    "crs": "EPSG:4269",
+    "geometry_types": ["Polygon", "MultiPolygon"],
+    "bounds_wgs84_4269": [-179.231086, -14.601813, 179.859681, 71.439786],
+    "vintage_pinned": "2023; TIGER2024 sibling observed 2026-10-21 (83,913,260 bytes, sha256 04e668d3502757c837c13444730547cd967f28a2c49aeffb873d1792ab2cb97b, Last-Modified 2025-06-27) with an identical 3,235-row roster and identical GEOID digest; the 2023 vintage is pinned to match the inventory row's Census 2023 series metadata and the archived HIFLD capture era."
+  },
+  "source_fields": [
+    {"name": "STATEFP", "type": "string"},
+    {"name": "COUNTYFP", "type": "string"},
+    {"name": "COUNTYNS", "type": "string"},
+    {"name": "GEOID", "type": "string", "role": "source_id", "width": 5, "leading_zero_sensitive": true},
+    {"name": "GEOIDFQ", "type": "string"},
+    {"name": "NAME", "type": "string"},
+    {"name": "NAMELSAD", "type": "string"},
+    {"name": "LSAD", "type": "string"},
+    {"name": "CLASSFP", "type": "string"},
+    {"name": "MTFCC", "type": "string"},
+    {"name": "CSAFP", "type": "string", "nullable": true},
+    {"name": "CBSAFP", "type": "string", "nullable": true},
+    {"name": "METDIVFP", "type": "string", "nullable": true},
+    {"name": "FUNCSTAT", "type": "string"},
+    {"name": "ALAND", "type": "int64"},
+    {"name": "AWATER", "type": "int64"},
+    {"name": "INTPTLAT", "type": "string"},
+    {"name": "INTPTLON", "type": "string"}
+  ],
+  "proposed_published_schema": {
+    "status": "pending_maintainer_approval",
+    "proposal": "Publish the raw 2023 shapefile verbatim (all 18 attribute fields plus geometry) in a single shapefile-typed format object; no column mapping, no substitute row IDs, no schema widening.",
+    "column_mapping": "identity (no renaming)",
+    "id_contract": "GEOID preserved as zero-padded 5-character string (state FIPS + county FIPS); GEOIDFQ and COUNTYNS retained; no generated IDs"
+  },
+  "refresh_cadence": "annual, tied to the Census TIGER/Line late-year postings of COUNTY under a new TIGER{year} directory",
+  "idempotency": "content-derived version from pinned zip sha256 plus processing identity; re-running with the same bytes reuses the sealed candidate",
+  "completeness_gate": "pinned byte-level sha256/length of the exact zip, full archive extraction, 3235 unique GEOIDs, no null/empty/invalid geometry",
+  "error_handling": "any capture or validation failure quarantines the full raw capture under _quarantine/us-county-boundaries-1/ and blocks promotion",
+  "drift_quarantine": "pinned sha256, member roster, schema, field roster, CLASSFP/FUNCSTAT value sets, ID digest, and coverage bounds checks all quarantine instead of adapting",
+  "fallback_candidates": [
+    {
+      "role": "archive",
+      "url": "https://www.datalumos.org/datalumos/project/240942/version/V1/view",
+      "status": "not used; automated retrieval blocked (403 observed for sibling DataLumos items 2026-10-21); DataLumos copy reflects the archived HIFLD publication, not a maintained producer feed"
+    }
+  ],
+  "gates": {
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "reason": "DHS crosswalk match established and maintained producer publication verified; raw/published schema and ID contract still require maintainer approval before promotion."
+  }
+}
