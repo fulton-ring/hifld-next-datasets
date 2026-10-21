@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.colleges_universities import (
+    colleges_source_integrity_job,
+    colleges_source_integrity_schedule,
+)
 from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
@@ -693,6 +697,7 @@ defs = Definitions(
         campus_historical_full_quality,
     ],
     jobs=[
+        colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
@@ -739,6 +744,7 @@ defs = Definitions(
         ornl_campus_historical_reconstruction_job,
     ],
     schedules=[
+        colleges_source_integrity_schedule,
         usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
         census_primary_roads_draft_schedule,
