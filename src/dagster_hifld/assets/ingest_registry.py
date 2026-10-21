@@ -6,6 +6,7 @@ assets are derived automatically from this registry.
 
 from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
+from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -35,6 +36,7 @@ from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usa
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
 from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
 from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
+from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
@@ -45,6 +47,7 @@ from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_i
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
+from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
@@ -67,9 +70,12 @@ from dagster_hifld.assets.usace_conveyor_areas import usace_conveyor_areas_usace
 from dagster_hifld.assets.construction_minerals import construction_minerals_preservation_candidate
 from dagster_hifld.assets.census_county_subdivisions import census_county_subdivisions
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
+from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
+from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 
 hifld_ingest_assets = [
     noaa_current_dart,
+    usgs_crushed_stone_preservation,
     nces_colleges_universities,
     usgs_aquifers,
     noaa_12nm_territorial_sea,
@@ -101,6 +107,7 @@ hifld_ingest_assets = [
     usace_recommended_tracks_ienc,
     usace_overhead_pipeline_lines_usace_ienc,
     usace_overhead_cables_usace_ienc,
+    usace_dam_lines_usace_ienc,
     usace_obstruction_lines_usace_ienc,
     census_secondary_school_districts,
     principal_ports_usace,
@@ -109,6 +116,7 @@ hifld_ingest_assets = [
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
     usace_pipeline_areas_usace_ienc,
+    usace_data_quality_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
     nces_private_schools_2023_24,
@@ -130,4 +138,6 @@ hifld_ingest_assets = [
     construction_minerals_preservation_candidate,
     census_county_subdivisions,
     usace_crane_locations_ienc,
+    courthouses_usgs,
+    usace_data_coverage_areas_usace_ienc,
 ]

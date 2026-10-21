@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.crushed_stone import (
+    crushed_stone_preservation_job,
+    crushed_stone_preservation_schedule,
+)
 from dagster_hifld.assets.colleges_universities import (
     colleges_source_integrity_job,
     colleges_source_integrity_schedule,
@@ -47,6 +51,12 @@ from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
     quaternary_fault_lines_population_complete,
+)
+
+from dagster_hifld.assets.courthouses_usgs import (
+    courthouses_draft_job,
+    courthouses_draft_schedule,
+    courthouses_population_complete,
 )
 
 from dagster_hifld.assets.ornl_power_plants import (
@@ -120,6 +130,11 @@ from dagster_hifld.assets.proposed_critical_habitat import (
     proposed_critical_habitat_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_dam_lines import (
+    usace_dam_lines_complete,
+    usace_dam_lines_draft_job,
+    usace_dam_lines_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
@@ -141,6 +156,11 @@ from dagster_hifld.assets.usace_pipeline_areas import (
     usace_pipeline_areas_complete,
     usace_pipeline_areas_draft_job,
     usace_pipeline_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_data_quality_areas import (
+    usace_data_quality_areas_complete,
+    usace_data_quality_areas_draft_job,
+    usace_data_quality_areas_draft_schedule,
 )
 
 from dagster_hifld.assets.us_county_boundaries import (
@@ -165,6 +185,12 @@ from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_complete,
     usace_obstruction_lines_draft_job,
     usace_obstruction_lines_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_data_coverage_areas import (
+    usace_data_coverage_areas_complete,
+    usace_data_coverage_areas_draft_job,
+    usace_data_coverage_areas_draft_schedule,
 )
 
 from dagster_hifld.assets.usace_caution_areas import (
@@ -720,6 +746,7 @@ defs = Definitions(
         census_block_groups_source_complete,
         census_tracts_source_complete,
         quaternary_fault_lines_population_complete,
+        courthouses_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
@@ -729,6 +756,7 @@ defs = Definitions(
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
         usace_overhead_cables_complete,
+        usace_dam_lines_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         us_county_boundaries_source_complete,
@@ -738,6 +766,7 @@ defs = Definitions(
         proposed_critical_habitat_complete,
         usace_pile_locations_complete,
         usace_pipeline_areas_complete,
+        usace_data_quality_areas_complete,
         nces_private_schools_complete,
         nces_public_schools_complete,
         coastlines_usace_ienc_complete,
@@ -750,12 +779,14 @@ defs = Definitions(
         usace_crane_locations_complete,
         usace_crane_locations_quality,
         usace_crane_locations_release,
+        usace_data_coverage_areas_complete,
     ],
     jobs=[
         colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
         census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
+        courthouses_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
         noaa_territorial_draft_refresh_job,
@@ -767,6 +798,7 @@ defs = Definitions(
         fuel_stations_draft_refresh_job,
         usace_overhead_pipeline_lines_draft_job,
         usace_overhead_cables_draft_job,
+        usace_dam_lines_draft_job,
         usace_obstruction_lines_draft_job,
         usace_administrative_areas_draft_job,
         usace_navigation_marks_areas_draft_job,
@@ -782,6 +814,7 @@ defs = Definitions(
         proposed_critical_habitat_draft_job,
         usace_pile_locations_draft_job,
         usace_pipeline_areas_draft_job,
+        usace_data_quality_areas_draft_job,
         nces_private_schools_draft_job,
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
@@ -806,11 +839,14 @@ defs = Definitions(
         construction_minerals_draft_job,
         county_subdivisions_draft_refresh_job,
         usace_crane_locations_draft_job,
+        crushed_stone_preservation_job,
+        usace_data_coverage_areas_draft_job,
     ],
     schedules=[
         colleges_source_integrity_schedule,
         usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
+        courthouses_draft_schedule,
         census_primary_roads_draft_schedule,
         census_block_groups_draft_schedule,
         census_tracts_draft_schedule,
@@ -825,6 +861,7 @@ defs = Definitions(
         fuel_stations_draft_refresh_schedule,
         usace_overhead_pipeline_lines_draft_schedule,
         usace_overhead_cables_draft_schedule,
+        usace_dam_lines_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_administrative_areas_draft_schedule,
         usace_navigation_marks_areas_draft_schedule,
@@ -843,6 +880,7 @@ defs = Definitions(
         proposed_critical_habitat_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_pipeline_areas_draft_schedule,
+        usace_data_quality_areas_draft_schedule,
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
@@ -866,6 +904,8 @@ defs = Definitions(
         construction_minerals_draft_schedule,
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
+        crushed_stone_preservation_schedule,
+        usace_data_coverage_areas_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
