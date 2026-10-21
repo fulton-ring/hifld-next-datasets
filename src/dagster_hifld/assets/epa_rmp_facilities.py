@@ -75,7 +75,8 @@ def epa_emergency_response_rmp_facilities_complete(candidate: dict) -> AssetChec
 
 epa_rmp_facilities_draft_job = define_asset_job(
     "epa_emergency_response_rmp_facilities_draft_refresh",
-    selection=AssetSelection.assets(epa_emergency_response_rmp_facilities),
+    selection=(AssetSelection.assets(epa_emergency_response_rmp_facilities)
+               | AssetSelection.checks(epa_emergency_response_rmp_facilities)),
 )
 epa_rmp_facilities_draft_schedule = ScheduleDefinition(
     name="epa_emergency_response_rmp_facilities_draft_schedule",
