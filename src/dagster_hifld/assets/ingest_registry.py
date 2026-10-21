@@ -27,6 +27,7 @@ from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_features
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
+from dagster_hifld.assets.usace_dry_docks import usace_dry_docks_usace_ienc
 from dagster_hifld.assets.quaternary_fault_lines import quaternary_fault_lines_usgs
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
 from dagster_hifld.assets.us_county_boundaries import us_county_boundaries_census
@@ -92,6 +93,7 @@ hifld_ingest_assets = [
     proposed_critical_habitat_features,
     usace_navigation_marks_areas_usace_ienc,
     usace_berths_areas_usace_ienc,
+    usace_dry_docks_usace_ienc,
     quaternary_fault_lines_usgs,
     usace_pylon_areas_usace_ienc,
     us_county_boundaries_census,
