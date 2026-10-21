@@ -20,6 +20,11 @@ from dagster_hifld.assets.epa_eez import (
     epa_eez_draft_schedule,
     epa_eez_full_quality,
 )
+from dagster_hifld.assets.epa_regions_with_eez import (
+    epa_regions_with_eez_draft_job,
+    epa_regions_with_eez_draft_schedule,
+    epa_regions_with_eez_full_quality,
+)
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
 from dagster_hifld.assets.crushed_stone import (
     crushed_stone_preservation_job,
@@ -835,6 +840,7 @@ defs = Definitions(
         docks_source_geometry_quality,
         docks_release_acceptance_pending,
         epa_eez_full_quality,
+        epa_regions_with_eez_full_quality,
     ],
     jobs=[
         elsd_source_integrity_job,
@@ -904,6 +910,7 @@ defs = Definitions(
         usace_data_coverage_areas_draft_job,
         docks_draft_job,
         epa_eez_draft_job,
+        epa_regions_with_eez_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
@@ -978,6 +985,7 @@ defs = Definitions(
         usace_data_coverage_areas_draft_schedule,
         docks_draft_schedule,
         epa_eez_draft_schedule,
+        epa_regions_with_eez_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
