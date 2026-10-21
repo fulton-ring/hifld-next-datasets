@@ -6,6 +6,7 @@ import json
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 import pyarrow as pa
@@ -19,9 +20,7 @@ DATASET_SLUG = "docks-usace-bts"
 FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Docks/FeatureServer/0"
 EXPECTED_COUNT = 20563
-# The service permits 2,000 records, but the platform rejects a long GET
-# header for a 2,000-ID objectIds list. Keep request URLs below that limit.
-PAGE_SIZE = 400
+PAGE_SIZE = 2000
 MAX_BYTES = 384_000_000
 _STRINGS = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"}
 
@@ -44,8 +43,12 @@ def _source_modified_date(value):
 def _request(client, staging, version, name, url, params, budget):
     body_parts, wire_parts = [], []
     response_obj = None
+    method = "POST" if name.startswith("page_") else "GET"
+    request_body = urlencode(params).encode("ascii") if method == "POST" else b""
     try:
-        with client.stream("GET", url, params=params, headers={"Accept-Encoding": "identity"}) as response:
+        with client.stream(method, url, params=params if method == "GET" else None,
+                           data=params if method == "POST" else None,
+                           headers={"Accept-Encoding": "identity"}) as response:
             response_obj = response
             final_url = str(response.url)
             capture = capture_http_response(
@@ -56,7 +59,8 @@ def _request(client, staging, version, name, url, params, budget):
     except Exception as exc:
         raise ValueError("source_transport_error:" + type(exc).__name__) from exc
     body, wire = b"".join(body_parts), b"".join(wire_parts)
-    receipt = {"method": "GET", "url": str(response_obj.request.url), "final_url": final_url,
+    receipt = {"method": method, "url": str(response_obj.request.url), "final_url": final_url,
+               "request_body_bytes": len(request_body), "request_body_sha256": _sha(request_body) if request_body else None,
                "status": capture.status_code, "observed_at": datetime.now(timezone.utc).isoformat(),
                "bytes": len(body), "sha256": _sha(body), "wire_bytes": len(wire),
                "wire_sha256": _sha(wire), "content_type": response_obj.headers.get("content-type"),
@@ -67,6 +71,8 @@ def _request(client, staging, version, name, url, params, budget):
         raise ValueError("source_total_capture_budget_exceeded")
     for suffix, data in (("body", body), ("wire", wire), ("receipt.json", _canonical(receipt))):
         staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.{suffix}", data)
+    if request_body:
+        staging.write(DATASET_SLUG, FILE_SLUG, version, f"raw/{name}.request.body", request_body)
     if not capture.complete or capture.status_code != 200 or final_url != str(response_obj.request.url):
         raise ValueError("incomplete_source_response:" + name)
     parsed = json.loads(body)
