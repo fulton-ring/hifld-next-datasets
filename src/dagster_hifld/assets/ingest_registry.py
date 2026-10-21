@@ -20,6 +20,7 @@ from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_fa
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
+from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_features
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.quaternary_fault_lines import quaternary_fault_lines_usgs
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
@@ -41,6 +42,8 @@ from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
+from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_current
+from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -58,6 +61,7 @@ hifld_ingest_assets = [
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
     bsee_ocs_platforms,
+    proposed_critical_habitat_features,
     usace_navigation_marks_areas_usace_ienc,
     usace_berths_areas_usace_ienc,
     quaternary_fault_lines_usgs,
@@ -79,4 +83,6 @@ hifld_ingest_assets = [
     eia_power_plants_historical,
     nces_private_schools_2023_24,
     nces_public_schools,
+    gcca_warehouses_current,
+    coastlines_usace_ienc,
 ]
