@@ -21,7 +21,6 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pyproj import CRS
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, seal_first_construction
@@ -39,7 +38,6 @@ PAGE_SIZE = 40
 MAX_TOTAL = 20_000
 MAX_PAGE_BYTES = 4_000_000
 EXPECTED_FIELDS = ("city", "companyname", "country", "identifier", "location_geo", "parentid", "state")
-WGS84 = CRS.from_epsg(4326)
 _UNSAFE_KEY_RE = re.compile(r'(?i)(\bapi_key\s*:\s*["\'])[^"\']+(["\'])')
 
 
@@ -252,8 +250,8 @@ def _validate_and_project(rows: list[dict], source_total: int, facet_meta: dict)
         "us_projection_count": len(candidate), "us_projection_id_sha256": _sha(_canonical(candidate_ids)),
         "us_projection_rule": "Native country field exactly equals 'United States'; candidate rows retained without geometry repair or exclusion.",
         "us_geometry_null_count": geometry_null, "us_geometry_invalid_count": geometry_invalid,
-        "candidate_crs_mapping": {"crs": "EPSG:4326", "status": "provisional_unverified",
-                                  "evidence_limit": "FUSE location_geo responses contain point coordinates but no CRS declaration; the proposed WGS84 interpretation is based on the GCCA web map field and requires contract review."},
+        "candidate_crs_mapping": {"crs": None, "status": "unknown_unaccepted",
+                                  "evidence_limit": "FUSE location_geo responses contain point coordinates but no CRS declaration. Coordinate arrays are preserved without assigning a CRS."},
         "source_coverage_scope": "Complete current GCCA Warehouse Facility category, followed by explicit United States country projection. Not the 2017 HIFLD edition and not an accepted historical equivalent.",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "historical_2017_baseline_accepted": False, "schema_contract_accepted": False,
@@ -276,21 +274,28 @@ def _geo_parquet(rows: list[dict]) -> bytes:
             typ = pa.string()
         arrays.append(pa.array(values, type=typ, safe=True))
         schema_fields.append(pa.field(name, typ, nullable=True))
+    # Keep a row-aligned native field mask so an absent result member remains
+    # distinguishable from a member that was present with JSON null.
+    presence = [_canonical(sorted(item)).decode() for item in fields]
+    arrays.append(pa.array(presence, type=pa.string(), safe=True))
+    schema_fields.append(pa.field("source_field_presence", pa.string(), nullable=False))
     geometries = []
     for item in fields:
         geo = item.get("location_geo")
         geometries.append(None if geo is None else _point_wkb(geo["coordinates"]))
     arrays.append(pa.array(geometries, type=pa.binary(), safe=True))
     schema_fields.append(pa.field("geometry", pa.binary(), nullable=True))
+    # GeoParquet's explicit null means the source CRS is unknown. Do not assign
+    # WGS84 from coordinate appearance or the rendering map.
     geo = {"version": "1.1.0", "primary_column": "geometry",
-           "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": WGS84.to_json_dict()}}}
+           "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": None}}}
     sink = __import__("io").BytesIO()
     table = pa.Table.from_arrays(arrays, schema=pa.schema(schema_fields, metadata={b"geo": _canonical(geo)}))
     pq.write_table(table, sink, compression="zstd", use_dictionary=False)
     readback = pq.read_table(pa.BufferReader(sink.getvalue()))
-    if readback.num_rows != len(rows) or readback.schema.names != list(EXPECTED_FIELDS) + ["geometry"]:
+    if readback.num_rows != len(rows) or readback.schema.names != list(EXPECTED_FIELDS) + ["source_field_presence", "geometry"]:
         raise ValueError("warehouse_candidate_readback_schema_drift")
-    for column, expected in zip(EXPECTED_FIELDS, arrays):
+    for column, expected in zip((*EXPECTED_FIELDS, "source_field_presence"), arrays):
         if readback[column].to_pylist() != expected.to_pylist():
             raise ValueError("warehouse_candidate_attribute_readback_drift:" + column)
     if readback["geometry"].to_pylist() != geometries:
@@ -437,10 +442,11 @@ def capture_gcca_warehouses(storage: StagingStorageResource, *, version: str,
         "code_commit": identity["code_commit"], "inputs": [source_input],
         "transformations": [{"operation": "Complete GCCA Warehouse Facility query followed by U.S. country projection to GeoParquet",
             "parameters": {"source_rows": total, "candidate_rows": len(candidate), "projection": "country == United States",
-                           "native_attributes": "All observed FUSE result fields retained; location_geo retained as canonical JSON text and its unchanged point coordinates also encoded as WKB under a provisional EPSG:4326 interpretation.",
+            "native_attributes": "All observed FUSE result fields retained; location_geo retained as canonical JSON text. The source_field_presence column records the exact set of native field names present on each row, preserving absent-versus-explicit-null distinctions.",
+            "geometry_crs": "Native point coordinates are copied unchanged to WKB. CRS is explicitly unknown (GeoParquet crs:null) because the FUSE response does not declare one; catalog quality fails closed until authoritative CRS evidence exists.",
                            "missing_geometry": "Retained as null geometry; no geocoding, repair, exclusion, or synthetic ID."}}],
         "lineage": "Changed-successor draft for the GCCA warehouse participant scope. The DataLumos-linked 2017 HIFLD archive remains inaccessible for byte-level baseline comparison; no historical continuity or coverage equivalence is claimed.",
-        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native string attributes, source identifier, location_geo values, and available source point coordinates retained.", "objects": []}}},
+        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native string attributes, source identifier, row-aligned field-presence mask, location_geo values, and available coordinates retained; source CRS is unknown and the native catalog rejects it.", "objects": []}}},
         "promotion_allowed": False, "source_accepted": False, "baseline": None,
         "acceptance": {"source": False, "historical_2017_baseline": False, "currentness": False,
                        "schema_contract": False, "id_contract": False, "coverage": False,
@@ -455,6 +461,7 @@ def capture_gcca_warehouses(storage: StagingStorageResource, *, version: str,
              "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
              "source_population_complete": True, "complete_source_population_count": total,
              "projected_candidate_count": len(candidate), "quality_geometry_accepted": False,
+             "candidate_crs_known": False,
              "source_release_accepted": False, "historical_2017_baseline_accepted": False,
              "freshness_accepted": False, "schema_contract_accepted": False,
              "id_contract_accepted": False, "rights_accepted": False,
@@ -496,7 +503,9 @@ def capture_gcca_warehouses(storage: StagingStorageResource, *, version: str,
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_capture_evidence_sha256": audit["source_capture_evidence_sha256"],
             "missing_geometry_count": audit["us_geometry_null_count"],
+            "candidate_crs_known": False,
+            "candidate_crs_mapping": audit["candidate_crs_mapping"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "capture_directory": str(root), "historical_2017_baseline_accepted": False,
             "source_release_accepted": False, "coverage_accepted": False, "rights_accepted": False,
-            "release_accepted": False, "quality_geometry_accepted": audit["us_geometry_null_count"] == 0}
+            "release_accepted": False, "quality_geometry_accepted": False}

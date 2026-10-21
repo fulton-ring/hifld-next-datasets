@@ -21,6 +21,7 @@ class GCCAWarehouseConfig(Config):
     compute_kind="http",
     description=(
         "Current GCCA Warehouse Facility directory, projected to U.S. country records as a changed-successor draft. "
+        "Source CRS is undeclared; coordinates remain unassigned and native cataloging fails closed. "
         "Historical 2017 HIFLD continuity, coverage, rights, source acceptance, and release remain pending."
     ),
 )
@@ -41,11 +42,15 @@ def gcca_warehouses_current(context, config: GCCAWarehouseConfig,
 
 @asset_check(asset=gcca_warehouses_current, blocking=True)
 def gcca_warehouses_geometry_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("missing_geometry_count") == 0 and candidate.get("quality_geometry_accepted") is True
+    passed = (candidate.get("missing_geometry_count") == 0
+              and candidate.get("candidate_crs_known") is True
+              and candidate.get("quality_geometry_accepted") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_category_source_rows": candidate.get("source_population_count", 0),
         "projected_us_candidate_rows": candidate.get("feature_count", 0),
         "missing_geometry_rows_retained": candidate.get("missing_geometry_count", 0),
+        "candidate_crs_known": candidate.get("candidate_crs_known") is True,
+        "candidate_crs_mapping": candidate.get("candidate_crs_mapping", {"crs": None, "status": "unknown"}),
         "source_population_complete": candidate.get("source_population_complete") is True,
         "historical_2017_baseline_accepted": False,
         "source_accepted": False,
