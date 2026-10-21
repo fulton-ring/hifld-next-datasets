@@ -173,6 +173,15 @@ class CountySubdivisionTests(unittest.TestCase):
             with self.assertRaises(ValueError):self.stage(storage,raw,receipt)
             self.assertFalse(key.exists());self.assertTrue(any(p.read_bytes()==original for p in Path(str(key)+'.evidence').glob('*.json')))
 
+    def test_sqlite_change_counters_do_not_trigger_false_container_drift(self):
+        with synthetic_population() as (_,storage,raw,receipt,_):
+            first=self.stage(storage,raw,receipt);base=Path(storage.local_dir);root=base/source.SLUG/source.SLUG/first['version']
+            name=f'geopackage/{source.SLUG}.gpkg';gpkg=root/name;body=bytearray(gpkg.read_bytes())
+            self.assertEqual(body[:16],b'SQLite format 3\x00')
+            counter=(int.from_bytes(body[24:28],'big')+1).to_bytes(4,'big');body[24:28]=counter;body[92:96]=counter;gpkg.write_bytes(body)
+            ready=source.strict_json((root/source.READY).read_bytes());ready['objects'][name]=source.sha256_file(gpkg);(root/source.READY).write_bytes(source.encode(ready))
+            self.assertTrue(self.stage(storage,raw,receipt)['reused'])
+
     def test_self_repinned_report_and_native_metadata_still_quarantine(self):
         for kind in ['report','container','unknown','ready_sha','ready_extra']:
             with self.subTest(kind=kind),synthetic_population() as (_,storage,raw,receipt,_):

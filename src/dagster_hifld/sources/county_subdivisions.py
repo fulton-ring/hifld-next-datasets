@@ -254,6 +254,30 @@ def write_gpkg(path,out):
         pyogrio.write_arrow(converted,out,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
     with sqlite3.connect(out) as db:db.execute("UPDATE gpkg_contents SET last_change='2024-01-01T00:00:00.000Z'")
 
+def stable_sqlite_sha256(path):
+    """Hash SQLite content while ignoring only its two volatile change counters.
+
+    SQLite's database-change counter (header bytes 24..27) and the matching
+    version-valid-for value (bytes 92..95) can differ after equivalent writes.
+    The remaining container bytes, including all GeoPackage SQL/SRS/RTree and
+    feature data, remain part of the exact digest.
+    """
+    h=hashlib.sha256()
+    with open(path,'rb') as stream:
+        header=stream.read(100)
+        if len(header)!=100 or header[:16]!=b'SQLite format 3\x00':
+            raise CountySubdivisionQuarantineError('invalid_sqlite_container_header')
+        page_size=int.from_bytes(header[16:18],'big')
+        if page_size==1:page_size=65536
+        if page_size<512 or page_size>65536 or page_size&(page_size-1) or os.fstat(stream.fileno()).st_size%page_size:
+            raise CountySubdivisionQuarantineError('invalid_sqlite_container_page_layout')
+        h.update(header[:24]);h.update(b'\x00'*4);h.update(header[28:92]);h.update(b'\x00'*4)
+        while True:
+            chunk=stream.read(1024*1024)
+            if not chunk:break
+            h.update(chunk)
+    return h.hexdigest()
+
 def verify_outputs(root,path,audit,*,canonical=True):
     parquet=root/'geoparquet'/f'{SLUG}.parquet';f=pq.ParquetFile(parquet)
     if f.schema_arrow.metadata!=geo_metadata():raise CountySubdivisionQuarantineError('native_parquet_metadata_drift')
@@ -264,7 +288,7 @@ def verify_outputs(root,path,audit,*,canonical=True):
     if canonical:
         with tempfile.TemporaryDirectory(prefix='.cousub-canonical-',dir=root.parent) as tmp:
             fresh=Path(tmp)/'fresh.gpkg';write_gpkg(path,fresh)
-            if sha256_file(fresh)!=sha256_file(root/'geopackage'/f'{SLUG}.gpkg'):raise CountySubdivisionQuarantineError('full_gpkg_native_container_srs_sql_or_rtree_drift')
+            if stable_sqlite_sha256(fresh)!=stable_sqlite_sha256(root/'geopackage'/f'{SLUG}.gpkg'):raise CountySubdivisionQuarantineError('full_gpkg_native_container_srs_sql_or_rtree_drift')
 
 def manifest_for(path,receipt,identity,pin):
     m={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],
