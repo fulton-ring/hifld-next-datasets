@@ -38,6 +38,10 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import (
+    STAGED_RELEASE_DERIVATIVE_NAMES,
+    validate_staged_release_derivatives,
+)
 from dagster_hifld.validation import sha256_file
 
 SERVICE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/EPA_Locations/MapServer"
@@ -650,7 +654,7 @@ def _cached_reuse(storage: StagingStorageResource, profile: LayerProfile, versio
         raise ValueError("cached_candidate_object_roster_invalid")
     ready_key = f"{prefix}/metadata/candidate_ready.json"
     expected_roster = {f"{prefix}/{name}" for name in descriptors} | {ready_key}
-    _validate_cached_catalog_sidecars(storage, profile, version, prefix, current_table, expected_roster)
+    _validate_cached_catalog_sidecars(storage, profile, version, prefix, current_table, expected_roster, descriptors)
     for relative, expected in descriptors.items():
         key = f"{prefix}/{relative}"
         snapshot = storage.object_snapshot(key)
@@ -702,19 +706,61 @@ def _cached_reuse(storage: StagingStorageResource, profile: LayerProfile, versio
 
 
 def _validate_cached_catalog_sidecars(storage, profile: LayerProfile, version: str, prefix: str,
-                                      current_table: pa.Table, expected_roster: set[str]) -> None:
-    """Allow only complete, source-consistent catalog outputs beside a sealed candidate."""
+                                      current_table: pa.Table, expected_roster: set[str],
+                                      source_objects: Mapping[str, Mapping[str, object]]) -> None:
+    """Validate the closed catalog-derived roster against the sealed source objects."""
     actual_roster = set(storage.list_keys(profile.slug, profile.slug, version))
     if actual_roster == expected_roster:
         return
-    catalog_keys = {
-        f"{prefix}/metadata/quality_manifest.json",
-        f"{prefix}/metadata/data_dictionary.json",
-    }
+    flat_catalog_names = {"metadata/quality_manifest.json", "metadata/data_dictionary.json"}
+    flat_catalog_keys = {f"{prefix}/{name}" for name in flat_catalog_names}
     resolved_key = f"{prefix}/metadata/resolved_provenance.json"
-    required_catalog_roster = expected_roster | catalog_keys
-    if actual_roster != required_catalog_roster and actual_roster != required_catalog_roster | {resolved_key}:
+    manifest_descriptor = source_objects.get("metadata/source_manifest.json")
+    if not isinstance(manifest_descriptor, Mapping) or not isinstance(manifest_descriptor.get("sha256"), str):
         raise ValueError("cached_candidate_object_roster_changed")
+    manifest_snapshot_names = {
+        "metadata/source/source_manifest.json",
+        f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json",
+    }
+    source_catalog_snapshot_names = {
+        "metadata/source/quality_manifest.json", "metadata/source/data_dictionary.json",
+    }
+    derivative_names = manifest_snapshot_names | source_catalog_snapshot_names
+    derivative_keys = {f"{prefix}/{name}" for name in derivative_names}
+    release_keys = {f"{prefix}/{name}" for name in STAGED_RELEASE_DERIVATIVE_NAMES}
+    permitted = expected_roster | flat_catalog_keys | derivative_keys | release_keys | {resolved_key}
+    if not expected_roster <= actual_roster or actual_roster - permitted:
+        raise ValueError("cached_candidate_object_roster_changed")
+    found_flat = actual_roster & flat_catalog_keys
+    found_manifest_snapshots = actual_roster & {f"{prefix}/{name}" for name in manifest_snapshot_names}
+    found_source_catalog_snapshots = actual_roster & {f"{prefix}/{name}" for name in source_catalog_snapshot_names}
+    if (found_flat not in (set(), flat_catalog_keys)
+            or found_manifest_snapshots not in (set(), {f"{prefix}/{name}" for name in manifest_snapshot_names})
+            or found_source_catalog_snapshots not in (set(), {f"{prefix}/{name}" for name in source_catalog_snapshot_names})):
+        raise ValueError("cached_candidate_object_roster_changed")
+    validate_staged_release_derivatives(storage, prefix, actual_roster)
+
+    def stable_read(key: str) -> bytes:
+        before = storage.object_snapshot(key)
+        if before is None:
+            raise ValueError("cached_catalog_snapshot_missing:" + key)
+        body = storage.read_key(key)
+        if storage.object_snapshot(key) != before:
+            raise ValueError("cached_catalog_snapshot_mutated_during_validation:" + key)
+        return body
+
+    for relative in manifest_snapshot_names:
+        key = f"{prefix}/{relative}"
+        if key in actual_roster and stable_read(key) != stable_read(f"{prefix}/metadata/source_manifest.json"):
+            raise ValueError("cached_catalog_source_snapshot_changed:" + relative)
+    for relative in source_catalog_snapshot_names:
+        key = f"{prefix}/{relative}"
+        if key in actual_roster and stable_read(key) != stable_read(f"{prefix}/metadata/{relative.rsplit('/', 1)[-1]}"):
+            raise ValueError("cached_catalog_sidecar_snapshot_changed:" + relative)
+    if not found_flat:
+        if actual_roster != expected_roster | found_manifest_snapshots | release_keys.intersection(actual_roster):
+            raise ValueError("cached_candidate_object_roster_changed")
+        return
     try:
         quality = json.loads(storage.read_key(f"{prefix}/metadata/quality_manifest.json"))
         dictionary = json.loads(storage.read_key(f"{prefix}/metadata/data_dictionary.json"))
