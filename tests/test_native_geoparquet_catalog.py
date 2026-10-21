@@ -63,6 +63,8 @@ class RemoteFixture:
     def _ensure_prefixed(self,key):return self.local._ensure_prefixed(key)
     def list_prefix(self,prefix):return self.local.list_prefix(prefix)
     def object_snapshot(self,key):return self.local.object_snapshot(key)
+    def read_key_range(self,key,offset,length,*,expected_snapshot):
+        return self.local.read_key_range(key,offset,length,expected_snapshot=expected_snapshot)
     def download_key_to(self,key,destination):self.downloads.append(key);shutil.copyfile(Path(self.local.local_dir)/key,destination)
 
 

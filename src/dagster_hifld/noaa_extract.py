@@ -34,6 +34,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.release_approval import verifier_implementation_sha256
 
 _CAPTURE_NAMES = ("layer", "count_before", "features", "ids_before", "ids_after", "count_after", "geojson")
+_CODE_IDENTITY_SCHEME = "hifld-installed-package-sha256-v1"
 
 
 def _write_draft_staging(storage: StagingStorageResource, key: str, contents: bytes) -> str:
@@ -384,11 +385,16 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     maximum_lengths = {field.name: max((len(value.encode("utf-8")) for value in table[field.name].to_pylist() if value is not None), default=0) for field in table.schema if pa.types.is_string(field.type)}
     trailing_whitespace = {field.name: sum(value is not None and value != value.rstrip() for value in table[field.name].to_pylist()) for field in table.schema if pa.types.is_string(field.type)}
     unsupported = {"shapefile_zip": "Exact NOAA source preservation exceeds DBF capabilities: string max UTF8 bytes=" + json.dumps(maximum_lengths, sort_keys=True) + "; trailing whitespace counts=" + json.dumps(trailing_whitespace, sort_keys=True) + "; nullable epoch-ms int64 and float64 values require exact physical type/precision. DBF trimming/rounding is incompatible with exact preservation; no lossy mapping approved."}
+    resolved_code_commit = (f"{_CODE_IDENTITY_SCHEME}:{processing_fingerprint}"
+                            if code_commit is None else code_commit)
+    code_identity_scheme = ("run-tag:hifld/source_code_commit"
+                            if code_commit is not None else _CODE_IDENTITY_SCHEME)
     source_manifest = {
         "schema_version": 1, "processor": "HIFLD Next", "title": dataset_slug,
         "producer": "NOAA / NOS / Office of Coast Survey", "publisher": "NOAA / NOS / Office of Coast Survey",
         "source_url": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
-        "code_commit": code_commit, "processing_fingerprint": processing_fingerprint, "baseline_accepted": False, "contract_approved": False,
+        "code_commit": resolved_code_commit, "code_identity_scheme": code_identity_scheme,
+        "processing_fingerprint": processing_fingerprint, "baseline_accepted": False, "contract_approved": False,
         "unsupported_output_formats": unsupported,
         "inputs": [{"input_id": name, "producer": "NOAA / NOS / Office of Coast Survey",
                     "host": urlsplit(receipt_by_name.get(name, {}).get("url", "")).hostname,
@@ -412,7 +418,8 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
         # Keep original extraction attribution immutable; refresh receipts append.
         def semantic_manifest(value):
             clean = json.loads(json.dumps(value))
-            clean.pop("code_commit", None)  # First code commit remains valid for identical installed code bytes.
+            clean.pop("code_commit", None)  # First code identity remains valid for identical installed code bytes.
+            clean.pop("code_identity_scheme", None)
             for item in clean["inputs"]:
                 item.pop("retrieved_at", None)  # Keep first extraction attribution; later receipts are appended.
             return clean

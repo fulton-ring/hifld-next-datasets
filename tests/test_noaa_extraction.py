@@ -20,6 +20,8 @@ from dagster_hifld.noaa_extract import (
     noaa_reference_fingerprints, stage_noaa_candidate, validate_noaa_capture,
 )
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 
 
 def fixture():
@@ -44,6 +46,37 @@ def receipt_fixture(captures):
 
 
 class NoaaExtractionTests(unittest.TestCase):
+    def test_staged_provenance_uses_installed_code_identity_when_run_tag_is_absent(self):
+        captures, kwargs = fixture()
+        for run_tag, expected_scheme in ((None, "hifld-installed-package-sha256-v1"),
+                                         ("a" * 40, "run-tag:hifld/source_code_commit")):
+            with self.subTest(run_tag=run_tag), tempfile.TemporaryDirectory() as directory:
+                result = stage_noaa_candidate(
+                    staging=StagingStorageResource(local_dir=directory, use_local=True),
+                    dataset_slug="synthetic", file_slug="synthetic", captures=captures,
+                    receipts=receipt_fixture(captures), expected_layer_url=TEST_LAYER,
+                    code_commit=run_tag, **kwargs,
+                )
+                manifest_path = Path(directory, "synthetic", "synthetic", result["version"],
+                                     "metadata", "source_manifest.json")
+                manifest = json.loads(manifest_path.read_text())
+                if run_tag is None:
+                    self.assertEqual(manifest["code_commit"],
+                                     "hifld-installed-package-sha256-v1:" + result["processing_fingerprint"])
+                else:
+                    self.assertEqual(manifest["code_commit"], run_tag)
+                self.assertEqual(manifest["code_identity_scheme"], expected_scheme)
+                validate_provenance(manifest)
+                resolved = load_resolved_source_manifest(
+                    StagingStorageResource(local_dir=directory, use_local=True),
+                    "synthetic", "synthetic", result["version"],
+                )
+                self.assertEqual(resolved.metadata["code_commit"], manifest["code_commit"])
+                self.assertEqual(resolved.metadata["code_identity_scheme"], expected_scheme)
+                self.assertFalse(manifest["baseline_accepted"])
+                self.assertFalse(manifest["contract_approved"])
+                self.assertFalse(result["promotion_approved"])
+
     def test_declared_integer_boundaries_keep_int32_in_candidate_and_geopackage(self):
         captures, kwargs = fixture()
         layer = json.loads(captures['layer'])
