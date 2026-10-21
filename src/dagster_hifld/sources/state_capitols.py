@@ -357,12 +357,34 @@ def _parquet_bytes(features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> tuple[str, dict]:
+def _custody_receipt_digest(receipt: dict) -> str:
+    return _sha(_canonical({key: receipt.get(key) for key in
+                            ("complete_body", "status", "bytes", "sha256",
+                             "wire_bytes", "wire_sha256")}))
+
+
+def _capture_evidence_hash(docs: dict, captures: dict[str, tuple[bytes, dict]]) -> tuple[str, dict]:
+    """Content-derived evidence digest over data-bearing bytes and custody pins.
+
+    Raw wire/decoded bytes remain retained under raw/ and are pinned by the
+    sealed object descriptors; this digest excludes only the server-randomized
+    cosmetic symbology so content-identical captures reuse one version.
+    """
     roster = {}
-    for name in sorted(captures):
-        _body, wire, _receipt = _load_capture(root, name)
-        roster[name] = {"body_sha256": _sha((root / f"{name}.body").read_bytes()),
-                        "wire_sha256": _sha(wire)}
+    for name, (_body, receipt) in sorted(captures.items()):
+        doc = docs.get(name)
+        if name.startswith("layer_") and isinstance(doc, dict):
+            # Layer responses carry server-randomized cosmetic symbology: the
+            # content identity is the stable metadata projection, and delivery
+            # custody is status-only. Exact raw-byte custody remains enforced
+            # by the sealed object descriptors at reuse time.
+            entry = {"transfer_status": _sha(_canonical({"complete_body": receipt.get("complete_body"),
+                                                         "status": receipt.get("status")})),
+                     "stable_layer_sha256": _sha(_canonical(_stable_layer(doc)))}
+        else:
+            entry = {"custody_receipt_sha256": _custody_receipt_digest(receipt),
+                     "body_sha256": receipt.get("sha256")}
+        roster[name] = entry
     return _sha(_canonical(roster)), roster
 
 
@@ -381,8 +403,13 @@ def _preserve_original_receipts(captures: dict[str, tuple[bytes, dict]],
         raise ValueError("cached_original_receipt_roster_changed")
     for name, (_body, receipt) in captures.items():
         sealed = original_receipts[name]
-        if any(receipt.get(field) != sealed.get(field) for field in
-               ("complete_body", "status", "bytes", "sha256", "wire_bytes", "wire_sha256")):
+        # Layer responses carry server-randomized cosmetic symbology, so only
+        # delivery status is comparable across content-identical captures; the
+        # content identity is proven by the fingerprint and raw-byte custody is
+        # enforced against the sealed originals by verify_cached_candidate.
+        fields = (("complete_body", "status") if name.startswith("layer_")
+                  else ("complete_body", "status", "bytes", "sha256", "wire_bytes", "wire_sha256"))
+        if any(receipt.get(field) != sealed.get(field) for field in fields):
             raise ValueError("cached_source_capture_content_changed:" + name)
     return original_receipts
 
@@ -504,7 +531,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
     repo = Path(repo_root) if repo_root is not None else Path(__file__).parents[3]
     identity = _processing_identity(repo)
-    capture_hash, _roster = _identity_hash(captures, root)
+    capture_hash, _roster = _capture_evidence_hash(docs, captures)
     version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
