@@ -35,3 +35,17 @@ Current-head code review and actual runtime scope are separate fields. Documenta
 New raw captures and packets are preserved locally. A compact checksummed evidence archive is prepared; a durable artifact-destination question is pending because the configured downloadable-output path is unavailable in this Cloud. Code and this ledger are already remote on their existing branches/PRs. No production data was published.
 
 The configured GitHub integration cannot read organization Projects v2 or repository Actions variables (actual403/forbidden responses). This blocks Project-board access, not dataset sources. Work continues using the issue/PR ledger. No merge, issue closure, contract approval or production publication is authorized or performed.
+
+
+## Board supervisor checkpoint — 2026-10-21
+
+The user authorized the existing paid queues under the <=$25/day **inference** guard. GKE/Actions costs are separate; actual provider dollar usage is not visible here. This pass holds a soft batch of two implementations and one paid review, within the unchanged six/two controller ceilings. Direct Project reads remain forbidden; move labels and actual admissions were verified.
+
+| Dataset | Current evidence | Next action |
+| --- | --- | --- |
+| #275 Primary Roads | PR #546 head `8d1dd15c0ded6d7b77a5eff1bca6fb9189683e7c`; review run39597483660 | Inspect trusted review; no repeat full suite |
+| #282 Puerto Rico Subbarrios | Saved head `502a00aedcc4d664b4fa2d772d0c6dfc449f28cf`; delta review5599567509 PASS; trusted result-file failure | Needs decision for remaining approvals; no paid retry |
+| #283 Pylon Areas | Implementation39597542093 admitted; official 6,440-polygon source inspected | Await actual saved pipeline/run evidence |
+| #284 Pylon Locations | Implementation39599138325 admitted; official4,079-point source inspected | Await actual saved pipeline/run evidence |
+
+Shared #417 is at `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0`, independently reviewed scoped fixes (review5599552229), with actual synthetic success `d054f1c6-2fe8-46f5-a332-47924cdcb9bc` and drift refusal `cd59e479-c18b-4647-aeaf-99f45e6644ad`. Baseline/configuration and unsupported arbitrary transformation accounting remain blocked; this does not complete #417. The branch advanced only after #283 pinned its original checkout. No merges, closures or production publication.

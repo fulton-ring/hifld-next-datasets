@@ -19,8 +19,8 @@
     "prs_with_high_confidence_issue_association": 78,
     "open_issue_work_progress": {
       "total_dataset_issues": 415,
-      "open_pr_associated": 98,
-      "no_open_pr_in_recovered_catalog": 317,
+      "open_pr_associated": 101,
+      "no_open_pr_in_recovered_catalog": 314,
       "classification": "The no-open-PR records are unworked/not blocked by default; absence of a recovered open PR is not evidence of an external blocker."
     },
     "snapshot_note": "All415issue states fetched; most older PR review/runtime evidence has not yet been reconciled. Absence of a recovered PR is not an external blocker."
@@ -772,7 +772,7 @@
         {
           "pr": 435,
           "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/435",
-          "title": "Draft: reconstruct complete IBC Canada–US border with provenance and release gates",
+          "title": "Draft: reconstruct complete IBC Canada\u2013US border with provenance and release gates",
           "head_sha_claim_in_body": "52e479e0a2c81325b61bcd2ac36c6dda15c8e9bb",
           "review_evidence_status": "head_claim_only",
           "association_confidence": 1
@@ -2509,7 +2509,7 @@
     {
       "issue": 95,
       "dataset_id": "formerly-used-defense-sites-division-boundaries",
-      "title": "Formerly Used Defense Sites (FUDS) Program Division Boundaries",
+      "title": "Formerly Used Defense Sites (FUDS)\u00a0Program Division Boundaries",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/95",
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
@@ -6150,7 +6150,7 @@
           "association_confidence": 1
         }
       ],
-      "status_note": "Current exact head 39f848879d39909510ac443798716e26d13d3d4d independently reviewed at comment 6282407482. Source run cfa5aac4-4cbf-41f9-9364-88cb00bfd119; catalog b821b4d7-8dce-462c-801c-72b92cdcc240; cache 5cdb6440-c98b-4f19-bb60-76e163339014 reused; verifier d1fa3dd5-a187-40d7-897b-9445da3214d5 refused missing approval with published fixture preserved. 7,317 rows; output SHA reported 52a20aa3…0997; recovered source ZIP SHA 24f3fee…503c.",
+      "status_note": "Current exact head 39f848879d39909510ac443798716e26d13d3d4d independently reviewed at comment 6282407482. Source run cfa5aac4-4cbf-41f9-9364-88cb00bfd119; catalog b821b4d7-8dce-462c-801c-72b92cdcc240; cache 5cdb6440-c98b-4f19-bb60-76e163339014 reused; verifier d1fa3dd5-a187-40d7-897b-9445da3214d5 refused missing approval with published fixture preserved. 7,317 rows; output SHA reported 52a20aa3\u20260997; recovered source ZIP SHA 24f3fee\u2026503c.",
       "current_head": "39f848879d39909510ac443798716e26d13d3d4d",
       "review_comment": 6282407482,
       "status": "reviewed_locally_verified_draft",
@@ -6290,13 +6290,13 @@
       ],
       "work_status": "active_draft_pipeline",
       "assigned_worker": "dataset_11",
-      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1–92, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED. Independent exact-head review PASS comment 5580351370. Current source run 5a53d090-d9c1-4194-a375-5442087c06cd, catalog 97364133-8105-4f6b-91f4-1ba5e7c9f520, cache 40c1f7c6-32e8-445c-822a-7455e47eb14a, verifier f6eab900-f66d-4d64-90fe-6ef06bfc1844; all 92 x 14 attributes and XY path sequences matched, verifier refused missing approval and preserved published inventory.",
+      "status_note": "Open draft PR #531 current head 4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3. Captured official USACE IENC OVERHEAD_PIPELINE_LINE layer 44: 92 features, IDs 1\u201392, 14 attributes, 2D polyline EPSG:4326. Registered source/catalog runs and five focused tests are reported in PR body. Historical HIFLD v1.0.0 differs (Feature_ID absent; 9/12 shared attributes and all geometries differ); no lineage/ID/schema/rights/baseline/release acceptance. Refresh STOPPED. Independent exact-head review PASS comment 5580351370. Current source run 5a53d090-d9c1-4194-a375-5442087c06cd, catalog 97364133-8105-4f6b-91f4-1ba5e7c9f520, cache 40c1f7c6-32e8-445c-822a-7455e47eb14a, verifier f6eab900-f66d-4d64-90fe-6ef06bfc1844; all 92 x 14 attributes and XY path sequences matched, verifier refused missing approval and preserved published inventory.",
       "local_or_current_branch_evidence": {
         "pr": 531,
         "head": "4be341a6ee5406f9b6a9fb60b417e8b2618d6fe3",
         "source_run": "5cb01297-f068-4d98-92b0-cacbce7e0eec",
         "catalog_run": "db344ed2-39f1-4dc7-b8c2-46e639ec32ac",
-        "reported": "92 rows; all 14 attributes; OBJECTID roster 1–92; five focused tests pass; draft only"
+        "reported": "92 rows; all 14 attributes; OBJECTID roster 1\u201392; five focused tests pass; draft only"
       },
       "current_head": "750c43c56dce3142aeb6222226d75bb59d1b15c0",
       "review_id": 5580351370,
@@ -6729,7 +6729,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 546,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -6739,7 +6739,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "pipeline_review_pending",
+      "current_head": "8d1dd15c0ded6d7b77a5eff1bca6fb9189683e7c",
+      "worker_run_id": 39597483660,
+      "status_note": "Paid exact-head review admitted for the bounded drift-capture fix; awaiting trusted handoff. Prior runtime evidence retains its original commit scope."
     },
     {
       "issue": 276,
@@ -6869,8 +6872,8 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
+      "current_pr": 548,
+      "reviewed_head": "502a00aedcc4d664b4fa2d772d0c6dfc449f28cf",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:15:23Z",
@@ -6879,7 +6882,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "reviewed_draft_prior_runtime",
+      "current_head": "502a00aedcc4d664b4fa2d772d0c6dfc449f28cf",
+      "worker_run_id": 39595773668,
+      "status_note": "Paid worker pushed a new head but trusted completion failed on missing result file. Subscription-funded independent delta review PASS (review5599567509), focused10tests/3archive skips; no Dagster rerun claimed. Parked Needs decision for source/baseline/coverage/rights/contracts; no paid retry."
     },
     {
       "issue": 283,
@@ -6899,7 +6905,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "in_progress",
+      "worker_run_id": 39597542093,
+      "dispatch_head": "c5d316320f3120dd1a5dc9f34151b03ff0b1377b",
+      "status_note": "One bounded paid implementation admitted through move:ready after official IENC metadata/count/native sample inspection; no complete pipeline or successful materialization claimed yet."
     },
     {
       "issue": 284,
@@ -6919,7 +6928,10 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "in_progress",
+      "worker_run_id": 39599138325,
+      "dispatch_head": "b57ff17ad49a2a8f84a29aaec12a52efbb3869c0",
+      "status_note": "One bounded paid implementation admitted through move:ready after official IENC metadata/count/native sample inspection; no complete pipeline or successful materialization claimed yet."
     },
     {
       "issue": 285,
@@ -9809,7 +9821,7 @@
     {
       "pr": 435,
       "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/435",
-      "title": "Draft: reconstruct complete IBC Canada–US border with provenance and release gates",
+      "title": "Draft: reconstruct complete IBC Canada\u2013US border with provenance and release gates",
       "state": "open",
       "dataset_issue_candidate": 26,
       "association_confidence": 1,
@@ -10976,5 +10988,27 @@
       "type": "project_access",
       "detail": "Configured HIFLD_PROJECT_TOKEN resource is not accessible by the integration for organization Projects v2; GitHub Actions variable probe returned 403. This blocks project/workflow automation access only and is not evidence that any dataset source is dead."
     }
-  ]
+  ],
+  "supervisor_checkpoint": {
+    "recorded_at": "2026-10-21T12:28:17.559064+00:00",
+    "funding": "User explicitly authorized existing paid queues, <=$25/day inference guard. GKE and Actions costs separate; no actual dollar usage claimed.",
+    "soft_batch_limit": {
+      "implementations": 2,
+      "reviews": 1
+    },
+    "hard_controller_limits": {
+      "implementations": 6,
+      "reviews": 2,
+      "completed_reviews_before_pause": 2
+    },
+    "board_access": "Direct Projects token forbidden; move:* label sync and actual admissions verified. No full board census claimed.",
+    "shared_417": {
+      "head": "b57ff17ad49a2a8f84a29aaec12a52efbb3869c0",
+      "scoped_review": 5599552229,
+      "remaining": "Missing accepted baseline/comparison configuration remains blocked; direct JSONL adapter supports narrow executable concat, not arbitrary joins/filters/aggregation.",
+      "dagster_success": "d054f1c6-2fe8-46f5-a332-47924cdcb9bc",
+      "dagster_drift_refusal": "cd59e479-c18b-4647-aeaf-99f45e6644ad"
+    },
+    "no_merge_closure_publication": true
+  }
 }
