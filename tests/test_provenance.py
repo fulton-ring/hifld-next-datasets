@@ -18,6 +18,13 @@ def provenance_fixture():
 
 
 class ProvenanceTests(unittest.TestCase):
+    def test_versioned_packaged_processing_identity_is_valid_provenance(self):
+        value = provenance_fixture()
+        value["code_commit"] = "packaged-sha256:" + "a" * 64
+        value["code_identity_scheme"] = "sha256-packaged-dagster-hifld-v1"
+        validate_provenance(value)
+        validate_release_provenance(value)
+
     def test_timezone_aware_retrieval_and_separate_release_dates_remain_unmodified(self):
         for timestamp in ["2026-10-19T01:02:03Z", "2026-10-19T01:02:03.123456789+02:30", "2026-10-19T01:02:03-05:00"]:
             for release in [None, "2025-10-19", "2025-10-19T05:00:00+00:00"]:
