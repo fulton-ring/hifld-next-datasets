@@ -16,6 +16,34 @@ class CSASourceTests(unittest.TestCase):
     def test_registration_and_disabled_schedule(self):
         self.assertIn((c.SLUG,c.SLUG),SUPPORTED_DATASET_FILE_PAIRS)
         self.assertEqual(csa_source_integrity_schedule.default_status.value,'STOPPED')
+    def test_cached_inventory_accepts_only_exact_catalog_provenance_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            expected={'candidate/typed-source.parquet','geopackage/csa.gpkg','raw/source_capture.json',
+                'raw/retrieval.json','metadata/source_manifest.json','metadata/processing_identity.json',
+                'metadata/csa_source_audit.json','metadata/baseline_comparison.json'}
+            for relative in expected:
+                path=root/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'pinned')
+            manifest=c.encode({'approved':False,'schema_version':1})
+            (root/'metadata/source_manifest.json').write_bytes(manifest)
+            snapshot=f'metadata/source/version_{c.digest(manifest)}_source_manifest.json'
+            downstream={
+                'metadata/resolved_provenance.json':c.encode({'schema_version':1}),
+                'metadata/data_dictionary.json':c.encode({'schema_version':1}),
+                'metadata/quality_manifest.json':c.encode({'quality_check_passed':True}),
+                'metadata/source/source_manifest.json':manifest,
+                snapshot:manifest,
+            }
+            for relative,body in downstream.items():
+                path=root/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
+            c.validate_cached_candidate_inventory(root,expected)
+            (root/snapshot).write_bytes(b'changed authored snapshot')
+            with self.assertRaisesRegex(ValueError,'cached_authored_source_manifest_snapshot_drift'):
+                c.validate_cached_candidate_inventory(root,expected)
+            (root/snapshot).write_bytes(manifest)
+            (root/'metadata/unrecognized_catalog_output.json').write_bytes(b'no')
+            with self.assertRaisesRegex(ValueError,'immutable_candidate_inventory_conflict'):
+                c.validate_cached_candidate_inventory(root,expected)
     def test_identity_adapter_uses_shared_scheme_and_records_gdal(self):
         identity={'code_identity_scheme':'sha256-packaged-dagster-hifld-v1','working_tree_status':'unknown',
             'code_commit':'packaged-sha256:'+'0'*64,'files':{},'installed_distributions':[],

@@ -286,6 +286,29 @@ def reconcile_cached_native_outputs(root,table):
         raise CSAQuarantineError('cached_outputs_disagree_with_fresh_original_native_records')
 
 
+def validate_cached_candidate_inventory(root,expected):
+    """Allow only pinned source objects and exact catalog-owned metadata snapshots."""
+    actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}-{'metadata/csa_candidate_ready.json'}
+    source_actual={name for name in actual if name.startswith(('candidate/','raw/','geopackage/')) or name in expected}
+    manifest_path=root/'metadata/source_manifest.json'
+    try:
+        authored_manifest=manifest_path.read_bytes()
+        strict_json(authored_manifest)
+    except (OSError,ValueError) as exc:
+        raise CSAQuarantineError('cached_source_manifest_missing_or_invalid') from exc
+    manifest_snapshot=f'metadata/source/version_{digest(authored_manifest)}_source_manifest.json'
+    downstream={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json',
+        'metadata/resolved_provenance.json','metadata/source/source_manifest.json',
+        'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',
+        manifest_snapshot,f'geoparquet/{SLUG}.parquet'}
+    if source_actual!=expected or actual-expected-downstream or any(p.is_symlink() for p in root.rglob('*')):
+        raise CSAQuarantineError('immutable_candidate_inventory_conflict')
+    for snapshot in ('metadata/source/source_manifest.json',manifest_snapshot):
+        path=root/snapshot
+        if path.exists() and (not path.is_file() or path.read_bytes()!=authored_manifest):
+            raise CSAQuarantineError('cached_authored_source_manifest_snapshot_drift')
+
+
 def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
     local_only(storage)
     body,receipt=acquire(storage,archive_path,receipt_path)
@@ -317,12 +340,10 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
             if ready.get('version')!=version or ready.get('processing_fingerprint')!=fingerprint or ready.get('source_sha256')!=SHA256 or ready.get('approved') is not False:
                 raise CSAQuarantineError('immutable_candidate_identity_conflict')
             expected={f'geopackage/{SLUG}.gpkg','candidate/typed-source.parquet','raw/source_capture.json','raw/retrieval.json','metadata/source_manifest.json','metadata/processing_identity.json','metadata/csa_source_audit.json','metadata/baseline_comparison.json'}
-            actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}-{'metadata/csa_candidate_ready.json'}
-            # Catalog/format assets own subsequent files; source-owned directories
-            # and the immutable receipt roster remain closed, never self-authorizing.
-            source_actual={name for name in actual if name.startswith(('candidate/','raw/','geopackage/')) or name in expected}
-            downstream={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json',f'geoparquet/{SLUG}.parquet'}
-            if set(ready['objects'])!=expected or source_actual!=expected or actual-expected-downstream or any(p.is_symlink() for p in root.rglob('*')):
+            # Catalog writes resolved provenance and source-manifest snapshots;
+            # accept only those exact derived paths and unchanged authored bytes.
+            validate_cached_candidate_inventory(root,expected)
+            if set(ready['objects'])!=expected:
                 raise CSAQuarantineError('immutable_candidate_inventory_conflict')
             for name,pin in ready['objects'].items():
                 if sha256_file(root/name)!=pin:
