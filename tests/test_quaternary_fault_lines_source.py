@@ -3,11 +3,15 @@ import hashlib
 import io
 import json
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
+from dagster_hifld.construction_provenance import ConstructionCodeIdentityError, validate_construction_code_identity
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import quaternary_fault_lines as source
 
 
@@ -66,6 +70,38 @@ def fixture():
 
 
 class QuaternaryFaultLinesSourceTests(unittest.TestCase):
+    def test_packaged_runtime_identity_is_versioned_and_recomputed(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "src/dagster_hifld"
+            package.mkdir(parents=True)
+            module = package / "runtime.py"
+            module.write_text("candidate transform = 1\n")
+            (root / "pyproject.toml").write_text("[project]\nname='fixture'\n")
+            (root / "uv.lock").write_text("version = 1\n")
+
+            identity = source._processing_identity(root)
+            self.assertEqual(identity["code_identity_scheme"], "sha256-packaged-dagster-hifld-v1")
+            self.assertEqual(identity["working_tree_status"], "unknown")
+            self.assertRegex(identity["code_commit"], r"^packaged-sha256:[0-9a-f]{64}$")
+            validate_construction_code_identity(
+                root, identity["code_commit"], identity["files"], identity=identity,
+            )
+
+            module.write_text("changed transform\n")
+            with self.assertRaisesRegex(ConstructionCodeIdentityError, "construction_packaged_file_hash_mismatch"):
+                validate_construction_code_identity(
+                    root, identity["code_commit"], identity["files"], identity=identity,
+                )
+
+    def test_same_version_staging_objects_are_immutable(self):
+        with TemporaryDirectory() as directory:
+            storage = StagingStorageResource(use_local=True, local_dir=directory, prefix="")
+            source.write_immutable(storage, "quaternary-fault-lines/v1/raw/page.body", b"captured bytes")
+            source.write_immutable(storage, "quaternary-fault-lines/v1/raw/page.body", b"captured bytes")
+            with self.assertRaisesRegex(ValueError, "immutable_staged_object_changed"):
+                source.write_immutable(storage, "quaternary-fault-lines/v1/raw/page.body", b"changed bytes")
+
     def validate_fixture(self, ids, layer, pages, *, nulls=None, bounds=(2.0, 0.0, 5.0, 1.0)):
         features = pages["page_000"]["features"]
         record_sha = sha([feature["attributes"] for feature in features])

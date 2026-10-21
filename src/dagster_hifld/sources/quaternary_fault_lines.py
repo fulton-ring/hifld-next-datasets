@@ -12,10 +12,8 @@ import hashlib
 import io
 import json
 import math
-import os
 import shutil
 import struct
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -29,6 +27,8 @@ from pyproj import CRS
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
 
 DATASET_SLUG = FILE_SLUG = "quaternary-fault-lines"
 PUBLISHER = "U.S. Geological Survey Earthquake Hazards Program"
@@ -338,14 +338,13 @@ def _parquet_bytes(features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _code_commit() -> str:
-    result = subprocess.run(["git", "-C", str(Path(__file__).parents[3]), "rev-parse", "HEAD"],
-                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
-    value = result.stdout.decode().strip()
-    if len(value) in (40, 64) and all(char in "0123456789abcdef" for char in value):
-        return value
-    value = os.environ.get("GITHUB_SHA", "")
-    return value if len(value) == 40 and all(char in "0123456789abcdef" for char in value) else "unknown"
+def _processing_identity(repo_root: Path | None = None) -> dict[str, object]:
+    root = Path(repo_root) if repo_root is not None else Path(__file__).parents[3]
+    identity = processing_identity(root)
+    validate_construction_code_identity(
+        root, identity["code_commit"], identity["files"], identity=identity,
+    )
+    return identity
 
 
 def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: str,
@@ -449,7 +448,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
     parquet = _parquet_bytes(features)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-    code_commit = _code_commit()
+    identity = _processing_identity()
     receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
     inputs = [{
         "input_id": name,
@@ -480,7 +479,9 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         "date_issued": None,
         "date_modified": None,
         "processor": "HIFLD Next",
-        "code_commit": code_commit,
+        "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"],
+        "processing_identity": identity,
         "inputs": inputs,
         "transformations": [{
             "operation": "Native ESRI polyline feature capture to typed GeoParquet WKB",
@@ -518,7 +519,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipts[name]) + b"\n"
     for name, body in sorted(outputs.items()):
-        storage.write_key(f"{prefix}/{name}", body)
+        write_immutable(storage, f"{prefix}/{name}", body)
     ready = {
         "approved": False,
         "version": version,
@@ -535,7 +536,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         "mapping_approved": False,
         "release_accepted": False,
     }
-    storage.write_key(f"{prefix}/metadata/candidate_ready.json", _canonical(ready) + b"\n")
+    write_immutable(storage, f"{prefix}/metadata/candidate_ready.json", _canonical(ready) + b"\n")
     return {
         "dataset_slug": DATASET_SLUG,
         "file_slug": FILE_SLUG,

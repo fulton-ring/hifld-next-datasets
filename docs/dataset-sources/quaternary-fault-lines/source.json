@@ -245,5 +245,37 @@
     "dagster_schedule": "defined and stopped",
     "local_materialization_evidence": "local-materialization.json",
     "release": "candidate remains unapproved; no production publication"
+  },
+  "official_download_candidate": {
+    "landing_page": "https://www.usgs.gov/programs/earthquake-hazards/faults",
+    "download_url": "https://earthquake.usgs.gov/static/lfs/nshm/qfaults/Qfaults_GIS.zip",
+    "data_release_doi": "https://doi.org/10.5066/P9BCVRCK",
+    "retrieved_at": "2026-10-21",
+    "http_status": 200,
+    "bytes": 32371696,
+    "last_modified": "2026-02-23T22:08:26Z",
+    "sha256": "447eadc5926256710d988c30e5996ba540604caa0154f9746c48bad637926893",
+    "native_variants": [
+      {
+        "path": "SHP/Qfaults_US_Database.shp",
+        "geometry": "LineString",
+        "crs": "EPSG:4326",
+        "feature_count": 112809,
+        "native_id": "none in DBF",
+        "attributes": 23,
+        "dbf_last_update": "2020-10-19"
+      },
+      {
+        "path": "GDB/Qfaults_2020_WGS84.gdb/Qfaults_2020",
+        "geometry": "MultiLineString",
+        "crs": "EPSG:4326",
+        "feature_count": 112944,
+        "native_id": "OBJECTID 1..112944 unique/contiguous",
+        "null_geometry_count": 0,
+        "attributes": 23
+      }
+    ],
+    "relationship_to_api": "The shapefile count equals the previously observed 112,809-feature API layer, but its DBF field names are truncated and it has no native OBJECTID. The FileGDB has 135 more rows than the API layer, a distinct ID roster/range, and does not declare archive_pdf. These are official product variants; count equality alone does not prove API/shapefile equivalence or prove that the API is partial. No source substitution is made.",
+    "historical_hifld_equivalence": "unresolved; DataLumos archive returned HTTP 403 anonymously and the DHS crosswalk record-level row was not re-fetched."
   }
 }
