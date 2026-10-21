@@ -335,6 +335,14 @@ from dagster_hifld.assets.usace_crane_locations import (
     usace_crane_locations_draft_job,
     usace_crane_locations_draft_schedule,
 )
+
+from dagster_hifld.assets.docks import (
+    docks_draft_job,
+    docks_draft_schedule,
+    docks_source_population_complete,
+    docks_source_geometry_quality,
+    docks_release_acceptance_pending,
+)
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -750,6 +758,9 @@ defs = Definitions(
         usace_crane_locations_complete,
         usace_crane_locations_quality,
         usace_crane_locations_release,
+        docks_source_population_complete,
+        docks_source_geometry_quality,
+        docks_release_acceptance_pending,
     ],
     jobs=[
         colleges_source_integrity_job,
@@ -806,6 +817,7 @@ defs = Definitions(
         construction_minerals_draft_job,
         county_subdivisions_draft_refresh_job,
         usace_crane_locations_draft_job,
+        docks_draft_job,
     ],
     schedules=[
         colleges_source_integrity_schedule,
@@ -866,6 +878,7 @@ defs = Definitions(
         construction_minerals_draft_schedule,
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
+        docks_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
