@@ -44,7 +44,7 @@ class PanelsTests(unittest.TestCase):
                              'metadata/resolved_provenance.json','metadata/source/source_manifest.json'):
                 self.assertTrue((root/relative).is_file(),relative)
             digest=s.sha((root/'metadata/source_manifest.json').read_bytes())
-            self.assertTrue((root/'metadata/source/version_'+digest+'_source_manifest.json').is_file())
+            self.assertTrue((root/'metadata/source'/f'version_{digest}_source_manifest.json').is_file())
             self.assertEqual(s.stage_cbrs_map_panels_candidate(store,capture_dir=CAPTURE),result)
 
     def test_complete_original(self):
