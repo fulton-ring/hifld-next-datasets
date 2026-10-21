@@ -76,7 +76,9 @@ def read_baseline_comparison_result(
         # Use configured destination solely to match the independent decision.
         # No destination writes occur during acceptance checking.
         destination = destination or PublishedStorageResource.from_env()
-        require_release_approval(staging_storage, destination, [(key, key.removeprefix(staging_storage.prefix.rstrip("/") + "/") if staging_storage.prefix else key)])
+        from dagster_hifld.portolan.release import read_staged_release
+        _, target_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
+        require_release_approval(staging_storage, destination, [(key, f"{target_prefix}/metadata/baseline_comparison.json")])
     except (ReleaseApprovalError, ValueError, OSError, KeyError, TypeError) as exc:
         return AssetCheckResult(passed=False, metadata={"reason": str(exc)})
     return AssetCheckResult(passed=True, metadata={"reason": "exact_manual_release_decision", "report": key})

@@ -14,6 +14,7 @@ from urllib.parse import urljoin, urlparse
 from uuid import uuid4
 
 from dagster_hifld.provenance import INPUT_URL_FIELDS, validate_provenance
+from .release import semantic_version_key
 
 CATALOG_APPLICATION_ID = 0x4849464C
 CATALOG_SCHEMA_VERSION = 2
@@ -334,17 +335,12 @@ def _delete_version_projection(
     connection.execute("DELETE FROM versions WHERE version_path = ?", (version_path,))
 
 
-def version_sort_key(label: str) -> tuple[int, int, int, int, int, str, str]:
+def version_sort_key(label: str) -> tuple:
     """Order semver numerically while tolerating legacy non-semver labels."""
-    core, _, prerelease = label.removeprefix("v").partition("-")
-    core = core.split("+", 1)[0]
-    numbers = core.split(".")
-    if not 1 <= len(numbers) <= 3 or not all(number.isdecimal() for number in numbers):
-        return (0, 0, 0, 0, 0, "", label)
-    major, minor, patch = (
-        int(number) for number in (*numbers, *("0",) * (3 - len(numbers)))
-    )
-    return (1, major, minor, patch, int(not prerelease), prerelease, label)
+    try:
+        return (1, *semantic_version_key(label), label)
+    except ValueError:
+        return (0, label)
 
 
 def _set_latest_versions(
@@ -1067,6 +1063,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
         ],
         "type": "Collection",
         "id": record.version_path,
+        "version": record.version_label.removeprefix("v"),
         "title": record.title,
         "description": record.description,
         "license": record.license_id,

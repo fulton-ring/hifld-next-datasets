@@ -69,11 +69,11 @@ def comparison(root, left, right, contract=None, limits=ComparisonLimits()):
                              baseline_reference=baseline_reference(baseline), limits=limits)
 
 
-def accepted_fixture(root):
+def accepted_fixture(root, candidate_version="v1.0.0"):
     """Explicit synthetic acceptance owned by the test, outside storage roots."""
     source = StagingStorageResource(local_dir=str(root / "staging"), use_local=True)
     target = PublishedStorageResource(local_dir=str(root / "published"), use_local=True)
-    prefix = "synthetic/points/vtest"
+    prefix = f"synthetic/points/{candidate_version}"
     version_dir = root / "staging" / prefix
     version_dir.mkdir(parents=True)
     stream(root / "baseline.jsonl", [feature()])
@@ -82,7 +82,7 @@ def accepted_fixture(root):
     report = compare_full_rows(root / "baseline.jsonl", candidate, CONTRACT, version_dir / "metadata",
                                baseline_sha256=sha256_file(root / "baseline.jsonl"), candidate_sha256=sha256_file(candidate),
                                baseline_reference=baseline_reference(root / "baseline.jsonl"))
-    source.write("synthetic", "points", "vtest", "geojson/source.geojson",
+    source.write("synthetic", "points", candidate_version, "geojson/source.geojson",
                  json.dumps({"type": "FeatureCollection", "features": [feature()]}).encode())
     raw_source = source._ensure_prefixed(f"{prefix}/geojson/source.geojson")
     raw_source_sha = source.sha256_key(raw_source)
@@ -103,12 +103,19 @@ def accepted_fixture(root):
     for name, value in (("source_manifest.json", manifest), ("quality_manifest.json", {"quality_check_passed": True}),
                         ("data_dictionary.json", {"agency": "Synthetic Agency", **manifest}),
                         ("resolved_provenance.json", manifest)):
-        source.write("synthetic", "points", "vtest", f"metadata/{name}", json.dumps(value).encode())
-    snapshot_source_metadata(source, "synthetic", "points", "vtest")
-    projection = provenance_projection(load_resolved_source_manifest(source, "synthetic", "points", "vtest").metadata)
+        source.write("synthetic", "points", candidate_version, f"metadata/{name}", json.dumps(value).encode())
+    snapshot_source_metadata(source, "synthetic", "points", candidate_version)
+    projection = provenance_projection(load_resolved_source_manifest(source, "synthetic", "points", candidate_version).metadata)
     source.write_key(f"{prefix}/metadata/resolved_provenance.json", json.dumps(projection).encode())
     source.write_key(f"{prefix}/metadata/data_dictionary.json", json.dumps({"agency": "Synthetic Agency", **projection}).encode())
-    objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
+    source.write_key(f"{prefix}/collection.json", json.dumps({
+        "type": "Collection", "stac_version": "1.1.0", "version": "1.0.0",
+        "id": "hifld/synthetic/points/v1.0.0", "description": "Synthetic fixture only",
+        "license": "other", "links": [], "assets": {},
+        "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [[None, None]]}},
+        "stac_extensions": ["https://stac-extensions.github.io/version/v1.2.0/schema.json"],
+    }).encode())
+    objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", candidate_version)}
     entry = {"destination": _storage_identity(target), "staged_version_prefix": prefix,
              "implementation_sha256": verifier_implementation_sha256(),
              "decision": {"id": "SYNTHETIC-ONLY", "approved_by": "test-fixture", "approved_at": "2026-10-19"},
@@ -316,15 +323,15 @@ class ReleaseBoundaryTests(unittest.TestCase):
         for format_name, relative_path, generate in cases:
             with self.subTest(format=format_name), tempfile.TemporaryDirectory() as directory:
                 source, target, registry = accepted_fixture(Path(directory))
-                prefix = "synthetic/points/vtest"
+                prefix = "synthetic/points/v1.0.0"
                 manifest_key = f"{prefix}/metadata/source_manifest.json"
                 manifest = json.loads(source.read_key(manifest_key))
                 reason = "full source audit shows an unapproved representation change"
                 manifest["unsupported_output_formats"] = {format_name: reason}
                 source.write_key(manifest_key, json.dumps(manifest).encode())
-                stale_key = source.write("synthetic", "points", "vtest", relative_path, b"retained excluded evidence")
+                stale_key = source.write("synthetic", "points", "v1.0.0", relative_path, b"retained excluded evidence")
                 with patch("dagster_hifld.assets.publish._prepare_format_publish") as prepare, patch("dagster_hifld.assets.publish.select_processing_input") as select:
-                    result = generate(source, "synthetic", "points", "vtest")
+                    result = generate(source, "synthetic", "points", "v1.0.0")
                 prepare.assert_not_called()
                 select.assert_not_called()
                 self.assertFalse(result[0].path)
@@ -332,25 +339,25 @@ class ReleaseBoundaryTests(unittest.TestCase):
                 self.assertEqual(source.read_key(stale_key), b"retained excluded evidence")
                 value = json.loads(registry.read_text())
                 entry = value["releases"][0]
-                objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
+                objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
                 entry.update(staged_objects=objects, published_objects=objects, provenance_sha256=objects[manifest_key])
                 registry.write_text(json.dumps(value))
                 with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
                     with self.assertRaisesRegex(ReleaseApprovalError, "unsupported_output_present"):
-                        _copy_version_files(source, target, "synthetic", "points", "vtest")
+                        _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(target.list_prefix(), [])
 
     def test_malformed_exclusion_policy_blocks_generation_and_release_even_when_repinned(self):
         for policy in (None, [], {"shapefile_zip": None}, {"geoparquet": None}, {"unknown_format": "loss"}):
             with self.subTest(policy=policy), tempfile.TemporaryDirectory() as d:
                 source, target, registry = accepted_fixture(Path(d))
-                manifest_key = "synthetic/points/vtest/metadata/source_manifest.json"
+                manifest_key = "synthetic/points/v1.0.0/metadata/source_manifest.json"
                 manifest = json.loads(source.read_key(manifest_key))
                 manifest["unsupported_output_formats"] = policy
                 source.write_key(manifest_key, json.dumps(manifest).encode())
                 with patch("dagster_hifld.assets.publish._read_layer") as conversion:
                     with self.assertRaises(ValueError):
-                        _write_and_publish_shapefile_zip(source, "synthetic", "points", "vtest")
+                        _write_and_publish_shapefile_zip(source, "synthetic", "points", "v1.0.0")
                 conversion.assert_not_called()
                 value = json.loads(registry.read_text())
                 entry = value["releases"][0]
@@ -361,32 +368,32 @@ class ReleaseBoundaryTests(unittest.TestCase):
                 registry.write_text(json.dumps(value))
                 with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
                     with self.assertRaises(ValueError):
-                        _copy_version_files(source, target, "synthetic", "points", "vtest")
+                        _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(target.list_prefix(), [])
 
     def test_evidenced_unsupported_shapefile_is_skipped_and_stale_artifact_cannot_promote(self):
         with tempfile.TemporaryDirectory() as d:
             source, target, registry = accepted_fixture(Path(d))
-            prefix = "synthetic/points/vtest"
+            prefix = "synthetic/points/v1.0.0"
             manifest_key = f"{prefix}/metadata/source_manifest.json"
             manifest = json.loads(source.read_key(manifest_key))
             manifest["unsupported_output_formats"] = {"shapefile_zip": "full audit found long-text truncation and whitespace loss"}
             source.write_key(manifest_key, json.dumps(manifest).encode())
-            stale_key = source.write("synthetic", "points", "vtest", "shapefile/source.zip", b"lossy derivative")
+            stale_key = source.write("synthetic", "points", "v1.0.0", "shapefile/source.zip", b"lossy derivative")
             with patch("dagster_hifld.assets.publish._read_layer") as conversion:
-                result = _write_and_publish_shapefile_zip(source, "synthetic", "points", "vtest")
+                result = _write_and_publish_shapefile_zip(source, "synthetic", "points", "v1.0.0")
             conversion.assert_not_called()
             self.assertFalse(result[0].path)
             self.assertIn("long-text truncation", result[0].source_metadata["skip_reason"])
             self.assertTrue(source.object_exists(stale_key))
             value = json.loads(registry.read_text())
             entry = value["releases"][0]
-            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
+            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
             entry.update(staged_objects=objects, published_objects=objects, provenance_sha256=objects[manifest_key])
             registry.write_text(json.dumps(value))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
                 with self.assertRaisesRegex(ReleaseApprovalError, "unsupported_output_present"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
             self.assertEqual(target.list_prefix(), [])
 
     def test_candidate_comparison_input_pin_and_derivation_cannot_drift(self):
@@ -402,7 +409,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
                 registry.write_text(json.dumps(value))
                 with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
                     with self.assertRaises(ReleaseApprovalError):
-                        _copy_version_files(source, target, "synthetic", "points", "vtest")
+                        _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(target.list_prefix(), [])
 
     def test_jsonl_pass_cannot_claim_unaccounted_source_to_output_custody(self):
@@ -411,7 +418,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
             source, target, registry = accepted_fixture(root)
             prior = target.write_key("previous/accepted.bin", b"accepted bytes")
             before = target.sha256_key(prior)
-            prefix = "synthetic/points/vtest"
+            prefix = "synthetic/points/v1.0.0"
             candidate = root / "staging" / prefix / "metadata/candidate.records.jsonl"
             baseline = root / "baseline.jsonl"
             unrelated = [feature("101"), feature("102"), feature("103")]
@@ -431,9 +438,9 @@ class ReleaseBoundaryTests(unittest.TestCase):
                 "sha256": sha256_file(candidate), "bytes": candidate.stat().st_size,
             }
             source.write_key(manifest_key, json.dumps(manifest).encode())
-            snapshot_source_metadata(source, "synthetic", "points", "vtest")
+            snapshot_source_metadata(source, "synthetic", "points", "v1.0.0")
             projection = provenance_projection(
-                load_resolved_source_manifest(source, "synthetic", "points", "vtest").metadata
+                load_resolved_source_manifest(source, "synthetic", "points", "v1.0.0").metadata
             )
             source.write_key(f"{prefix}/metadata/resolved_provenance.json", json.dumps(projection).encode())
             source.write_key(f"{prefix}/metadata/data_dictionary.json",
@@ -441,7 +448,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
 
             value = json.loads(registry.read_text())
             entry = value["releases"][0]
-            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
+            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
             candidate_key = f"{prefix}/metadata/candidate.records.jsonl"
             entry.update(
                 baseline=report["baseline"], contract_sha256=report["contract_sha256"],
@@ -463,7 +470,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
             source, target, _ = accepted_fixture(Path(d))
             target_alias = StagingStorageResource(local_dir=target.local_dir, use_local=True)
-            key = "synthetic/points/vtest/geojson/source.geojson"
+            key = "synthetic/points/v1.0.0/geojson/source.geojson"
             with self.assertRaises(ReleaseApprovalError):
                 promote_immutable_objects(source, target_alias, [(key, key)])
 
@@ -475,19 +482,19 @@ class ReleaseBoundaryTests(unittest.TestCase):
             candidate_registry.write_bytes(registry.read_bytes())
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(candidate_registry)}):
                 with self.assertRaisesRegex(ReleaseApprovalError, "outside_candidate"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
             value = json.loads(registry.read_text())
             value["releases"][0]["implementation_sha256"] = "stale"
             registry.write_text(json.dumps(value))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
                 with self.assertRaisesRegex(ReleaseApprovalError, "implementation_changed"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
 
     def test_absent_registry_blocks_direct_local_and_low_level_writes(self):
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
             source, target, _ = accepted_fixture(Path(d))
-            key = "synthetic/points/vtest/geojson/source.geojson"
-            for action in (lambda: _copy_version_files(source, target, "synthetic", "points", "vtest"),
+            key = "synthetic/points/v1.0.0/geojson/source.geojson"
+            for action in (lambda: _copy_version_files(source, target, "synthetic", "points", "v1.0.0"),
                            lambda: promote_immutable_objects(source, target, [(key, key)]),
                            lambda: write_immutable_object(target, key, b"forged")):
                 with self.assertRaises(ReleaseApprovalError):
@@ -498,16 +505,16 @@ class ReleaseBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             source, target, registry = accepted_fixture(Path(d))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
-                _copy_version_files(source, target, "synthetic", "points", "vtest")
+                _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 before = {key: target.object_snapshot(key) for key in target.list_prefix()}
-                source.write("synthetic", "points", "vtest", "geojson/added.geojson", b"new shard")
+                source.write("synthetic", "points", "v1.0.0", "geojson/added.geojson", b"new shard")
                 with self.assertRaises(ReleaseApprovalError):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
-                source.delete_prefix("synthetic/points/vtest/geojson/added.geojson")
-                source.write("synthetic", "points", "vtest", "geojson/source.geojson", b"changed bytes")
+                source.delete_prefix("synthetic/points/v1.0.0/geojson/added.geojson")
+                source.write("synthetic", "points", "v1.0.0", "geojson/source.geojson", b"changed bytes")
                 with self.assertRaisesRegex(ReleaseApprovalError, "bytes_changed"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
 
     def test_dagster_synthetic_verify_promote_and_failed_promotion_preservation(self):
@@ -518,7 +525,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
             instance_dir = root / "dagster"
             instance_dir.mkdir()
             (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
-            partition = "synthetic/points/vtest"
+            partition = "synthetic/points/v1.0.0"
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry), "DAGSTER_HOME": str(instance_dir)}), DagsterInstance.get() as instance:
                 instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition])
                 resources = {"staging_storage": source, "published_storage": target}
@@ -530,11 +537,11 @@ class ReleaseBoundaryTests(unittest.TestCase):
                 success = job.execute_in_process(instance=instance, partition_key=partition)
                 self.assertTrue(success.success)
                 before = {key: target.object_snapshot(key) for key in target.list_prefix()}
-                source.write("synthetic", "points", "vtest", "geojson/source.geojson", b"unapproved drift")
+                source.write("synthetic", "points", "v1.0.0", "geojson/source.geojson", b"unapproved drift")
                 failure = job.execute_in_process(instance=instance, partition_key=partition, raise_on_error=False)
                 self.assertFalse(failure.success)
                 self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
-                self.assertTrue(source.object_exists("synthetic/points/vtest/metadata/baseline_comparison.json"))
+                self.assertTrue(source.object_exists("synthetic/points/v1.0.0/metadata/baseline_comparison.json"))
                 (root / "integration_result.json").write_text(json.dumps({
                     "classification": "synthetic integration; no real acceptance", "success_run_id": success.run_id,
                     "failed_drift_run_id": failure.run_id, "success": success.success, "drift_success": failure.success,

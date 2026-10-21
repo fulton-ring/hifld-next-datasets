@@ -27,6 +27,7 @@ CATALOG_METADATA_FIELDS = (
     "office",
     "keywords",
     "source_url",
+    "documentation_url",
     "license",
     "source_modified",
     "date_issued",
