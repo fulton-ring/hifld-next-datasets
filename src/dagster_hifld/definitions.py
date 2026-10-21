@@ -41,6 +41,11 @@ from dagster_hifld.assets.principal_ports import (
     principal_ports_source_complete,
     principal_ports_draft_schedule,
 )
+from dagster_hifld.assets.bsee_ocs_platforms import (
+    bsee_ocs_platforms_complete,
+    bsee_ocs_platforms_draft_job,
+    bsee_ocs_platforms_draft_schedule,
+)
 from dagster_hifld.assets.usace_berths_areas import (
     usace_berths_areas_complete,
     usace_berths_areas_draft_schedule,
@@ -494,6 +499,7 @@ defs = Definitions(
         principal_ports_source_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
+        bsee_ocs_platforms_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -510,6 +516,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
+        bsee_ocs_platforms_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -529,6 +536,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
+        bsee_ocs_platforms_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
