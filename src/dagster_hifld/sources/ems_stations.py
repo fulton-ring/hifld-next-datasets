@@ -254,6 +254,33 @@ def _immutable(storage: StagingStorageResource, key: str, body: bytes) -> str:
     return storage._ensure_prefixed(key)
 
 
+def _validate_existing_catalog(storage: StagingStorageResource, prefix: str,
+                               source_manifest: bytes) -> None:
+    """Fail closed if a cataloged candidate's sidecars or provenance changed."""
+    actual = set(storage.list_prefix(prefix))
+    quality_key = f"{prefix}/metadata/quality_manifest.json"
+    dictionary_key = f"{prefix}/metadata/data_dictionary.json"
+    catalog_present = quality_key in actual or dictionary_key in actual
+    if not catalog_present:
+        return
+    if {quality_key, dictionary_key} - actual:
+        raise EMSQuarantineError("cached_catalog_sidecars_incomplete")
+    manifest_sha = digest(source_manifest)
+    required = {
+        f"{prefix}/metadata/source/source_manifest.json",
+        f"{prefix}/metadata/source/version_{manifest_sha}_source_manifest.json",
+    }
+    if not required <= actual:
+        raise EMSQuarantineError("cached_catalog_manifest_snapshot_pair_incomplete")
+    if any(storage.read_key(key) != source_manifest for key in required):
+        raise EMSQuarantineError("cached_catalog_source_manifest_snapshot_drift")
+    try:
+        from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
+        _validate_cached_catalog_sidecars(storage, prefix, actual)
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+        raise EMSQuarantineError("cached_catalog_sidecar_recomputation_failed") from exc
+
+
 def stage_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None, code_commit: str | None = None) -> dict:
     require_local(storage)
     bodies, receipts = _capture(capture_dir)
@@ -315,4 +342,5 @@ def stage_candidate(storage: StagingStorageResource, *, capture_dir: Path | None
         "raw_identity":raw_identity,"candidate_key":candidate_key,"candidate_sha256":digest(parquet),"catalog_source_key":source_key,
         "source_manifest_sha256":digest(manifest_body),"proposed_contract_key":contract_key,"proposed_snapshot_key":snapshot_key,"refresh_policy":"Pinned field/count/ID/full-row snapshot; any observed drift quarantines for review; this is a proposed service snapshot, not a release or HIFLD baseline."}
     _immutable(storage,f"{prefix}/metadata/ems_extraction.json",encode(report))
+    _validate_existing_catalog(storage, prefix, manifest_body)
     return report
