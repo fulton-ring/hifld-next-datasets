@@ -15,9 +15,20 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.arc_regions import (
+    arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
+)
+from dagster_hifld.assets.usgs import (
+    usgs_aquifers_draft_refresh_job,
+    usgs_aquifers_draft_refresh_schedule,
+)
 from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_job,
     aiannh_source_integrity_refresh_schedule,
+)
+from dagster_hifld.assets.bts import (
+    amtrak_draft_refresh_job,
+    amtrak_draft_refresh_schedule,
 )
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
@@ -175,6 +186,13 @@ from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_airport_area import (
+    usace_airport_area_complete,
+    usace_airport_area_quality,
+    usace_airport_area_release,
+    usace_airport_area_draft_job,
+    usace_airport_area_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -570,6 +588,7 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[
         *hifld_asset_checks,
+        arc_regions_full_quality,
         eia_power_plants_complete,
         gcca_warehouses_geometry_complete,
         red_cross_headquarters_source_population,
@@ -596,8 +615,12 @@ defs = Definitions(
         nces_private_schools_complete,
         nces_public_schools_complete,
         coastlines_usace_ienc_complete,
+        usace_airport_area_complete,
+        usace_airport_area_quality,
+        usace_airport_area_release,
     ],
     jobs=[
+        usgs_aquifers_draft_refresh_job,
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
@@ -628,10 +651,14 @@ defs = Definitions(
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
+        arc_regions_draft_job,
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
+        usace_airport_area_draft_job,
+        amtrak_draft_refresh_job,
     ],
     schedules=[
+        usgs_aquifers_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
         census_primary_roads_draft_schedule,
         usace_pylon_areas_draft_schedule,
@@ -665,8 +692,11 @@ defs = Definitions(
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
+        arc_regions_draft_schedule,
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
+        usace_airport_area_draft_schedule,
+        amtrak_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
