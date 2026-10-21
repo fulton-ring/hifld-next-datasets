@@ -17,15 +17,20 @@ from dagster_hifld.assets.puerto_rico_subbarrios import (
     puerto_rico_subbarrios_source_complete,
 )
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason
 from dagster_hifld.sources.puerto_rico_subbarrios import (
     DATASET_SLUG,
     EXPECTED_BYTES,
     EXPECTED_FEATURE_COUNT,
+    EXPECTED_GEOMETRY_TYPE_COUNTS,
     EXPECTED_GEOID_SHA256,
     EXPECTED_SHA256,
     SOURCE_URL,
     _capture,
     _inspect_archive,
+    candidate_version,
+    capture_puerto_rico_subbarrios,
+    processing_code_identity,
 )
 
 
@@ -52,6 +57,14 @@ def _fixture_body() -> bytes | None:
     if len(body) != EXPECTED_BYTES or hashlib.sha256(body).hexdigest() != EXPECTED_SHA256:
         raise ValueError("fixture_archive_identity_mismatch")
     return body
+
+
+def _write_retained_capture(root: Path, body: bytes) -> None:
+    """Write an exact retained capture roster for the pinned archive."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "source.body").write_bytes(body)
+    (root / "source.wire").write_bytes(body)
+    (root / "source.receipt.json").write_text(json.dumps(_receipt(body, body)))
 
 
 class PuertoRicoSubbarriosTests(unittest.TestCase):
@@ -82,6 +95,47 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
         candidate["feature_count"] = EXPECTED_FEATURE_COUNT
         candidate["source_id_sha256"] = "0" * 64
         self.assertFalse(puerto_rico_subbarrios_source_complete(candidate).passed)
+
+    def test_processing_code_identity_does_not_use_git(self):
+        with patch("subprocess.check_output", side_effect=FileNotFoundError("git")), \
+             patch("subprocess.run", side_effect=FileNotFoundError("git")):
+            identity = processing_code_identity()
+            self.assertRegex(identity, r"^[0-9a-f]{64}$")
+            self.assertRegex(candidate_version(), r"^v[0-9a-f]{32}$")
+
+    def test_processing_code_identity_reads_packaged_layout_without_git(self):
+        import shutil
+        from dagster_hifld.sources import puerto_rico_subbarrios as module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "src"
+            shutil.copytree(module.PROCESSING_SOURCE_PACKAGE, root / "dagster_hifld")
+            self.assertFalse((root / ".git").exists())
+            with patch.object(module, "PROCESSING_SOURCE_ROOT", root), \
+                 patch.object(module, "PROCESSING_SOURCE_PACKAGE", root / "dagster_hifld"):
+                digest = module.processing_code_identity()
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+
+    def test_capture_records_packaged_code_identity_without_git(self):
+        body = _fixture_body()
+        if body is None:
+            self.skipTest("set HIFLD_PUERTO_RICO_SUBBARRIOS_FIXTURE or HIFLD_FETCH_PUERTO_RICO_SUBBARRIOS_FIXTURE=1")
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_root = Path(tmp) / "capture"
+            _write_retained_capture(capture_root, body)
+            staging = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
+            with patch("subprocess.check_output", side_effect=FileNotFoundError("git")), \
+                 patch("subprocess.run", side_effect=FileNotFoundError("git")):
+                result = capture_puerto_rico_subbarrios(
+                    staging, version="videntity", capture_directory=capture_root)
+            self.assertEqual(result["code_sha256"], processing_code_identity())
+            self.assertEqual(result["code_identity_scheme"], "sha256-packaged-dagster_hifld-py-v1")
+            resolved = load_resolved_source_manifest(staging, DATASET_SLUG, DATASET_SLUG, "videntity")
+            self.assertEqual(resolved.metadata["processing_code"]["scheme"],
+                             "sha256-packaged-dagster_hifld-py-v1")
+            self.assertEqual(resolved.metadata["processing_code"]["sha256"], result["code_sha256"])
+            reason = unsupported_output_reason(resolved.metadata, "geopackage")
+            self.assertIsNotNone(reason)
+            self.assertIn("MultiPolygon", reason)
 
     def test_archive_capture_rejects_changed_bytes(self):
         body = b"not the pinned Census archive"
@@ -143,6 +197,7 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
         self.assertEqual(audit["source_id_sha256"], EXPECTED_GEOID_SHA256)
         self.assertEqual(audit["source_crs"], "EPSG:4269")
         self.assertEqual(audit["invalid_geometry_count"], 0)
+        self.assertEqual(audit["geometry_type_counts"], EXPECTED_GEOMETRY_TYPE_COUNTS)
 
 
 def io_bytes_with_extra_member(body: bytes) -> bytes:

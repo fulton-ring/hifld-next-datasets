@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import subprocess
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -45,6 +44,7 @@ EXPECTED_BOUNDS = [-67.192456, 17.910811, -65.624604, 18.487596]
 EXPECTED_MTFCC = {"G4060"}
 EXPECTED_CLASSFP = {"Z6"}
 EXPECTED_FUNCSTAT = {"N"}
+EXPECTED_GEOMETRY_TYPE_COUNTS = {"Polygon": 143, "MultiPolygon": 2}
 EXPECTED_GEOID_SHA256 = "3f5265bfb87cf1f6cabfd3de49d68cc695e01aa60f41c0852c9306ca07c7695a"
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 5_000_000
@@ -59,12 +59,39 @@ def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
-def processing_commit() -> str:
-    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(__file__).parents[3], text=True).strip()
+CODE_IDENTITY_SCHEME = "sha256-packaged-dagster_hifld-py-v1"
+
+# The installed package root (``.../src``); resolvable from the Docker image and
+# from a plain source checkout without a ``.git`` directory.
+PROCESSING_SOURCE_ROOT = Path(__file__).resolve().parents[2]
+PROCESSING_SOURCE_PACKAGE = PROCESSING_SOURCE_ROOT / "dagster_hifld"
+
+
+def processing_code_identity() -> str:
+    """Content digest of the packaged processing code, independent of Git.
+
+    The Docker image ships ``src/`` without ``.git``, so a runtime ``git``
+    lookup cannot identify the deployed code. Hashing the shipped package
+    sources is verifiable from the packaged layout and from a source checkout.
+    """
+    files = sorted(PROCESSING_SOURCE_PACKAGE.rglob("*.py"))
+    if not files or not PROCESSING_SOURCE_PACKAGE.is_dir():
+        raise ValueError("processing_source_package_missing")
+    digest = hashlib.sha256()
+    for path in files:
+        name = path.relative_to(PROCESSING_SOURCE_ROOT).as_posix().encode("utf-8")
+        body = path.read_bytes()
+        digest.update(len(name).to_bytes(8, "big") + name)
+        digest.update(len(body).to_bytes(8, "big") + body)
+    return digest.hexdigest()
 
 
 def candidate_version() -> str:
-    identity = _canonical({"source_sha256": EXPECTED_SHA256, "code_commit": processing_commit()})
+    identity = _canonical({
+        "source_sha256": EXPECTED_SHA256,
+        "code_identity_scheme": CODE_IDENTITY_SCHEME,
+        "code_sha256": processing_code_identity(),
+    })
     return "v" + _sha(identity)[:32]
 
 
@@ -203,6 +230,9 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
         raise ValueError("tiger_source_geometry_quality_failure")
     if not set(geometry.geom_type) <= {"Polygon", "MultiPolygon"}:
         raise ValueError("tiger_source_geometry_type_drift")
+    geometry_type_counts = {str(name): int(count) for name, count in geometry.geom_type.value_counts().items()}
+    if geometry_type_counts != EXPECTED_GEOMETRY_TYPE_COUNTS:
+        raise ValueError("tiger_source_geometry_composition_drift")
     bounds = [float(value) for value in frame.total_bounds]
     if any(abs(a - b) > 1e-6 for a, b in zip(bounds, EXPECTED_BOUNDS)):
         raise ValueError("tiger_source_coverage_extent_drift")
@@ -215,7 +245,7 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
         "attribute_types": {name: ("string" if name in STRING_FIELDS else "int64") for name in EXPECTED_FIELDS},
         "source_id_field": "GEOID", "source_id_sha256": id_digest,
         "source_schema_sha256": _sha(_canonical(schema)), "source_crs": EXPECTED_CRS,
-        "geometry_type": "Polygon/MultiPolygon", "bounds": bounds,
+        "geometry_type": "Polygon/MultiPolygon", "geometry_type_counts": geometry_type_counts, "bounds": bounds,
         "null_geometry_count": int(geometry.isna().sum()), "empty_geometry_count": int(geometry.is_empty.sum()),
         "invalid_geometry_count": int((~geometry.is_valid).sum()),
         "mtfcc_values": sorted(EXPECTED_MTFCC), "classfp_values": sorted(EXPECTED_CLASSFP),
@@ -237,12 +267,13 @@ def capture_puerto_rico_subbarrios(
     if after is None or after.size != EXPECTED_BYTES or staging_storage.sha256_key(archive_key) != EXPECTED_SHA256:
         raise ValueError("staged_tiger_archive_integrity_failure")
     reused = before is not None
-    code_commit = processing_commit()
+    code_sha256 = processing_code_identity()
     observed_at = receipt.get("observed_at")
     manifest = {
         "schema_version": 1,
         "processor": "HIFLD Next",
-        "code_commit": code_commit,
+        "code_commit": code_sha256,
+        "processing_code": {"scheme": CODE_IDENTITY_SCHEME, "sha256": code_sha256},
         "title": "Puerto Rico Subbarrios",
         "description": "2023 Census TIGER/Line Puerto Rico subbarrio (FIPS 72) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
         "publisher": PUBLISHER,
@@ -267,6 +298,9 @@ def capture_puerto_rico_subbarrios(
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the subbarrio Shapefile without ID synthesis, schema widening, or attribute mapping."],
         "lineage": "Official Census Bureau Geography Division TIGER/Line SUBBARRIO product (producer publication). The DHS crosswalk row matches this exact URL; the DataLumos archive item 240631 V2 is the archived HIFLD copy and is retained only as a labeled fallback (HTTP 403 to automated retrieval on 2026-10-21).",
+        "unsupported_output_formats": {
+            "geopackage": "The source layer mixes Polygon (143) and MultiPolygon (2) geometry. The inherited chunked GeoPackage writer declares the layer's geometry from its first chunk and then appends incompatible geometries, producing a file that violates the GeoPackage geometry-type contract. GeoPackage output is withheld until a geometry-type-preserving writer is approved.",
+        },
     }
     manifest_key = f"{prefix}/metadata/source_manifest.json"
     if staging_storage.object_exists(manifest_key):
@@ -296,7 +330,7 @@ def capture_puerto_rico_subbarrios(
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": EXPECTED_BYTES,
         "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
-        "code_commit": code_commit,
+        "code_sha256": code_sha256, "code_identity_scheme": CODE_IDENTITY_SCHEME,
         "source_id_field": "GEOID",
         "source_coverage_scope": "Puerto Rico (FIPS 72) Census TIGER subbarrios, 2023 vintage",
         "source_release_accepted": False, "source_freshness_accepted": False,

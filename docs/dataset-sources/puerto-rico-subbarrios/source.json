@@ -34,7 +34,12 @@
     "geoid_unique": true,
     "crs": "EPSG:4269",
     "geometry_types": ["Polygon", "MultiPolygon"],
+    "geometry_type_counts": {"Polygon": 143, "MultiPolygon": 2},
     "bounds_wgs84_4269": [-67.192456, 17.910811, -65.624604, 18.487596]
+  },
+  "processing_code_identity": {
+    "scheme": "sha256-packaged-dagster_hifld-py-v1",
+    "note": "Candidate version binds the pinned source SHA256 to a content digest of the packaged src/dagster_hifld Python sources. This is verifiable from the Docker image (which ships no .git) and from a source checkout, and does not execute git at ingest time."
   },
   "source_fields": [
     {"name": "STATEFP", "type": "string"},
@@ -62,10 +67,13 @@
     "id_contract": "GEOID preserved as zero-padded string; GEOIDFQ retained; no generated IDs"
   },
   "refresh_cadence": "annual, tied to the Census TIGER/Line late-year postings of SUBBARRIO under a new TIGER{year} directory",
-  "idempotency": "content-derived version from pinned zip sha256 plus processing identity; re-running with the same bytes reuses the sealed candidate",
+  "output_format_exclusions": {
+    "geopackage": "Withheld: the source layer mixes Polygon (143) and MultiPolygon (2). The inherited chunked GeoPackage writer declares the layer geometry from its first chunk and then appends incompatible geometries, violating the GeoPackage geometry-type contract. No GeoPackage output is staged or promoted unless a geometry-type-preserving writer is approved."
+  },
+  "idempotency": "content-derived version from pinned zip sha256 plus processing code identity; re-running with the same bytes reuses the sealed candidate",
   "completeness_gate": "pinned byte-level sha256/length of the exact zip, full archive extraction, 145 unique GEOIDs, no null/empty/invalid geometry",
   "error_handling": "any capture or validation failure quarantines the full raw capture under _quarantine/puerto-rico-subbarrios/ and blocks promotion",
-  "drift_quarantine": "pinned sha256, member roster, schema, field roster, MTFCC/CLASSFP value sets, ID digest, and coverage bounds checks all quarantine instead of adapting",
+  "drift_quarantine": "pinned sha256, member roster, schema, field roster, MTFCC/CLASSFP value sets, ID digest, geometry-type composition (143 Polygon / 2 MultiPolygon) and coverage bounds checks all quarantine instead of adapting",
   "fallback_candidates": [
     {
       "role": "archive",
