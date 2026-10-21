@@ -20,6 +20,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason, prebuilt_output_keys
 from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, NativeReadLimits, _code_digest, _digest, compare_native_inputs, reader_versions
 from dagster_hifld.validation import _no_duplicate_members, typed_value
+from dagster_hifld.portolan.release import read_staged_release, require_current_baseline
 
 
 class ReleaseApprovalError(ValueError):
@@ -100,12 +101,13 @@ def _entry(registry: dict, destination: StagingStorageResource, key: str) -> dic
     return entry
 
 
-def require_generated_object_approval(storage: StagingStorageResource, key: str, contents: bytes) -> None:
+def require_generated_object_approval(storage: StagingStorageResource, key: str, contents: bytes) -> dict:
     """Generated published metadata/styles are also subject to exact acceptance."""
     logical = storage._ensure_prefixed(key).removeprefix(storage.prefix.rstrip("/") + "/") if storage.prefix else key
     entry = _entry(_registry(None, storage), storage, logical)
     if hashlib.sha256(contents).hexdigest() != entry["published_objects"][logical]:
         raise ReleaseApprovalError(f"generated_object_differs_from_accepted_bytes:{logical}")
+    return entry
 
 
 def require_release_approval(
@@ -125,6 +127,7 @@ def require_release_approval(
     registry = _registry(source, destination)
     snapshots = {}
     checked = set()
+    identities = {}
     for source_key, destination_key in pairs:
         logical = destination._ensure_prefixed(destination_key)
         if destination.prefix:
@@ -135,7 +138,21 @@ def require_release_approval(
             prefix = entry.get("staged_version_prefix", "")
             if not prefix or len(prefix.split("/")) != 3:
                 raise ReleaseApprovalError("invalid_staged_version_identity")
+            document, destination_prefix = read_staged_release(source, prefix)
+            # Existing evidence verifiers reason about staged keys. Translate
+            # the approved destination inventory back to that namespace once;
+            # no provenance/report bytes or their original custody paths change.
+            translated = {
+                prefix + "/" + key.removeprefix(destination_prefix + "/"): digest
+                for key, digest in entry["published_objects"].items()
+                if key.startswith(destination_prefix + "/")
+            }
+            entry = {**entry, "published_objects": translated}
+            identities[entry_id] = (entry, prefix, destination_prefix)
             expected = entry.get("staged_objects", {})
+            collection_key = f"{prefix}/collection.json"
+            if not expected.get(collection_key) or translated.get(collection_key) != expected[collection_key]:
+                raise ReleaseApprovalError("staged_collection_version_not_independently_approved")
             actual_keys = source.list_prefix(prefix)
             normalized = {key.removeprefix(source.prefix.rstrip("/") + "/") if source.prefix else key: key for key in actual_keys}
             if set(normalized) != set(expected):
@@ -147,6 +164,7 @@ def require_release_approval(
                 if source.object_snapshot(key) != before:
                     raise ReleaseApprovalError(f"staged_object_changed_during_verification:{name}")
                 snapshots[key] = before
+            require_current_baseline(destination, document, entry["baseline"])
             for filename, digest in (("baseline_comparison.json", entry["report_sha256"]), ("source_manifest.json", entry["provenance_sha256"])):
                 key = f"{prefix}/metadata/{filename}"
                 if expected.get(key) != digest:
@@ -213,11 +231,14 @@ def require_release_approval(
             else:
                 _require_executable_jsonl_derivation(entry, source, prefix)
             checked.add(entry_id)
+        entry, prefix, destination_prefix = identities[entry_id]
         normalized_source = source._ensure_prefixed(source_key)
         if normalized_source not in snapshots:
             raise ReleaseApprovalError("source_object_outside_reviewed_inventory")
         name = normalized_source.removeprefix(source.prefix.rstrip("/") + "/") if source.prefix else normalized_source
-        if entry["published_objects"][logical] != entry["staged_objects"][name]:
+        if logical != destination_prefix + "/" + name.removeprefix(prefix + "/"):
+            raise ReleaseApprovalError("destination_does_not_match_approved_stac_version")
+        if entry["published_objects"].get(name) != entry["staged_objects"][name]:
             raise ReleaseApprovalError(f"copy_bytes_differ_from_accepted_output:{logical}")
     return snapshots
 
