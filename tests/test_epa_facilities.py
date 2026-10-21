@@ -51,7 +51,7 @@ class EpaFacilitiesSourceTests(unittest.TestCase):
         }
         release_keys = {f"{prefix}/{name}" for name in ("collection.json", "README.md", "AGENTS.md")}
         quality = {
-            "version": version, "feature_count": 1, "geometry_type": "Point", "native_geometry_column": "Shape",
+            "version": "v1", "feature_count": 1, "geometry_type": "Point", "native_geometry_column": "Shape",
             "native_crs": {"id": {"authority": "EPSG", "code": 4269}}, "null_geometry_count": 0,
             "invalid_geometry_count": 0, "empty_geometry_count": 0, "unparseable_geometry_count": 0,
             "quality_check_passed": True,
@@ -96,8 +96,9 @@ class EpaFacilitiesSourceTests(unittest.TestCase):
         manifest = b"sealed source manifest retained by source construction"
         table = pa.table({"OBJECTID": pa.array([1], type=pa.int64()), "Shape": pa.array([b"point"], type=pa.binary())})
         quality = {
-            "version": version, "feature_count": 1, "geometry_type": "Point", "native_geometry_column": "Shape",
-            "native_crs": {"id": {"authority": "EPSG", "code": 4269}}, "null_geometry_count": 0,
+            "version": "v1", "feature_count": 1, "geometry_type": "Point", "native_crs": {"id": {"authority": "EPSG", "code": 4269}},
+            "native_geometry_column": "Shape",
+            "null_geometry_count": 0,
             "invalid_geometry_count": 0, "empty_geometry_count": 0, "unparseable_geometry_count": 0,
             "quality_check_passed": True,
         }

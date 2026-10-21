@@ -778,7 +778,7 @@ def _validate_cached_catalog_sidecars(storage, profile: LayerProfile, version: s
     if (not isinstance(quality, dict) or not isinstance(dictionary, dict)
             or not isinstance(native_crs, dict) or not isinstance(native_crs_id, dict) or not isinstance(columns, list)
             or any(not isinstance(item, dict) for item in columns)
-            or quality.get("version") != version or quality.get("feature_count") != current_table.num_rows
+            or quality.get("version") != "v1" or quality.get("feature_count") != current_table.num_rows
             or quality.get("geometry_type") != profile.geometry_type.removeprefix("esriGeometry")
             or quality.get("native_geometry_column") != "Shape"
             or native_crs_id.get("authority") != "EPSG"
