@@ -315,6 +315,11 @@ from dagster_hifld.assets.usace_conveyor_areas import (
     usace_conveyor_areas_draft_job,
     usace_conveyor_areas_draft_schedule,
 )
+from dagster_hifld.assets.usace_depth_areas import (
+    usace_depth_areas_complete,
+    usace_depth_areas_draft_job,
+    usace_depth_areas_draft_schedule,
+)
 from dagster_hifld.assets.construction_minerals import (
     construction_minerals_draft_job,
     construction_minerals_draft_schedule,
@@ -742,6 +747,7 @@ defs = Definitions(
         state_capitols_population_complete,
         campus_historical_full_quality,
         usace_conveyor_areas_complete,
+        usace_depth_areas_complete,
         usace_crane_locations_complete,
         usace_crane_locations_quality,
         usace_crane_locations_release,
@@ -797,6 +803,7 @@ defs = Definitions(
         csa_source_integrity_job,
         concity_source_integrity_job,
         usace_conveyor_areas_draft_job,
+        usace_depth_areas_draft_job,
         construction_minerals_draft_job,
         county_subdivisions_draft_refresh_job,
         usace_crane_locations_draft_job,
@@ -856,6 +863,7 @@ defs = Definitions(
         csa_source_integrity_schedule,
         concity_source_integrity_schedule,
         usace_conveyor_areas_draft_schedule,
+        usace_depth_areas_draft_schedule,
         construction_minerals_draft_schedule,
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
