@@ -741,7 +741,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
         "source_geometry_sha256": audit["source_geometry_sha256"],
         "source_schema_sha256": audit["source_schema_sha256"],
         "source_capture_sha256": capture_sha, "processing_identity": identity}))
-    version = "v1.0.0+" + fingerprint[:32]
+    version = "v1.0.0-" + fingerprint[:32]
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     inputs = [{"input_id": name,
                "producer": "USDOT Bureau of Transportation Statistics (BTS)" if name == "bts_item" else PUBLISHER,
