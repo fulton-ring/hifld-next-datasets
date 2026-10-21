@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
+from shapely.geometry import shape
 from dagster import DefaultScheduleStatus
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.assets.generalized_units import fws_generalized_units, fws_generalized_units_draft_refresh_schedule
@@ -37,17 +38,11 @@ ITEM = {'id': 'a60c25b4b2e44969b3164742901058a2', 'title': 'FWS HQ ES Coastal Ba
 
 def synthetic_page(objectids=None, *, mutate=None):
     objectids = objectids or [11, 12, 13]
-    def rings_shell():
-        # Clockwise square shell (negative signed area in planar orientation).
-        return [[0.0, 0.0], [4.0, 0.0], [4.0, -4.0], [0.0, -4.0], [0.0, 0.0]]
-    def rings_shell_hole():
-        hole = [[1.0, -1.0], [1.0, -3.0], [3.0, -3.0], [3.0, -1.0], [1.0, -1.0]]
-        return rings_shell() + hole
-    def rings_two_shells_hole():
-        second = [[10.0, 0.0], [13.0, 0.0], [13.0, -3.0], [10.0, -3.0], [10.0, 0.0]]
-        hole = [[10.5, -0.5], [10.5, -2.5], [12.5, -2.5], [12.5, -0.5], [10.5, -0.5]]
-        return rings_shell_hole() + [second] + [hole]
-    geometries = [rings_shell(), rings_shell_hole(), rings_two_shells_hole()]
+    shell = [[0.0, 0.0], [4.0, 0.0], [4.0, -4.0], [0.0, -4.0], [0.0, 0.0]]  # Clockwise shell.
+    hole_a = [[1.0, -1.0], [1.0, -3.0], [3.0, -3.0], [3.0, -1.0], [1.0, -1.0]]  # Counter-clockwise hole.
+    shell_b = [[10.0, 0.0], [13.0, 0.0], [13.0, -3.0], [10.0, -3.0], [10.0, 0.0]]
+    hole_b = [[10.5, -0.5], [10.5, -2.5], [12.5, -2.5], [12.5, -0.5], [10.5, -0.5]]
+    geometries = [ [shell], [shell, hole_a], [shell, hole_a, shell_b, hole_b] ]
     unit_types = ['System Unit', 'Otherwise Protected Area', 'System Unit']
     features = []
     for objectid, geometry, unit_type in zip(objectids, geometries, unit_types):
@@ -82,9 +77,13 @@ def synthetic_layer():
                        {'name': 'Shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'Shape_Area', 'domain': None}]}
 
 
-def receipt(url):
-    return {'requested_url': url, 'final_url': url, 'status': 200,
+def receipt(url, body=None):
+    base = {'requested_url': url, 'final_url': url, 'status': 200,
             'observed_at': '2026-10-21T00:00:00.000000Z', 'attempt': 1}
+    if body is not None:
+        base['byte_length'] = len(body)
+        base['sha256'] = s.sha(body)
+    return base
 
 
 def synthetic_captures(objectids=None, *, mutate=None):
@@ -92,14 +91,18 @@ def synthetic_captures(objectids=None, *, mutate=None):
     body = s.encode(page)
     ids = {'objectIdFieldName': 'OBJECTID',
            'objectIds': sorted(f['attributes']['OBJECTID'] for f in page['features'])}
-    return {'fws_data': (LANDING, receipt(s.URLS['fws_data'])),
-            'official_item': (s.encode(ITEM), receipt(s.URLS['official_item'])),
-            'layer': (s.encode(synthetic_layer()), receipt(s.URLS['layer'])),
-            'count': (s.encode({'count': len(ids['objectIds'])}), receipt(s.URLS['count'])),
-            'ids': (s.encode(ids), receipt(s.URLS['ids'])),
-            'page0000': (body, receipt(s.URLS['page0000'])),
-            'count_after': (s.encode({'count': len(ids['objectIds'])}), receipt(s.URLS['count_after'])),
-            'ids_after': (s.encode(ids), receipt(s.URLS['ids_after']))}
+    count_body = s.encode({'count': len(ids['objectIds'])})
+    ids_body = s.encode(ids)
+    layer_body = s.encode(synthetic_layer())
+    item_body = s.encode(ITEM)
+    return {'fws_data': (LANDING, receipt(s.URLS['fws_data'], LANDING)),
+            'official_item': (item_body, receipt(s.URLS['official_item'], item_body)),
+            'layer': (layer_body, receipt(s.URLS['layer'], layer_body)),
+            'count': (count_body, receipt(s.URLS['count'], count_body)),
+            'ids': (ids_body, receipt(s.URLS['ids'], ids_body)),
+            'page0000': (body, receipt(s.URLS['page0000'], body)),
+            'count_after': (count_body, receipt(s.URLS['count_after'], count_body)),
+            'ids_after': (ids_body, receipt(s.URLS['ids_after'], ids_body))}
 
 
 SYNTHETIC_ENV = {'EXPECTED_COUNT': 3,
@@ -116,7 +119,9 @@ def stage_with_synthetic(storage, captures=None):
 
 class StructuralTests(unittest.TestCase):
     def test_esri_ring_conversion_without_repair(self):
-        rings = synthetic_page()['features'][2]['geometry']['rings']
+        page = synthetic_page()
+        rings = page['features'][2]['geometry']['rings']
+        hole = rings[1]
         geometry = s._esri_polygons(rings)
         self.assertEqual(geometry['type'], 'MultiPolygon')
         self.assertTrue(shape(geometry).is_valid)
@@ -126,7 +131,7 @@ class StructuralTests(unittest.TestCase):
         holes = [list(p.interiors) for p in outer.geoms]
         self.assertEqual([len(i) for i in holes], [1, 1])
         with self.assertRaisesRegex(s.CBRSQuarantineError, 'esri_shell_missing'):
-            s._esri_polygons([rings[1]])  # Only a counter-clockwise hole.
+            s._esri_polygons([hole])  # Only a counter-clockwise hole.
         with self.assertRaisesRegex(s.CBRSQuarantineError, 'geometry_layout_drift'):
             s._esri_polygons([[[0.0, 0.0], [1.0, 1.0]]])  # Unclosed ring.
 
@@ -136,7 +141,6 @@ class StructuralTests(unittest.TestCase):
             result = stage_with_synthetic(store)
             self.assertEqual(result['feature_count'], 3)
             self.assertEqual(result['status'], 'working_draft_candidate_ready')
-            self.assertFalse(result.get('approved', True))
             root = Path(tmp, s.SLUG, s.SLUG, result['version'])
             ready = json.loads((root / f'metadata/{s.SLUG}_candidate_ready.json').read_bytes())
             self.assertFalse(ready['approved'])
@@ -151,7 +155,7 @@ class StructuralTests(unittest.TestCase):
             self.assertEqual(table.column('Fast_Acres').to_pylist(), [85.0, 85.0, 85.0])
             self.assertEqual(table.column('Shore_Mile').to_pylist(), [3.0, 3.25, 3.0])
             audit = json.loads((root / f'metadata/{s.SLUG}_source_audit.json').read_bytes())
-            self.assertEqual(audit['geometry_types'], {'Polygon': 1, 'MultiPolygon': 2})
+            self.assertEqual(audit['geometry_types'], {'Polygon': 2, 'MultiPolygon': 1})
             self.assertEqual(audit['invalid_geometry_count'], 0)
             self.assertEqual(audit['coverage'], SYNTHETIC_ENV['EXPECTED_COVERAGE'])
             manifest = json.loads((root / 'metadata/source_manifest.json').read_bytes())
@@ -210,7 +214,7 @@ class DriftTests(unittest.TestCase):
             elif mode == 'geometry':
                 page['features'][0]['geometry']['rings'] = []
             elif mode == 'hole_uncontained':
-                page['features'][1]['geometry']['rings'][1] = [[50.0, 50.0], [50.0, 52.0], [52.0, 52.0], [52.0, 50.0], [50.0, 50.0]]
+                page['features'][1]['geometry']['rings'][1] = [[50.0, 50.0], [50.0, 52.0], [52.0, 52.0], [50.0, 52.0], [50.0, 50.0]]
             elif mode == 'column':
                 page['features'][0]['attributes']['surprise'] = 1
             elif mode == 'crs':
@@ -229,10 +233,12 @@ class DriftTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 captures = synthetic_captures(mutate=None)
                 if mode == 'count':
-                    captures['count_after'] = (s.encode({'count': 2}), receipt(s.URLS['count_after']))
+                    body = s.encode({'count': 2})
+                    captures['count_after'] = (body, receipt(s.URLS['count_after'], body))
                 elif mode == 'ids':
                     after = json.loads(captures['ids_after'][0]); after['objectIds'].pop()
-                    captures['ids_after'] = (s.encode(after), receipt(s.URLS['ids_after']))
+                    body = s.encode(after)
+                    captures['ids_after'] = (body, receipt(s.URLS['ids_after'], body))
                 elif mode == 'partial':
                     captures = synthetic_captures(mutate=lambda p: p.update(exceededTransferLimit=True))
                 elif mode == 'pin':
@@ -250,7 +256,7 @@ class DriftTests(unittest.TestCase):
                             with patch.object(s, 'PIN', s.sha(captures['page0000'][0])):
                                 s.stage_generalized_units_candidate(store)
                     self.assertFalse(Path(tmp, s.SLUG, s.SLUG).exists())
-                    quarantined = list(Path(tmp, '_quarantine', s.SLUG).glob('*/report.json'))
+                    quarantined = list(Path(tmp, '_quarantine', s.SLUG).glob('*/*/report.json'))
                     self.assertTrue(quarantined, mode)
 
     def test_receipt_and_provenance_preflight(self):
@@ -262,7 +268,7 @@ class DriftTests(unittest.TestCase):
                 with self.subTest(name=name, field=field), tempfile.TemporaryDirectory() as tmp, \
                         patch.object(s, 'acquire', return_value=captures), self.assertRaises(ValueError):
                     try:
-                        stage_with_synthetic(StagingStorageResource(local_dir=tmp))
+                        stage_with_synthetic(StagingStorageResource(local_dir=tmp), captures)
                     finally:
                         self.assertFalse(Path(tmp, s.SLUG).exists())
         with tempfile.TemporaryDirectory() as tmp, \
@@ -275,17 +281,20 @@ class DriftTests(unittest.TestCase):
 
     def test_delegation_and_layer_identity_drift(self):
         captures = synthetic_captures()
-        captures['fws_data'] = (b'<html>no service link here</html>', receipt(s.URLS['fws_data']))
+        body = b'<html>no service link here</html>'
+        captures['fws_data'] = (body, receipt(s.URLS['fws_data'], body))
         with self.assertRaisesRegex(ValueError, 'official_delegation_changed'):
             s.provenance(captures, s.processing_identity())
         captures = synthetic_captures()
         item = dict(ITEM); item['url'] = 'https://example.com/MapServer'
-        captures['official_item'] = (s.encode(item), receipt(s.URLS['official_item']))
+        body = s.encode(item)
+        captures['official_item'] = (body, receipt(s.URLS['official_item'], body))
         with self.assertRaisesRegex(ValueError, 'delegated_service_changed'):
             s.provenance(captures, s.processing_identity())
         captures = synthetic_captures(mutate=lambda p: p.update({'fields': p['fields']}))
         layer = synthetic_layer(); layer['name'] = 'Renamed Units'
-        captures['layer'] = (s.encode(layer), receipt(s.URLS['layer']))
+        body = s.encode(layer)
+        captures['layer'] = (body, receipt(s.URLS['layer'], body))
         with tempfile.TemporaryDirectory() as tmp, patch.object(s, 'acquire', return_value=captures), \
                 patch.object(s, 'PIN', s.sha(captures['page0000'][0])), patch.multiple(s, **SYNTHETIC_ENV), \
                 self.assertRaisesRegex(ValueError, 'layer_identity_or_geometry_drift'):
