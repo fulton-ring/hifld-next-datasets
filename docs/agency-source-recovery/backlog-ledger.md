@@ -55,7 +55,7 @@ Shared #417 is at `b57ff17ad49a2a8f84a29aaec12a52efbb3869c0`, independently revi
 
 The 415-issue inventory remains intact. Earlier PR counts are historical search snapshots and are not current open-PR totals.
 
-The 13:52 UTC snapshot had 131 open PRs: 128 mapped to 127 inventory issues, with two PRs on #261, and 288 issues without a mapped open PR. This was superseded by the 14:14 UTC census below. Status labels in that earlier ledger snapshot showed 270 awaiting triage and 117 needing PR evidence reconciliation. These are workflow and association counts, not feasibility, capacity, or release-readiness estimates. Separately, 5 dataset rows have structured exact-head review plus local-run bundles and 10 additional current priority records have review/CI/runtime/audit evidence; the first group is not the total verified-work count.
+The 13:52 UTC snapshot had 131 open PRs: 128 mapped to 127 inventory issues, with two PRs on #261, and 288 issues without a mapped open PR. This was superseded by the 14:14 UTC census below. Status labels in that earlier ledger snapshot showed 270 awaiting triage and 117 needing PR evidence reconciliation. These are workflow and association counts, not feasibility, capacity, or release-readiness estimates. Separately, 5 dataset rows have structured exact-head review plus local-run bundles and 11 additional current priority records have review/CI/runtime/audit evidence; the first group is not the total verified-work count.
 
 | Work | Verified state |
 | --- | --- |
@@ -97,3 +97,19 @@ GitHub API pages 1–3 returned 132 currently open PRs (100, 32, 0). The census 
 There are 286 inventory issues with no mapped open PR in this snapshot. This does not say whether their sources are automatable or whether prior closed/merged work exists. Three open PRs were left unassociated because they are repository-level support or bookkeeping (#558 packaged-runtime support, #533 ledger, #1 board workflow). The census corrected 19 prior low-confidence row associations by exact branch; their prior issue candidates are preserved in JSON for audit. PR references were checked by metadata only; no PR code was read.
 
 The census also records recent status changes: PR #560/#307 is merged with replay/catalog and gated refusal evidence; #561/#261 is merged with root review and CI, while #531 remains open as a noncanonical stack child and its ancestry blocker persists; #549/#285 is being repaired at head `5bb53396ee1be58c77ff1016f2e70dfd236dba11`; PR #562/#290 is at `5369d0e4c1f15d875a9f27995cbdcf74f3b5613d` with independent review pending; and PR #563/#335 is at `6c523380f087bd54114e86b26f2d834c688e96a1` with final replay/review pending. Their branch associations do not establish pipeline readiness or acceptance.
+
+## Main integration checkpoint — 2026-10-21 14:55 UTC
+
+PR #562 for issue #290 merged as `5014f2b705cd4c7e7d45d1ffe35cc2a145ac975a` from exact head `07ab1ec34538cd1ecd2364cd33ccb1d379ba890d`. BTS delegation succession remains unapproved; issue #290 remains open.
+
+PR #563 for issue #335 merged as `741f54862aad46c38c8754926c95e163e88e9c2b` from exact head `6c523380f087bd54114e86b26f2d834c688e96a1`. Historical equivalence, rights, coverage and release acceptance remain unresolved; issue #335 remains open.
+
+PR #549 for issue #285 merged as `d8ea091cdbefc389bb7894cf5c086aa5cb8c14b7` from exact head `1c2b155ff761f6190eea49729f56a774999b083d`. Earlier runtime and review evidence remains attached to its recorded run heads; root verified merged tree `4994ee7293c9a463030902ac511822fbc7f810c1`; issue #285 remains open.
+
+PR #564 for issue #276 merged as `b2ad6f414ebd8f7e5506ff69af841f2e90e654a1` from exact head `cdffb769b262b0268596a62637082f350a15f8a1`; root review 5601503187 and CI Docker build passed; merged tree `a066656e984a068cd75ff4d56212d425df090a8d` equals the exact head tree. Older PR #547 remains open on base `codex/cloud-dataset-21` as a noncanonical stack child; it is not the canonical #276 implementation. Issue #276 remains open.
+
+The 14:14 UTC open-PR census above is a historical snapshot, not a current open-PR count. No new full census was run in this checkpoint.
+
+Current native work: #275 is preparing a clean-main replacement. #21 clean-main recovery is assigned to `shared_gate_fixes`. #27 capture-current contains 36 rows and 33 artifacts at `/workspace/work/27-clean-evidence/capture-current`; BTS succession 3607 was denied and newer request 7ec remains unapproved. #282 clean recovery is reported at `69bf278`, preserving PR #548 and prior review evidence.
+
+No paid jobs are active and new paid admissions remain paused. Board preview run 39619944357 succeeded and proposed Needsdecision for #4/#10/#11/#290. Subsequent sync 39621201053 succeeded, moved those four issues to Needsdecision and removed pending labels (the #276 label-event was consumed separately); no paid dispatch occurred. Poll at 14:56 UTC found no active jobs. The inference guard remains `<= $25/day`; actual spend is unknown and compute costs are excluded.

@@ -35,14 +35,14 @@
         "needs_triage_no_recovered_pipeline_pr": "Rows whose explicit status is needs_triage_no_recovered_pipeline_pr; requires triage and is not proof that a pipeline is infeasible.",
         "prior_pr_evidence_needs_reconciliation": "Rows with status prior_pr_evidence_needs_reconciliation; prior association/review/runtime evidence remains unresolved.",
         "row_structured_exact_head_review_plus_local_run_bundle": "Five records with current/runtime head, a locally verified review status and dagster_runs bundle in their row structure (#257, #261, #262, #268, #269). This is a structured-field subset and does not count all evidenced reviews.",
-        "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Ten additional priority records explicitly listed in latest_verified_checkpoint with exact PR heads plus review, merged-tree runtime/test, independent audit or CI evidence (#3, #4, #10, #11, #261, #275, #282, #283, #284, #307). The five-row structured subset overlaps this group; counts are not additive.",
+        "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Eleven priority records explicitly listed in latest_verified_checkpoint with exact PR heads plus review, merged-tree runtime/test, independent audit or CI evidence (#3, #4, #10, #11, #261, #275, #276, #282, #283, #284, #307). The five-row structured subset overlaps this group; counts are not additive.",
         "current_open_pr_mapped_issues": "Distinct inventory issue rows with at least one exact-branch-mapped currently open PR.",
         "inventory_issues_without_mapped_open_pr": "415 inventory rows minus currently mapped open PR rows at the census timestamp; not a feasibility or capacity estimate."
       },
       "caveat": "Counts reflect ledger status categories and exact-branch association at the stated census time. Categories are not mutually exclusive readiness/feasibility measures; open-PR mapping does not imply review, successful runtime, source suitability, or acceptance.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
-      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 10,
-      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 14,
+      "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 11,
+      "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 15,
       "latest_checkpoint_priority_evidence_issues": [
         3,
         4,
@@ -50,6 +50,7 @@
         11,
         261,
         275,
+        276,
         282,
         283,
         284,
@@ -59,7 +60,7 @@
       "current_open_pr_records": 129,
       "current_open_pr_records_mapped_to_inventory": 129,
       "inventory_issues_without_mapped_open_pr": 286,
-      "code_merged_issue_open_acceptance_gated": 4
+      "code_merged_issue_open_acceptance_gated": 8
     },
     "current_open_pr_census": {
       "recorded_at": "2026-10-21T14:14:32Z",
@@ -778,7 +779,9 @@
       "remaining_validation": "Approval-refusal preservation was tested with empty published root; populated accepted fixture still needed.",
       "current_pr_candidates": [
         539
-      ]
+      ],
+      "status_note": " Clean-main recovery is assigned to `shared_gate_fixes`; current integration/review work is ongoing. Preserve previous PR #539 evidence without treating its older stack as canonical.",
+      "work_status": "clean_main_recovery_in_progress"
     },
     {
       "issue": 22,
@@ -977,9 +980,9 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "work_status": "active_source_research",
+      "work_status": "current_source_capture_in_progress",
       "assigned_worker": "dataset_27",
-      "status_note": "Caution Area Locations USACE IENC. Coordinator confirms open issue with zero prior PR/comments. Cached official IENC service directory research exists at /workspace/work/hifld-coordinator/21/research/service_directory.body; resolve exact layer name/ID before constructing a pipeline. Draft pipeline may proceed before baseline approval; require exact publisher/linkage, raw source fidelity, bounded completeness, schema/CRS checks, sealed candidate, standard partition/catalog/quality/registered verifier gates, STOPPED refresh. Do not assert source authority without BTS official link/USACE attribution evidence.",
+      "status_note": "Caution Area Locations USACE IENC. Coordinator confirms open issue with zero prior PR/comments. Cached official IENC service directory research exists at /workspace/work/hifld-coordinator/21/research/service_directory.body; resolve exact layer name/ID before constructing a pipeline. Draft pipeline may proceed before baseline approval; require exact publisher/linkage, raw source fidelity, bounded completeness, schema/CRS checks, sealed candidate, standard partition/catalog/quality/registered verifier gates, STOPPED refresh. Do not assert source authority without BTS official link/USACE attribution evidence. Current capture checkpoint: 36 rows and 33 artifacts in `/workspace/work/27-clean-evidence/capture-current`. Historical BTS succession 3607 was denied; new succession request 7ec remains unapproved. Preserve capture evidence separately from source approval.",
       "current_head": "9d3b1d52ac24ca6e99fc2237cafec8a0297e7a1e",
       "status": "pipeline_review_pending",
       "runtime_head": "49e8841d3a9297a96f6860d1a82585004c5764ad",
@@ -7607,10 +7610,11 @@
       "status": "reviewed_draft_merge_blocked",
       "current_head": "8d1dd15c0ded6d7b77a5eff1bca6fb9189683e7c",
       "worker_run_id": 39597483660,
-      "status_note": "PR #546 packaged hash fix; 14 tests; source 5a914974-4e35-4d8a-9371-54fee156e602, cache b9930531-2f2f-4513-ad9d-b36cfe9065ef, catalog 5f02e141-c34b-4249-8347-1fb7b824321a; root review 5599755431. Parent #260 chain blocks merge.",
+      "status_note": "PR #546 packaged hash fix; 14 tests; source 5a914974-4e35-4d8a-9371-54fee156e602, cache b9930531-2f2f-4513-ad9d-b36cfe9065ef, catalog 5f02e141-c34b-4249-8347-1fb7b824321a; root review 5599755431. Parent #260 chain blocks merge. Native work is now preparing a clean-main replacement; the existing PR #546 remains the review/evidence branch until replacement is verified. Do not infer final merged status.",
       "current_pr_candidates": [
         546
-      ]
+      ],
+      "work_status": "clean_main_replacement_in_progress"
     },
     {
       "issue": 276,
@@ -7620,8 +7624,8 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 547,
-      "reviewed_head": null,
+      "current_pr": 564,
+      "reviewed_head": "cdffb769b262b0268596a62637082f350a15f8a1",
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T02:14:43Z",
@@ -7641,11 +7645,39 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Clean-main PR #564 merged into main from exact head cdffb769b262b0268596a62637082f350a15f8a1 as b2ad6f414ebd8f7e5506ff69af841f2e90e654a1; root review 5601503187 and CI Docker build passed. Older PR #547 remains open on base codex/cloud-dataset-21 as a noncanonical stack, not the canonical implementation. Issue #276 remains open; source and release acceptance are separate. The merged tree a066656e984a068cd75ff4d56212d425df090a8d equals the exact PR head tree; the canonical marker for PR #564 was posted. Issue remains open.",
       "current_pr_candidates": [
-        547
-      ]
+        547,
+        564
+      ],
+      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/564",
+      "current_pr_state": "merged",
+      "merged_pr": 564,
+      "merged_head": "cdffb769b262b0268596a62637082f350a15f8a1",
+      "merge_commit": "b2ad6f414ebd8f7e5506ff69af841f2e90e654a1",
+      "root_review_id": 5601503187,
+      "ci": "passed",
+      "historical_pr_refs": [
+        {
+          "pr": 564,
+          "head": "cdffb769b262b0268596a62637082f350a15f8a1",
+          "merge_commit": "b2ad6f414ebd8f7e5506ff69af841f2e90e654a1",
+          "state": "merged",
+          "canonical": true,
+          "root_review": 5601503187,
+          "ci": "build passed",
+          "observed_at": "2026-10-21T14:55:39Z"
+        },
+        {
+          "pr": 547,
+          "head": "f43f7fcaddeb80b9f772ee5923614800f153107e",
+          "base": "codex/cloud-dataset-21",
+          "state": "open_noncanonical_stack",
+          "observed_at": "2026-10-21T14:55:39Z"
+        }
+      ],
+      "merged_tree": "a066656e984a068cd75ff4d56212d425df090a8d"
     },
     {
       "issue": 277,
@@ -7779,10 +7811,11 @@
       "status": "review_pass_cleanup_failure_merge_blocked",
       "current_head": "502a00aedcc4d664b4fa2d772d0c6dfc449f28cf",
       "worker_run_id": 39595773668,
-      "status_note": "Independent paid review passed despite workflow cleanup failure run 39599895858. Do not retry. Parent #271 chain blocks merge.",
+      "status_note": "Independent paid review passed despite workflow cleanup failure run 39599895858. Do not retry. Parent #271 chain blocks merge. Clean recovery is progressing at reported commit `69bf278`, preserving existing PR #548 and its prior review evidence. Do not equate cleanup recovery with merge/release acceptance.",
       "current_pr_candidates": [
         548
-      ]
+      ],
+      "work_status": "clean_recovery_in_progress"
     },
     {
       "issue": 283,
@@ -7863,14 +7896,29 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "work_status": "native_worker_assigned",
       "assigned_worker": "recover_284_native",
-      "status_note": "Current native repair remains on existing PR #549, now exact head 5bb53396ee1be58c77ff1016f2e70dfd236dba11 (base codex/cloud-verification-417). Fresh main integration is ongoing; do not create a duplicate. This is implementation work, not source acceptance.",
+      "status_note": "PR #549 merged into main at exact head 1c2b155ff761f6190eea49729f56a774999b083d as d8ea091cdbefc389bb7894cf5c086aa5cb8c14b7. Earlier capture/replay and review evidence remains tied to its recorded run heads; this merge does not assert rights/source acceptance or release. Issue #285 remains open. Root verified the merged tree 4994ee7293c9a463030902ac511822fbc7f810c1.",
       "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/549",
       "current_pr_candidates": [
         549
-      ]
+      ],
+      "current_pr_state": "merged",
+      "merged_pr": 549,
+      "merged_head": "1c2b155ff761f6190eea49729f56a774999b083d",
+      "merge_commit": "d8ea091cdbefc389bb7894cf5c086aa5cb8c14b7",
+      "historical_pr_refs": [
+        {
+          "pr": 549,
+          "head": "1c2b155ff761f6190eea49729f56a774999b083d",
+          "merge_commit": "d8ea091cdbefc389bb7894cf5c086aa5cb8c14b7",
+          "state": "merged",
+          "canonical": true,
+          "observed_at": "2026-10-21T14:55:39Z"
+        }
+      ],
+      "merged_tree": "4994ee7293c9a463030902ac511822fbc7f810c1"
     },
     {
       "issue": 286,
@@ -7983,12 +8031,27 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "work_status": "native_eligibility_recheck_claim_pending",
       "assigned_worker": "shared_gate_fixes",
-      "status_note": "PR #562 is open at exact head 5369d0e4c1f15d875a9f27995cbdcf74f3b5613d on main. Worker reports full official IENC RECOMMENDED_TRACK_LINE layer 46 capture, 666 features, EPSG:4326 polylines and 10 fields; code review and fresh main integration are pending. BTS delegation succession is unapproved. Branch mapping does not establish source approval or pipeline readiness.",
+      "status_note": "PR #562 merged into main from exact head 07ab1ec34538cd1ecd2364cd33ccb1d379ba890d as 5014f2b705cd4c7e7d45d1ffe35cc2a145ac975a. This implements a proposal-only IENC Recommended Tracks candidate. BTS delegation succession remains unapproved; issue #290 remains open and source/promotion acceptance is not implied.",
       "current_pr_candidates": [
         562
+      ],
+      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/562",
+      "current_pr_state": "merged",
+      "merged_pr": 562,
+      "merged_head": "07ab1ec34538cd1ecd2364cd33ccb1d379ba890d",
+      "merge_commit": "5014f2b705cd4c7e7d45d1ffe35cc2a145ac975a",
+      "historical_pr_refs": [
+        {
+          "pr": 562,
+          "head": "07ab1ec34538cd1ecd2364cd33ccb1d379ba890d",
+          "merge_commit": "5014f2b705cd4c7e7d45d1ffe35cc2a145ac975a",
+          "state": "merged",
+          "canonical": true,
+          "observed_at": "2026-10-21T14:55:39Z"
+        }
       ]
     },
     {
@@ -8937,12 +9000,27 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "work_status": "native_source_route_candidate",
       "assigned_worker": "native implementation",
-      "status_note": "PR #563 is open at exact head 6c523380f087bd54114e86b26f2d834c688e96a1 on main. Native draft proposes 2024 Census TIGER/Line School_District_Unified GDB, 10,897 MultiPolygon features, OBJECTID/FID, 10 attributes, EPSG:4269. Final replay, packaged identity validation and review are pending; this is not pipeline completion or historical equivalence/rights/coverage acceptance.",
+      "status_note": "PR #563 merged into main at exact head 6c523380f087bd54114e86b26f2d834c688e96a1 as 741f54862aad46c38c8754926c95e163e88e9c2b. This records the implementation merge only; historical equivalence, rights, coverage and release acceptance remain unresolved. Issue #335 remains open.",
       "current_pr_candidates": [
         563
+      ],
+      "current_pr_url": "https://github.com/fulton-ring/hifld-next-datasets/pull/563",
+      "current_pr_state": "merged",
+      "merged_pr": 563,
+      "merged_head": "6c523380f087bd54114e86b26f2d834c688e96a1",
+      "merge_commit": "741f54862aad46c38c8754926c95e163e88e9c2b",
+      "historical_pr_refs": [
+        {
+          "pr": 563,
+          "head": "6c523380f087bd54114e86b26f2d834c688e96a1",
+          "merge_commit": "741f54862aad46c38c8754926c95e163e88e9c2b",
+          "state": "merged",
+          "canonical": true,
+          "observed_at": "2026-10-21T14:55:39Z"
+        }
       ]
     },
     {
@@ -10738,8 +10816,8 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T14:14:32Z",
-    "source": "latest coordinator-verified PR heads, merge SHAs, review comments, CI and run handoffs supplied for this checkpoint",
+    "recorded_at": "2026-10-21T14:55:39Z",
+    "source": "GitHub PR metadata and coordinator-reported exact-head/review/run evidence; no dataset source rows re-audited in this checkpoint",
     "scope_note": "This updates work evidence only. All 415 inventory issues remain tracked; issue states are not changed. Issue #417 remains open. No release or publication is authorized.",
     "pr_421_shared_verifier": {
       "state": "merged_stopped_gated",
@@ -10781,7 +10859,8 @@
         "issue_state": "Verified OPEN",
         "notes": "Packaged runtime fix; 41 focused tests passed."
       },
-      "#261": "PR #561 merged at exact head 0535903d166291453f5877a77fd7727434d85a15 (merge 9a4ee165ebfbca350805ee189dc0cac5c33144f9); root review 5601095051, CI passed; issue remains open with acceptance gated. PR #531 persists as an open, noncanonical stack child."
+      "#261": "PR #561 merged at exact head 0535903d166291453f5877a77fd7727434d85a15 (merge 9a4ee165ebfbca350805ee189dc0cac5c33144f9); root review 5601095051, CI passed; issue remains open with acceptance gated. PR #531 persists as an open, noncanonical stack child.",
+      "#276": "PR #564 merged at exact head cdffb769b262b0268596a62637082f350a15f8a1 (merge b2ad6f414ebd8f7e5506ff69af841f2e90e654a1); root review 5601503187, Docker build passed. PR #547 remains open on a noncanonical #21 stack."
     },
     "issue_25_tracking_replacement": {
       "pr": 544,
@@ -10943,8 +11022,66 @@
       "paid_work": "Native workers only; no additional paid runs/admissions while handoff issues are resolved.",
       "issue_335": "PR #563 exact head 6c523380f087bd54114e86b26f2d834c688e96a1 on main; final replay/review pending.",
       "issue_261": "Canonical PR #561 merged; quality gate 4a590cc2-9cf7-497b-a11d-7324f1db440f blocks verify/promote with populated fixture preserved. Issue open and source acceptance pending.",
-      "issue_307": "PR #560 merged at exact head f2a67dfb2116c9bdd2c6f6e2518e9d16acebacd3, merge ebe53ed3e1803c93fc74f95cf755fdfb29c711ff. Root review 5600976268 and actual merged tree 314994ebead14d02100f197e1f16f6ad27a22144 matched reviewed preview. Replay/catalog quality passed; quality gate bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29 failed closed and approval gate 29591f2d-98ad-407f-ba85-898aef90c6fa refused promotion with fixture preserved. Issue remains open."
-    }
+      "issue_307": "PR #560 merged at exact head f2a67dfb2116c9bdd2c6f6e2518e9d16acebacd3, merge ebe53ed3e1803c93fc74f95cf755fdfb29c711ff. Root review 5600976268 and actual merged tree 314994ebead14d02100f197e1f16f6ad27a22144 matched reviewed preview. Replay/catalog quality passed; quality gate bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29 failed closed and approval gate 29591f2d-98ad-407f-ba85-898aef90c6fa refused promotion with fixture preserved. Issue remains open.",
+      "issue_275": "Native worker preparing clean-main replacement; do not mark complete until its exact head and review/run scope are verified.",
+      "issue_21": "Clean-main recovery assigned to shared_gate_fixes; ongoing, no new PR head reported.",
+      "issue_27": "Current capture has 36 rows and 33 artifacts in /workspace/work/27-clean-evidence/capture-current. Historical BTS succession 3607 denied; newer 7ec request unapproved.",
+      "issue_282": "Clean recovery at reported commit 69bf278 preserves PR #548 and its prior review evidence; still not acceptance."
+    },
+    "main_merge_checkpoint": {
+      "recorded_at": "2026-10-21T14:55:39Z",
+      "merged": [
+        {
+          "issue": 290,
+          "pr": 562,
+          "head": "07ab1ec34538cd1ecd2364cd33ccb1d379ba890d",
+          "merge": "5014f2b705cd4c7e7d45d1ffe35cc2a145ac975a",
+          "acceptance": "BTS succession unapproved; issue open"
+        },
+        {
+          "issue": 335,
+          "pr": 563,
+          "head": "6c523380f087bd54114e86b26f2d834c688e96a1",
+          "merge": "741f54862aad46c38c8754926c95e163e88e9c2b",
+          "acceptance": "historical equivalence/rights/coverage/release unresolved; issue open"
+        },
+        {
+          "issue": 285,
+          "pr": 549,
+          "head": "1c2b155ff761f6190eea49729f56a774999b083d",
+          "merge": "d8ea091cdbefc389bb7894cf5c086aa5cb8c14b7",
+          "acceptance": "issue remains open; do not transfer old runs to merge SHA",
+          "merged_tree": "4994ee7293c9a463030902ac511822fbc7f810c1"
+        },
+        {
+          "issue": 276,
+          "pr": 564,
+          "head": "cdffb769b262b0268596a62637082f350a15f8a1",
+          "merge": "b2ad6f414ebd8f7e5506ff69af841f2e90e654a1",
+          "root_review": 5601503187,
+          "ci": "Docker build passed",
+          "acceptance": "issue remains open",
+          "merged_tree": "a066656e984a068cd75ff4d56212d425df090a8d"
+        }
+      ],
+      "canonicality_note": "PR #547 remains open on #21 stack and is noncanonical after PR #564 merged for #276. Do not count #547 as canonical #276 implementation.",
+      "shared_base_commit": "741f54862aad46c38c8754926c95e163e88e9c2b",
+      "shared_base_note": "This is the #335 merge commit; coordinator reports other shared-base/stack propagation is not yet at latest main.",
+      "external_actions": "No paid job active; paid admissions paused. Board preview run 39619944357 succeeded and proposed Needsdecision for #4/#10/#11/#290; it dispatched no work.",
+      "inference_budget": "<= $25/day inference guard unchanged; actual spend unknown; compute excluded."
+    },
+    "board_sync": {
+      "preview_run": 39619944357,
+      "sync_run": 39621201053,
+      "state": "success",
+      "actions": [
+        "Moved #4/#10/#11/#290 to Needsdecision",
+        "Removed pending labels; issue #276 label event consumed separately"
+      ],
+      "dispatch": "No paid dispatch occurred",
+      "paid_poll": "No paid jobs active at 14:56 UTC"
+    },
+    "external_actions": "Board preview run 39619944357 succeeded; subsequent board sync 39621201053 succeeded, moving #4/#10/#11/#290 to Needsdecision and removing pending labels (issue #276 label-event consumed separately). No paid dispatch occurred. Paid poll at 14:56 UTC found no active jobs."
   },
   "pr_search_snapshot_records": [
     {
