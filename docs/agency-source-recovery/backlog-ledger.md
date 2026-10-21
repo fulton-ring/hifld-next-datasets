@@ -2,17 +2,17 @@
 
 This ledger tracks all 415 dataset inventory issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. Earlier PR search counts are historical snapshots, not current open-PR counts. Issue #417 remains open; dataset issues remain open despite source PRs auto-merging by ancestry, and no production data was published.
 
-### Latest verified checkpoint — 2026-10-21 21:38 UTC
+### Latest verified checkpoint — 2026-10-21 22:13 UTC
 
-All 415 inventory rows are preserved; this is a targeted ledger update, not a new inventory or open-PR census. Main is `02fb0062500cc32a748e465670d1a7a7bb757552` with 85 registered schedules, all STOPPED, and 60 candidate pipelines merged this stretch (25 at its start). No issue closure, release acceptance or production publication is recorded.
+All 415 inventory rows are preserved. This is a targeted update, not a fresh 415-issue or open-PR census. Named main `f046f09b0ed5bfdd09cd268c1d5b9b26189b8f22` has 89 registered schedules, all STOPPED, and 64 candidate pipelines merged this stretch (25 at its start). These are code registration facts, not live scheduler state, source acceptance, release capacity or publication.
 
-| Issues | Integrated implementation | Evidence and remaining state |
+| Issues | Integration | Evidence and remaining state |
 | --- | --- | --- |
-| #67–69 | PR #639; main merge `6cbfe670ad41b213926c8fd241df3f8cf3e77d73` | 77 schedules STOPPED at integration. #69 source PR #478 exact head `628435ce34dcbf24c836acf2f401b03a7b4972b8`, review 5606496060. Issues remain open; source, rights, baseline, contract and release decisions remain pending. |
-| #70, #71, #75, #76 | PR #645; main merge `eb61083ba3b235b27cf13eaa4b09cbefe0b162dd` | Integration had 82 schedules STOPPED; 45 EPA tests passed, 2 external-capture tests skipped. Exact source-head reviews: #643 5606494338, #640 5606494916, #641 5606493133, #644 5606493787. |
-| #72–74 | PR #647; main merge `02fb0062500cc32a748e465670d1a7a7bb757552` | Integration has 85 schedules STOPPED; 66 EPA tests passed, 2 external-capture tests skipped. Exact source-head reviews: #488, #646 (5606495516), #486 (5606496679). |
+| #77–78 | PR #650; main at `9d82dc41fc8348899b6ba60e05f3a4c27ceb7b65` | Parent checkpoint reports the source heads integrated. Both issues remain open and acceptance-gated; this ledger does not infer source acceptance or release approval. |
+| #79 | PR #652; source PR #471 head `56d9d8e565c1de257f907e2b20d3a9c8134d739a` | Root PASS, four source-owned blobs unchanged, prior registrations retained, and 88 schedules STOPPED at integration. Build-only CI succeeded; publish was skipped. Issue remains open. |
+| #83 | PR #655; integration head `7f13f32f2ca1dc6ec36e5456a7fa981114f89512` | Final source head `7fad5c5bd4946ce09018be2b3d5772d4f8d622fb` is tree-identical to the original reviewed source. Root PASS, five owned blobs unchanged, 89 schedules STOPPED, build-only CI succeeded, publish skipped. Issue remains open and release-gated. |
 
-Issues #67–76 remain open and acceptance-gated. Issues #77–79 have native candidate work active. Issue #77's PR-description update awaits separate approval; no write was attempted. Issue #80 paid validation run `39680028421` is in progress after budget preflight passed under the $25/day guard; actual completion and spend are unknown. No fresh census, issue closure, source acceptance, release approval or production publication is claimed.
+Issue #80 has a fully materialized native fix in persistent local runtime; independent review is active. No completed review or acceptance is claimed, and the prior paid run status is not refreshed here. Issue #82's after-review fix is active. Issue #84 is reported complete and awaiting a new PR. Draft PR #653 for issue #85 is active. The paid queue observation at 22:10 UTC listed #86, #87, #92, #93, #97 and #99 active and #88, #89, #91, #94, #95 and #96 waiting under the unchanged $25/day inference cap; no new paid admission is claimed by this checkpoint. Dataset issues remain open; no source/release acceptance or production publication is recorded.
 
 ### Latest verified checkpoint — 2026-10-21 20:01 UTC
 
