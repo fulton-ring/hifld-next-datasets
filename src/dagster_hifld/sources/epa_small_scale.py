@@ -305,6 +305,11 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
         for name in snapshots:
             if name in roster and candidate_bytes(root,name)!=encode(manifest):raise EpaSmallScaleQuarantineError('cached_source_snapshot_drift')
         prefix=f'{SLUG}/{SLUG}/{version}'
+        if storage is None:raise EpaSmallScaleQuarantineError('cached_provenance_requires_explicit_storage_context')
+        resolved_manifest=load_resolved_source_manifest(storage,SLUG,SLUG,version)
+        projected=provenance_projection(resolved_manifest.metadata)
+        resolved_key='metadata/resolved_provenance.json'
+        if (resolved_key in roster)!=(projected is not None):raise EpaSmallScaleQuarantineError('cached_resolved_provenance_presence_mismatch')
         validate_staged_release_derivatives(storage,prefix,{prefix+'/'+name for name in roster})
         flat={'metadata/quality_manifest.json','metadata/data_dictionary.json'}
         source_flat={'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'}
@@ -313,16 +318,12 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
         if catalog_derivatives and found_flat!=flat:raise EpaSmallScaleQuarantineError('cached_catalog_metadata_incomplete')
         if found_source_flat and found_source_flat!=source_flat:raise EpaSmallScaleQuarantineError('cached_catalog_source_snapshot_incomplete')
         if found_flat:
-            if storage is None:raise EpaSmallScaleQuarantineError('cached_catalog_requires_explicit_storage_context')
-            resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
-            summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
+            summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved_manifest.metadata)
             for name,expected_value in (('metadata/quality_manifest.json',summary.quality_manifest),('metadata/data_dictionary.json',summary.data_dictionary)):
                 if strict_json(candidate_bytes(root,name))!=expected_value:raise EpaSmallScaleQuarantineError('cached_catalog_metadata_mismatch:'+name)
             for name,flat_name in (('metadata/source/quality_manifest.json','metadata/quality_manifest.json'),('metadata/source/data_dictionary.json','metadata/data_dictionary.json')):
                 if name in extras and candidate_bytes(root,name)!=candidate_bytes(root,flat_name):raise EpaSmallScaleQuarantineError('cached_catalog_source_snapshot_changed:'+name)
-        if 'metadata/resolved_provenance.json'in roster:
-            if storage is None:raise EpaSmallScaleQuarantineError('resolved_provenance_requires_explicit_storage_context')
-            projected=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
+        if projected is not None:
             if encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(projected):raise EpaSmallScaleQuarantineError('cached_resolved_provenance_drift')
     for n,b in expected.items():
         if candidate_bytes(root,n)!=b:raise EpaSmallScaleQuarantineError('candidate_source_bytes_drift:'+n)

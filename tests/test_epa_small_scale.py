@@ -120,6 +120,9 @@ class SmallScaleTests(unittest.TestCase):
                         original=(root/name).read_bytes();forged=json.loads(original);forged['tampered_for_regression']=True;f.write_private(root,name,f.encode(forged))
                         with self.assertRaisesRegex(ValueError,'cached_catalog_metadata_mismatch'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
                         f.write_private(root,name,original)
+                    resolved_path=root/'metadata/resolved_provenance.json';resolved_bytes=resolved_path.read_bytes();resolved_path.unlink()
+                    with self.assertRaisesRegex(ValueError,'cached_resolved_provenance_presence_mismatch'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                    f.write_private(root,'metadata/resolved_provenance.json',resolved_bytes)
                     for name in['metadata/source/source_manifest.json','metadata/resolved_provenance.json']:
                         original=(root/name).read_bytes();f.write_private(root,name,b'{"approved":true,"code_commit":"FORGED_SOURCE_WRAPPER"}\n')
                         with self.assertRaisesRegex(ValueError,'cached_source_snapshot_drift|cached_resolved_provenance_drift'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
