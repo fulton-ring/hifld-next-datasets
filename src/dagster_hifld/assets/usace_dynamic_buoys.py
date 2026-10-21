@@ -58,7 +58,8 @@ def usace_dynamic_buoys_complete(candidate: dict) -> AssetCheckResult:
 
 usace_dynamic_buoys_draft_job = define_asset_job(
     "usace_dynamic_buoys_draft_refresh",
-    selection=AssetSelection.assets(usace_dynamic_buoys_usace_ienc),
+    selection=(AssetSelection.assets(usace_dynamic_buoys_usace_ienc)
+               | AssetSelection.checks(usace_dynamic_buoys_usace_ienc)),
 )
 usace_dynamic_buoys_draft_schedule = ScheduleDefinition(
     name="usace_dynamic_buoys_draft_refresh_schedule",
