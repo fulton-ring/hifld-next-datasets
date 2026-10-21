@@ -43,7 +43,6 @@ from dagster_hifld.construction_state import (
     seal_first_construction,
 )
 from dagster_hifld.output_policy import validate_output_policy
-from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
@@ -661,10 +660,6 @@ def reconcile_cache(storage: StagingStorageResource, prefix: str, version: str,
         raise FerrousMinesQuarantineError("cached_candidate_code_identity_drift")
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
-    if storage.object_exists(f"{prefix}/metadata/resolved_provenance.json"):
-        resolved = provenance_projection(manifest)
-        if strict_json(storage.read_key(f"{prefix}/metadata/resolved_provenance.json")) != resolved:
-            raise FerrousMinesQuarantineError("cached_resolved_provenance_drift")
     try:
         _validate_cached_catalog_sidecars(
             storage, prefix, {f"{prefix}/{name}" for name in actual}
