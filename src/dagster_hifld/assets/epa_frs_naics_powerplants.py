@@ -283,7 +283,10 @@ def capture_epa_frs_naics_table(
         "description": "EPA OEI FRS_POWERPLANTS MapServer table FRS_NAICS_POWERPLANTS; nonspatial exact NAICS table. The service describes EIA-860 source vintage as June 2014. Published-candidate membership differs; release is blocked pending maintainer review.",
         "publisher": "U.S. Environmental Protection Agency, Office of Environmental Information (EPA_GEO)",
         "agency": "Environmental Protection Agency", "source_url": TABLE_URL,
-        "license": "U.S. EPA public domain (source service item license statement)",
+        "license": (
+            "Unresolved: captured EPA ArcGIS service/table metadata provides copyrightText "
+            "but no licenseInfo or explicit reuse terms; rights review remains required."
+        ),
         "date_issued": None, "date_modified": None, "source_modified": None,
         "lineage": ["EPA_GEO FRS_POWERPLANTS MapServer table 14: FRS_NAICS_POWERPLANTS",
                     "Declared one-to-many POWERPLANT_LAYER relationship to table 12 on REGISTRY_ID",
