@@ -33,10 +33,9 @@ def census_bureau_block_groups(context, config: CensusBlockGroupsConfig,
     result = stage_census_block_groups(
         staging_storage, archive_path=config.archive_path, receipt_path=config.receipt_path,
     )
-    context.instance.add_dynamic_partitions(
-        PUBLISH_PARTITION_NAME,
-        [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])],
-    )
+    partition_key = build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])
+    if not context.instance.has_dynamic_partition(PUBLISH_PARTITION_NAME, partition_key):
+        context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition_key])
     context.add_output_metadata(result)
     return result
 

@@ -36,6 +36,22 @@ SOURCE_GEOMETRY = "MultiPolygon"
 RAW_KEY = f"_raw-captures/{DATASET_SLUG}/{SOURCE_SHA256}/original.gdb.zip"
 RAW_RECEIPT_KEY = RAW_KEY + ".receipt.json"
 OUTPUT_NAME = f"{DATASET_SLUG}.parquet"
+SOURCE_OWNED_FILES = {
+    "geoparquet/" + OUTPUT_NAME,
+    "metadata/source_manifest.json",
+    "metadata/processing_identity.json",
+    "metadata/source_capture.json",
+    "metadata/source_audit.json",
+    "metadata/baseline_comparison.json",
+}
+CATALOG_OWNED_METADATA = {
+    "metadata/data_dictionary.json",
+    "metadata/resolved_provenance.json",
+    "metadata/quality_manifest.json",
+    "metadata/source/source_manifest.json",
+    "metadata/source/data_dictionary.json",
+    "metadata/source/quality_manifest.json",
+}
 EXPECTED_NAMES = ("OBJECTID", "GEOID", "GEOIDFQ", "NAMELSAD", "ALAND", "AWATER", "INTPTLAT", "INTPTLON", "SHAPE")
 EXPECTED_TYPES = (pa.int64(), pa.string(), pa.string(), pa.string(), pa.float64(), pa.float64(), pa.string(), pa.string(), pa.binary())
 EXPECTED_NATIVE_FIELDS = {
@@ -331,6 +347,115 @@ def _manifest(identity: dict[str, object], audit: dict[str, object], receipt: di
     return manifest
 
 
+def _read_candidate_file(target: Path, relative: str) -> bytes:
+    path = target / relative
+    if path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1:
+        raise CensusBlockGroupsError("cached_candidate_source_file_missing_or_aliased:" + relative)
+    return path.read_bytes()
+
+
+def _reuse_existing_candidate(
+    target: Path, *, identity: dict[str, object], receipt: dict[str, object],
+    native_definition: dict[str, object], version: str,
+) -> dict[str, object]:
+    """Reuse an exact immutable source candidate while ignoring catalog-owned metadata."""
+    if target.is_symlink() or not target.is_dir():
+        raise CensusBlockGroupsError("cached_candidate_not_a_real_directory")
+    source_manifest_path = target / "metadata/source_manifest.json"
+    if source_manifest_path.is_symlink() or not source_manifest_path.is_file():
+        raise CensusBlockGroupsError("cached_candidate_source_roster_incomplete")
+    manifest_bytes = _read_candidate_file(target, "metadata/source_manifest.json")
+    snapshot_name = "metadata/source/version_" + hashlib.sha256(manifest_bytes).hexdigest() + "_source_manifest.json"
+    allowed_catalog_metadata = CATALOG_OWNED_METADATA | {
+        "metadata/source/" + Path(snapshot_name).name,
+    }
+    files = {path.relative_to(target).as_posix() for path in target.rglob("*") if path.is_file()}
+    links = [path for path in target.rglob("*") if path.is_symlink()]
+    if links or files - SOURCE_OWNED_FILES - allowed_catalog_metadata:
+        raise CensusBlockGroupsError("cached_candidate_source_roster_drift")
+    if not SOURCE_OWNED_FILES <= files:
+        raise CensusBlockGroupsError("cached_candidate_source_roster_incomplete")
+    try:
+        stored_identity = json.loads(_read_candidate_file(target, "metadata/processing_identity.json"))
+        capture = json.loads(_read_candidate_file(target, "metadata/source_capture.json"))
+        audit = json.loads(_read_candidate_file(target, "metadata/source_audit.json"))
+        manifest = json.loads(manifest_bytes)
+        baseline = json.loads(_read_candidate_file(target, "metadata/baseline_comparison.json"))
+    except (OSError, ValueError) as exc:
+        raise CensusBlockGroupsError("cached_candidate_source_metadata_invalid") from exc
+    if stored_identity != identity:
+        raise CensusBlockGroupsError("cached_candidate_processing_identity_drift")
+    expected_capture = {
+        "archive_key": RAW_KEY, "receipt_key": RAW_RECEIPT_KEY,
+        "archive_sha256": SOURCE_SHA256, "archive_bytes": SOURCE_BYTES,
+        "archive_members": SOURCE_MEMBERS, "archive_expanded_bytes": SOURCE_EXPANDED_BYTES,
+        "source_url": SOURCE_URL,
+    }
+    if capture != expected_capture:
+        raise CensusBlockGroupsError("cached_candidate_input_identity_drift")
+    if (
+        audit.get("approved") is not False or audit.get("layer") != LAYER
+        or audit.get("feature_count") != SOURCE_FEATURE_COUNT
+        or audit.get("crs") != SOURCE_CRS or audit.get("geometry_type") != SOURCE_GEOMETRY
+        or audit.get("invalid_geometries") != 0 or audit.get("empty_geometries") != 0
+        or audit.get("z_geometries") != 0
+        or audit.get("native_layer_definition") != native_definition
+        or audit.get("source_driver_geometry_type") != SOURCE_GEOMETRY
+        or audit.get("FileGDB_declared_shape_type") != native_definition.get("source_shape_type")
+        or audit.get("source_batch_sha256") != audit.get("parquet_batch_sha256")
+        or audit.get("source_oid_arrow_representation") !=
+            "OBJECTID is physical esriFieldTypeOID Length4; GDAL Arrow emits int64 with every original value retained"
+        or audit.get("coverage_scope") !=
+            "all rows returned by the exact Block_Group layer in the pinned 2024 national substate GDB"
+    ):
+        raise CensusBlockGroupsError("cached_candidate_source_audit_drift")
+    parquet_relative = "geoparquet/" + OUTPUT_NAME
+    parquet = target / parquet_relative
+    if (
+        parquet.is_symlink() or not parquet.is_file() or parquet.stat().st_nlink != 1
+        or parquet.stat().st_size != audit.get("parquet_bytes")
+        or sha256_file(parquet) != audit.get("parquet_sha256")
+    ):
+        raise CensusBlockGroupsError("cached_candidate_native_parquet_tampered")
+    try:
+        parquet_file = pq.ParquetFile(parquet)
+        native_schema = parquet_file.schema_arrow
+    except Exception as exc:
+        raise CensusBlockGroupsError("cached_candidate_native_parquet_unreadable") from exc
+    if tuple(native_schema.names) != EXPECTED_NAMES or tuple(field.type for field in native_schema) != EXPECTED_TYPES:
+        raise CensusBlockGroupsError("cached_candidate_native_parquet_schema_drift")
+    geo_metadata = json.loads((native_schema.metadata or {}).get(b"geo", b"{}"))
+    shape = geo_metadata.get("columns", {}).get("SHAPE", {})
+    crs = shape.get("crs", {})
+    crs_id = crs.get("id", {}) if isinstance(crs, dict) else {}
+    if (
+        parquet_file.metadata.num_rows != SOURCE_FEATURE_COUNT
+        or geo_metadata.get("primary_column") != "SHAPE"
+        or shape.get("encoding") != "WKB" or shape.get("geometry_types") != [SOURCE_GEOMETRY]
+        or crs_id.get("authority") != "EPSG" or str(crs_id.get("code")) != "4269"
+    ):
+        raise CensusBlockGroupsError("cached_candidate_native_parquet_population_or_geo_metadata_drift")
+    if manifest != _manifest(identity, audit, receipt, native_definition):
+        raise CensusBlockGroupsError("cached_candidate_source_manifest_drift")
+    if baseline != {"schema_version": 1, "approved": False, "status": "blocked",
+                    "reason_codes": ["published_baseline_and_ID_schema_contract_acceptance_pending"]}:
+        raise CensusBlockGroupsError("cached_candidate_baseline_contract_drift")
+    state_counts = audit.get("statefp_counts")
+    if not isinstance(state_counts, dict) or sum(state_counts.values()) != SOURCE_FEATURE_COUNT:
+        raise CensusBlockGroupsError("cached_candidate_coverage_summary_drift")
+    return {
+        "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+        "feature_count": SOURCE_FEATURE_COUNT, "source_population_complete": True,
+        "source_archive_bytes": SOURCE_BYTES, "source_archive_sha256": SOURCE_SHA256,
+        "source_id_sha256": audit.get("native_objectid_sha256"),
+        "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
+        "native_parquet_sha256": audit["parquet_sha256"],
+        "native_parquet_bytes": audit["parquet_bytes"], "native_value_parity": True,
+        "code_identity_scheme": identity["code_identity_scheme"], "code_commit": identity["code_commit"],
+        "statefp_counts": state_counts, "approved": False, "reused": True,
+    }
+
+
 def stage_census_block_groups(
     storage: StagingStorageResource, *, archive_path: str, receipt_path: str,
 ) -> dict[str, object]:
@@ -348,7 +473,10 @@ def stage_census_block_groups(
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     target = root / prefix
     if target.exists() or target.is_symlink():
-        raise CensusBlockGroupsError("existing_candidate_version_refused_for_mutation")
+        return _reuse_existing_candidate(
+            target, identity=identity, receipt=receipt,
+            native_definition=archive_audit["native_definition"], version=version,
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".census-bg-building-", dir=target.parent))
     try:

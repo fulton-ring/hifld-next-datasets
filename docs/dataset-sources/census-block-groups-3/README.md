@@ -11,7 +11,11 @@ not treated as an accepted compatibility decision.
 The pinned archive contains 242,748 features in EPSG:4269. A refresh requires
 explicit paths to a retained archive and its receipt through
 `CENSUS_BLOCK_GROUPS_ARCHIVE_PATH` and `CENSUS_BLOCK_GROUPS_RECEIPT_PATH`; the
-registered schedule is stopped. The candidate and its catalog quality check do
-not approve source authority, baseline continuity, rights, schema/ID contracts,
-coverage, freshness, or release. Output is limited to the verified native
-GeoParquet object until those decisions are made.
+registered schedule is stopped. An exact repeat under the same packaged code
+identity and pinned input reuses the immutable source candidate after validating
+its source-owned roster, manifests and Parquet hash; known catalog-generated
+metadata is excluded from that source roster. A changed source object or
+unexpected file is rejected as drift rather than overwritten. The candidate and
+its catalog quality check do not approve source authority, baseline continuity,
+rights, schema/ID contracts, coverage, freshness, or release. Output is limited
+to the verified native GeoParquet object until those decisions are made.
