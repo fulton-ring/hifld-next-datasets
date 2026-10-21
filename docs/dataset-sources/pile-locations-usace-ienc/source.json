@@ -153,10 +153,10 @@
     "access": "public",
     "url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
     "description_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
-    "observed_at": "2026-10-21T15:18:11.284192+00:00",
+    "observed_at": "2026-10-21T15:28:46.538506+00:00",
     "metadata_sha256": "28d292b46d982cb977619454b593811a4b2f5ecf9a346acca65c12642d848a06",
     "linked_service_claims": "The captured record links USACE IENC Feature Classes and the master service geodatabase.",
-    "evidence_scope": "This is a current parent-item observation captured for the separate Pontoon Areas review on 2026-10-21. A fresh PILE_POINT capture must independently confirm the current item and linked source before the pipeline relies on it.",
+    "evidence_scope": "Captured in the current PILE_POINT extraction on 2026-10-21; the item was requested in the same sealed source capture as the complete layer. This establishes a current parent-item observation only, not continuity with the prior record or release acceptance.",
     "prior_item_id": "3607d485a9854d6fa458bf507058ceae",
     "succession_accepted": false,
     "note": "The changed parent item reference is not accepted as proof of item continuity, dataset release, freshness, baseline equivalence, rights, or approval."
@@ -165,12 +165,102 @@
     "retained_git_capture": "Complete official PILE_POINT capture observed 2026-10-20; prior source item reference was 3607d485a9854d6fa458bf507058ceae.",
     "retained_lifecycle_packet": "/workspace/work/269/runtime/lifecycle/packet.json",
     "retained_packet_results": "Registered source and catalog succeeded, all 3,010 native point rows passed catalog quality, and empty-approval verification failed closed with the populated published fixture unchanged.",
-    "packaged_no_git_dagster_proof": "Not yet recorded for the clean-main replacement.",
-    "quality_false_blocking_gate": "Not present in the retained lifecycle packet; must be recorded for the clean-main replacement.",
+    "packaged_no_git_dagster_proof": {
+      "packet": "/workspace/work/269-clean-evidence/no-git/registered_no_git_run.json",
+      "persistent_dagster_home": "/workspace/work/269-clean-evidence/no-git/dagster_home",
+      "persistent_run_database": "/workspace/work/269-clean-evidence/no-git/dagster_home/history/runs.db",
+      "runtime_root": "/workspace/work/269-clean-evidence/no-git/runtime",
+      "runtime_has_git_metadata": false,
+      "git_executable_available": false,
+      "source_run_id": "07417d30-d33c-4f8e-9ae3-06c79986a0c7",
+      "source_run_success": true,
+      "catalog_run_id": "fccd4ecb-73ac-4b68-b438-553f47a43381",
+      "catalog_run_success": true,
+      "identity_scheme": "sha256-packaged-dagster-hifld-v1",
+      "packaged_identity": "packaged-sha256:4497d0101a0af60dd473a5579624691ed02d80a799955cd8a2eaa39bc1dfe382",
+      "identity_file_count": 93,
+      "working_tree_status": "unknown",
+      "runtime_versions": {
+        "python": "3.12.14",
+        "pyarrow": "23.0.1",
+        "proj": "9.5.1",
+        "geos": "3.13.1"
+      },
+      "linked_source_tree_commit": "e98f7e91178b8c14dedd2a6fc3093d9ec575d6ef",
+      "linked_source_tree_commit_role": "The installed source and dependency inventory matched this committed tree byte-for-byte. The runtime observed only the packaged identity, not a Git commit.",
+      "packaged_inventory_matches_source_tree_commit": true,
+      "native_full_population_parity": {
+        "features": 3010,
+        "attribute_cells_exact": 27090,
+        "point_wkb_exact": 3010,
+        "invalid_geometry_count": 0,
+        "empty_geometry_count": 0
+      }
+    },
+    "quality_false_blocking_gate": {
+      "run_id": "bbaf08a3-a70b-465d-a84b-c860e1d9e539",
+      "run_success": false,
+      "check_passed": false,
+      "steps_started": [
+        "publish__catalog_quality_manifest"
+      ],
+      "verify_or_promote_started": false,
+      "populated_fixture_unchanged": true
+    },
     "clean_main_code_changes": [
       "The pipeline now pins BTS item 7ec34864c8804468a9cf52d437fe4b6c and validates owner, type, access, title and linked service claims.",
       "BTS item succession remains false in source audit, source manifest, candidate readiness, candidate output, and blocking-check metadata.",
       "The packaged code identity scheme is written into the source manifest and the exact identity object is passed to construction-code validation."
-    ]
+    ],
+    "empty_approval_blocking_gate": {
+      "run_id": "d315e037-6781-487a-9185-a8e01a13fe08",
+      "run_success": false,
+      "refusal": "missing_or_ambiguous_exact_object_approval",
+      "promote_started": false,
+      "approval_registry_empty": true,
+      "published_inventory_unchanged": true
+    }
+  },
+  "current_pile_point_capture": {
+    "source_run_id": "e99b04b0-0b6d-4055-ae0c-900531d5fd65",
+    "source_run_success": true,
+    "capture_directory": "/workspace/work/269-clean-evidence/capture-current-authorized/v20261021T152845Z/0b477ee1776245138e3eeb9ec3c922b6",
+    "captured_at": "2026-10-21T15:28:53.684098+00:00",
+    "complete": true,
+    "request_count": 23,
+    "capture_manifest_sha256": "0b05ebc9696d5b7e4d708b4b14a6250d77b7d3212904d250a1773c67870f5d56",
+    "bts_item_id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "prior_item_id": "3607d485a9854d6fa458bf507058ceae",
+    "bts_item_succession_accepted": false,
+    "feature_count": 3010,
+    "source_id_sha256": "d298d76237b21d1c44a7c23e412cf67234db786f62a537f7bcd9e5487f6c6beb",
+    "source_record_sha256": "85f56c60a638322864bbf6e21bb0c05f6da100773d926c96b5407e948c0c68c9",
+    "source_geometry_sha256": "ce2e5cd0d503a3dbcabd78314fb647d0787a9d2341d0fc9c0770259521915743",
+    "source_schema_sha256": "77cbbb6c751341050f0ca41c941ae6abb5a39103a330fea9578a08f4ed7ffb4b",
+    "source_capture_sha256": "81f26103607aec69ba235cb40aa6d186c7b3d5c7a86657bcc40b8d85448b00d2",
+    "native_attributes_and_points": "No reprojection, geometry repair, or attribute mapping; the source-native IDs, 27,090 attribute cells, and all 3,010 point WKB values were compared exactly to the generated GeoParquet.",
+    "candidate_version": "v1b01efc57d41bed65411fb88f62c7c5e",
+    "candidate_geoparquet_sha256": "2a65e0290ab2cc210e45ef1daf234c233acac6aa5bb96691dc13c2e0a0d71e23",
+    "candidate_geoparquet_bytes": 79069,
+    "catalog_quality": {
+      "passed": true,
+      "scope": "all_rows",
+      "feature_count": 3010,
+      "geometry_type": "Point",
+      "invalid_geometry_count": 0,
+      "empty_geometry_count": 0
+    },
+    "approval_and_release": "All acceptance flags remain false; no production publication occurred."
+  },
+  "historical_capture_comparison": {
+    "prior_capture_directory": "/workspace/work/269/runtime/capture-2026-10-20",
+    "current_capture_directory": "/workspace/work/269-clean-evidence/capture-current-authorized/v20261021T152845Z/0b477ee1776245138e3eeb9ec3c922b6",
+    "comparison_method": "Compared decoded native Esri JSON pages by OBJECTID; compared every source attribute and native point XY representation.",
+    "same_objectid_roster": true,
+    "feature_count": 3010,
+    "rows_with_any_attribute_or_geometry_difference": 0,
+    "changed_attribute_cells": 0,
+    "changed_point_geometries": 0,
+    "meaning": "Exact content match between these two retained extracts. It does not establish continuity or succession of the BTS catalog items, a dataset release date, freshness, an accepted historical baseline, or release approval."
   }
 }
