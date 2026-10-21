@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "classification": "local isolated draft-candidate materialization; no production publication",
+  "source_capture": {
+    "captured_at": "2026-10-21T18:05:44Z to 2026-10-21T18:06:13Z",
+    "capture_directory": "/workspace/work/46-evidence/capture/v20261021T180544Z/e8174c2324c0431494675ee47a03f17e",
+    "capture_manifest": "/workspace/work/46-evidence/capture/v20261021T180544Z/e8174c2324c0431494675ee47a03f17e/capture_manifest.json",
+    "response_count": 16,
+    "all_http_status_200": true,
+    "decoded_and_wire_bodies_retained": true,
+    "feature_count": 3713,
+    "source_id_sha256": "74572c24d43b5723c7629a2801a7908893f2cc9f312da75d532c15ca7eab9a74",
+    "source_record_sha256": "8dcbd0f3ed5e5dc00b47b21170d0dfc3a4d078d5564453c2435bbd5192bcbebc",
+    "source_geometry_sha256": "70c73276c4264ffb63e79b7255aa3e3525d5176698cf1fcecd1252534371e34b",
+    "source_schema_sha256": "b79051d26944526813fb9aa915d12e8063addc736505fc0875cfaea1216a53e1"
+  },
+  "final_packaged_runtime": {
+    "runtime_package": "/workspace/work/46-evidence/runtime-no-git",
+    "git_metadata_present": false,
+    "identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "working_tree_status": "unknown",
+    "code_commit": "packaged-sha256:fb1b9985d471a04ad99f30d10ba8010c0e0310e74536e9d018ac1602a44c19dd",
+    "identity_file_count": 144,
+    "identity_validation": "passed; installed Python/pyarrow/PROJ/GEOS versions were recomputed by the shared validator"
+  },
+  "registered_runs": {
+    "source": {
+      "run_id": "d4bcd5a0-32d0-45d5-8e10-a4087f4973e3",
+      "version": "v20261021T181055Z",
+      "status": "SUCCESS",
+      "feature_count": 3713,
+      "source_population_complete": true,
+      "replayed_retained_capture": true
+    },
+    "catalog_and_quality": {
+      "run_id": "bd42d89b-e9db-40be-b086-b8458a2866af",
+      "version": "v20261021T181055Z",
+      "status": "SUCCESS",
+      "quality_check_passed": true,
+      "invalid_geometry_count": 0,
+      "null_geometry_count": 0
+    },
+    "post_catalog_refresh": {
+      "run_id": "5366b9b1-cb6c-4704-84df-0593870b292c",
+      "version": "v20261021T181135Z",
+      "status": "SUCCESS",
+      "staging_directory": "/tmp/hifld-46-postcatalog",
+      "replayed_retained_capture": true,
+      "additional_network_requests": 0,
+      "source_outputs_unchanged": true
+    }
+  },
+  "release_gate_runs": {
+    "false_quality": {
+      "run_id": "d5a4e8b5-dba9-4be9-b4b5-8b94e863b267",
+      "candidate_version": "v20261021T180808Z",
+      "status": "FAILURE as expected",
+      "quality_check_failed": true,
+      "verify_started": false,
+      "promote_started": false,
+      "published_fixture_unchanged": true
+    },
+    "empty_approval": {
+      "run_id": "9a09065d-80bc-4957-a3e7-e75d1fac6b1d",
+      "candidate_version": "v20261021T180808Z",
+      "status": "FAILURE as expected",
+      "quality_check_passed": true,
+      "verify_failed": true,
+      "promote_started": false,
+      "published_fixture_unchanged": true
+    },
+    "fixture": {
+      "classification": "synthetic accepted prior-release fixture only",
+      "published_inventory_count": 14,
+      "published_fixture_receipt": "/workspace/work/46-evidence/gates/published_fixture.json"
+    },
+    "scope_note": "Gate graphs used the earlier packaged code identity before final receipt-scope and full readback assertions were added. Native candidate bytes, source hashes, catalog quality logic, verifier, promotion controls, and gate paths were unchanged. Gate run and inventory evidence is retained at /workspace/work/46-evidence/runtime/false_quality_gate.json and /workspace/work/46-evidence/runtime/empty_approval_gate.json."
+  },
+  "candidate_storage": {
+    "source_version_directory": "/workspace/work/46-evidence/staging-no-git/courthouses-3/courthouses-3/v20261021T181055Z",
+    "catalog_quality_manifest": "/workspace/work/46-evidence/staging-no-git/courthouses-3/courthouses-3/v20261021T181055Z/metadata/quality_manifest.json",
+    "post_catalog_source_version_directory": "/tmp/hifld-46-postcatalog/courthouses-3/courthouses-3/v20261021T181135Z",
+    "verification_packet": "/workspace/work/46-evidence/runtime/final_lifecycle_verification.json",
+    "persistent_dagster_home": "/workspace/work/46-evidence/dagster_home"
+  },
+  "production_publication": false,
+  "release_approval_registry": "empty"
+}

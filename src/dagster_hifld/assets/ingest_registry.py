@@ -55,6 +55,7 @@ from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.census_designated_places import census_designated_places
+from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 
 hifld_ingest_assets = [
     usgs_aquifers,
@@ -106,4 +107,5 @@ hifld_ingest_assets = [
     fws_cbrs_prohibitions,
     fws_cbrs_units,
     census_designated_places,
+    courthouses_usgs,
 ]
