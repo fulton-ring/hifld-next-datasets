@@ -10,11 +10,13 @@ import json
 import math
 import shutil
 import struct
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
+import geopandas as gpd
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -22,12 +24,16 @@ import shapely
 from pyproj import CRS
 from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
+from dagster_hifld.catalog import generate_data_dictionary
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
-from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.native_geoparquet_catalog import summarize_native_path
+from dagster_hifld.output_policy import prebuilt_output_spec, validate_output_policy
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, processing_identity,
@@ -439,6 +445,66 @@ def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,d
     return descriptors
 
 
+CATALOG_DERIVED_NAMES = ("metadata/quality_manifest.json", "metadata/data_dictionary.json",
+                         "metadata/resolved_provenance.json", "metadata/source/source_manifest.json")
+
+
+def _verify_cached_catalog_evidence(storage: StagingStorageResource, *, prefix: str, version: str) -> None:
+    """Require intact catalog evidence before trusting a same-version cache reuse.
+
+    The shared candidate verifier deliberately leaves catalog-owned documents
+    unverified. Reuse must still fail closed when derived catalog provenance is
+    missing or its contents drift from what the sealed candidate reproduces, so
+    corrupted catalog evidence cannot survive a successful replay. When the
+    catalog has produced no evidence yet, nothing derived exists to corrupt and
+    plain ingest idempotency is preserved.
+    """
+    actual = set(storage.list_prefix(prefix))
+    manifest_body = storage.read_key(f"{prefix}/metadata/source_manifest.json")
+    catalog_keys = {f"{prefix}/{name}" for name in CATALOG_DERIVED_NAMES}
+    catalog_keys.add(f"{prefix}/metadata/source/version_{_sha(manifest_body)}_source_manifest.json")
+    if not catalog_keys & actual:
+        return
+    missing = sorted(catalog_keys - actual)
+    if missing:
+        raise ValueError("cached_catalog_provenance_missing:" + ",".join(missing))
+    for key in sorted(catalog_keys & {f"{prefix}/metadata/source/source_manifest.json",
+                                      f"{prefix}/metadata/source/version_{_sha(manifest_body)}_source_manifest.json"}):
+        if storage.read_key(key) != manifest_body:
+            raise ValueError("cached_catalog_source_snapshot_changed:" + key)
+    try:
+        manifest = json.loads(manifest_body)
+        quality = json.loads(storage.read_key(f"{prefix}/metadata/quality_manifest.json"))
+        dictionary = json.loads(storage.read_key(f"{prefix}/metadata/data_dictionary.json"))
+        resolved = json.loads(storage.read_key(f"{prefix}/metadata/resolved_provenance.json"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError("cached_catalog_document_unreadable") from exc
+    if not all(isinstance(document, dict) for document in (manifest, quality, dictionary, resolved)):
+        raise ValueError("cached_catalog_document_unreadable")
+    if (resolved.get("inputs") != manifest.get("inputs")
+            or resolved.get("code_commit") != manifest.get("code_commit")
+            or resolved.get("transformations") != manifest.get("transformations")):
+        raise ValueError("cached_catalog_resolved_provenance_drift")
+    spec = prebuilt_output_spec(manifest, "geoparquet")
+    if spec is None or len(spec["objects"]) != 1:
+        raise ValueError("cached_catalog_native_source_missing")
+    resolved_manifest = load_resolved_source_manifest(storage, DATASET_SLUG, FILE_SLUG, version)
+    with tempfile.TemporaryDirectory(prefix="hifld-floating-docks-catalog-verify-") as temporary:
+        parquet_path = Path(temporary) / "candidate.parquet"
+        parquet_path.write_bytes(storage.read_key(f"{prefix}/{spec['objects'][0]['path']}"))
+        native_quality, native_dictionary = summarize_native_path(
+            parquet_path, DATASET_SLUG, resolved_manifest.metadata)
+    expected_dictionary = generate_data_dictionary(
+        gpd.GeoDataFrame(), DATASET_SLUG, source_metadata=resolved_manifest.metadata)
+    expected_dictionary.update(native_dictionary)
+    if quality != native_quality:
+        raise ValueError("cached_catalog_quality_manifest_drift")
+    if dictionary != expected_dictionary:
+        raise ValueError("cached_catalog_data_dictionary_drift")
+    if resolved != provenance_projection(expected_dictionary):
+        raise ValueError("cached_catalog_resolved_provenance_drift")
+
+
 def capture_usace_floating_docks(storage: StagingStorageResource, *, version: str,
                                  capture_directory: str | None = None) -> dict[str, object]:
     """Acquire a complete bounded source snapshot, or replay an explicit capture directory."""
@@ -584,6 +650,7 @@ def capture_usace_floating_docks(storage: StagingStorageResource, *, version: st
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
+        _verify_cached_catalog_evidence(storage,prefix=prefix,version=version)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
             "feature_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],

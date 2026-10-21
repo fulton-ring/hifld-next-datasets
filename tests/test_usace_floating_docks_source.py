@@ -2,25 +2,38 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
+import shutil
+import tempfile
 import unittest
 import copy
+from pathlib import Path
 
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
+from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources.usace_floating_docks import (
     BTS_ITEM_ID,
+    DATASET_SLUG,
     EXPECTED_COUNT,
     EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS,
     EXPECTED_ID_SHA256,
     EXPECTED_LAYER_EXTENT,
-    _parquet_bytes,
-    _validate,
+    FILE_SLUG,
     PAGE_SIZE,
+    _capture_roster,
+    _parquet_bytes,
+    _query,
+    _validate,
+    capture_usace_floating_docks,
 )
 
 
@@ -237,6 +250,138 @@ class UsaceFloatingDocksSourceTest(unittest.TestCase):
                 docs["layer_after"][key] = value
                 with self.assertRaisesRegex(ValueError, "source_layer_changed_during_capture"):
                     _validate(_captures(docs))
+
+
+def _write_capture_directory(root: Path, docs: dict[str, dict]) -> Path:
+    """Synthesize a complete sealed replay capture directory for offline cache tests."""
+    root.mkdir(parents=True, exist_ok=True)
+    ids = docs["ids_seed"]["objectIds"]
+    urls = {"ids_seed": _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})}
+    urls.update(dict(_capture_roster(ids)))
+    receipts = {}
+    for name, url in urls.items():
+        body = json.dumps(docs[name]).encode("utf-8")
+        receipt = {
+            "method": "GET", "url": url, "final_url": url,
+            "observed_at": "2026-10-21T00:00:00+00:00", "status": 200,
+            "complete_body": True,
+            "wire_bytes": len(body), "wire_sha256": hashlib.sha256(body).hexdigest(),
+            "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
+            "content_encoding": None, "content_length": None,
+            "error_code": None, "error_type": None,
+        }
+        (root / f"{name}.body").write_bytes(body)
+        (root / f"{name}.wire").write_bytes(body)
+        (root / f"{name}.receipt.json").write_bytes(
+            json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n")
+        receipts[name] = receipt
+    manifest = {
+        "captured_at": "2026-10-21T00:00:00+00:00", "complete": True,
+        "source_feature_count": len(ids), "receipts": receipts, "attempts": {},
+        "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
+    }
+    (root / "capture_manifest.json").write_bytes(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n")
+    return root
+
+
+def _catalog_candidate(storage: StagingStorageResource, version: str) -> None:
+    """Run the registered catalog stage exactly as the shared publish_catalog asset does."""
+    snapshot_source_metadata(storage, DATASET_SLUG, FILE_SLUG, version)
+    resolved = load_resolved_source_manifest(storage, DATASET_SLUG, FILE_SLUG, version)
+    summary = summarize_staged_catalog(storage, DATASET_SLUG, FILE_SLUG, version, DATASET_SLUG,
+                                       source_metadata=resolved.metadata)
+    write_catalog_metadata(storage, DATASET_SLUG, FILE_SLUG, version,
+                           summary.quality_manifest, summary.data_dictionary)
+
+
+class UsaceFloatingDocksCacheIntegrityTest(unittest.TestCase):
+    """Cache reuse must fail closed when catalog evidence is missing or corrupted.
+
+    Like the other storage-level source suites, these tests bind candidates to
+    the committed Git code identity, so the working tree must be clean.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self.storage = StagingStorageResource(local_dir=str(base / "staging"))
+        self.captures = _write_capture_directory(base / "captures", _docs())
+        self.version = "vunittest92"
+
+    def _stage(self) -> dict:
+        return capture_usace_floating_docks(self.storage, version=self.version,
+                                            capture_directory=str(self.captures))
+
+    def _root(self, version: str) -> Path:
+        return Path(self.storage.local_dir) / DATASET_SLUG / FILE_SLUG / version
+
+    def _edit_document(self, version: str, relative: str, mutate) -> None:
+        path = self._root(version) / relative
+        document = json.loads(path.read_bytes())
+        mutate(document)
+        path.write_bytes(json.dumps(document, sort_keys=True, indent=2).encode("utf-8"))
+
+    def test_reuse_before_catalog_stays_idempotent(self) -> None:
+        first = self._stage()
+        second = self._stage()
+        self.assertIs(second["reused"], True)
+        self.assertEqual(second["version"], first["version"])
+        self.assertEqual(second["feature_count"], EXPECTED_COUNT)
+
+    def test_reuse_after_registered_catalog_recomputes_evidence(self) -> None:
+        first = self._stage()
+        _catalog_candidate(self.storage, first["version"])
+        root = self._root(first["version"])
+        for relative in ("metadata/quality_manifest.json", "metadata/data_dictionary.json",
+                         "metadata/resolved_provenance.json", "metadata/source/source_manifest.json"):
+            self.assertTrue((root / relative).is_file(), relative)
+        digest = hashlib.sha256((root / "metadata/source_manifest.json").read_bytes()).hexdigest()
+        self.assertTrue((root / "metadata/source" / f"version_{digest}_source_manifest.json").is_file())
+        second = self._stage()
+        self.assertIs(second["reused"], True)
+        self.assertEqual(second["version"], first["version"])
+
+    def test_tampered_quality_manifest_blocks_reuse(self) -> None:
+        version = self._stage()["version"]
+        _catalog_candidate(self.storage, version)
+
+        def corrupt(quality: dict) -> None:
+            quality["feature_count"] = 999
+            quality["invalid_geometry_count"] = 999
+
+        self._edit_document(version, "metadata/quality_manifest.json", corrupt)
+        with self.assertRaisesRegex(ValueError, "cached_catalog_quality_manifest_drift"):
+            self._stage()
+
+    def test_emptied_data_dictionary_blocks_reuse(self) -> None:
+        version = self._stage()["version"]
+        _catalog_candidate(self.storage, version)
+
+        def corrupt(dictionary: dict) -> None:
+            dictionary["columns"] = []
+
+        self._edit_document(version, "metadata/data_dictionary.json", corrupt)
+        with self.assertRaisesRegex(ValueError, "cached_catalog_data_dictionary_drift"):
+            self._stage()
+
+    def test_deleted_catalog_provenance_blocks_reuse(self) -> None:
+        version = self._stage()["version"]
+        _catalog_candidate(self.storage, version)
+        digest = hashlib.sha256((self._root(version) / "metadata/source_manifest.json").read_bytes()).hexdigest()
+        for relative in ("metadata/resolved_provenance.json", "metadata/source/source_manifest.json",
+                         f"metadata/source/version_{digest}_source_manifest.json"):
+            (self._root(version) / relative).unlink()
+        with self.assertRaisesRegex(ValueError, "cached_catalog_provenance_missing"):
+            self._stage()
+
+    def test_rewritten_source_manifest_snapshot_blocks_reuse(self) -> None:
+        version = self._stage()["version"]
+        _catalog_candidate(self.storage, version)
+        (self._root(version) / "metadata/source/source_manifest.json").write_bytes(b"{}")
+        with self.assertRaisesRegex(ValueError, "cached_catalog_source_snapshot_changed"):
+            self._stage()
 
 
 if __name__ == "__main__":
