@@ -375,6 +375,13 @@ def _reuse_existing_candidate(
         raise CensusBlockGroupsError("cached_candidate_source_roster_drift")
     if not SOURCE_OWNED_FILES <= files:
         raise CensusBlockGroupsError("cached_candidate_source_roster_incomplete")
+    catalog_source_manifests = {
+        "metadata/source/source_manifest.json",
+        snapshot_name,
+    }
+    for relative in catalog_source_manifests & files:
+        if _read_candidate_file(target, relative) != manifest_bytes:
+            raise CensusBlockGroupsError("cached_candidate_catalog_source_manifest_snapshot_tampered")
     try:
         stored_identity = json.loads(_read_candidate_file(target, "metadata/processing_identity.json"))
         capture = json.loads(_read_candidate_file(target, "metadata/source_capture.json"))

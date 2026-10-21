@@ -227,6 +227,28 @@ class CensusBlockGroupsTests(unittest.TestCase):
                     native_definition=native_definition, version=version,
                 )
 
+    def test_cached_candidate_refuses_each_catalog_source_manifest_snapshot_tamper(self):
+        for snapshot_kind in ("source_manifest", "versioned_snapshot"):
+            with self.subTest(snapshot_kind=snapshot_kind), tempfile.TemporaryDirectory() as tmp:
+                target, identity, receipt, native_definition, version, _ = self._cached_candidate(Path(tmp))
+                source_manifest = (target / "metadata/source_manifest.json").read_bytes()
+                source_dir = target / "metadata/source"
+                source_dir.mkdir()
+                (source_dir / "source_manifest.json").write_bytes(source_manifest)
+                snapshot_name = "version_" + hashlib.sha256(source_manifest).hexdigest() + "_source_manifest.json"
+                (source_dir / snapshot_name).write_bytes(source_manifest)
+                relative = ("metadata/source/source_manifest.json" if snapshot_kind == "source_manifest"
+                            else "metadata/source/" + snapshot_name)
+                tampered = target / relative
+                tampered.write_bytes(tampered.read_bytes() + b"changed")
+                with self.assertRaisesRegex(
+                    CensusBlockGroupsError, "cached_candidate_catalog_source_manifest_snapshot_tampered"
+                ):
+                    _reuse_existing_candidate(
+                        target, identity=identity, receipt=receipt,
+                        native_definition=native_definition, version=version,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
