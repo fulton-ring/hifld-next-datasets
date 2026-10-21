@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from scripts.verification.registered_gate_proof import (
+    copy_candidate,
     ensure_release_metadata_prerequisite,
     is_exact_approval_failure,
     validate_gate_selection,
@@ -13,6 +14,32 @@ from scripts.verification.registered_gate_proof import (
 
 
 class RegisteredGateProofSafetyTests(unittest.TestCase):
+    def test_candidate_copy_does_not_hardlink_or_mutate_canonical_inode(self):
+        import hashlib
+        import os
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            payload = source / "candidate.parquet"
+            payload.write_bytes(b"pinned native candidate bytes")
+            before = payload.stat()
+            before_hash = hashlib.sha256(payload.read_bytes()).hexdigest()
+
+            copied = copy_candidate(source, root / "case", "dataset/file/version")
+            copied_payload = copied / payload.name
+            after = payload.stat()
+
+            self.assertEqual(payload.read_bytes(), b"pinned native candidate bytes")
+            self.assertEqual(hashlib.sha256(payload.read_bytes()).hexdigest(), before_hash)
+            self.assertEqual(after.st_mtime_ns, before.st_mtime_ns)
+            self.assertEqual(after.st_ino, before.st_ino)
+            self.assertEqual(after.st_nlink, 1)
+            self.assertEqual(os.stat(copied_payload).st_nlink, 1)
+            self.assertNotEqual(os.stat(copied_payload).st_ino, before.st_ino)
+            self.assertEqual(copied_payload.read_bytes(), payload.read_bytes())
+
     def test_gate_selection_is_explicit_and_does_not_expand_to_release_metadata(self):
         validate_gate_selection(["publish/verify", "publish/promote"])
         for selected in (

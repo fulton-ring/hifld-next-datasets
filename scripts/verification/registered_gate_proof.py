@@ -230,9 +230,9 @@ def run_gate_case(
 def copy_candidate(source: Path, case_root: Path, prefix: str) -> Path:
     destination = case_root / "staging" / Path(*prefix.split("/"))
     destination.parent.mkdir(parents=True)
-    # Candidate payloads can be multi-gigabyte. Hard-link the isolated inputs;
-    # every mutation in this harness is a newly created metadata file.
-    shutil.copytree(source, destination, copy_function=os.link)
+    # Keep proof mutations isolated from canonical source objects. Hard links
+    # change source inode link counts and invalidate the staging custody guard.
+    shutil.copytree(source, destination, copy_function=shutil.copy2)
     return destination
 
 
