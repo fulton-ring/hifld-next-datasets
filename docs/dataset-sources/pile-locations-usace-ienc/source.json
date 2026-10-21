@@ -1,0 +1,171 @@
+{
+  "inventory_id": "pile-locations-usace-ienc",
+  "inventory_title": "Pile Locations (USACE IENC)",
+  "inventory_publisher": "US Army Corps of Engineers",
+  "inventory_archive": {
+    "url": "https://www.datalumos.org/datalumos/project/240516/version/V1/view",
+    "archive_modified_date": "2025-04-08",
+    "date_meaning": "Inventory archive modification date; not a current source release date",
+    "http_audit_2026_10_20": "HTTP 403 from this environment; endpoint access was denied and is not classified as dead"
+  },
+  "research_status": "official USACE IENC service verified; source-specific draft pipeline may be implemented; publication remains contract-gated",
+  "crosswalk": {
+    "dhs_crosswalk_doi": "https://doi.org/10.3886/E241367V1",
+    "prior_audit": "https://github.com/fulton-ring/agent-content-demos/issues/40#issuecomment-6253017620",
+    "match_status": "Exact inventory title and IENC layer description match; DataLumos crosswalk/archive could not be loaded in this run (HTTP 403), so an exact crosswalk row was not inspected.",
+    "source_relationship": "The inventory description describes USACE IENC feature classes; the official IENC landing page describes USACE chart data and the IENCCloud service publishes the same named PILE_POINT feature class with matching purpose and field schema."
+  },
+  "producer": {
+    "name": "US Army Corps of Engineers (USACE), Army Geospatial Center (AGC), Inland Electronic Navigational Charts (IENC) Program",
+    "official_landing_page": "https://ienccloud.us/",
+    "authority_evidence": "The landing page identifies itself as the official public website of the USACE IENC Program, links the Army Geospatial Center, lists AGC-IENC@usace.army.mil for contact, and its Charts Viewer points to the USACE_IENC_Master_Service on the same host. The target feature service has copyrightText `USACE IENC`, title PILE_POINT, and service metadata describing the 99 IENC feature classes.",
+    "upstream_lineage": "USACE IENCs are produced from inland electronic navigation chart data. The service metadata states that an S-57 database is extracted to Esri File Geodatabase for publication. The PILE_POINT feature class is one of the IENC feature classes. The exact upstream source of each pile record is represented by its Source_Indication and Source_Dataset values.",
+    "official_release_date": null,
+    "freshness_fields": "Layer-level Source_Date values are preserved as source-provided strings. They range from 2002-07-15 through 2026-05-15 in this complete extraction; this is feature source-date coverage, not a uniform dataset release date."
+  },
+  "primary_source": {
+    "role": "official USACE IENC public service",
+    "landing_page": "https://ienccloud.us/",
+    "landing_page_statement": "Official public website of the Inland Electronic Navigational Charts (IENC) Program of USACE; contact AGC-IENC@usace.army.mil",
+    "landing_page_service_link": "https://ienccloud.us/arcgis/rest/services/IENC/USACE_IENC_Master_Service/MapServer",
+    "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PILE_POINT/MapServer/20",
+    "metadata_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PILE_POINT/MapServer/20?f=pjson",
+    "count_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PILE_POINT/MapServer/20/query?where=1%3D1&returnCountOnly=true&f=json",
+    "query_parameters": {
+      "where": "1=1",
+      "outFields": "*",
+      "returnGeometry": true,
+      "orderByFields": "OBJECTID",
+      "resultOffset": "0, 2000, ...",
+      "resultRecordCount": 2000,
+      "outSR": 4326,
+      "f": "json; complete native Esri JSON response bodies retained with HTTP wire artifacts; output uses direct typed GeoParquet"
+    },
+    "retrieved_at_utc": "2026-10-20T03:09:51Z/2026-10-20T03:10Z",
+    "service_release_label": "No single source release date in layer metadata. The service's item-level description labels the complete IENC vector service `(16-Sep-26)`; the layer metadata's editingInfo is separately recorded in runtime captures.",
+    "completeness": "The service reported 3,010 records. Two paginated queries at offsets 0 and 2,000 returned 2,000 and 1,010 records respectively. All 3,010 OBJECTID values were unique and non-null; all records had point geometry. The service supports pagination and a maximum record count of 2,000."
+  },
+  "secondary_distribution": {
+    "role": "USACE AGC ArcGIS-hosted distribution copy; not selected as source of truth",
+    "item_id": "6ee858a220a143a48c8d40a6cf0d3680",
+    "owner": "usace_agc_dkd (ArcGIS profile full name: Dale Dodson; organization ID not exposed)",
+    "item_url": "https://www.arcgis.com/home/item.html?id=6ee858a220a143a48c8d40a6cf0d3680",
+    "service_url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/USACE_IENC_Master_Service/FeatureServer/20",
+    "comparison": "Same layer name, 3,010 count, field schema and extent. Comparison of 3,010 OBJECTIDs showed 2,829 exact feature matches; 172 Object_Name, 147 Source_Date, 148 Source_Indication, 10 Scale_Minimum and 6 Condition values differed, and 181 geometries differed. This is a separately changing hosted copy, not an interchangeable endpoint."
+  },
+  "audit": {
+    "runtime_evidence_directory": "runtime/ (untracked; raw service metadata, landing page, count and complete paginated extracts with SHA-256 manifests)",
+    "geometry_type": "esriGeometryPoint",
+    "spatial_reference": "EPSG:4326",
+    "extent_wgs84": [
+      -96.09706959999994,
+      29.720565200000067,
+      -79.47503019999994,
+      45.12797000000006
+    ],
+    "field_schema": [
+      {
+        "name": "OBJECTID",
+        "source_type": "esriFieldTypeOID",
+        "role": "service ObjectID; only observed source ID, not assumed stable across refreshes"
+      },
+      {
+        "name": "Object_Name",
+        "source_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Information",
+        "source_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Condition",
+        "source_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Scale_Minimum",
+        "source_type": "esriFieldTypeInteger"
+      },
+      {
+        "name": "Source_Date",
+        "source_type": "esriFieldTypeString",
+        "length": 254,
+        "observed_values": "YYYYMMDD strings"
+      },
+      {
+        "name": "Source_Indication",
+        "source_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "source_type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Festure_ID",
+        "source_type": "esriFieldTypeString",
+        "length": 254,
+        "observed_nulls": 3010
+      }
+    ],
+    "service_nullability": "The MapServer schema does not declare per-field nullability. In the extraction, Festure_ID is null for all 3,010 rows; all other fields are non-null in this snapshot. Preserve observed nulls and do not repair or rename the source field.",
+    "extract_sha256_manifest": "runtime/ienccloud_pile_manifest.json",
+    "release_date": null,
+    "freshness_conclusion": "Recent Source_Date values through 2026-05-15 and a live service retrieval on 2026-10-20 support that the endpoint is populated with recent IENC source data. They do not establish a uniform refresh cadence or one release date."
+  },
+  "pipeline_validation": {
+    "draft_asset": "src/dagster_hifld/assets/usace_pile_locations.py::usace_pile_locations_usace_ienc",
+    "implementation": "src/dagster_hifld/sources/usace_pile_locations.py captures official service directory, layer and full field schema, count and ID rosters bracketed before and after extraction, and complete ID-based page queries. Every Esri JSON body, original HTTP wire body and request receipt are sealed and checksum verified. The service advertises 2,000 records maximum; the pipeline uses bounded 250-ID requests and rejects incomplete pages or source drift.",
+    "native_types_and_geometry": "The candidate GeoParquet is constructed from ArcGIS field declarations: OBJECTID int64, Scale_Minimum int32, source strings UTF-8 including all-null Festure_ID, and WKB Point geometry. The exact native XY numbers and every source attribute are retained without GeoJSON normalization or inferred-type coercion.",
+    "local_validation": "The official service was captured on 2026-10-20; exact count and pre/post ID roster each yielded 3,010 complete unique IDs. Capture receipts bind every response to its named GET URL and unchanged final URL, and include full raw body and wire hashes. Local native extraction produced 3,010 Point rows (0 invalid/empty); source ID SHA-256 d298d76237b21d1c44a7c23e412cf67234db786f62a537f7bcd9e5487f6c6beb and schema SHA-256 77cbbb6c751341050f0ca41c941ae6abb5a39103a330fea9578a08f4ed7ffb4b.",
+    "promotion_policy": "The candidate and asset check remain unapproved. Only typed GeoParquet is prebuilt; GeoPackage, Shapefile ZIP (source names exceed the 10-character limit), and PMTiles are explicitly unsupported while mapping/generalization policy is pending. Missing tippecanoe and lossy Shapefile field limits do not alter or block this source-native candidate. Baseline, rights, identity stability, coverage and release contracts remain pending maintainer decisions.",
+    "evidence": {
+      "capture_directory": "runtime/capture-2026-10-20/ (untracked; captured raw body/wire/receipts plus manifest)",
+      "capture_manifest_sha256": "3ff5d131eb789ff84ed49918ad4e314a173b96482d3275a213ce6632e4055556",
+      "source_capture_evidence_sha256": "0482d0eb706163784276e16e37e33756e0a0546de1c41223d42310c6592c1790",
+      "local_candidate": "runtime/dagster-registered-stage/ (untracked isolated staging; no accepted or production data written)"
+    }
+  },
+  "proposed_raw_schema_contract": {
+    "status": "unapproved; source schema snapshot for review only",
+    "preservation": "Retain all nine source attributes with exact names, types and values, including the source spelling Festure_ID and its null values. Retain exact point coordinates and the complete Esri JSON query pages. Do not generate row IDs. OBJECTID is a service identity key only; cross-refresh stability is unverified.",
+    "drift_policy": "Missing, renamed, added, or retyped columns; changed null behavior; unstable/missing OBJECTID; geometry, coverage, or completeness changes require quarantine and maintainer review."
+  },
+  "published_contract": {
+    "status": "pending maintainer approval and accepted-baseline comparison",
+    "baseline": "No accepted HIFLD Next dataset/file/version or checksums were verified in this source research.",
+    "release_gate": "Block catalog promotion/publication until an approved raw/published schema, ID identity rules, baseline mapping, provenance, and compatibility plan are recorded."
+  },
+  "refresh": {
+    "cadence": null,
+    "idempotency": "Record source query timestamps, full payload hashes and service metadata; detect identical content by hash. Do not interpret service edit time as a producer release date.",
+    "completeness_gate": "Compare pre-query count with returned records, require all page requests to succeed, require exactly the reported record count, unique non-null OBJECTID values, and complete geometry before staging.",
+    "quarantine": "Preserve the previous accepted release if source access, count, schema, ID, or geometry checks fail; retain raw candidate evidence for review."
+  },
+  "current_bts_item_observation": {
+    "id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "type": "PDF",
+    "access": "public",
+    "url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+    "observed_at": "2026-10-21T15:18:11.284192+00:00",
+    "metadata_sha256": "28d292b46d982cb977619454b593811a4b2f5ecf9a346acca65c12642d848a06",
+    "linked_service_claims": "The captured record links USACE IENC Feature Classes and the master service geodatabase.",
+    "evidence_scope": "This is a current parent-item observation captured for the separate Pontoon Areas review on 2026-10-21. A fresh PILE_POINT capture must independently confirm the current item and linked source before the pipeline relies on it.",
+    "prior_item_id": "3607d485a9854d6fa458bf507058ceae",
+    "succession_accepted": false,
+    "note": "The changed parent item reference is not accepted as proof of item continuity, dataset release, freshness, baseline equivalence, rights, or approval."
+  },
+  "pipeline_verification_status": {
+    "retained_git_capture": "Complete official PILE_POINT capture observed 2026-10-20; prior source item reference was 3607d485a9854d6fa458bf507058ceae.",
+    "retained_lifecycle_packet": "/workspace/work/269/runtime/lifecycle/packet.json",
+    "retained_packet_results": "Registered source and catalog succeeded, all 3,010 native point rows passed catalog quality, and empty-approval verification failed closed with the populated published fixture unchanged.",
+    "packaged_no_git_dagster_proof": "Not yet recorded for the clean-main replacement.",
+    "quality_false_blocking_gate": "Not present in the retained lifecycle packet; must be recorded for the clean-main replacement."
+  }
+}
