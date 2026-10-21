@@ -88,3 +88,22 @@ This is separate from the Agno `find-dataset-sources` CLI. It implements a **thr
 
 - Run the full suite: `uv run python -m unittest discover tests`
 - Tests cover partition wiring, sensor behavior (with mocks), catalog helpers, explicit asset keys (e.g. NOAA distinct layers), and resource path behavior. When changing `DATASET_FILE_PAIRS` or discovery logic, extend `tests/test_dynamic_partitions.py` or add focused tests rather than relying only on manual GCS checks.
+
+### Moving Pipeline workers cards
+
+Agents request a card move by adding an issue label, following the same one-shot
+protocol as `fulton-ring/agent-content-demos`: `move:backlog`, `move:ready`,
+`move:in-progress`, `move:review`, or `move:needs-decision`. For example:
+`gh issue edit 84 --repo fulton-ring/hifld-next-datasets --add-label move:review`.
+The **Board label sync** workflow sets the Project Status and removes the move
+labels only after the update succeeds. Decisions take priority over review,
+in-progress, ready and backlog when requests conflict. A label moves a card;
+it never starts a paid worker or grants source, contract or release acceptance.
+Only mark in-progress for a real running implementation, and request review
+with an exact-commit handoff. Do not use labels to bypass maintainer decisions.
+
+The workflow runs on supported label additions and every 15 minutes for catch-up.
+Manual runs default to a dry run. It requires repository secret
+`AGENT_BOARD_TOKEN` with organization Projects read/write access (resource owner
+`fulton-ring`) and Issues read access to this repository; label removal uses the workflow's repository-scoped `GITHUB_TOKEN`.
+Keep the Project credential out of worker environments. No model key is needed.
