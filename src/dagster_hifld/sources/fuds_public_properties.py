@@ -92,9 +92,23 @@ def _feature_urls(ids: list[int]) -> list[tuple[str, str]]:
     return urls
 
 
-def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
+def _validate_captures(
+    captures: dict[str, tuple[bytes, dict[str, object]]],
+    *,
+    expected_count: int = EXPECTED_COUNT,
+    expected_id_sha256: str = EXPECTED_ID_SHA256,
+    expected_record_sha256: str = EXPECTED_RECORD_SHA256,
+    expected_geometry_sha256: str = EXPECTED_GEOMETRY_SHA256,
+    expected_schema_sha256: str = EXPECTED_SCHEMA_SHA256,
+):
+    """Validate a complete capture roster against pinned or injected expectations.
+
+    Keyword defaults keep production behavior identical to the pinned source
+    population; tests inject a small synthetic population to exercise every
+    drift branch without network traffic.
+    """
     docs = {name: json.loads(body) for name, (body, _) in captures.items()}
-    page_count = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
+    page_count = (expected_count + PAGE_SIZE - 1) // PAGE_SIZE
     expected_names = {"service_before", "layer_before", "count_before", "ids_before", "ids_seed", "layer_after", "service_after", "count_after", "ids_after", *(f"page_{i:03d}" for i in range(page_count))}
     if set(captures) != expected_names:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
@@ -120,7 +134,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_field_roster_drift")
     fields = [_plain_field(x) for x in fields_value]
     schema_sha = _sha(_canonical(fields))
-    if schema_sha != EXPECTED_SCHEMA_SHA256:
+    if schema_sha != expected_schema_sha256:
         raise ValueError("source_schema_contract_drift")
     if docs["layer_after"].get("fields") is None or [_plain_field(x) for x in docs["layer_after"]["fields"]] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
@@ -128,17 +142,17 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         if docs[name] != layer: raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
+    if docs["count_before"].get("count") != expected_count or docs["count_after"].get("count") != expected_count:
         raise ValueError("source_count_drift")
     rosters = [docs[name].get("objectIds") for name in ("ids_before", "ids_seed", "ids_after")]
-    if any(not isinstance(roster, list) or len(roster) != EXPECTED_COUNT or
-           any(type(value) is not int for value in roster) or len(set(roster)) != EXPECTED_COUNT
+    if any(not isinstance(roster, list) or len(roster) != expected_count or
+           any(type(value) is not int for value in roster) or len(set(roster)) != expected_count
            for roster in rosters):
         raise ValueError("source_id_population_drift")
     if any(sorted(roster) != sorted(rosters[0]) for roster in rosters[1:]):
         raise ValueError("source_id_population_drift")
     ids = sorted(rosters[0])
-    if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
+    if _sha(_canonical(ids)) != expected_id_sha256:
         raise ValueError("source_id_roster_drift")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID" or docs["ids_after"].get("objectIdFieldName") != "OBJECTID":
         raise ValueError("source_id_field_changed")
@@ -146,7 +160,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_count_changed_during_capture")
 
     features = []
-    for page_idx, offset in enumerate(range(0, EXPECTED_COUNT, PAGE_SIZE)):
+    for page_idx, offset in enumerate(range(0, expected_count, PAGE_SIZE)):
         page = docs[f"page_{page_idx:03d}"]
         if not isinstance(page, dict) or "error" in page:
             raise ValueError("source_page_error")
@@ -154,7 +168,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         if not isinstance(rows, list): raise ValueError("source_page_missing_features")
         expected = ids[offset:offset + PAGE_SIZE]
         actual = [r.get("attributes", {}).get("OBJECTID") for r in rows if isinstance(r, dict)]
-        full_nonfinal = len(expected) == PAGE_SIZE and offset + PAGE_SIZE < EXPECTED_COUNT
+        full_nonfinal = len(expected) == PAGE_SIZE and offset + PAGE_SIZE < expected_count
         exceeded = page.get("exceededTransferLimit") is True
         if actual != expected or len(rows) != len(expected):
             raise ValueError("source_page_id_slice_incomplete_or_reordered")
@@ -182,9 +196,9 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical(features))
     geometry_sha = _sha(_canonical(geometry_records))
-    if record_sha != EXPECTED_RECORD_SHA256:
+    if record_sha != expected_record_sha256:
         raise ValueError("source_record_value_drift")
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
+    if geometry_sha != expected_geometry_sha256:
         raise ValueError("source_geometry_or_coverage_drift")
     audit = {"source_feature_count":len(features), "source_id_sha256":_sha(_canonical(ids)),
              "source_record_sha256":record_sha, "source_geometry_sha256":geometry_sha,
