@@ -279,5 +279,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
+    )
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
