@@ -309,6 +309,7 @@ def capture(staging, version, client=None, replay_version=None):
             "inputs":inputs,
             "transformations":[{"operation":"Esri FeatureServer complete ID roster to typed GeoJSON and native GeoParquet candidate","parameters":{"source_fields":"all 47 declared nongeometry fields retained in source order and source values","geometry":"point XY retained in EPSG:4269; WKB encoded without reprojection","source_population":"all exact ObjectIDs returned by before/after roster snapshots","acceptance":"draft only; historical HIFLD equivalence not asserted"}}],
             "source_coverage_scope":"All 20,563 feature IDs observed in the Navigation Facilities (Dock) ArcGIS layer at capture time; geographic and historical HIFLD scope equivalence unapproved.",
+            "release_date":None,"release_date_unknown_reason":"Captured service metadata provides an edit timestamp but no producer publication/effective release date.",
             "source_acceptance":False,"rights_accepted":False,"coverage_accepted":False,"baseline":None,
             "native_crs":"EPSG:4269 (NAD83)","source_id_field":"OBJECTID","source_id_sha256":ids_sha,
             "source_schema_sha256":schema_sha,"source_record_sha256":source_record_sha,"feature_count":len(features),
