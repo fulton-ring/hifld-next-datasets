@@ -53,7 +53,12 @@ class CurrentDartTests(TestCase):
                     with self.assertRaises(source.DartQuarantineError):source.inspect_archive(body,Path(self.tmp.name))
     def test_before_after_ids_counts_and_delegation_fail_closed(self):
         captures={n:((CAPTURES/(n+'.body')).read_bytes(),json.loads((CAPTURES/(n+'.receipt.json')).read_bytes())) for n in source.URLS}
-        source.validate_complete_bundle(captures);source.provenance(captures)
+        source.validate_complete_bundle(captures)
+        manifest=source.provenance(captures)
+        self.assertEqual(manifest['license'], 'Rights review pending.')
+        self.assertEqual(manifest['documentation_url'], source.LANDING)
+        self.assertTrue(all(item['license'] == 'Rights review pending.' for item in manifest['inputs']))
+        self.assertTrue(all(item['rights_review_reference'] == source.NOAA_DISCLAIMER for item in manifest['inputs']))
         for name in ('ids_before','ids_after','count_before','count_after'):
             with self.subTest(name=name):
                 altered=copy.deepcopy(captures);j=json.loads(altered[name][0])

@@ -46,6 +46,7 @@ FIDELITY_FILES = ('baseline_comparison.json','baseline_comparison.md','baseline_
 SLUG = 'current-dart-deployments'
 URL = 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0'
 LANDING = 'https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis/dart-ocean-bottom-pressure'
+NOAA_DISCLAIMER = 'https://www.noaa.gov/disclaimer'
 URLS = {'ncei_dart': 'https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis/dart-ocean-bottom-pressure', 'ncei_map': 'https://www.ncei.noaa.gov/maps/hazards/?layers=4', 'map_store': 'https://www.ncei.noaa.gov/maps/hazards/assets/store-CeovILYQ.js', 'webmap': 'https://www.arcgis.com/sharing/rest/content/items/5cb326668189408e8c4c20ddd92aa2ed/data?f=pjson', 'item': 'https://www.arcgis.com/sharing/rest/content/items/764d3a99a4f8440ea05522815b5f5e19?f=pjson', 'layer': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0?f=pjson', 'count_before': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json', 'ids_before': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json', 'features': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&orderByFields=OBJECTID&f=json', 'ids_after': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnIdsOnly=true&f=json', 'count_after': 'https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Current_DARTs_and_Retrospective_BPR_Deployments/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json'}
 URLS['map_js'] = 'https://www.ncei.noaa.gov/maps/hazards/assets/index-Cyvq2L9n.js'
 ARCHIVE_NAME = 'current-dart-original-features.json'
@@ -199,7 +200,8 @@ def provenance(captures: dict, identity: dict | None = None) -> dict:
             'canonical_url':URLS[name],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],
             'retrieved_at':receipt['fetched_at'],'release_date':None,
             'release_date_unknown_reason':'No dated data release is declared; layer editingInfo and portal modified timestamps are operational metadata, not release dates.',
-            'sha256':sha(body),'bytes':len(body),'license':'https://www.noaa.gov/disclaimer',
+            'sha256':sha(body),'bytes':len(body),'license':'Rights review pending.',
+            'rights_review_reference':NOAA_DISCLAIMER,
             'attribution':'NOAA NCEI / PMEL / NDBC',
             'lineage':'NOAA-hosted hazards map JavaScript selects webmap 5cb326668189408e8c4c20ddd92aa2ed; its exact current-dart-deployments layer delegates to ncei_noaa item764d3a99a4f8440ea05522815b5f5e19 layer0. No source, ID or contract acceptance.',
             'authority_evidence':URLS['ncei_map'],'distributor':'Esri ArcGIS Online for NOAA ncei_noaa','delegation_evidence':{'producer_map_url':URLS['ncei_map'],'producer_map_config_url':URLS['map_store'],'webmap_url':URLS['webmap']}})
@@ -210,7 +212,7 @@ def provenance(captures: dict, identity: dict | None = None) -> dict:
         'processing_code':{'scheme':identity['code_identity_scheme'],'identity':identity['code_commit']},
         'title':'Current DART Deployments — working draft',
         'publisher':'NOAA NCEI (ncei_noaa hosted service)','agency':'National Oceanic and Atmospheric Administration',
-        'source_url':LANDING,'license':'https://www.noaa.gov/disclaimer','inputs':inputs,
+        'source_url':LANDING,'documentation_url':LANDING,'license':'Rights review pending.','inputs':inputs,
         'transformations':[{'operation':'decode_native_esri_point_json','preserved':'all six original source attributes including STATION, OBJECTID and OID; declared int32 source columns, original EPSG3857 XY coordinates and every raw response','repair_or_projection':False,'mapping_approval':'not established'}],
         'unsupported_output_formats':{'shapefile_zip':'Regenerated DBF/index files and proposed ID mapping require acceptance; original JSON inputs retained losslessly.',
             'pmtiles':'Reprojection and quantization would alter native coordinates; visualization mapping unapproved.'}}
