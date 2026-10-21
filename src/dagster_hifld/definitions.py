@@ -305,6 +305,26 @@ from dagster_hifld.source_formats import (
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
 )
+from dagster_hifld.assets.usace_conveyor_areas import (
+    usace_conveyor_areas_complete,
+    usace_conveyor_areas_draft_job,
+    usace_conveyor_areas_draft_schedule,
+)
+from dagster_hifld.assets.construction_minerals import (
+    construction_minerals_draft_job,
+    construction_minerals_draft_schedule,
+)
+from dagster_hifld.assets.census_county_subdivisions import (
+    county_subdivisions_draft_refresh_job,
+    county_subdivisions_draft_refresh_schedule,
+)
+from dagster_hifld.assets.usace_crane_locations import (
+    usace_crane_locations_complete,
+    usace_crane_locations_quality,
+    usace_crane_locations_release,
+    usace_crane_locations_draft_job,
+    usace_crane_locations_draft_schedule,
+)
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -715,6 +735,10 @@ defs = Definitions(
         usace_airport_area_quality,
         usace_airport_area_release,
         campus_historical_full_quality,
+        usace_conveyor_areas_complete,
+        usace_crane_locations_complete,
+        usace_crane_locations_quality,
+        usace_crane_locations_release,
     ],
     jobs=[
         colleges_source_integrity_job,
@@ -765,6 +789,10 @@ defs = Definitions(
         ornl_campus_historical_reconstruction_job,
         csa_source_integrity_job,
         concity_source_integrity_job,
+        usace_conveyor_areas_draft_job,
+        construction_minerals_draft_job,
+        county_subdivisions_draft_refresh_job,
+        usace_crane_locations_draft_job,
     ],
     schedules=[
         colleges_source_integrity_schedule,
@@ -819,6 +847,10 @@ defs = Definitions(
         cdp_source_integrity_schedule,
         csa_source_integrity_schedule,
         concity_source_integrity_schedule,
+        usace_conveyor_areas_draft_schedule,
+        construction_minerals_draft_schedule,
+        county_subdivisions_draft_refresh_schedule,
+        usace_crane_locations_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
