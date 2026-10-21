@@ -10,6 +10,8 @@ import pyarrow.parquet as pq
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities_complete
+from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.sources.epa_rmp_facilities import (
     _canonical,
     _parquet_bytes,
@@ -17,7 +19,6 @@ from dagster_hifld.sources.epa_rmp_facilities import (
     capture_epa_rmp_facilities,
     validate_source_captures,
 )
-from dagster_hifld.sources.epa_frs_common import write_immutable
 
 
 def _capture_fixture(*, num_views=(10, 11), data_edit=(1000, 1000), transfer=False,
@@ -203,12 +204,19 @@ class EpaRmpSourceTests(unittest.TestCase):
                 self.assertFalse(stored_replay["captured_for_dataset_refresh"])
                 self.assertFalse(candidate["release_accepted"])
                 self.assertIn(prefix + "/raw/features_000.body", storage.list_prefix(prefix))
-                # Catalog-derived documents are permitted by the shared
-                # cache policy and must not alter the sealed source roster.
-                quality = {"schema_version": 1, "source": "fixture", "passed": False,
-                           "blocking": ["synthetic_baseline_pending"]}
-                write_immutable(storage, prefix + "/metadata/quality_manifest.json",
-                                _canonical(quality) + b"\n")
+                # Catalog-derived documents must match production's canonical
+                # summary of the sealed candidate and must not alter its source roster.
+                resolved = load_resolved_source_manifest(
+                    storage, first["dataset_slug"], first["file_slug"], first["version"]
+                ).metadata
+                summary = summarize_staged_catalog(
+                    storage, first["dataset_slug"], first["file_slug"], first["version"],
+                    first["dataset_slug"], source_metadata=resolved,
+                )
+                write_catalog_metadata(
+                    storage, first["dataset_slug"], first["file_slug"], first["version"],
+                    summary.quality_manifest, summary.data_dictionary,
+                )
                 observation_time[0] = "2026-10-20T00:00:00Z"
                 second = capture_epa_rmp_facilities(storage, **args)
                 self.assertTrue(second["reused"])
