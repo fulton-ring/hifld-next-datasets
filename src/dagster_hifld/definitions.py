@@ -19,6 +19,10 @@ from dagster_hifld.assets.census_bureau import (
     aiannh_source_integrity_refresh_job,
     aiannh_source_integrity_refresh_schedule,
 )
+from dagster_hifld.assets.bts import (
+    amtrak_draft_refresh_job,
+    amtrak_draft_refresh_schedule,
+)
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
@@ -641,6 +645,7 @@ defs = Definitions(
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
         usace_airport_area_draft_job,
+        amtrak_draft_refresh_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -679,6 +684,7 @@ defs = Definitions(
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
+        amtrak_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
