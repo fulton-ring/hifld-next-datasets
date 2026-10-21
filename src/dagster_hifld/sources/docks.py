@@ -172,7 +172,9 @@ def capture(staging, version, client=None):
         layer = _request(client, staging, version, "layer", LAYER_URL, {"f": "pjson"}, budget)
         if layer.get("id") != 0 or layer.get("name") != "Navigation Facilities (Dock)" or layer.get("geometryType") != "esriGeometryPoint":
             raise ValueError("source_layer_identity_drift")
-        if layer.get("maxRecordCount", 0) < 1 or layer.get("supportsPagination") is not True:
+        advanced = layer.get("advancedQueryCapabilities")
+        if (layer.get("maxRecordCount", 0) < 1 or not isinstance(advanced, dict)
+                or advanced.get("supportsPagination") is not True):
             raise ValueError("source_pagination_contract_drift")
         for dim in ("hasZ", "hasM"):
             if type(layer.get(dim)) is not bool or layer[dim]:
