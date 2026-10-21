@@ -266,7 +266,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
             if not isinstance(result.get("fields"), list):
                 raise ValueError("source_page_schema_drift")
             actual_fields = [{"name": field.get("name"), "type": field.get("type")} for field in result["fields"]]
-            if actual_fields != [{"name": name, "type": kind} for name, kind in SOURCE_SCHEMA]:
+            if actual_fields != [{"name": name, "type": kind} for name, kind in FIELDS]:
                 raise ValueError("source_page_schema_drift")
             _validate_crs(result.get("spatialReference"))
             page_ids = [f.get("attributes", {}).get("OBJECTID") for f in page]

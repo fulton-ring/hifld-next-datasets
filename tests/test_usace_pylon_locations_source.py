@@ -48,7 +48,7 @@ class ArcGISFixture(httpx.BaseTransport):
                 features.append({"attributes": attrs, "geometry": geometry})
             data = {"features": features, "exceededTransferLimit": False,
                     "geometryType": "esriGeometryPoint", "spatialReference": {"wkid": 3857 if self.changed_page_crs else 4326},
-                    "fields": [{"name": name, "type": typ} for name, typ in source.SOURCE_SCHEMA]}
+                    "fields": [{"name": name, "type": typ} for name, typ in source.FIELDS]}
         return httpx.Response(200, stream=httpx.ByteStream(json.dumps(data).encode()), request=request, headers={"content-type": "application/json"})
 
 
