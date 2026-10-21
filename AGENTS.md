@@ -114,14 +114,16 @@ When repository variable `AGENT_DISPATCH_ENABLED=true`, **Ready** queues
 implementation and **Review** queues an independent review of the exact current
 PR head. The supervisor chooses work by moving selected Backlog cards to Ready.
 Backlog, Needs decision, In progress and Done do not dispatch. The board remains
-the queue: each sweep admits at most two jobs into the private trusted-main
-`fulton-ring/hifld-next-iac` workflow, respecting two active/queued jobs combined
-and six attempts per rolling 24 hours. Its inference-budget preflight still runs
+the queue: each sweep fills available slots in the private trusted-main
+`fulton-ring/hifld-next-iac` workflow, respecting six active/queued implementation
+jobs and two active/queued reviews independently. Completed attempts do not
+consume slots; there is no daily attempt-count limit. Its inference-budget preflight still runs
 before GKE allocation. Exhausted capacity leaves cards waiting; there is no
 automatic retry of a previously attempted issue/head/role. Failed reviews require
 supervisor inspection. Existing PRs retain their actual branch and dependency;
 new implementations start from `codex/cloud-verification-417`. Fork PRs are never
-review candidates. Shared framework gates such as #417 require separate supervision.
+review candidates. Shared verifier #417 may receive an exact-head independent
+review from Review; its implementation and acceptance remain separately supervised.
 
 Existing work needs a trusted issue/PR association. The implementation handoff
 records `<!-- hifld-agent-pr:v1 issue=282 pr=548 -->` on the assigned issue after

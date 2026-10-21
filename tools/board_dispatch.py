@@ -27,26 +27,16 @@ CURRENT = '''query($item:ID!){node(id:$item){... on ProjectV2Item{
  }}}'''
 
 
-def stamp(value):
-    parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
-    if parsed.utcoffset() is None:
-        raise ValueError('Run timestamp lacks timezone')
-    return parsed.timestamp()
+ROLE_LIMITS = {'implementation': 6, 'review': 2}
 
 
-def capacity(runs, now):
+def capacity(runs, role):
     active = [r for r in runs if r['status'] != 'completed']
     # Legacy manual runs lack an issue/head identity: wait rather than overlap them.
-    if any(not IDENTITY.fullmatch(r.get('display_title', '')) for r in active):
+    identities = [IDENTITY.fullmatch(r.get('display_title', '')) for r in active]
+    if any(m is None for m in identities):
         return 0
-    attempts = 0
-    for run in runs:
-        attempt = run['run_attempt']
-        if type(attempt) is not int or attempt < 1:
-            raise ValueError('Invalid admission ledger')
-        if stamp(run['updated_at']) >= now - 86400:
-            attempts += attempt
-    return max(0, min(2 - len(active), 6 - attempts, 2))
+    return max(0, ROLE_LIMITS[role] - sum(m[1] == role for m in identities))
 
 
 def ledger(api):
@@ -83,9 +73,13 @@ def cards(api):
     for _ in range(10):
         page = graphql(api, ITEMS, dict(project=project['id'], cursor=cursor))['node']['items']
         for item in page['nodes']:
-            if actionable(item) and '<!-- hifld-dataset:' in item['content']['body']:
+            status = (item.get('status') or {}).get('name')
+            # The shared verifier is reviewable, but never automatically implemented.
+            eligible = ('<!-- hifld-dataset:' in (item.get('content') or {}).get('body', '')
+                        or ((item.get('content') or {}).get('number') == 417 and status == 'Review'))
+            if actionable(item) and eligible:
                 result.append(dict(id=item['id'], number=item['content']['number'],
-                                   status=(item.get('status') or {}).get('name')))
+                                   status=status))
         if not page['pageInfo']['hasNextPage']:
             return result
         cursor = page['pageInfo']['endCursor']
@@ -157,9 +151,10 @@ def dispatch_cards(board, api, dry_run=False, now=None):
         runs = ledger(api)
         known = {r['id'] for r in runs}
         runs += [r for r in reservations if r['id'] not in known]
-        if not capacity(runs, current_time()):
-            print('Dispatch held: two-slot pool or six-attempt rolling allowance is full.')
-            break
+        role = 'review' if card['status'] == 'Review' else 'implementation'
+        if not capacity(runs, role):
+            print(f'Dispatch held: {role} concurrency limit is full or an active run is unidentified.')
+            continue
         try:
             task = task_for(card, api)
             identity = (task['role'], task['issue'], task['dispatch_head_sha'])
@@ -193,7 +188,7 @@ def dispatch_cards(board, api, dry_run=False, now=None):
         reservations.append(dict(id=run_id, display_title=title, status='queued', run_attempt=1,
                                  updated_at=datetime.fromtimestamp(current_time(), timezone.utc).isoformat()))
         selected.append(task)
-        if len(selected) == 2:
+        if len(selected) == sum(ROLE_LIMITS.values()):
             break
     return selected
 
