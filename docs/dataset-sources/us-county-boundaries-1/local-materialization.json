@@ -1,0 +1,68 @@
+{
+  "evidence_status": "local_verification_only_not_release_acceptance",
+  "runtime": {
+    "packaged_runtime_without_git": true,
+    "runtime_source_base": "7224d1653522cc2e15b1d6d8f5f895874b821836 plus this County candidate source and asset",
+    "dagster_home": "/workspace/work/363-clean-evidence/head-no-git/dagster_home",
+    "identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "code_commit": "packaged-sha256:4af825be7634f30e7e874c9946e6e1c1ceaeba6d40e96fe62d6e7c2fe279a70d",
+    "working_tree_status": "unknown",
+    "runtime_versions": {
+      "python": "3.12.14",
+      "pyarrow": "23.0.1",
+      "proj": "9.5.1",
+      "geos": "3.13.1"
+    }
+  },
+  "runs": {
+    "source_materialization": {
+      "run_id": "68b7f589-216c-44e3-9571-33552c36db48",
+      "success": true,
+      "blocking_source_check_passed": true,
+      "candidate_version": "v55165cf70c85fd9c5c2d3637a65ff958"
+    },
+    "catalog_materialization": {
+      "run_id": "0543e9b5-dc90-4bd1-8537-e27d22582279",
+      "success": true,
+      "quality_check_passed": true,
+      "feature_count": 3235,
+      "invalid_geometry_count": 0,
+      "sampled_null_geometry_count": 0
+    }
+  },
+  "catalog_provenance": {
+    "source_archive_sha256": "692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e",
+    "source_archive_bytes": 83451409,
+    "source_id_sha256": "2543af0c3d664319369a412825a0ef0970f684b1db94163e711735239db312f2",
+    "source_schema_sha256": "b6ae5471ef141d0bceaba371e029aeae96bb6fe1d26598170caf44adf95c93dc",
+    "resolved_manifest_identity_matches_candidate": true
+  },
+  "refusal_gates": {
+    "false_quality_manifest": {
+      "run_id": "22ccb98a-d825-4967-95d2-91425ae20c1a",
+      "run_failed_at_blocking_quality_check": true,
+      "verify_or_promote_started": false,
+      "populated_synthetic_published_fixture_unchanged": true
+    },
+    "empty_approval_registry": {
+      "run_id": "74d2d92b-c2be-46c2-9cfa-9d82eb538a3e",
+      "verify_refused_missing_exact_object_approval": true,
+      "promote_started": false,
+      "populated_synthetic_published_fixture_unchanged": true
+    }
+  },
+  "acceptance": {
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "production_promotion_performed": false,
+    "schedule_default_status": "STOPPED"
+  },
+  "evidence_packet": "/workspace/work/363-clean-evidence",
+  "run_record": "/workspace/work/363-clean-evidence/head-no-git/registered_no_git_run.json"
+}
