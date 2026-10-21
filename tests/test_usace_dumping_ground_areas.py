@@ -6,6 +6,7 @@ import copy
 import io
 import json
 import unittest
+from urllib.parse import parse_qs, urlparse
 
 import pyarrow.parquet as pq
 import shapely
@@ -122,6 +123,16 @@ class UsaceDumpingGroundAreasSourceTest(unittest.TestCase):
         self.assertEqual(usace_dumping_ground_areas_usace_ienc.key.path,
                          ["ingest", source.DATASET_SLUG, source.FILE_SLUG])
         self.assertEqual(usace_dumping_ground_areas_draft_schedule.default_status.value, "STOPPED")
+
+    def test_true_curves_are_requested_and_curve_rings_fail_closed(self) -> None:
+        page_url = dict(source._capture_roster([1]))["page_000"]
+        query = parse_qs(urlparse(page_url).query)
+        self.assertEqual(query.get("returnTrueCurves"), ["true"])
+        docs = _docs()
+        geometry = docs["page_000"]["features"][0]["geometry"]
+        geometry["curveRings"] = [[{"c": [[-90.0, 38.0], [-89.9, 38.1]]}]]
+        with self.assertRaisesRegex(ValueError, "unsupported_true_curve_geometry"):
+            source._validate(_captures(docs))
 
 
 if __name__ == "__main__":

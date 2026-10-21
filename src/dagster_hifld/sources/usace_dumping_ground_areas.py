@@ -276,7 +276,7 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
         page_ids = ids[start:start + PAGE_SIZE]
         urls.append((f"page_{index:03d}", _query({"objectIds":",".join(map(str,page_ids)),
             "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
-            "outSR":"4326", "f":"json"})))
+            "returnTrueCurves":"true", "outSR":"4326", "f":"json"})))
     urls.extend([("layer_after", LAYER_URL + "?f=json"),
                  ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
                  ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","returnGeometry":"false","f":"json"})),
@@ -362,6 +362,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         attrs, geom=feature.get("attributes"), feature.get("geometry")
         if not isinstance(attrs,dict) or list(attrs)!=expected_attrs or not isinstance(geom,dict) or "rings" not in geom:
             raise ValueError("source_record_schema_or_geometry_drift")
+        if "curveRings" in geom:
+            raise ValueError("unsupported_true_curve_geometry")
         if set(geom)-{"rings","hasZ","hasM","spatialReference"}:
             raise ValueError("unexpected_source_geometry_ordinates")
         geometry_reference=geom.get("spatialReference")
