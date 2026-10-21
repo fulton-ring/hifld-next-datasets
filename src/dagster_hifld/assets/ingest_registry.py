@@ -7,6 +7,7 @@ assets are derived automatically from this registry.
 from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
+from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
@@ -31,6 +32,7 @@ from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.fdic_locations import fdic_locations_official
 from dagster_hifld.assets.fema_regions import fema_regions_official
 from dagster_hifld.assets.ferc_regions import ferc_historical_preservation
+from dagster_hifld.assets.fuds_division_boundaries import fuds_program_division_boundaries
 from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.epa_regions import epa_regions
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
@@ -84,6 +86,9 @@ from dagster_hifld.assets.usace_conveyor_areas import usace_conveyor_areas_usace
 from dagster_hifld.assets.construction_minerals import construction_minerals_preservation_candidate
 from dagster_hifld.assets.census_county_subdivisions import census_county_subdivisions
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
+from dagster_hifld.assets.ferrous_metal_processing_plants import (
+    ferrous_metal_processing_plants_usgs,
+)
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
@@ -107,6 +112,7 @@ hifld_ingest_assets = [
     fdic_locations_official,
     fema_regions_official,
     ferc_historical_preservation,
+    fuds_program_division_boundaries,
     fema_regional_offices,
     epa_sems_interests,
     epa_eez,
@@ -167,6 +173,7 @@ hifld_ingest_assets = [
     plate_boundaries_usgs,
     eia_power_plants_historical,
     epa_frs_eia_860_power_generation_facilities_by_source,
+    usace_fuds_projects_points,
     epa_small_scale_regions,
     nces_private_schools_2023_24,
     nces_public_schools,
@@ -187,6 +194,7 @@ hifld_ingest_assets = [
     construction_minerals_preservation_candidate,
     census_county_subdivisions,
     usace_crane_locations_ienc,
+    ferrous_metal_processing_plants_usgs,
     courthouses_usgs,
     usace_data_coverage_areas_usace_ienc,
     docks_usace_bts,
