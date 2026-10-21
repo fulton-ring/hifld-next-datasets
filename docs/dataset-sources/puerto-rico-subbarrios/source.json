@@ -1,0 +1,96 @@
+{
+  "inventory_id": "puerto-rico-subbarrios",
+  "agency": "U.S. Census Bureau",
+  "producer": "U.S. Census Bureau, Geography Division",
+  "publisher": "U.S. Census Bureau (producer publication on www2.census.gov)",
+  "source_relationship": "producer_publication",
+  "landing_url": "https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2023&layergroup=County+Subdivisions",
+  "machine_download_url": "https://www2.census.gov/geo/tiger/TIGER2023/SUBBARRIO/tl_2023_72_subbarrio.zip",
+  "dhs_crosswalk_doi": "10.3886/E241367V1",
+  "crosswalk_match": "matched",
+  "match_evidence": "Inventory row puerto-rico-subbarrios lists the exact TIGER2023 SUBBARRIO 72 zip and the Census TIGER/Line series metadata document; the DHS HIFLD crosswalk row carries the same producer Census Bureau URL. The DataLumos archive item 240631 V2 is the HIFLD archived copy of the same Census publication and is retained only as a labeled fallback.",
+  "archive_candidates": [
+    {
+      "url": "https://www.datalumos.org/datalumos/project/240631/version/V2/view",
+      "role": "archive",
+      "note": "DataLumos (ICPSR) archived HIFLD copy; inventory modification date 2025-04-08 is an archive edit, not a Census release date. Returned HTTP 403 to automated retrieval in this environment on 2026-10-21."
+    }
+  ],
+  "upstream_lineage": "Census TIGER/Line Shapefile series, SUBBARRIO layer, Puerto Rico (FIPS 72) only, annual vintage files.",
+  "release_date": null,
+  "release_date_unknown_reason": "The 2023 TIGER/Line vintage year is established, but the exact producer release date was not independently confirmed; the observed HTTP Last-Modified (2023-11-23T02:29:53Z) is recorded as fetch-time metadata only and is not treated as the release date.",
+  "extraction_evidence": {
+    "fetched_at": "2026-10-21T03:23:00Z",
+    "http_status": 200,
+    "bytes": 133211,
+    "sha256": "5358e982d49bc6a5c099e12d32220e756e05aff848f24ba89d862dd89d7b8d8a",
+    "last_modified": "observed for TIGER2024 sibling: 2025-06-27; TIGER2023 zip Last-Modified 2023-11-23T02:29:53Z",
+    "complete": true,
+    "transfer_limit_bypassed": "single static ZIP; no pagination",
+    "schema_verified": true,
+    "coverage_verified": true,
+    "geometry_verified": true,
+    "feature_count": 145,
+    "geoid_unique": true,
+    "crs": "EPSG:4269",
+    "geometry_types": ["Polygon", "MultiPolygon"],
+    "geometry_type_counts": {"Polygon": 143, "MultiPolygon": 2},
+    "bounds_wgs84_4269": [-67.192456, 17.910811, -65.624604, 18.487596]
+  },
+  "processing_code_identity": {
+    "scheme": "sha256-packaged-dagster_hifld-py-v1",
+    "note": "Candidate version binds the pinned source SHA256 to a content digest of the packaged src/dagster_hifld Python sources. This is verifiable from the Docker image (which ships no .git) and from a source checkout, and does not execute git at ingest time."
+  },
+  "source_fields": [
+    {"name": "STATEFP", "type": "string"},
+    {"name": "COUNTYFP", "type": "string"},
+    {"name": "COUSUBFP", "type": "string"},
+    {"name": "SUBMCDFP", "type": "string"},
+    {"name": "SUBMCDNS", "type": "string"},
+    {"name": "GEOID", "type": "string", "role": "source_id", "width": 15, "leading_zero_sensitive": true},
+    {"name": "GEOIDFQ", "type": "string"},
+    {"name": "NAME", "type": "string"},
+    {"name": "NAMELSAD", "type": "string"},
+    {"name": "LSAD", "type": "string"},
+    {"name": "CLASSFP", "type": "string"},
+    {"name": "MTFCC", "type": "string"},
+    {"name": "FUNCSTAT", "type": "string"},
+    {"name": "ALAND", "type": "int64"},
+    {"name": "AWATER", "type": "int64"},
+    {"name": "INTPTLAT", "type": "string"},
+    {"name": "INTPTLON", "type": "string"}
+  ],
+  "proposed_published_schema": {
+    "status": "pending_maintainer_approval",
+    "proposal": "Publish the raw 2023 shapefile verbatim (all 17 attribute fields plus geometry) in a single shapefile-typed format object; no column mapping, no substitute row IDs, no schema widening.",
+    "column_mapping": "identity (no renaming)",
+    "id_contract": "GEOID preserved as zero-padded string; GEOIDFQ retained; no generated IDs"
+  },
+  "refresh_cadence": "annual, tied to the Census TIGER/Line late-year postings of SUBBARRIO under a new TIGER{year} directory",
+  "output_format_exclusions": {
+    "geopackage": "Withheld: the source layer mixes Polygon (143) and MultiPolygon (2). The inherited chunked GeoPackage writer declares the layer geometry from its first chunk and then appends incompatible geometries, violating the GeoPackage geometry-type contract. No GeoPackage output is staged or promoted unless a geometry-type-preserving writer is approved.",
+    "pmtiles": "Withheld: PMTiles is a lossy tiled representation that may simplify or omit source coordinates and does not preserve the full source attribute schema. No dataset-specific loss, zoom, or attribute-selection policy has been approved."
+  },
+  "idempotency": "content-derived version from pinned zip sha256 plus processing code identity; re-running with the same bytes reuses the sealed candidate",
+  "completeness_gate": "pinned byte-level sha256/length of the exact zip, full archive extraction, 145 unique GEOIDs, no null/empty/invalid geometry",
+  "error_handling": "any capture or validation failure quarantines the full raw capture under _quarantine/puerto-rico-subbarrios/ and blocks promotion",
+  "drift_quarantine": "pinned sha256, member roster, schema, field roster, MTFCC/CLASSFP value sets, ID digest, geometry-type composition (143 Polygon / 2 MultiPolygon) and coverage bounds checks all quarantine instead of adapting",
+  "fallback_candidates": [
+    {
+      "role": "archive",
+      "url": "https://www.datalumos.org/datalumos/project/240631/version/V2/view",
+      "status": "blocked; 403 to automated retrieval 2026-10-21"
+    }
+  ],
+  "gates": {
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "reason": "DHS crosswalk match established and maintained producer publication verified; raw/published schema and ID contract still require maintainer approval before promotion."
+  }
+}
