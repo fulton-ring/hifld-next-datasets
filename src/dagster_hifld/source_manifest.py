@@ -38,6 +38,7 @@ CATALOG_METADATA_FIELDS = (
     "inputs",
     "transformations",
     "code_commit",
+    "processing_code",
     "code_identity_scheme",
     "lineage",
     "unsupported_output_formats",
