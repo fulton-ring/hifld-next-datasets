@@ -1,16 +1,54 @@
+import base64
 import hashlib
 import json
 import unittest
+import pyarrow as pa
 from dagster_hifld.sources.epa_facilities import (
     EPA_FACILITIES_PROFILE,
     LayerProfile,
     _profile_urls,
+    _validate_cached_catalog_sidecars,
     decode_captures,
     inspect_captures,
 )
 
 
 class EpaFacilitiesSourceTests(unittest.TestCase):
+    def test_post_catalog_cache_accepts_only_consistent_catalog_sidecars(self):
+        class Storage:
+            def __init__(self, keys, documents):
+                self.keys = keys
+                self.documents = documents
+
+            def list_keys(self, *_args):
+                return self.keys
+
+            def read_key(self, key):
+                return json.dumps(self.documents[key]).encode()
+
+        table = pa.table({"OBJECTID": pa.array([1], type=pa.int64()), "Shape": pa.array([b"point"], type=pa.binary())})
+        prefix = "epa-facilities/epa-facilities/v1"
+        version = "v1"
+        expected = {f"{prefix}/geoparquet/epa-facilities.parquet", f"{prefix}/metadata/candidate_ready.json"}
+        quality_key = f"{prefix}/metadata/quality_manifest.json"
+        dictionary_key = f"{prefix}/metadata/data_dictionary.json"
+        quality = {
+            "version": version, "feature_count": 1, "geometry_type": "Point", "native_geometry_column": "Shape",
+            "native_crs": {"id": {"authority": "EPSG", "code": 4269}}, "null_geometry_count": 0,
+            "invalid_geometry_count": 0, "empty_geometry_count": 0, "unparseable_geometry_count": 0,
+            "quality_check_passed": True,
+        }
+        dictionary = {
+            "featureCount": 1, "columns": [{"name": "OBJECTID"}, {"name": "Shape"}],
+            "nativeArrowSchemaIPCBase64": base64.b64encode(table.schema.serialize().to_pybytes()).decode(),
+        }
+        storage = Storage(expected | {quality_key, dictionary_key}, {quality_key: quality, dictionary_key: dictionary})
+        _validate_cached_catalog_sidecars(storage, EPA_FACILITIES_PROFILE.ordinary, version, prefix, table, expected)
+
+        storage.documents[quality_key] = {**quality, "feature_count": 2}
+        with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
+            _validate_cached_catalog_sidecars(storage, EPA_FACILITIES_PROFILE.ordinary, version, prefix, table, expected)
+
     def test_profiles_keep_the_ordinary_and_labels_layers_distinct(self):
         ordinary = EPA_FACILITIES_PROFILE.ordinary
         labels = EPA_FACILITIES_PROFILE.labels

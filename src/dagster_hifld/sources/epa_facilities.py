@@ -6,6 +6,7 @@ Both profiles preserve producer field declarations, source IDs and NAD83 Shape.
 from __future__ import annotations
 
 import fcntl
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import importlib.metadata
@@ -32,6 +33,7 @@ from shapely.geometry import Point
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
+from dagster_hifld.catalog import provenance_projection
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -648,8 +650,7 @@ def _cached_reuse(storage: StagingStorageResource, profile: LayerProfile, versio
         raise ValueError("cached_candidate_object_roster_invalid")
     ready_key = f"{prefix}/metadata/candidate_ready.json"
     expected_roster = {f"{prefix}/{name}" for name in descriptors} | {ready_key}
-    if set(storage.list_keys(profile.slug, profile.slug, version)) != expected_roster:
-        raise ValueError("cached_candidate_object_roster_changed")
+    _validate_cached_catalog_sidecars(storage, profile, version, prefix, current_table, expected_roster)
     for relative, expected in descriptors.items():
         key = f"{prefix}/{relative}"
         snapshot = storage.object_snapshot(key)
@@ -698,6 +699,55 @@ def _cached_reuse(storage: StagingStorageResource, profile: LayerProfile, versio
         "source_release_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
     }
+
+
+def _validate_cached_catalog_sidecars(storage, profile: LayerProfile, version: str, prefix: str,
+                                      current_table: pa.Table, expected_roster: set[str]) -> None:
+    """Allow only complete, source-consistent catalog outputs beside a sealed candidate."""
+    actual_roster = set(storage.list_keys(profile.slug, profile.slug, version))
+    if actual_roster == expected_roster:
+        return
+    catalog_keys = {
+        f"{prefix}/metadata/quality_manifest.json",
+        f"{prefix}/metadata/data_dictionary.json",
+    }
+    resolved_key = f"{prefix}/metadata/resolved_provenance.json"
+    required_catalog_roster = expected_roster | catalog_keys
+    if actual_roster != required_catalog_roster and actual_roster != required_catalog_roster | {resolved_key}:
+        raise ValueError("cached_candidate_object_roster_changed")
+    try:
+        quality = json.loads(storage.read_key(f"{prefix}/metadata/quality_manifest.json"))
+        dictionary = json.loads(storage.read_key(f"{prefix}/metadata/data_dictionary.json"))
+        resolved = json.loads(storage.read_key(resolved_key)) if resolved_key in actual_roster else None
+        schema_bytes = base64.b64decode(dictionary["nativeArrowSchemaIPCBase64"], validate=True)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("cached_catalog_metadata_invalid") from exc
+    native_crs = quality.get("native_crs") if isinstance(quality, dict) else None
+    native_crs_id = native_crs.get("id") if isinstance(native_crs, dict) else None
+    columns = dictionary.get("columns") if isinstance(dictionary, dict) else None
+    try:
+        expected_provenance = provenance_projection(dictionary) if isinstance(dictionary, dict) else None
+    except (TypeError, ValueError) as exc:
+        raise ValueError("cached_catalog_metadata_invalid") from exc
+    if (not isinstance(quality, dict) or not isinstance(dictionary, dict)
+            or not isinstance(native_crs, dict) or not isinstance(native_crs_id, dict) or not isinstance(columns, list)
+            or any(not isinstance(item, dict) for item in columns)
+            or quality.get("version") != version or quality.get("feature_count") != current_table.num_rows
+            or quality.get("geometry_type") != profile.geometry_type.removeprefix("esriGeometry")
+            or quality.get("native_geometry_column") != "Shape"
+            or native_crs_id.get("authority") != "EPSG"
+            or native_crs_id.get("code") != profile.source_crs
+            or quality.get("null_geometry_count") != current_table.column("Shape").null_count
+            or quality.get("invalid_geometry_count") != 0
+            or quality.get("empty_geometry_count") != 0
+            or quality.get("unparseable_geometry_count") != 0
+            or type(quality.get("quality_check_passed")) is not bool
+            or dictionary.get("featureCount") != current_table.num_rows
+            or [item.get("name") for item in columns] != current_table.column_names
+            or schema_bytes != current_table.schema.serialize().to_pybytes()
+            or (resolved_key in actual_roster) != (expected_provenance is not None)
+            or (expected_provenance is not None and resolved != expected_provenance)):
+        raise ValueError("cached_catalog_metadata_mismatch")
 
 
 def stage_epa_facilities(
