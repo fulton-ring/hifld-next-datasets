@@ -23,6 +23,7 @@ from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.quaternary_fault_lines import quaternary_fault_lines_usgs
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
+from dagster_hifld.assets.us_county_boundaries import us_county_boundaries_census
 from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
 from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
@@ -34,10 +35,12 @@ from dagster_hifld.assets.unified_school_districts import census_unified_school_
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
+from dagster_hifld.assets.nces_public_schools import nces_public_schools
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
+from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -59,6 +62,7 @@ hifld_ingest_assets = [
     usace_berths_areas_usace_ienc,
     quaternary_fault_lines_usgs,
     usace_pylon_areas_usace_ienc,
+    us_county_boundaries_census,
     usace_pylon_locations_usace_ienc,
     usace_recommended_tracks_ienc,
     usace_overhead_pipeline_lines_usace_ienc,
@@ -73,4 +77,6 @@ hifld_ingest_assets = [
     usace_pipeline_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
+    nces_private_schools_2023_24,
+    nces_public_schools,
 ]

@@ -51,10 +51,20 @@ from dagster_hifld.assets.bsee_ocs_platforms import (
     bsee_ocs_platforms_draft_job,
     bsee_ocs_platforms_draft_schedule,
 )
+from dagster_hifld.assets.nces_public_schools import (
+    nces_public_schools_complete,
+    nces_public_schools_draft_job,
+    nces_public_schools_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
     usace_overhead_cables_draft_job,
+)
+from dagster_hifld.assets.nces_private_schools import (
+    nces_private_schools_complete,
+    nces_private_schools_draft_job,
+    nces_private_schools_draft_schedule,
 )
 from dagster_hifld.assets.usace_berths_areas import (
     usace_berths_areas_complete,
@@ -64,6 +74,11 @@ from dagster_hifld.assets.usace_pipeline_areas import (
     usace_pipeline_areas_complete,
     usace_pipeline_areas_draft_job,
     usace_pipeline_areas_draft_schedule,
+)
+from dagster_hifld.assets.us_county_boundaries import (
+    us_county_boundaries_draft_job,
+    us_county_boundaries_draft_schedule,
+    us_county_boundaries_source_complete,
 )
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
@@ -537,11 +552,14 @@ defs = Definitions(
         usace_overhead_cables_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
+        us_county_boundaries_source_complete,
         usace_pontoon_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
         usace_pile_locations_complete,
         usace_pipeline_areas_complete,
+        nces_private_schools_complete,
+        nces_public_schools_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -566,6 +584,9 @@ defs = Definitions(
         bsee_ocs_platforms_draft_job,
         usace_pile_locations_draft_job,
         usace_pipeline_areas_draft_job,
+        nces_private_schools_draft_job,
+        us_county_boundaries_draft_job,
+        nces_public_schools_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -584,6 +605,7 @@ defs = Definitions(
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
+        us_county_boundaries_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
@@ -593,6 +615,8 @@ defs = Definitions(
         bsee_ocs_platforms_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_pipeline_areas_draft_schedule,
+        nces_private_schools_draft_schedule,
+        nces_public_schools_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
