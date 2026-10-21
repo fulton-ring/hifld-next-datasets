@@ -13,7 +13,6 @@ import datetime
 import json
 import math
 import shutil
-import subprocess
 import time
 import uuid
 import urllib.error
@@ -32,6 +31,8 @@ from shapely import Point, to_wkb
 from dagster_hifld.partitions import SEMVER_VERSION_RE
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import verifier_implementation_sha256, validate_release_provenance
+from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.sources.epa_frs_common import processing_identity as _shared_processing_identity
 SLUG = 'aviation-facilities'
 ITEM_ID = '1551114f78e34d8395fd77bf41cd8a80'
 ITEM_URL = f'https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=pjson'
@@ -71,8 +72,12 @@ def _require_review_staging(staging):
         raise ValueError('Review staging prefix must remain inside its local root')
 
 
-def processing_identity():
-    root = Path(__file__).resolve().parents[2]
+def processing_identity(repo_root: Path | None = None):
+    root = Path(repo_root).resolve() if repo_root is not None else Path(__file__).resolve().parents[2]
+    identity = _shared_processing_identity(root)
+    validate_construction_code_identity(
+        root, identity["code_commit"], identity["files"], identity=identity,
+    )
     pipeline = verifier_implementation_sha256()
     # Bind effective execution dependencies as well as repository source. Native
     # GEOS/PROJ and either GDAL build can differ from their Python wheel version.
@@ -97,15 +102,31 @@ def processing_identity():
         path = root / name
         manifests[name] = ({'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                             'bytes': path.stat().st_size} if path.is_file() else None)
-    identity = {'installed_pipeline_sha256': pipeline, 'versions': versions,
-                'installed_distributions': distributions, 'dependency_manifests': manifests}
-    fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
-    result = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True)
-    commit = result.stdout.strip() if result.returncode == 0 else None
-    dirty = subprocess.run(['git', '-C', str(root), 'diff', '--quiet', '--', 'src/dagster_hifld'], capture_output=True).returncode
-    return {**identity, 'builder_fingerprint': fingerprint,
-        'code_commit': commit, 'working_tree_modified': dirty != 0,
-        'meaning': 'Original processing identity; replay does not invent a new upstream retrieval.'}
+    # Keep the source/runtime identity explicit. The packaged digest is not a
+    # Git revision; it is a validated hash of the installed source and manifests.
+    # Aviation's native conversion stack adds GDAL bindings and native versions
+    # that the shared identity intentionally does not infer.
+    result = {
+        **identity,
+        'installed_pipeline_sha256': pipeline,
+        'installed_distributions': distributions,
+        'versions': versions,
+        'aviation_native_runtime': {
+            name: versions[name] for name in (
+                'pyogrio', 'fiona', 'shapely', 'gdal_pyogrio', 'gdal_fiona',
+            )
+        },
+        'dependency_manifests': manifests,
+        'working_tree_modified': (
+            identity['working_tree_status'] == 'dirty'
+            if identity['working_tree_status'] != 'unknown' else None
+        ),
+        'meaning': 'Original processing identity; replay does not invent a new upstream retrieval.',
+    }
+    result['builder_fingerprint'] = hashlib.sha256(
+        json.dumps(result, sort_keys=True).encode()
+    ).hexdigest()
+    return result
 
 
 def _census(count, identifiers):

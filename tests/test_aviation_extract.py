@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import subprocess
+import shutil
 import unittest
 from unittest import mock
 
@@ -53,6 +54,28 @@ class AviationTests(unittest.TestCase):
         identity=a.processing_identity()
         self.assertEqual(identity['code_commit'],expected)
         self.assertEqual(len(identity['installed_pipeline_sha256']),64)
+
+    def test_processing_identity_uses_validated_non_git_package_identity(self):
+        packaged = self.root / 'packaged-runtime'
+        (packaged / 'src').mkdir(parents=True)
+        shutil.copytree(Path(__file__).parents[1] / 'src/dagster_hifld',
+                        packaged / 'src/dagster_hifld')
+        for name in ('pyproject.toml', 'uv.lock'):
+            shutil.copy2(Path(__file__).parents[1] / name, packaged / name)
+
+        identity = a.processing_identity(packaged)
+        self.assertEqual(identity['code_identity_scheme'], 'sha256-packaged-dagster-hifld-v1')
+        self.assertEqual(identity['working_tree_status'], 'unknown')
+        self.assertIsNone(identity['working_tree_modified'])
+        self.assertRegex(identity['code_commit'], r'^packaged-sha256:[0-9a-f]{64}$')
+        self.assertNotEqual(identity['code_identity_scheme'], 'git-commit-blobs-v1')
+        with (packaged / 'src/dagster_hifld/aviation_extract.py').open('ab') as stream:
+            stream.write(b'\n# changed after identity construction\n')
+        with self.assertRaisesRegex(ValueError, 'construction_packaged_identity'):
+            from dagster_hifld.construction_provenance import validate_construction_code_identity
+            validate_construction_code_identity(
+                packaged, identity['code_commit'], identity['files'], identity=identity,
+            )
 
     def test_native_dependency_change_separates_versions_without_retrieval_misattribution(self):
         original = _stage_aviation(self.capture,self.storage)
