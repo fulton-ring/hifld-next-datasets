@@ -2,6 +2,18 @@
 
 This ledger tracks all 415 dataset inventory issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. Earlier PR search counts are historical snapshots, not current open-PR counts. Issue #417 remains open; dataset issues remain open despite source PRs auto-merging by ancestry, and no production data was published.
 
+### Latest verified checkpoint — 2026-10-21 21:38 UTC
+
+All 415 inventory rows are preserved; this is a targeted ledger update, not a new inventory or open-PR census. Main is `02fb0062500cc32a748e465670d1a7a7bb757552` with 85 registered schedules, all STOPPED, and 60 candidate pipelines merged this stretch (25 at its start). No issue closure, release acceptance or production publication is recorded.
+
+| Issues | Integrated implementation | Evidence and remaining state |
+| --- | --- | --- |
+| #67–69 | PR #639; main merge `6cbfe670ad41b213926c8fd241df3f8cf3e77d73` | 77 schedules STOPPED at integration. #69 source PR #478 exact head `628435ce34dcbf24c836acf2f401b03a7b4972b8`, review 5606496060. Issues remain open; source, rights, baseline, contract and release decisions remain pending. |
+| #70, #71, #75, #76 | PR #645; main merge `eb61083ba3b235b27cf13eaa4b09cbefe0b162dd` | Integration had 82 schedules STOPPED; 45 EPA tests passed, 2 external-capture tests skipped. Exact source-head reviews: #643 5606494338, #640 5606494916, #641 5606493133, #644 5606493787. |
+| #72–74 | PR #647; main merge `02fb0062500cc32a748e465670d1a7a7bb757552` | Integration has 85 schedules STOPPED; 66 EPA tests passed, 2 external-capture tests skipped. Exact source-head reviews: #488, #646 (5606495516), #486 (5606496679). |
+
+Issues #67–76 remain open and acceptance-gated. Issues #77–79 have native candidate work active. Issue #77's PR-description update awaits separate approval; no write was attempted. Issue #80 paid validation run `39680028421` is in progress after budget preflight passed under the $25/day guard; actual completion and spend are unknown. No fresh census, issue closure, source acceptance, release approval or production publication is claimed.
+
 ### Latest verified checkpoint — 2026-10-21 20:01 UTC
 
 All 415 inventory rows remain preserved. PR #624 for issue #53 merged exact source head `f93968b847a804552bddf0efa66f017327beec47` directly to main `afb6dc9f3baff9f5a809b55a5ace12126c167705` (tree `1ad6707f07eb85be554fadc884b04b14b07b6371`). Root review 5605449621 verified the 4,752 native points, attributes, WKB, source bytes, persistent gate evidence and unchanged populated fixture. Build-only job 119450725225 succeeded; publish was skipped. Main now has 64 registered schedules, all STOPPED.

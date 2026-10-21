@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "fulton-ring/hifld-next-datasets",
   "generated_utc_date": "2026-10-21",
-  "source_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+  "source_commit": "02fb0062500cc32a748e465670d1a7a7bb757552",
   "scope": "415 inventory dataset issues #2-416 plus coordinator issue #417",
   "coverage": {
     "inventory_rows": 415,
@@ -23,7 +23,7 @@
       "no_open_pr_in_recovered_catalog": "Historical 2026-10-20 snapshot only; do not present as current.",
       "classification": "Historical 2026-10-20 PR association snapshot; superseded for current open-PR mapping by fresh_open_pr_census. A missing current open PR is not evidence of source infeasibility."
     },
-    "snapshot_note": "All 415 inventory rows remain. Current main has 65 mapped registered dataset schedules, all STOPPED; this is a code-registration count, not pipeline feasibility, review readiness, acceptance or release capacity. PR census totals are historical only.",
+    "snapshot_note": "All 415 inventory rows remain preserved; no fresh 415 issue census is claimed. Named current main readback: 85 unique registered schedules, all STOPPED; this is registration state, not acceptance, feasibility or release capacity.",
     "ledger_based_progress_counts": {
       "inventory_issues": 415,
       "external_decision_or_source_evidence_blocker_label": 13,
@@ -4780,12 +4780,15 @@
       "title": "EPA Facilities",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/67",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 476,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "reviewed_head": "5c17da5479d0ec66be299853e7dfd35a56043b1c",
+      "evidence_refs": [
+        "PR #476 exact source head 5c17da5479d0ec66be299853e7dfd35a56043b1c; source code merged through integration PR #639 at main merge 6cbfe670ad41b213926c8fd241df3f8cf3e77d73; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Integration PR #639 head 6fd764fbddad867934227fa76d73aadf4f9737c0 retained source-owned blobs and prior registrations; combined definitions loadable, 77 schedules STOPPED; review-publication metadata pending approval."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T18:54:08Z",
       "live_issue_created_at": "2026-10-19T01:59:53Z",
       "live_issue_comment_count": 3,
@@ -4803,8 +4806,8 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded.",
       "current_pr_candidates": [
         476
       ]
@@ -4815,12 +4818,15 @@
       "title": "EPA Facilities (Labels)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/68",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 477,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "reviewed_head": "dc9153a18a1f33911e8b481bb664a4ce0fe1f8c8",
+      "evidence_refs": [
+        "PR #477 exact source head dc9153a18a1f33911e8b481bb664a4ce0fe1f8c8; source code merged through integration PR #639 at main merge 6cbfe670ad41b213926c8fd241df3f8cf3e77d73; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Integration PR #639 head 6fd764fbddad867934227fa76d73aadf4f9737c0 retained source-owned blobs and prior registrations; combined definitions loadable, 77 schedules STOPPED; review-publication metadata pending approval."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T18:54:56Z",
       "live_issue_created_at": "2026-10-19T01:59:56Z",
       "live_issue_comment_count": 2,
@@ -4838,8 +4844,8 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded.",
       "current_pr_candidates": [
         477
       ]
@@ -4850,12 +4856,16 @@
       "title": "EPA Facility Registry Service - EIA-860 Power Generation Facilities By Source",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/69",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 478,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "reviewed_head": "628435ce34dcbf24c836acf2f401b03a7b4972b8",
+      "evidence_refs": [
+        "PR #478 exact source head 628435ce34dcbf24c836acf2f401b03a7b4972b8; source code merged through integration PR #639 at main merge 6cbfe670ad41b213926c8fd241df3f8cf3e77d73; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Independent exact-head review 5606496060 passed.",
+        "PR #639 integration CI build-only passed, publish skipped; integration preserves source ancestor. No production publication."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T19:18:16Z",
       "live_issue_created_at": "2026-10-19T02:00:00Z",
       "live_issue_comment_count": 4,
@@ -4873,10 +4883,11 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         478
-      ]
+      ],
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded."
     },
     {
       "issue": 70,
@@ -4884,12 +4895,17 @@
       "title": "EPA Facility Registry Service - EIA-860 Power Generation Facilities NAICS Codes",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/70",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 480,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 643,
+      "reviewed_head": "01680bf7b16ceeb53ee9277cb3739e15eeffc833",
+      "evidence_refs": [
+        "PR #643 exact source head 01680bf7b16ceeb53ee9277cb3739e15eeffc833; source code merged through integration PR #645 at main merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Independent exact-head review 5606494338 passed.",
+        "Integration PR #645 head f47b1e8a16f2923a34431a89545ced51c09c9376; additive registrations loadable, 85 schedules STOPPED; integration merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; no production publication.",
+        "Issue checkpoint comment 6327131472."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T22:57:30Z",
       "live_issue_created_at": "2026-10-19T02:00:03Z",
       "live_issue_comment_count": 3,
@@ -4907,10 +4923,12 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
-        480
-      ]
+        480,
+        643
+      ],
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded."
     },
     {
       "issue": 71,
@@ -4918,12 +4936,17 @@
       "title": "EPA Facility Registry Service - EIA-860 Power Generation Facilities SIC Codes",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/71",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 483,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 640,
+      "reviewed_head": "72fdd40568e57cb9e8ccb9c59051e3fb2f655517",
+      "evidence_refs": [
+        "PR #640 exact source head 72fdd40568e57cb9e8ccb9c59051e3fb2f655517; source code merged through integration PR #645 at main merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Independent exact-head review 5606494916 passed.",
+        "Integration PR #645 head f47b1e8a16f2923a34431a89545ced51c09c9376; additive registrations loadable, 85 schedules STOPPED; integration merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; no production publication.",
+        "Issue checkpoint comment 6327132206."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T20:51:41Z",
       "live_issue_created_at": "2026-10-19T02:00:08Z",
       "live_issue_comment_count": 3,
@@ -4941,10 +4964,11 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded.",
       "current_pr_candidates": [
-        483
+        483,
+        640
       ]
     },
     {
@@ -4953,12 +4977,16 @@
       "title": "EPA Facility Registry Service (FRS) - Toxic Release Inventory (TRI)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/72",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 488,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "reviewed_head": "a00df29ac6f35065249423974b3802892f1acefa",
+      "evidence_refs": [
+        "PR #488 exact source head a00df29ac6f35065249423974b3802892f1acefa; source code merged through integration PR #647 at main merge 02fb0062500cc32a748e465670d1a7a7bb757552; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Integration PR #647 head 9a8ce36537311fe3f7f79938f8870e414a9a708f; additive registrations loadable, 85 schedules STOPPED; integration merge 02fb0062500cc32a748e465670d1a7a7bb757552; no production publication.",
+        "Issue checkpoint comment 6327134387."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T21:48:59Z",
       "live_issue_created_at": "2026-10-19T02:00:11Z",
       "live_issue_comment_count": 2,
@@ -4976,8 +5004,8 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded.",
       "current_pr_candidates": [
         488
       ]
@@ -4988,12 +5016,17 @@
       "title": "EPA Facility Registry Service (FRS) - Toxic Substances Control Act (TSCA)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/73",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 485,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 646,
+      "reviewed_head": "4b77ab590d0022d730c6b9165d99088893b67546",
+      "evidence_refs": [
+        "PR #646 exact source head 4b77ab590d0022d730c6b9165d99088893b67546; source code merged through integration PR #647 at main merge 02fb0062500cc32a748e465670d1a7a7bb757552; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Independent exact-head review 5606495516 passed.",
+        "Integration PR #647 head 9a8ce36537311fe3f7f79938f8870e414a9a708f; additive registrations loadable, 85 schedules STOPPED; integration merge 02fb0062500cc32a748e465670d1a7a7bb757552; no production publication.",
+        "Issue checkpoint comment 6327135094."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T22:57:38Z",
       "live_issue_created_at": "2026-10-19T02:00:15Z",
       "live_issue_comment_count": 2,
@@ -5011,10 +5044,12 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
-        485
-      ]
+        485,
+        646
+      ],
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded."
     },
     {
       "issue": 74,
@@ -5022,12 +5057,17 @@
       "title": "EPA Resource Conservation and Recovery Act Treatment Storage and Disposal (RCRATSD) Facilities",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/74",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 486,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "reviewed_head": "dc743325bb34f9731fb571fd2965ebb8a14edfad",
+      "evidence_refs": [
+        "PR #486 exact source head dc743325bb34f9731fb571fd2965ebb8a14edfad; source code merged through integration PR #647 at main merge 02fb0062500cc32a748e465670d1a7a7bb757552; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Independent exact-head review 5606496679 passed.",
+        "Integration PR #647 head 9a8ce36537311fe3f7f79938f8870e414a9a708f; additive registrations loadable, 85 schedules STOPPED; integration merge 02fb0062500cc32a748e465670d1a7a7bb757552; no production publication.",
+        "Issue checkpoint comment 6327135878."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T20:20:22Z",
       "live_issue_created_at": "2026-10-19T02:00:18Z",
       "live_issue_comment_count": 4,
@@ -5045,8 +5085,8 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded.",
       "current_pr_candidates": [
         486
       ]
@@ -5057,12 +5097,17 @@
       "title": "EPA Region Boundaries Exclusive Economic Zone (EEZ)",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/75",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 470,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 641,
+      "reviewed_head": "d6ab6f6d6afe14137c4d572e56ffae9f5cb498ff",
+      "evidence_refs": [
+        "PR #641 exact source head d6ab6f6d6afe14137c4d572e56ffae9f5cb498ff; source code merged through integration PR #645 at main merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Independent exact-head review 5606493133 passed.",
+        "Integration PR #645 head f47b1e8a16f2923a34431a89545ced51c09c9376; additive registrations loadable, 85 schedules STOPPED; integration merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; no production publication.",
+        "Issue checkpoint comment 6327132980."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T17:35:14Z",
       "live_issue_created_at": "2026-10-19T02:00:21Z",
       "live_issue_comment_count": 6,
@@ -5080,10 +5125,11 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded.",
       "current_pr_candidates": [
-        470
+        470,
+        641
       ]
     },
     {
@@ -5092,12 +5138,17 @@
       "title": "EPA Region Boundaries with Exclusive Economic Zone",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/76",
       "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
-      "current_pr": 474,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "current_pr": 644,
+      "reviewed_head": "7b4affa0cd09de15a51efbf2a360b249398ad788",
+      "evidence_refs": [
+        "PR #644 exact source head 7b4affa0cd09de15a51efbf2a360b249398ad788; source code merged through integration PR #645 at main merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; issue remains open and source/rights/baseline/contract/release acceptance remains pending.",
+        "Independent exact-head review 5606493787 passed.",
+        "Integration PR #645 head f47b1e8a16f2923a34431a89545ced51c09c9376; additive registrations loadable, 85 schedules STOPPED; integration merge eb61083ba3b235b27cf13eaa4b09cbefe0b162dd; no production publication.",
+        "Issue checkpoint comment 6327133669."
+      ],
+      "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-19T18:18:04Z",
       "live_issue_created_at": "2026-10-19T02:00:25Z",
       "live_issue_comment_count": 3,
@@ -5115,10 +5166,11 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate pipeline code is integrated on main; issue remains open pending source, rights, baseline, contract, coverage and release decisions. No acceptance or production publication is recorded.",
       "current_pr_candidates": [
-        474
+        474,
+        644
       ]
     },
     {
@@ -5131,7 +5183,9 @@
       "live_issue_state": "open",
       "current_pr": 459,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "Parent checkpoint 2026-10-21T21:38:51Z reports native candidate work active; no new issue/PR census or external-source blocker claim."
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T14:50:22Z",
       "live_issue_created_at": "2026-10-19T02:00:28Z",
@@ -5151,10 +5205,11 @@
         }
       ],
       "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status_note": "Native candidate work active. PR description update is pending separate approval; no description write attempted. Source/acceptance and release decisions remain pending.",
       "current_pr_candidates": [
         459
-      ]
+      ],
+      "current_activity": "native_candidate_active"
     },
     {
       "issue": 78,
@@ -5166,7 +5221,9 @@
       "live_issue_state": "open",
       "current_pr": 472,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "Parent checkpoint 2026-10-21T21:38:51Z reports native candidate work active; no new issue/PR census or external-source blocker claim."
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T17:42:35Z",
       "live_issue_created_at": "2026-10-19T02:00:32Z",
@@ -5188,7 +5245,8 @@
       "status": "prior_pr_evidence_needs_reconciliation",
       "current_pr_candidates": [
         472
-      ]
+      ],
+      "current_activity": "native_candidate_active"
     },
     {
       "issue": 79,
@@ -5200,7 +5258,9 @@
       "live_issue_state": "open",
       "current_pr": 471,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "Parent checkpoint 2026-10-21T21:38:51Z reports native candidate work active; no new issue/PR census or external-source blocker claim."
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T17:52:27Z",
       "live_issue_created_at": "2026-10-19T02:00:35Z",
@@ -5222,7 +5282,8 @@
       "status": "prior_pr_evidence_needs_reconciliation",
       "current_pr_candidates": [
         471
-      ]
+      ],
+      "current_activity": "native_candidate_active"
     },
     {
       "issue": 80,
@@ -5234,7 +5295,9 @@
       "live_issue_state": "open",
       "current_pr": 469,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "Parent checkpoint 2026-10-21T21:38:51Z: paid run 39680028421 in progress; budget preflight passed under the <=$25/day guard with small GLM default. Root selected one paid new task; do not infer completion, final spend, acceptance or release."
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T17:24:03Z",
       "live_issue_created_at": "2026-10-19T02:00:38Z",
@@ -5256,7 +5319,9 @@
       "status": "prior_pr_evidence_needs_reconciliation",
       "current_pr_candidates": [
         469
-      ]
+      ],
+      "current_activity": "paid_validation_running",
+      "status_note": "Candidate remains unaccepted; validation run is in progress. Budget preflight passed; completion, actual spend and release acceptance are not recorded."
     },
     {
       "issue": 81,
@@ -14781,94 +14846,115 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T21:02:00Z",
-    "source": "Parent main merge confirmation and named PR #638 readback; no global 415 census.",
-    "main_latest": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
-    "integration_638": {
-      "pr": 638,
-      "state": "closed_merged",
-      "merge_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
-      "review": 5606143080,
-      "ci_job": 119481280069,
-      "ci": "passed; publish skipped",
-      "registered_schedules": 75,
-      "all_stopped": true,
-      "integrated_issue_sources": [
-        {
-          "issue": 63,
-          "pr": 634
-        },
-        {
-          "issue": 65,
-          "pr": 635
-        },
-        {
-          "issue": 66,
-          "pr": 487
-        },
-        {
-          "issue": 369,
-          "pr": 633
-        }
-      ],
-      "verification": "Source heads preserved as ancestors; final native integration reviewed; no production publication."
-    },
-    "previous_checkpoint_through_632": {
-      "main": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
-      "tree": "939a2ecbefb35ee93902c469598900cac680aa17",
-      "schedules": 71,
-      "review": 5605850836,
-      "ci_job": 119468792081
-    },
-    "issue_61": {
-      "state": "open",
-      "comment": 6325545654,
-      "evidence_sha256": "5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548",
-      "decision_required": "Archive/crosswalk anonymous access blocked; community source lineage and rights unaccepted."
-    },
-    "issue_62": {
-      "state": "open",
-      "comment": 6325585454,
-      "evidence_sha256": "fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc",
-      "decision_required": "Archived payload access blocked; community source lineage and historical equivalence unverified."
-    },
-    "issue_comments_after_632": [
+    "recorded_at": "2026-10-21T21:38:51Z",
+    "source": "Parent main merge confirmation, named integration evidence, and supervisor checkpoint; no global 415 issue refresh or current PR census.",
+    "main_latest": "02fb0062500cc32a748e465670d1a7a7bb757552",
+    "candidate_pipelines_merged_this_stretch": 60,
+    "initial_candidate_pipelines_merged_this_stretch": 25,
+    "registered_schedules": 85,
+    "all_stopped": true,
+    "integrations": [
       {
-        "issue": 54,
-        "comment": 6326307673
+        "pr": 639,
+        "merge_commit": "6cbfe670ad41b213926c8fd241df3f8cf3e77d73",
+        "source_issues": [
+          67,
+          68,
+          69
+        ],
+        "head": "6fd764fbddad867934227fa76d73aadf4f9737c0",
+        "schedules": 77,
+        "all_stopped": true,
+        "review_publication_pending_approval": true
       },
       {
-        "issue": 57,
-        "comment": 6326308487
+        "pr": 645,
+        "merge_commit": "eb61083ba3b235b27cf13eaa4b09cbefe0b162dd",
+        "source_issues": [
+          70,
+          71,
+          75,
+          76
+        ],
+        "head": "f47b1e8a16f2923a34431a89545ced51c09c9376",
+        "schedules": 82,
+        "all_stopped": true,
+        "epa_tests": "45 passed, 2 external-capture skips",
+        "reviewed_source_prs": [
+          640,
+          641,
+          643,
+          644
+        ]
       },
       {
-        "issue": 59,
-        "comment": 6326309340
-      },
-      {
-        "issue": 60,
-        "comment": 6326310150
-      },
-      {
-        "issue": 64,
-        "comment": 6326311121
+        "pr": 647,
+        "merge_commit": "02fb0062500cc32a748e465670d1a7a7bb757552",
+        "source_issues": [
+          72,
+          73,
+          74
+        ],
+        "head": "9a8ce36537311fe3f7f79938f8870e414a9a708f",
+        "schedules": 85,
+        "all_stopped": true,
+        "epa_tests": "66 passed, 2 external-capture skips",
+        "reviewed_source_prs": [
+          486,
+          488,
+          646
+        ]
       }
     ],
-    "authorized_issue_comment_label_batch": {
-      "issues": [
-        46,
-        48,
-        50,
-        51,
-        52,
-        53
-      ],
-      "status": "completed_successfully",
-      "blocked": false
+    "issue_comments": [
+      {
+        "issue": 70,
+        "comment": 6327131472
+      },
+      {
+        "issue": 71,
+        "comment": 6327132206
+      },
+      {
+        "issue": 72,
+        "comment": 6327134387
+      },
+      {
+        "issue": 73,
+        "comment": 6327135094
+      },
+      {
+        "issue": 74,
+        "comment": 6327135878
+      },
+      {
+        "issue": 75,
+        "comment": 6327132980
+      },
+      {
+        "issue": 76,
+        "comment": 6327133669
+      }
+    ],
+    "native_candidate_active_issues": [
+      77,
+      78,
+      79
+    ],
+    "issue_77_description_update": "pending separate approval; no write attempted",
+    "issue_80_paid_run": {
+      "run_id": 39680028421,
+      "state": "in_progress",
+      "budget_preflight": "passed",
+      "daily_cap_usd": 25,
+      "model": "small GLM default",
+      "new_paid_tasks_selected_by_root": 1
     },
-    "open_pr_census": null,
-    "all_inventory_rows_preserved": 415,
-    "production_publication": false
+    "source_acceptance_release_acceptance_issue_closure": false,
+    "production_publication": false,
+    "inventory_rows_preserved": 415,
+    "fresh_415_census": false,
+    "open_pr_census": null
   },
   "pr_search_snapshot_records": [
     {
@@ -16311,94 +16397,115 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-21T21:02:00Z",
-    "source": "Parent main merge confirmation and named PR #638 readback; no global 415 census.",
-    "main_latest": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
-    "integration_638": {
-      "pr": 638,
-      "state": "closed_merged",
-      "merge_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
-      "review": 5606143080,
-      "ci_job": 119481280069,
-      "ci": "passed; publish skipped",
-      "registered_schedules": 75,
-      "all_stopped": true,
-      "integrated_issue_sources": [
-        {
-          "issue": 63,
-          "pr": 634
-        },
-        {
-          "issue": 65,
-          "pr": 635
-        },
-        {
-          "issue": 66,
-          "pr": 487
-        },
-        {
-          "issue": 369,
-          "pr": 633
-        }
-      ],
-      "verification": "Source heads preserved as ancestors; final native integration reviewed; no production publication."
-    },
-    "previous_checkpoint_through_632": {
-      "main": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
-      "tree": "939a2ecbefb35ee93902c469598900cac680aa17",
-      "schedules": 71,
-      "review": 5605850836,
-      "ci_job": 119468792081
-    },
-    "issue_61": {
-      "state": "open",
-      "comment": 6325545654,
-      "evidence_sha256": "5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548",
-      "decision_required": "Archive/crosswalk anonymous access blocked; community source lineage and rights unaccepted."
-    },
-    "issue_62": {
-      "state": "open",
-      "comment": 6325585454,
-      "evidence_sha256": "fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc",
-      "decision_required": "Archived payload access blocked; community source lineage and historical equivalence unverified."
-    },
-    "issue_comments_after_632": [
+    "recorded_at": "2026-10-21T21:38:51Z",
+    "source": "Parent main merge confirmation, named integration evidence, and supervisor checkpoint; no global 415 issue refresh or current PR census.",
+    "main_latest": "02fb0062500cc32a748e465670d1a7a7bb757552",
+    "candidate_pipelines_merged_this_stretch": 60,
+    "initial_candidate_pipelines_merged_this_stretch": 25,
+    "registered_schedules": 85,
+    "all_stopped": true,
+    "integrations": [
       {
-        "issue": 54,
-        "comment": 6326307673
+        "pr": 639,
+        "merge_commit": "6cbfe670ad41b213926c8fd241df3f8cf3e77d73",
+        "source_issues": [
+          67,
+          68,
+          69
+        ],
+        "head": "6fd764fbddad867934227fa76d73aadf4f9737c0",
+        "schedules": 77,
+        "all_stopped": true,
+        "review_publication_pending_approval": true
       },
       {
-        "issue": 57,
-        "comment": 6326308487
+        "pr": 645,
+        "merge_commit": "eb61083ba3b235b27cf13eaa4b09cbefe0b162dd",
+        "source_issues": [
+          70,
+          71,
+          75,
+          76
+        ],
+        "head": "f47b1e8a16f2923a34431a89545ced51c09c9376",
+        "schedules": 82,
+        "all_stopped": true,
+        "epa_tests": "45 passed, 2 external-capture skips",
+        "reviewed_source_prs": [
+          640,
+          641,
+          643,
+          644
+        ]
       },
       {
-        "issue": 59,
-        "comment": 6326309340
-      },
-      {
-        "issue": 60,
-        "comment": 6326310150
-      },
-      {
-        "issue": 64,
-        "comment": 6326311121
+        "pr": 647,
+        "merge_commit": "02fb0062500cc32a748e465670d1a7a7bb757552",
+        "source_issues": [
+          72,
+          73,
+          74
+        ],
+        "head": "9a8ce36537311fe3f7f79938f8870e414a9a708f",
+        "schedules": 85,
+        "all_stopped": true,
+        "epa_tests": "66 passed, 2 external-capture skips",
+        "reviewed_source_prs": [
+          486,
+          488,
+          646
+        ]
       }
     ],
-    "authorized_issue_comment_label_batch": {
-      "issues": [
-        46,
-        48,
-        50,
-        51,
-        52,
-        53
-      ],
-      "status": "completed_successfully",
-      "blocked": false
+    "issue_comments": [
+      {
+        "issue": 70,
+        "comment": 6327131472
+      },
+      {
+        "issue": 71,
+        "comment": 6327132206
+      },
+      {
+        "issue": 72,
+        "comment": 6327134387
+      },
+      {
+        "issue": 73,
+        "comment": 6327135094
+      },
+      {
+        "issue": 74,
+        "comment": 6327135878
+      },
+      {
+        "issue": 75,
+        "comment": 6327132980
+      },
+      {
+        "issue": 76,
+        "comment": 6327133669
+      }
+    ],
+    "native_candidate_active_issues": [
+      77,
+      78,
+      79
+    ],
+    "issue_77_description_update": "pending separate approval; no write attempted",
+    "issue_80_paid_run": {
+      "run_id": 39680028421,
+      "state": "in_progress",
+      "budget_preflight": "passed",
+      "daily_cap_usd": 25,
+      "model": "small GLM default",
+      "new_paid_tasks_selected_by_root": 1
     },
-    "open_pr_census": null,
-    "all_inventory_rows_preserved": 415,
-    "production_publication": false
+    "source_acceptance_release_acceptance_issue_closure": false,
+    "production_publication": false,
+    "inventory_rows_preserved": 415,
+    "fresh_415_census": false,
+    "open_pr_census": null
   },
   "previous_verified_checkpoint_2026_10_21T1455Z": {
     "recorded_at": "2026-10-21T14:55:39Z",
@@ -17442,8 +17549,8 @@
       "paid_dispatch": "none active at reported poll"
     }
   },
-  "ledger_status_counts_recorded_at": "2026-10-21T21:02:00Z",
-  "main_registered_schedule_count": 75,
+  "ledger_status_counts_recorded_at": "2026-10-21T21:38:51Z",
+  "main_registered_schedule_count": 85,
   "main_registered_schedule_issue_count": 75,
   "main_registered_schedule_mapping_issues": [
     2,
@@ -17625,7 +17732,7 @@
     "issue_64_schedule": "census_elementary_school_districts_draft_refresh_schedule",
     "all_default_stopped": true
   },
-  "current_count_status": "No fresh global 415-row census. Named current main readback: 75 unique STOPPED schedules at 7bb8146b36731b30e5495ddc3015e8fa09afe194; 50 candidate pipelines merged this stretch; open-PR census totals remain unset.",
+  "current_count_status": "No fresh global 415-row or open-PR census. Named main readback at 02fb0062500cc32a748e465670d1a7a7bb757552: 85 unique schedules, all STOPPED; 60 candidate pipelines merged this stretch (starting from 25).",
   "previous_verified_checkpoint_2026_10_21T1717Z": {
     "recorded_at": "2026-10-21T17:17:54Z",
     "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
@@ -20415,5 +20522,185 @@
       "acceptance": "Pending source release date, historical baseline, schema/ID, coverage and rights decisions."
     },
     "source_pr_status_confirmation": "Root live readback: #612, #616, #620, #621, #622, #624 and #625 all state=closed, merged=true; dataset issue states remain open."
+  },
+  "previous_verified_checkpoint_2026_10_21T2102Z": {
+    "recorded_at": "2026-10-21T21:02:00Z",
+    "source": "Parent main merge confirmation and named PR #638 readback; no global 415 census.",
+    "main_latest": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+    "integration_638": {
+      "pr": 638,
+      "state": "closed_merged",
+      "merge_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+      "review": 5606143080,
+      "ci_job": 119481280069,
+      "ci": "passed; publish skipped",
+      "registered_schedules": 75,
+      "all_stopped": true,
+      "integrated_issue_sources": [
+        {
+          "issue": 63,
+          "pr": 634
+        },
+        {
+          "issue": 65,
+          "pr": 635
+        },
+        {
+          "issue": 66,
+          "pr": 487
+        },
+        {
+          "issue": 369,
+          "pr": 633
+        }
+      ],
+      "verification": "Source heads preserved as ancestors; final native integration reviewed; no production publication."
+    },
+    "previous_checkpoint_through_632": {
+      "main": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+      "tree": "939a2ecbefb35ee93902c469598900cac680aa17",
+      "schedules": 71,
+      "review": 5605850836,
+      "ci_job": 119468792081
+    },
+    "issue_61": {
+      "state": "open",
+      "comment": 6325545654,
+      "evidence_sha256": "5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548",
+      "decision_required": "Archive/crosswalk anonymous access blocked; community source lineage and rights unaccepted."
+    },
+    "issue_62": {
+      "state": "open",
+      "comment": 6325585454,
+      "evidence_sha256": "fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc",
+      "decision_required": "Archived payload access blocked; community source lineage and historical equivalence unverified."
+    },
+    "issue_comments_after_632": [
+      {
+        "issue": 54,
+        "comment": 6326307673
+      },
+      {
+        "issue": 57,
+        "comment": 6326308487
+      },
+      {
+        "issue": 59,
+        "comment": 6326309340
+      },
+      {
+        "issue": 60,
+        "comment": 6326310150
+      },
+      {
+        "issue": 64,
+        "comment": 6326311121
+      }
+    ],
+    "authorized_issue_comment_label_batch": {
+      "issues": [
+        46,
+        48,
+        50,
+        51,
+        52,
+        53
+      ],
+      "status": "completed_successfully",
+      "blocked": false
+    },
+    "open_pr_census": null,
+    "all_inventory_rows_preserved": 415,
+    "production_publication": false
+  },
+  "previous_evidence_update_2026_10_21T2102Z": {
+    "recorded_at": "2026-10-21T21:02:00Z",
+    "source": "Parent main merge confirmation and named PR #638 readback; no global 415 census.",
+    "main_latest": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+    "integration_638": {
+      "pr": 638,
+      "state": "closed_merged",
+      "merge_commit": "7bb8146b36731b30e5495ddc3015e8fa09afe194",
+      "review": 5606143080,
+      "ci_job": 119481280069,
+      "ci": "passed; publish skipped",
+      "registered_schedules": 75,
+      "all_stopped": true,
+      "integrated_issue_sources": [
+        {
+          "issue": 63,
+          "pr": 634
+        },
+        {
+          "issue": 65,
+          "pr": 635
+        },
+        {
+          "issue": 66,
+          "pr": 487
+        },
+        {
+          "issue": 369,
+          "pr": 633
+        }
+      ],
+      "verification": "Source heads preserved as ancestors; final native integration reviewed; no production publication."
+    },
+    "previous_checkpoint_through_632": {
+      "main": "fe47ac7b204ea4b8fd809cd725383786a5e2d46c",
+      "tree": "939a2ecbefb35ee93902c469598900cac680aa17",
+      "schedules": 71,
+      "review": 5605850836,
+      "ci_job": 119468792081
+    },
+    "issue_61": {
+      "state": "open",
+      "comment": 6325545654,
+      "evidence_sha256": "5e216777da8603fef9e5681205d43ac3be036543744e6101b888acfabb009548",
+      "decision_required": "Archive/crosswalk anonymous access blocked; community source lineage and rights unaccepted."
+    },
+    "issue_62": {
+      "state": "open",
+      "comment": 6325585454,
+      "evidence_sha256": "fc77001c36dd57b4b4c6189bd61fbffcde5ebfe2a757d2875dcc93c736d689cc",
+      "decision_required": "Archived payload access blocked; community source lineage and historical equivalence unverified."
+    },
+    "issue_comments_after_632": [
+      {
+        "issue": 54,
+        "comment": 6326307673
+      },
+      {
+        "issue": 57,
+        "comment": 6326308487
+      },
+      {
+        "issue": 59,
+        "comment": 6326309340
+      },
+      {
+        "issue": 60,
+        "comment": 6326310150
+      },
+      {
+        "issue": 64,
+        "comment": 6326311121
+      }
+    ],
+    "authorized_issue_comment_label_batch": {
+      "issues": [
+        46,
+        48,
+        50,
+        51,
+        52,
+        53
+      ],
+      "status": "completed_successfully",
+      "blocked": false
+    },
+    "open_pr_census": null,
+    "all_inventory_rows_preserved": 415,
+    "production_publication": false
   }
 }
