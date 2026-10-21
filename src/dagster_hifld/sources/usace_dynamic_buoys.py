@@ -338,7 +338,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
         "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
         "release_date": None, "release_date_unknown_reason": "The BTS item describes IENC update cadence but does not identify this layer's release date.",
         "license": "Unresolved; rights review pending.", "attribution": "USCG / USACE IENC; attribution and rights review pending."}
-        for name, receipt in sorted(receipts.items())]
+        for name, receipt in sorted(receipts.items()) if name != "bts_item"]
     manifest = {"schema_version": 1, "approved": False, "title": "Dynamic Buoys (USACE IENC)",
         "description": "Complete current official USACE IENC USACE_Buoys_Service/3UABUOYS layer; faithful regional candidate, not accepted for release.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL,
@@ -346,6 +346,9 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
         "code_identity_scheme": identity["code_identity_scheme"],
         "bts_item_succession_accepted": False, "inputs": inputs,
+        "contextual_references": [{"role": "secondary_catalog_context", "url": BTS_ITEM_URL,
+            "identity": BTS_ITEM_ID,
+            "interpretation": "BTS IENC product context and cadence only; this catalog item is not represented as delegation for the selected USACE_Buoys_Service endpoint."}],
         "transformations": [{"operation": "Esri native point XY to GeoParquet WKB candidate", "parameters": {
             "source_fields": "all declared attributes retained in source order and declared types",
             "source_ids": "OBJECTID and Feature_ID retained unchanged, including nulls", "source_crs": "EPSG:4326",
