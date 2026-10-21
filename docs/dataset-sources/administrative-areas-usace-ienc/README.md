@@ -1,0 +1,9 @@
+# Administrative Areas (USACE IENC)
+
+This draft captures the official IENC `ADMINISTRATIVE_AREA` polygon layer (MapServer layer 56). The retained snapshot contains 2,966 unique source `OBJECTID`s. It describes the observed IENC chart layer only; it does not claim a national boundary inventory or historical HIFLD equivalence.
+
+The current BTS distributor item observed for this capture is `7ec34864c8804468a9cf52d437fe4b6c`, titled “Inland Electronic Navigational Charts.” Its metadata identifies USDOT_BTS as owner and links the official IENC feature service and master geodatabase. Historical BTS item `3607d485a9854d6fa458bf507058ceae` remains a separate, unaccepted observation; succession and continuity have not been established.
+
+The source job checks the layer identity, declared fields, EPSG:4326, count, and complete before/after ID roster. It retains raw response bodies, wire captures, and receipts. It emits native GeoParquet with all ten declared non-geometry fields and source-ring-derived WKB. No repair, reprojection, or feature removal is performed. Rights, source freshness, historical baseline, schema and ID contracts, national coverage, mapping, and release acceptance remain pending. The draft refresh schedule is stopped.
+
+The 2026-10-21 packaged run used a no-Git runtime and a packaged source identity; it did not invent a Git commit. Source run `e2742a13-a8ae-454f-b6f6-eb094627fa81`, catalog run `7e4b527e-bdfe-429a-a84b-7cc61d488bc9`, and retained-capture replay `5071d86c-7abc-4843-87bf-03051839c0b8` are recorded under `/workspace/work/6-evidence/`. The source-to-GeoParquet audit compared all 2,966 IDs, ten attributes per row, and each WKB value exactly; see `native-parity.json`. Registered quality-failure and approval-refusal release graphs, with an unchanged populated PublishedStorage fixture, are recorded in `registered-gate-graphs.json`.
