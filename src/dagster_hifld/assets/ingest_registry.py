@@ -16,6 +16,7 @@ from dagster_hifld.assets.noaa import (
     noaa_200nm_eez_and_maritime_boundaries,
 )
 from dagster_hifld.assets.noaa_contiguous import noaa_24nm_contiguous_zone
+from dagster_hifld.assets.bts_ferry_routes import bts_ferry_routes
 from dagster_hifld.assets.census_bureau import census_bureau_aiannh_areas
 from dagster_hifld.assets.census_primary_roads import census_bureau_primary_roads
 from dagster_hifld.assets.census_block_groups import census_bureau_block_groups
@@ -89,6 +90,7 @@ from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ien
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
+from dagster_hifld.assets.ferrous_metal_mines import ferrous_metal_mines_candidate
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
@@ -109,6 +111,7 @@ from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 
 hifld_ingest_assets = [
+    bts_ferry_routes,
     fdic_locations_official,
     fema_regions_official,
     ferc_historical_preservation,
@@ -195,6 +198,7 @@ hifld_ingest_assets = [
     census_county_subdivisions,
     usace_crane_locations_ienc,
     ferrous_metal_processing_plants_usgs,
+    ferrous_metal_mines_candidate,
     courthouses_usgs,
     usace_data_coverage_areas_usace_ienc,
     docks_usace_bts,
