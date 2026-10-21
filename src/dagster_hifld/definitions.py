@@ -94,6 +94,11 @@ from dagster_hifld.assets.us_county_boundaries import (
     us_county_boundaries_draft_schedule,
     us_county_boundaries_source_complete,
 )
+from dagster_hifld.assets.coastlines_usace_ienc import (
+    coastlines_usace_ienc_complete,
+    coastlines_usace_ienc_draft_job,
+    coastlines_usace_ienc_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -576,6 +581,7 @@ defs = Definitions(
         usace_pipeline_areas_complete,
         nces_private_schools_complete,
         nces_public_schools_complete,
+        coastlines_usace_ienc_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -606,6 +612,7 @@ defs = Definitions(
         nces_private_schools_draft_job,
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
+        coastlines_usace_ienc_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -639,6 +646,7 @@ defs = Definitions(
         usace_pipeline_areas_draft_schedule,
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
+        coastlines_usace_ienc_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
