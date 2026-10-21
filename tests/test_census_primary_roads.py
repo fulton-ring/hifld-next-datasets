@@ -1,6 +1,7 @@
 import io
 import hashlib
 import json
+import shutil
 import tempfile
 import unittest
 import zipfile
@@ -16,17 +17,40 @@ from dagster_hifld.assets.census_primary_roads import (
 )
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.sources.census_primary_roads import (
+    CODE_IDENTITY_SCHEME,
     EXPECTED_BYTES,
     EXPECTED_FEATURE_COUNT,
     EXPECTED_SHA256,
     SOURCE_URL,
     _capture,
     _inspect_archive,
+    candidate_version,
+    processing_code_identity,
 )
+from dagster_hifld.sources import census_primary_roads as source_module
 from dagster_hifld.resources import StagingStorageResource
 
 
 class CensusPrimaryRoadsTests(unittest.TestCase):
+    def test_packaged_code_identity_and_candidate_version_need_no_git(self):
+        with patch("subprocess.check_output", side_effect=FileNotFoundError("git")), \
+             patch("subprocess.run", side_effect=FileNotFoundError("git")):
+            identity = processing_code_identity()
+            self.assertRegex(identity, r"^[0-9a-f]{64}$")
+            self.assertRegex(candidate_version(), r"^v[0-9a-f]{32}$")
+
+    def test_packaged_identity_resolves_from_source_package_without_dot_git(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "src"
+            package = root / "dagster_hifld"
+            shutil.copytree(source_module.PROCESSING_SOURCE_PACKAGE, package)
+            self.assertFalse((root / ".git").exists())
+            with patch.object(source_module, "PROCESSING_SOURCE_ROOT", root), \
+                 patch.object(source_module, "PROCESSING_SOURCE_PACKAGE", package):
+                identity = source_module.processing_code_identity()
+                self.assertEqual(identity, processing_code_identity())
+                self.assertEqual(source_module.candidate_version(), candidate_version())
+
     def test_source_asset_is_registered_with_stopped_refresh(self):
         keys = {key for definition in hifld_ingest_assets for key in definition.keys}
         self.assertIn(next(iter(census_bureau_primary_roads.keys)), keys)

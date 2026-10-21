@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -44,12 +43,29 @@ def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
-def processing_commit() -> str:
-    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(__file__).parents[3], text=True).strip()
+CODE_IDENTITY_SCHEME = "sha256-packaged-dagster_hifld-py-v1"
+PROCESSING_SOURCE_ROOT = Path(__file__).resolve().parents[2]
+PROCESSING_SOURCE_PACKAGE = PROCESSING_SOURCE_ROOT / "dagster_hifld"
+
+
+def processing_code_identity() -> str:
+    """Hash packaged Dagster source files without requiring repository metadata."""
+    files = sorted(PROCESSING_SOURCE_PACKAGE.rglob("*.py"))
+    if not files or not PROCESSING_SOURCE_PACKAGE.is_dir():
+        raise ValueError("processing_source_package_missing")
+    digest = hashlib.sha256()
+    for path in files:
+        name = path.relative_to(PROCESSING_SOURCE_ROOT).as_posix().encode("utf-8")
+        body = path.read_bytes()
+        digest.update(len(name).to_bytes(8, "big") + name)
+        digest.update(len(body).to_bytes(8, "big") + body)
+    return digest.hexdigest()
 
 
 def candidate_version() -> str:
-    identity = _canonical({"source_sha256": EXPECTED_SHA256, "code_commit": processing_commit()})
+    identity = _canonical({"source_sha256": EXPECTED_SHA256,
+                           "code_identity_scheme": CODE_IDENTITY_SCHEME,
+                           "code_sha256": processing_code_identity()})
     return "v" + _sha(identity)[:32]
 
 
@@ -215,12 +231,14 @@ def capture_census_primary_roads(
     if after is None or after.size != EXPECTED_BYTES or staging_storage.sha256_key(archive_key) != EXPECTED_SHA256:
         raise ValueError("staged_tiger_archive_integrity_failure")
     reused = before is not None
-    code_commit = processing_commit()
+    code_sha256 = processing_code_identity()
+    code_commit = f"{CODE_IDENTITY_SCHEME}:{code_sha256}"
     observed_at = receipt.get("observed_at")
     manifest = {
         "schema_version": 1,
         "processor": "HIFLD Next",
         "code_commit": code_commit,
+        "processing_code": {"scheme": CODE_IDENTITY_SCHEME, "sha256": code_sha256},
         "title": "Primary Roads",
         "description": "2025 Census TIGER/Line national primary roads shapefile. Candidate only; crosswalk row and historical compatibility remain unresolved.",
         "publisher": PUBLISHER,
@@ -273,6 +291,7 @@ def capture_census_primary_roads(
         "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": EXPECTED_BYTES,
         "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
         "code_commit": code_commit,
+        "code_identity_scheme": CODE_IDENTITY_SCHEME, "code_sha256": code_sha256,
         "source_id_field": "LINEARID", "source_coverage_scope": "U.S. nationwide Census TIGER primary roads, 2025 vintage",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
