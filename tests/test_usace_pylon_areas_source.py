@@ -193,7 +193,13 @@ class PackagedRuntimeIdentity(unittest.TestCase):
             (root / "uv.lock").write_text("# installed after initial capture\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "installed_processing_code_identity_changed"):
                 validate_processing_identity(root, identity)
-            (root / "uv.lock").unlink()
+            packaged_identity = processing_identity(root)
+            self.assertEqual(packaged_identity["missing_processing_inputs"], [])
+            self.assertIn("uv.lock", packaged_identity["files"])
+            validate_processing_identity(root, packaged_identity)
+            (root / "uv.lock").write_text("# changed lock\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "installed_processing_code_identity_changed"):
+                validate_processing_identity(root, packaged_identity)
             (source / "pipeline.py").write_text("processor = 'changed'\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "installed_processing_code_identity_changed"):
                 validate_processing_identity(root, identity)
