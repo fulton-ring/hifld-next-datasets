@@ -283,6 +283,7 @@ def generate_data_dictionary(
             "prebuilt_output_policy",
             "literal_geojson_catalog",
             "manifest_layers",
+            "capture_evidence",
         ):
             if key in source_metadata and (key == "transformations" or source_metadata[key] not in (None, "", [], {})):
                 dictionary[key] = source_metadata[key]
