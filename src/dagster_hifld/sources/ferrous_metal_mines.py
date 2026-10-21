@@ -53,6 +53,7 @@ from dagster_hifld.sources.epa_frs_common import (
     content_derived_version,
     processing_identity as shared_processing_identity,
     validate_staged_release_derivatives,
+    _validate_cached_catalog_sidecars,
     write_immutable,
 )
 
@@ -639,6 +640,16 @@ def reconcile_cache(storage: StagingStorageResource, prefix: str, version: str,
         derived.add(version_snapshot)
         if storage.read_key(f"{prefix}/{version_snapshot}") != manifest_body:
             raise FerrousMinesQuarantineError("cached_version_manifest_snapshot_drift")
+    catalog_present = any(
+        f"{prefix}/metadata/{name}" in {f"{prefix}/{item}" for item in actual}
+        for name in ("quality_manifest.json", "data_dictionary.json")
+    )
+    if catalog_present:
+        required_snapshots = {"metadata/source/source_manifest.json", version_snapshot}
+        if not required_snapshots <= actual:
+            raise FerrousMinesQuarantineError("cached_catalog_source_manifest_snapshot_incomplete")
+        if storage.read_key(f"{prefix}/metadata/source/source_manifest.json") != manifest_body:
+            raise FerrousMinesQuarantineError("cached_source_manifest_snapshot_drift")
     if actual - set(payloads) - {READY_MARKER} - derived:
         raise FerrousMinesQuarantineError("unknown_existing_candidate_object")
     try:
@@ -654,6 +665,12 @@ def reconcile_cache(storage: StagingStorageResource, prefix: str, version: str,
         resolved = provenance_projection(manifest)
         if strict_json(storage.read_key(f"{prefix}/metadata/resolved_provenance.json")) != resolved:
             raise FerrousMinesQuarantineError("cached_resolved_provenance_drift")
+    try:
+        _validate_cached_catalog_sidecars(
+            storage, prefix, {f"{prefix}/{name}" for name in actual}
+        )
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+        raise FerrousMinesQuarantineError("invalid_cached_catalog_sidecars") from exc
 
 
 def expose_candidate(storage: StagingStorageResource, prefix: str, version: str,
