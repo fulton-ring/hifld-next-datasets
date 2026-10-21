@@ -32,6 +32,10 @@ from dagster_hifld.source_formats import (
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
 )
+from dagster_hifld.assets.usace_pylon_areas import (
+    usace_pylon_areas_complete,
+    usace_pylon_areas_draft_schedule,
+)
 
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
@@ -408,7 +412,8 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=hifld_asset_checks,
+    asset_checks=[*hifld_asset_checks, usace_pylon_areas_complete],
+    schedules=[usace_pylon_areas_draft_schedule],
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={
