@@ -18,6 +18,7 @@ from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
+from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -33,4 +34,5 @@ hifld_ingest_assets = [
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
     usace_pylon_areas_usace_ienc,
+    usace_pylon_locations_usace_ienc,
 ]
