@@ -9,14 +9,103 @@ from urllib.parse import urlparse, parse_qs
 import httpx
 import pyarrow.parquet as pq
 
-from dagster_hifld.assets.epa_frs_sic_powerplants import PROFILE, _typed_parquet
+from dagster_hifld.assets.epa_frs_sic_powerplants import (
+    DATASET_SLUG, FILE_SLUG, PROFILE, _canonical, _reuse, _schema_sha, _sha, _typed_parquet,
+)
+from dagster_hifld.catalog import summarize_staged_catalog
+from dagster_hifld.construction_state import seal_first_construction
 from dagster_hifld.native_verification import normalize_native_input
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.sources.epa_frs_common import (
+    candidate_prefix, canonical_construction_bundle, processing_identity,
+)
 from dagster_hifld.sources.epa_frs_arcgis_table import (
     ArcGISTableCaptureError, _metadata_contract, capture_table,
 )
 
 
 class EPAFRSSICTests(unittest.TestCase):
+    def test_registered_cache_reuse_rejects_tampered_catalog_quality(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root), prefix="", backend="local")
+            version = "v-cache-quality-regression"
+            prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+            fields = [
+                {"name": name, "type": esri_type, "nullable": nullable, "length": length}
+                for name, esri_type, nullable, length in PROFILE.fields
+            ]
+            rows = [
+                {"OBJECTID": object_id, "REGISTRY_ID": f"{object_id:012d}",
+                 "SIC_CODE": f"{object_id % 10000:04d}", "PRIMARY_INDICATOR": "PRIMARY"}
+                for object_id in range(1, PROFILE.expected_rows + 1)
+            ]
+            objects: dict[str, dict[str, object]] = {}
+
+            def stage(name: str, body: bytes) -> None:
+                storage.write_key(f"{prefix}/{name}", body)
+                objects[name] = {"bytes": len(body), "sha256": _sha(body)}
+
+            stage("unknown/" + FILE_SLUG + ".parquet", _typed_parquet(rows, tuple(fields)))
+            source_manifest = {
+                "title": "EPA FRS SIC cache regression fixture",
+                "description": "Synthetic nonspatial test fixture.",
+                "source_url": PROFILE.table_url,
+                "source_vintage": PROFILE.source_vintage,
+                "native_geometry": "absent",
+                "refresh_status": "STOPPED",
+            }
+            stage("metadata/source_manifest.json", _canonical(source_manifest))
+            identity = processing_identity(Path(__file__).parents[1])
+            fingerprint = _sha(_canonical(identity))
+            stage("metadata/processing_identity.json", _canonical(identity))
+            stage("metadata/source_ids.json", _canonical(list(range(1, PROFILE.expected_rows + 1))))
+            stage("metadata/published_candidate_ids.json", _canonical(list(range(1, PROFILE.expected_rows + 1))))
+            stage("metadata/source_capture.json", _canonical({"refresh_status": "STOPPED"}))
+            stage("metadata/source_audit.json", _canonical({"drift_reasons": []}))
+            stage("metadata/candidate_ready.json", _canonical({"status": "READY"}))
+
+            receipts = {}
+            for name in ("service", "service_after", "table_before", "count_before", "ids_before",
+                         "table_after", "count_after", "ids_after", "page_000"):
+                body = b"{}"
+                receipt = {"complete_body": True, "status": 200, "bytes": len(body), "sha256": _sha(body),
+                           "wire_bytes": len(body), "wire_sha256": _sha(body)}
+                receipts[name] = receipt
+                stage(f"raw/{name}.body", body)
+                stage(f"raw/{name}.wire", body)
+                stage(f"raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+
+            resolved = load_resolved_source_manifest(storage, DATASET_SLUG, FILE_SLUG, version).metadata
+            summary = summarize_staged_catalog(
+                storage, DATASET_SLUG, FILE_SLUG, version, DATASET_SLUG, source_metadata=resolved
+            )
+            quality_key = f"{prefix}/metadata/quality_manifest.json"
+            storage.write_key(quality_key, _canonical(summary.quality_manifest))
+            storage.write_key(f"{prefix}/metadata/data_dictionary.json", _canonical(summary.data_dictionary))
+
+            payload = {
+                "processing_identity": identity,
+                "source_record_sha256": _sha(_canonical(rows)),
+                "source_schema_sha256": _schema_sha(fields),
+                "capture_receipts": receipts,
+                "objects": objects,
+            }
+            state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+            seal_first_construction(
+                storage, state_key, version, fingerprint,
+                canonical_construction_bundle(version, fingerprint, payload),
+            )
+
+            self.assertTrue(_reuse(storage, version=version, identity=identity,
+                                   fingerprint=fingerprint, offline=True)["offline_replay"])
+            tampered = dict(summary.quality_manifest)
+            tampered["quality_check_passed"] = False
+            storage.write_key(quality_key, _canonical(tampered))
+            with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
+                _reuse(storage, version=version, identity=identity, fingerprint=fingerprint, offline=True)
+
     def test_hosted_epa_item_allows_undeclared_join_only_with_exact_item_identity(self):
         profile = replace(
             PROFILE, service_url="https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_Wastewater/FeatureServer",
