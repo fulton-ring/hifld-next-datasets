@@ -1,0 +1,23 @@
+# Plate Boundaries source evidence
+
+**Candidate status: draft; not approved for release.** The pipeline now captures the USGS service in its native coordinates and writes a complete candidate through the normal versioned staging and catalog path. The current service is an agency-hosted distribution of its displayed legacy scientific lineage; no claim is made that it is the successor to the HIFLD 2024 archive.
+
+## Source and lineage
+
+The HIFLD inventory row is `plate-boundaries`, titled “Plate Boundaries,” agency USGS. The historical crosswalk is DHS DOI [10.3886/E241367V1](https://doi.org/10.3886/E241367V1), pointing to [DataLumos / ICPSR 240544](https://www.datalumos.org/datalumos/project/240544/version/V1/view). That archive identifies 2024-08-27 as its source period and states it was archived from HIFLD Open, deactivated 2025-08-26. Its shapefile and GeoJSON are historical copies.
+
+The official producer endpoint is the USGS Earthquake Hazards [Plate Boundaries MapServer](https://earthquake.usgs.gov/arcgis/rest/services/eq/map_plateboundaries/MapServer), layer 1, “Plates.” Service metadata cites the USGS Seismicity of the Earth Map Series, Bird (2003), DOI [10.1029/2001GC000252](https://doi.org/10.1029/2001GC000252), and DeMets, Gordon and Argus (2010), DOI [10.1111/j.1365-246X.2009.04491.x](https://doi.org/10.1111/j.1365-246X.2009.04491.x). The service supplies no release date or edition statement. The separate Esri training service `85210b078256486d9d9213dac8fb93f4` is not used.
+
+## Complete native capture
+
+On 2026-10-20, the layer declared 1,175 rows and a sparse OBJECTID roster from 1 through 1181. Before/after counts and ID lists matched; the ID digest is `16439bcc2d7b9a12e48447a351cd4d769a8e1ad0b4776ae59c2c4963b9b6b8e0`. Twelve requests by explicit IDs, at most 100 per page, returned all rows. Each response retained its decoded body, wire body, and hash-pinned receipt. The native layer fields are OBJECTID, Shape geometry, NAME string(200), LABEL string(50), and Shape_Length double. NAME is null on 3 rows; the other attributes and all geometries are populated. All 5,688 XY vertices are retained in native EPSG:3857 without reprojection, repair, or simplification.
+
+The complete candidate is version `v1f1e7833150b12c232f7c16f0575d24f` at `plate-boundaries/plate-boundaries/v1f1e7833150b12c232f7c16f0575d24f/`. Its typed GeoParquet contains 1,175 rows, native OBJECTID and declared attribute types, and MultiLineString WKB with EPSG:3857 PROJJSON. File SHA-256: `528aefd76705d66e2d1abd3153052cb63726a3b7433f8dadfdbc7215635d3492`. Source record SHA-256: `600deffe635063109d79fed48fc8ca8be75dfe90044e6cc44c85a9653c11a34d`; geometry SHA-256: `e3f46dbac468a045fe0f3eae7be93689c821b9b26132d80042f945577993bf2b`.
+
+The processing manifest records USGS producer and host, canonical and per-request retrieval URLs, timestamps, HTTP statuses, body/wire sizes and digests, unknown release date with its reason, and pending rights/attribution decisions. The raw request artifacts and manifest are retained in standard staging. Content-derived versioning and the first-construction witness bind code, complete source content, and output bytes. Cache replay checks the current captured bytes against the original sealed receipts and preserves the original receipts and candidate objects. Incomplete acquisitions are retained under quarantine and cannot overwrite completed candidates.
+
+## Local materialization and release refusal
+
+Isolated local Dagster evidence is recorded in [`local-materialization.json`](local-materialization.json). Source run `1702fa72-7124-4bc7-8498-7524b04621b7` completed; cache replay run `6b4a69fc-87af-4117-bfa5-25dbe49a34a6` reused the sealed candidate; registered `publish_catalog` run `7091b3b6-2714-4af0-a97a-6f6b1d07ed9a` passed full-row quality with 1,175 rows, zero null/empty/invalid geometries, and native EPSG:3857. The exact `publish.verify` run `a56119c9-5b5d-43c2-af4f-1a1d7ef30294` refused release because the independent approval registry contains no exact object approval. A pre-existing local published inventory sentinel had the same digest before and after that refusal. No publication occurred.
+
+The refresh schedule is defined and stopped. Completeness is checked during ingestion; quality is recorded by the standard catalog; the release verifier enforces approvals. Schema and ID acceptance, baseline comparison, coverage/source-vintage decision, rights, attribution, and release approval remain maintainer decisions. The candidate is not a published or accepted replacement for the HIFLD archive.

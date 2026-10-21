@@ -60,6 +60,11 @@ from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_draft_schedule,
     usace_caution_areas_draft_job,
 )
+from dagster_hifld.assets.plate_boundaries import (
+    plate_boundaries_draft_job,
+    plate_boundaries_draft_schedule,
+    plate_boundaries_population_complete,
+)
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
@@ -494,6 +499,7 @@ defs = Definitions(
         principal_ports_source_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
+        plate_boundaries_population_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -510,6 +516,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
+        plate_boundaries_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -529,6 +536,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
+        plate_boundaries_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

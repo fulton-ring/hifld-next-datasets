@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "source_run_id": "1702fa72-7124-4bc7-8498-7524b04621b7",
+  "cache_replay_run_id": "6b4a69fc-87af-4117-bfa5-25dbe49a34a6",
+  "catalog_run_id": "7091b3b6-2714-4af0-a97a-6f6b1d07ed9a",
+  "release_verification_run_id": "a56119c9-5b5d-43c2-af4f-1a1d7ef30294",
+  "processing_code_commit": "abec5729869efa36525c88f96d3e0edd1d486d35",
+  "capture_completed_at": "2026-10-20T03:24:11.414522+00:00",
+  "capture_manifest_sha256": "d04eab6b36d17962a0c9cf486f9f28b988bd817f047a877c344d5fdceda3c13f",
+  "capture_feature_count": 1175,
+  "capture_record_sha256": "600deffe635063109d79fed48fc8ca8be75dfe90044e6cc44c85a9653c11a34d",
+  "capture_geometry_sha256": "e3f46dbac468a045fe0f3eae7be93689c821b9b26132d80042f945577993bf2b",
+  "capture_schema_sha256": "d4e8f1204397fab90194ad25e831c4e6065fa01eee0053caf7ddd6509b751df2",
+  "capture_id_sha256": "16439bcc2d7b9a12e48447a351cd4d769a8e1ad0b4776ae59c2c4963b9b6b8e0",
+  "capture_receipt_roster_sha256": "19008369aeb796f0d86a36961e94f01f6f4d51df6d79ca1f901c98c8b07c9772",
+  "candidate_version": "v1f1e7833150b12c232f7c16f0575d24f",
+  "candidate_storage_prefix": "plate-boundaries/plate-boundaries/v1f1e7833150b12c232f7c16f0575d24f",
+  "parquet_sha256": "528aefd76705d66e2d1abd3153052cb63726a3b7433f8dadfdbc7215635d3492",
+  "parquet_rows": 1175,
+  "parquet_columns": [
+    "OBJECTID",
+    "NAME",
+    "LABEL",
+    "Shape_Length",
+    "geometry"
+  ],
+  "catalog_quality": {
+    "passed": true,
+    "scope": "all_rows",
+    "feature_count": 1175,
+    "native_crs_epsg": 3857,
+    "geometry_type": "MultiLineString",
+    "null_geometry_count": 0,
+    "empty_geometry_count": 0,
+    "invalid_geometry_count": 0,
+    "unparseable_geometry_count": 0
+  },
+  "cache_replay_reused_candidate": true,
+  "release_refusal": {
+    "run_success": false,
+    "reason": "missing_or_ambiguous_exact_object_approval:plate-boundaries/plate-boundaries/v1f1e7833150b12c232f7c16f0575d24f/geoparquet/plate-boundaries.parquet",
+    "approval_registry_is_empty": true
+  },
+  "published_inventory_preserved": true,
+  "source_release_accepted": false,
+  "production_publication_performed": false
+}
