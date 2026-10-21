@@ -625,6 +625,20 @@ def reconcile_cache(storage: StagingStorageResource, prefix: str, version: str,
         "metadata/source/source_manifest.json", "metadata/source/quality_manifest.json",
         "metadata/source/data_dictionary.json",
     } | STAGED_RELEASE_DERIVATIVE_NAMES
+    # Catalog publication snapshots the source-authored version manifest under
+    # a content-addressed name. Allow only the exact snapshot derivable from
+    # this immutable candidate manifest; do not accept arbitrary versioned
+    # metadata objects in the cache.
+    manifest_body = payloads["metadata/source_manifest.json"]
+    version_snapshot = (
+        "metadata/source/version_"
+        + hashlib.sha256(manifest_body).hexdigest()
+        + "_source_manifest.json"
+    )
+    if version_snapshot in actual:
+        derived.add(version_snapshot)
+        if storage.read_key(f"{prefix}/{version_snapshot}") != manifest_body:
+            raise FerrousMinesQuarantineError("cached_version_manifest_snapshot_drift")
     if actual - set(payloads) - {READY_MARKER} - derived:
         raise FerrousMinesQuarantineError("unknown_existing_candidate_object")
     try:
