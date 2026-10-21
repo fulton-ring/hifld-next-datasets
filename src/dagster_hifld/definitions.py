@@ -100,6 +100,11 @@ from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
 )
+from dagster_hifld.assets.nces_public_schools import (
+    nces_public_schools_complete,
+    nces_public_schools_draft_job,
+    nces_public_schools_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -506,6 +511,7 @@ defs = Definitions(
         usace_berths_areas_complete,
         usace_pontoon_areas_complete,
         bsee_ocs_platforms_complete,
+        nces_public_schools_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -524,6 +530,7 @@ defs = Definitions(
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
         bsee_ocs_platforms_draft_job,
+        nces_public_schools_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -545,6 +552,7 @@ defs = Definitions(
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
+        nces_public_schools_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

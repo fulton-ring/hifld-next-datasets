@@ -1,0 +1,7 @@
+# Public Schools (NCES EDGE)
+
+This draft candidate uses the official NCES EDGE public-school locations archive for the 2024-25 Common Core of Data year. The archived HIFLD Open Public Schools dataset is described by DataLumos as 2022-23 CCD data. The producer is shared, but this implementation has no feature-level crosswalk and does not claim historical HIFLD equivalence.
+
+The retained NCES archive contains 102,178 point records in EPSG:4326. The pipeline preserves all 23 native shapefile attributes in source order, the 12-character NCESSCH identifier, and each source point coordinate. It checks the complete archive member roster and CRCs, all school IDs, coverage bounds, coordinate attributes, and every value in the accompanying pipe-delimited text file against the shapefile. GeoParquet is the only prebuilt candidate output. No release, source, freshness, baseline, schema, ID, coverage, rights, or mapping acceptance is asserted; the refresh schedule is STOPPED.
+
+The source ZIP, decoded response, wire response, and HTTP receipt are retained in the local evidence packet. Runtime candidate and gate evidence will be recorded in `local-materialization.json`; it does not authorize publication.
