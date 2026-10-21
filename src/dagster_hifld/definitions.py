@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.census_county_subdivisions import (
+    county_subdivisions_draft_refresh_job,
+    county_subdivisions_draft_refresh_schedule,
+)
 from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
@@ -730,6 +734,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
+        county_subdivisions_draft_refresh_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -778,6 +783,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
+        county_subdivisions_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
