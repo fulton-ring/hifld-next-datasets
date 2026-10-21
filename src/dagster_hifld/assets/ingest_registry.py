@@ -41,6 +41,7 @@ from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
+from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 
 hifld_ingest_assets = [
     noaa_12nm_territorial_sea,
@@ -79,4 +80,5 @@ hifld_ingest_assets = [
     eia_power_plants_historical,
     nces_private_schools_2023_24,
     nces_public_schools,
+    usace_airport_area_ienc,
 ]

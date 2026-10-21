@@ -145,6 +145,13 @@ from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
 )
+from dagster_hifld.assets.usace_airport_area import (
+    usace_airport_area_complete,
+    usace_airport_area_quality,
+    usace_airport_area_release,
+    usace_airport_area_draft_job,
+    usace_airport_area_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -560,6 +567,9 @@ defs = Definitions(
         usace_pipeline_areas_complete,
         nces_private_schools_complete,
         nces_public_schools_complete,
+        usace_airport_area_complete,
+        usace_airport_area_quality,
+        usace_airport_area_release,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -587,6 +597,7 @@ defs = Definitions(
         nces_private_schools_draft_job,
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
+        usace_airport_area_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -617,6 +628,7 @@ defs = Definitions(
         usace_pipeline_areas_draft_schedule,
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
+        usace_airport_area_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
