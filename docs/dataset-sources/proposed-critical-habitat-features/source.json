@@ -1,0 +1,284 @@
+{
+  "baseline_relationship": "Unresolved. Crosswalk DataLumos project is inaccessible by anonymous request. A separate direct FWS ECOS MapServer proposed polygon layer has 69 features and 9 fields; this selected FWS-owned Open Data layer has 70 features and 26 fields. Its source_id roster is the same set plus 2032; do not merge or treat the views as exact substitutes.",
+  "candidate_output_contract": {
+    "baseline_equivalence": false,
+    "columns": "preserve all 26 fields, names, source-declared types/nullability and values in producer order, including OBJECTID, GlobalID, source_id, entity_id, objectid_1, spcode and vipcode",
+    "features": "complete native layer 2 polygon population; no filtering/dissolve/simplification/reprojection/repair",
+    "geometry": "preserve official FileGDB replica MultiPolygon geometry as EPSG:3857 WKB without repair, simplification, or reprojection; raw replica ZIP, completed job status, and receipts retained",
+    "id_contract_accepted": false,
+    "release_accepted": false,
+    "rights_accepted": false,
+    "schema_contract_accepted": false,
+    "source_currentness_accepted": false,
+    "status": "proposed only; not approved"
+  },
+  "crosswalk": {
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "observed_cause": "Cloudflare challenge; exact entry-to-source crosswalk could not be inspected",
+    "observed_http_status": 403,
+    "response_bytes": 6242,
+    "response_sha256": "629c8b93a937a5b03a68a15cb68f52736f49a4a9bc99aa1187097d210b4eb927",
+    "target": "https://www.datalumos.org/datalumos/project/241367/version/V1/view"
+  },
+  "dataset_slug": "proposed-critical-habitat-features",
+  "field_declarations": [
+    {
+      "alias": "objectid_1",
+      "length": null,
+      "name": "OBJECTID",
+      "nullable": false,
+      "type": "esriFieldTypeOID"
+    },
+    {
+      "alias": "singlmulti",
+      "length": 1073741822,
+      "name": "singlmulti",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "comname",
+      "length": 200,
+      "name": "comname",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "sciname",
+      "length": 200,
+      "name": "sciname",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "spcode",
+      "length": 4,
+      "name": "spcode",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "vipcode",
+      "length": 3,
+      "name": "vipcode",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "unit",
+      "length": 1073741822,
+      "name": "unit",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "subunit",
+      "length": 1073741822,
+      "name": "subunit",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "unitname",
+      "length": 1073741822,
+      "name": "unitname",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "status",
+      "length": 1073741822,
+      "name": "status",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "leadoffice",
+      "length": null,
+      "name": "leadoffice",
+      "nullable": true,
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "alias": "coopoffice",
+      "length": 1073741822,
+      "name": "coopoffice",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "coopofmore",
+      "length": 1073741822,
+      "name": "coopofmore",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "fedreg",
+      "length": 1073741822,
+      "name": "fedreg",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "pubdate",
+      "length": 1073741822,
+      "name": "pubdate",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "effectdate",
+      "length": 1073741822,
+      "name": "effectdate",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "vacatedate",
+      "length": 1073741822,
+      "name": "vacatedate",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "accuracy",
+      "length": 1073741822,
+      "name": "accuracy",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "source_id",
+      "length": null,
+      "name": "source_id",
+      "nullable": true,
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "alias": "entity_id",
+      "length": null,
+      "name": "entity_id",
+      "nullable": true,
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "alias": "subunitname",
+      "length": 1073741822,
+      "name": "subunitname",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "objectid_1",
+      "length": null,
+      "name": "objectid_1",
+      "nullable": true,
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "alias": "listing_status",
+      "length": 100,
+      "name": "listing_status",
+      "nullable": true,
+      "type": "esriFieldTypeString"
+    },
+    {
+      "alias": "GlobalID",
+      "length": 38,
+      "name": "GlobalID",
+      "nullable": false,
+      "type": "esriFieldTypeGlobalID"
+    },
+    {
+      "alias": "Shape__Area",
+      "length": null,
+      "name": "Shape__Area",
+      "nullable": true,
+      "type": "esriFieldTypeDouble"
+    },
+    {
+      "alias": "Shape__Length",
+      "length": null,
+      "name": "Shape__Length",
+      "nullable": true,
+      "type": "esriFieldTypeDouble"
+    }
+  ],
+  "hifld_archive": {
+    "access_observation": {
+      "cause": "Cloudflare challenge (HTTP 403; cf-mitigated: challenge)",
+      "checked_utc": "2026-10-20T03:46:20Z",
+      "response_bytes": 6242,
+      "response_sha256": "c45cf287166796b4cbcfe7935915dc622868f014dee5a41718b64f96ae435f91",
+      "status": 403
+    },
+    "date_is_release_date": false,
+    "inventory_modified_date": "2025-07-22",
+    "url": "https://www.datalumos.org/datalumos/project/240574/version/V1/view"
+  },
+  "inventory_agency": "U.S. Fish and Wildlife Service",
+  "inventory_publisher": "Not specified",
+  "inventory_source": "HIFLD_Open_Inventory_12112025.csv",
+  "line_geometry_check": "Selected FWS FeatureServer exposes final polygon layer 0 and proposed polygon layer 2. The official ECOS MapServer exposes a proposed linear layer with count 0 and proposed polygon layer with count 69. No line features appear in the selected proposed FeatureServer layer; archive equivalence remains unresolved.",
+  "observed_feature_count": 70,
+  "observed_native_oid_count": 70,
+  "observed_native_oid_field": "OBJECTID",
+  "observed_native_oid_max": 872,
+  "observed_native_oid_min": 1,
+  "observed_native_oid_sha256": "59a7b28dcbf540c36efac476d97a10356374c5629eb71271881ee1c28c39cb2f",
+  "official_item_api": "https://www.arcgis.com/sharing/rest/content/items/794de45b9d774d21aed3bf9b5313ee24?f=json",
+  "official_item_created_utc": "2016-03-10T23:00:30Z",
+  "official_item_data_last_edit_utc": "2026-08-31T16:08:20Z",
+  "official_item_id": "794de45b9d774d21aed3bf9b5313ee24",
+  "official_item_modified_utc": "2026-08-31T15:59:32Z",
+  "official_item_title": "FWS HQ ES Critical Habitat",
+  "official_landing_url": "https://gis-fws.opendata.arcgis.com/datasets/794de45b9d774d21aed3bf9b5313ee24",
+  "open_decisions": [
+    "HIFLD crosswalk and archive-byte equivalence",
+    "source release/currentness decision",
+    "accepted raw/published schema and identifier contract",
+    "coordinate / coverage baseline and meaning of the extra source_id 2032 feature",
+    "reuse rights and attribution",
+    "release acceptance"
+  ],
+  "other_retained_identifiers": [
+    "GlobalID",
+    "source_id",
+    "entity_id",
+    "objectid_1",
+    "spcode",
+    "vipcode"
+  ],
+  "population_probe": {
+    "feature_status_value": "all 70 records returned status=Proposed in attribute-only probe",
+    "ids_after_count": 70,
+    "ids_before_count": 70,
+    "ids_roster_stable_in_initial_probe": true,
+    "maximum_oid_gap": 872,
+    "service_modified_is_not_release_date": true
+  },
+  "retained_replica_capture": {
+    "archive_bytes": 25317613,
+    "archive_sha256": "f5afe87e23a8ceaadb9d2af942ebcfb026c7af7a19a043093c01adcb4f5fb0e3",
+    "job_id": "520a5950-1483-4260-a9e4-7f2691c86768",
+    "job_status": "Completed",
+    "job_record_count": 70,
+    "layer_ids": [2],
+    "attributes_join": "Exact 70/70 OBJECTID one-to-one join from separately retained attributes-only query; full 26-field service schema and calculated Shape__Area/Shape__Length values preserved.",
+    "original_create_replica_request_receipt": "not retained; completed job status and archive receipt are retained",
+    "geometry_validity": "70 non-null native FileGDB geometries; runtime validity results are recorded without repair or feature removal."
+  },
+  "producer": "U.S. Fish and Wildlife Service",
+  "publisher_account": "aditya_sastry@fws.gov_fws",
+  "refresh": "Draft schedule is STOPPED; current candidate is unapproved.",
+  "release_date": "unknown; item/data modification timestamps are not producer release dates",
+  "selected_layer_crs": "EPSG:3857 (WKID 102100/latest 3857)",
+  "selected_layer_geometry": "esriGeometryPolygon",
+  "selected_layer_id": 2,
+  "selected_layer_max_record_count": 1000,
+  "selected_layer_name": "Proposed Critical Habitat Features",
+  "service_url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/USFWS_Critical_Habitat/FeatureServer",
+  "source_license_info": "FWS item says the GIS files/coordinates are not legal boundaries; for planning and land-management purposes, not legal survey use; no explicit license/reuse grant stated.",
+  "source_role": "producer_publication"
+}

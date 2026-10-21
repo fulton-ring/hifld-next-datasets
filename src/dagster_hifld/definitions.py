@@ -61,6 +61,11 @@ from dagster_hifld.assets.nces_public_schools import (
     nces_public_schools_draft_job,
     nces_public_schools_draft_schedule,
 )
+from dagster_hifld.assets.proposed_critical_habitat import (
+    proposed_critical_habitat_complete,
+    proposed_critical_habitat_draft_job,
+    proposed_critical_habitat_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
@@ -562,6 +567,7 @@ defs = Definitions(
         usace_pontoon_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
+        proposed_critical_habitat_complete,
         usace_pile_locations_complete,
         usace_pipeline_areas_complete,
         nces_private_schools_complete,
@@ -589,6 +595,7 @@ defs = Definitions(
         eia_power_plants_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
+        proposed_critical_habitat_draft_job,
         usace_pile_locations_draft_job,
         usace_pipeline_areas_draft_job,
         nces_private_schools_draft_job,
@@ -621,6 +628,7 @@ defs = Definitions(
         eia_power_plants_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
+        proposed_critical_habitat_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_pipeline_areas_draft_schedule,
         nces_private_schools_draft_schedule,
