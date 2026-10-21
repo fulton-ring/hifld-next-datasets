@@ -176,6 +176,10 @@ from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
 )
+from dagster_hifld.assets.fws import (
+    fws_cbrs_buffer_draft_refresh_job,
+    fws_cbrs_buffer_draft_refresh_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -630,6 +634,7 @@ defs = Definitions(
         coastlines_usace_ienc_draft_job,
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
+        fws_cbrs_buffer_draft_refresh_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -667,6 +672,7 @@ defs = Definitions(
         coastlines_usace_ienc_draft_schedule,
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
+        fws_cbrs_buffer_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

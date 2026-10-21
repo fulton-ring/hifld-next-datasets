@@ -46,7 +46,10 @@ from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_
 from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_current
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 
+from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
+
 hifld_ingest_assets = [
+    fws_cbrs_buffer_zone,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
