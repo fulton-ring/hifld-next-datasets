@@ -8,6 +8,7 @@ import json
 import os
 import re
 import urllib.request
+from agent_handoffs import validate_route
 
 # Same conflict rule as agent-content-demos: decisions win, then review, then ready.
 MOVE_LABELS = {
@@ -42,6 +43,7 @@ def request(token, path, data=None, method=None):
     req = urllib.request.Request(
         'https://api.github.com/' + path, data=body, method=method,
         headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
+                 'X-GitHub-Api-Version': '2026-03-10',
                  'Accept': 'application/vnd.github+json', 'User-Agent': 'hifld-board-sync'},
     )
     with urllib.request.urlopen(req, timeout=30) as response:
@@ -49,12 +51,17 @@ def request(token, path, data=None, method=None):
     return json.loads(payload) if payload else None
 
 
-def apply_move(graphql, remove_labels, project, field, options, item, labels, repo, dry_run=False):
+def apply_move(graphql, remove_labels, project, field, options, item, labels, repo, dry_run=False, validate_move=None):
     status, consumed = requested_move(labels)
     if status is None:
         return
     if status not in options:
         raise ValueError('Project Status option is missing: ' + status)
+    if validate_move is not None and not validate_move(item['number'], consumed[0]):
+        print(f"Ignore stale review route for {repo}#{item['number']}; lane unchanged")
+        if not dry_run:
+            remove_labels(item['issue_id'], [labels[name] for name in consumed])
+        return
     print(f"{'Would move' if dry_run else 'Move'} {repo}#{item['number']} -> {status}")
     if dry_run:
         return
@@ -63,7 +70,7 @@ def apply_move(graphql, remove_labels, project, field, options, item, labels, re
     remove_labels(item['issue_id'], [labels[name] for name in consumed])
 
 
-def synchronize(graphql, remove_labels, owner, number, repo, issue=None, dry_run=False):
+def synchronize(graphql, remove_labels, owner, number, repo, issue=None, dry_run=False, validate_move=None):
     project = graphql(FIELDS, dict(owner=owner, number=number))['organization']['projectV2']
     if not project or not project.get('status'):
         raise ValueError('Project or Status field is inaccessible')
@@ -85,7 +92,7 @@ def synchronize(graphql, remove_labels, owner, number, repo, issue=None, dry_run
                     raise ValueError('Issue labels exceed the bounded read')
                 labels = {x['name']: x['id'] for x in content['labels']['nodes']}
                 apply_move(graphql, remove_labels, project['id'], project['status']['id'], options,
-                           dict(id=item['id'], issue_id=content['id'], number=content['number']), labels, repo, dry_run)
+                           dict(id=item['id'], issue_id=content['id'], number=content['number']), labels, repo, dry_run, validate_move)
             except Exception as error:
                 failures.append(content['number'])
                 print(f"Failed {repo}#{content['number']}: {type(error).__name__}; request preserved")
@@ -125,8 +132,13 @@ def main():
         if result.get('errors'):
             raise RuntimeError('Issue label removal failed; remaining requests will be retried')
 
+    def validate_move(issue, label):
+        def api(_kind, path, data=None):
+            return request(repo_token, path, data)
+        return validate_route(issue, label, api)
+
     synchronize(graphql, remove_labels, os.environ.get('PROJECT_OWNER', 'fulton-ring'),
-                int(os.environ.get('PROJECT_NUMBER', '2')), repo, args.issue, args.dry_run)
+                int(os.environ.get('PROJECT_NUMBER', '2')), repo, args.issue, args.dry_run, validate_move)
 
 
 if __name__ == '__main__':

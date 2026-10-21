@@ -1,6 +1,9 @@
 import importlib.util
 import unittest
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 
 SPEC = importlib.util.spec_from_file_location('board_sync', Path(__file__).resolve().parents[1] / 'tools/board_sync.py')
 sync = importlib.util.module_from_spec(SPEC)
@@ -96,6 +99,14 @@ class BoardSyncTests(unittest.TestCase):
             sync.synchronize(graphql, lambda issue, labels: removed.append(issue), 'owner', 2, 'owner/repo')
         self.assertEqual(writes, ['2'])
         self.assertEqual(removed, ['2'])
+
+    def test_stale_review_request_is_consumed_without_changing_lane(self):
+        calls = []
+        sync.apply_move(lambda *args: self.fail('Stale review cannot move the card'),
+                        lambda *args: calls.append(args), 'P', 'F', {'Ready': 'R'},
+                        {'id': 'I', 'issue_id': 'ISSUE', 'number': 282}, {'move:ready': 'LR'}, 'owner/repo',
+                        validate_move=lambda issue, label: False)
+        self.assertEqual(calls, [('ISSUE', ['LR'])])
 
 
 if __name__ == '__main__':
