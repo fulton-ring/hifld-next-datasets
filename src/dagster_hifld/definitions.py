@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.ibc import (
+    ibc_boundary_draft_refresh_job,
+    ibc_boundary_draft_refresh_schedule,
+)
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
@@ -584,6 +588,7 @@ defs = Definitions(
         coastlines_usace_ienc_complete,
     ],
     jobs=[
+        ibc_boundary_draft_refresh_job,
         quaternary_fault_lines_draft_job,
         faa_airspace_draft_refresh_job,
         noaa_eez_draft_refresh_job,
@@ -615,6 +620,7 @@ defs = Definitions(
         coastlines_usace_ienc_draft_job,
     ],
     schedules=[
+        ibc_boundary_draft_refresh_schedule,
         quaternary_fault_lines_draft_schedule,
         census_primary_roads_draft_schedule,
         usace_pylon_areas_draft_schedule,
