@@ -15,6 +15,10 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.census_bureau import (
+    aiannh_source_integrity_refresh_job,
+    aiannh_source_integrity_refresh_schedule,
+)
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
     quaternary_fault_lines_draft_schedule,
@@ -618,6 +622,7 @@ defs = Definitions(
         us_county_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
+        aiannh_source_integrity_refresh_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -653,6 +658,7 @@ defs = Definitions(
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
+        aiannh_source_integrity_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
