@@ -11,7 +11,7 @@ import os
 import tempfile
 import zipfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -1341,10 +1341,15 @@ def run_local_version_pipeline(
     outputs.extend(_write_and_publish_geoparquet(staging_storage, dataset_slug, file_slug, version))
     outputs.extend(_write_and_publish_pmtiles(staging_storage, dataset_slug, file_slug, version))
     outputs.extend(_write_and_publish_shapefile_zip(staging_storage, dataset_slug, file_slug, version))
+    _, destination_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
+    candidate_prefix = staging_storage._ensure_prefixed(f"{dataset_slug}/{file_slug}/{version}") + "/"
+    published_prefix = published_storage._ensure_prefixed(destination_prefix) + "/"
+    outputs = [replace(output, path=published_prefix + output.path.removeprefix(candidate_prefix))
+               if output.path else output for output in outputs]
     promoted = _published_outputs_from_keys(
         dataset_slug,
         file_slug,
-        version,
+        destination_prefix.rsplit("/", 1)[1],
         _copy_version_files(
             staging_storage,
             published_storage,

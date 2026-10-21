@@ -12,11 +12,11 @@ from unittest.mock import patch
 from dagster import DagsterInstance, Definitions, define_asset_job
 
 from dagster_hifld.assets.publish import _copy_version_files
-from dagster_hifld.assets.publish import verify_release, publish_version
+from dagster_hifld.assets.publish import verify_release, publish_version, run_local_version_pipeline
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME
 from dagster_hifld.portolan.catalog import CatalogRecord, render_portolan_tree, version_sort_key
-from dagster_hifld.portolan.release import ReleasePointer
+from dagster_hifld.portolan.release import ReleasePointer, require_current_baseline
 from dagster_hifld.release_approval import ReleaseApprovalError
 from test_full_verification import accepted_fixture
 
@@ -180,6 +180,46 @@ class StacReleaseVersionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "immutable"):
                     _copy_version_files(source, target, "synthetic", "points", "vtest")
             self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
+
+    def test_matching_selected_legacy_baseline_allows_first_semantic_release(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            _, target, _ = accepted_fixture(root, candidate_version="vtest")
+            database = root / "legacy.sqlite"
+            with sqlite3.connect(database) as connection:
+                connection.execute("CREATE TABLE files (file_path TEXT, latest_version TEXT)")
+                connection.execute("INSERT INTO files VALUES ('hifld/synthetic/points', 'v20260214')")
+            body = database.read_bytes()
+            generation = "1f5bd380-a67f-48a8-b5e2-c80aa85f0e63"
+            key = f"releases/{generation}/_catalog/catalog.sqlite"
+            target.write_key(key, body)
+            pointer = ReleasePointer(generation, key, f"releases/{generation}/catalog.json",
+                                     hashlib.sha256(body).hexdigest(), len(body), "2026-10-21T00:00:00Z")
+            target.write_key("_catalog/current.json", pointer.to_bytes())
+            document = {"id": "hifld/synthetic/points/v1.5.0", "version": "1.5.0"}
+            require_current_baseline(target, document, {"version": "v20260214"})
+            with self.assertRaisesRegex(ValueError, "baseline.*changed"):
+                require_current_baseline(target, document, {"version": "v20260213"})
+
+    def test_local_pipeline_reports_the_promoted_release_inventory(self):
+        with tempfile.TemporaryDirectory() as d:
+            source, target, registry = accepted_fixture(Path(d), candidate_version="vtest")
+            select_version(source, registry)
+
+            def approve_prepared_fixture(*args):
+                # Synthetic maintainer approval of the actual generated inventory.
+                select_version(source, registry)
+                return _copy_version_files(*args)
+
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}), \
+                 patch("dagster_hifld.assets.publish._copy_version_files", side_effect=approve_prepared_fixture), \
+                 patch("dagster_hifld.assets.publish._write_and_publish_pmtiles", return_value=[]):
+                result = run_local_version_pipeline(source, target, "synthetic", "points", "vtest")
+            paths = [output.path for output in result["outputs"] if output.path]
+            self.assertTrue(paths)
+            self.assertTrue(all(path.startswith("synthetic/points/v1.5.0/") for path in paths), paths)
+            self.assertTrue(all(target.object_exists(path) for path in paths))
+            self.assertIn("metadata", {output.format_type for output in result["outputs"]})
 
     def test_changed_accepted_baseline_blocks_promotion(self):
         with tempfile.TemporaryDirectory() as d:

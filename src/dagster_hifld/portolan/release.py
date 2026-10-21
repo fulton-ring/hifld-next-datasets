@@ -83,8 +83,6 @@ def require_current_baseline(destination, document: dict, baseline: dict) -> Non
             return  # Immutable-copy checks still reject different bytes on retries.
         if label.removeprefix("v") != baseline["version"].removeprefix("v"):
             raise ValueError("Accepted baseline version changed since comparison")
-        if semantic_version_key(document["version"]) <= semantic_version_key(label):
-            raise ValueError("New release version must advance the accepted baseline")
 
 
 @dataclass(frozen=True)
