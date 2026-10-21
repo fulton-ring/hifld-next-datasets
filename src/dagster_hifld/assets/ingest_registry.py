@@ -71,6 +71,7 @@ from dagster_hifld.assets.construction_minerals import construction_minerals_pre
 from dagster_hifld.assets.census_county_subdivisions import census_county_subdivisions
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
+from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 
 hifld_ingest_assets = [
     noaa_current_dart,
@@ -138,4 +139,5 @@ hifld_ingest_assets = [
     census_county_subdivisions,
     usace_crane_locations_ienc,
     courthouses_usgs,
+    usace_data_coverage_areas_usace_ienc,
 ]
