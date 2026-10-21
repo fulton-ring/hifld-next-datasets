@@ -1,6 +1,7 @@
 """Profile-driven capture of nonspatial EPA FRS ArcGIS tables."""
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -93,6 +94,7 @@ def _metadata_contract(payload: Mapping[str, Any], profile: ArcGISTableProfile) 
 
 def capture_table(
     client: httpx.Client, profile: ArcGISTableProfile, capture_root: Path,
+    *, replay_captures: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, tuple[bytes, dict[str, Any]]]]:
     """Fetch and retain exact GET responses, bracketing all rows with count/ID reads."""
     capture_root.mkdir(parents=True, exist_ok=True)
@@ -100,8 +102,23 @@ def capture_table(
 
     def request(name: str, url: str, params: Mapping[str, Any]) -> dict[str, Any]:
         request_url = url + "?" + urlencode(params)
-        body, receipt = capture_get(client, request_url, capture_root, name,
-                                    max_bytes=profile.max_response_bytes)
+        if replay_captures:
+            body_path = capture_root / f"{name}.body"
+            wire_path = capture_root / f"{name}.wire"
+            receipt_path = capture_root / f"{name}.receipt.json"
+            body, wire = body_path.read_bytes(), wire_path.read_bytes()
+            receipt = json.loads(receipt_path.read_bytes())
+            if (receipt.get("method") != "GET" or receipt.get("url") != request_url
+                    or receipt.get("final_url") != request_url or receipt.get("status") != 200
+                    or receipt.get("complete_body") is not True
+                    or receipt.get("bytes") != len(body)
+                    or receipt.get("sha256") != hashlib.sha256(body).hexdigest()
+                    or receipt.get("wire_bytes") != len(wire)
+                    or receipt.get("wire_sha256") != hashlib.sha256(wire).hexdigest()):
+                raise ArcGISTableCaptureError("retained_source_capture_receipt_invalid:" + name)
+        else:
+            body, receipt = capture_get(client, request_url, capture_root, name,
+                                        max_bytes=profile.max_response_bytes)
         try:
             payload = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
