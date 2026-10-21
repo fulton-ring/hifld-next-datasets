@@ -6,6 +6,7 @@ import shapely
 
 from dagster_hifld.sources.usace_airport_area import (
     EXPECTED_FIELDS,
+    UNSUPPORTED_OUTPUT_FORMATS,
     _esri_polygon,
     _validate,
 )
@@ -60,6 +61,10 @@ class UsaceAirportAreaContractTests(unittest.TestCase):
     def test_metadata_contract_pins_complete_official_class(self):
         self.assertEqual(EXPECTED_FIELDS[0], ("OBJECTID", "esriFieldTypeOID"))
         self.assertIn(("Feature_ID", "esriFieldTypeString"), EXPECTED_FIELDS)
+
+    def test_lossy_or_unapproved_exports_are_explicitly_excluded(self):
+        self.assertIn("shapefile_zip", UNSUPPORTED_OUTPUT_FORMATS)
+        self.assertIn("field-name", UNSUPPORTED_OUTPUT_FORMATS["shapefile_zip"])
 
     def test_invalid_native_polygon_is_reported_without_geometry_repair(self):
         fields = [
