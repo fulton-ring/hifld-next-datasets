@@ -5,7 +5,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
 from uuid import uuid4
 
 import httpx
@@ -28,7 +27,6 @@ from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_parti
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
-    capture_get,
     content_derived_version,
     processing_identity,
     quarantine_incomplete_capture,
@@ -36,6 +34,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.epa_frs_arcgis_table import ArcGISTableProfile, capture_table
 
 
 DATASET_SLUG = "epa-frs-eia-860-power-generation-facilities-naics-codes"
@@ -56,6 +55,20 @@ EXPECTED_ARCGIS_FIELDS = (
     ("NAICS_CODE", "esriFieldTypeString", False, 6),
     ("PRIMARY_INDICATOR", "esriFieldTypeString", False, 10),
 )
+TABLE_PROFILE = ArcGISTableProfile(
+    service_url=SERVICE_URL,
+    table_id=14,
+    table_name="FRS_NAICS_POWERPLANTS",
+    fields=EXPECTED_ARCGIS_FIELDS,
+    relationship_name="POWERPLANT_LAYER",
+    related_table_id=12,
+    relationship_key="REGISTRY_ID",
+    relationship_cardinality="esriRelCardinalityOneToMany",
+    source_vintage="2014-06",
+    expected_rows=EXPECTED_SOURCE_ROWS,
+    page_size=PAGE_SIZE,
+    max_response_bytes=MAX_RESPONSE_BYTES,
+)
 
 # This fingerprint describes the complete, independently fetched v1.0.0 public
 # HIFLD Next candidate. It is a quarantine comparator, not an accepted contract.
@@ -71,168 +84,9 @@ def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
 
 
-def _request_json(
-    client: httpx.Client,
-    url: str,
-    params: dict[str, Any],
-    capture_root: Path,
-    name: str,
-) -> tuple[dict[str, Any], dict[str, bytes], dict[str, Any]]:
-    request_url = url + "?" + urlencode(params)
-    decoded, receipt = capture_get(client, request_url, capture_root, name, max_bytes=MAX_RESPONSE_BYTES)
-    wire = (capture_root / f"{name}.wire").read_bytes()
-    receipt = {**receipt, "headers": {}}
-    try:
-        payload = json.loads(decoded)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise EPAFRSNAICSError("source_response_is_not_valid_json") from exc
-    if not isinstance(payload, dict) or "error" in payload:
-        raise EPAFRSNAICSError("source_response_has_arcgis_error")
-    return payload, {"wire": wire, "decoded": decoded}, receipt
-
-
-def _field_contract(table_info: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    fields = table_info.get("fields")
-    if not isinstance(fields, list):
-        raise EPAFRSNAICSError("source_table_fields_missing")
-    observed = tuple(
-        (field.get("name"), field.get("type"), field.get("nullable"), field.get("length"))
-        for field in fields
-    )
-    if observed != EXPECTED_ARCGIS_FIELDS:
-        raise EPAFRSNAICSError("source_table_schema_changed")
-    if table_info.get("name") != "FRS_NAICS_POWERPLANTS" or table_info.get("geometryType") is not None:
-        raise EPAFRSNAICSError("source_table_identity_or_geometry_changed")
-    return tuple(fields)
-
-
-def _validated_page_features(payload: dict[str, Any], expected_rows: int) -> list[dict[str, Any]]:
-    features = payload.get("features")
-    if not isinstance(features, list):
-        raise EPAFRSNAICSError("source_page_features_missing")
-    if len(features) != expected_rows:
-        raise EPAFRSNAICSError("source_page_row_count_incomplete")
-    # ArcGIS can set this marker on a full offset page because additional rows
-    # exist at later offsets. The exact count and final before/after ID roster
-    # determine completeness; a short final page marked limited is incomplete.
-    if payload.get("exceededTransferLimit") is True and expected_rows < PAGE_SIZE:
-        raise EPAFRSNAICSError("source_final_page_exceeded_transfer_limit")
-    return features
-
-
-def _validate_complete_id_roster(
-    ids_before: list[int], ids_after: list[int], captured_ids: list[int], expected_count: int
-) -> None:
-    if (any(type(value) is not int for value in ids_before)
-            or any(type(value) is not int for value in ids_after)
-            or any(type(value) is not int for value in captured_ids)):
-        raise EPAFRSNAICSError("source_object_id_type_changed")
-    before = sorted(ids_before)
-    if (len(before) != expected_count or len(set(before)) != expected_count
-            or sorted(ids_after) != before or len(ids_after) != expected_count
-            or len(captured_ids) != expected_count or len(set(captured_ids)) != expected_count
-            or sorted(captured_ids) != before):
-        raise EPAFRSNAICSError("source_capture_incomplete_or_changed_during_read")
-
-
 def _fetch_complete_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, tuple[bytes, dict[str, Any]]]]:
-    captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
-    receipts: dict[str, dict[str, Any]] = {}
-
-    def request(name: str, url: str, params: dict[str, Any]) -> dict[str, Any]:
-        payload, bodies, receipt = _request_json(client, url, params, capture_root, name)
-        captures[name] = (bodies["decoded"], receipt)
-        receipts[name] = receipt
-        return payload
-
-    service = request("service", SERVICE_URL, {"f": "json"})
-    table_info = request("table_14", TABLE_URL, {"f": "json"})
-    _field_contract(table_info)
-    relationship = table_info.get("relationships")
-    if not isinstance(relationship, list) or not any(
-        item.get("name") == "POWERPLANT_LAYER"
-        and item.get("relatedTableId") == 12
-        and item.get("keyField") == "REGISTRY_ID"
-        and item.get("cardinality") == "esriRelCardinalityOneToMany"
-        for item in relationship
-    ):
-        raise EPAFRSNAICSError("source_table_relationship_changed")
-
-    count_params = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
-    id_params = {"where": "1=1", "returnIdsOnly": "true", "f": "json"}
-    count_before = request("count_before", f"{TABLE_URL}/query", count_params).get("count")
-    ids_before = request("ids_before", f"{TABLE_URL}/query", id_params).get("objectIds")
-    if type(count_before) is not int or not isinstance(ids_before, list) or len(ids_before) != count_before:
-        raise EPAFRSNAICSError("source_count_and_id_roster_disagree_before_capture")
-    if any(type(value) is not int for value in ids_before) or len(set(ids_before)) != len(ids_before):
-        raise EPAFRSNAICSError("source_object_id_roster_is_invalid")
-
-    records: list[dict[str, Any]] = []
-    for page, offset in enumerate(range(0, count_before, PAGE_SIZE)):
-        payload = request(
-            f"page_{page:03d}",
-            f"{TABLE_URL}/query",
-            {
-                "where": "1=1",
-                "outFields": ",".join(EXPECTED_FIELDS),
-                "returnGeometry": "false",
-                "orderByFields": "OBJECTID ASC",
-                "resultOffset": offset,
-                "resultRecordCount": PAGE_SIZE,
-                "f": "json",
-            },
-        )
-        expected_page_rows = min(PAGE_SIZE, count_before - offset)
-        features = _validated_page_features(payload, expected_page_rows)
-        for feature in features:
-            if not isinstance(feature, dict) or feature.get("geometry") is not None:
-                raise EPAFRSNAICSError("source_table_returned_unexpected_geometry")
-            attributes = feature.get("attributes")
-            if not isinstance(attributes, dict) or tuple(attributes.keys()) != EXPECTED_FIELDS:
-                raise EPAFRSNAICSError("source_record_fields_changed")
-            if type(attributes["OBJECTID"]) is not int:
-                raise EPAFRSNAICSError("source_object_id_type_changed")
-            if attributes["REGISTRY_ID"] is not None and not isinstance(attributes["REGISTRY_ID"], str):
-                raise EPAFRSNAICSError("source_registry_id_type_changed")
-            if not isinstance(attributes["NAICS_CODE"], str) or not isinstance(attributes["PRIMARY_INDICATOR"], str):
-                raise EPAFRSNAICSError("source_classification_type_changed")
-            records.append(attributes)
-
-    table_after = request("table_14_after", TABLE_URL, {"f": "json"})
-    if (table_after.get("name") != table_info.get("name")
-            or _field_contract(table_after) != _field_contract(table_info)
-            or table_after.get("relationships") != relationship):
-        raise EPAFRSNAICSError("source_table_metadata_changed_during_capture")
-    count_after = request("count_after", f"{TABLE_URL}/query", count_params).get("count")
-    ids_after = request("ids_after", f"{TABLE_URL}/query", id_params).get("objectIds")
-    after_ids = ids_after if isinstance(ids_after, list) else []
-    captured_ids = [record["OBJECTID"] for record in records]
-    if count_after != count_before:
-        raise EPAFRSNAICSError("source_capture_incomplete_or_changed_during_read")
-    _validate_complete_id_roster(ids_before, after_ids, captured_ids, count_before)
-    before_ids = sorted(ids_before)
-
-    manifest = {
-        "schema_version": 1,
-        "source_url": TABLE_URL,
-        "service_url": SERVICE_URL,
-        "source_table": table_info["name"],
-        "relationship": relationship,
-        "service_description": service.get("description"),
-        "source_vintage": "2014-06",
-        "source_release_date": None,
-        "count_before": count_before,
-        "count_after": count_after,
-        "id_count_before": len(before_ids),
-        "id_count_after": len(after_ids),
-        "page_size": PAGE_SIZE,
-        "page_count": len([name for name in receipts if name.startswith("page_")]),
-        "rows_captured": len(records),
-        "all_ids_captured_once": True,
-        "source_ids_equal_before_after": True,
-        "fields": list(_field_contract(table_info)),
-        "response_receipts": receipts,
-    }
+    records, manifest, captures = capture_table(client, TABLE_PROFILE, capture_root)
+    manifest.update({"schema_version": 1, "source_release_date": None})
     return records, manifest, captures
 
 
