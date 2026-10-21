@@ -386,7 +386,7 @@ def reconcile_cache(storage,prefix,version,table,audit,captures,identity,pin):
     source_catalog={'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'}
     found_catalog=actual & (flat|source_catalog|{'metadata/resolved_provenance.json'})
     if found_catalog:
-        if not flat.issubset(actual) or not source_catalog.issubset(actual):
+        if not flat.issubset(actual) or bool(actual&source_catalog) and not source_catalog.issubset(actual):
             raise FemaOfficesQuarantineError('catalog_metadata_incomplete')
         resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
         summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
