@@ -219,3 +219,58 @@ PR #595 added the reusable local registered-gate proof CLI. Exact head `4f598d5c
 Current main is `20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1` (tree `fbec46810f0672341afb68e7f16fdc231e51a6c4`). Issue #20 remains open with PR #431 at exact head `09b598485fcd8ca8519855af02331172dd976807`, independent review PASS `5603303945`, and source/CRS/baseline/schema/rights/release decisions pending. Issue #24 remains open: comment `6321593473` records FCC transmitter-feed access failures and the unresolved distinction between transmitter sites and ULS authorization areas; a reachable complete feed or explicit scope decision is required. This is an evidence/scope blocker, not a feasibility verdict.
 
 Issue #28 has open clean-main PR #594 at exact head `2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910`. Its 1,145-feature native output and no-Git source/catalog proof are recorded, but the registered false-quality refusal is still pending. The seven zero-width producer values, source rights, feature grain, baseline comparability, schema/IDs and release approval remain unresolved. Issues #26/#29/#32/#34 have only coordinator-reported active recovery/triage states in this checkpoint; no new exact head or completion is claimed. The 14:14 UTC PR census remains historical only; no fresh full census or readiness/capacity total is claimed. All 415 ledger rows are preserved. No issue closure, release acceptance, schedule activation or production publication is recorded.
+
+
+## Current-main registration audit — 2026-10-21 17:17 UTC
+
+A read-only audit of current main `20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1` followed the 39 entries in `Definitions.schedules` through each registered job reference and selected asset/key symbol. The code defines 39 dataset schedules for 39 distinct inventory issues, with `DefaultScheduleStatus.STOPPED` in their definitions. No live scheduler-instance query was made. This registration count is not a count of feasible pipelines, review passes, releases, or accepted datasets. The row-derived `code_merged_issue_open_acceptance_gated` count is 26 and is a separate measure.
+
+| Issue | Inventory dataset | Registered schedule → job → asset reference |
+| ---: | --- | --- |
+| 2 | 12nm-territorial-sea — 12NM Territorial Sea | `noaa_territorial_draft_weekly_schedule` → `noaa_territorial_draft_refresh_job` → `noaa_12nm_territorial_sea.key` |
+| 3 | 200nm-eez-and-maritime-boundaries — 200NM EEZ and Maritime Boundaries | `noaa_eez_draft_weekly_schedule` → `noaa_eez_draft_refresh_job` → `noaa_200nm_eez_and_maritime_boundaries.key` |
+| 4 | 24nm-contiguous-zone — 24NM Contiguous Zone | `noaa_contiguous_draft_refresh_schedule` → `noaa_contiguous_draft_refresh_job` → `noaa_24nm_contiguous_zone` |
+| 6 | administrative-areas-usace-ienc — Administrative Areas (USACE IENC) | `usace_administrative_areas_draft_schedule` → `usace_administrative_areas_draft_job` → `usace_administrative_areas_usace_ienc` |
+| 8 | aiannh-areas-1 — American Indian / Alaska Native / Native Hawaiian (AIANNH) Areas | `aiannh_source_integrity_refresh_schedule` → `aiannh_source_integrity_refresh_job` → `census_bureau_aiannh_areas` |
+| 9 | airport-area-usace-ienc — Airport Area (USACE IENC) | `usace_airport_area_draft_schedule` → `usace_airport_area_draft_job` → `usace_airport_area_ienc` |
+| 10 | airspace-boundaries-1 — Airspace Boundaries | `faa_airspace_draft_refresh_schedule` → `faa_airspace_draft_refresh_job` → `faa_airspace_boundaries` |
+| 11 | alternative-fueling-stations — Alternative Fueling Stations | `fuel_stations_draft_refresh_schedule` → `fuel_stations_draft_refresh_job` → `bts_alternative_fueling_stations` |
+| 15 | american-red-cross-headquarters-1 — American Red Cross Headquarters | `red_cross_headquarters_draft_schedule` → `red_cross_headquarters_draft_job` → `red_cross_headquarters` |
+| 16 | american-red-cross-regions — American Red Cross Regions | `arc_regions_draft_schedule` → `arc_regions_draft_job` → `arc_regions` |
+| 17 | amtrak-stations — Amtrak Stations | `amtrak_draft_refresh_schedule` → `amtrak_draft_refresh_job` → `bts_amtrak_stations` |
+| 19 | aquifers — Aquifers | `usgs_aquifers_draft_refresh_schedule` → `usgs_aquifers_draft_refresh_job` → `usgs_aquifers.key` |
+| 21 | berths-areas-usace-ienc — Berths Areas (USACE IENC) | `usace_berths_areas_draft_schedule` → `usace_berths_areas_draft_job` → `usace_berths_areas_usace_ienc` |
+| 27 | caution-area-locations-usace-ienc — Caution Area Locations (USACE IENC) | `usace_caution_areas_draft_schedule` → `usace_caution_areas_draft_job` → `usace_caution_areas_usace_ienc` |
+| 37 | coastlines-usace-ienc — Coastlines (USACE IENC) | `coastlines_usace_ienc_draft_schedule` → `coastlines_usace_ienc_draft_job` → `coastlines_usace_ienc` |
+| 181 | navigation-system-of-marks-areas-usace-ienc-2 — Navigation System of Marks Areas (USACE IENC) | `usace_navigation_marks_areas_draft_schedule` → `usace_navigation_marks_areas_draft_job` → `usace_navigation_marks_areas_usace_ienc` |
+| 253 | obstruction-lines-usace-ienc — Obstruction Lines (USACE IENC) | `usace_obstruction_lines_draft_schedule` → `usace_obstruction_lines_draft_job` → `usace_obstruction_lines_usace_ienc` |
+| 257 | outer-continental-shelf-ocs-drilling-platforms — Outer Continental Shelf (OCS) Drilling Platforms | `bsee_ocs_platforms_draft_schedule` → `bsee_ocs_platforms_draft_job` → `bsee_ocs_platforms` |
+| 260 | overhead-cables-usace-ienc — Overhead Cables (USACE IENC) | `usace_overhead_cables_draft_schedule` → `usace_overhead_cables_draft_job` → `usace_overhead_cables_usace_ienc` |
+| 261 | overhead-pipeline-lines-usace-ienc — Overhead Pipeline Lines (USACE IENC) | `usace_overhead_pipeline_lines_draft_schedule` → `usace_overhead_pipeline_lines_draft_job` → `usace_overhead_pipeline_lines_usace_ienc` |
+| 269 | pile-locations-usace-ienc — Pile Locations (USACE IENC) | `usace_pile_locations_draft_schedule` → `usace_pile_locations_draft_job` → `usace_pile_locations_usace_ienc` |
+| 270 | pipeline-areas-usace-ienc — Pipeline Areas (USACE IENC) | `usace_pipeline_areas_draft_schedule` → `usace_pipeline_areas_draft_job` → `usace_pipeline_areas_usace_ienc` |
+| 271 | plate-boundaries — Plate Boundaries | `plate_boundaries_draft_schedule` → `plate_boundaries_draft_job` → `plate_boundaries_usgs` |
+| 273 | pontoon-areas-usace-ienc — Pontoon Areas (USACE IENC) | `usace_pontoon_areas_draft_schedule` → `usace_pontoon_areas_draft_job` → `usace_pontoon_areas_usace_ienc` |
+| 274 | power-plants-1 — Power Plants | `eia_power_plants_draft_schedule` → `eia_power_plants_draft_job` → `eia_power_plants_historical` |
+| 275 | primary-roads-2 — Primary Roads | `census_primary_roads_draft_schedule` → `census_primary_roads_draft_job` → `census_bureau_primary_roads` |
+| 276 | principal-ports — Principal Ports | `principal_ports_draft_schedule` → `principal_ports_draft_job` → `principal_ports_usace` |
+| 278 | private-schools — Private Schools | `nces_private_schools_draft_schedule` → `nces_private_schools_draft_job` → `nces_private_schools_2023_24` |
+| 279 | proposed-critical-habitat-features — Proposed Critical Habitat Features | `proposed_critical_habitat_draft_schedule` → `proposed_critical_habitat_draft_job` → `proposed_critical_habitat_features` |
+| 280 | public-refrigerated-warehouses-1 — Public Refrigerated Warehouses | `gcca_warehouses_draft_schedule` → `gcca_warehouses_draft_job` → `gcca_warehouses_current` |
+| 281 | public-schools — Public Schools | `nces_public_schools_draft_schedule` → `nces_public_schools_draft_job` → `nces_public_schools` |
+| 282 | puerto-rico-subbarrios — Puerto Rico Subbarrios | `puerto_rico_subbarrios_draft_schedule` → `puerto_rico_subbarrios_draft_job` → `puerto_rico_subbarrios_census` |
+| 283 | pylon-areas-usace-ienc — Pylon Areas (USACE IENC) | `usace_pylon_areas_draft_schedule` → `usace_pylon_areas_draft_job` → `usace_pylon_areas_usace_ienc` |
+| 284 | pylon-locations-usace-ienc — Pylon Locations (USACE IENC) | `pylon_locations_draft_refresh_schedule` → `pylon_locations_draft_refresh_job` → `usace_pylon_locations_usace_ienc` |
+| 285 | quaternary-fault-lines — Quaternary Fault Lines | `quaternary_fault_lines_draft_schedule` → `quaternary_fault_lines_draft_job` → `quaternary_fault_lines_usgs` |
+| 290 | recommended-tracks-usace-ienc — Recommended Tracks (USACE IENC) | `recommended_tracks_draft_schedule` → `recommended_tracks_draft_job` → `usace_recommended_tracks_ienc` |
+| 307 | secondary-school-districts — Secondary School Districts | `secondary_school_districts_draft_refresh_schedule` → `secondary_school_districts_draft_refresh_job` → `census_secondary_school_districts` |
+| 335 | unified-school-districts — Unified School Districts | `unified_school_districts_draft_refresh_schedule` → `unified_school_districts_draft_refresh_job` → `census_unified_school_districts` |
+| 363 | us-county-boundaries-1 — US County Boundaries | `us_county_boundaries_draft_schedule` → `us_county_boundaries_draft_job` → `us_county_boundaries_census` |
+
+All 415 inventory rows remain present. The audit is a registration mapping only; it did not run a source capture, Dagster materialization, full suite, issue census, or acceptance/release check.
+
+## Subsequent card evidence checkpoint — 2026-10-21 17:17 UTC
+
+PR #594 for issue #28 remains open at exact head `2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910`; independent review `5603413457` passed. The registered false-quality run `62102e85-9e5e-4133-a585-d3ebfa953ff0` stopped before verify/promote; empty-registry run `dcf5c73f-87dd-48e9-8e44-34ddd7004566` passed quality, failed verify, and did not promote. The synthetic destination fixture remained unchanged. This supports a faithful unapproved candidate only; source use constraints, grain, baseline, schema/IDs and release rights remain unresolved.
+
+Issue #26 has clean-main PR #596 open at `4a788c8840212d3ca101798a6d93ba81a85ee6d5`; root review is ongoing. The retained capture and 30-row native output parity are documented in the PR. Issue #29 has worker-reported exact candidate head `81ebff8c5f6c7a1502bc98998adbc46e881f3a53`; exact-head review is pending, and no new PR association was verified. Existing PR #438 remains preserved. These statuses do not imply source or release acceptance.

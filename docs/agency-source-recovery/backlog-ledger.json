@@ -37,9 +37,10 @@
         "row_structured_exact_head_review_plus_local_run_bundle": "Five records with current/runtime head, a locally verified review status and dagster_runs bundle in their row structure (#257, #261, #262, #268, #269). This structured subset is incomplete and does not count all evidenced reviews or pipelines.",
         "latest_checkpoint_priority_exact_head_review_or_ci_evidence": "Distinct issue records with current-checkpoint exact-head review, CI, runtime, or audit evidence. This named evidence list is not all reviewed pipelines or release-ready work.",
         "current_open_pr_mapped_issues": "Latest known named association only; no current global count without a fresh census.",
-        "inventory_issues_without_mapped_open_pr": "Historical 14:14 UTC census arithmetic only; not a current count or feasibility/capacity estimate."
+        "inventory_issues_without_mapped_open_pr": "Historical 14:14 UTC census arithmetic only; not a current count or feasibility/capacity estimate.",
+        "code_merged_issue_open_acceptance_gated": "Count of dataset rows whose explicit status is code_merged_issue_open_acceptance_gated. It is not the number of registered schedules, reviewed candidates, releases, or accepted datasets."
       },
-      "caveat": "Status/evidence categories are ledger-based and not mutually exclusive readiness or feasibility measures. These named row/code evidence updates do not provide a current open-PR total, automation capacity, or release readiness.",
+      "caveat": "Status/evidence categories are ledger-based and not mutually exclusive readiness or feasibility measures. The row-derived code-merged/open/gated count and current main schedule registration count are separate concepts. No current open-PR census or readiness/capacity total is claimed.",
       "row_structured_exact_head_review_plus_local_run_bundle": 5,
       "latest_checkpoint_priority_exact_head_review_or_ci_evidence": 26,
       "minimum_distinct_issues_with_explicit_evidence_from_these_two_sets": 30,
@@ -75,12 +76,85 @@
       "current_open_pr_records": null,
       "current_open_pr_records_mapped_to_inventory": null,
       "inventory_issues_without_mapped_open_pr": null,
-      "code_merged_issue_open_acceptance_gated": 23,
+      "code_merged_issue_open_acceptance_gated": 26,
       "last_open_pr_census_mapped_issues_2026_10_21T1414Z": 129,
       "last_open_pr_census_unmapped_issues_2026_10_21T1414Z": 286,
       "current_count_status": "No fresh full census; named PR and issue statuses only. Historical 14:14 census remains historical and open-PR totals are unset.",
-      "ledger_status_counts_recorded_at": "2026-10-21T17:08:53Z",
-      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 26
+      "ledger_status_counts_recorded_at": "2026-10-21T17:17:54Z",
+      "latest_checkpoint_priority_exact_head_review_or_CI_evidence": 26,
+      "code_merged_issue_open_acceptance_gated_issue_numbers": [
+        2,
+        6,
+        8,
+        9,
+        15,
+        16,
+        17,
+        19,
+        21,
+        27,
+        37,
+        261,
+        275,
+        276,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        290,
+        307,
+        335,
+        363
+      ],
+      "main_registered_schedule_count": 39,
+      "main_registered_schedule_issue_count": 39,
+      "main_registered_schedule_mapping_issues": [
+        2,
+        3,
+        4,
+        6,
+        8,
+        9,
+        10,
+        11,
+        15,
+        16,
+        17,
+        19,
+        21,
+        27,
+        37,
+        181,
+        253,
+        257,
+        260,
+        261,
+        269,
+        270,
+        271,
+        273,
+        274,
+        275,
+        276,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        290,
+        307,
+        335,
+        363
+      ],
+      "main_registered_schedule_default_configuration": "All 39 schedule definitions in current main source snapshot 20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1 configure DefaultScheduleStatus.STOPPED; no live scheduler-instance status was queried.",
+      "main_registration_audit_source": "Current main src/dagster_hifld/definitions.py schedules list, linked job selections and asset/key refs; no 415-issue network census."
     },
     "current_open_pr_census": {
       "recorded_at": "2026-10-21T14:14:32Z",
@@ -139,10 +213,10 @@
     "#19": "PR #592 integrated through #593; issue open, Needs decision requested; 20 invalid geometries correctly block quality",
     "#16": "PR #591 integrated through #593; issue open, Needs decision requested; source/compatibility/acceptance gated",
     "#20": "PR #431 exact head review PASS; open, release/source decisions pending",
-    "#26": "Native clean-main recovery active; candidate prefix only, no exact PR verified",
+    "#26": "PR #596 exact head 4a788c8840212d3ca101798a6d93ba81a85ee6d5; root review ongoing",
     "#24": "FCC transmitter source access/scope decision blocker; issue open, Needs decision requested",
-    "#28": "PR #594 open; native output verified, registered false-quality gate pending",
-    "#29": "Native implementation active; no new exact head verified",
+    "#28": "PR #594 exact head 2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910; independent PASS 5603413457 and registered gates verified; acceptance pending",
+    "#29": "Exact source head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53; review pending; no new PR association verified",
     "#32": "Triage active; no pipeline PR/head verified",
     "#34": "Next native card active per coordinator; no new exact head verified"
   },
@@ -219,6 +293,20 @@
         "ci": "build success",
         "canonical_issue_comment": 6321109730,
         "notes": "PR #418 was reviewed at exact head 22576c3b1ee74650b079110d0a9835355295918f (review 5602850868) and automatically marked merged through integration PR #586 ancestry. Issue #2 remains OPEN. Main code is integrated; source/baseline/rights/contract/release decisions remain pending."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "noaa_territorial_draft_weekly_schedule",
+        "job_ref": "noaa_territorial_draft_refresh_job",
+        "asset_refs": [
+          "noaa_12nm_territorial_sea.key"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/noaa.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -242,7 +330,21 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "code_merged_issue_open_acceptance_stopped"
+      "status": "code_merged_issue_open_acceptance_stopped",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "noaa_eez_draft_weekly_schedule",
+        "job_ref": "noaa_eez_draft_refresh_job",
+        "asset_refs": [
+          "noaa_200nm_eez_and_maritime_boundaries.key"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/noaa.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 4,
@@ -265,7 +367,21 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "code_merged_issue_open_acceptance_stopped"
+      "status": "code_merged_issue_open_acceptance_stopped",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "noaa_contiguous_draft_refresh_schedule",
+        "job_ref": "noaa_contiguous_draft_refresh_job",
+        "asset_refs": [
+          "noaa_24nm_contiguous_zone"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/noaa_contiguous.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 5,
@@ -411,7 +527,21 @@
       "integration_tree": "99c9be12bb35143c75f28d954da59552a160ad49",
       "integration_root_review": 5603098250,
       "integration_ci": "Docker build success",
-      "canonical": true
+      "canonical": true,
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_administrative_areas_draft_schedule",
+        "job_ref": "usace_administrative_areas_draft_job",
+        "asset_refs": [
+          "usace_administrative_areas_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 7,
@@ -503,7 +633,21 @@
       "integration_tree": "99c9be12bb35143c75f28d954da59552a160ad49",
       "integration_root_review": 5603098250,
       "integration_ci": "Docker build success",
-      "canonical": true
+      "canonical": true,
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "aiannh_source_integrity_refresh_schedule",
+        "job_ref": "aiannh_source_integrity_refresh_job",
+        "asset_refs": [
+          "census_bureau_aiannh_areas"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/census_bureau.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 9,
@@ -576,7 +720,21 @@
         425,
         589
       ],
-      "current_head": "75c8f574898c685476f09ca14e899e9423cf743f"
+      "current_head": "75c8f574898c685476f09ca14e899e9423cf743f",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_airport_area_draft_schedule",
+        "job_ref": "usace_airport_area_draft_job",
+        "asset_refs": [
+          "usace_airport_area_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_airport_area.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 10,
@@ -599,7 +757,21 @@
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "code_merged_issue_open_acceptance_stopped"
+      "status": "code_merged_issue_open_acceptance_stopped",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "faa_airspace_draft_refresh_schedule",
+        "job_ref": "faa_airspace_draft_refresh_job",
+        "asset_refs": [
+          "faa_airspace_boundaries"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/faa.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 11,
@@ -624,7 +796,21 @@
       "observed_open_prs": [],
       "status": "code_merged_issue_open_acceptance_stopped",
       "merged_pr": 428,
-      "current_head": "43faff7f72893264f3c04c3a717b29cb567ce1a0"
+      "current_head": "43faff7f72893264f3c04c3a717b29cb567ce1a0",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "fuel_stations_draft_refresh_schedule",
+        "job_ref": "fuel_stations_draft_refresh_job",
+        "asset_refs": [
+          "bts_alternative_fueling_stations"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/fuel_stations.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 12,
@@ -805,7 +991,21 @@
       "integration_tree": "99c9be12bb35143c75f28d954da59552a160ad49",
       "integration_root_review": 5603098250,
       "integration_ci": "Docker build success",
-      "canonical": true
+      "canonical": true,
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "red_cross_headquarters_draft_schedule",
+        "job_ref": "red_cross_headquarters_draft_job",
+        "asset_refs": [
+          "red_cross_headquarters"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/red_cross_headquarters.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 16,
@@ -861,7 +1061,21 @@
       "current_pr_candidates": [
         465,
         591
-      ]
+      ],
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "arc_regions_draft_schedule",
+        "job_ref": "arc_regions_draft_job",
+        "asset_refs": [
+          "arc_regions"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/arc_regions.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 17,
@@ -920,7 +1134,21 @@
         430
       ],
       "current_head": "bbf25bafbc482e195393e380156782376a54581d",
-      "status_note": "PR #430 exact head is integrated via #593; original source PR is automatically merged by ancestry. Issue #17 remains open. Fresh 1,036-row capture and no-Git source/refresh/catalog plus Parquet/GPKG parity are recorded. PMTiles run ff615c11-d426-4275-932e-c5fb53cc4885 failed because tippecanoe is absent and PMTiles is not declared unsupported; Shapefile ZIP is an intentional unsupported-format SKIP with file_count 0. Historical continuity and source/contract/release acceptance remain unresolved."
+      "status_note": "PR #430 exact head is integrated via #593; original source PR is automatically merged by ancestry. Issue #17 remains open. Fresh 1,036-row capture and no-Git source/refresh/catalog plus Parquet/GPKG parity are recorded. PMTiles run ff615c11-d426-4275-932e-c5fb53cc4885 failed because tippecanoe is absent and PMTiles is not declared unsupported; Shapefile ZIP is an intentional unsupported-format SKIP with file_count 0. Historical continuity and source/contract/release acceptance remain unresolved.",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "amtrak_draft_refresh_schedule",
+        "job_ref": "amtrak_draft_refresh_job",
+        "asset_refs": [
+          "bts_amtrak_stations"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/amtrak_extract.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 18,
@@ -1010,7 +1238,21 @@
         434,
         592
       ],
-      "status_note": "Canonical PR #592 is integrated via #593; prior PR #434 remains preserved and noncanonical. Issue #19 remains open. The 4,637 native features include 20 invalid geometries that correctly block quality; source/baseline/IDs/schema/CRS/format and release decisions remain unresolved. No waiver or publication."
+      "status_note": "Canonical PR #592 is integrated via #593; prior PR #434 remains preserved and noncanonical. Issue #19 remains open. The 4,637 native features include 20 invalid geometries that correctly block quality; source/baseline/IDs/schema/CRS/format and release decisions remain unresolved. No waiver or publication.",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usgs_aquifers_draft_refresh_schedule",
+        "job_ref": "usgs_aquifers_draft_refresh_job",
+        "asset_refs": [
+          "usgs_aquifers.key"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usgs.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 20,
@@ -1109,7 +1351,21 @@
       "merge_commit": "c12fe55e1342c363804414fb934902ae1d5a688d",
       "merged_tree": "fbf80d19c922bd5b02951b8b5dcf5d938ebe8c8a",
       "ci": "passed",
-      "live_pr_state": "merged"
+      "live_pr_state": "merged",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_berths_areas_draft_schedule",
+        "job_ref": "usace_berths_areas_draft_job",
+        "asset_refs": [
+          "usace_berths_areas_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_berths_areas.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 22,
@@ -1254,7 +1510,7 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 435,
+      "current_pr": 596,
       "reviewed_head": null,
       "evidence_refs": [],
       "blocker_type": "missing_or_unrecovered_evidence",
@@ -1273,13 +1529,28 @@
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
           "association_method": "exact_dataset_issue_branch"
+        },
+        {
+          "pr": 596,
+          "url": "https://github.com/fulton-ring/hifld-next-datasets/pull/596",
+          "title": "Clean-main recovery for issue #26 Canada and US Border",
+          "state": "open",
+          "merged": false,
+          "head_branch": "codex/26-clean-main",
+          "head_sha": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+          "base_branch": "main",
+          "draft": true,
+          "association_method": "exact_issue_pr_verified",
+          "canonical": true
         }
       ],
-      "status": "native_clean_main_recovery_active_candidate_not_published",
+      "status": "native_clean_main_exact_head_review_in_progress",
       "current_pr_candidates": [
-        435
+        435,
+        596
       ],
-      "status_note": "Worker reports clean-main replacement candidate prefix 47c6ef with 30 native features; full exact head and PR have not been verified in this checkpoint. Prior PR #435 remains open. No review, publication, or source acceptance is claimed."
+      "status_note": "Clean-main PR #596 is open at exact head 4a788c8840212d3ca101798a6d93ba81a85ee6d5, based on main 839da1d8bfaf03cf386cba71dde1f6198de28fbd. Root review is ongoing. The retained complete official source proof covers 574 unique OBJECTIDs, 13 attributes, 8 inputs, EPSG:4269; all 30 candidate rows and five attributes plus ordered WKB match in typed Parquet and GeoPackage. Registered false-quality and empty-approval refusal runs preserve the 14-object fixture. Source currentness, baseline/ID mapping, wrapper/schema, licence and legal interpretation remain unaccepted.",
+      "current_head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5"
     },
     {
       "issue": 27,
@@ -1339,7 +1610,21 @@
       "merged_tree": "3c962ef325007deb3f75b2058db440d458c1e246",
       "ci": "passed",
       "live_pr_state": "merged",
-      "remaining_validation": "BTS item succession, baseline, source/freshness, schema/ID, coverage, rights, and release decisions remain pending; no production publication."
+      "remaining_validation": "BTS item succession, baseline, source/freshness, schema/ID, coverage, rights, and release decisions remain pending; no production publication.",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_caution_areas_draft_schedule",
+        "job_ref": "usace_caution_areas_draft_job",
+        "asset_refs": [
+          "usace_caution_areas_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_caution_areas.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 28,
@@ -1350,8 +1635,10 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 594,
-      "reviewed_head": null,
-      "evidence_refs": [],
+      "reviewed_head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
+      "evidence_refs": [
+        "PR #594 exact-head independent review PASS 5603413457; registered false-quality and empty-approval runs 62102e85-9e5e-4133-a585-d3ebfa953ff0 and dcf5c73f-87dd-48e9-8e44-34ddd7004566; PR body states populated synthetic fixture unchanged."
+      ],
       "blocker_type": "acceptance_decisions_pending",
       "live_issue_updated_at": "2026-10-20T00:26:24Z",
       "live_issue_created_at": "2026-10-19T01:57:35Z",
@@ -1383,8 +1670,8 @@
           "canonical": true
         }
       ],
-      "status": "native_full_output_verified_registered_quality_refusal_pending",
-      "status_note": "Open clean-main PR #594 exact head 2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910 carries the 1,145-feature native proof and packaged-runtime identity repair. Full native parity and actual no-Git source/catalog proof are reported; actual registered false-quality refusal using the shared helper is still pending. Prior PR #437 remains preserved. Zero-width source values, rights, feature grain, baseline comparability, IDs/schema and release approval remain unresolved.",
+      "status": "native_full_output_and_registered_gate_proof_exact_head_review_pass_issue_open_acceptance_gated",
+      "status_note": "Open PR #594 exact head 2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910 passed independent review 5603413457. Actual native 1,145-feature parity and no-Git source/catalog proof are recorded. Shared CLI proof completed: false-quality run 62102e85-9e5e-4133-a585-d3ebfa953ff0 stopped before verify/promote; empty-registry run dcf5c73f-87dd-48e9-8e44-34ddd7004566 passed quality, failed verify and did not promote. Synthetic three-object PublishedStorage fixture inventory was unchanged. Zero-width producer values, source use constraints, grain distinction, baseline, IDs/schema and release rights remain unresolved.",
       "current_pr_candidates": [
         437,
         594
@@ -1401,7 +1688,9 @@
       "live_issue_state": "open",
       "current_pr": 438,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "Issue comment 6321990550; reported exact source head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53. Worker-supplied run IDs and scope are recorded in the comment; review pending."
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-19T16:51:07Z",
       "live_issue_created_at": "2026-10-19T01:57:38Z",
@@ -1420,11 +1709,12 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "native_implementation_active",
+      "status": "native_pipeline_exact_head_review_pending",
       "current_pr_candidates": [
         438
       ],
-      "status_note": "Coordinator reports active native implementation; existing PR #438 remains open on its historical shared base. No new exact implementation head or completion evidence was verified in this checkpoint."
+      "status_note": "Worker reports exact source candidate head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53; independent review is pending. Existing PR #438 remains preserved; no new PR association was verified in this checkpoint. The retained capture has 574 unique OBJECTIDs, 13 attributes, eight complete inputs, EPSG:4269, and 574-row native Parquet/GPKG parity. Registered false-quality run 772fc03f-3afd-4bb4-a4ff-f9414f09a611 and empty-approval run 62d74218-6a0f-478d-84f4-d1734af7433e fail closed before promotion with the 14-object fixture unchanged. Source date, historical baseline, rights and approval remain unresolved.",
+      "current_head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53"
     },
     {
       "issue": 30,
@@ -1697,6 +1987,20 @@
         "ci": "build success",
         "canonical_issue_comment": 6321115581,
         "notes": "PR #584 exact head 7b4fd657b0278f5624234712aa80eb7aa4f235ac passed focused review 5602859770 with prior fidelity review retained and was automatically marked merged through #586 ancestry. Issue #37 remains OPEN; source succession, rights, baseline/continuity, contracts and release decisions remain pending. Older stacked PR #542 is still open and noncanonical."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "coastlines_usace_ienc_draft_schedule",
+        "job_ref": "coastlines_usace_ienc_draft_job",
+        "asset_refs": [
+          "coastlines_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/coastlines_usace_ienc.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -5654,6 +5958,20 @@
           "merged_via_pr": 578
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_navigation_marks_areas_draft_schedule",
+        "job_ref": "usace_navigation_marks_areas_draft_job",
+        "asset_refs": [
+          "usace_navigation_marks_areas_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -7257,7 +7575,21 @@
           "issue_state": "open"
         }
       },
-      "supervisor_reported_board_marker": "Needs decision (move:needs-decision posted/consumed)"
+      "supervisor_reported_board_marker": "Needs decision (move:needs-decision posted/consumed)",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_obstruction_lines_draft_schedule",
+        "job_ref": "usace_obstruction_lines_draft_job",
+        "asset_refs": [
+          "usace_obstruction_lines_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_obstruction_lines.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 254,
@@ -7434,7 +7766,21 @@
           "issue_state": "open"
         }
       },
-      "supervisor_reported_board_marker": "Needs decision (move:needs-decision posted/consumed)"
+      "supervisor_reported_board_marker": "Needs decision (move:needs-decision posted/consumed)",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "bsee_ocs_platforms_draft_schedule",
+        "job_ref": "bsee_ocs_platforms_draft_job",
+        "asset_refs": [
+          "bsee_ocs_platforms"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/bsee_ocs_platforms.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 258,
@@ -7567,6 +7913,20 @@
           "merged_via_pr": 578
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_overhead_cables_draft_schedule",
+        "job_ref": "usace_overhead_cables_draft_job",
+        "asset_refs": [
+          "usace_overhead_cables_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_overhead_cables.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -7663,7 +8023,21 @@
           "state": "merged",
           "canonical": true
         }
-      ]
+      ],
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_overhead_pipeline_lines_draft_schedule",
+        "job_ref": "usace_overhead_pipeline_lines_draft_job",
+        "asset_refs": [
+          "usace_overhead_pipeline_lines_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_overhead_pipeline_lines.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 262,
@@ -8031,6 +8405,20 @@
           "merged_via_pr": 578
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_pile_locations_draft_schedule",
+        "job_ref": "usace_pile_locations_draft_job",
+        "asset_refs": [
+          "usace_pile_locations_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_pile_locations.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -8116,6 +8504,20 @@
           "merged_via_pr": 578
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_pipeline_areas_draft_schedule",
+        "job_ref": "usace_pipeline_areas_draft_job",
+        "asset_refs": [
+          "usace_pipeline_areas_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_pipeline_areas.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -8188,6 +8590,20 @@
           "merged_via_pr": 578
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "plate_boundaries_draft_schedule",
+        "job_ref": "plate_boundaries_draft_job",
+        "asset_refs": [
+          "plate_boundaries_usgs"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/plate_boundaries.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -8309,6 +8725,20 @@
           "state": "open"
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_pontoon_areas_draft_schedule",
+        "job_ref": "usace_pontoon_areas_draft_job",
+        "asset_refs": [
+          "usace_pontoon_areas_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_pontoon_areas.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -8373,6 +8803,20 @@
           "merged_via_pr": 578
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "eia_power_plants_draft_schedule",
+        "job_ref": "eia_power_plants_draft_job",
+        "asset_refs": [
+          "eia_power_plants_historical"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/ornl_power_plants.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -8425,7 +8869,21 @@
       "ci": "passed",
       "live_pr_state": "merged",
       "rows": 17500,
-      "remaining_validation": "Historical HIFLD row equivalence, DHS crosswalk, rights and release decisions remain pending; issue remains open."
+      "remaining_validation": "Historical HIFLD row equivalence, DHS crosswalk, rights and release decisions remain pending; issue remains open.",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "census_primary_roads_draft_schedule",
+        "job_ref": "census_primary_roads_draft_job",
+        "asset_refs": [
+          "census_bureau_primary_roads"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/census_primary_roads.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 276,
@@ -8488,7 +8946,21 @@
           "observed_at": "2026-10-21T14:55:39Z"
         }
       ],
-      "merged_tree": "a066656e984a068cd75ff4d56212d425df090a8d"
+      "merged_tree": "a066656e984a068cd75ff4d56212d425df090a8d",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "principal_ports_draft_schedule",
+        "job_ref": "principal_ports_draft_job",
+        "asset_refs": [
+          "principal_ports_usace"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/principal_ports.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 277,
@@ -8576,7 +9048,21 @@
       },
       "current_pr_candidates": [
         585
-      ]
+      ],
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "nces_private_schools_draft_schedule",
+        "job_ref": "nces_private_schools_draft_job",
+        "asset_refs": [
+          "nces_private_schools_2023_24"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/nces_private_schools.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 279,
@@ -8650,6 +9136,20 @@
         "ci": "build success",
         "canonical_issue_comment": 6321111333,
         "notes": "PR #583 exact head e414e5ff26bb7ac42e6c5d5b4bc26a4dc8432afc passed technical review 5602868385 and was automatically marked merged through #586 ancestry. Corrected populated-fixture false-quality/empty-approval gates preserved all 14 PublishedStorage objects. Native FileGDB fidelity and packaged no-Git behavior passed; missing original createReplica POST receipt is disclosed. Issue #279 remains OPEN; source/baseline/rights/contract/coverage/release unapproved."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "proposed_critical_habitat_draft_schedule",
+        "job_ref": "proposed_critical_habitat_draft_job",
+        "asset_refs": [
+          "proposed_critical_habitat_features"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/proposed_critical_habitat.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -8724,6 +9224,20 @@
         "ci": "build success",
         "canonical_issue_comment": 6321113263,
         "notes": "PR #582 exact head 28447861d818c0af8a264d2cddb4cedf599a2ce5 passed scoped review 5602844755 and was automatically marked merged through #586 ancestry. Candidate preserves unknown CRS and one missing-geometry row; native catalog/release fail closed. Issue #280 remains OPEN; CRS authority, continuity, geometry disposition, coverage, rights and release remain pending."
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "gcca_warehouses_draft_schedule",
+        "job_ref": "gcca_warehouses_draft_job",
+        "asset_refs": [
+          "gcca_warehouses_current"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/gcca_warehouse_directory.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -8790,7 +9304,21 @@
       },
       "current_pr_candidates": [
         585
-      ]
+      ],
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "nces_public_schools_draft_schedule",
+        "job_ref": "nces_public_schools_draft_job",
+        "asset_refs": [
+          "nces_public_schools"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/nces_public_schools.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 282,
@@ -8850,7 +9378,21 @@
       "merge_commit": "0e702d3aaa1b9c0e2fe5b7ab7c019f9a1268ec0e",
       "merged_tree": "7d9e898ce61aa5b5c967cfbb0b251b0c59caf80e",
       "review_id": 5601992246,
-      "ci": "passed"
+      "ci": "passed",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "puerto_rico_subbarrios_draft_schedule",
+        "job_ref": "puerto_rico_subbarrios_draft_job",
+        "asset_refs": [
+          "puerto_rico_subbarrios_census"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/puerto_rico_subbarrios.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 283,
@@ -8875,7 +9417,21 @@
       "dispatch_head": "c5d316320f3120dd1a5dc9f34151b03ff0b1377b",
       "status_note": "PR #556 merged as ec5493622161dd3bc7e46769699d374b434b2b55 at head a30e67a0117cf5398b6737336062e1a25783192c; Docker build passed, root review 5600646726. Independent audit passed all 6,440 native attributes/every ring coordinate and 37 body/wire receipt pairs. Current capture/replay and two gates are recorded; populated fixture unchanged. Raw evidence retained at /workspace/work/283-evidence. Superseded paid review run 39607933649 was cancelled; no retry. Issue #283 remains open; rights, continuity, delegation and release decisions pending.",
       "merged_pr": 556,
-      "current_head": "a30e67a0117cf5398b6737336062e1a25783192c"
+      "current_head": "a30e67a0117cf5398b6737336062e1a25783192c",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "usace_pylon_areas_draft_schedule",
+        "job_ref": "usace_pylon_areas_draft_job",
+        "asset_refs": [
+          "usace_pylon_areas_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_pylon_areas.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 284,
@@ -8900,7 +9456,21 @@
       "dispatch_head": "b57ff17ad49a2a8f84a29aaec12a52efbb3869c0",
       "status_note": "PR #557 merged as 5867c5cbf15210ff9c6c93f810ddf9bc63d8a8e8 at head 327a875b9fda34b1d542d27a5d69032ff742fe42; Docker build passed, root review 5600557965. Independent native audit covered all 4,079 rows/IDs/attributes/XY and 26 body/wire hash pairs (78 artifacts). Ingest/catalog/GeoPackage/GeoParquet runs succeeded; quality run b1697eff-1fec-4d26-b8ed-ba4069d55aee failed the blocking catalog check and skipped verify/promote. Approval refusal 88e28dab-8242-4d56-a850-0ca4cadf1824 preserved the populated two-file fixture unchanged (63d56018f430...). Evidence retained in /workspace/work/evidence-packets/284-native-recovery/ and dagster/dagster-284-final/. Issue #284 remains open; rights, continuity, baseline and coverage decisions pending; refresh stopped and no publication.",
       "merged_pr": 557,
-      "current_head": "327a875b9fda34b1d542d27a5d69032ff742fe42"
+      "current_head": "327a875b9fda34b1d542d27a5d69032ff742fe42",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "pylon_locations_draft_refresh_schedule",
+        "job_ref": "pylon_locations_draft_refresh_job",
+        "asset_refs": [
+          "usace_pylon_locations_usace_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_pylon_locations.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 285,
@@ -8953,7 +9523,21 @@
           "observed_at": "2026-10-21T14:55:39Z"
         }
       ],
-      "merged_tree": "4994ee7293c9a463030902ac511822fbc7f810c1"
+      "merged_tree": "4994ee7293c9a463030902ac511822fbc7f810c1",
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "quaternary_fault_lines_draft_schedule",
+        "job_ref": "quaternary_fault_lines_draft_job",
+        "asset_refs": [
+          "quaternary_fault_lines_usgs"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/quaternary_fault_lines.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 286,
@@ -9087,7 +9671,21 @@
           "canonical": true,
           "observed_at": "2026-10-21T14:55:39Z"
         }
-      ]
+      ],
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "recommended_tracks_draft_schedule",
+        "job_ref": "recommended_tracks_draft_job",
+        "asset_refs": [
+          "usace_recommended_tracks_ienc"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/usace_recommended_tracks.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 291,
@@ -9436,6 +10034,20 @@
         "catalog": "2f6e1915-fbdf-4b51-a5d6-939d8c875adf",
         "quality_gate": "bdf9f9ce-1c4c-4f48-b6a9-502a089a2a29",
         "approval_gate": "29591f2d-98ad-407f-ba85-898aef90c6fa"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "secondary_school_districts_draft_refresh_schedule",
+        "job_ref": "secondary_school_districts_draft_refresh_job",
+        "asset_refs": [
+          "census_secondary_school_districts"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/secondary_school_districts.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -10056,7 +10668,21 @@
           "canonical": true,
           "observed_at": "2026-10-21T14:55:39Z"
         }
-      ]
+      ],
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "unified_school_districts_draft_refresh_schedule",
+        "job_ref": "unified_school_districts_draft_refresh_job",
+        "asset_refs": [
+          "census_unified_school_districts"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/unified_school_districts.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
+      }
     },
     {
       "issue": 336,
@@ -10706,6 +11332,20 @@
           "merged_via": "PR #585 ancestry"
         },
         "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+        "schedule_ref": "us_county_boundaries_draft_schedule",
+        "job_ref": "us_county_boundaries_draft_job",
+        "asset_refs": [
+          "us_county_boundaries_census"
+        ],
+        "default_status_in_code": "STOPPED",
+        "source_files": [
+          "src/dagster_hifld/definitions.py",
+          "src/dagster_hifld/assets/us_county_boundaries.py"
+        ],
+        "mapping_basis": "Definitions.schedules registration -> scheduled job -> selected asset/key reference; dataset-specific symbol and row title/ID agree."
       }
     },
     {
@@ -12016,9 +12656,9 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T17:08:53Z",
-    "source": "GitHub PR and issue metadata readbacks plus parent-verified integration review/build and exact main tree. Named rows only; no full census or source/gate reruns.",
-    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication.",
+    "recorded_at": "2026-10-21T17:17:54Z",
+    "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
+    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication. Main source definitions configure 39 named dataset schedules STOPPED across 39 inventory issues; this is independent of the row-derived code-merged/open/gated count. #28 exact-head review PASS 5603413457 and registered gate refusal proof completed; #26 PR596 review ongoing; #29 worker reports exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 with review pending.",
     "main_latest": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
     "main_tree": "fbec46810f0672341afb68e7f16fdc231e51a6c4",
     "integration_593": {
@@ -12101,7 +12741,10 @@
       "17": "open",
       "19": "open",
       "24": "open",
-      "20": "open"
+      "20": "open",
+      "26": "open",
+      "28": "open",
+      "29": "open"
     },
     "board_sync_requests": {
       "requested_label": "move:needs-decision",
@@ -12132,22 +12775,29 @@
       "24": {
         "state": "external_source_access_and_scope_decision_blocker",
         "issue_comment": 6321593473,
-        "notes": "FCC transmitter site roster access/scope unresolved. No source infeasibility claim."
+        "notes": "External access/scope decision blocker; comment 6321593473 asks for reachable complete FCC transmitter-site feed or explicit ULS authorization-scope decision."
       },
       "26": {
-        "state": "native_clean_main_recovery_active_candidate_not_published",
-        "head_prefix": "47c6ef",
-        "notes": "Worker-reported 30 native features; exact head/PR not verified."
+        "canonical_pr": 596,
+        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+        "state": "exact_head_review_in_progress",
+        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain."
       },
       "28": {
         "canonical_pr": 594,
         "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
-        "state": "native_full_output_verified_registered_quality_refusal_pending",
-        "notes": "1,145-feature output and no-Git source/catalog reported; registered false-quality gate pending."
+        "review": 5603413457,
+        "state": "exact_head_review_pass_native_and_gates_verified_acceptance_pending",
+        "runs": {
+          "quality_false": "62102e85-9e5e-4133-a585-d3ebfa953ff0",
+          "approval_refusal": "dcf5c73f-87dd-48e9-8e44-34ddd7004566"
+        },
+        "notes": "1,145-feature native proof; source/catalog and registered gates completed; synthetic fixture unchanged; source-use/baseline/grain/release decisions remain."
       },
       "29": {
-        "state": "native_implementation_active",
-        "notes": "Coordinator report only; no new exact head verified."
+        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+        "state": "exact_head_review_pending",
+        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved."
       },
       "32": {
         "state": "triage_active_no_verified_pipeline_pr",
@@ -12160,13 +12810,63 @@
     },
     "historical_census": "14:14 UTC only; no current total claimed.",
     "controls": {
-      "source_capture": "none for this ledger checkpoint",
-      "materializations": "none",
+      "source_capture": "none for ledger/mapping checkpoint",
+      "materializations": "none for ledger/mapping checkpoint",
       "full_suite": "not run",
       "issue_closures": "none",
       "release_acceptance": "none",
       "production_publication": "none",
       "paid_dispatch": "none reported for this checkpoint"
+    },
+    "main_registration_snapshot": {
+      "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "definitions_file": "src/dagster_hifld/definitions.py",
+      "configured_schedule_count": 39,
+      "mapped_inventory_issue_count": 39,
+      "mapped_issue_ids": [
+        2,
+        3,
+        4,
+        6,
+        8,
+        9,
+        10,
+        11,
+        15,
+        16,
+        17,
+        19,
+        21,
+        27,
+        37,
+        181,
+        253,
+        257,
+        260,
+        261,
+        269,
+        270,
+        271,
+        273,
+        274,
+        275,
+        276,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        290,
+        307,
+        335,
+        363
+      ],
+      "all_default_status_stopped": true,
+      "live_scheduler_status_queried": false,
+      "method": "Read current Definitions.schedules list, each schedule job reference, and selected asset/key refs; matched dataset-specific names to inventory issue IDs. This is source registration, not runtime activation or pipeline acceptance."
     }
   },
   "pr_search_snapshot_records": [
@@ -13610,9 +14310,9 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-21T17:08:53Z",
-    "source": "GitHub PR and issue metadata readbacks plus parent-verified integration review/build and exact main tree. Named rows only; no full census or source/gate reruns.",
-    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication.",
+    "recorded_at": "2026-10-21T17:17:54Z",
+    "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
+    "scope_note": "415 inventory records preserved. PR #593 integrates four exact reviewed pipelines; issues #9/#16/#17/#19 remain OPEN and acceptance-gated. PR #595 adds only the local registered-gate proof helper; issue #417 remains open. No issue closure, source acceptance, approval, schedule activation, or production publication. Main source definitions configure 39 named dataset schedules STOPPED across 39 inventory issues; this is independent of the row-derived code-merged/open/gated count. #28 exact-head review PASS 5603413457 and registered gate refusal proof completed; #26 PR596 review ongoing; #29 worker reports exact head 81ebff8c5f6c7a1502bc98998adbc46e881f3a53 with review pending.",
     "main_latest": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
     "main_tree": "fbec46810f0672341afb68e7f16fdc231e51a6c4",
     "integration_593": {
@@ -13695,7 +14395,10 @@
       "17": "open",
       "19": "open",
       "24": "open",
-      "20": "open"
+      "20": "open",
+      "26": "open",
+      "28": "open",
+      "29": "open"
     },
     "board_sync_requests": {
       "requested_label": "move:needs-decision",
@@ -13726,22 +14429,29 @@
       "24": {
         "state": "external_source_access_and_scope_decision_blocker",
         "issue_comment": 6321593473,
-        "notes": "FCC transmitter site roster access/scope unresolved. No source infeasibility claim."
+        "notes": "External access/scope decision blocker; comment 6321593473 asks for reachable complete FCC transmitter-site feed or explicit ULS authorization-scope decision."
       },
       "26": {
-        "state": "native_clean_main_recovery_active_candidate_not_published",
-        "head_prefix": "47c6ef",
-        "notes": "Worker-reported 30 native features; exact head/PR not verified."
+        "canonical_pr": 596,
+        "head": "4a788c8840212d3ca101798a6d93ba81a85ee6d5",
+        "state": "exact_head_review_in_progress",
+        "notes": "Clean-main pipeline and registered refusal proof reported; root review ongoing; source/release decisions remain."
       },
       "28": {
         "canonical_pr": 594,
         "head": "2b6cebd9ef3fe951937a5d6df89d04b9f5d4d910",
-        "state": "native_full_output_verified_registered_quality_refusal_pending",
-        "notes": "1,145-feature output and no-Git source/catalog reported; registered false-quality gate pending."
+        "review": 5603413457,
+        "state": "exact_head_review_pass_native_and_gates_verified_acceptance_pending",
+        "runs": {
+          "quality_false": "62102e85-9e5e-4133-a585-d3ebfa953ff0",
+          "approval_refusal": "dcf5c73f-87dd-48e9-8e44-34ddd7004566"
+        },
+        "notes": "1,145-feature native proof; source/catalog and registered gates completed; synthetic fixture unchanged; source-use/baseline/grain/release decisions remain."
       },
       "29": {
-        "state": "native_implementation_active",
-        "notes": "Coordinator report only; no new exact head verified."
+        "head": "81ebff8c5f6c7a1502bc98998adbc46e881f3a53",
+        "state": "exact_head_review_pending",
+        "notes": "Worker reports retained source proof and registered false-quality/approval refusal runs; no new PR association verified; existing PR438 preserved."
       },
       "32": {
         "state": "triage_active_no_verified_pipeline_pr",
@@ -13754,13 +14464,63 @@
     },
     "historical_census": "14:14 UTC only; no current total claimed.",
     "controls": {
-      "source_capture": "none for this ledger checkpoint",
-      "materializations": "none",
+      "source_capture": "none for ledger/mapping checkpoint",
+      "materializations": "none for ledger/mapping checkpoint",
       "full_suite": "not run",
       "issue_closures": "none",
       "release_acceptance": "none",
       "production_publication": "none",
       "paid_dispatch": "none reported for this checkpoint"
+    },
+    "main_registration_snapshot": {
+      "main_sha": "20fb1e0eeb9c2ba23e4e573d6a1b794b95de58c1",
+      "definitions_file": "src/dagster_hifld/definitions.py",
+      "configured_schedule_count": 39,
+      "mapped_inventory_issue_count": 39,
+      "mapped_issue_ids": [
+        2,
+        3,
+        4,
+        6,
+        8,
+        9,
+        10,
+        11,
+        15,
+        16,
+        17,
+        19,
+        21,
+        27,
+        37,
+        181,
+        253,
+        257,
+        260,
+        261,
+        269,
+        270,
+        271,
+        273,
+        274,
+        275,
+        276,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        290,
+        307,
+        335,
+        363
+      ],
+      "all_default_status_stopped": true,
+      "live_scheduler_status_queried": false,
+      "method": "Read current Definitions.schedules list, each schedule job reference, and selected asset/key refs; matched dataset-specific names to inventory issue IDs. This is source registration, not runtime activation or pipeline acceptance."
     }
   },
   "previous_verified_checkpoint_2026_10_21T1455Z": {
