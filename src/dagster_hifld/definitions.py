@@ -39,6 +39,10 @@ from dagster_hifld.assets.red_cross_headquarters import (
     red_cross_headquarters_draft_schedule,
     red_cross_headquarters_source_population,
 )
+from dagster_hifld.assets.fws_map_panels import (
+    fws_cbrs_map_panels_draft_refresh_job,
+    fws_cbrs_map_panels_draft_refresh_schedule,
+)
 from dagster_hifld.assets.faa import (
     faa_airspace_draft_refresh_job,
     faa_airspace_draft_refresh_schedule,
@@ -630,6 +634,7 @@ defs = Definitions(
         coastlines_usace_ienc_draft_job,
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
+        fws_cbrs_map_panels_draft_refresh_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -667,6 +672,7 @@ defs = Definitions(
         coastlines_usace_ienc_draft_schedule,
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
+        fws_cbrs_map_panels_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
