@@ -249,6 +249,14 @@ from dagster_hifld.assets.usace_airport_area import (
     usace_airport_area_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_crane_locations import (
+    usace_crane_locations_complete,
+    usace_crane_locations_quality,
+    usace_crane_locations_release,
+    usace_crane_locations_draft_job,
+    usace_crane_locations_draft_schedule,
+)
+
 from dagster_hifld.assets.ibc import (
     ibc_boundary_draft_refresh_job,
     ibc_boundary_draft_refresh_schedule,
@@ -714,6 +722,9 @@ defs = Definitions(
         usace_airport_area_complete,
         usace_airport_area_quality,
         usace_airport_area_release,
+        usace_crane_locations_complete,
+        usace_crane_locations_quality,
+        usace_crane_locations_release,
         campus_historical_full_quality,
     ],
     jobs=[
@@ -754,6 +765,7 @@ defs = Definitions(
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
         usace_airport_area_draft_job,
+        usace_crane_locations_draft_job,
         amtrak_draft_refresh_job,
         faa_aviation_draft_refresh_job,
         ibc_boundary_draft_refresh_job,
@@ -808,6 +820,7 @@ defs = Definitions(
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
         usace_airport_area_draft_schedule,
+        usace_crane_locations_draft_schedule,
         ornl_campus_historical_integrity_schedule,
         amtrak_draft_refresh_schedule,
         faa_aviation_draft_refresh_schedule,
