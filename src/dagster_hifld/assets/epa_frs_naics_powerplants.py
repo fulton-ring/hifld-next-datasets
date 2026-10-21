@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -84,8 +83,12 @@ def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
 
 
-def _fetch_complete_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, tuple[bytes, dict[str, Any]]]]:
-    records, manifest, captures = capture_table(client, TABLE_PROFILE, capture_root)
+def _fetch_complete_table(
+    client: httpx.Client, capture_root: Path, *, replay_captures: bool = False
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, tuple[bytes, dict[str, Any]]]]:
+    records, manifest, captures = capture_table(
+        client, TABLE_PROFILE, capture_root, replay_captures=replay_captures
+    )
     manifest.update({"schema_version": 1, "source_release_date": None})
     return records, manifest, captures
 
@@ -146,8 +149,8 @@ def _reuse_candidate(
                       "metadata/processing_identity.json", "metadata/candidate_ready.json"}
     receipts = payload.get("capture_receipts")
     objects = payload.get("objects")
-    expected_receipt_names = {"service", "table_14", "count_before", "ids_before",
-                              "table_14_after", "count_after", "ids_after",
+    expected_receipt_names = {"service", "table_before", "count_before", "ids_before",
+                              "table_after", "service_after", "count_after", "ids_after",
                               *(f"page_{index:03d}" for index in range((EXPECTED_SOURCE_ROWS + PAGE_SIZE - 1) // PAGE_SIZE))}
     if (not isinstance(receipts, dict) or not isinstance(objects, dict)
             or set(receipts) != expected_receipt_names
@@ -173,6 +176,7 @@ def capture_epa_frs_naics_table(
     staging_storage: StagingStorageResource,
     *,
     offline_replay_version: str | None = None,
+    offline_capture_version: str | None = None,
     capture_directory: str | Path | None = None,
     client: httpx.Client | None = None,
 ) -> dict[str, Any]:
@@ -182,6 +186,8 @@ def capture_epa_frs_naics_table(
     repo_root = Path(__file__).parents[3]
     identity = processing_identity(repo_root)
     fingerprint = hashlib.sha256(_canonical(identity)).hexdigest()
+    if offline_replay_version and offline_capture_version:
+        raise EPAFRSNAICSError("choose_cached_reuse_or_retained_capture_replay")
     if offline_replay_version:
         return _reuse_candidate(staging_storage, version=offline_replay_version, identity=identity,
                                 fingerprint=fingerprint, offline=True)
@@ -191,8 +197,28 @@ def capture_epa_frs_naics_table(
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     owned_client = client is None
     active_client = client or httpx.Client(follow_redirects=False, timeout=60.0)
+    capture_mode = "live_source_capture"
     try:
-        records, manifest, captures = _fetch_complete_table(active_client, capture_root)
+        if offline_capture_version:
+            capture_mode = "offline_retained_source_replay"
+            source_prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, offline_capture_version)
+            retained_names = {
+                "service", "table_before", "count_before", "ids_before", "table_after",
+                "service_after", "count_after", "ids_after",
+                *(f"page_{index:03d}" for index in range(
+                    (EXPECTED_SOURCE_ROWS + PAGE_SIZE - 1) // PAGE_SIZE
+                )),
+            }
+            capture_root.mkdir(parents=True, exist_ok=True)
+            for name in retained_names:
+                for suffix in ("body", "wire", "receipt.json"):
+                    body = staging_storage.read_key(f"{source_prefix}/raw/{name}.{suffix}")
+                    (capture_root / f"{name}.{suffix}").write_bytes(body)
+            records, manifest, captures = _fetch_complete_table(
+                active_client, capture_root, replay_captures=True
+            )
+        else:
+            records, manifest, captures = _fetch_complete_table(active_client, capture_root)
     except Exception as exc:
         for receipt_path in sorted(capture_root.glob("*.receipt.json")) if capture_root.exists() else []:
             name = receipt_path.name.removesuffix(".receipt.json")
@@ -242,7 +268,9 @@ def capture_epa_frs_naics_table(
             outputs[f"raw/{name}.{suffix}"] = payload
         capture_objects.append({"name": name, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()})
     manifest.update({
-        "captured_at": datetime.now(timezone.utc).isoformat(), "source_record_sha256": record_sha,
+        "captured_at": min(receipt["observed_at"] for _, receipt in captures.values()),
+        "capture_mode": capture_mode,
+        "source_record_sha256": record_sha,
         "source_schema_sha256": schema_sha, "source_ids_sha256": ids_sha,
         "source_triplets_sha256": triplet_sha, "published_candidate_count": PUBLISHED_CANDIDATE_ROWS,
         "published_candidate_triplets_sha256": PUBLISHED_CANDIDATE_TRIPLETS_SHA256,
@@ -309,6 +337,7 @@ def capture_epa_frs_naics_table(
 
 class EPAFRSNAICSConfig(Config):
     offline_replay_version: str = ""
+    offline_capture_version: str = ""
     capture_directory: str = ""
 
 
@@ -323,6 +352,7 @@ def epa_frs_naics_powerplants(context, config: EPAFRSNAICSConfig,
     result = capture_epa_frs_naics_table(
         staging_storage,
         offline_replay_version=config.offline_replay_version or None,
+        offline_capture_version=config.offline_capture_version or None,
         capture_directory=config.capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
