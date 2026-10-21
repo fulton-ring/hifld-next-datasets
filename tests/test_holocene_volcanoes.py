@@ -105,6 +105,9 @@ class HoloceneCompleteSourceTests(unittest.TestCase):
     def test_complete_original_source(self):
         r=Path(os.environ['HOLOCENE_TEST_CAPTURE_DIR']);c={n:((r/(n+'.body')).read_bytes(),f.strict_json((r/(n+'.receipt.json')).read_bytes()))for n in f.URLS};t,a=f.inspect_captures(c)
         self.assertEqual(t.num_rows,1214);self.assertEqual(len(set(t['Volcano_Number'].to_pylist())),1214);self.assertEqual(len(set(t['id'].to_pylist())),1214);self.assertEqual(a['changed_server_feature_ids'],1214)
+        self.assertEqual(a['historical_reference_source_id_roster_sha256'],f.HISTORICAL_REFERENCE_SOURCE_ID_SHA256)
+        self.assertNotEqual(a['observed_source_id_roster_sha256'],a['historical_reference_source_id_roster_sha256'])
+        self.assertNotEqual(a['observed_source_id_roster_sha256'],a['after_source_id_roster_sha256'])
         with tempfile.TemporaryDirectory()as d:
             p=Path(d);(p/'geoparquet').mkdir();pq.write_table(f.parquet_table(t),p/'geoparquet'/f'{f.SLUG}.parquet',compression='zstd');f.validate_output(p,t)
 
