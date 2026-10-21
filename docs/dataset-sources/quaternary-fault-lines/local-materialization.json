@@ -124,6 +124,8 @@
     "actual_retained_capture": "legacy decoded-body-only capture; the 573 response bodies and 573 receipts were retained and their existing bytes/timestamps remain unchanged; no original wire bodies were present and none were synthesized",
     "new_capture_path": "streamed through shared bounded HTTP capture, with cumulative wire+decoded reservation, persisted wire and decoded bytes plus receipts, and incomplete/non-200/error captures refused before candidate creation",
     "new_mocked_tests": "oversized per-response body, cumulative reservation refusal, non-200 response, partial transport, new wire replay validation, and legacy decoded-only replay validation",
-    "new_capture_not_executed": "No second source capture was performed."
+    "new_capture_not_executed": "No second source capture was performed.",
+    "bounded_capture_implementation_commit": "8dad5c0613692cbb1b151886896a38ab1e42249e",
+    "actual_candidate_processing_identity_commit": "0ea74229fccb7e19114249e6f33abcd554038ac7"
   }
 }
