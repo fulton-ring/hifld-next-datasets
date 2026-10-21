@@ -129,7 +129,7 @@ def _capture_request(client: httpx.Client | None, root: Path, name: str, method:
     try:
         if client is None:
             raise ValueError("http_client_missing")
-        with client.stream(method, url, params=params if method == "GET" else None,
+        with client.stream(method, url, params=params if method == "GET" and params else None,
                            data=params if method == "POST" else None,
                            headers={"Accept-Encoding": "identity"}) as response:
             result = capture_http_response(

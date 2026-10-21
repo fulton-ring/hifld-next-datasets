@@ -27,6 +27,17 @@ class _InterruptedStream(httpx.SyncByteStream):
         pass
 
 
+class _BytesStream(httpx.SyncByteStream):
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __iter__(self):
+        yield self.payload
+
+    def close(self):
+        pass
+
+
 class ElectricRetailTerritoryTests(unittest.TestCase):
     def test_esri_ring_conversion_preserves_holes_and_native_geoparquet(self):
         shell = [[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]
@@ -75,6 +86,22 @@ class ElectricRetailTerritoryTests(unittest.TestCase):
             self.assertFalse(receipt["complete_body"])
             self.assertTrue((root / "page_000000.wire").read_bytes())
             self.assertTrue((root / "page_000000.body").read_bytes())
+
+    def test_empty_parameter_set_preserves_embedded_item_query(self):
+        payload = b'{"id":"fixture"}'
+        def handler(request):
+            return httpx.Response(200, stream=_BytesStream(payload), request=request)
+
+        captures = []
+        with tempfile.TemporaryDirectory() as tmp:
+            with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+                value, *_ = source._capture_request(
+                    client, Path(tmp), "source_item", "GET",
+                    "https://example.test/item?f=pjson", {}, [0], False, captures,
+                )
+            self.assertEqual(value, {"id": "fixture"})
+            self.assertEqual(captures[0]["receipt"]["final_url"],
+                             "https://example.test/item?f=pjson")
 
     def test_release_checks_and_schedule_remain_stopped(self):
         candidate = {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
