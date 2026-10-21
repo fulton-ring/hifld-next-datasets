@@ -261,6 +261,12 @@ from dagster_hifld.assets.census_designated_places import (
     cdp_source_integrity_schedule,
 )
 
+from dagster_hifld.assets.state_capitols import (
+    state_capitols_draft_job,
+    state_capitols_draft_schedule,
+    state_capitols_population_complete,
+)
+
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -685,6 +691,7 @@ defs = Definitions(
         usace_airport_area_complete,
         usace_airport_area_quality,
         usace_airport_area_release,
+        state_capitols_population_complete,
     ],
     jobs=[
         usgs_aquifers_draft_refresh_job,
@@ -730,6 +737,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
+        state_capitols_draft_job,
     ],
     schedules=[
         usgs_aquifers_draft_refresh_schedule,
@@ -778,6 +786,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
+        state_capitols_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
