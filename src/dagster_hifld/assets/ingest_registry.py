@@ -33,6 +33,7 @@ from dagster_hifld.assets.usace_dry_docks import usace_dry_docks_usace_ienc
 from dagster_hifld.assets.quaternary_fault_lines import quaternary_fault_lines_usgs
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
 from dagster_hifld.assets.us_county_boundaries import us_county_boundaries_census
+from dagster_hifld.assets.us_state_boundaries import us_state_boundaries_census
 from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 from dagster_hifld.assets.usace_distance_marks import usace_distance_marks_usace_ienc
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
@@ -113,6 +114,7 @@ hifld_ingest_assets = [
     quaternary_fault_lines_usgs,
     usace_pylon_areas_usace_ienc,
     us_county_boundaries_census,
+    us_state_boundaries_census,
     usace_pylon_locations_usace_ienc,
     usace_distance_marks_usace_ienc,
     usace_recommended_tracks_ienc,
