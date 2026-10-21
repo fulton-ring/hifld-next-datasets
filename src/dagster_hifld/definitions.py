@@ -41,6 +41,10 @@ from dagster_hifld.assets.principal_ports import (
     principal_ports_source_complete,
     principal_ports_draft_schedule,
 )
+from dagster_hifld.assets.usace_berths_areas import (
+    usace_berths_areas_complete,
+    usace_berths_areas_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -71,6 +75,10 @@ from dagster_hifld.assets.secondary_school_districts import (
 from dagster_hifld.assets.unified_school_districts import (
     unified_school_districts_draft_refresh_job,
     unified_school_districts_draft_refresh_schedule,
+)
+from dagster_hifld.assets.census_primary_roads import (
+    census_primary_roads_source_complete,
+    census_primary_roads_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -466,12 +474,14 @@ defs = Definitions(
     assets=hifld_dataset_assets,
     asset_checks=[
         *hifld_asset_checks,
+        census_primary_roads_source_complete,
         quaternary_fault_lines_population_complete,
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         principal_ports_source_complete,
         usace_caution_areas_complete,
+        usace_berths_areas_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -489,6 +499,7 @@ defs = Definitions(
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
+        census_primary_roads_draft_schedule,
         usace_pylon_areas_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
@@ -499,6 +510,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
+        usace_berths_areas_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_caution_areas_draft_schedule,
     ],
