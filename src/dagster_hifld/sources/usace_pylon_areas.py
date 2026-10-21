@@ -511,17 +511,83 @@ def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> N
         raise ValueError("immutable_staged_object_changed:" + key)
 
 
-def processing_identity(repo_root: Path) -> dict[str, object]:
-    """Bind the candidate to the committed code and exact runtime versions."""
-    root = Path(repo_root).resolve()
+def _processing_files(root: Path) -> dict[str, str]:
     files = {str(path.relative_to(root)): sha256_file(path)
              for path in sorted(root.joinpath("src/dagster_hifld").rglob("*.py"))}
-    files.update({name: sha256_file(root / name) for name in ("pyproject.toml", "uv.lock")})
+    for name in ("pyproject.toml", "uv.lock"):
+        path = root / name
+        # The production image intentionally excludes Git metadata and may not
+        # contain the lockfile. Fingerprint only files actually installed.
+        if path.is_file():
+            files[name] = sha256_file(path)
+    return files
+
+
+def _runtime_versions() -> dict[str, str]:
+    return {"python": platform.python_version(), "pyarrow": pa.__version__,
+            "proj": pyproj.proj_version_str, "geos": shapely.geos_version_string}
+
+
+def _installed_fingerprint(files: Mapping[str, str], versions: Mapping[str, str]) -> str:
+    return _sha(_canonical({"files": dict(sorted(files.items())), "versions": dict(versions)}))
+
+
+def processing_identity(repo_root: Path) -> dict[str, object]:
+    """Bind to a verified Git commit, or fingerprint the packaged code without Git."""
+    root = Path(repo_root).resolve()
+    files = _processing_files(root)
+    versions = _runtime_versions()
+    commit = None
+    working_tree_modified = None
+    try:
+        result = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                                capture_output=True, text=True, check=False, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
+    if result is not None and result.returncode == 0:
+        observed = result.stdout.strip()
+        if len(observed) in (40, 64) and all(c in "0123456789abcdef" for c in observed):
+            commit = observed
+            try:
+                status = subprocess.run(
+                    ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all", "--", "src/dagster_hifld", "pyproject.toml", "uv.lock"],
+                    capture_output=True, text=True, check=False, timeout=10)
+            except (OSError, subprocess.TimeoutExpired):
+                status = None
+            if status is not None and status.returncode == 0:
+                working_tree_modified = bool(status.stdout.strip())
+    if commit is not None:
+        code_commit = commit
+        code_commit_kind = "git_commit"
+        builder_fingerprint = None
+    else:
+        builder_fingerprint = _installed_fingerprint(files, versions)
+        code_commit = "installed-processing-sha256:" + builder_fingerprint
+        code_commit_kind = "installed_processing_fingerprint_not_vcs_commit"
     return {
-        "code_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
-        "files": files, "python": platform.python_version(), "pyarrow": pa.__version__,
-        "proj": pyproj.proj_version_str, "geos": shapely.geos_version_string,
+        "code_commit": code_commit, "code_commit_kind": code_commit_kind,
+        "builder_fingerprint": builder_fingerprint,
+        "installed_pipeline_sha256": _sha(_canonical(dict(sorted(files.items())))),
+        "working_tree_modified": working_tree_modified,
+        "files": files, "versions": versions,
     }
+
+
+def validate_processing_identity(repo_root: Path, identity: Mapping[str, object]) -> None:
+    """Recheck the recorded code identity during initial staging and cache reuse."""
+    if identity.get("code_commit_kind") == "git_commit":
+        validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"])
+        return
+    if identity.get("code_commit_kind") != "installed_processing_fingerprint_not_vcs_commit":
+        raise ValueError("processing_code_identity_kind_invalid")
+    observed_files = _processing_files(Path(repo_root).resolve())
+    versions = _runtime_versions()
+    fingerprint = _installed_fingerprint(observed_files, versions)
+    if (observed_files != identity.get("files") or versions != identity.get("versions")
+            or identity.get("builder_fingerprint") != fingerprint
+            or identity.get("code_commit") != "installed-processing-sha256:" + fingerprint
+            or identity.get("installed_pipeline_sha256") != _sha(_canonical(dict(sorted(observed_files.items()))))):
+        raise ValueError("installed_processing_code_identity_changed")
 
 
 def quarantine_incomplete_capture(storage: StagingStorageResource, capture_root: Path,
@@ -609,7 +675,7 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
                 or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
                 or receipt_body != _canonical(dict(receipt)) + b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
-    validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"])
+    validate_processing_identity(repo_root, identity)
     return {"version": version, "reused": True}
 
 
@@ -854,7 +920,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
                           "source_record_sha256": audit["source_record_sha256"],
                           "source_schema_sha256": audit["source_schema_sha256"],
                           "capture_receipts": receipts, "objects": descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    validate_processing_identity(Path(__file__).parents[3], identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],

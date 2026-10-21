@@ -4,25 +4,36 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.sources.usace_pylon_areas import (
     BTS_ITEM_ID,
+    DATASET_SLUG,
     EXPECTED_COUNT,
     EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS,
     EXPECTED_ID_SHA256,
     EXPECTED_LAYER_EXTENT,
     EXPECTED_IDS,
+    FILE_SLUG,
     LAYER_URL,
     PAGE_SIZE,
     _esri_polygon,
     _parquet_bytes,
     _validate,
+    processing_identity,
+    validate_processing_identity,
 )
+from dagster_hifld.assets.publish import _copy_version_files
+from dagster_hifld.release_approval import ReleaseApprovalError
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
 def _ring(x: float, y: float, size: float = 0.001) -> list[list[float]]:
@@ -163,6 +174,40 @@ class ValidateCompleteCapture(unittest.TestCase):
             "8dc3b41f3a226207090e7b947380144179fcb92a90018eb15a7daf21aa821b4e",
         )
         self.assertTrue(LAYER_URL.endswith("PYLONS_AREA/MapServer/69"))
+
+
+class PackagedRuntimeIdentity(unittest.TestCase):
+    def test_no_git_packaged_runtime_uses_verified_installed_code_fingerprint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "src/dagster_hifld"
+            source.mkdir(parents=True)
+            (source / "pipeline.py").write_text("processor = 'pylon'\n", encoding="utf-8")
+            (root / "pyproject.toml").write_text("[project]\nname='runtime-fixture'\n", encoding="utf-8")
+            identity = processing_identity(root)
+            self.assertEqual(identity["code_commit_kind"], "installed_processing_fingerprint_not_vcs_commit")
+            self.assertTrue(str(identity["code_commit"]).startswith("installed-processing-sha256:"))
+            self.assertNotIn("uv.lock", identity["files"])
+            validate_processing_identity(root, identity)
+            (source / "pipeline.py").write_text("processor = 'changed'\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "installed_processing_code_identity_changed"):
+                validate_processing_identity(root, identity)
+
+    def test_missing_approval_preserves_populated_accepted_inventory(self):
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            staging.write(DATASET_SLUG, FILE_SLUG, "candidate-v1", "geoparquet/pylon.parquet", b"candidate")
+            accepted_key = published.write(DATASET_SLUG, FILE_SLUG, "accepted-v1", "geoparquet/pylon.parquet", b"accepted")
+            before = {key: (published.object_snapshot(key), published.read_key(key))
+                      for key in published.list_prefix()}
+            self.assertEqual(set(before), {accepted_key})
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
+                with self.assertRaisesRegex(ReleaseApprovalError, "missing_independent_release_approval_registry"):
+                    _copy_version_files(staging, published, DATASET_SLUG, FILE_SLUG, "candidate-v1")
+            after = {key: (published.object_snapshot(key), published.read_key(key))
+                     for key in published.list_prefix()}
+            self.assertEqual(after, before)
 
 
 class ValidateDriftRejections(unittest.TestCase):
