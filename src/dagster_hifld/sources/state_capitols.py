@@ -387,6 +387,12 @@ def _preserve_original_receipts(captures: dict[str, tuple[bytes, dict]],
     return original_receipts
 
 
+def _stable_layer(layer: dict) -> dict:
+    """Project the data-bearing layer metadata; server-drawn symbology is volatile."""
+    return {key: layer.get(key) for key in
+            ("id", "name", "type", "geometryType", "fields", "maxRecordCount", "extent")}
+
+
 def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                            capture_directory: str | None = None,
                            repo_root: Path | None = None) -> dict[str, object]:
@@ -441,7 +447,9 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                     captures[name] = _capture(client, url, root, name)
             docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
             _validate_metadata(docs["service_before"], docs["layer_before"])
-            if docs["service_after"] != docs["service_before"] or docs["layer_after"] != docs["layer_before"]:
+            _validate_metadata(docs["service_after"], docs["layer_after"])
+            if (docs["service_after"] != docs["service_before"]
+                    or _stable_layer(docs["layer_after"]) != _stable_layer(docs["layer_before"])):
                 raise ValueError("source_changed_during_capture")
             if docs["count_before"].get("count") != COUNT or docs["count_after"].get("count") != COUNT:
                 raise ValueError("source_count_drift")
@@ -481,7 +489,9 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
             raise
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     _validate_metadata(docs["service_before"], docs["layer_before"])
-    if docs["service_after"] != docs["service_before"] or docs["layer_after"] != docs["layer_before"]:
+    _validate_metadata(docs["service_after"], docs["layer_after"])
+    if (docs["service_after"] != docs["service_before"]
+            or _stable_layer(docs["layer_after"]) != _stable_layer(docs["layer_before"])):
         raise ValueError("source_changed_during_capture")
     if docs["count_before"].get("count") != COUNT or docs["count_after"].get("count") != COUNT:
         raise ValueError("source_count_drift")

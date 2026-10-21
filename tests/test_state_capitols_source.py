@@ -320,6 +320,7 @@ class StateCapitolsEndToEndTests(unittest.TestCase):
         return repo
 
     def _transport(self, docs):
+        layer_calls = []
         def blocks(payload):
             class Stream(httpx.SyncByteStream):
                 def __iter__(self):
@@ -337,8 +338,13 @@ class StateCapitolsEndToEndTests(unittest.TestCase):
                 return httpx.Response(200, headers={"content-type": "application/json"},
                                       stream=blocks(json.dumps(docs["page"]).encode()))
             if request.url.path.endswith("/6"):
+                # The live server redraws cosmetic symbology between requests.
+                layer_calls.append(len(layer_calls))
+                volatile = dict(docs["layer"])
+                volatile["drawingInfo"] = {"renderer": {"authoringInfo": {"colorRamp": {
+                    "colorRamps": [{"fromColor": [layer_calls[-1], 2, 3], "toColor": [4, 5, 6]}]}}}}
                 return httpx.Response(200, headers={"content-type": "application/json"},
-                                      stream=blocks(json.dumps(docs["layer"]).encode()))
+                                      stream=blocks(json.dumps(volatile).encode()))
             return httpx.Response(200, headers={"content-type": "application/json"},
                                   stream=blocks(json.dumps(docs["service"]).encode()))
         return httpx.MockTransport(handler)
