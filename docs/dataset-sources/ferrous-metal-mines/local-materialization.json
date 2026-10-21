@@ -1,45 +1,158 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-21T22:32:00Z",
-  "fixture": "synthetic preserved producer archive fixture built in-repo by tests/test_ferrous_metal_mines.py builders; the real DataLumos/producer archive is anonymously inaccessible, so no real archive bytes are claimed",
-  "environment": {
-    "dagster_home": "isolated temporary DAGSTER_HOME",
-    "staging": "isolated temporary local staging (HIFLD_STAGING_DIR equivalent resource)",
-    "published": "isolated temporary local published root"
+  "generated_at": "2026-10-21T23:29:40Z",
+  "code_head_for_native_runs": "07badea7be2b69c279528dd10b583da7c548e84e",
+  "source_capture": {
+    "capture_manifest": "/workspace/86-review-evidence/capture/20261021/capture_manifest.json",
+    "archive_url": "http://dds.cr.usgs.gov/pub/data/nationalatlas/minop3x020_nt00020.tar.gz",
+    "archive_retrieval_url": "https://web.archive.org/web/20121002015130id_/http://dds.cr.usgs.gov/pub/data/nationalatlas/minop3x020_nt00020.tar.gz",
+    "archive_bytes": 6269,
+    "archive_sha256": "4e1e4ede4969241285f67a010405ca6296d496622bb4ef99304a3f82877112bc",
+    "metadata_url": "https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/minop3x020.xml",
+    "metadata_bytes": 18347,
+    "metadata_sha256": "8302b0f0028247f00d0a96a3b9d537c2e8db712f2425e09a2f1fc1317f94a232",
+    "source_relationship": "Exact historical producer package captured from its named USGS URL through Internet Archive; no DataLumos copy identity, maintained-source, or freshness claim."
   },
-  "ingest_run": {
-    "run_id": "c3f11f46-0fb3-41e5-a7c2-da053168e640",
-    "command": "dagster materialize [ingest ferrous-metal-mines asset, blocking check] via DagsterInstance.ephemeral with explicit preserved-capture config",
-    "success": true,
-    "asset_check": "ferrous_metal_mines_population_complete passed",
-    "version": "ved5123c192896a05f3914412ff0facac",
-    "feature_count": 2,
-    "source_record_sha256": "adc44e8566711665766167ad332f7d387419844c2ca7ad0636e297ed3340c4b1",
-    "source_geometry_sha256": "b3669c9da4ee46c35e50731576982f1e28e2baab4b737fbdeb1053fac7911bfd",
+  "source_inspection": {
+    "feature_count": 24,
+    "source_ids": "MINOP3X020 values 1 through 24, unique and contiguous",
+    "dbf_fields_and_physical_declarations": [
+      [
+        "MINOP3X020",
+        "N",
+        2,
+        0
+      ],
+      [
+        "COMMODITY",
+        "C",
+        10,
+        0
+      ],
+      [
+        "SITE_NAME",
+        "C",
+        21,
+        0
+      ],
+      [
+        "COMPANY_NA",
+        "C",
+        37,
+        0
+      ],
+      [
+        "STATE_LOCA",
+        "C",
+        10,
+        0
+      ],
+      [
+        "COUNTY",
+        "C",
+        11,
+        0
+      ],
+      [
+        "LATITUDE",
+        "N",
+        9,
+        3
+      ],
+      [
+        "LONGITUDE",
+        "N",
+        11,
+        3
+      ],
+      [
+        "PLANT_MIN",
+        "C",
+        10,
+        0
+      ]
+    ],
+    "native_crs": "NAD83 derived from exact pinned FGDC tags horizdn=North American Datum of 1983 and geogunit=Decimal degrees; original package has no .prj",
+    "max_dbf_to_shp_coordinate_difference_degrees": 0.00090426318336,
+    "coordinate_bound_degrees": 0.001,
+    "source_record_sha256": "207e621fb74c744ef922ac310b15dd25fa89e492f661c9b8b60fe7fb0a85c17f",
+    "source_geometry_sha256": "df943beb0cfa48296998bd849b7cb988b758669cbc6b08f10d71bc3ee7022055",
     "source_schema_sha256": "8963152cb6981067681006b0db4561b13df2850fea5742cc17e154fc4c8b742a"
   },
-  "cache_replay_run": {
-    "run_id": "ee3e1538-6cda-4f34-8856-f356e52688ad",
+  "native_parity": {
+    "evidence": "/workspace/86-review-evidence/native-parity-final.json",
+    "source_rows_vs_geoparquet": "all nine DBF values, source_fid, SHP record number, and each original SHP WKB matched row by row for 24 rows",
+    "candidate_typed_source_vs_geoparquet": "byte-identical",
+    "geoparquet_sha256": "affc2a7d7184fc725ff6fc7d52ec28de8beceb1cfcec682e6556b709fd51ed0a",
+    "coordinate_diagnostics": "all 24 rows recorded; maximum DBF literal vs native SHP XY axis difference 0.00090426318336 degrees; 0.001 degree is a proposed sanity bound only; initial 0.0005 half-unit check failed this preserved source and was not treated as an authorized mapping or tolerance"
+  },
+  "ingest_run": {
+    "dagster_home": "/workspace/86-review-evidence/dagster-home-final",
+    "staging_root": "/workspace/86-review-evidence/staging-final2",
+    "run_id": "91002c43-70a7-4648-8e75-38c2a2a8e652",
+    "success": true,
+    "version": "vfd0a593f9c687283cad20b4f497d4de3",
+    "feature_count": 24,
+    "blocking_asset_check": "ferrous_metal_mines_population_complete passed",
+    "accepted": false
+  },
+  "offline_cache_replay": {
+    "run_id": "b8440fcc-f59d-4882-a8fd-fe88f303f34e",
     "success": true,
     "reused": true,
-    "version": "ved5123c192896a05f3914412ff0facac"
+    "version": "vfd0a593f9c687283cad20b4f497d4de3",
+    "network_used": false
   },
   "catalog_run": {
-    "run_id": "2ff9d598-783d-4f34-ad05-de1007e8d7ca",
+    "run_id": "42ca7a84-2e2a-46fd-9338-acc0900d675a",
     "success": true,
-    "publish_partition": "ferrous-metal-mines/ferrous-metal-mines/ved5123c192896a05f3914412ff0facac",
+    "publish_partition": "ferrous-metal-mines/ferrous-metal-mines/vfd0a593f9c687283cad20b4f497d4de3",
     "quality_check_passed": true,
-    "spatial_status": "spatial",
+    "feature_count": 24,
     "null_geometry_count": 0,
-    "unparseable_geometry_count": 0,
-    "native_crs": "NAD83 (EPSG:6269 datum, GRS 1980 ellipsoid)",
-    "attribute_types_preserved": ["decimal128(9,3) LATITUDE", "decimal128(11,3) LONGITUDE"]
+    "invalid_geometry_count": 0,
+    "geometry_type": "Point",
+    "numeric_types": [
+      "decimal128(9,3) LATITUDE",
+      "decimal128(11,3) LONGITUDE"
+    ]
+  },
+  "registered_gate_proof": {
+    "evidence": "/workspace/86-review-evidence/final-registered-gates/run/registered-gate-proof.json",
+    "quality_failed_run_id": "eb722478-502a-4569-a893-72bcb606a5b7",
+    "empty_approval_run_id": "8b879972-95ce-42c3-baaf-03fc0691df92",
+    "synthetic_published_fixture_object_count": 3,
+    "published_fixture_unchanged": true,
+    "actual_candidate_quality_check_passed": true,
+    "quality_false_fixture_isolated_copy_only": true,
+    "quality_false_fixture_manifest": "/workspace/86-review-evidence/final-registered-gates/input-copy-manifest.json",
+    "candidate_unchanged": true
   },
   "promotion_refusal": {
-    "command": "dagster_hifld.release_approval.require_release_approval(staging, published, geoparquet object pair)",
-    "result": "refused: ReleaseApprovalError: missing_independent_release_approval_registry",
-    "published_inventory_before_and_after": "0 objects; unchanged"
+    "result": "ReleaseApprovalError: missing_independent_release_approval_registry",
+    "published_inventory_before_and_after": [],
+    "published": false
   },
-  "staged_object_count": 21,
-  "notes": "Real-archive ingestion, real baseline comparison, and coverage/vintage verification remain blocked on the inaccessible DataLumos archive; the draft refresh schedule is defined and stopped."
+  "focused_tests": "PYTHONPATH=src /workspace/hifld-next-datasets/.venv/bin/python -m unittest tests.test_ferrous_metal_mines; 11 passed on final source changes before final code identity commit",
+  "remaining_decisions": [
+    "Historical HIFLD baseline and record-level match",
+    "Coverage/vintage interpretation and dataset schema/ID contract",
+    "Rights, attribution, and release acceptance"
+  ],
+  "source_currentness_claim": false,
+  "draft_schedule": "defined and STOPPED",
+  "post_catalog_cache_replay": {
+    "run_id": "950b9927-f7a7-4297-8870-2a1cdfb9d376",
+    "success": true,
+    "reused": true,
+    "network_used": false,
+    "version": "vfd0a593f9c687283cad20b4f497d4de3",
+    "cached_catalog_quality_dictionary_provenance_and_source_snapshots_recomputed": true
+  },
+  "cache_tamper_regression": {
+    "evidence": "/tmp/86_final_lifecycle.py; isolated copy in /workspace/86-review-evidence/cache-tamper-test",
+    "mutation": "deleted metadata/quality_manifest.json from a copy after catalog",
+    "result": "quarantined as invalid_cached_catalog_sidecars (underlying cached_catalog_metadata_incomplete)",
+    "original_candidate_modified": false
+  }
 }

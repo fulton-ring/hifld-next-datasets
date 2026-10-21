@@ -53,9 +53,11 @@ IDs are unique and contiguous from 1 to 24. Each DBF literal value and each nati
 the 24-row GeoParquet candidate. The maximum observed difference between
 DBF `LATITUDE`/`LONGITUDE` and SHP Y/X is 0.00090426318336 degrees. The
 physical DBF coordinate scale is three decimal places (0.001 degree per unit),
-but FGDC defines no DBF-to-SHP equivalence or rounding rule. The pipeline
-therefore uses 0.001 degrees only as a proposed diagnostic sanity bound; this
-is not a producer-approved coordinate mapping or acceptance decision. No
+but FGDC defines no DBF-to-SHP equivalence or rounding rule. An initial
+half-unit check at 0.0005 degrees failed this preserved source. The pipeline
+uses 0.001 degrees only as a proposed diagnostic sanity bound (the physical
+DBF coordinate field scale), not as a producer-approved coordinate mapping,
+tolerance, or acceptance decision. No
 coordinate is rounded, replaced, transformed, or reprojected. All 24 per-row
 literal values and deltas are recorded in the retained source audit. The
 `candidate/typed-source.parquet` and `geoparquet/ferrous-metal-mines.parquet`
@@ -72,24 +74,28 @@ GeoParquet candidate. Numeric DBF fields preserve their exact decimal width
 and scale. The source contract, historical baseline, mapping, rights and
 release remain unapproved.
 
-The actual registered Dagster ingest and blocking population check passed for
-all 24 features (run `7be90306-9dc3-4f55-9e3a-eb62ccbb53da`). A second run
-used the local preserved inputs with network access disabled and reused the
-same sealed candidate (run `d2f379e9-94e6-4977-9a1d-aa7ec49086b5`). The
-registered catalog asset passed its quality check with 24 features and zero
-null or invalid geometries (run `23f7e63f-f527-4a72-8df2-d847da0e30f4`). The
-exact-object promotion gate refused because no independent release approval
-registry was supplied; the published inventory stayed empty.
+For final code identity `07badea7be2b69c279528dd10b583da7c548e84e`, the actual
+registered Dagster ingest and blocking population check passed for all 24
+features (run `91002c43-70a7-4648-8e75-38c2a2a8e652`). An offline cache replay
+reused the sealed candidate (`b8440fcc-f59d-4882-a8fd-fe88f303f34e`); the
+registered catalog asset passed quality with 24 features and zero null or
+invalid geometries (`42ca7a84-2e2a-46fd-9338-acc0900d675a`); and a post-catalog
+offline cache replay reused the same candidate after recomputing catalog
+sidecars (`950b9927-f7a7-4297-8870-2a1cdfb9d376`). A separate disposable-copy
+regression removed the catalog quality manifest and confirmed cache quarantine
+with `cached_catalog_metadata_incomplete` beneath the candidate-sidecar wrapper.
 
-The current registered-gate proof ran against an isolated copy of this
-candidate and a populated three-object synthetic published inventory. Its
-false-quality copy was created only for the negative gate case: the real
-candidate’s passing quality manifest and all staged objects remained
-unchanged. Both the quality-failure and empty-approval cases left the
-synthetic published inventory unchanged. Evidence is in
-`/workspace/86-review-evidence/registered-gate-run/registered-gate-proof.json`.
-Focused source tests passed 11/11.
-
+The registered-gate proof used an isolated synthetic false-quality copy because
+the actual candidate quality check passed. It also used a populated three-object
+synthetic published inventory. The false-quality and approval-refused runs left
+that fixture unchanged, and the actual candidate and its quality manifest
+remained unchanged. Evidence is in
+`/workspace/86-review-evidence/final-registered-gates/run/registered-gate-proof.json`;
+the copy-only quality mutation is documented in
+`/workspace/86-review-evidence/final-registered-gates/input-copy-manifest.json`.
+Native row parity and all per-row coordinate deltas are in
+`/workspace/86-review-evidence/native-parity-final.json`. Focused source tests
+passed 11/11. No full-suite rerun was made after the cache validator change.
 The draft refresh schedule remains stopped. Historical HIFLD baseline and
 record-level comparison, coverage/vintage interpretation, schema and ID
 acceptance, rights, attribution, and release acceptance remain undecided.
