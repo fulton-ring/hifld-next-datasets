@@ -20,6 +20,7 @@ from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
 from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
+from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 
 hifld_ingest_assets = [
@@ -38,5 +39,6 @@ hifld_ingest_assets = [
     usace_pylon_areas_usace_ienc,
     usace_pylon_locations_usace_ienc,
     usace_recommended_tracks_ienc,
+    usace_overhead_pipeline_lines_usace_ienc,
     census_secondary_school_districts,
 ]
