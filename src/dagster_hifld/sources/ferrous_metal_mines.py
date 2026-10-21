@@ -75,7 +75,9 @@ DBF_FIELD_NAMES = (
 DBF_FIELD_KINDS = ("N", "C", "C", "C", "C", "C", "N", "N", "C")
 ID_FIELD = "MINOP3X020"
 GEODETIC_FIELDS = ("LATITUDE", "LONGITUDE")
-GEOMETRY_TOLERANCE = 0.0006
+# The producer's two DBF coordinate columns are N(9,3) and N(11,3); one
+# least-significant unit bounds cross-check error against SHP's full precision.
+GEOMETRY_TOLERANCE = 0.001
 FGDC_HORIZONTAL_DATUM = "North American Datum of 1983"
 PRODUCER_PUBDATE = "200512"
 PRODUCER_RELEASE_DATE = "2005-12-01"
@@ -372,7 +374,7 @@ def inspect_archive(body: bytes, metadata_body: bytes | None = None
         point = shapely.from_wkb(row["geometry"])
         deviation = max(abs(row["LONGITUDE"] - Decimal(repr(point.x))),
                         abs(row["LATITUDE"] - Decimal(repr(point.y))))
-        if deviation > Decimal(str(GEOMETRY_TOLERANCE)):
+        if deviation >= Decimal(str(GEOMETRY_TOLERANCE)):
             raise FerrousMinesQuarantineError("dbf_coordinate_geometry_drift")
         deviations.append(float(deviation))
     bounds = shapely.total_bounds(shapely.from_wkb([row["geometry"] for row in rows])).tolist()
@@ -399,6 +401,7 @@ def inspect_archive(body: bytes, metadata_body: bytes | None = None
         "fgdc_declared_horizontal_datum": FGDC_HORIZONTAL_DATUM,
         "datum_contradiction": "83" not in (crs.datum.name or "").replace(" ", ""),
         "native_bounds": bounds,
+        "dbf_geometry_coordinate_tolerance_degrees": str(GEOMETRY_TOLERANCE),
         "dbf_geometry_max_coordinate_deviation_degrees": max(deviations),
         "archive_members": {name: {"bytes": len(data), "sha256": digest(data)}
                             for name, data in sorted(members.items())},

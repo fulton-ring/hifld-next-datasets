@@ -49,7 +49,7 @@ replay with its own receipt), decodes the tar.gz members byte-strictly (DBF
 field roster, fixed-point scale, ASCII, deleted-record and tail checks; SHP/SHX
 point records, offsets, index and finite-coordinate checks). The original package has no `.prj`; the pipeline derives NAD83 only from the exact pinned producer FGDC XML, which explicitly declares North American Datum of 1983 and decimal degrees. 
 cross-checks each DBF LATITUDE/LONGITUDE decimal against its native point
-within the documented rounding tolerance, and writes a typed GeoParquet
+within one DBF least-significant unit (0.001 degree) for the producer N(9,3)/N(11,3) coordinates, and writes a typed GeoParquet
 candidate with original IDs (`MINOP3X020`, plus implicit `source_fid` and SHP
 record number), exact decimal types, and native CRS metadata. When a `.prj` is present, the declared geographic CRS is retained and any contradiction with the FGDC datum is recorded without correction. Content-derived versioning and the first-construction
 witness bind code, complete source content, and output bytes; cache replay
