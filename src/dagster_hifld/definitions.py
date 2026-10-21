@@ -197,6 +197,12 @@ from dagster_hifld.assets.usace_data_coverage_areas import (
     usace_data_coverage_areas_draft_job,
     usace_data_coverage_areas_draft_schedule,
 )
+from dagster_hifld.assets.electric_retail_service_territories import (
+    electric_retail_service_territories_population_complete,
+    electric_retail_service_territories_release_pending,
+    electric_retail_service_territories_preservation_job,
+    electric_retail_service_territories_preservation_schedule,
+)
 
 from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_complete,
@@ -798,6 +804,8 @@ defs = Definitions(
         usace_crane_locations_quality,
         usace_crane_locations_release,
         usace_data_coverage_areas_complete,
+        electric_retail_service_territories_population_complete,
+        electric_retail_service_territories_release_pending,
     ],
     jobs=[
         colleges_source_integrity_job,
@@ -861,6 +869,7 @@ defs = Definitions(
         usace_crane_locations_draft_job,
         crushed_stone_preservation_job,
         usace_data_coverage_areas_draft_job,
+        electric_retail_service_territories_preservation_job,
     ],
     schedules=[
         colleges_source_integrity_schedule,
@@ -928,6 +937,7 @@ defs = Definitions(
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
         crushed_stone_preservation_schedule,
+        electric_retail_service_territories_preservation_schedule,
         usace_data_coverage_areas_draft_schedule,
     ],
     sensors=_configured_sensors(),
