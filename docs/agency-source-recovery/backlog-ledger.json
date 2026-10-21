@@ -5302,10 +5302,10 @@
       "current_pr": 469,
       "reviewed_head": null,
       "evidence_refs": [
-        "Parent checkpoint 2026-10-21T21:38:51Z: paid run 39680028421 in progress; budget preflight passed under the <=$25/day guard with small GLM default. Root selected one paid new task; do not infer completion, final spend, acceptance or release.",
-        "Parent checkpoint at 2026-10-21T22:10Z reports native fix f224775 fully materialized; independent review active. The earlier paid run #39680028421 is not used here as proof of completion or acceptance."
+        "PR #656 merged to main as b308b568dff23d6b094d73388ba5fe984f18a2c5 from integration head 2b40d970d6b7c7ef2ddfac92d8a703d92865d480; build-only success, publish skipped.",
+        "Original PR #469 is still open at f22477518032011adfb1b6d2476c77c7ddb4caab; retained SEMS runtime evidence and its exact-head review packet are local and do not establish release acceptance."
       ],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "blocker_type": "source_contract_release_acceptance_pending",
       "live_issue_updated_at": "2026-10-19T17:24:03Z",
       "live_issue_created_at": "2026-10-19T02:00:38Z",
       "live_issue_comment_count": 6,
@@ -5317,18 +5317,18 @@
           "title": "Implement complete EPA FRS SEMS interest draft pipeline",
           "state": "open",
           "head_branch": "codex/cloud-dataset-80",
-          "head_sha": "9e3c80c08178090c250c6b0ad3bcdc5d55186f41",
-          "base_branch": "codex/cloud-verification-417",
+          "head_sha": "f22477518032011adfb1b6d2476c77c7ddb4caab",
+          "base_branch": "02fb0062500cc32a748e465670d1a7a7bb757552",
           "draft": true,
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "native_fix_awaiting_independent_review",
+      "status": "draft_pipeline_integrated_pending_source_acceptance",
       "current_pr_candidates": [
         469
       ],
-      "current_activity": "Native fix is fully materialized in a persistent local runtime; independent review is active. This checkpoint does not refresh the prior paid run state or claim review PASS, issue acceptance, release acceptance or publication.",
-      "status_note": "Native fix is fully materialized in a persistent local runtime; independent review is active. This checkpoint does not refresh the prior paid run state or claim review PASS, issue acceptance, release acceptance or publication."
+      "current_activity": "PR #656 integration is merged; acceptance-gated source decisions and the original draft PR remain open.",
+      "status_note": "Draft pipeline code integrated through PR #656 at main b308b568dff23d6b094d73388ba5fe984f18a2c5; PR #656 source head 2b40d970d6b7c7ef2ddfac92d8a703d92865d480, build-only passed and publish was skipped. Original draft PR #469 remains open at f22477518032011adfb1b6d2476c77c7ddb4caab. The local native runtime and exact-head evidence do not grant source, historical mapping, ID/schema, rights, contract or release acceptance."
     },
     {
       "issue": 81,
@@ -5372,12 +5372,13 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 461,
-      "reviewed_head": null,
+      "current_pr": 651,
+      "reviewed_head": "30df42ff470a74b66df5711aa41cdeb196e8deed",
       "evidence_refs": [
-        "Parent checkpoint at 2026-10-21T22:10Z reports fix e339d003 active; no final review result recorded."
+        "PR #651 exact head 30df42ff470a74b66df5711aa41cdeb196e8deed passed technical review and is integrated through #661 at main 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57.",
+        "Issue comment 6328387678 records the post-integration pending decisions; merge is code registration only, not source or release acceptance."
       ],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "blocker_type": "source_acceptance_release_acceptance_pending",
       "live_issue_updated_at": "2026-10-19T15:09:46Z",
       "live_issue_created_at": "2026-10-19T02:00:45Z",
       "live_issue_comment_count": 10,
@@ -5392,15 +5393,16 @@
           "head_sha": "ffaede69804e6a1a2332deaab5d60e447775f2c1",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "association_method": "exact_dataset_issue_branch"
+          "association_method": "historical_exact_dataset_issue_branch; not the integrated current-main PR"
         }
       ],
-      "status": "native_fix_after_review_in_progress",
-      "status_note": "A fix after review is active. No final PR head, review result, issue acceptance or release result is recorded.",
+      "status": "main_integrated_pending_source_release_decisions",
+      "status_note": "Source PR #651 exact reviewed head 30df42ff470a74b66df5711aa41cdeb196e8deed is integrated into main through PR #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328387678 records the current decision-gated status. The issue remains open pending source/baseline/schema/ID/rights/coverage/contract and release decisions.",
       "current_pr_candidates": [
-        461
+        461,
+        651
       ],
-      "current_activity": "A fix after review is active. No final PR head, review result, issue acceptance or release result is recorded."
+      "current_activity": "Draft pipeline code is integrated and its issue remains open pending explicit source and release decisions."
     },
     {
       "issue": 83,
@@ -5449,12 +5451,13 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": 458,
-      "reviewed_head": null,
+      "current_pr": 654,
+      "reviewed_head": "a61535f0d49fd6ee735e8f982f02264ac158767d",
       "evidence_refs": [
-        "Parent checkpoint at 2026-10-21T22:10Z reports issue #84 complete, awaiting new PR."
+        "PR #654 exact head a61535f0d49fd6ee735e8f982f02264ac158767d passed technical review and is integrated through #661 at main 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57.",
+        "Issue comment 6328388359 records the post-integration pending decisions; merge is code registration only, not source or release acceptance."
       ],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "blocker_type": "source_acceptance_release_acceptance_pending",
       "live_issue_updated_at": "2026-10-19T14:45:35Z",
       "live_issue_created_at": "2026-10-19T02:00:51Z",
       "live_issue_comment_count": 9,
@@ -5469,15 +5472,16 @@
           "head_sha": "9fc7442bce50e0303011cf0b61b5cea779648049",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "association_method": "exact_dataset_issue_branch"
+          "association_method": "historical_exact_dataset_issue_branch; not the integrated current-main PR"
         }
       ],
-      "status": "native_pipeline_complete_awaiting_pr",
+      "status": "main_integrated_pending_source_release_decisions",
       "current_pr_candidates": [
-        458
+        458,
+        654
       ],
-      "status_note": "Pipeline work is reported complete and awaiting a new PR. No PR head or acceptance/release decision is recorded.",
-      "current_activity": "Pipeline work is reported complete and awaiting a new PR. No PR head or acceptance/release decision is recorded."
+      "status_note": "Source PR #654 exact reviewed head a61535f0d49fd6ee735e8f982f02264ac158767d is integrated into main through PR #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328388359 records the current decision-gated status. The issue remains open pending source/baseline/schema/ID/rights/coverage/contract and release decisions.",
+      "current_activity": "Draft pipeline code is integrated and its issue remains open pending explicit source and release decisions."
     },
     {
       "issue": 85,
@@ -5488,11 +5492,12 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 653,
-      "reviewed_head": null,
+      "reviewed_head": "8f48db783760440b86f05180409bb9d2d3a3bfd1",
       "evidence_refs": [
-        "Parent checkpoint at 2026-10-21T22:10Z reports draft PR #653 active."
+        "PR #653 exact head 8f48db783760440b86f05180409bb9d2d3a3bfd1 passed technical review and is integrated through #661 at main 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57.",
+        "Issue comment 6328389019 records the post-integration pending decisions; merge is code registration only, not source or release acceptance."
       ],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "blocker_type": "source_acceptance_release_acceptance_pending",
       "live_issue_updated_at": "2026-10-19T15:07:35Z",
       "live_issue_created_at": "2026-10-19T02:00:56Z",
       "live_issue_comment_count": 7,
@@ -5507,16 +5512,16 @@
           "head_sha": "8ce4ce003cb267b824d827e9ebd069015151c82a",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "association_method": "exact_dataset_issue_branch"
+          "association_method": "historical_exact_dataset_issue_branch; not the integrated current-main PR"
         }
       ],
-      "status": "draft_pipeline_implemented_unaccepted",
-      "status_note": "Draft PR #653 capture/source/catalog/replay work is active. No merge, source acceptance, release acceptance or production publication is recorded.",
+      "status": "main_integrated_pending_source_release_decisions",
+      "status_note": "Source PR #653 exact reviewed head 8f48db783760440b86f05180409bb9d2d3a3bfd1 is integrated into main through PR #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328389019 records the current decision-gated status. The issue remains open pending source/baseline/schema/ID/rights/coverage/contract and release decisions.",
       "current_pr_candidates": [
         460,
         653
       ],
-      "current_activity": "Draft PR #653 capture/source/catalog/replay work is active. No merge, source acceptance, release acceptance or production publication is recorded."
+      "current_activity": "Draft pipeline code is integrated and its issue remains open pending explicit source and release decisions."
     },
     {
       "issue": 86,
@@ -5526,17 +5531,45 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 660,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Parent current-state checkpoint reports real archive 404/403 and PR #660 parked at Needs decision; #660 current head 697265b715dcda2c86051bff5dbef886318c1a56 has build-only SUCCESS and publish SKIPPED."
+      ],
+      "blocker_type": "external_source_access_and_provenance",
       "live_issue_updated_at": "2026-10-19T02:00:59Z",
       "live_issue_created_at": "2026-10-19T02:00:59Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 660,
+          "title": "Draft: ferrous-metal-mines preserved-capture pipeline (#86)",
+          "state": "open",
+          "head_branch": "codex/cloud-dataset-86",
+          "head_sha": "697265b715dcda2c86051bff5dbef886318c1a56",
+          "base_branch": "codex/cloud-verification-417",
+          "draft": true,
+          "checks": [
+            {
+              "name": "build-only",
+              "conclusion": "success"
+            },
+            {
+              "name": "publish",
+              "conclusion": "skipped"
+            }
+          ],
+          "association_method": "explicit_issue_reference_and_branch"
+        }
+      ],
+      "status": "external_source_archive_unavailable_parked_needs_decision",
+      "status_note": "Real archive retrieval returned 404/403. Draft PR #660 preserves a synthetic-capture pipeline only and is parked for Needs decision; the synthetic artifact does not establish source lineage, coverage, rights or historical fidelity.",
+      "current_pr_candidates": [
+        660
+      ],
+      "current_activity": "Parked for a source-access decision; no real archive capture or source acceptance is claimed."
     },
     {
       "issue": 87,
@@ -5798,8 +5831,11 @@
       "live_issue_state": "open",
       "current_pr": 498,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "Run 39687998869 / agent job 119526922655 failed at Initialize containers before checkout/model execution; no worker-produced implementation result.",
+        "Local resume worktree /workspace/work/96-fuds-resume is at 699aadd1e43e522370b318fe84f029bc2ead2072; capture preflight is active. Issue comment 6328304973."
+      ],
+      "blocker_type": "worker_container_startup",
       "live_issue_updated_at": "2026-10-19T21:46:40Z",
       "live_issue_created_at": "2026-10-19T02:01:58Z",
       "live_issue_comment_count": 0,
@@ -5817,11 +5853,12 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "status": "paid_attempt_failed_before_checkout_native_fix_capture_preflight_active",
+      "status_note": "Paid run 39687998869 failed during Initialize containers before repository checkout or model execution; it produced no implementation result. A local native fix is active at 699aadd1e43e522370b318fe84f029bc2ead2072 with capture preflight underway; issue comment 6328304973 records the update. Existing PR #498 remains open at 15497fd6ca90aa25fd7bc4a29d621bb291d9fe46; no pushed fix or capture completion is claimed.",
       "current_pr_candidates": [
         498
-      ]
+      ],
+      "current_activity": "Local native fix at 699aadd1e43e522370b318fe84f029bc2ead2072 is in capture preflight after a pre-checkout worker startup failure."
     },
     {
       "issue": 97,
@@ -5935,7 +5972,9 @@
       "live_issue_state": "open",
       "current_pr": 503,
       "reviewed_head": null,
-      "evidence_refs": [],
+      "evidence_refs": [
+        "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json (selection record; not evidence of a dispatched worker)."
+      ],
       "blocker_type": "missing_or_unrecovered_evidence",
       "live_issue_updated_at": "2026-10-20T00:55:25Z",
       "live_issue_created_at": "2026-10-19T02:02:13Z",
@@ -5954,10 +5993,12 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "paid_ready_selected_existing_pr_not_dispatched",
       "current_pr_candidates": [
         503
-      ]
+      ],
+      "status_note": "New Ready-selection manifest records issue #100 on PR #503 exact head 269449f842e4777add5787df2b2ba43651e9bf3ed. The task is a very large 5.45-million-row nonspatial table with bounded-streaming capture preflight; the live-state snapshot predates this selection, so no worker dispatch is claimed.",
+      "current_activity": "Selected for Ready after PR #503 association; bounded streaming capture preflight is the next task, not yet dispatched."
     },
     {
       "issue": 101,
@@ -5969,15 +6010,19 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json (selection record; not evidence of a dispatched worker)."
+      ],
+      "blocker_type": "not_started",
       "live_issue_updated_at": "2026-10-19T02:02:17Z",
       "live_issue_created_at": "2026-10-19T02:02:17Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "paid_ready_selected_not_dispatched",
+      "status_note": "Issue was included in the six-card Ready-selection manifest /workspace/work/board-supervisor/paid-admissions-100-105-20261021.json. The latest live-state snapshot predates the selection; no implementation dispatch or result is claimed.",
+      "current_activity": "Ready-selected; no implementation dispatch or result recorded yet."
     },
     {
       "issue": 102,
@@ -5989,15 +6034,19 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json (selection record; not evidence of a dispatched worker)."
+      ],
+      "blocker_type": "not_started",
       "live_issue_updated_at": "2026-10-19T02:02:21Z",
       "live_issue_created_at": "2026-10-19T02:02:21Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "paid_ready_selected_not_dispatched",
+      "status_note": "Issue was included in the six-card Ready-selection manifest /workspace/work/board-supervisor/paid-admissions-100-105-20261021.json. The latest live-state snapshot predates the selection; no implementation dispatch or result is claimed.",
+      "current_activity": "Ready-selected; no implementation dispatch or result recorded yet."
     },
     {
       "issue": 103,
@@ -6009,22 +6058,26 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json (selection record; not evidence of a dispatched worker)."
+      ],
+      "blocker_type": "not_started",
       "live_issue_updated_at": "2026-10-19T02:02:24Z",
       "live_issue_created_at": "2026-10-19T02:02:24Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "paid_ready_selected_not_dispatched",
       "historical_pr_refs": [
         {
           "pr": 483,
           "recorded_as_current_before_census": true,
           "review_status": "not revalidated by this open-PR census"
         }
-      ]
+      ],
+      "status_note": "Issue was included in the six-card Ready-selection manifest /workspace/work/board-supervisor/paid-admissions-100-105-20261021.json. The latest live-state snapshot predates the selection; no implementation dispatch or result is claimed.",
+      "current_activity": "Ready-selected; no implementation dispatch or result recorded yet."
     },
     {
       "issue": 104,
@@ -6036,15 +6089,19 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json (selection record; not evidence of a dispatched worker)."
+      ],
+      "blocker_type": "not_started",
       "live_issue_updated_at": "2026-10-19T02:02:28Z",
       "live_issue_created_at": "2026-10-19T02:02:28Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "paid_ready_selected_not_dispatched",
+      "status_note": "Issue was included in the six-card Ready-selection manifest /workspace/work/board-supervisor/paid-admissions-100-105-20261021.json. The latest live-state snapshot predates the selection; no implementation dispatch or result is claimed.",
+      "current_activity": "Ready-selected; no implementation dispatch or result recorded yet."
     },
     {
       "issue": 105,
@@ -6056,15 +6113,19 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
+      "evidence_refs": [
+        "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json (selection record; not evidence of a dispatched worker)."
+      ],
+      "blocker_type": "not_started",
       "live_issue_updated_at": "2026-10-19T02:02:31Z",
       "live_issue_created_at": "2026-10-19T02:02:31Z",
       "live_issue_comment_count": 0,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "paid_ready_selected_not_dispatched",
+      "status_note": "Issue was included in the six-card Ready-selection manifest /workspace/work/board-supervisor/paid-admissions-100-105-20261021.json. The latest live-state snapshot predates the selection; no implementation dispatch or result is claimed.",
+      "current_activity": "Ready-selected; no implementation dispatch or result recorded yet."
     },
     {
       "issue": 106,
@@ -14842,6 +14903,10 @@
     {
       "type": "project_access",
       "detail": "Configured HIFLD_PROJECT_TOKEN resource is not accessible by the integration for organization Projects v2; GitHub Actions variable probe returned 403. This blocks project/workflow automation access only and is not evidence that any dataset source is dead."
+    },
+    {
+      "type": "ghcr_package_write_permission",
+      "detail": "Image publish is blocked by GHCR package write/admin permission; issue #417 comment 6328264763 tracks it. Dataset build-only checks are separate and passed on the named reviewed PRs; no dataset test failure is implied."
     }
   ],
   "supervisor_checkpoint": {
@@ -14869,12 +14934,12 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-21T22:13:00Z",
-    "source": "Parent checkpoints plus named PR652/PR655 integration evidence and current board-supervisor queue snapshot; targeted update only, no fresh all-415 issue census or open-PR census.",
-    "main_latest": "f046f09b0ed5bfdd09cd268c1d5b9b26189b8f22",
-    "candidate_pipelines_merged_this_stretch": 64,
+    "recorded_at": "2026-10-21T22:57:04Z",
+    "source": "Parent merge checkpoint and /workspace/work/board-supervisor/merged-82-84-85-board.json; read-only named PR status confirmation; existing scoped checkpoint evidence. Targeted correction only; no fresh census.",
+    "main_latest": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
+    "candidate_pipelines_merged_this_stretch": 68,
     "initial_candidate_pipelines_merged_this_stretch": 25,
-    "registered_schedules": 89,
+    "registered_schedules": 93,
     "all_stopped": true,
     "integrations": [
       {
@@ -14883,14 +14948,9 @@
           77,
           78
         ],
-        "merge": "reported merged to main 9d82dc41fc8348899b6ba60e05f3a4c27ceb7b65",
+        "merge": "9d82dc41fc8348899b6ba60e05f3a4c27ceb7b65",
         "schedules_after_merge": 87,
-        "all_stopped": true,
-        "source_heads": [
-          "7f4799250091a6a38f558e6c1fc364d6429a8a05",
-          "44bb10155ddeec711c7c3ce2162843fc31ab9a20"
-        ],
-        "evidence_source": "Parent checkpoint; do not infer acceptance."
+        "all_stopped": true
       },
       {
         "pr": 652,
@@ -14901,8 +14961,8 @@
         "source_head": "56d9d8e565c1de257f907e2b20d3a9c8134d739a",
         "schedules": 88,
         "all_stopped": true,
-        "independent_review": "root PASS",
-        "ci": "build-only success;publish skipped"
+        "independent_review": "PASS",
+        "ci": "build-only success; publish skipped"
       },
       {
         "pr": 655,
@@ -14910,32 +14970,68 @@
           83
         ],
         "merge": "7f13f32f2ca1dc6ec36e5456a7fa981114f89512",
-        "integration_head": "7f13f32f2ca1dc6ec36e5456a7fa981114f89512",
-        "source_head": "7fad5c5bd4946ce09018be2b3d5772d4f8d622fb",
-        "source_original_head": "c6a47b37d9e4476cc97e4f1e113e3d32b1c37656",
+        "source_head": "7fad5c5bd4946e09018be2b3d5772d4f8d622fb",
         "schedules": 89,
         "all_stopped": true,
-        "independent_review": "root PASS",
-        "ci": [
+        "independent_review": "PASS",
+        "ci": "build-only success; publish skipped"
+      },
+      {
+        "pr": 656,
+        "source_issues": [
+          80
+        ],
+        "integration_head": "2b40d970d6b7c7ef2ddfac92d8a703d92865d480",
+        "merge": "b308b568dff23d6b094d73388ba5fe984f18a2c5",
+        "schedules": 90,
+        "all_stopped": true,
+        "ci": "build-only success; publish skipped",
+        "source_pr": 469,
+        "source_head": "f22477518032011adfb1b6d2476c77c7ddb4caab"
+      },
+      {
+        "pr": 661,
+        "source_issues": [
+          82,
+          84,
+          85
+        ],
+        "integration_head": "b617ce1d9eb1e20e218666fc6279fac3c7ee3434",
+        "merge": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
+        "schedules": 93,
+        "all_stopped": true,
+        "source_heads": [
+          "30df42ff470a74b66df5711aa41cdeb196e8deed",
+          "a61535f0d49fd6ee735e8f982f02264ac158767d",
+          "8f48db783760440b86f05180409bb9d2d3a3bfd1"
+        ],
+        "ci": "build-only success; publish skipped",
+        "board_issue_comments": [
           {
-            "name": "publish",
-            "status": "completed",
-            "conclusion": "skipped"
+            "issue": 82,
+            "comment": 6328387678
           },
           {
-            "name": "build-only",
-            "status": "completed",
-            "conclusion": "success"
+            "issue": 84,
+            "comment": 6328388359
+          },
+          {
+            "issue": 85,
+            "comment": 6328389019
           }
-        ],
-        "owned_blobs_identical": 5
+        ]
       }
     ],
     "native_or_followup_work": {
-      "80": "Native fix fully materialized in local persistent runtime; independent review active. Prior paid run #39680028421 status is not refreshed here; do not infer paid execution completion, review result, acceptance or release.",
-      "82": "Fix after review is active; no final PR/review result recorded in this checkpoint.",
-      "84": "Complete and awaiting a new PR, per parent; no PR head recorded.",
-      "85": "Draft PR #653 capture/source/catalog/replay work active; not merged or accepted."
+      "80": "Draft pipeline code integrated through PR #656; original PR #469 remains open. Source, historical mapping, contract, rights and release acceptance remain pending.",
+      "82": "PR #651 at 30df42ff470a74b66df5711aa41cdeb196e8deed integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328387678 records pending source/release decisions.",
+      "84": "PR #654 at a61535f0d49fd6ee735e8f982f02264ac158767d integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328388359 records pending source/release decisions. Review evidence records 16 focused passes and one skipped capture test; full capture proof is separate.",
+      "85": "PR #653 at 8f48db783760440b86f05180409bb9d2d3a3bfd1 integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328389019 records pending source/release decisions.",
+      "86": "Real archive retrieval returned 404/403; synthetic-only draft PR #660 is parked for Needs decision.",
+      "96": "Run 39687998869 failed during Initialize containers before checkout/model execution. Local native fix 699aadd1 is in capture preflight; comment 6328304973.",
+      "417": "GHCR image publish is blocked by package write/admin permission; comment 6328264763. This is a package publishing permission blocker, not a dataset test failure.",
+      "43": "PR #43 final targeted security fix is active and not merged; latest observed head 198b313a44c18d3e683b4c53287b3252fa222441.",
+      "integration_661": "PR #661 head b617ce1d9eb1e20e218666fc6279fac3c7ee3434 remains open; build-only SUCCESS, publish SKIPPED; not merged."
     },
     "paid_queue": {
       "selected_issues": [
@@ -14950,38 +15046,163 @@
         95,
         96,
         97,
-        99
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105
       ],
-      "active_at_2026_10_21T2210Z": [
+      "selection_source": "Existing admission records for the previously selected 12 issues; no new admission in this checkpoint.",
+      "live_state_observed_at": "2026-10-21T22:53:34.945806+00:00",
+      "currently_in_progress_or_queued": [
+        {
+          "run": 39689515400,
+          "issue": 91,
+          "role": "implementation",
+          "status": "queued"
+        },
+        {
+          "run": 39689321852,
+          "issue": 89,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Initialize containers"
+        },
+        {
+          "run": 39689307453,
+          "issue": 93,
+          "role": "review",
+          "status": "in_progress",
+          "step": "Initialize containers"
+        },
+        {
+          "run": 39688403314,
+          "issue": 95,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39688396846,
+          "issue": 94,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39687988814,
+          "issue": 97,
+          "role": "review",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39687095335,
+          "issue": 88,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39684437877,
+          "issue": 87,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        }
+      ],
+      "selected_runs_completed_success": [
+        {
+          "run": 39683534507,
+          "issue": 86,
+          "role": "implementation"
+        },
+        {
+          "run": 39683583026,
+          "issue": 92,
+          "role": "implementation"
+        },
+        {
+          "run": 39687082723,
+          "issue": 92,
+          "role": "review"
+        },
+        {
+          "run": 39684194497,
+          "issue": 93,
+          "role": "implementation"
+        },
+        {
+          "run": 39684414261,
+          "issue": 97,
+          "role": "implementation"
+        },
+        {
+          "run": 39684424204,
+          "issue": 99,
+          "role": "implementation"
+        }
+      ],
+      "selected_run_failed_before_checkout": {
+        "run": 39687998869,
+        "issue": 96,
+        "role": "implementation",
+        "failed_step": "Initialize containers",
+        "model_or_checkout_started": false
+      },
+      "cap": "Existing $25/day inference cap unchanged; actual spend not claimed.",
+      "previously_selected_issues": [
         86,
         87,
-        92,
-        93,
-        97,
-        99
-      ],
-      "remaining_waiting_at_2026_10_21T2210Z": [
         88,
         89,
         91,
+        92,
+        93,
         94,
         95,
-        96
+        96,
+        97,
+        99
       ],
-      "cap": "Existing $25/day inference unchanged",
-      "source": "/workspace/work/board-supervisor/session-checkpoint-20261021T2210.json; queue observation 22:10:38Z; no new paid-task admission claimed."
+      "new_ready_selection": {
+        "issues": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105
+        ],
+        "manifest": "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json",
+        "manifest_at": "2026-10-21T22:54:45.723051+00:00",
+        "dispatch_status": "not_yet_observed; latest live-state is 2026-10-21T22:53:34.945806+00:00 and predates manifest"
+      },
+      "source": "Current live-state.json at 22:53:34Z plus existing admission manifests; subsequent Ready selection #100–105 recorded separately from dispatch."
     },
-    "issue_comments": [
-      {
-        "issue": 83,
-        "comment": 6327668626
-      }
-    ],
     "source_acceptance_release_acceptance_issue_closure": false,
     "production_publication": false,
     "inventory_rows_preserved": 415,
+    "unique_inventory_issue_rows": 415,
     "fresh_415_census": false,
-    "open_pr_census": null
+    "open_pr_census": null,
+    "pending_integrations": [],
+    "issue_comments": [
+      {
+        "issue": 82,
+        "comment": 6328387678
+      },
+      {
+        "issue": 84,
+        "comment": 6328388359
+      },
+      {
+        "issue": 85,
+        "comment": 6328389019
+      }
+    ]
   },
   "pr_search_snapshot_records": [
     {
@@ -16424,12 +16645,12 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-21T22:13:00Z",
-    "source": "Parent checkpoints plus named PR652/PR655 integration evidence and current board-supervisor queue snapshot; targeted update only, no fresh all-415 issue census or open-PR census.",
-    "main_latest": "f046f09b0ed5bfdd09cd268c1d5b9b26189b8f22",
-    "candidate_pipelines_merged_this_stretch": 64,
+    "recorded_at": "2026-10-21T22:57:04Z",
+    "source": "Parent merge checkpoint and /workspace/work/board-supervisor/merged-82-84-85-board.json; read-only named PR status confirmation; existing scoped checkpoint evidence. Targeted correction only; no fresh census.",
+    "main_latest": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
+    "candidate_pipelines_merged_this_stretch": 68,
     "initial_candidate_pipelines_merged_this_stretch": 25,
-    "registered_schedules": 89,
+    "registered_schedules": 93,
     "all_stopped": true,
     "integrations": [
       {
@@ -16438,14 +16659,9 @@
           77,
           78
         ],
-        "merge": "reported merged to main 9d82dc41fc8348899b6ba60e05f3a4c27ceb7b65",
+        "merge": "9d82dc41fc8348899b6ba60e05f3a4c27ceb7b65",
         "schedules_after_merge": 87,
-        "all_stopped": true,
-        "source_heads": [
-          "7f4799250091a6a38f558e6c1fc364d6429a8a05",
-          "44bb10155ddeec711c7c3ce2162843fc31ab9a20"
-        ],
-        "evidence_source": "Parent checkpoint; do not infer acceptance."
+        "all_stopped": true
       },
       {
         "pr": 652,
@@ -16456,8 +16672,8 @@
         "source_head": "56d9d8e565c1de257f907e2b20d3a9c8134d739a",
         "schedules": 88,
         "all_stopped": true,
-        "independent_review": "root PASS",
-        "ci": "build-only success;publish skipped"
+        "independent_review": "PASS",
+        "ci": "build-only success; publish skipped"
       },
       {
         "pr": 655,
@@ -16465,32 +16681,68 @@
           83
         ],
         "merge": "7f13f32f2ca1dc6ec36e5456a7fa981114f89512",
-        "integration_head": "7f13f32f2ca1dc6ec36e5456a7fa981114f89512",
-        "source_head": "7fad5c5bd4946ce09018be2b3d5772d4f8d622fb",
-        "source_original_head": "c6a47b37d9e4476cc97e4f1e113e3d32b1c37656",
+        "source_head": "7fad5c5bd4946e09018be2b3d5772d4f8d622fb",
         "schedules": 89,
         "all_stopped": true,
-        "independent_review": "root PASS",
-        "ci": [
+        "independent_review": "PASS",
+        "ci": "build-only success; publish skipped"
+      },
+      {
+        "pr": 656,
+        "source_issues": [
+          80
+        ],
+        "integration_head": "2b40d970d6b7c7ef2ddfac92d8a703d92865d480",
+        "merge": "b308b568dff23d6b094d73388ba5fe984f18a2c5",
+        "schedules": 90,
+        "all_stopped": true,
+        "ci": "build-only success; publish skipped",
+        "source_pr": 469,
+        "source_head": "f22477518032011adfb1b6d2476c77c7ddb4caab"
+      },
+      {
+        "pr": 661,
+        "source_issues": [
+          82,
+          84,
+          85
+        ],
+        "integration_head": "b617ce1d9eb1e20e218666fc6279fac3c7ee3434",
+        "merge": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
+        "schedules": 93,
+        "all_stopped": true,
+        "source_heads": [
+          "30df42ff470a74b66df5711aa41cdeb196e8deed",
+          "a61535f0d49fd6ee735e8f982f02264ac158767d",
+          "8f48db783760440b86f05180409bb9d2d3a3bfd1"
+        ],
+        "ci": "build-only success; publish skipped",
+        "board_issue_comments": [
           {
-            "name": "publish",
-            "status": "completed",
-            "conclusion": "skipped"
+            "issue": 82,
+            "comment": 6328387678
           },
           {
-            "name": "build-only",
-            "status": "completed",
-            "conclusion": "success"
+            "issue": 84,
+            "comment": 6328388359
+          },
+          {
+            "issue": 85,
+            "comment": 6328389019
           }
-        ],
-        "owned_blobs_identical": 5
+        ]
       }
     ],
     "native_or_followup_work": {
-      "80": "Native fix fully materialized in local persistent runtime; independent review active. Prior paid run #39680028421 status is not refreshed here; do not infer paid execution completion, review result, acceptance or release.",
-      "82": "Fix after review is active; no final PR/review result recorded in this checkpoint.",
-      "84": "Complete and awaiting a new PR, per parent; no PR head recorded.",
-      "85": "Draft PR #653 capture/source/catalog/replay work active; not merged or accepted."
+      "80": "Draft pipeline code integrated through PR #656; original PR #469 remains open. Source, historical mapping, contract, rights and release acceptance remain pending.",
+      "82": "PR #651 at 30df42ff470a74b66df5711aa41cdeb196e8deed integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328387678 records pending source/release decisions.",
+      "84": "PR #654 at a61535f0d49fd6ee735e8f982f02264ac158767d integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328388359 records pending source/release decisions. Review evidence records 16 focused passes and one skipped capture test; full capture proof is separate.",
+      "85": "PR #653 at 8f48db783760440b86f05180409bb9d2d3a3bfd1 integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328389019 records pending source/release decisions.",
+      "86": "Real archive retrieval returned 404/403; synthetic-only draft PR #660 is parked for Needs decision.",
+      "96": "Run 39687998869 failed during Initialize containers before checkout/model execution. Local native fix 699aadd1 is in capture preflight; comment 6328304973.",
+      "417": "GHCR image publish is blocked by package write/admin permission; comment 6328264763. This is a package publishing permission blocker, not a dataset test failure.",
+      "43": "PR #43 final targeted security fix is active and not merged; latest observed head 198b313a44c18d3e683b4c53287b3252fa222441.",
+      "integration_661": "PR #661 head b617ce1d9eb1e20e218666fc6279fac3c7ee3434 remains open; build-only SUCCESS, publish SKIPPED; not merged."
     },
     "paid_queue": {
       "selected_issues": [
@@ -16505,38 +16757,163 @@
         95,
         96,
         97,
-        99
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105
       ],
-      "active_at_2026_10_21T2210Z": [
+      "selection_source": "Existing admission records for the previously selected 12 issues; no new admission in this checkpoint.",
+      "live_state_observed_at": "2026-10-21T22:53:34.945806+00:00",
+      "currently_in_progress_or_queued": [
+        {
+          "run": 39689515400,
+          "issue": 91,
+          "role": "implementation",
+          "status": "queued"
+        },
+        {
+          "run": 39689321852,
+          "issue": 89,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Initialize containers"
+        },
+        {
+          "run": 39689307453,
+          "issue": 93,
+          "role": "review",
+          "status": "in_progress",
+          "step": "Initialize containers"
+        },
+        {
+          "run": 39688403314,
+          "issue": 95,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39688396846,
+          "issue": 94,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39687988814,
+          "issue": 97,
+          "role": "review",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39687095335,
+          "issue": 88,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39684437877,
+          "issue": 87,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        }
+      ],
+      "selected_runs_completed_success": [
+        {
+          "run": 39683534507,
+          "issue": 86,
+          "role": "implementation"
+        },
+        {
+          "run": 39683583026,
+          "issue": 92,
+          "role": "implementation"
+        },
+        {
+          "run": 39687082723,
+          "issue": 92,
+          "role": "review"
+        },
+        {
+          "run": 39684194497,
+          "issue": 93,
+          "role": "implementation"
+        },
+        {
+          "run": 39684414261,
+          "issue": 97,
+          "role": "implementation"
+        },
+        {
+          "run": 39684424204,
+          "issue": 99,
+          "role": "implementation"
+        }
+      ],
+      "selected_run_failed_before_checkout": {
+        "run": 39687998869,
+        "issue": 96,
+        "role": "implementation",
+        "failed_step": "Initialize containers",
+        "model_or_checkout_started": false
+      },
+      "cap": "Existing $25/day inference cap unchanged; actual spend not claimed.",
+      "previously_selected_issues": [
         86,
         87,
-        92,
-        93,
-        97,
-        99
-      ],
-      "remaining_waiting_at_2026_10_21T2210Z": [
         88,
         89,
         91,
+        92,
+        93,
         94,
         95,
-        96
+        96,
+        97,
+        99
       ],
-      "cap": "Existing $25/day inference unchanged",
-      "source": "/workspace/work/board-supervisor/session-checkpoint-20261021T2210.json; queue observation 22:10:38Z; no new paid-task admission claimed."
+      "new_ready_selection": {
+        "issues": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105
+        ],
+        "manifest": "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json",
+        "manifest_at": "2026-10-21T22:54:45.723051+00:00",
+        "dispatch_status": "not_yet_observed; latest live-state is 2026-10-21T22:53:34.945806+00:00 and predates manifest"
+      },
+      "source": "Current live-state.json at 22:53:34Z plus existing admission manifests; subsequent Ready selection #100–105 recorded separately from dispatch."
     },
-    "issue_comments": [
-      {
-        "issue": 83,
-        "comment": 6327668626
-      }
-    ],
     "source_acceptance_release_acceptance_issue_closure": false,
     "production_publication": false,
     "inventory_rows_preserved": 415,
+    "unique_inventory_issue_rows": 415,
     "fresh_415_census": false,
-    "open_pr_census": null
+    "open_pr_census": null,
+    "pending_integrations": [],
+    "issue_comments": [
+      {
+        "issue": 82,
+        "comment": 6328387678
+      },
+      {
+        "issue": 84,
+        "comment": 6328388359
+      },
+      {
+        "issue": 85,
+        "comment": 6328389019
+      }
+    ]
   },
   "previous_verified_checkpoint_2026_10_21T1455Z": {
     "recorded_at": "2026-10-21T14:55:39Z",
@@ -20955,5 +21332,368 @@
     "inventory_rows_preserved": 415,
     "fresh_415_census": false,
     "open_pr_census": null
+  },
+  "previous_latest_verified_checkpoint_2026_10_21T2213Z": {
+    "recorded_at": "2026-10-21T22:13:00Z",
+    "source": "Parent checkpoints plus named PR652/PR655 integration evidence and current board-supervisor queue snapshot; targeted update only, no fresh all-415 issue census or open-PR census.",
+    "main_latest": "f046f09b0ed5bfdd09cd268c1d5b9b26189b8f22",
+    "candidate_pipelines_merged_this_stretch": 64,
+    "initial_candidate_pipelines_merged_this_stretch": 25,
+    "registered_schedules": 89,
+    "all_stopped": true,
+    "integrations": [
+      {
+        "pr": 650,
+        "source_issues": [
+          77,
+          78
+        ],
+        "merge": "reported merged to main 9d82dc41fc8348899b6ba60e05f3a4c27ceb7b65",
+        "schedules_after_merge": 87,
+        "all_stopped": true,
+        "source_heads": [
+          "7f4799250091a6a38f558e6c1fc364d6429a8a05",
+          "44bb10155ddeec711c7c3ce2162843fc31ab9a20"
+        ],
+        "evidence_source": "Parent checkpoint; do not infer acceptance."
+      },
+      {
+        "pr": 652,
+        "source_issues": [
+          79
+        ],
+        "merge": "1fd59e6926bf0d3866448a2b213da953d6efe571",
+        "source_head": "56d9d8e565c1de257f907e2b20d3a9c8134d739a",
+        "schedules": 88,
+        "all_stopped": true,
+        "independent_review": "root PASS",
+        "ci": "build-only success;publish skipped"
+      },
+      {
+        "pr": 655,
+        "source_issues": [
+          83
+        ],
+        "merge": "7f13f32f2ca1dc6ec36e5456a7fa981114f89512",
+        "integration_head": "7f13f32f2ca1dc6ec36e5456a7fa981114f89512",
+        "source_head": "7fad5c5bd4946ce09018be2b3d5772d4f8d622fb",
+        "source_original_head": "c6a47b37d9e4476cc97e4f1e113e3d32b1c37656",
+        "schedules": 89,
+        "all_stopped": true,
+        "independent_review": "root PASS",
+        "ci": [
+          {
+            "name": "publish",
+            "status": "completed",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "build-only",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ],
+        "owned_blobs_identical": 5
+      }
+    ],
+    "native_or_followup_work": {
+      "80": "Native fix fully materialized in local persistent runtime; independent review active. Prior paid run #39680028421 status is not refreshed here; do not infer paid execution completion, review result, acceptance or release.",
+      "82": "Fix after review is active; no final PR/review result recorded in this checkpoint.",
+      "84": "Complete and awaiting a new PR, per parent; no PR head recorded.",
+      "85": "Draft PR #653 capture/source/catalog/replay work active; not merged or accepted."
+    },
+    "paid_queue": {
+      "selected_issues": [
+        86,
+        87,
+        88,
+        89,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        99
+      ],
+      "active_at_2026_10_21T2210Z": [
+        86,
+        87,
+        92,
+        93,
+        97,
+        99
+      ],
+      "remaining_waiting_at_2026_10_21T2210Z": [
+        88,
+        89,
+        91,
+        94,
+        95,
+        96
+      ],
+      "cap": "Existing $25/day inference unchanged",
+      "source": "/workspace/work/board-supervisor/session-checkpoint-20261021T2210.json; queue observation 22:10:38Z; no new paid-task admission claimed."
+    },
+    "issue_comments": [
+      {
+        "issue": 83,
+        "comment": 6327668626
+      }
+    ],
+    "source_acceptance_release_acceptance_issue_closure": false,
+    "production_publication": false,
+    "inventory_rows_preserved": 415,
+    "fresh_415_census": false,
+    "open_pr_census": null
+  },
+  "previous_latest_verified_checkpoint_2026_10_21T2255Z": {
+    "recorded_at": "2026-10-21T22:55:41Z",
+    "source": "Named GitHub API reads for PRs #458/#460/#461/#469/#498/#651/#653/#654/#656/#660 and main; exact-head local reviews/evidence; parent checkpoint for #86/#96/#417/#43; current live-state.json. Targeted update only; no fresh all-415 issue or open-PR census.",
+    "main_latest": "b308b568dff23d6b094d73388ba5fe984f18a2c5",
+    "candidate_pipelines_merged_this_stretch": 65,
+    "initial_candidate_pipelines_merged_this_stretch": 25,
+    "registered_schedules": 90,
+    "all_stopped": true,
+    "integrations": [
+      {
+        "pr": 650,
+        "source_issues": [
+          77,
+          78
+        ],
+        "merge": "9d82dc41fc8348899b6ba60e05f3a4c27ceb7b65",
+        "schedules_after_merge": 87,
+        "all_stopped": true
+      },
+      {
+        "pr": 652,
+        "source_issues": [
+          79
+        ],
+        "merge": "1fd59e6926bf0d3866448a2b213da953d6efe571",
+        "source_head": "56d9d8e565c1de257f907e2b20d3a9c8134d739a",
+        "schedules": 88,
+        "all_stopped": true,
+        "independent_review": "PASS",
+        "ci": "build-only success; publish skipped"
+      },
+      {
+        "pr": 655,
+        "source_issues": [
+          83
+        ],
+        "merge": "7f13f32f2ca1dc6ec36e5456a7fa981114f89512",
+        "source_head": "7fad5c5bd4946e09018be2b3d5772d4f8d622fb",
+        "schedules": 89,
+        "all_stopped": true,
+        "independent_review": "PASS",
+        "ci": "build-only success; publish skipped"
+      },
+      {
+        "pr": 656,
+        "source_issues": [
+          80
+        ],
+        "integration_head": "2b40d970d6b7c7ef2ddfac92d8a703d92865d480",
+        "merge": "b308b568dff23d6b094d73388ba5fe984f18a2c5",
+        "schedules": 90,
+        "all_stopped": true,
+        "ci": "build-only success; publish skipped",
+        "source_pr": 469,
+        "source_head": "f22477518032011adfb1b6d2476c77c7ddb4caab"
+      }
+    ],
+    "native_or_followup_work": {
+      "80": "Draft pipeline code integrated through PR #656; original PR #469 remains open. Source, historical mapping, contract, rights and release acceptance remain pending.",
+      "82": "PR #651 at 30df42ff470a74b66df5711aa41cdeb196e8deed integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328387678 records pending source/release decisions.",
+      "84": "PR #654 at a61535f0d49fd6ee735e8f982f02264ac158767d integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328388359 records pending source/release decisions. Review evidence records 16 focused passes and one skipped capture test; full capture proof is separate.",
+      "85": "PR #653 at 8f48db783760440b86f05180409bb9d2d3a3bfd1 integrated through #661 at 89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57; issue comment 6328389019 records pending source/release decisions.",
+      "86": "Real archive retrieval returned 404/403; synthetic-only draft PR #660 is parked for Needs decision.",
+      "96": "Run 39687998869 failed during Initialize containers before checkout/model execution. Local native fix 699aadd1 is in capture preflight; comment 6328304973.",
+      "417": "GHCR image publish is blocked by package write/admin permission; comment 6328264763. This is a package publishing permission blocker, not a dataset test failure.",
+      "43": "PR #43 final targeted security fix is active and not merged; latest observed head 198b313a44c18d3e683b4c53287b3252fa222441.",
+      "integration_661": "PR #661 head b617ce1d9eb1e20e218666fc6279fac3c7ee3434 remains open; build-only SUCCESS, publish SKIPPED; not merged."
+    },
+    "paid_queue": {
+      "selected_issues": [
+        86,
+        87,
+        88,
+        89,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105
+      ],
+      "selection_source": "Existing admission records for the previously selected 12 issues; no new admission in this checkpoint.",
+      "live_state_observed_at": "2026-10-21T22:53:34.945806+00:00",
+      "currently_in_progress_or_queued": [
+        {
+          "run": 39689515400,
+          "issue": 91,
+          "role": "implementation",
+          "status": "queued"
+        },
+        {
+          "run": 39689321852,
+          "issue": 89,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Initialize containers"
+        },
+        {
+          "run": 39689307453,
+          "issue": 93,
+          "role": "review",
+          "status": "in_progress",
+          "step": "Initialize containers"
+        },
+        {
+          "run": 39688403314,
+          "issue": 95,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39688396846,
+          "issue": 94,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39687988814,
+          "issue": 97,
+          "role": "review",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39687095335,
+          "issue": 88,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        },
+        {
+          "run": 39684437877,
+          "issue": 87,
+          "role": "implementation",
+          "status": "in_progress",
+          "step": "Run one authorized dataset task"
+        }
+      ],
+      "selected_runs_completed_success": [
+        {
+          "run": 39683534507,
+          "issue": 86,
+          "role": "implementation"
+        },
+        {
+          "run": 39683583026,
+          "issue": 92,
+          "role": "implementation"
+        },
+        {
+          "run": 39687082723,
+          "issue": 92,
+          "role": "review"
+        },
+        {
+          "run": 39684194497,
+          "issue": 93,
+          "role": "implementation"
+        },
+        {
+          "run": 39684414261,
+          "issue": 97,
+          "role": "implementation"
+        },
+        {
+          "run": 39684424204,
+          "issue": 99,
+          "role": "implementation"
+        }
+      ],
+      "selected_run_failed_before_checkout": {
+        "run": 39687998869,
+        "issue": 96,
+        "role": "implementation",
+        "failed_step": "Initialize containers",
+        "model_or_checkout_started": false
+      },
+      "cap": "Existing $25/day inference cap unchanged; actual spend not claimed.",
+      "previously_selected_issues": [
+        86,
+        87,
+        88,
+        89,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        99
+      ],
+      "new_ready_selection": {
+        "issues": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105
+        ],
+        "manifest": "/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json",
+        "manifest_at": "2026-10-21T22:54:45.723051+00:00",
+        "dispatch_status": "not_yet_observed; latest live-state is 2026-10-21T22:53:34.945806+00:00 and predates manifest"
+      },
+      "source": "Current live-state.json at 22:53:34Z plus existing admission manifests; subsequent Ready selection #100–105 recorded separately from dispatch."
+    },
+    "source_acceptance_release_acceptance_issue_closure": false,
+    "production_publication": false,
+    "inventory_rows_preserved": 415,
+    "unique_inventory_issue_rows": 415,
+    "fresh_415_census": false,
+    "open_pr_census": null,
+    "pending_integrations": [
+      {
+        "pr": 661,
+        "source_issues": [
+          82,
+          84,
+          85
+        ],
+        "head": "b617ce1d9eb1e20e218666fc6279fac3c7ee3434",
+        "state": "open",
+        "merge": null,
+        "checks": [
+          {
+            "name": "build-only",
+            "conclusion": "success"
+          },
+          {
+            "name": "publish",
+            "conclusion": "skipped"
+          }
+        ],
+        "note": "Integration PR is not merged; main remains b308b568dff23d6b094d73388ba5fe984f18a2c5 with 90 STOPPED schedules."
+      }
+    ]
   }
 }

@@ -2,7 +2,38 @@
 
 This ledger tracks all 415 dataset inventory issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. Earlier PR search counts are historical snapshots, not current open-PR counts. Issue #417 remains open; dataset issues remain open despite source PRs auto-merging by ancestry, and no production data was published.
 
-### Latest verified checkpoint — 2026-10-21 22:13 UTC
+### Latest verified checkpoint — 2026-10-21 22:56 UTC
+
+All 415 unique inventory rows are retained. This is a named integration update, not a fresh 415-issue or open-PR census. Main is `89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57` with 93 registered schedules reported STOPPED. PR #661 integrated reviewed source PRs #651/#82, #654/#84 and #653/#85; build-only passed and publish was skipped. Issues #82/#84/#85 remain open pending source and release decisions; integration is code registration only. No production data was published.
+
+| Issue | Integrated source head | Remaining state |
+| --- | --- | --- |
+| #82 | PR #651 `30df42ff470a74b66df5711aa41cdeb196e8deed` | Exact-head cache-fix review PASS and lifecycle/gate evidence retained. Old PR #461 remains open on its prior branch. Issue comment 6328387678 records pending source/baseline/schema/ID/rights/release decisions. |
+| #84 | PR #654 `a61535f0d49fd6ee735e8f982f02264ac158767d` | Exact-head technical review PASS; complete-capture evidence is separate from the focused test run (16 passed, 1 skipped). Old PR #458 remains open on its prior branch. Issue comment 6328388359 records pending source/historical mapping/rights/release decisions. |
+| #85 | PR #653 `8f48db783760440b86f05180409bb9d2d3a3bfd1` | Exact-head technical review PASS; build-only passed and publish was skipped. Old PR #460 remains open on its prior branch. Issue comment 6328389019 records pending source/baseline/rights/release decisions. |
+
+Issue #80 remains integrated through PR #656 at the prior main checkpoint; its original PR #469 and source acceptance remain distinct. Issue #86 remains parked for source archive access and issue #96 remains in local capture preflight after the pre-checkout worker failure. The existing paid-selection record and #100–105 Ready-selection manifest are unchanged; the latter is not claimed as dispatched. Issue #417's GHCR permission blocker and PR #43's targeted security fix remain as recorded above.
+
+No issue closure, source/release acceptance, schedule activation, new paid dispatch, or production publication is claimed.
+
+### Prior verified checkpoint — 2026-10-21 22:53 UTC
+
+All 415 unique inventory rows are retained. This is a named-card and integration update, not a fresh 415-issue or open-PR census. Main is `b308b568dff23d6b094d73388ba5fe984f18a2c5`; 90 registered schedules are reported STOPPED. PR #656 integrated issue #80's draft pipeline and merged as that main commit. Build-only passed and publish was skipped. No production data was published.
+
+| Issue | Current pipeline state | Remaining state |
+| --- | --- | --- |
+| #80 | PR #656 integration merged from `2b40d970d6b7c7ef2ddfac92d8a703d92865d480`; original draft PR #469 remains open at `f22477518032011adfb1b6d2476c77c7ddb4caab`. | Source, historical mapping, ID/schema, rights, contract and release acceptance remain pending. |
+| #82 | Draft PR #651 head `30df42ff470a74b66df5711aa41cdeb196e8deed`; exact-head cache-fix review PASS. Retained registered source/catalog/post-catalog replay and refusal gates are complete. | Integration worker is preparing #82/#84/#85. PR #651 currently reports no CI checks; older PR #461 remains open. |
+| #84 | Draft PR #654 head `a61535f0d49fd6ee735e8f982f02264ac158767d`; exact-head technical review PASS. | Integration worker is preparing #82/#84/#85. The PR body still needs the focused-test wording correction: 16 passed, 1 skipped; full-capture evidence is from the retained registered lifecycle. |
+| #85 | Draft PR #653 head `8f48db783760440b86f05180409bb9d2d3a3bfd1`; exact-head review PASS, build-only SUCCESS and publish SKIPPED. | Integration worker is preparing #82/#84/#85. Historical mapping, source, rights, contract and release remain unaccepted. |
+| #86 | Draft PR #660 head `697265b715dcda2c86051bff5dbef886318c1a56`; build-only SUCCESS, publish SKIPPED. | Real archive requests returned 404/403. Synthetic-only preservation draft is parked for Needs decision; no real archive capture or source acceptance is claimed. |
+| #96 | Existing PR #498 remains at `15497fd6ca90aa25fd7bc4a29d621bb291d9fe46`. | Paid run 39687998869 failed at Initialize containers before checkout or model execution. Local fix `699aadd1e43e522370b318fe84f029bc2ead2072` is in capture preflight; issue comment 6328304973. |
+
+Twelve paid issues had already been selected (#86–#99 as recorded in the checkpoint JSON); a new six-card Ready-selection manifest for #100–#105 is now present at `/workspace/work/board-supervisor/paid-admissions-100-105-20261021.json`. Issue #100 resumes PR #503 at exact head `269449f842e4777add5787df2b2ba43651e9bf3ed` for a very large 5.45-million-row nonspatial table with bounded-streaming capture preflight; #101–#105 are new selections. The latest live-state snapshot at 22:53:34 UTC predates that manifest, so these six are recorded as selected, not dispatched. At that snapshot eight jobs were queued/in progress: implementation #87/#88/#89/#94/#95, review #93/#97, and queued implementation #91. Earlier successful runs are retained separately; #96 failed before checkout/model. The existing $25/day inference cap is unchanged; actual spend is unknown.
+
+Issue #417 has a repository-level GHCR package write/admin blocker (comment 6328264763). It blocks image publication and does not indicate a dataset test failure. Integration PR #661 for #82/#84/#85 is open at `b617ce1d9eb1e20e218666fc6279fac3c7ee3434`; build-only passed and publish was skipped, but it is not merged. Infrastructure PR #43's final targeted security fix is active at `198b313a44c18d3e683b4c53287b3252fa222441` and is not merged. No issue closure, source/release acceptance, schedule activation, or production publication is claimed.
+
+### Prior verified checkpoint — 2026-10-21 22:13 UTC
 
 All 415 inventory rows are preserved. This is a targeted update, not a fresh 415-issue or open-PR census. Named main `f046f09b0ed5bfdd09cd268c1d5b9b26189b8f22` has 89 registered schedules, all STOPPED, and 64 candidate pipelines merged this stretch (25 at its start). These are code registration facts, not live scheduler state, source acceptance, release capacity or publication.
 
