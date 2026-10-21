@@ -250,6 +250,11 @@ from dagster_hifld.assets.epa_rmp_facilities import (
     epa_rmp_facilities_draft_job,
     epa_rmp_facilities_draft_schedule,
 )
+from dagster_hifld.assets.epa_rcra_tsd import (
+    epa_rcra_tsd_complete,
+    epa_rcra_tsd_draft_job,
+    epa_rcra_tsd_draft_schedule,
+)
 
 from dagster_hifld.assets.epa_frs_sic_powerplants import (
     epa_frs_sic_complete,
@@ -465,6 +470,16 @@ from dagster_hifld.assets.epa_facilities_labels import (
     epa_facilities_labels_full_quality,
     epa_facilities_labels_draft_job,
     epa_facilities_labels_draft_schedule,
+)
+from dagster_hifld.assets.epa_frs_tri import (
+    epa_frs_toxic_release_inventory_complete,
+    epa_frs_tri_draft_job,
+    epa_frs_tri_draft_schedule,
+)
+from dagster_hifld.assets.epa_tsca import (
+    epa_frs_tsca_complete,
+    epa_tsca_draft_job,
+    epa_tsca_draft_schedule,
 )
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
@@ -898,6 +913,7 @@ defs = Definitions(
         epa_emergency_response_rmp_facilities_complete,
         epa_frs_sic_complete,
         epa_frs_sic_published_membership_compatible,
+        epa_rcra_tsd_complete,
         docks_source_population_complete,
         docks_source_geometry_quality,
         docks_release_acceptance_pending,
@@ -908,6 +924,8 @@ defs = Definitions(
         epa_facilities_labels_full_quality,
         epa_eez_full_quality,
         epa_regions_with_eez_full_quality,
+        epa_frs_toxic_release_inventory_complete,
+        epa_frs_tsca_complete,
     ],
     jobs=[
         elsd_source_integrity_job,
@@ -981,12 +999,15 @@ defs = Definitions(
         usace_data_coverage_areas_draft_job,
         epa_rmp_facilities_draft_job,
         epa_frs_sic_draft_job,
+        epa_rcra_tsd_draft_job,
         docks_draft_job,
         electric_retail_service_territories_preservation_job,
         epa_facilities_draft_job,
         epa_facilities_labels_draft_job,
         epa_eez_draft_job,
         epa_regions_with_eez_draft_job,
+        epa_frs_tri_draft_job,
+        epa_tsca_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
@@ -1066,11 +1087,14 @@ defs = Definitions(
         usace_data_coverage_areas_draft_schedule,
         epa_rmp_facilities_draft_schedule,
         epa_frs_sic_draft_schedule,
+        epa_rcra_tsd_draft_schedule,
         docks_draft_schedule,
         epa_facilities_draft_schedule,
         epa_facilities_labels_draft_schedule,
         epa_eez_draft_schedule,
         epa_regions_with_eez_draft_schedule,
+        epa_frs_tri_draft_schedule,
+        epa_tsca_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

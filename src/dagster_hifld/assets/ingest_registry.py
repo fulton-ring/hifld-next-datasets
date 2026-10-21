@@ -82,10 +82,13 @@ from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
+from dagster_hifld.assets.epa_rcra_tsd import epa_rcra_treatment_storage_and_disposal_facilities
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.epa_facilities import epa_facilities
 from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
+from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
+from dagster_hifld.assets.epa_tsca import epa_frs_toxic_substances_control_act_tsca
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 from dagster_hifld.assets.epa_eez import epa_eez
@@ -174,6 +177,9 @@ hifld_ingest_assets = [
     electric_retail_service_territories_preservation_candidate,
     epa_emergency_response_rmp_facilities,
     epa_frs_sic_powerplants,
+    epa_rcra_treatment_storage_and_disposal_facilities,
     epa_facilities,
     epa_facilities_labels,
+    epa_frs_toxic_release_inventory,
+    epa_frs_toxic_substances_control_act_tsca,
 ]
