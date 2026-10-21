@@ -7,7 +7,7 @@ import math
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import pyarrow as pa
@@ -285,14 +285,27 @@ def capture(staging, version, client=None, replay_version=None):
         ids_sha = _sha(_canonical(ids)); schema_sha = _sha(_canonical([(f["name"], f["type"]) for f in fields]))
         source_record_sha = _sha(_canonical([f["attributes"] for f in features]))
         identity = processing_identity(Path(__file__).parents[3])
-        source_item = "23d91bd988ac4fc9943128965bddfa37"
+        input_names = ["layer", "count_before", "ids_before", *[f"page_{page['offset']:07d}" for page in pages], "count_after", "ids_after"]
+        inputs = []
+        for input_name in input_names:
+            receipt = json.loads(staging.read_key(f"{DATASET_SLUG}/{FILE_SLUG}/{version}/raw/{input_name}.receipt.json"))
+            retrieval_url = receipt["url"]
+            inputs.append({"input_id":f"arcgis-layer-response:{input_name}",
+                "producer":"U.S. Army Corps of Engineers (service copyright; BTS/NTAD distribution)",
+                "host":urlsplit(retrieval_url).hostname,"role":"producer_publication",
+                "canonical_url":LAYER_URL,"retrieval_url":retrieval_url,"observed_final_url":receipt.get("final_url"),
+                "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],
+                "bytes":receipt["bytes"],"sha256":receipt["sha256"],
+                "request_body_bytes":receipt.get("request_body_bytes",0),"request_body_sha256":receipt.get("request_body_sha256"),
+                "license":"Public domain per official Docks Data Management Plan (DOI 10.21949/1519374); rights acceptance pending.",
+                "attribution":"USACE-copyrighted Navigation Facilities (Dock) ArcGIS service; BTS/NTAD distribution. Attribution/source acceptance remains pending."})
         manifest = {"schema_version":1,"approved":False,"title":"Navigation Facilities (Dock) — current USACE/BTS ArcGIS layer",
             "description":"Current candidate from the USACE-copyrighted Navigation Facilities (Dock) layer distributed through BTS/NTAD. This is a changed-source candidate; historical HIFLD Docks equivalence, national coverage semantics, source acceptance, rights acceptance, and release approval remain pending.",
             "publisher":"USACE source represented by BTS/NTAD catalog; ArcGIS service copyright USACE","agency":"U.S. Army Corps of Engineers",
             "source_url":LAYER_URL,"source_modified":_source_modified_date(layer.get("editingInfo",{}).get("dataLastEditDate")),
             "license":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
             "code_identity_scheme":identity.get("code_identity_scheme"),"processing_code":identity,
-            "inputs":[{"input_id":source_item,"source_url":LAYER_URL,"publisher":"USACE-copyrighted ArcGIS service; BTS/NTAD catalog distribution","sha256":None,"observed_feature_count":len(features)}],
+            "inputs":inputs,
             "transformations":[{"operation":"Esri FeatureServer complete ID roster to typed GeoJSON and native GeoParquet candidate","parameters":{"source_fields":"all 47 declared nongeometry fields retained in source order and source values","geometry":"point XY retained in EPSG:4269; WKB encoded without reprojection","source_population":"all exact ObjectIDs returned by before/after roster snapshots","acceptance":"draft only; historical HIFLD equivalence not asserted"}}],
             "source_coverage_scope":"All 20,563 feature IDs observed in the Navigation Facilities (Dock) ArcGIS layer at capture time; geographic and historical HIFLD scope equivalence unapproved.",
             "source_acceptance":False,"rights_accepted":False,"coverage_accepted":False,"baseline":None,
