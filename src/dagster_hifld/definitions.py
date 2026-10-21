@@ -63,6 +63,11 @@ from dagster_hifld.assets.unified_school_districts import (
     unified_school_districts_draft_refresh_job,
     unified_school_districts_draft_refresh_schedule,
 )
+from dagster_hifld.assets.puerto_rico_subbarrios import (
+    puerto_rico_subbarrios_draft_job,
+    puerto_rico_subbarrios_draft_schedule,
+    puerto_rico_subbarrios_source_complete,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -461,6 +466,7 @@ defs = Definitions(
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
+        puerto_rico_subbarrios_source_complete,
     ],
     jobs=[
         quaternary_fault_lines_draft_job,
@@ -474,6 +480,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
+        puerto_rico_subbarrios_draft_job,
     ],
     schedules=[
         quaternary_fault_lines_draft_schedule,
@@ -487,6 +494,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         unified_school_districts_draft_refresh_schedule,
+        puerto_rico_subbarrios_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
