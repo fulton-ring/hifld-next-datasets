@@ -76,6 +76,11 @@ from dagster_hifld.assets.unified_school_districts import (
     unified_school_districts_draft_refresh_job,
     unified_school_districts_draft_refresh_schedule,
 )
+from dagster_hifld.assets.puerto_rico_subbarrios import (
+    puerto_rico_subbarrios_draft_job,
+    puerto_rico_subbarrios_draft_schedule,
+    puerto_rico_subbarrios_source_complete,
+)
 from dagster_hifld.assets.census_primary_roads import (
     census_primary_roads_source_complete,
     census_primary_roads_draft_schedule,
@@ -479,6 +484,7 @@ defs = Definitions(
         usace_pylon_areas_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
+        puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
@@ -495,6 +501,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
+        puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
     ],
     schedules=[
@@ -512,6 +519,7 @@ defs = Definitions(
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
+        puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
     ],
     sensors=_configured_sensors(),
