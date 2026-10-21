@@ -466,6 +466,11 @@ from dagster_hifld.assets.epa_facilities_labels import (
     epa_facilities_labels_draft_job,
     epa_facilities_labels_draft_schedule,
 )
+from dagster_hifld.assets.epa_frs_tri import (
+    epa_frs_toxic_release_inventory_complete,
+    epa_frs_tri_draft_job,
+    epa_frs_tri_draft_schedule,
+)
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -908,6 +913,7 @@ defs = Definitions(
         epa_facilities_labels_full_quality,
         epa_eez_full_quality,
         epa_regions_with_eez_full_quality,
+        epa_frs_toxic_release_inventory_complete,
     ],
     jobs=[
         elsd_source_integrity_job,
@@ -987,6 +993,7 @@ defs = Definitions(
         epa_facilities_labels_draft_job,
         epa_eez_draft_job,
         epa_regions_with_eez_draft_job,
+        epa_frs_tri_draft_job,
     ],
     schedules=[
         elsd_source_integrity_schedule,
@@ -1071,6 +1078,7 @@ defs = Definitions(
         epa_facilities_labels_draft_schedule,
         epa_eez_draft_schedule,
         epa_regions_with_eez_draft_schedule,
+        epa_frs_tri_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

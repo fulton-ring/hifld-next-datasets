@@ -86,6 +86,7 @@ from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.epa_facilities import epa_facilities
 from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
+from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 from dagster_hifld.assets.epa_eez import epa_eez
@@ -176,4 +177,5 @@ hifld_ingest_assets = [
     epa_frs_sic_powerplants,
     epa_facilities,
     epa_facilities_labels,
+    epa_frs_toxic_release_inventory,
 ]
