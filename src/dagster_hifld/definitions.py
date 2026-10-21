@@ -492,6 +492,11 @@ from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_draft_schedule,
     ferrous_metal_processing_plants_population_complete,
 )
+from dagster_hifld.assets.ferrous_metal_mines import (
+    ferrous_metal_mines_draft_job,
+    ferrous_metal_mines_draft_schedule,
+    ferrous_metal_mines_population_complete,
+)
 
 from dagster_hifld.assets.docks import (
     docks_draft_job,
@@ -950,6 +955,7 @@ defs = Definitions(
         usace_crane_locations_quality,
         usace_crane_locations_release,
         ferrous_metal_processing_plants_population_complete,
+        ferrous_metal_mines_population_complete,
         usace_data_coverage_areas_complete,
         epa_emergency_response_rmp_facilities_complete,
         epa_frs_sic_complete,
@@ -1046,6 +1052,7 @@ defs = Definitions(
         county_subdivisions_draft_refresh_job,
         usace_crane_locations_draft_job,
         ferrous_metal_processing_plants_draft_job,
+        ferrous_metal_mines_draft_job,
         crushed_stone_preservation_job,
         usace_data_coverage_areas_draft_job,
         epa_rmp_facilities_draft_job,
@@ -1143,6 +1150,7 @@ defs = Definitions(
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
         ferrous_metal_processing_plants_draft_schedule,
+        ferrous_metal_mines_draft_schedule,
         crushed_stone_preservation_schedule,
         electric_retail_service_territories_preservation_schedule,
         usace_data_coverage_areas_draft_schedule,

@@ -89,6 +89,7 @@ from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ien
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
+from dagster_hifld.assets.ferrous_metal_mines import ferrous_metal_mines_candidate
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
@@ -195,6 +196,7 @@ hifld_ingest_assets = [
     census_county_subdivisions,
     usace_crane_locations_ienc,
     ferrous_metal_processing_plants_usgs,
+    ferrous_metal_mines_candidate,
     courthouses_usgs,
     usace_data_coverage_areas_usace_ienc,
     docks_usace_bts,
