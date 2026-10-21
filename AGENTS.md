@@ -147,6 +147,26 @@ worker issue/PR token and out of model environments. Enable dispatch only after
 the private workflow protocol and token are configured; the default is disabled.
 Manual runs default to dry-run and cannot dispatch or mutate cards in that mode.
 
+Automatic fix/review cycles stop after two completed independent review jobs per
+issue. Further automatic admissions request Needs decision for supervisor
+resolution or a deliberate, guarded manual attempt; no automatic retry loop is
+started. Review once with focused checks. Follow-up reviews prioritize prior
+findings and changed code. Block on material correctness, security, data fidelity
+or runnable-pipeline defects; note cosmetic preferences, optional refactors and
+unrelated inherited failures without another implementation cycle. Repeat checks
+only when relevant code/inputs change; run the full suite at most once when scope
+warrants it. Pending release acceptance remains distinct from draft code quality.
+
+Keep dataset PRs small: reuse existing assets/helpers and consolidate source
+evidence, proposed contracts and documentation. Add a file only for necessary
+runtime code, a meaningful regression, or essential provenance. Prefer updating
+existing documentation/manifest or the PR body over creating redundant source
+reports, runners, fixtures, logs or snapshots. Do not demand a particular research
+filename if equivalent evidence is already recorded; machine-readable runtime
+provenance and release gates remain required. The private runner's implementation
+result protocol supersedes generic model-authored completion labels: trusted
+control validates a clean checkout and pushed new PR head before posting status.
+
 Reviewers run read-only. A separate trusted workflow step posts the exact-head
 report and requests Ready for finite code changes, preserving pending acceptance
 gates, or Needs decision for human blockers and completed review/merge handoff.

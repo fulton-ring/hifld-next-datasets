@@ -179,6 +179,18 @@ def dispatch_cards(board, api, dry_run=False, now=None):
         except Exception as error:
             print(f"Hold #{card['number']}: {type(error).__name__}; supervisor action required.")
             continue
+        reviews = sum(bool(m and m[1] == 'review' and m[2] == task['issue']
+                           and r['status'] == 'completed' and r.get('conclusion') == 'success')
+                      for m, r in zip(seen, runs))
+        if reviews >= 2:
+            print(f"Hold #{card['number']}: two independent reviews completed; supervisor decision required.")
+            if not dry_run:
+                api('repo', f"repos/{REPO}/issues/{task['issue']}/comments", {
+                    'body': 'Automatic fix/review cycle paused after two completed independent reviews. '
+                            'A supervisor must resolve or defer remaining material findings before '
+                            'deliberately authorizing more work. No acceptance or merge is implied.'})
+                api('repo', f"repos/{REPO}/issues/{task['issue']}/labels", {'labels': ['move:needs-decision']})
+            continue
         title = f"{task['role']} issue #{task['issue']} @ {task['dispatch_head_sha']}"
         if dry_run:
             run_id = -len(selected) - 1
