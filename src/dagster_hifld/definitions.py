@@ -44,6 +44,10 @@ from dagster_hifld.assets.secondary_school_districts import (
     secondary_school_districts_draft_refresh_job,
     secondary_school_districts_draft_refresh_schedule,
 )
+from dagster_hifld.assets.unified_school_districts import (
+    unified_school_districts_draft_refresh_job,
+    unified_school_districts_draft_refresh_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -450,6 +454,7 @@ defs = Definitions(
         pylon_locations_draft_refresh_job,
         fuel_stations_draft_refresh_job,
         secondary_school_districts_draft_refresh_job,
+        unified_school_districts_draft_refresh_job,
     ],
     schedules=[
         usace_pylon_areas_draft_schedule,
@@ -459,6 +464,7 @@ defs = Definitions(
         pylon_locations_draft_refresh_schedule,
         fuel_stations_draft_refresh_schedule,
         secondary_school_districts_draft_refresh_schedule,
+        unified_school_districts_draft_refresh_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
