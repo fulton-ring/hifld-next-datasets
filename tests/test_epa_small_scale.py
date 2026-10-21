@@ -108,9 +108,18 @@ class SmallScaleTests(unittest.TestCase):
                     manifest=f.manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':f.sha256_file(path)})
                     for name,body in f.source_payloads(captures,identity,audit,manifest).items():f.write_private(root,name,body)
                     ready={'approved':False,'version':version,'processing_fingerprint':f.digest(f.encode(identity)),'objects':{str(p.relative_to(root)):f.sha256_file(p)for p in root.rglob('*')if p.is_file()}};f.write_private(root,f.READY,f.encode(ready));storage=StagingStorageResource(local_dir=d)
-                    canonical=f.encode(manifest);f.write_private(root,'metadata/source/source_manifest.json',canonical)
+                    canonical=f.encode(manifest);f.write_private(root,'metadata/source/source_manifest.json',canonical);f.write_private(root,'metadata/source/version_'+f.digest(canonical)+'_source_manifest.json',canonical)
                     projected=f.provenance_projection(f.load_resolved_source_manifest(storage,f.SLUG,f.SLUG,version).metadata);f.write_private(root,'metadata/resolved_provenance.json',f.encode(projected))
+                    from dagster_hifld.catalog import summarize_staged_catalog
+                    resolved=f.load_resolved_source_manifest(storage,f.SLUG,f.SLUG,version)
+                    summary=summarize_staged_catalog(storage,f.SLUG,f.SLUG,version,f.SLUG,source_metadata=resolved.metadata)
+                    quality='metadata/quality_manifest.json';dictionary='metadata/data_dictionary.json'
+                    f.write_private(root,quality,f.encode(summary.quality_manifest));f.write_private(root,dictionary,f.encode(summary.data_dictionary))
                     f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                    for name in(quality,dictionary):
+                        original=(root/name).read_bytes();forged=json.loads(original);forged['tampered_for_regression']=True;f.write_private(root,name,f.encode(forged))
+                        with self.assertRaisesRegex(ValueError,'cached_catalog_metadata_mismatch'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+                        f.write_private(root,name,original)
                     for name in['metadata/source/source_manifest.json','metadata/resolved_provenance.json']:
                         original=(root/name).read_bytes();f.write_private(root,name,b'{"approved":true,"code_commit":"FORGED_SOURCE_WRAPPER"}\n')
                         with self.assertRaisesRegex(ValueError,'cached_source_snapshot_drift|cached_resolved_provenance_drift'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)

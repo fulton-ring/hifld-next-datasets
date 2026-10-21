@@ -24,6 +24,7 @@ import pyogrio
 import pyproj
 import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
@@ -31,6 +32,7 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import STAGED_RELEASE_DERIVATIVE_NAMES, validate_staged_release_derivatives
 from dagster_hifld.validation import sha256_file
 
 SLUG='epa-regions-small-scale-15000001'
@@ -291,11 +293,33 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
     if not(names|{READY}).issubset(roster):raise EpaSmallScaleQuarantineError('missing_candidate_object')
     if not cached and roster!=names|{READY}:raise EpaSmallScaleQuarantineError('private_candidate_roster_drift')
     if cached:
-        allowed={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json','metadata/source/source_manifest.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'}
+        snapshots={'metadata/source/source_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'}
+        release={str(name) for name in STAGED_RELEASE_DERIVATIVE_NAMES}
+        allowed={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json','metadata/source/data_dictionary.json','metadata/source/quality_manifest.json'}|snapshots|release
         if roster-(names|{READY}|allowed):raise EpaSmallScaleQuarantineError('unknown_cached_object')
-        for name in roster-(names|{READY}):strict_json(candidate_bytes(root,name))
-        for name in('metadata/source/source_manifest.json','metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'):
+        extras=roster-(names|{READY})
+        for name in extras:
+            if name not in release:strict_json(candidate_bytes(root,name))
+        found_snapshots=extras&snapshots
+        if found_snapshots and found_snapshots!=snapshots:raise EpaSmallScaleQuarantineError('cached_source_snapshot_incomplete')
+        for name in snapshots:
             if name in roster and candidate_bytes(root,name)!=encode(manifest):raise EpaSmallScaleQuarantineError('cached_source_snapshot_drift')
+        prefix=f'{SLUG}/{SLUG}/{version}'
+        validate_staged_release_derivatives(storage,prefix,{prefix+'/'+name for name in roster})
+        flat={'metadata/quality_manifest.json','metadata/data_dictionary.json'}
+        source_flat={'metadata/source/quality_manifest.json','metadata/source/data_dictionary.json'}
+        found_flat=extras&flat;found_source_flat=extras&source_flat
+        catalog_derivatives=found_flat|found_source_flat|({'metadata/resolved_provenance.json'}&extras)
+        if catalog_derivatives and found_flat!=flat:raise EpaSmallScaleQuarantineError('cached_catalog_metadata_incomplete')
+        if found_source_flat and found_source_flat!=source_flat:raise EpaSmallScaleQuarantineError('cached_catalog_source_snapshot_incomplete')
+        if found_flat:
+            if storage is None:raise EpaSmallScaleQuarantineError('cached_catalog_requires_explicit_storage_context')
+            resolved=load_resolved_source_manifest(storage,SLUG,SLUG,version)
+            summary=summarize_staged_catalog(storage,SLUG,SLUG,version,SLUG,source_metadata=resolved.metadata)
+            for name,expected_value in (('metadata/quality_manifest.json',summary.quality_manifest),('metadata/data_dictionary.json',summary.data_dictionary)):
+                if strict_json(candidate_bytes(root,name))!=expected_value:raise EpaSmallScaleQuarantineError('cached_catalog_metadata_mismatch:'+name)
+            for name,flat_name in (('metadata/source/quality_manifest.json','metadata/quality_manifest.json'),('metadata/source/data_dictionary.json','metadata/data_dictionary.json')):
+                if name in extras and candidate_bytes(root,name)!=candidate_bytes(root,flat_name):raise EpaSmallScaleQuarantineError('cached_catalog_source_snapshot_changed:'+name)
         if 'metadata/resolved_provenance.json'in roster:
             if storage is None:raise EpaSmallScaleQuarantineError('resolved_provenance_requires_explicit_storage_context')
             projected=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata)
