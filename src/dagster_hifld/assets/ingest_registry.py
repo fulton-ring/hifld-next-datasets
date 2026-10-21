@@ -61,6 +61,10 @@ from dagster_hifld.assets.census_designated_places import census_designated_plac
 from dagster_hifld.assets.colleges_universities import nces_colleges_universities
 from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
 from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
+from dagster_hifld.assets.usace_conveyor_areas import usace_conveyor_areas_usace_ienc
+from dagster_hifld.assets.construction_minerals import construction_minerals_preservation_candidate
+from dagster_hifld.assets.census_county_subdivisions import census_county_subdivisions
+from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 
 hifld_ingest_assets = [
     nces_colleges_universities,
@@ -118,4 +122,8 @@ hifld_ingest_assets = [
     ornl_campus_historical_preservation,
     census_combined_statistical_areas,
     census_consolidated_cities,
+    usace_conveyor_areas_usace_ienc,
+    construction_minerals_preservation_candidate,
+    census_county_subdivisions,
+    usace_crane_locations_ienc,
 ]
