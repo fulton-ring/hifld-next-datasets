@@ -91,26 +91,50 @@ def cards(api):
     raise ValueError('Project exceeds audit bound')
 
 
-def pull_requests(issue, api):
-    numbers = set()
-    for page in range(1, 11):
-        events = api('repo', f'repos/{REPO}/issues/{issue}/timeline?per_page=100&page={page}')
-        for event in events:
-            url = event.get('source', {}).get('issue', {}).get('pull_request', {}).get('url', '')
-            match = re.fullmatch(r'https://api.github.com/repos/' + re.escape(REPO) + r'/pulls/([1-9][0-9]*)', url)
-            if event.get('event') == 'cross-referenced' and match:
-                numbers.add(int(match[1]))
-        if len(events) < 100:
-            break
-    else:
-        raise ValueError('Issue timeline exceeds audit bound')
+def pages(api, path):
     result = []
+    for page in range(1, 11):
+        batch = api('repo', f'{path}?per_page=100&page={page}')
+        result.extend(batch)
+        if len(batch) < 100:
+            return result
+    raise ValueError('Issue history exceeds audit bound')
+
+
+def pull_requests(issue, api):
+    # A public mention is not ownership. Only a writer's explicit association
+    # selects a PR; workers record it in a trusted post-step after saving work.
+    selected, permissions = None, {}
+    marker = re.compile(r'<!-- hifld-agent-pr:v1 issue=' + str(issue) + r' pr=([1-9][0-9]*) -->')
+    for comment in pages(api, f'repos/{REPO}/issues/{issue}/comments'):
+        match = marker.search(comment.get('body') or '')
+        login = (comment.get('user') or {}).get('login')
+        if not match or not login:
+            continue
+        if login not in permissions:
+            permissions[login] = api('repo', f'repos/{REPO}/collaborators/{urllib.parse.quote(login, safe="")}/permission')['permission']
+        if permissions[login] in ('write', 'admin'):
+            selected = int(match[1])
+    if selected is not None:
+        pr = api('repo', f'repos/{REPO}/pulls/{selected}')
+        if (pr['state'] != 'open' or not pr['head'].get('repo') or pr['head']['repo']['full_name'] != REPO
+                or pr['base']['repo']['full_name'] != REPO):
+            raise ValueError('Selected PR is closed or outside this repository')
+        return [pr]
+    # Existing unassociated PRs need supervisor reconciliation; do not create a
+    # duplicate pipeline merely because the older handoff lacks the new marker.
+    numbers = set()
+    for event in pages(api, f'repos/{REPO}/issues/{issue}/timeline'):
+        url = event.get('source', {}).get('issue', {}).get('pull_request', {}).get('url', '')
+        match = re.fullmatch(r'https://api.github.com/repos/' + re.escape(REPO) + r'/pulls/([1-9][0-9]*)', url)
+        if event.get('event') == 'cross-referenced' and match:
+            numbers.add(int(match[1]))
     for number in sorted(numbers):
         pr = api('repo', f'repos/{REPO}/pulls/{number}')
         if (pr['state'] == 'open' and pr['head'].get('repo')
                 and pr['head']['repo']['full_name'] == REPO and pr['base']['repo']['full_name'] == REPO):
-            result.append(pr)
-    return result
+            raise ValueError('Existing PR needs an explicit supervisor association')
+    return []
 
 
 def task_for(card, api):
@@ -133,9 +157,16 @@ def task_for(card, api):
 def dispatch_cards(board, api, dry_run=False, now=None):
     current_time = time.time if now is None else lambda: now
     selected, reservations = [], []
-    board = sorted((c for c in board if c['status'] in ('Ready', 'Review')),
-                   key=lambda c: (c['status'] != 'Review', c['number']))
-    for card in board[:20]:
+    # Rotate bounded windows independently: stale reviews cannot starve Ready,
+    # and an attempted prefix cannot permanently hide later cards. No stored
+    # cursor, issue churn or extra private polling workflow is needed.
+    window = []
+    for lane in ('Review', 'Ready'):
+        group = sorted((c for c in board if c['status'] == lane), key=lambda c: c['number'])
+        if group:
+            start = (int(current_time()) // 300 * 10) % len(group)
+            window += (group[start:] + group[:start])[:10]
+    for card in window:
         runs = ledger(api)
         known = {r['id'] for r in runs}
         runs += [r for r in reservations if r['id'] not in known]

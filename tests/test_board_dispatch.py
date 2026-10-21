@@ -2,6 +2,7 @@ import importlib.util
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
+import re
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
@@ -40,6 +41,11 @@ class FakeAPI:
         if kind == 'control' and path.endswith('/dispatches'):
             self.posts.append(data)
             return {'workflow_run_id': 100 + len(self.posts), 'html_url': 'https://github.com/fulton-ring/hifld-next-iac/actions/runs/100'}
+        if '/comments?' in path:
+            number = int(re.search(r'/issues/(\d+)/comments', path)[1])
+            return ([{'body': f'<!-- hifld-agent-pr:v1 issue={number} pr=548 -->', 'user': {'login': 'maintainer'}}] if self.pr else [])
+        if '/collaborators/' in path:
+            return {'permission': 'write'}
         if '/timeline?' in path:
             return ([{'event': 'cross-referenced', 'source': {'issue': {
                 'pull_request': {'url': f'https://api.github.com/repos/{dispatch.REPO}/pulls/548'}}}}] if self.pr else [])
@@ -180,6 +186,33 @@ class BoardDispatchTests(unittest.TestCase):
             return {'data': {'node': {'items': {'pageInfo': {'hasNextPage': False}, 'nodes': [
                 item(282), item(417, body='Shared acceptance gate'), item(3, state='CLOSED'), item(4, repo='stranger/fork')]}}}}
         self.assertEqual([c['number'] for c in dispatch.cards(api)], [282])
+
+    def test_public_mention_is_not_a_trusted_pr_association(self):
+        class MentionAPI(FakeAPI):
+            def __call__(self, kind, path, data=None):
+                result = super().__call__(kind, path, data)
+                if '/collaborators/' in path:
+                    return {'permission': 'read'}
+                return result
+        api = MentionAPI()
+        self.assertEqual(dispatch.dispatch_cards([card()], api, now=NOW), [])
+        api.current_status = 'Ready'
+        self.assertEqual(dispatch.dispatch_cards([card(status='Ready')], api, now=NOW), [])
+        self.assertEqual(api.posts, [])
+
+    def test_completed_review_prefix_cannot_starve_ready_or_later_review(self):
+        old = [run(n, issue=n) for n in range(1, 21)]
+        for prior in old:
+            prior['updated_at'] = '2026-10-19T00:00:00Z'
+        api = FakeAPI(old)
+        api.current_status = 'Ready'
+        selected = dispatch.dispatch_cards([card(n) for n in range(1, 21)] + [card(21, 'Ready')], api, now=NOW)
+        self.assertEqual([x['issue'] for x in selected], ['21'])
+        outcomes = []
+        for hop in range(3):
+            api = FakeAPI(old)
+            outcomes += dispatch.dispatch_cards([card(n) for n in range(1, 22)], api, now=NOW + hop * 300)
+        self.assertIn('21', [x['issue'] for x in outcomes])
 
 
 if __name__ == '__main__':
