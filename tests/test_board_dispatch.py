@@ -132,6 +132,17 @@ class BoardDispatchTests(unittest.TestCase):
         self.assertEqual(sum(t['role'] == 'implementation' for t in selected), 6)
         self.assertEqual(len(api.posts), 8)
 
+    def test_acknowledged_reservations_survive_placeholder_run_titles(self):
+        class PlaceholderAPI(FakeAPI):
+            def __call__(self, kind, path, data=None):
+                result = super().__call__(kind, path, data)
+                if kind == 'control' and path.endswith('/dispatches'):
+                    self.runs.append(dict(id=result['workflow_run_id'], display_title='GKE agent pilot', status='queued'))
+                return result
+        api = PlaceholderAPI()
+        selected = dispatch.dispatch_cards([card(n) for n in range(1, 4)], api, now=NOW)
+        self.assertEqual(len(selected), 2)
+
     def test_lane_change_before_dispatch_and_dry_run_never_post(self):
         api = FakeAPI()
         api.current_status = 'Needs decision'
