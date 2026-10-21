@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "classification": "Isolated draft source/catalog/gate verification. No release, baseline, contract, or historical equivalence acceptance.",
-  "code_commit": "6690cd9931f777c24af263fb949d95c2da2434c0",
+  "code_commit": "91c47f859f01f25606ec27a3a232863383324be7",
   "code_tree": "record with commit 6690cd9; source implementation first committed b9287f1",
   "runtime": {
     "git_metadata_present": false,
     "git_executable_available": false,
     "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
-    "code_commit": "packaged-sha256:18d747ce37650a7d64a9cbc4e38f2a253bcba7be5f19fd5eeb2a47aa11d3b8c7",
+    "code_commit": "packaged-sha256:417e1a813b6e4557e9f4092a10a4ce4e55635c6e253c9428d28e77975c219030",
     "working_tree_status": "unknown",
     "python": "3.12.14",
     "pyarrow": "23.0.1",
@@ -24,8 +24,8 @@
     "decoded_sha256": "9dc51ecd5cdf6e38bdb679f7ac95e2bf73ee3fb48718b8612cf830800cffb288",
     "wire_bytes": 30448565,
     "wire_sha256": "9dc51ecd5cdf6e38bdb679f7ac95e2bf73ee3fb48718b8612cf830800cffb288",
-    "candidate_version": "v714b382dcc99240dff8ef1e034cb068e",
-    "candidate_prefix": "public-schools/public-schools/v714b382dcc99240dff8ef1e034cb068e",
+    "candidate_version": "vf251ad8608c35c414c908e81d45fadfb",
+    "candidate_prefix": "public-schools/public-schools/vf251ad8608c35c414c908e81d45fadfb",
     "feature_count": 102178,
     "identifier": "NCESSCH; 102178 unique sorted 12-character strings; canonical JSON SHA-256 2fa37754051a457c280f089eba68d6b42b54dd680780e00f6d56bd103e6c02a3",
     "geometry": "102178 valid 2D Point geometries, EPSG:4326; source X/Y and LAT/LON agree within 1e-12 degrees",
@@ -37,18 +37,18 @@
   },
   "dagster_runs": {
     "source": {
-      "run_id": "1eb74585-6386-4545-88ca-616e26c0fd0f",
+      "run_id": "1099b9f3-6dc0-4edd-9f81-75b50dbbd0aa",
       "success": true,
       "registered_population_check": true
     },
     "cache_replay": {
-      "run_id": "89f06982-de0e-48fa-aeff-3a15611e4a5f",
+      "run_id": "f8fcfb04-29c2-47c3-b622-794d9a708805",
       "success": true,
       "reused_same_candidate": true,
       "candidate_parquet_sha256_before_and_after": "287cf32e965d6856c5c0e14d4e12169c3f1d9c7514182e72fa53bc66756cacd7"
     },
     "catalog": {
-      "run_id": "84a139ad-bfeb-4a98-9e14-5804b85d0a6e",
+      "run_id": "a496fde5-ecdd-4a6d-a4f0-cd5ab5d15112",
       "success": true,
       "registered_quality_check": true,
       "quality_check_passed": true,
@@ -57,7 +57,7 @@
       "feature_count": 102178
     },
     "negative_quality_fixture": {
-      "run_id": "a5327794-1d56-489e-9964-0dad51577cb5",
+      "run_id": "21bfe254-0abd-45eb-9198-872abb8d92b2",
       "success": false,
       "scope": "isolated copied candidate: one point geometry set null and matching output byte pins updated; all original candidate files and published fixture untouched",
       "quality_check_passed": false,
@@ -66,11 +66,11 @@
       "promote_started": false
     },
     "release_approval_gate": {
-      "run_id": "a55d41ad-9a98-475f-bbe3-2b0a68749f35",
+      "run_id": "94082427-1955-49c3-a061-e466b5e91444",
       "success": false,
       "empty_registry": "/workspace/work/281-evidence/approval-registry.json",
       "registry_schema_valid": true,
-      "failure": "missing_or_ambiguous_exact_object_approval:public-schools/public-schools/v714b382dcc99240dff8ef1e034cb068e/geoparquet/public-schools.parquet",
+      "failure": "missing_or_ambiguous_exact_object_approval:public-schools/public-schools/vf251ad8608c35c414c908e81d45fadfb/geoparquet/public-schools.parquet",
       "verify_failed": true,
       "promote_started": false
     }
@@ -101,5 +101,6 @@
     "This run validates complete extraction from one retained NCES 2024-25 distribution only; the historical HIFLD 2022-23 rows were not recovered or compared.",
     "The source archive Last-Modified timestamp is server file metadata and is not treated as a producer release date.",
     "The registered release refusal is exact-object approval enforcement; no production dataset was promoted."
-  ]
+  ],
+  "base_commit": "ec102654516996c1a7e9c94048a4eef2ec9c032b"
 }
