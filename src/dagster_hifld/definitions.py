@@ -488,6 +488,12 @@ from dagster_hifld.assets.usace_crane_locations import (
     usace_crane_locations_draft_job,
     usace_crane_locations_draft_schedule,
 )
+
+from dagster_hifld.assets.usace_floating_docks import (
+    usace_floating_docks_complete,
+    usace_floating_docks_draft_job,
+    usace_floating_docks_draft_schedule,
+)
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_draft_job,
     ferrous_metal_processing_plants_draft_schedule,
@@ -955,6 +961,7 @@ defs = Definitions(
         usace_crane_locations_complete,
         usace_crane_locations_quality,
         usace_crane_locations_release,
+        usace_floating_docks_complete,
         ferrous_metal_processing_plants_population_complete,
         ferrous_metal_mines_population_complete,
         usace_data_coverage_areas_complete,
@@ -1053,6 +1060,7 @@ defs = Definitions(
         construction_minerals_draft_job,
         county_subdivisions_draft_refresh_job,
         usace_crane_locations_draft_job,
+        usace_floating_docks_draft_job,
         ferrous_metal_processing_plants_draft_job,
         ferrous_metal_mines_draft_job,
         crushed_stone_preservation_job,
@@ -1152,6 +1160,7 @@ defs = Definitions(
         construction_minerals_draft_schedule,
         county_subdivisions_draft_refresh_schedule,
         usace_crane_locations_draft_schedule,
+        usace_floating_docks_draft_schedule,
         ferrous_metal_processing_plants_draft_schedule,
         ferrous_metal_mines_draft_schedule,
         crushed_stone_preservation_schedule,
