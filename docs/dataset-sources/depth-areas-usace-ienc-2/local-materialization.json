@@ -14,14 +14,13 @@
   "catalog": {
     "approval_only_promotion_started": false,
     "approval_only_quality_check_selected": false,
-    "approval_only_run_id": "356d71ab-d1c5-44c2-aeae-b387933ac00a",
     "approval_only_verify_error": "missing_or_ambiguous_exact_object_approval",
     "feature_count": 5778,
     "invalid_geometry_count": 2,
     "normal_quality_gate_blocked_verify_and_promote": true,
-    "normal_quality_gate_run_id": "723fce93-7d3d-4e34-9a73-fc58418e824b",
     "null_geometry_count": 0,
     "quality_check_passed": false,
+    "registered_gate_proof_artifact": "/tmp/54-evidence/runtime-final/registered-gates-final/registered-gate-proof.json",
     "run_id": "6e294360-8886-4456-a4cb-00ac8b006507",
     "success": false
   },
@@ -31,7 +30,7 @@
     "capture_root": "/tmp/54-evidence/runtime-final/staging/depth-areas-usace-ienc-2/depth-areas-usace-ienc-2/v18b4ab0978fa0c88268c1f8bd3068bc8/raw",
     "dagster_history_root": "/tmp/54-evidence/runtime-final/dagster-home/history",
     "failed_oversized_and_adaptive_attempts_retained": true,
-    "registered_gate_history_root": "/tmp/54-evidence/runtime-final/registered-gates",
+    "registered_gate_history_root": "/tmp/54-evidence/runtime-final/registered-gates-final",
     "source_recaptured_during_resume": false
   },
   "ingest": {
