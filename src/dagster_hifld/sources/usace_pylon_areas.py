@@ -15,6 +15,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -216,10 +217,13 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     return body, receipt
 
 
-def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    """Retry one transient transport/incomplete read, retaining every attempt."""
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
+                 *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0)):
+    """Retry transient transport/incomplete reads with backoff, retaining every attempt."""
     last = None
-    for attempt in range(2):
+    for attempt, wait in enumerate(schedule):
+        if wait:
+            time.sleep(wait)
         attempt_name = f"{name}.attempt{attempt + 1}"
         try:
             body, receipt = _fetch(client, url, root, attempt_name, budget)
@@ -708,6 +712,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
                     raise ValueError("source_seed_id_count_or_roster_drift")
                 captures["ids_seed"] = (seed_body, seed_receipt)
                 for name, url in _capture_roster(ids):
+                    time.sleep(0.5)
                     captures[name] = _fetch_retry(client, url, root, name, capture_budget)
         fields, features, audit = _validate(captures)
     except Exception as exc:
