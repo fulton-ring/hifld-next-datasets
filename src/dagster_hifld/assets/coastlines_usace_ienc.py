@@ -68,7 +68,7 @@ def coastlines_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
             "complete_source_population": candidate.get("feature_count", 0),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
-            "source_capture_evidence_sha256": candidate.get("source_capture_sha256", "missing"),
+            "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
             "source_coverage_scope": candidate.get("source_coverage_scope", "missing"),
             "drift_guard": candidate.get("drift_guard", "missing"),
             "baseline_comparison_accepted": False,

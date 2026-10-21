@@ -235,6 +235,13 @@ def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
+def _assert_unique_capture_roster(roster: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    names = [name for name, _url in roster]
+    if len(names) != len(set(names)):
+        raise ValueError("source_capture_roster_duplicate_name")
+    return roster
+
+
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
             ("service_before", SERVICE_URL + "?f=pjson"),
@@ -250,7 +257,7 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
                  ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
                  ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
                  ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return _assert_unique_capture_roster(urls)
 
 
 def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
@@ -546,6 +553,7 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
             "feature_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
+            "source_capture_evidence_sha256":capture_sha,
             "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
             "source_release_accepted":False,"source_freshness_accepted":False,
             "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
@@ -555,4 +563,4 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
     from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_capture_evidence_sha256":capture_sha,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

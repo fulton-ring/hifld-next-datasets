@@ -18,7 +18,8 @@
     "response_body_bytes": 135330707,
     "wire_bytes": 135330707,
     "receipt_bytes": 17824,
-    "note": "Capture manifest plus every body, wire response, and receipt are retained outside Git. Bodies and wire bytes have equal hashes for this identity-encoded capture."
+    "note": "Capture manifest plus every retained body, wire response, and receipt are retained outside Git. Bodies and wire bytes have equal hashes for this identity-encoded capture.",
+    "limitation": "An earlier duplicate service_before roster key overwrote its first response before that response was retained. Those lost bytes and receipt are not reconstructed; the existing capture and candidate evidence are preserved as captured."
   },
   "catalog": {
     "asset": "publish/catalog",
@@ -43,6 +44,10 @@
     "capture_processing_identity_scope": "Identity of the no-Git runtime used for the retained source and catalog runs; final source documentation and drift-guard wording were added afterward.",
     "runs_database": "/workspace/work/37-clean-evidence/dagster_home/history/runs.db",
     "run_storage": "/workspace/work/37-clean-evidence/dagster_home/storage"
+  },
+  "follow_up_code_fix": {
+    "capture_roster": "Reject duplicate capture names before writing the name-keyed receipts map, preventing a repeated service_before key from overwriting retained evidence.",
+    "capture_evidence_metadata": "Fresh and cached source results now return source_capture_evidence_sha256 for the registered completeness check. The retained no-Git run predates this metadata fix and was not replayed."
   },
   "refusal_evidence": {
     "quality_false_run_id": "74e98732-2bf6-479e-8451-3207bdd0d1a1",

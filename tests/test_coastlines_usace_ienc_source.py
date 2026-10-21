@@ -4,6 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc_complete
 from dagster_hifld.sources import coastlines_usace_ienc as source
 
 
@@ -58,6 +59,16 @@ def _capture_fixture():
 
 
 class CoastlinesSourceValidationTests(unittest.TestCase):
+    def test_registered_completeness_check_exposes_capture_evidence_digest(self):
+        check_fn = coastlines_usace_ienc_complete.node_def.compute_fn.decorated_fn
+        result = check_fn({
+            "feature_count": source.EXPECTED_COUNT,
+            "source_population_complete": True,
+            "source_capture_evidence_sha256": "a" * 64,
+        })
+        self.assertTrue(result.passed)
+        self.assertEqual(result.metadata["source_capture_evidence_sha256"].value, "a" * 64)
+
     def _validate(self, mutate=None):
         captures, docs = _capture_fixture()
         if mutate:
@@ -74,6 +85,18 @@ class CoastlinesSourceValidationTests(unittest.TestCase):
         self.assertEqual(audit["source_id_max"], 3)
         self.assertIn(source.BTS_ITEM_ID, audit["drift_guard"])
         self.assertIn("3607d485a9854d6fa458bf507058ceae", audit["drift_guard"])
+
+    def test_capture_roster_rejects_duplicate_names_before_receipt_mapping(self):
+        roster = source._capture_roster([1, 2, 3])
+        names = [name for name, _url in roster]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertEqual(names.count("service_before"), 1)
+        self.assertEqual(names.count("service_after"), 1)
+        with self.assertRaisesRegex(ValueError, "source_capture_roster_duplicate_name"):
+            source._assert_unique_capture_roster([
+                ("service_before", "https://example.test/first"),
+                ("service_before", "https://example.test/second"),
+            ])
 
     def test_rejects_final_page_transfer_limit_flag(self):
         with self.assertRaisesRegex(ValueError, "source_page_transfer_limit_truncated"):
