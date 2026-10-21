@@ -75,6 +75,10 @@ from dagster_hifld.assets.usace_pile_locations import (
     usace_pile_locations_draft_job,
     usace_pile_locations_draft_schedule,
 )
+from dagster_hifld.assets.usace import (
+    usace_navigation_marks_areas_complete,
+    usace_navigation_marks_areas_draft_schedule,
+)
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
     pylon_locations_draft_refresh_schedule,
@@ -510,6 +514,7 @@ defs = Definitions(
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
+        usace_navigation_marks_areas_complete,
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
         usace_overhead_cables_complete,
@@ -552,6 +557,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         usace_overhead_cables_draft_schedule,
         usace_obstruction_lines_draft_schedule,
+        usace_navigation_marks_areas_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
