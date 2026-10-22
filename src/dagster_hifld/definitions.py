@@ -139,6 +139,10 @@ from dagster_hifld.assets.fuds_irm_property_point import (
     fuds_irm_property_point_draft_schedule,
     fuds_irm_property_point_geometry_quality,
 )
+from dagster_hifld.assets.bts_marine_roro import (
+    bts_intermodal_freight_marine_roll_on_roll_off_complete,
+    bts_marine_roro_draft_schedule,
+)
 from dagster_hifld.assets.epa_small_scale import (
     epa_small_scale_source_integrity_job,
     epa_small_scale_source_integrity_schedule,
@@ -958,6 +962,7 @@ defs = Definitions(
         epa_frs_eia_860_power_generation_complete,
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
+        bts_intermodal_freight_marine_roll_on_roll_off_complete,
         usace_fuds_projects_points_complete,
         epa_frs_naics_complete,
         epa_frs_naics_published_membership_compatible,
@@ -1143,6 +1148,7 @@ defs = Definitions(
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
         fuds_irm_property_point_draft_schedule,
+        bts_marine_roro_draft_schedule,
         epa_regions_draft_schedule,
         epa_small_scale_source_integrity_schedule,
         fema_offices_draft_schedule,

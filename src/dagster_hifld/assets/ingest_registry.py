@@ -31,6 +31,7 @@ from dagster_hifld.assets.arc_regions import arc_regions
 from dagster_hifld.assets.red_cross_headquarters import red_cross_headquarters
 from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facilities
 from dagster_hifld.assets.bts import bts_amtrak_stations
+from dagster_hifld.assets.bts_marine_roro import bts_intermodal_freight_marine_roll_on_roll_off
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
@@ -159,6 +160,7 @@ hifld_ingest_assets = [
     faa_airspace_boundaries,
     faa_aviation_facilities,
     bts_amtrak_stations,
+    bts_intermodal_freight_marine_roll_on_roll_off,
     bts_alternative_fueling_stations,
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
