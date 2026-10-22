@@ -180,6 +180,33 @@ class CapturePreflight(unittest.TestCase):
                     storage, version="invalid-limit", max_capture_bytes=source.MAX_CAPTURE_BYTES + 1,
                 )
 
+    def test_early_bad_replay_does_not_read_oversized_receipt(self):
+        with tempfile.TemporaryDirectory(prefix="lock-basins-bad-replay-") as temporary:
+            root = Path(temporary) / "sealed"
+            root.mkdir()
+            manifest = root / "capture_manifest.json"
+            manifest.write_bytes(b"x" * (source.MAX_MANIFEST_BYTES + 1))
+            receipt_path = root / "malformed.receipt.json"
+            with receipt_path.open("wb") as stream:
+                stream.truncate(source.MAX_RECEIPT_BYTES + 1)
+            storage = StagingStorageResource(
+                use_local=True, local_dir=str(Path(temporary) / "staging"), prefix="")
+            original_read_bytes = Path.read_bytes
+
+            def forbid_receipt_read(path):
+                if path.name.endswith(".receipt.json"):
+                    raise AssertionError("replay error handler must not read receipt files")
+                return original_read_bytes(path)
+
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=MIN_FREE_BYTES)), \
+                    patch.object(Path, "read_bytes", forbid_receipt_read), \
+                    patch.object(source.httpx, "Client", side_effect=AssertionError("replay must not use HTTP")):
+                with self.assertRaisesRegex(ValueError, "retained_capture_manifest_too_large"):
+                    source.capture_lock_basins_usace_ienc(
+                        storage, version="bad-replay", capture_directory=str(root))
+            self.assertEqual(manifest.stat().st_size, source.MAX_MANIFEST_BYTES + 1)
+            self.assertEqual(receipt_path.stat().st_size, source.MAX_RECEIPT_BYTES + 1)
+
 
 class CaptureResponseBudget(unittest.TestCase):
     def test_response_limit_failure_is_not_retried(self):
