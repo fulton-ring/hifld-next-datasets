@@ -116,8 +116,14 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                 wire_path.write_bytes(original_wire+b"tamper")
                 with patch.object(source, "SCHEMA_SHA256", schema_sha), \
                      patch.object(source.httpx, "Client", side_effect=AssertionError("tampered replay attempted HTTP")):
-                    with self.assertRaisesRegex(ValueError,"retained_capture_artifact_mismatch"):
+                    with self.assertRaisesRegex(ValueError,"retained_capture_artifact_size_mismatch"):
                         source.capture_epa_icis_wastewater(storage,version="vtampered",retained_capture_directory=str(retained_dir),retained_capture_manifest_sha256=result["capture_manifest_sha256"])
+                with wire_path.open("wb") as stream:
+                    stream.truncate(source.MAX_RESPONSE_BYTES + 1)
+                with patch.object(source, "SCHEMA_SHA256", schema_sha), \
+                     patch.object(source.httpx, "Client", side_effect=AssertionError("oversized replay attempted HTTP")):
+                    with self.assertRaisesRegex(ValueError,"retained_capture_artifact_oversized"):
+                        source.capture_epa_icis_wastewater(storage,version="voversized",retained_capture_directory=str(retained_dir),retained_capture_manifest_sha256=result["capture_manifest_sha256"])
                 wire_path.write_bytes(original_wire)
             # A missing source ID invalidates the page before any candidate is written or reused.
             bodies["page_000"]={"spatialReference":{"latestWkid":4269},"features":[row]}

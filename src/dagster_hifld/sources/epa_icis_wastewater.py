@@ -6,6 +6,7 @@ import json
 import math
 import re
 import shutil
+import stat
 from pathlib import Path
 from contextlib import nullcontext
 from urllib.parse import urlencode
@@ -44,6 +45,10 @@ MAX_RESPONSE_BYTES = 8_000_000
 MIN_CAPTURE_BYTES = 1
 DISK_FLOOR_BYTES = 400_000_000
 STAGING_OVERHEAD_BYTES = 2_000_000
+MAX_CAPTURE_MANIFEST_BYTES = 1_000_000
+MAX_CAPTURE_REQUESTS = 256
+MAX_CAPTURE_RECEIPT_BYTES = 64_000
+MAX_CAPTURE_RECEIPT_TOTAL_BYTES = 4_000_000
 
 
 def _canonical(value: object) -> bytes:
@@ -70,15 +75,42 @@ def _require_disk_space(path: Path, reserve_bytes: int = 0) -> None:
         raise ValueError("local_storage_floor")
 
 
+def _read_bounded_capture_file(path: Path, max_bytes: int, *, expected_bytes: int | None = None) -> bytes:
+    try:
+        before = path.lstat()
+    except OSError as exc:
+        raise ValueError("retained_capture_artifact_unavailable") from exc
+    if not stat.S_ISREG(before.st_mode) or path.is_symlink():
+        raise ValueError("retained_capture_artifact_type_invalid")
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise ValueError("retained_capture_read_limit_invalid")
+    if before.st_size > max_bytes:
+        raise ValueError("retained_capture_artifact_oversized")
+    if expected_bytes is not None and before.st_size != expected_bytes:
+        raise ValueError("retained_capture_artifact_size_mismatch")
+    read_limit = before.st_size if expected_bytes is None else expected_bytes
+    with path.open("rb") as stream:
+        data = stream.read(read_limit + 1)
+    after = path.lstat()
+    if (not stat.S_ISREG(after.st_mode) or path.is_symlink()
+            or after.st_dev != before.st_dev or after.st_ino != before.st_ino
+            or after.st_size != before.st_size or len(data) != before.st_size):
+        raise ValueError("retained_capture_artifact_changed_during_read")
+    return data
+
+
 def _capture_descriptors(root: Path, captures: dict[str, tuple[bytes, dict]]) -> dict[str, dict]:
+    if not 1 <= len(captures) <= MAX_CAPTURE_REQUESTS:
+        raise ValueError("capture_request_count_invalid")
     result = {}
+    total_payload = total_receipts = 0
     for name, (body, receipt) in sorted(captures.items()):
         if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
             raise ValueError("capture_name_invalid")
         if (root / f"{name}.body").read_bytes() != body:
             raise ValueError("capture_body_file_mismatch:" + name)
-        wire = (root / f"{name}.wire").read_bytes()
-        receipt_bytes = (root / f"{name}.receipt.json").read_bytes()
+        wire = _read_bounded_capture_file(root / f"{name}.wire", MAX_RESPONSE_BYTES)
+        receipt_bytes = _read_bounded_capture_file(root / f"{name}.receipt.json", MAX_CAPTURE_RECEIPT_BYTES)
         if json.loads(receipt_bytes) != receipt:
             raise ValueError("capture_receipt_file_mismatch:" + name)
         if (receipt.get("method") != "GET" or receipt.get("status") != 200
@@ -93,6 +125,12 @@ def _capture_descriptors(root: Path, captures: dict[str, tuple[bytes, dict]]) ->
             "wire": {"file": f"{name}.wire", "bytes": len(wire), "sha256": _sha(wire)},
             "receipt": {"file": f"{name}.receipt.json", "bytes": len(receipt_bytes), "sha256": _sha(receipt_bytes)},
         }
+        if len(body) + len(wire) > MAX_RESPONSE_BYTES:
+            raise ValueError("capture_response_budget_exceeded:" + name)
+        total_payload += len(body) + len(wire)
+        total_receipts += len(receipt_bytes)
+    if total_receipts > MAX_CAPTURE_RECEIPT_TOTAL_BYTES or total_payload > MAX_CAPTURE_BYTES:
+        raise ValueError("capture_artifact_totals_exceeded")
     expected = {"capture_manifest.json"}
     for descriptor in result.values():
         expected.update(descriptor[kind]["file"] for kind in ("body", "wire", "receipt"))
@@ -124,7 +162,7 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
     manifest_path = root / "capture_manifest.json"
     if not manifest_path.is_file() or manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_missing")
-    encoded = manifest_path.read_bytes()
+    encoded = _read_bounded_capture_file(manifest_path, MAX_CAPTURE_MANIFEST_BYTES)
     manifest = json.loads(encoded)
     if (not isinstance(manifest, dict) or set(manifest) != {
                 "schema_version", "capture_complete", "capture_budget_bytes", "response_budget_bytes",
@@ -140,7 +178,10 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
             or not MIN_CAPTURE_BYTES <= manifest["response_budget_bytes"] <= MAX_RESPONSE_BYTES):
         raise ValueError("retained_capture_manifest_invalid")
     descriptors = manifest["captures"]
+    if not 1 <= len(descriptors) <= MAX_CAPTURE_REQUESTS:
+        raise ValueError("retained_capture_request_count_invalid")
     expected = {"capture_manifest.json"}
+    descriptor_capture_total = descriptor_receipt_total = 0
     for name, descriptor in descriptors.items():
         if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name)
                 or not isinstance(descriptor, dict)
@@ -155,11 +196,29 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
                     or not re.fullmatch(r"[0-9a-f]{64}", artifact["sha256"])):
                 raise ValueError("retained_capture_manifest_invalid")
             expected.add(artifact["file"])
+        response_bytes = descriptor["body"]["bytes"] + descriptor["wire"]["bytes"]
+        if response_bytes > manifest["response_budget_bytes"]:
+            raise ValueError("retained_capture_response_budget_exceeded:" + name)
+        descriptor_capture_total += response_bytes
+        descriptor_receipt_total += descriptor["receipt"]["bytes"]
+    if (descriptor_capture_total != manifest["capture_retained_wire_plus_decoded_bytes"]
+            or descriptor_capture_total > manifest["capture_budget_bytes"]
+            or descriptor_receipt_total > MAX_CAPTURE_RECEIPT_TOTAL_BYTES):
+        raise ValueError("retained_capture_descriptor_totals_invalid")
     validate_capture_roster(root, expected)
+    for name, descriptor in descriptors.items():
+        for kind in ("body", "wire", "receipt"):
+            artifact = descriptor[kind]
+            max_size = (MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else
+                        min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]))
+            _read_bounded_capture_file(root / artifact["file"], max_size, expected_bytes=artifact["bytes"])
     captures: dict[str, tuple[bytes, dict]] = {}
     total = 0
     for name, descriptor in descriptors.items():
-        artifacts = {kind: (root / descriptor[kind]["file"]).read_bytes()
+        artifacts = {kind: _read_bounded_capture_file(
+                         root / descriptor[kind]["file"],
+                         MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]),
+                         expected_bytes=descriptor[kind]["bytes"])
                      for kind in ("body", "wire", "receipt")}
         for kind, data in artifacts.items():
             recorded = descriptor[kind]
@@ -330,6 +389,8 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
             count = get(client, "count_before", LAYER_URL+"/query", {"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
             ids = get(client, "ids_before", LAYER_URL+"/query", {"where":"1=1","returnIdsOnly":"true","f":"json"}).get("objectIds")
             if type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count: raise ValueError("source_initial_id_roster_invalid")
+            if 9 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
+                raise ValueError("source_capture_request_count_exceeded")
             seed = sorted(ids); features=[]
             for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
                 page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {"where":"1=1","outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4269","orderByFields":"OBJECTID ASC","resultOffset":offset,"resultRecordCount":PAGE_SIZE,"f":"json"})
