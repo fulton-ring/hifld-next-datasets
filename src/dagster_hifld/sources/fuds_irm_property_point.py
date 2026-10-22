@@ -42,8 +42,8 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "IRM Property Point"
 PUBLISHER = "U.S. Army Corps of Engineers (USACE), Military/FUDS_Data MapServer"
 PAGE_SIZE = 200
-MAX_CAPTURE_BYTES = 8_000_000
-MAX_TOTAL_CAPTURE_BYTES = 24_000_000
+MAX_CAPTURE_BYTES = 4_000_000
+MAX_TOTAL_CAPTURE_BYTES = 8_000_000
 
 
 def _canonical(value: object) -> bytes:
