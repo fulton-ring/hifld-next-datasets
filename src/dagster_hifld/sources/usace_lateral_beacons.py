@@ -15,7 +15,9 @@ import pyarrow.parquet as pq
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import (
+    DECODE_BLOCK_BYTES, CaptureProgress, capture_roster_digests, validate_capture_roster,
+)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
@@ -42,9 +44,16 @@ EXPECTED_COUNT = 3406
 EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 EXPECTED_ID_SHA256 = "30067c082afc872c1ae68246473e100f79bb371df8b8344574bad84508b8be34"
 PAGE_SIZE = 1000
-CAPTURE_MAX_BYTES = 96_000_000
-DEFAULT_RESPONSE_MAX_BYTES = 8_000_000
-LAYER_RESPONSE_MAX_BYTES = 32_000_000
+MAX_CAPTURE_BYTES = 16_000_000
+MAX_RESPONSE_BYTES = 8_000_000
+CAPTURE_MAX_BYTES = MAX_CAPTURE_BYTES
+DEFAULT_RESPONSE_MAX_BYTES = MAX_RESPONSE_BYTES
+LAYER_RESPONSE_MAX_BYTES = MAX_RESPONSE_BYTES
+MIN_FREE_BYTES = 400_000_000
+# Reserve source candidate/raw staging copies, three-object gate fixtures, and their small proofs.
+STAGING_OUTPUT_RESERVE_BYTES = 50_000_000
+CAPTURE_METADATA_RESERVE_BYTES = 1_000_000
+CAPTURE_INFLIGHT_RESERVE_BYTES = 2 * DECODE_BLOCK_BYTES
 EXPECTED_FIELD_DECLARATIONS = [
     {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID", "domain": None},
     {"name": "SHAPE", "type": "esriFieldTypeGeometry", "alias": "SHAPE", "domain": None},
@@ -86,18 +95,83 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     return urls
 
 
-def _capture(client: httpx.Client, url: str, root: Path, name: str, *,
+class _CaptureBudgetExceeded(ValueError):
+    """A source capture exceeded a byte budget or required free-space reserve."""
+
+
+def _capture_disk_bytes(root: Path) -> int:
+    total = 0
+    for suffix in ("*.body", "*.wire"):
+        for path in root.glob(suffix):
+            if path.is_symlink() or not path.is_file():
+                raise _CaptureBudgetExceeded("capture_evidence_path_not_regular")
+            total += path.stat().st_size
+    return total
+
+
+def _validate_replay_budget(root: Path, *, capture_max_bytes: int,
+                            response_max_bytes: int, layer_response_max_bytes: int) -> None:
+    total = _capture_disk_bytes(root)
+    if total > capture_max_bytes or total > MAX_CAPTURE_BYTES:
+        raise ValueError("retained_capture_exceeds_total_byte_budget")
+    for name in CAPTURE_NAMES:
+        limit = layer_response_max_bytes if name in {"layer_before", "layer_after"} else response_max_bytes
+        for suffix in ("wire", "body"):
+            path = root / f"{name}.{suffix}"
+            if path.exists() and path.stat().st_size > limit:
+                raise ValueError("retained_capture_exceeds_response_byte_budget:" + name)
+
+
+def _require_capture_capacity(staging: Path, capture_root: Path, *,
+                              capture_max_bytes: int, inflight_bytes: int = CAPTURE_INFLIGHT_RESERVE_BYTES,
+                              incoming_bytes: int = 0) -> None:
+    retained = _capture_disk_bytes(capture_root)
+    if retained + incoming_bytes > capture_max_bytes:
+        raise _CaptureBudgetExceeded("cumulative_capture_budget_exceeded")
+    remaining = capture_max_bytes - retained
+    if inflight_bytes > remaining:
+        raise _CaptureBudgetExceeded("capture_budget_cannot_reserve_inflight_block")
+    same_filesystem = staging.stat().st_dev == capture_root.stat().st_dev
+    if same_filesystem:
+        required = (MIN_FREE_BYTES + remaining + inflight_bytes + CAPTURE_METADATA_RESERVE_BYTES
+                    + STAGING_OUTPUT_RESERVE_BYTES)
+        if shutil.disk_usage(capture_root).free < required:
+            raise _CaptureBudgetExceeded("shared_capture_staging_headroom_exceeded")
+        return
+    if shutil.disk_usage(capture_root).free < MIN_FREE_BYTES + remaining + inflight_bytes + CAPTURE_METADATA_RESERVE_BYTES:
+        raise _CaptureBudgetExceeded("capture_filesystem_headroom_exceeded")
+    if shutil.disk_usage(staging).free < MIN_FREE_BYTES + STAGING_OUTPUT_RESERVE_BYTES:
+        raise _CaptureBudgetExceeded("staging_filesystem_headroom_exceeded")
+
+
+def _capture(client: httpx.Client, url: str, root: Path, name: str, *, staging: Path,
              capture_max_bytes: int, response_max_bytes: int,
              layer_response_max_bytes: int) -> tuple[bytes, dict]:
-    # Preserve raw response bytes, while enforcing a caller-visible total budget
-    # and separate per-response limits for ArcGIS layer metadata versus pages.
+    # Both response classes have hard caps; caller configuration can only lower them.
     limit = layer_response_max_bytes if name in {"layer_before", "layer_after"} else response_max_bytes
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-                   for path in root.glob(suffix) if path.is_file())
-    if retained + 2 * limit > capture_max_bytes:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    return capture_get(client, url, root, name, max_bytes=limit)
+    if limit > MAX_RESPONSE_BYTES or capture_max_bytes > MAX_CAPTURE_BYTES:
+        raise ValueError("configured_capture_budget_exceeds_hard_ceiling")
+    _require_capture_capacity(staging, root, capture_max_bytes=capture_max_bytes)
 
+    def reserve(progress: CaptureProgress) -> None:
+        _require_capture_capacity(
+            staging, root, capture_max_bytes=capture_max_bytes,
+            inflight_bytes=max(CAPTURE_INFLIGHT_RESERVE_BYTES, progress.reserve_bytes),
+        )
+
+    def before_retain(kind: str, block: bytes) -> None:
+        suffix = "wire" if kind == "wire" else "body"
+        target = root / f"{name}.{suffix}"
+        response_bytes = target.stat().st_size if target.exists() else 0
+        if response_bytes + len(block) > limit:
+            raise _CaptureBudgetExceeded("per_response_capture_budget_exceeded")
+        _require_capture_capacity(
+            staging, root, capture_max_bytes=capture_max_bytes, incoming_bytes=len(block),
+        )
+
+    return capture_get(
+        client, url, root, name, max_bytes=limit, reserve=reserve, before_retain=before_retain,
+    )
 
 def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
     if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
@@ -259,6 +333,8 @@ def capture_usace_lateral_beacons(storage: StagingStorageResource, *, version: s
     budgets = (capture_max_bytes, response_max_bytes, layer_response_max_bytes)
     if any(type(value) is not int or value <= 0 for value in budgets):
         raise ValueError("invalid_capture_budget")
+    if capture_max_bytes > MAX_CAPTURE_BYTES or max(response_max_bytes, layer_response_max_bytes) > MAX_RESPONSE_BYTES:
+        raise ValueError("configured_capture_budget_exceeds_hard_ceiling")
     if capture_max_bytes < response_max_bytes or capture_max_bytes < layer_response_max_bytes:
         raise ValueError("capture_budget_smaller_than_response_limit")
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
@@ -271,7 +347,7 @@ def capture_usace_lateral_beacons(storage: StagingStorageResource, *, version: s
     if ".." in staging.parts or any(path.is_symlink() for path in (staging, *staging.parents)):
         raise ValueError("unsafe_local_staging_root")
     staging.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(staging).free < 400_000_000:
+    if shutil.disk_usage(staging).free < MIN_FREE_BYTES:
         raise ValueError("disk_floor_before_acquisition")
     requested = Path(capture_directory).absolute() if capture_directory else None
     replay = bool(requested and (requested / "capture_manifest.json").exists())
@@ -279,6 +355,13 @@ def capture_usace_lateral_beacons(storage: StagingStorageResource, *, version: s
         root = requested
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
+        _validate_replay_budget(
+            root, capture_max_bytes=capture_max_bytes,
+            response_max_bytes=response_max_bytes, layer_response_max_bytes=layer_response_max_bytes,
+        )
+        _require_capture_capacity(
+            staging, root, capture_max_bytes=_capture_disk_bytes(root), inflight_bytes=0,
+        )
         captures = _read_replay(root)
     else:
         if requested and any(requested.glob("*.body")):
@@ -288,12 +371,13 @@ def capture_usace_lateral_beacons(storage: StagingStorageResource, *, version: s
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
+        _require_capture_capacity(staging, root, capture_max_bytes=capture_max_bytes)
         captures = {}
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
                 ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before",
-                    capture_max_bytes=capture_max_bytes, response_max_bytes=response_max_bytes,
+                    staging=staging, capture_max_bytes=capture_max_bytes, response_max_bytes=response_max_bytes,
                     layer_response_max_bytes=layer_response_max_bytes)
                 ids = json.loads(ids_body).get("objectIds")
                 if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
@@ -304,10 +388,11 @@ def capture_usace_lateral_beacons(storage: StagingStorageResource, *, version: s
                 for name, url in roster:
                     if name == "ids_before":
                         continue
-                    captures[name] = _capture(client, url, root, name,
+                    captures[name] = _capture(client, url, root, name, staging=staging,
                         capture_max_bytes=capture_max_bytes, response_max_bytes=response_max_bytes,
                         layer_response_max_bytes=layer_response_max_bytes)
             fields, features, audit = _validate(captures)
+            _require_capture_capacity(staging, root, capture_max_bytes=capture_max_bytes)
         except Exception as exc:
             receipts = {}
             for path in sorted(root.glob("*.receipt.json")):

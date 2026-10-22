@@ -1,6 +1,13 @@
 """Native preservation and completeness checks for the official IENC LATERAL_BEACON_POINT layer."""
 import json
+import tempfile
 import unittest
+import stat
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import httpx
 from urllib.parse import parse_qs, urlsplit
 
 import pyarrow.parquet as pq
@@ -81,6 +88,78 @@ class LateralBeaconsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "capture_budget_smaller_than_response_limit"):
             source.capture_usace_lateral_beacons(None, version="v-test", capture_max_bytes=100,
                 response_max_bytes=101, layer_response_max_bytes=50)
+        with self.assertRaisesRegex(ValueError, "configured_capture_budget_exceeds_hard_ceiling"):
+            source.capture_usace_lateral_beacons(None, version="v-test",
+                capture_max_bytes=source.MAX_CAPTURE_BYTES + 1)
+        with self.assertRaisesRegex(ValueError, "configured_capture_budget_exceeds_hard_ceiling"):
+            source.capture_usace_lateral_beacons(None, version="v-test",
+                response_max_bytes=source.MAX_RESPONSE_BYTES + 1)
+        with self.assertRaisesRegex(ValueError, "retained_capture_exceeds_total_byte_budget"):
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / "page_000.wire").write_bytes(b"12345")
+                source._validate_replay_budget(root, capture_max_bytes=4,
+                    response_max_bytes=4, layer_response_max_bytes=4)
+
+    def test_capacity_reserves_capture_and_staging_filesystems_independently(self):
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "staging"
+            root = Path(temp) / "captures"
+            staging.mkdir()
+            root.mkdir()
+            original_stat = Path.stat
+            usage_paths = []
+
+            def distinct_device_stat(path, *args, **kwargs):
+                if path == staging:
+                    return SimpleNamespace(st_dev=1, st_mode=stat.S_IFDIR)
+                if path == root:
+                    return SimpleNamespace(st_dev=2, st_mode=stat.S_IFDIR)
+                return original_stat(path, *args, **kwargs)
+
+            def usage(path):
+                usage_paths.append(path)
+                free = 500_000_000 if path == root else 449_999_999
+                return SimpleNamespace(free=free)
+
+            with patch.object(Path, "stat", distinct_device_stat), patch.object(source.shutil, "disk_usage", side_effect=usage):
+                with self.assertRaisesRegex(ValueError, "staging_filesystem_headroom_exceeded"):
+                    source._require_capture_capacity(staging, root, capture_max_bytes=source.MAX_CAPTURE_BYTES)
+            self.assertEqual(usage_paths, [root, staging])
+
+    def test_oversized_stream_block_is_refused_before_write_with_canonical_incomplete_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            staging = Path(temp) / "staging"
+            root = Path(temp) / "captures"
+            staging.mkdir()
+            root.mkdir()
+            body = b"0123456789"
+            class DeliveredStream(httpx.SyncByteStream):
+                def __iter__(self):
+                    yield body
+
+            transport = httpx.MockTransport(lambda request: httpx.Response(
+                200, headers={"Content-Length": str(len(body))}, stream=DeliveredStream(),
+            ))
+            with httpx.Client(transport=transport) as client, patch.object(
+                source.shutil, "disk_usage", return_value=SimpleNamespace(free=1_000_000_000),
+            ), patch.object(source, "_require_capture_capacity"):
+                with self.assertRaisesRegex(ValueError, "incomplete_source_capture"):
+                    source._capture(client, "https://fixture.invalid/oversized", root, "page_000",
+                        staging=staging, capture_max_bytes=4, response_max_bytes=4,
+                        layer_response_max_bytes=4)
+            wire = root / "page_000.wire"
+            decoded = root / "page_000.body"
+            receipt_path = root / "page_000.receipt.json"
+            receipt_raw = receipt_path.read_bytes()
+            receipt = json.loads(receipt_raw)
+            self.assertEqual(wire.read_bytes(), b"")
+            self.assertEqual(decoded.read_bytes(), b"")
+            self.assertFalse(receipt["complete_body"])
+            self.assertEqual(receipt["wire_bytes"], 0)
+            self.assertEqual(receipt["bytes"], 0)
+            self.assertEqual(receipt["error_type"], "_CaptureBudgetExceeded")
+            self.assertEqual(receipt_raw, source._canonical(receipt) + b"\n")
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
         name,url=source._capture_roster(source.EXPECTED_IDS)[0]

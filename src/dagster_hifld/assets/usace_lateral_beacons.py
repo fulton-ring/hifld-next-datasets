@@ -14,9 +14,9 @@ from dagster_hifld.sources.usace_lateral_beacons import (
 
 class UsaceLateralBeaconsConfig(Config):
     capture_directory: str = ""
-    capture_max_bytes: int = 96_000_000
+    capture_max_bytes: int = 16_000_000
     response_max_bytes: int = 8_000_000
-    layer_response_max_bytes: int = 32_000_000
+    layer_response_max_bytes: int = 8_000_000
 
 
 @asset(
