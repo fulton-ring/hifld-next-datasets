@@ -71,7 +71,8 @@ class UsaceLakesSourceTest(unittest.TestCase):
             def __exit__(self, *_args): return False
         class Client:
             def stream(self, *_args, **_kwargs): return Response()
-        progress = SimpleNamespace(wire_bytes_retained=6, decoded_bytes_retained=5, reserve_bytes=1)
+        progress = SimpleNamespace(wire_bytes_retained=6_000_000, decoded_bytes_retained=5_000_000,
+                                   reserve_bytes=1_000_001)
         def over_budget(_response, **kwargs):
             kwargs["retain_wire"](b"123456")
             kwargs["retain_decoded"](b"12345")
@@ -84,4 +85,4 @@ class UsaceLakesSourceTest(unittest.TestCase):
                                    content_encoding=None, content_length=None)
         with patch("dagster_hifld.sources.usace_lakes.capture_http_response", side_effect=over_budget):
             with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
-                _fetch(Client(), "https://example.invalid/page", __import__("pathlib").Path("/tmp"), "configured-cap-test", [0], 11)
+                _fetch(Client(), "https://example.invalid/page", __import__("pathlib").Path("/tmp"), "configured-cap-test", [0], 12_000_000)
