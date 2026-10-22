@@ -431,5 +431,5 @@ epa_frs_naics_draft_schedule = ScheduleDefinition(
     name="epa_frs_naics_draft_refresh_schedule", job=epa_frs_naics_draft_job,
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
-    run_config={"ops": {"epa_frs_naics_powerplants": {"config": {"offline_replay_version": ""}}}},
+    run_config={"ops": {epa_frs_naics_powerplants.op.name: {"config": {"offline_replay_version": ""}}}},
 )
