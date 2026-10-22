@@ -126,6 +126,15 @@ class NativeNidTests(unittest.TestCase):
         _validated_layer, ids = native._validate_metadata_and_rosters(docs)
         self.assertEqual(ids, [101, 102])
 
+    def test_replica_job_pending_and_in_progress_continue_without_resubmission(self):
+        self.assertEqual(native._replica_status_action("Pending"), "continue")
+        self.assertEqual(native._replica_status_action("InProgress"), "continue")
+        self.assertEqual(native._replica_status_action("Completed"), "completed")
+        with self.assertRaisesRegex(ValueError, "replica_job_failed"):
+            native._replica_status_action("Failed")
+        with self.assertRaisesRegex(ValueError, "status_unrecognized"):
+            native._replica_status_action(["Pending"])
+
     def test_actual_block_budget_refuses_before_any_sink_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

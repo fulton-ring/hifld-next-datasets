@@ -594,6 +594,18 @@ def _replica_params() -> dict[str, object]:
     }
 
 
+def _replica_status_action(status: object) -> str:
+    if not isinstance(status, str):
+        raise ValueError("usace_nid_native_replica_status_unrecognized")
+    if status == "Completed":
+        return "completed"
+    if status in {"Pending", "InProgress"}:
+        return "continue"
+    if status in {"Failed", "Cancelled", "Error", "CompletedWithErrors"}:
+        raise ValueError("usace_nid_native_replica_job_failed")
+    raise ValueError("usace_nid_native_replica_status_unrecognized")
+
+
 def _capture_native_export(root: Path) -> None:
     if root.exists():
         if any(root.iterdir()):
@@ -650,13 +662,10 @@ def _capture_native_export(root: Path) -> None:
             if not isinstance(status_doc, dict):
                 raise ValueError("usace_nid_native_replica_status_invalid")
             last_status = status_doc.get("status")
-            if last_status == "Completed":
+            action = _replica_status_action(last_status)
+            if action == "completed":
                 result_url = status_doc.get("resultUrl")
                 break
-            if last_status in {"Failed", "Cancelled", "Error", "CompletedWithErrors"}:
-                raise ValueError("usace_nid_native_replica_job_failed")
-            if last_status != "InProgress":
-                raise ValueError("usace_nid_native_replica_status_unrecognized")
         if not isinstance(result_url, str):
             raise ValueError("usace_nid_native_replica_poll_limit_exceeded")
         result_url = _safe_official_url(urljoin(status_url, result_url))
