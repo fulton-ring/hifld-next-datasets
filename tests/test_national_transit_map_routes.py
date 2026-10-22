@@ -93,6 +93,8 @@ def _fixture_factory():
                       "Shape__Length": length})
         features.append({"attributes": attrs, "geometry": {"paths": pathsets}})
 
+    feature_requests = []
+
     def factory():
         def handler(request):
             query = parse_qs(request.url.query.decode())
@@ -102,6 +104,7 @@ def _fixture_factory():
             elif path.endswith("/query") and query.get("returnIdsOnly") == ["true"]:
                 result = {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]}
             elif path.endswith("/query"):
+                feature_requests.append(path + "?" + request.url.query.decode())
                 result = {"spatialReference": {"wkid": 4326, "latestWkid": 4326},
                           "features": features}
             elif path.endswith("/FeatureServer/0"):
@@ -117,12 +120,12 @@ def _fixture_factory():
                                   headers={"content-length": str(len(body))})
         return _HTTPX_CLIENT(transport=httpx.MockTransport(handler), follow_redirects=False)
 
-    return factory, fields, features, schema_sha, ids_sha
+    return factory, fields, features, schema_sha, ids_sha, feature_requests
 
 
 class NationalTransitMapRoutesTests(unittest.TestCase):
     def test_mocked_capture_preserves_schema_and_native_multiline_paths(self):
-        factory, fields, features, schema_sha, ids_sha = _fixture_factory()
+        factory, fields, features, schema_sha, ids_sha, _feature_requests = _fixture_factory()
         patchers = (
             patch.object(source, "EXPECTED_SOURCE_COUNT", 2),
             patch.object(source, "EXPECTED_SOURCE_SCHEMA_SHA256", schema_sha),
@@ -170,6 +173,60 @@ class NationalTransitMapRoutesTests(unittest.TestCase):
             self.assertEqual(list(geom.geoms[1].coords), [(4.0, 5.0), (6.0, 7.0)])
             self.assertIn(f"{prefix}/raw/page_000.body", storage.list_prefix(prefix))
             self.assertIn(f"{prefix}/raw/ids_before.body", storage.list_prefix(prefix))
+
+    def test_invalid_pinned_seed_is_rejected_before_feature_page_request(self):
+        factory, _fields, _features, schema_sha, _ids_sha, feature_requests = _fixture_factory()
+        patchers = (
+            patch.object(source, "EXPECTED_SOURCE_COUNT", 2),
+            patch.object(source, "EXPECTED_SOURCE_SCHEMA_SHA256", schema_sha),
+            patch.object(source, "EXPECTED_SOURCE_ID_SHA256", "0" * 64),
+            patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: factory()),
+        )
+        with tempfile.TemporaryDirectory(dir="/workspace/work/board-supervisor") as tmp:
+            for p in patchers:
+                p.start()
+            self.addCleanup(lambda: [p.stop() for p in reversed(patchers)])
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(ValueError, "source_seed_id_roster_drift"):
+                source.capture_national_transit_map_routes(
+                    storage, capture_directory=str(Path(tmp) / "captures"))
+            self.assertEqual(feature_requests, [])
+
+    def test_non_integer_page_object_id_stops_before_next_page(self):
+        factory, _fields, features, schema_sha, ids_sha, feature_requests = _fixture_factory()
+        features[0]["attributes"]["OBJECTID"] = True
+        patchers = (
+            patch.object(source, "EXPECTED_SOURCE_COUNT", 2),
+            patch.object(source, "EXPECTED_SOURCE_SCHEMA_SHA256", schema_sha),
+            patch.object(source, "EXPECTED_SOURCE_ID_SHA256", ids_sha),
+            patch.object(source, "PAGE_SIZE", 1),
+            patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: factory()),
+        )
+        with tempfile.TemporaryDirectory(dir="/workspace/work/board-supervisor") as tmp:
+            for p in patchers:
+                p.start()
+            self.addCleanup(lambda: [p.stop() for p in reversed(patchers)])
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(ValueError, "source_page_object_id_type_drift"):
+                source.capture_national_transit_map_routes(
+                    storage, capture_directory=str(Path(tmp) / "captures"))
+            self.assertEqual(len(feature_requests), 1)
+
+    def test_failure_evidence_skips_oversized_files_without_reading_them(self):
+        with tempfile.TemporaryDirectory(dir="/workspace/work/board-supervisor") as tmp:
+            root = Path(tmp)
+            with (root / "page_000.body").open("wb") as stream:
+                stream.truncate(source.MAX_BODY_BYTES + 1)
+            with (root / "page_000.receipt.json").open("wb") as stream:
+                stream.truncate(source.MAX_FAILURE_RECEIPT_BYTES + 1)
+            (root / "page_000.wire").touch()
+            with (root / "page_001.body").open("wb") as stream:
+                stream.truncate(source.MAX_BODY_BYTES + 1)
+            (root / "page_001.receipt.json").write_text("{}")
+            (root / "page_001.wire").touch()
+            evidence, omitted = source._bounded_failure_evidence(root, {}, "test_failure")
+            self.assertEqual(evidence, {})
+            self.assertEqual(omitted, ["page_000", "page_001"])
 
     def test_registered_draft_is_stopped_and_gate_keeps_approvals_false(self):
         self.assertIn(national_transit_map_routes, hifld_ingest_assets)

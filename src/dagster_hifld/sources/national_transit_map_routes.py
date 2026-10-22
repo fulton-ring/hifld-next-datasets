@@ -10,7 +10,9 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -30,7 +32,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
     CaptureProgress, candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 
@@ -46,6 +48,10 @@ LICENSE = "https://creativecommons.org/licenses/by/3.0/us/"
 PAGE_SIZE = 1000
 MAX_BODY_BYTES = 12_000_000
 MAX_CAPTURE_TOTAL_BYTES = 1_000_000_000
+MAX_FAILURE_RECEIPT_BYTES = 64_000
+MAX_FAILURE_RECEIPTS_TOTAL_BYTES = 1_000_000
+MAX_CAPTURE_PAGES = 1_024
+MAX_CAPTURE_RESPONSES = MAX_CAPTURE_PAGES + 11
 DISK_FLOOR_BYTES = 400_000_000
 MAX_OBJECT_ID_URL_LENGTH = 1800
 EXPECTED_SOURCE_SCHEMA_SHA256 = "59c183811e400be119ebda8b0be44d72d2d334f20ffd27489e2e1e843b8423d8"
@@ -158,7 +164,198 @@ def _page_plan(ids: list[int], layer: Mapping[str, object]) -> tuple[str, list[t
             pages.append((f"page_{len(pages):03d}", url, page_ids))
     if not pages:
         raise ValueError("source_page_plan_empty")
+    if len(pages) > MAX_CAPTURE_PAGES:
+        raise ValueError("source_page_count_exceeds_capture_limit")
     return mode, pages
+
+
+def _validate_before_page_requests(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[list[int], dict]:
+    """Validate all source pins available before requesting any feature page."""
+    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    seed_doc = docs["ids_seed"]
+    seed = seed_doc.get("objectIds")
+    if (seed_doc.get("objectIdFieldName") != "OBJECTID" or not isinstance(seed, list)
+            or len(seed) != EXPECTED_SOURCE_COUNT or any(type(value) is not int for value in seed)):
+        raise ValueError("source_seed_id_roster_missing_or_invalid")
+    seed_ids = sorted(seed)
+    if (len(set(seed_ids)) != EXPECTED_SOURCE_COUNT
+            or _sha(_canonical(seed_ids)) != EXPECTED_SOURCE_ID_SHA256):
+        raise ValueError("source_seed_id_roster_drift")
+
+    count_doc = docs["count_before"]
+    ids_doc = docs["ids_before"]
+    ids = ids_doc.get("objectIds")
+    if (type(count_doc.get("count")) is not int or count_doc["count"] != EXPECTED_SOURCE_COUNT
+            or ids_doc.get("objectIdFieldName") != "OBJECTID" or not isinstance(ids, list)
+            or len(ids) != EXPECTED_SOURCE_COUNT or any(type(value) is not int for value in ids)):
+        raise ValueError("source_count_or_id_roster_drift")
+    if (len(set(ids)) != EXPECTED_SOURCE_COUNT or sorted(ids) != seed_ids
+            or _sha(_canonical(sorted(ids))) != EXPECTED_SOURCE_ID_SHA256):
+        raise ValueError("source_id_roster_drift")
+
+    layer, service, portal = docs["layer_before"], docs["service_before"], docs["portal_item"]
+    fields = layer.get("fields")
+    if not isinstance(fields, list) or any(not isinstance(field, dict) for field in fields):
+        raise ValueError("source_field_roster_missing")
+    plain_fields = [_plain_field(field) for field in fields]
+    if (_sha(_canonical(plain_fields)) != EXPECTED_SOURCE_SCHEMA_SHA256
+            or [field.get("name") for field in fields] != EXPECTED_FIELD_NAMES
+            or [field.get("type") for field in fields] != EXPECTED_FIELD_TYPES):
+        raise ValueError("source_schema_drift")
+    if (portal.get("id") != ITEM_ID or portal.get("owner") != "USDOT_BTS"
+            or portal.get("title") != LAYER_NAME or portal.get("url") != SERVICE_URL
+            or portal.get("access") != "public"
+            or portal.get("licenseInfo") != "Creative Commons Attribution 3.0 United States (CC-BY-3.0)"):
+        raise ValueError("source_item_identity_or_access_drift")
+    desc = str(portal.get("description", ""))
+    if ("Bureau of Transportation Statistics (BTS)" not in desc
+            or "National Transportation Atlas Database (NTAD)" not in desc
+            or "National Transit Map" not in desc or "September 23, 2026" not in desc):
+        raise ValueError("official_BTS_NTAD_relationship_or_vintage_drift")
+    if (service.get("serviceItemId") != ITEM_ID
+            or not any(isinstance(x, dict) and x.get("id") == LAYER_ID and x.get("name") == LAYER_NAME
+                       for x in service.get("layers", []))
+            or layer.get("name") != LAYER_NAME or layer.get("geometryType") != "esriGeometryPolyline"
+            or layer.get("objectIdField") != "OBJECTID" or layer.get("hasZ") is not False
+            or layer.get("hasM") is not False
+            or layer.get("extent", {}).get("spatialReference", {}).get("latestWkid") != 4326):
+        raise ValueError("source_layer_identity_or_crs_drift")
+    return seed_ids, layer
+
+
+def _validate_page_ids(body: bytes, expected_ids: list[int]) -> None:
+    page = json.loads(body)
+    if "error" in page:
+        raise ValueError("source_page_error_or_truncated")
+    rows = page.get("features")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("source_page_missing_features")
+    page_ids = []
+    for row in rows:
+        attrs = row.get("attributes")
+        if not isinstance(attrs, dict) or type(attrs.get("OBJECTID")) is not int:
+            raise ValueError("source_page_object_id_type_drift")
+        page_ids.append(attrs["OBJECTID"])
+    if page_ids != expected_ids:
+        raise ValueError("source_page_ids_do_not_match_requested_slice")
+
+
+def _bounded_regular_file(path: Path, limit: int, *, dir_fd: int | None = None) -> bytes:
+    """Read at most limit bytes from a no-follow regular file."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path.name if dir_fd is not None else path, flags, dir_fd=dir_fd)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+            raise ValueError("capture_artifact_type_or_size_limit")
+        chunks, remaining = [], limit
+        while remaining:
+            block = os.read(fd, min(1024 * 1024, remaining))
+            if not block:
+                break
+            chunks.append(block)
+            remaining -= len(block)
+        value = b"".join(chunks)
+        if len(value) > limit or os.fstat(fd).st_size > limit:
+            raise ValueError("capture_artifact_type_or_size_limit")
+        return value
+    finally:
+        os.close(fd)
+
+
+def _bounded_failure_evidence(capture_root: Path, captures: dict[str, tuple[bytes, dict]],
+                              error_code: str) -> tuple[dict[str, tuple[bytes, bytes, dict]], list[str]]:
+    """Collect bounded partial artifacts; malformed/oversized files are named, not read."""
+    by_name: dict[str, set[str]] = {}
+    allowed = re.compile(r"(?:ids_seed|portal_item|service_before|layer_before|count_before|ids_before|"
+                         r"portal_item_after|layer_after|service_after|count_after|ids_after|page_\d{3,4})")
+    root_fd = None
+    try:
+        root_fd = os.open(capture_root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                          | getattr(os, "O_NOFOLLOW", 0))
+        with os.scandir(root_fd) as entries:
+            for index, entry in enumerate(entries):
+                if index >= MAX_CAPTURE_RESPONSES * 3:
+                    raise ValueError("capture_artifact_file_count_limit")
+                match = re.fullmatch(r"(.+)\.(body|wire|receipt\.json)", entry.name)
+                if match and allowed.fullmatch(match.group(1)):
+                    by_name.setdefault(match.group(1), set()).add(match.group(2))
+    except (FileNotFoundError, NotADirectoryError):
+        if root_fd is not None:
+            os.close(root_fd)
+        return {}, ["capture_root_missing_or_unsafe"]
+    except ValueError:
+        if root_fd is not None:
+            os.close(root_fd)
+        return {}, ["capture_artifact_file_count_limit"]
+    except OSError:
+        if root_fd is not None:
+            os.close(root_fd)
+        return {}, ["capture_root_missing_or_unsafe"]
+
+    result: dict[str, tuple[bytes, bytes, dict]] = {}
+    omitted: list[str] = []
+    total_body_wire = 0
+    total_receipts = 0
+    for name in sorted(set(by_name) | set(captures)):
+        if len(result) >= MAX_CAPTURE_RESPONSES:
+            omitted.append("response_count_limit")
+            break
+        paths = {suffix: capture_root / f"{name}.{suffix}" for suffix in ("body", "wire", "receipt.json")}
+        if by_name.get(name, set()) != {"body", "wire", "receipt.json"}:
+            omitted.append(name)
+            continue
+        body: bytes = b""
+        wire: bytes = b""
+        receipt: dict = {}
+        try:
+            receipt_remaining = MAX_FAILURE_RECEIPTS_TOTAL_BYTES - total_receipts
+            if receipt_remaining <= 0:
+                raise ValueError("capture_receipt_total_size_limit")
+            raw = _bounded_regular_file(paths["receipt.json"],
+                                        min(MAX_FAILURE_RECEIPT_BYTES, receipt_remaining), dir_fd=root_fd)
+            total_receipts += len(raw)
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                receipt = parsed
+            remaining_total = MAX_CAPTURE_TOTAL_BYTES - total_body_wire
+            body = _bounded_regular_file(paths["body"], min(MAX_BODY_BYTES, remaining_total), dir_fd=root_fd)
+            remaining_total -= len(body)
+            if remaining_total < 0:
+                raise ValueError("capture_artifact_total_size_limit")
+            wire = _bounded_regular_file(paths["wire"], min(MAX_BODY_BYTES, remaining_total), dir_fd=root_fd)
+            next_total = total_body_wire + len(body) + len(wire)
+            if len(body) > MAX_BODY_BYTES or len(wire) > MAX_BODY_BYTES or next_total > MAX_CAPTURE_TOTAL_BYTES:
+                raise ValueError("capture_artifact_total_size_limit")
+            total_body_wire = next_total
+        except (OSError, ValueError, json.JSONDecodeError):
+            omitted.append(name)
+            continue
+        if not receipt:
+            receipt = {"method":"GET","url":None,"final_url":None,
+                "observed_at":datetime.now(timezone.utc).isoformat(),"status":None,
+                "complete_body":False,"wire_bytes":len(wire),"wire_sha256":_sha(wire),
+                "bytes":len(body),"sha256":_sha(body),"content_encoding":None,
+                "content_length":None,"error_code":error_code}
+        result[name] = (body, wire, receipt)
+    if root_fd is not None:
+        os.close(root_fd)
+    return result, omitted
+
+
+def _quarantine_failure_evidence(storage: StagingStorageResource, dataset_slug: str,
+                                 captures: dict[str, tuple[bytes, bytes, dict]],
+                                 error_code: str, omitted: list[str]) -> str:
+    token = uuid4().hex
+    base = f"_quarantine/{dataset_slug}/{token}"
+    for name, (body, wire, receipt) in sorted(captures.items()):
+        write_immutable(storage, f"{base}/raw/{name}.body", body)
+        write_immutable(storage, f"{base}/raw/{name}.wire", wire)
+        write_immutable(storage, f"{base}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+    write_immutable(storage, f"{base}/metadata/failure.json", _canonical({
+        "reason_code":error_code,"captured_names":sorted(captures),"omitted_artifacts":omitted,
+        "evidence_complete":not omitted})+b"\n")
+    return base
 
 
 def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict, list[dict], list[dict], dict]:
@@ -442,12 +639,13 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
                 current_capture_name, current_capture_url = name, url
                 body, receipt = capture_one(client, name, url)
                 captures[name] = (body, receipt)
-            layer_before = json.loads(captures["layer_before"][0])
-            _pagination_mode, page_plan = _page_plan(seed, layer_before)
-            for name, url, _page_ids in page_plan:
+            pinned_ids, layer_before = _validate_before_page_requests(captures)
+            _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
+            for name, url, expected_page_ids in page_plan:
                 current_capture_name, current_capture_url = name, url
                 body, receipt = capture_one(client, name, url)
                 captures[name] = (body, receipt)
+                _validate_page_ids(body, expected_page_ids)
             for name, url in _source_after_urls():
                 current_capture_name, current_capture_url = name, url
                 body, receipt = capture_one(client, name, url)
@@ -455,31 +653,16 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         layer, fields, features, audit = _validate(captures)
     except Exception as exc:
         error_code = str(exc) if isinstance(exc, ValueError) and str(exc).replace("_", "").isalnum() else type(exc).__name__
-        receipts = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
-        # The shared capture helper may fail during a stream before it can
-        # return a receipt. Preserve every partial body/wire file with a
-        # clearly incomplete receipt so a later operator can inspect it.
-        partial_names = {p.name.removesuffix(".wire") for p in capture_root.glob("*.wire")}
-        partial_names.update(p.name.removesuffix(".body") for p in capture_root.glob("*.body"))
-        for name in sorted(partial_names - captures.keys()):
-            body_path, wire_path = capture_root/f"{name}.body", capture_root/f"{name}.wire"
-            body = body_path.read_bytes() if body_path.exists() else b""
-            wire = wire_path.read_bytes() if wire_path.exists() else b""
-            receipt = receipts.get(name)
-            if not isinstance(receipt, dict):
-                receipt = {"method":"GET","url":current_capture_url if name == current_capture_name else None,
-                    "final_url":None,"observed_at":datetime.now(timezone.utc).isoformat(),"status":None,
-                    "complete_body":False,"wire_bytes":len(wire),"wire_sha256":_sha(wire),
-                    "bytes":len(body),"sha256":_sha(body),"content_encoding":None,
-                    "content_length":None,"error_code":error_code}
-            receipts[name] = receipt
-            captures[name] = (body, receipt)
-        (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":error_code,"receipts":receipts})+b"\n")
-        if captures:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, capture_token, captures, error_code)
+        bounded, omitted = _bounded_failure_evidence(capture_root, captures, error_code)
+        try:
+            (capture_root/"capture_manifest.json").write_bytes(_canonical({
+                "captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,
+                "error_code":error_code,"receipts":{name:receipt for name,(_,_,receipt) in sorted(bounded.items())},
+                "omitted_artifacts":omitted,"evidence_complete":not omitted})+b"\n")
+        except OSError:
+            omitted.append("capture_manifest_write_failed")
+        if bounded:
+            _quarantine_failure_evidence(storage, DATASET_SLUG, bounded, error_code, omitted)
         raise
     identity = _code_identity()
     parquet = _parquet_bytes(fields, features)
