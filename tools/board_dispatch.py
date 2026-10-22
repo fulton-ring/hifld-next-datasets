@@ -14,7 +14,7 @@ from agent_handoffs import pages, read_handoffs
 REPO = 'fulton-ring/hifld-next-datasets'
 CONTROL = 'fulton-ring/hifld-next-iac'
 WORKFLOW = f'repos/{CONTROL}/actions/workflows/agent-worker.yml'
-SHARED_BASE = 'codex/cloud-verification-417'
+NEW_IMPLEMENTATION_BASE = 'main'
 IDENTITY = re.compile(r'^(implementation|review) issue #([1-9][0-9]*) @ ([a-f0-9]{40})$')
 ITEMS = '''query($project:ID!,$cursor:String){node(id:$project){... on ProjectV2{
  items(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{
@@ -121,7 +121,8 @@ def task_for(card, api):
     if card['status'] == 'Review' and not prs:
         raise ValueError('Review requires an open same-repository PR')
     pr = prs[0] if prs else None
-    sha = pr['head']['sha'] if pr else api('repo', f'repos/{REPO}/commits/{urllib.parse.quote(SHARED_BASE, safe="")}')['sha']
+    base_ref = pr['base']['ref'] if pr else NEW_IMPLEMENTATION_BASE
+    sha = pr['head']['sha'] if pr else api('repo', f'repos/{REPO}/commits/{urllib.parse.quote(base_ref, safe="")}')['sha']
     if not re.fullmatch('[a-f0-9]{40}', sha):
         raise ValueError('An exact commit is required')
     role = 'review' if card['status'] == 'Review' else 'implementation'
@@ -130,8 +131,8 @@ def task_for(card, api):
         if route['pr'] != pr['number'] or route['head'] != sha:
             raise ValueError('Review requested changes to a different head; supervisor reconciliation required')
     return dict(issue=str(card['number']), role=role, dispatch_head_sha=sha,
-                datasets_ref=sha if role == 'review' else (pr['head']['ref'] if pr else SHARED_BASE),
-                pr_base=pr['base']['ref'] if pr else SHARED_BASE,
+                datasets_ref=sha if role == 'review' else (pr['head']['ref'] if pr else sha),
+                pr_base=base_ref,
                 pull_request_number=str(pr['number']) if pr else '0')
 
 

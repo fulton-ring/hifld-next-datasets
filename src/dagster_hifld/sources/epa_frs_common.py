@@ -21,6 +21,7 @@ import httpx
 import pyarrow as pa
 import pyproj
 import shapely
+from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.construction_state import (
     canonical_construction_bundle,
     load_first_construction,
@@ -36,6 +37,8 @@ from dagster_hifld.construction_provenance import (
 )
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
 
 
@@ -321,6 +324,80 @@ def validate_staged_release_derivatives(storage: StagingStorageResource, prefix:
     return found
 
 
+def _validate_cached_catalog_sidecars(storage: StagingStorageResource, prefix: str,
+                                      actual_keys: set[str]) -> None:
+    """Recompute every catalog derivative from the sealed native candidate."""
+    flat_names = ("metadata/quality_manifest.json", "metadata/data_dictionary.json")
+    flat_keys = {f"{prefix}/{name}" for name in flat_names}
+    found_flat = actual_keys & flat_keys
+    catalog_derivative_keys = flat_keys | {
+        f"{prefix}/metadata/resolved_provenance.json",
+        f"{prefix}/metadata/source/quality_manifest.json",
+        f"{prefix}/metadata/source/data_dictionary.json",
+    }
+    found_catalog_derivatives = actual_keys & catalog_derivative_keys
+    if not found_catalog_derivatives:
+        return
+    if found_flat != flat_keys:
+        raise ValueError("cached_catalog_metadata_incomplete")
+
+    source_catalog_names = (
+        "metadata/source/quality_manifest.json",
+        "metadata/source/data_dictionary.json",
+    )
+    source_catalog_keys = {f"{prefix}/{name}" for name in source_catalog_names}
+    found_source_catalog = actual_keys & source_catalog_keys
+    if found_source_catalog not in (set(), source_catalog_keys):
+        raise ValueError("cached_catalog_source_snapshot_incomplete")
+
+    parts = prefix.split("/")
+    if len(parts) != 3 or any(not part for part in parts):
+        raise ValueError("cached_catalog_prefix_invalid")
+    dataset_slug, file_slug, version = parts
+    resolved_manifest = load_resolved_source_manifest(storage, dataset_slug, file_slug, version)
+    summary = summarize_staged_catalog(
+        storage,
+        dataset_slug,
+        file_slug,
+        version,
+        dataset_slug,
+        source_metadata=resolved_manifest.metadata,
+    )
+
+    def read_stable_json(key: str) -> object:
+        before = storage.object_snapshot(key)
+        if before is None:
+            raise ValueError("cached_catalog_metadata_missing:" + key.rsplit("/", 1)[-1])
+        body = storage.read_key(key)
+        if storage.object_snapshot(key) != before:
+            raise ValueError("cached_catalog_metadata_changed_during_validation")
+        try:
+            return json.loads(body)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("cached_catalog_metadata_invalid") from exc
+
+    quality_key = f"{prefix}/metadata/quality_manifest.json"
+    dictionary_key = f"{prefix}/metadata/data_dictionary.json"
+    quality = read_stable_json(quality_key)
+    dictionary = read_stable_json(dictionary_key)
+    if quality != summary.quality_manifest or dictionary != summary.data_dictionary:
+        raise ValueError("cached_catalog_metadata_mismatch")
+
+    resolved_key = f"{prefix}/metadata/resolved_provenance.json"
+    expected_resolved = provenance_projection(resolved_manifest.metadata)
+    if (resolved_key in actual_keys) != (expected_resolved is not None):
+        raise ValueError("cached_catalog_resolved_provenance_mismatch")
+    if expected_resolved is not None and read_stable_json(resolved_key) != expected_resolved:
+        raise ValueError("cached_catalog_resolved_provenance_mismatch")
+
+    if found_source_catalog:
+        source_quality_key = f"{prefix}/metadata/source/quality_manifest.json"
+        source_dictionary_key = f"{prefix}/metadata/source/data_dictionary.json"
+        if (read_stable_json(source_quality_key) != quality
+                or read_stable_json(source_dictionary_key) != dictionary):
+            raise ValueError("cached_catalog_source_snapshot_changed")
+
+
 def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, state_key: str,
                             prefix: str, version: str, fingerprint: str, identity: Mapping[str, object],
                             source_record_sha256: str, source_schema_sha256: str,
@@ -353,6 +430,9 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
             "metadata/source/source_manifest.json",
             f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json",
         }
+        found_snapshots = {f"{prefix}/{name}" for name in snapshot_names} & actual_keys
+        if found_snapshots and len(found_snapshots) != len(snapshot_names):
+            raise ValueError("cached_catalog_source_snapshot_incomplete")
     staged_release_keys = {f"{prefix}/{name}" for name in STAGED_RELEASE_DERIVATIVE_NAMES}
     allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names} | staged_release_keys
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
@@ -382,5 +462,6 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
                 or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
                 or receipt_body != _canonical(dict(receipt)) + b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
+    _validate_cached_catalog_sidecars(storage, prefix, actual_keys)
     validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"], identity=identity)
     return {"version": version, "reused": True}
