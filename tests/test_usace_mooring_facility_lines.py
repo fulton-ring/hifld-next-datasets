@@ -31,6 +31,20 @@ class UsaceMooringFacilityLinesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"unsafe_capture_version"):
                 source.capture_usace_mooring_facility_lines(storage,version="../outside")
 
+    def test_explicit_capture_root_is_joined_before_first_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);capture_root=root/"captures"
+            storage=StagingStorageResource(local_dir=str(root/"stage"))
+            with patch.object(source.shutil,"disk_usage",return_value=SimpleNamespace(free=1_000_000_000)), \
+                 patch.object(source.httpx,"Client",side_effect=RuntimeError("guarded_before_request")):
+                with self.assertRaisesRegex(RuntimeError,"guarded_before_request"):
+                    source.capture_usace_mooring_facility_lines(
+                        storage,version="draft",capture_directory=str(capture_root))
+            leaves=list(capture_root.iterdir())
+            self.assertEqual(len(leaves),1)
+            self.assertTrue((leaves[0]/"capture_manifest.json").is_file())
+            self.assertFalse(json.loads((leaves[0]/"capture_manifest.json").read_bytes())["complete"])
+
     def _documents(self):
         service={"mapName":"MOORING_FACILITY_LINE","copyrightText":"USACE IENC",
                  "layers":[{"id":41,"name":"MOORING_FACILITY_LINE","geometryType":"esriGeometryPolyline"}]}

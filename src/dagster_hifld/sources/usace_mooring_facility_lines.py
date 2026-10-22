@@ -453,7 +453,7 @@ def capture_usace_mooring_facility_lines(storage: StagingStorageResource, *, ver
     else:
         if requested and (any(requested.glob("*.body")) or any(requested.glob("*.wire")) or any(requested.glob("*.receipt.json"))):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
-        root=(requested/version+"-"+uuid4().hex) if requested else Path("/tmp/hifld-native-reconstruction/161/captures")/(version+"-"+uuid4().hex)
+        root=(requested/(version+"-"+uuid4().hex)) if requested else Path("/tmp/hifld-native-reconstruction/161/captures")/(version+"-"+uuid4().hex)
         if ".." in root.parts or any(path.is_symlink() for path in (root,*root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True,exist_ok=False)
