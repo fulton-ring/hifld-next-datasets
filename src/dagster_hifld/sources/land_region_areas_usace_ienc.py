@@ -60,8 +60,8 @@ EXPECTED_COUNT = 175
 EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 EXPECTED_ID_SHA256 = "d3cc336416535d67c7dedbc7e03c4f4de0e44375a3de5888b98636bb7b56b845"
 PAGE_SIZE = 250
-MAX_BODY_BYTES = 48_000_000
-MAX_CAPTURE_BYTES = 450_000_000
+MAX_BODY_BYTES = 12_000_000
+MAX_CAPTURE_BYTES = 24_000_000
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
     ("Category_of_Land_Region", "esriFieldTypeString"),
@@ -737,7 +737,7 @@ def capture_land_region_areas_usace_ienc(storage: StagingStorageResource, *, ver
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = requested / (version + "-" + uuid4().hex)
     else:
-        root = Path("/tmp/hifld-native-reconstruction/135/captures") / (version + "-" + uuid4().hex)
+        root = Path("/workspace/work/135-evidence/captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)
