@@ -19,6 +19,8 @@ class ScheduleConfigValidationTests(unittest.TestCase):
         repo = defs.get_repository_def()
         fixture_root = Path("/tmp/schedule-config-validation-fixtures")
         fixture_env = {
+            "CENSUS_BLOCK_GROUPS_ARCHIVE_PATH": str(fixture_root / "census.gdb.zip"),
+            "CENSUS_BLOCK_GROUPS_RECEIPT_PATH": str(fixture_root / "census.receipt.json"),
             "HIFLD_CAMPUS_CAPTURE_DIR": str(fixture_root / "campus"),
             "HIFLD_FDIC_LOCATIONS_CAPTURE_DIR": str(fixture_root / "fdic"),
             "HIFLD_FEMA_REGIONS_CAPTURE_DIR": str(fixture_root / "fema"),
@@ -50,13 +52,6 @@ class ScheduleConfigValidationTests(unittest.TestCase):
                     for request in requests:
                         self.assertIsInstance(request, RunRequest)
                         run_config = copy.deepcopy(request.run_config or {})
-                        # This source-only schedule carries Dagster EnvVar sentinels in Python;
-                        # substitute inert explicit paths for schema validation only.
-                        if schedule.name == "census_block_groups_draft_refresh_schedule":
-                            self.assertEqual(len(run_config.get("ops", {})), 1)
-                            source_config = next(iter(run_config["ops"].values()))["config"]
-                            source_config["archive_path"] = str(fixture_root / "census.gdb.zip")
-                            source_config["receipt_path"] = str(fixture_root / "census.receipt.json")
                         validate_run_config(job, run_config)
 
 
