@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pyarrow.parquet as pq
 import shapely
+import httpx
 from dagster import DagsterInstance, materialize
 
 from dagster_hifld.assets.catalog import publish_catalog
@@ -23,6 +24,15 @@ def canonical(value):
 
 
 class EpaIcisWastewaterTests(unittest.TestCase):
+    def setUp(self):
+        # These unit fixtures exercise capture policy with tiny responses; disk
+        # capacity behavior is checked separately by the production guard.
+        self.disk_guard = patch.object(source, "_require_disk_space")
+        self.disk_guard.start()
+
+    def tearDown(self):
+        self.disk_guard.stop()
+
     def test_tiny_complete_capture_keeps_native_ids_values_geometry_and_unapproved_gate(self):
         fields = [
             {"name":"OBJECTID", "type":"esriFieldTypeOID", "alias":"OBJECTID", "nullable":False},
@@ -46,14 +56,18 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                  "page_001":{"spatialReference":{"latestWkid":4269},"exceededTransferLimit":False,"features":rows[250:]}}
 
         request_urls={}
+        capture_kwargs={}
         def capture(_client, url, root, name, **_kwargs):
             request_urls[name]=url
+            capture_kwargs[name]=_kwargs
             payload = bodies[name]
             body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
-            receipt = {"url":url,"final_url":url,"observed_at":"2026-01-01T00:00:00+00:00","status":200,
+            receipt = {"method":"GET","url":url,"final_url":url,"observed_at":"2026-01-01T00:00:00+00:00","status":200,
                        "complete_body":True,"bytes":len(body),"sha256":hashlib.sha256(body).hexdigest(),
                        "wire_bytes":len(body),"wire_sha256":hashlib.sha256(body).hexdigest()}
             root.mkdir(parents=True, exist_ok=True)
+            for kind in ("wire", "body"):
+                _kwargs["before_retain"](kind, body)
             (root/f"{name}.wire").write_bytes(body)
             (root/f"{name}.body").write_bytes(body)
             (root/f"{name}.receipt.json").write_bytes(canonical(receipt)+b"\n")
@@ -80,6 +94,7 @@ class EpaIcisWastewaterTests(unittest.TestCase):
             self.assertEqual(parse_qs(urlsplit(request_urls["page_000"]).query)["resultOffset"],["0"])
             self.assertEqual(parse_qs(urlsplit(request_urls["page_001"]).query)["resultOffset"],["250"])
             self.assertNotIn("objectIds",parse_qs(urlsplit(request_urls["page_001"]).query))
+            self.assertTrue(all(kwargs.get("max_bytes") == source.MAX_RESPONSE_BYTES and callable(kwargs.get("before_retain")) for kwargs in capture_kwargs.values()))
 
             partition=build_publish_partition_key(source.DATASET_SLUG,source.FILE_SLUG,result["version"])
             instance_dir=Path(tmp)/"dagster"; instance_dir.mkdir()
@@ -90,11 +105,20 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                 self.assertTrue(catalog.success)
                 quality=json.loads(storage.read_key(f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{result['version']}/metadata/quality_manifest.json"))
                 self.assertFalse(quality["quality_check_passed"])
+                retained_dir=Path(tmp)/"captures"/"vfixture"
                 with patch.object(source, "SCHEMA_SHA256", schema_sha), \
-                     patch.object(source, "capture_get", side_effect=capture), \
-                     patch.object(source.httpx, "Client"):
-                    cached=source.capture_epa_icis_wastewater(storage,version="vrefresh",capture_directory=str(Path(tmp)/"captures"))
+                     patch.object(source.httpx, "Client", side_effect=AssertionError("offline replay attempted HTTP")):
+                    cached=source.capture_epa_icis_wastewater(storage,version="vrefresh",retained_capture_directory=str(retained_dir),retained_capture_manifest_sha256=result["capture_manifest_sha256"])
                 self.assertTrue(cached["reused"])
+                self.assertEqual(cached["capture_manifest_sha256"],result["capture_manifest_sha256"])
+                wire_path=retained_dir/"page_000.wire"
+                original_wire=wire_path.read_bytes()
+                wire_path.write_bytes(original_wire+b"tamper")
+                with patch.object(source, "SCHEMA_SHA256", schema_sha), \
+                     patch.object(source.httpx, "Client", side_effect=AssertionError("tampered replay attempted HTTP")):
+                    with self.assertRaisesRegex(ValueError,"capture_roster_artifact_mismatch"):
+                        source.capture_epa_icis_wastewater(storage,version="vtampered",retained_capture_directory=str(retained_dir),retained_capture_manifest_sha256=result["capture_manifest_sha256"])
+                wire_path.write_bytes(original_wire)
             # A missing source ID invalidates the page before any candidate is written or reused.
             bodies["page_000"]={"spatialReference":{"latestWkid":4269},"features":[row]}
             with patch.object(source, "SCHEMA_SHA256", schema_sha), \
@@ -119,6 +143,27 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError,"source_geometry_dimensions_unsupported"):
                         source.capture_epa_icis_wastewater(storage,version=f"v{dimension}",capture_directory=str(Path(tmp)/f"{dimension}-captures"))
                 layer[dimension]=False
+
+    def test_capture_budget_bounds_and_prewrite_response_overshoot_refusal(self):
+        source._validate_capture_limits(1_000_000, 100_000)
+        for total, response in ((0, 1), (source.MAX_CAPTURE_BYTES + 1, 1), (10, 0), (10, source.MAX_RESPONSE_BYTES + 1), (10, 11)):
+            with self.subTest(total=total, response=response), self.assertRaises(ValueError):
+                source._validate_capture_limits(total, response)
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/"capture"
+            data=b"0123456789"
+            client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200,content=data,request=request)))
+            retained=[0]
+            def refuse_before_overshoot(_kind, block):
+                if retained[0]+len(block)>5:
+                    raise ValueError("test_capture_budget_exceeded")
+                retained[0]+=len(block)
+            with client, self.assertRaisesRegex(ValueError,"incomplete_source_capture:oversized"):
+                source.capture_get(client,"https://example.invalid/source",root,"oversized",max_bytes=64,before_retain=refuse_before_overshoot)
+            self.assertEqual((root/"oversized.wire").stat().st_size,0)
+            self.assertEqual((root/"oversized.body").stat().st_size,0)
+            receipt=json.loads((root/"oversized.receipt.json").read_text())
+            self.assertFalse(receipt["complete_body"])
 
 
 if __name__ == "__main__":

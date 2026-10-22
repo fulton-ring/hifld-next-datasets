@@ -6,12 +6,16 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_icis_wastewater import (
-    DATASET_SLUG, FILE_SLUG, capture_epa_icis_wastewater,
+    DATASET_SLUG, FILE_SLUG, MAX_CAPTURE_BYTES, MAX_RESPONSE_BYTES, capture_epa_icis_wastewater,
 )
 
 
 class EpaIcisWastewaterConfig(Config):
     capture_directory: str = ""
+    retained_capture_directory: str = ""
+    retained_capture_manifest_sha256: str = ""
+    max_capture_bytes: int = MAX_CAPTURE_BYTES
+    max_response_bytes: int = MAX_RESPONSE_BYTES
 
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="epa", compute_kind="http",
@@ -19,7 +23,11 @@ class EpaIcisWastewaterConfig(Config):
 def epa_icis_wastewater_treatment_plants(context, config: EpaIcisWastewaterConfig,
                                          staging_storage: StagingStorageResource) -> dict:
     result = capture_epa_icis_wastewater(staging_storage, version=build_version_id(context),
-                                         capture_directory=config.capture_directory or None)
+                                         capture_directory=config.capture_directory or None,
+                                         retained_capture_directory=config.retained_capture_directory or None,
+                                         retained_capture_manifest_sha256=config.retained_capture_manifest_sha256 or None,
+                                         max_capture_bytes=config.max_capture_bytes,
+                                         max_response_bytes=config.max_response_bytes)
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,
         [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])])
     context.add_output_metadata(result)
