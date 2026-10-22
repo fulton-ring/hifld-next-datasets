@@ -63,6 +63,7 @@ from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
+from dagster_hifld.assets.usace_lakes import usace_lakes_usace_ienc
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
@@ -153,6 +154,7 @@ hifld_ingest_assets = [
     census_bureau_tracts,
     usace_pontoon_areas_usace_ienc,
     usace_hulke_areas_usace_ienc,
+    usace_lakes_usace_ienc,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
