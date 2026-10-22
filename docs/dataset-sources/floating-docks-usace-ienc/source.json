@@ -1,0 +1,357 @@
+{
+  "schema_version": 1,
+  "inventory_id": "floating-docks-usace-ienc",
+  "title": "Floating Docks (USACE IENC)",
+  "agency": "U.S. Army Corps of Engineers",
+  "publisher": "USACE Army Geospatial Center (IENC); the parent IENC item is cataloged by USDOT BTS",
+  "crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "hifld_inventory_row": "floating-docks-usace-ienc, Floating Docks (USACE IENC)",
+    "archive_url": "https://www.datalumos.org/datalumos/project/239162/version/V1/view",
+    "archive_source_modified": "2025-04-08",
+    "archive_role": "Historical HIFLD/DataLumos copy; portal modification date is not a current producer release date.",
+    "historical_id_and_geometry_match": "Not established; the DataLumos project page returned HTTP 403 on 2026-10-21, and no historical file bytes were recovered in this run."
+  },
+  "source_relationship": "The current public USDOT BTS IENC PDF item 7ec34864c8804468a9cf52d437fe4b6c is owned by USDOT_BTS, describes USACE/AGC distribution, and links the master geodatabase and IENC Feature Classes service. The exact FLOATING_DOCK_AREA layer is published by USACE IENC / AGC and its ArcGIS item 280098e13f5e4772be15b4c2e3a84ef4 (owner usace_agc_dkd) points at the same ienccloud.us MapServer. The former BTS map-service item 3607d485a9854d6fa458bf507058ceae returned anonymous-access denial in the 2026-10-21 pontoon observation; continuity between BTS catalog records and to the historical DataLumos copy remains unaccepted.",
+  "bts_item": {
+    "id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "type": "PDF",
+    "access": "public",
+    "url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+    "claims": "USACE/AGC bi-monthly IENC updates; links official Feature Classes service and master file geodatabase; warns chart-derived data may contain inaccuracies.",
+    "item_modified_is_release_date": false,
+    "observed_at": "2026-10-21T22:24:24.444144+00:00",
+    "public_item_metadata_sha256": "b9856372c4c0e034d4e830e73a17bdb54ec444747589ceeb6a8d4b20dd20bb6d"
+  },
+  "official_landing": "https://ienccloud.us/",
+  "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86",
+  "master_geodatabase_url": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+  "observed": {
+    "layer_id": 86,
+    "layer_name": "FLOATING_DOCK_AREA",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "feature_count": 51,
+    "native_OBJECTID": "51 integer IDs, 1 through 51",
+    "native_OBJECTID_sha256_canonical_json": "c331e85759e39947a7591a5b52bab252382637ab99ac844cee79867609389c68",
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "name": "SHAPE",
+        "type": "esriFieldTypeGeometry"
+      },
+      {
+        "name": "Object_Name",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Horizontal_Length",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Horizontal_Width",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Horizontal_Clearance",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Depth_Range_Value_1",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Information",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Date",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Indication",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Feature_ID",
+        "type": "esriFieldTypeString",
+        "length": 254
+      }
+    ],
+    "layer_extent": {
+      "xmin": -95.29531899999995,
+      "ymin": 33.25191700000005,
+      "xmax": -79.88356719999996,
+      "ymax": 41.82842300000004
+    },
+    "source_release_date": null,
+    "release_date_unknown_reason": "The layer declares no source edition or release date. BTS describes parent IENC updates as bi-monthly; that cadence does not date this layer snapshot. Per-feature Source_Date/Source_Indication values describe survey vintage, not a layer release.",
+    "native_feature_id_duplicate_count": 0,
+    "native_feature_id_distinct_count": 51,
+    "observation_date": "2026-10-21",
+    "source_record_sha256": "f274a93e92c7bab0c1da8ff1863bf11932b071563cdbe24b8ec2660a6efab81e",
+    "source_geometry_sha256": "3eebe6ae93fe27013dd03e1c058e8aabd942b934bb8c89fd97367df8116f7583",
+    "source_schema_sha256": "cace144ab91e6ea92bf0bb41cc7be360fb13a2101fa89c91b808bd11a3dcd0c5",
+    "source_vertex_count": 292
+  },
+  "capture_policy": "Retain decoded ESRI JSON response bodies, exact HTTP wire bodies, request receipts, native IDs, field declarations, attributes, rings and coordinate order. Candidate GeoParquet preserves declared source field types and native EPSG:4326 geometry without reprojection or repair.",
+  "completeness_policy": "Check source directory and layer identity, all declared field names/types, CRS representations, pinned layer extent, independent count/ID rosters before and after extraction, all explicit-ID pages, native attribute types, geometry structure/ordinates/validity and complete feature ID roster. Quarantine incomplete captures and drift.",
+  "coverage_scope": "Complete observed IENC FLOATING_DOCK_AREA chart feature class for inland navigation coverage. Not a national census of floating docks or all navigable-waterway structures.",
+  "proposed_contract": {
+    "status": "Draft only; maintainer approval required.",
+    "native_identifier": "OBJECTID integer, unchanged; Feature_ID string, unchanged including source duplicates if any.",
+    "attributes": "Preserve all 10 non-geometry source attributes and values; no silent drop or mapping.",
+    "geometry": "Polygon in EPSG:4326, all source rings and coordinates unchanged.",
+    "unexpected_source_drift": "Quarantine and request maintainer review."
+  },
+  "approval": {
+    "historical_baseline_and_continuity": false,
+    "source_release_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "attribution": false,
+    "release": false,
+    "bts_item_succession_continuity": false,
+    "production_publication": false
+  },
+  "capture_evidence": {
+    "captured_at": "2026-10-21T22:24:25.404057+00:00",
+    "complete": true,
+    "capture_directory": "/tmp/hifld-native-reconstruction/92/captures/v20261021T222422Z-fec4be95674d4c469b4c19d1506f50ec",
+    "capture_manifest_sha256": "cdbcd438cd0c31031b34562fb66cbc5f0885c40b0d7221d0e0b124b2ff96ac72",
+    "request_count": 12,
+    "raw_body_wire_receipt_artifacts": 36,
+    "source_id_sha256": "c331e85759e39947a7591a5b52bab252382637ab99ac844cee79867609389c68",
+    "source_record_sha256": "f274a93e92c7bab0c1da8ff1863bf11932b071563cdbe24b8ec2660a6efab81e",
+    "source_geometry_sha256": "3eebe6ae93fe27013dd03e1c058e8aabd942b934bb8c89fd97367df8116f7583",
+    "source_schema_sha256": "cace144ab91e6ea92bf0bb41cc7be360fb13a2101fa89c91b808bd11a3dcd0c5",
+    "source_capture_sha256": "e31ec904c674a23f3e6d4a3aab0829e7263e7ce354290bf8dcddb73a57efb3e2",
+    "artifacts": {
+      "bts_item": {
+        "request_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+        "http_status": 200,
+        "body_bytes": 5579,
+        "body_sha256": "b9856372c4c0e034d4e830e73a17bdb54ec444747589ceeb6a8d4b20dd20bb6d",
+        "wire_bytes": 5579,
+        "wire_sha256": "b9856372c4c0e034d4e830e73a17bdb54ec444747589ceeb6a8d4b20dd20bb6d"
+      },
+      "count_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86/query?where=1%3D1&returnCountOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 12,
+        "body_sha256": "5b050563ede555f282b06b907168ac0f3cadf09228e8ced92a525beace811f2e",
+        "wire_bytes": 12,
+        "wire_sha256": "5b050563ede555f282b06b907168ac0f3cadf09228e8ced92a525beace811f2e"
+      },
+      "count_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86/query?where=1%3D1&returnCountOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 12,
+        "body_sha256": "5b050563ede555f282b06b907168ac0f3cadf09228e8ced92a525beace811f2e",
+        "wire_bytes": 12,
+        "wire_sha256": "5b050563ede555f282b06b907168ac0f3cadf09228e8ced92a525beace811f2e"
+      },
+      "ids_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 190,
+        "body_sha256": "01e4c148c250ebd7f72bcc0096dca2c2cc4be19e00f7729ecff02151f42cb84e",
+        "wire_bytes": 190,
+        "wire_sha256": "01e4c148c250ebd7f72bcc0096dca2c2cc4be19e00f7729ecff02151f42cb84e"
+      },
+      "ids_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 190,
+        "body_sha256": "01e4c148c250ebd7f72bcc0096dca2c2cc4be19e00f7729ecff02151f42cb84e",
+        "wire_bytes": 190,
+        "wire_sha256": "01e4c148c250ebd7f72bcc0096dca2c2cc4be19e00f7729ecff02151f42cb84e"
+      },
+      "ids_seed": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 190,
+        "body_sha256": "01e4c148c250ebd7f72bcc0096dca2c2cc4be19e00f7729ecff02151f42cb84e",
+        "wire_bytes": 190,
+        "wire_sha256": "01e4c148c250ebd7f72bcc0096dca2c2cc4be19e00f7729ecff02151f42cb84e"
+      },
+      "layer_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86?f=pjson",
+        "http_status": 200,
+        "body_bytes": 7346,
+        "body_sha256": "5f953412cbeb9546d19f444bb8ef0c348ee1102eaffce3e501296da054bf972f",
+        "wire_bytes": 7346,
+        "wire_sha256": "5f953412cbeb9546d19f444bb8ef0c348ee1102eaffce3e501296da054bf972f"
+      },
+      "layer_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86?f=pjson",
+        "http_status": 200,
+        "body_bytes": 7346,
+        "body_sha256": "5f953412cbeb9546d19f444bb8ef0c348ee1102eaffce3e501296da054bf972f",
+        "wire_bytes": 7346,
+        "wire_sha256": "5f953412cbeb9546d19f444bb8ef0c348ee1102eaffce3e501296da054bf972f"
+      },
+      "page_000": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer/86/query?objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%2C10%2C11%2C12%2C13%2C14%2C15%2C16%2C17%2C18%2C19%2C20%2C21%2C22%2C23%2C24%2C25%2C26%2C27%2C28%2C29%2C30%2C31%2C32%2C33%2C34%2C35%2C36%2C37%2C38%2C39%2C40%2C41%2C42%2C43%2C44%2C45%2C46%2C47%2C48%2C49%2C50%2C51&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json",
+        "http_status": 200,
+        "body_bytes": 32699,
+        "body_sha256": "d39f83c6c18609d713edce9505bff02cd473a90e896e4f57dc71415321f7307c",
+        "wire_bytes": 32699,
+        "wire_sha256": "d39f83c6c18609d713edce9505bff02cd473a90e896e4f57dc71415321f7307c"
+      },
+      "service_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer?f=pjson",
+        "http_status": 200,
+        "body_bytes": 5660,
+        "body_sha256": "b778ed1c63eb61f85f1ddce99bf28585f63ffed78fc601e77815f001549386a4",
+        "wire_bytes": 5660,
+        "wire_sha256": "b778ed1c63eb61f85f1ddce99bf28585f63ffed78fc601e77815f001549386a4"
+      },
+      "service_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer?f=pjson",
+        "http_status": 200,
+        "body_bytes": 5660,
+        "body_sha256": "b778ed1c63eb61f85f1ddce99bf28585f63ffed78fc601e77815f001549386a4",
+        "wire_bytes": 5660,
+        "wire_sha256": "b778ed1c63eb61f85f1ddce99bf28585f63ffed78fc601e77815f001549386a4"
+      },
+      "service_directory": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+        "http_status": 200,
+        "body_bytes": 8518,
+        "body_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb",
+        "wire_bytes": 8518,
+        "wire_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb"
+      }
+    },
+    "bts_item_succession_accepted": false,
+    "note": "Current PDF item and FLOATING_DOCK_AREA layer were captured together in one bounded session; prior catalog item denial is a separate 2026-10-21 observation. The two BTS catalog records are not asserted equivalent."
+  },
+  "materialization_evidence": {
+    "git_commit_observed_by_dagster": "98b18b8e5ede4764c1929c4556ae799140c23b59",
+    "persistent_dagster_home": "/agent-data/tmp/opencode/fd92/dagster_home",
+    "persistent_run_database": "/agent-data/tmp/opencode/fd92/dagster_home/history/runs.db",
+    "source_run_id": "9089b701-df13-4eae-ad9c-a1f59e5afbbf",
+    "source_run_success": true,
+    "catalog_run_id": "69a3b18d-057b-4ffd-a6e9-a1200ba47952",
+    "catalog_run_success": true,
+    "blocking_check_run_id": "f6bf32f5-4bdb-4a02-aae4-9d1132d01527",
+    "blocking_check_name": "usace_floating_docks_complete",
+    "blocking_check_passed": true,
+    "cache_replay_run_id": "8be9f717-e3a7-4d2d-bf23-b8ee7a5792d3",
+    "cache_replay_reused": true,
+    "code_identity_scheme": "git-commit-blobs-v1",
+    "candidate_version": "ve1669ce8c7bdcb3346d51d29a774606f",
+    "candidate_prefix": "floating-docks-usace-ienc/floating-docks-usace-ienc/ve1669ce8c7bdcb3346d51d29a774606f",
+    "source_feature_count": 51,
+    "source_vertex_count": 292,
+    "source_id_sha256": "c331e85759e39947a7591a5b52bab252382637ab99ac844cee79867609389c68",
+    "source_record_sha256": "f274a93e92c7bab0c1da8ff1863bf11932b071563cdbe24b8ec2660a6efab81e",
+    "source_geometry_sha256": "3eebe6ae93fe27013dd03e1c058e8aabd942b934bb8c89fd97367df8116f7583",
+    "source_schema_sha256": "cace144ab91e6ea92bf0bb41cc7be360fb13a2101fa89c91b808bd11a3dcd0c5",
+    "source_capture_sha256": "e31ec904c674a23f3e6d4a3aab0829e7263e7ce354290bf8dcddb73a57efb3e2",
+    "feature_id_duplicate_count": 0,
+    "geoparquet_sha256": "e5c12867a94c0bfdb2f3bd942ab2d8dc311a1f339a908c92b51a3da0d98779f8",
+    "geoparquet_bytes": 11184,
+    "geoparquet_rows": 51,
+    "geometry_crs": {
+      "authority": "EPSG",
+      "code": 4326
+    },
+    "all_native_attribute_values_identical": true,
+    "native_polygon_wkb_identical_after_esri_conversion": true,
+    "catalog_quality": {
+      "passed": true,
+      "scope": "all_rows",
+      "feature_count": 51,
+      "geometry_type": "Polygon",
+      "null_geometries": 0,
+      "empty_geometries": 0,
+      "invalid_geometries": 0
+    },
+    "verify_run_id": "081ff9cb-a24b-4da1-a31a-487f469aaad3",
+    "verify_success": false,
+    "verify_refusal_reason": "dagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry; publish__promote did not start",
+    "approval_registry_empty": true,
+    "published_inventory_unchanged": true,
+    "published_fixture": "/agent-data/tmp/opencode/fd92/published/synthetic-accepted-fixture/preserved.bin",
+    "floating_docks_published_objects": 0,
+    "source_item_succession_accepted": false,
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "schedule": "STOPPED",
+    "production_publication": false,
+    "quality_manifest_path": "/agent-data/tmp/opencode/fd92/staging/floating-docks-usace-ienc/floating-docks-usace-ienc/ve1669ce8c7bdcb3346d51d29a774606f/metadata/quality_manifest.json",
+    "source_manifest_path": "/agent-data/tmp/opencode/fd92/staging/floating-docks-usace-ienc/floating-docks-usace-ienc/ve1669ce8c7bdcb3346d51d29a774606f/metadata/source_manifest.json",
+    "processing_identity_path": "/agent-data/tmp/opencode/fd92/staging/floating-docks-usace-ienc/floating-docks-usace-ienc/ve1669ce8c7bdcb3346d51d29a774606f/metadata/processing_identity.json",
+    "geoparquet_path": "/agent-data/tmp/opencode/fd92/staging/floating-docks-usace-ienc/floating-docks-usace-ienc/ve1669ce8c7bdcb3346d51d29a774606f/geoparquet/floating-docks-usace-ienc.parquet"
+  },
+  "official_layer_item": {
+    "id": "280098e13f5e4772be15b4c2e3a84ef4",
+    "owner": "usace_agc_dkd",
+    "access": "public",
+    "title": "FLOATING_DOCK_AREA",
+    "type": "Map Service",
+    "url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/FLOATING_DOCK_AREA/MapServer",
+    "item_modified_is_release_date": false
+  },
+  "archive_denial_observation": {
+    "observed_at": "2026-10-21",
+    "url": "https://www.datalumos.org/datalumos/project/239162/version/V1/view",
+    "http_status": 403,
+    "interpretation": "Access denial for this research session; it does not imply the archive is unavailable or the current USACE source is dead."
+  },
+  "prior_bts_item": {
+    "id": "3607d485a9854d6fa458bf507058ceae",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "url": "https://www.arcgis.com/home/item.html?id=3607d485a9854d6fa458bf507058ceae",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "denial_observation": {
+      "observed_at": "2026-10-21",
+      "inner_error": {
+        "code": 403,
+        "messageCode": "GWM_0003",
+        "message": "You do not have permissions to access this resource or perform this operation."
+      },
+      "interpretation": "Prior map-service catalog item is no longer anonymously readable (observed during the 2026-10-21 PONTOON_AREA reconstruction of the same BTS IENC item succession); current PDF item repeats IENC distribution links. Succession is unaccepted."
+    },
+    "status": "historical source authority observation only; not current delegation evidence"
+  },
+  "candidate_identity": {
+    "code_identity_scheme": "git-commit-blobs-v1",
+    "code_commit": "98b18b8e5ede4764c1929c4556ae799140c23b59",
+    "version": "ve1669ce8c7bdcb3346d51d29a774606f",
+    "candidate_only": true
+  }
+}
