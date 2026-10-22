@@ -8,7 +8,7 @@ import copy,fcntl,gzip,json,os,sqlite3,tempfile
 import httpx
 import pyarrow.parquet as pq
 from dagster import build_schedule_context
-from dagster import config as dagster_config
+from dagster import validate_run_config
 from dagster._core.instance import DagsterInstance
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_schedule
 from dagster_hifld.definitions import defs
@@ -258,10 +258,8 @@ class FerryTerminalsMechanicsTests(TestCase):
         with DagsterInstance.ephemeral() as instance:
             context=build_schedule_context(instance=instance,repository_def=repo,
                 resources={'staging_storage':StagingStorageResource(local_dir=self.tmp.name,use_local=True)})
-            result=bts_ferry_terminals_draft_refresh_schedule(context)
-        requests=result if isinstance(result,list) else [result]
+            result=bts_ferry_terminals_draft_refresh_schedule.evaluate_tick(context)
+        requests=result.run_requests or []
         self.assertTrue(requests)
-        schema=job.run_config_schema.config_type
         for request in requests:
-            verdict=dagster_config.validate_config(schema,request.run_config or {})
-            self.assertTrue(verdict.success,f'{verdict.errors}; run_config={request.run_config}')
+            validate_run_config(job,request.run_config or {})

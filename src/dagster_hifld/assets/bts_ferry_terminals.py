@@ -20,8 +20,8 @@ bts_ferry_terminals_draft_refresh_job=define_asset_job('bts_ferry_terminals_draf
 
 
 @schedule(job=bts_ferry_terminals_draft_refresh_job,cron_schedule='0 13 1 * *',execution_timezone='America/New_York',
-          default_status=DefaultScheduleStatus.STOPPED,required_resource_keys={'staging_storage'})
-def bts_ferry_terminals_draft_refresh_schedule(context,staging_storage):
+          default_status=DefaultScheduleStatus.STOPPED)
+def bts_ferry_terminals_draft_refresh_schedule(context, staging_storage: StagingStorageResource):
     # Proposed source-availability/integrity poll, not a claim that BTS releases data monthly.
     require_local(staging_storage)
     return RunRequest()
