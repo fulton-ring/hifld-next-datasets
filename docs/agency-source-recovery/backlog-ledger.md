@@ -2,6 +2,31 @@
 
 This ledger tracks all 415 dataset inventory issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. Earlier PR search counts are historical snapshots, not current open-PR counts. Issue #417 remains open; dataset issues remain open despite source PRs auto-merging by ancestry, and no production data was published.
 
+### Latest verified checkpoint — 2026-10-22 00:18 UTC
+
+All 415 unique inventory rows are retained; no fresh global issue or open-PR census was performed. Named current main is `0435135912f3b4001b5527bae2566bc91bd14a61` (tree `1303c6370ab3f00e000b15d462520d00022ee18a`) with 103 registered schedules reported STOPPED. This checkpoint records 78 candidate pipelines integrated this stretch from a starting count of 25; schedule count and code integration do not imply source feasibility, rights, acceptance, release readiness or publication.
+
+| Integration | Main result | Issue updates |
+| --- | --- | --- |
+| PR #661 | #82, #84 and #85 integrated at `89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57`; 93 schedules STOPPED. | Comments 6328387678, 6328388359 and 6328389019 record pending source/release decisions. |
+| PR #663 | #87, #95 and #96 integrated at `19296429e1c29f5ad1d6b7384e66dfce6add7ca0`; 96 schedules STOPPED. | Comments 6328788040, 6328788681 and 6328789373 record issue updates; acceptance remains pending. |
+| PR #664 | #86 and #88 integrated at `11d796bb8bcc90d9504c4d971c0c8a78e703791d`; 98 schedules STOPPED. | #86 remains synthetic-only after official archive retrieval returned 404/403; comment 6328978081. #88 comment 6328978571 records pending decisions. |
+| PR #665 | #92 and #93 integrated at `c951561345efbf8857620c9dcc336ab6b9558f2e`; 100 schedules STOPPED. | Comments 6329165183 and 6329165655; source and release decisions remain open. |
+| PR #670 | #91, #94 and #110 integrated at `0435135912f3b4001b5527bae2566bc91bd14a61` (tree `1303c6370ab3f00e000b15d462520d00022ee18a`); 103 schedules STOPPED. | Source heads `066f3dff4c50fbe0037f493c83864b7ae41cb0c5`, `3f13d2e5c2c0c0fa5660fd8275bc824b5af5375c` and `c3063f805ba5eda97dd825808a978299cf61c830`; comments 6329449205, 6329449751 and 6329450265. Source, CRS/scope, rights and release decisions remain pending. |
+
+Issue #80's earlier PR #656 integration remains on current main; original PR #469 is a separate association. The integration of draft code for #86–#96 and #110 does not accept the source, baseline, schema/ID mapping, rights or release contract. No issue closure, source/release acceptance, schedule activation or production publication is claimed.
+
+| Open decision / public draft | Current named fact |
+| --- | --- |
+| #102 | Public comment 6329490016 marks actionable backlog work with no external blocker; no public implementation PR is recorded. |
+| #105, #106, #109, #115 | Public comments 6329113505, 6329310133, 6329371101 and 6329490936 record authoritative-source, scope, storage/CRS or archive-access decisions. |
+| #107, #108 | Public selection comments 6329203432 and 6329203866 record 93 and 556 source features respectively; completeness and acceptance remain open. |
+| #112 | Local candidate head `0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6` passed independent review, but automatic review blocked its public push pending specific user approval. Public PR #466 remains at `a07432e176856636ea632d3c0bf5f53d56110cde`; the local head is not represented as published or merged. |
+| #113 | Public draft PR #448 is at `4b16abe8431c61f922f9abfbcade58b4d7078512`; integration and source/baseline/rights/release acceptance remain pending. |
+| #89, #104 | Public draft PR #446 remains at `18a988450ca876ea869f192437de94c392a298c1` with review comment 6329288471; PR #666 for #104 is open at `f233b59350412f304c89dfee49638656ba282c44`. No acceptance is inferred. |
+
+No internal workflow identifiers, private runtime paths or private worker diagnostics are added in this checkpoint. The 415 rows remain intact and historical census fields retain their original timestamps; 103 is a current code registration count, not an acceptance count.
+
 ### Latest verified checkpoint — 2026-10-21 22:56 UTC
 
 All 415 unique inventory rows are retained. This is a named integration update, not a fresh 415-issue or open-PR census. Main is `89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57` with 93 registered schedules reported STOPPED. PR #661 integrated reviewed source PRs #651/#82, #654/#84 and #653/#85; build-only passed and publish was skipped. Issues #82/#84/#85 remain open pending source and release decisions; integration is code registration only. No production data was published.
