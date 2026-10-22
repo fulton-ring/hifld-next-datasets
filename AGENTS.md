@@ -88,3 +88,89 @@ This is separate from the Agno `find-dataset-sources` CLI. It implements a **thr
 
 - Run the full suite: `uv run python -m unittest discover tests`
 - Tests cover partition wiring, sensor behavior (with mocks), catalog helpers, explicit asset keys (e.g. NOAA distinct layers), and resource path behavior. When changing `DATASET_FILE_PAIRS` or discovery logic, extend `tests/test_dynamic_partitions.py` or add focused tests rather than relying only on manual GCS checks.
+
+### Moving Pipeline workers cards
+
+Agents request a card move by adding an issue label, following the same one-shot
+protocol as `fulton-ring/agent-content-demos`: `move:backlog`, `move:ready`,
+`move:in-progress`, `move:review`, or `move:needs-decision`. For example:
+`gh issue edit 84 --repo fulton-ring/hifld-next-datasets --add-label move:review`.
+The **Board label sync** workflow sets the Project Status and removes the move
+labels only after the update succeeds. Decisions take priority over review,
+in-progress, ready and backlog when requests conflict. A label does not grant
+source, contract or release acceptance.
+Only mark in-progress for a real running implementation, and request review
+with an exact-commit handoff. Do not use labels to bypass maintainer decisions.
+
+The workflow runs on supported label additions and every five minutes for catch-up.
+Manual runs default to a dry run. It requires repository secret
+`AGENT_BOARD_TOKEN` with organization Projects read/write access (resource owner
+`fulton-ring`) and Issues read access to this repository; label removal uses the workflow's repository-scoped `GITHUB_TOKEN`.
+Keep the Project credential out of worker environments. No model key is needed.
+
+### Automatic worker and review admission
+
+When repository variable `AGENT_DISPATCH_ENABLED=true`, **Ready** queues
+implementation and **Review** queues an independent review of the exact current
+PR head. The supervisor chooses work by moving selected Backlog cards to Ready.
+Backlog, Needs decision, In progress and Done do not dispatch. The board remains
+the queue: each sweep fills available slots in the private trusted-main
+`fulton-ring/hifld-next-iac` workflow, respecting six active/queued implementation
+jobs and two active/queued reviews independently. Completed attempts do not
+consume slots; there is no daily attempt-count limit. Its inference-budget preflight still runs
+before GKE allocation. Exhausted capacity leaves cards waiting; there is no
+automatic retry of a previously attempted issue/head/role. Failed reviews require
+supervisor inspection. Existing PRs retain their actual branch, head and base;
+new unassociated implementations resolve the current `main` SHA and use `main` as
+their PR base. Fork PRs are never
+review candidates. Shared verifier #417 may receive an exact-head independent
+review from Review; its implementation and acceptance remain separately supervised.
+
+Existing work needs a trusted issue/PR association. The implementation handoff
+records `<!-- hifld-agent-pr:v1 issue=282 pr=548 -->` on the assigned issue after
+checking the actual pushed branch/head against the PR. For legacy work, the
+supervisor verifies the relationship and records the same marker before resuming.
+Only matching markers from verified repository writers/admins are accepted;
+public cross-references cannot select a PR. An existing unassociated PR holds
+new work for reconciliation instead of creating a duplicate.
+Review change requests carry a durable exact-head route marker. Both Ready
+consumption and worker admission validate it against the current PR head; stale
+findings cannot authorize new work. A supervisor reselecting existing work records
+a fresh verified association to supersede an older review request. Human-stop
+and parking requests always remain available.
+
+The dispatcher requires a separate `AGENT_CONTROLLER_TOKEN` Actions secret here:
+a fine-grained token owned by `fulton-ring`, selecting **only hifld-next-iac**,
+with **Actions read/write** and automatic metadata access. Its owner must be an
+authorized writer of that private repository. It needs no contents, issues,
+administration or Project write permission. Keep it separate from the scoped
+worker issue/PR token and out of model environments. Enable dispatch only after
+the private workflow protocol and token are configured; the default is disabled.
+Manual runs default to dry-run and cannot dispatch or mutate cards in that mode.
+
+Automatic fix/review cycles stop after two completed independent review jobs per
+issue. Further automatic admissions request Needs decision for supervisor
+resolution or a deliberate, guarded manual attempt; no automatic retry loop is
+started. Review once with focused checks. Follow-up reviews prioritize prior
+findings and changed code. Block on material correctness, security, data fidelity
+or runnable-pipeline defects; note cosmetic preferences, optional refactors and
+unrelated inherited failures without another implementation cycle. Repeat checks
+only when relevant code/inputs change; run the full suite at most once when scope
+warrants it. Pending release acceptance remains distinct from draft code quality.
+
+Keep dataset PRs small: reuse existing assets/helpers and consolidate source
+evidence, proposed contracts and documentation. Add a file only for necessary
+runtime code, a meaningful regression, or essential provenance. Prefer updating
+existing documentation/manifest or the PR body over creating redundant source
+reports, runners, fixtures, logs or snapshots. Do not demand a particular research
+filename if equivalent evidence is already recorded; machine-readable runtime
+provenance and release gates remain required. The private runner's implementation
+result protocol supersedes generic model-authored completion labels: trusted
+control validates a clean checkout and pushed new PR head before posting status.
+
+Reviewers run read-only. A separate trusted workflow step posts the exact-head
+report and requests Ready for finite code changes, preserving pending acceptance
+gates, or Needs decision for human blockers and completed review/merge handoff.
+It ignores stale-head results for routing. Review success never itself merges,
+closes an issue, accepts a contract or publishes data; the supervisor verifies the
+remaining checks and maintainer approvals before advancing those actions.
