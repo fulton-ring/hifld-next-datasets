@@ -113,9 +113,9 @@ def _fixture_factory():
             else:
                 return httpx.Response(404, request=request)
             body = _canonical(result)
-            return httpx.Response(200, content=body, request=request,
+            return httpx.Response(200, stream=httpx.ByteStream(body), request=request,
                                   headers={"content-length": str(len(body))})
-        return _HTTPX_CLIENT(transport=httpx.MockTransport(handler), follow_redirects=False)
+            return _HTTPX_CLIENT(transport=httpx.MockTransport(handler), follow_redirects=False)
 
     return factory, fields, features, schema_sha, ids_sha
 
