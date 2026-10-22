@@ -51,18 +51,23 @@ def _fixture_factory(mode="ok"):
     if mode == "schema":
         fields[-1]["type"] = "esriFieldTypeInteger"
     desc = (
-        "The dataset was updated from the Bureau of Transportation Statistics "
+        "The dataset was compiled on November 15, 2024 and updated on February 28, 2025 "
+        "from the Bureau of Transportation Statistics "
         "(BTS) and is part of the National Transportation Atlas Database (NTAD). "
         "This is the Rail TOFC/COFC facilities layer."
     )
     item = {"id": source.ITEM_ID, "owner": "USDOT_BTS", "title": source.LAYER_NAME,
             "url": source.SERVICE_URL, "access": "public", "description": desc,
-            "licenseInfo": "U.S. public domain"}
+            "licenseInfo": "U.S. public domain", "created": 1720644100000,
+            "modified": 1784137096000}
     service = {"serviceItemId": source.ITEM_ID, "layers": [{"id": 0, "name": source.LAYER_NAME}]}
     layer = {
         "name": source.LAYER_NAME, "geometryType": "esriGeometryPoint", "objectIdField": "OBJECTID",
         "hasZ": False, "hasM": False,
         "extent": {"spatialReference": {"latestWkid": 4326}},
+        "editingInfo": {"lastEditDate": 1734380202378,
+                         "schemaLastEditDate": 1720644927074,
+                         "dataLastEditDate": 1720644111319},
         "fields": fields,
         "advancedQueryCapabilities": {"supportsPagination": True, "supportsOrderBy": True},
     }
@@ -144,6 +149,11 @@ class BtsRailTofcCofcTests(unittest.TestCase):
                     self.assertEqual([field["name"] for field in audit["source_fields"]], expected_names)
                     self.assertFalse(manifest["approved"])
                     self.assertFalse(ready["approved"])
+                    self.assertEqual(manifest["source_vintage_evidence"]["portal_item_modified_epoch_ms"], 1784137096000)
+                    self.assertIn("updated on February 28, 2025", manifest["source_vintage_evidence"]["portal_description"])
+                    self.assertEqual(manifest["source_vintage_evidence"]["layer_editing_info"]["dataLastEditDate"], 1720644111319)
+                    self.assertIsNone(manifest["source_vintage_evidence"]["release_date_selected"])
+                    self.assertFalse(manifest["source_vintage_evidence"]["freshness_accepted"])
                     self.assertEqual(manifest["prebuilt_output_policy"]["formats"]["geoparquet"]["objects"][0]["path"], f"geoparquet/{source.DATASET_SLUG}.parquet")
                     table = pq.ParquetFile(io.BytesIO(storage.read_key(f"{prefix}/geoparquet/{source.DATASET_SLUG}.parquet"))).read()
                     self.assertEqual(table.column_names, [*expected_names, "geometry"])

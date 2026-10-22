@@ -1,0 +1,92 @@
+{
+  "inventory_id": "principal-ports",
+  "inventory_title": "Principal Ports",
+  "inventory_agency": "United States Army Corps of Engineers",
+  "inventory_publisher": "Waterborne Commerce Statistics Center; U.S. Army Corps of Engineers",
+  "historical_inventory_data_period": "CY 2022",
+  "historical_archive": {
+    "url": "https://www.datalumos.org/datalumos/project/240533/version/V1/view",
+    "role": "historical preservation copy only",
+    "archive_note": "The HIFLD Open repository was deactivated on 2025-08-26. The archive's 2025-11-21 publication/edit date is not a source release date and is not used as a refresh source. Historical geometry has not yet been compared byte-for-byte to this successor candidate."
+  },
+  "official_producer": "United States Army Corps of Engineers (USACE), Waterborne Commerce Statistics Center",
+  "official_catalog_landing": "https://catalog.data.gov/dataset/principal-ports",
+  "catalog_recorded_update_date": "2025-04-17",
+  "product_data_period": "CY 2023",
+  "source_release_date": null,
+  "source_release_date_note": "The public catalog and service describe data for calendar year 2023, but neither establishes the exact publication/release date of this service snapshot. The Data.gov record update date and ArcGIS item modified time are not treated as release dates.",
+  "source_service_item": {
+    "item_id": "16d570a7aa054943aabf52b0032a3b57",
+    "owner_account": "usace_iwr_cac",
+    "item_url": "https://www.arcgis.com/home/item.html?id=16d570a7aa054943aabf52b0032a3b57",
+    "rest_service_url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/Principal_Ports/FeatureServer",
+    "rest_layer_url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/Principal_Ports/FeatureServer/0",
+    "service_resource_doi": "https://doi.org/10.21949/1528014",
+    "bts_ntad_dataset_doi": "https://doi.org/10.21949/1522248",
+    "bts_data_dictionary_doi": "https://doi.org/10.21949/1529073",
+    "publisher_linkage_evidence": "The Data.gov record names USACE as the publisher, and the BTS NTAD metadata identifies USACE, its WCSC contact, and the exact resource DOI. The service item is public, its owner account is usace_iwr_cac, and its service copyright reads U.S. Army Corps of Engineers."
+  },
+  "relationship_to_historical_inventory": {
+    "classification": "geometry-changed successor candidate; not accepted as equivalent",
+    "evidence": "Current official REST layer 0 is an esriGeometryPolygon feature layer in EPSG:3857 with 150 features, while catalog tags use point terminology. The historical CY2022 raw geometry has not yet been inspected, so the discrepancy is treated as a representation discontinuity and no equivalence is asserted. No centroid or other surrogate point is generated.",
+    "unresolved": [
+      "Exact historical-vs-current feature and identifier crosswalk",
+      "Whether geometry change is a formal successor, separate representation, or partial substitute",
+      "Approved compatibility, schema, coverage, and identifier contract"
+    ]
+  },
+  "extraction_evidence": {
+    "captured_at_utc": "2026-10-20T03:33:59.518092+00:00",
+    "capture_directory": "/workspace/work/hifld-coordinator/276/captures_live",
+    "metadata_sha256": "dfe56e6366ddf1895f461729878788869b91cda55d5c04e62841d8905fdc0776",
+    "count_response_sha256": "3b4c3542368d8d5a56cf4d142f7c63c977b15e38cab84a55d44c728b2c477274",
+    "oid_roster_response_sha256": "5c9d8b1a8672b4b3ef1fcd493af1e51bd1d8714b59cacb7d87d6ca250752f945",
+    "complete_native_feature_response_sha256": "3e973bad32c1dbab75b09e0541765bbc53d147415f0123b56d9f8c3c763c41d6",
+    "count_ids_and_returned_rows": 150,
+    "returned_unique_objectids": 150,
+    "max_record_count": 2000,
+    "transfer_limit_exceeded": false,
+    "geometry_type": "esriGeometryPolygon",
+    "source_spatial_reference": "wkid 102100, latestWkid 3857 (EPSG:3857)",
+    "native_vertex_count": 550394,
+    "native_ring_sequences_retained": true,
+    "source_geometries_invalid_when_interpreted_without_repair": 8
+  },
+  "observed_raw_fields": [
+    {"name": "OBJECTID", "type": "esriFieldTypeOID", "nullable": false},
+    {"name": "RANK", "type": "esriFieldTypeDouble", "nullable": true},
+    {"name": "PORT", "type": "esriFieldTypeDouble", "nullable": true},
+    {"name": "TYPE", "type": "esriFieldTypeString", "length": 11, "nullable": true},
+    {"name": "PORTNAME", "type": "esriFieldTypeString", "length": 80, "nullable": true},
+    {"name": "TOTAL", "type": "esriFieldTypeDouble", "nullable": true},
+    {"name": "DOMESTIC", "type": "esriFieldTypeDouble", "nullable": true},
+    {"name": "FOREIGN_", "type": "esriFieldTypeDouble", "nullable": true, "alias": "FOREIGN"},
+    {"name": "IMPORTS", "type": "esriFieldTypeDouble", "nullable": true},
+    {"name": "EXPORTS", "type": "esriFieldTypeDouble", "nullable": true},
+    {"name": "Shape__Area", "type": "esriFieldTypeDouble", "nullable": true},
+    {"name": "Shape__Length", "type": "esriFieldTypeDouble", "nullable": true}
+  ],
+  "proposed_raw_contract": "Retain the complete official ArcGIS response losslessly, including every field, original Esri field declaration, OBJECTID, PORT value and raw polygon ring sequence. The source declares PORT as Double; keep it float64 without coercion. Do not synthesize or replace identifiers.",
+  "proposed_candidate_output": "Single unapproved GeoParquet candidate containing all 12 source attribute fields and a native EPSG:3857 MultiPolygon WKB geometry. Preserve all XY coordinate sequences, ring winding, and all declared source attributes. The untouched Esri JSON is retained as the source artifact. Do not repair, reorient, simplify, reproject, create representative points, or export another format.",
+  "cadence": {
+    "source_claim": "The federal catalog says the dataset is periodically updated; no fixed release interval was established.",
+    "proposed_candidate_check": "Twice monthly only as a draft monitor for source changes.",
+    "automatic_schedule_status": "stopped",
+    "reason": "No source freshness policy, exact release calendar, baseline continuity decision, rights decision, or output schema approval has been accepted."
+  },
+  "approval_state": {
+    "candidate_only": true,
+    "source_accepted": false,
+    "historical_baseline_accepted": false,
+    "release_date_accepted": false,
+    "freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "identifier_contract_accepted": false,
+    "coverage_accepted": false,
+    "geometry_equivalence_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "promotion_allowed": false
+  }
+}

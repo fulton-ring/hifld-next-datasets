@@ -1,1 +1,1 @@
-"""Agency-specific native source capture adapters."""
+"""Explicit producer-specific candidate acquisition and validation."""

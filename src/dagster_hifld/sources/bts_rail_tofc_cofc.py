@@ -36,8 +36,8 @@ DATASET_SLUG = "intermodal-freight-facilities-rail-tofc-cofc"
 FILE_SLUG = DATASET_SLUG
 PUBLISHER = "U.S. Department of Transportation, Bureau of Transportation Statistics (USDOT_BTS)"
 PAGE_SIZE = 1000
-MAX_BODY_BYTES = 8_000_000
-MAX_CAPTURE_TOTAL_BYTES = 480_000_000
+MAX_BODY_BYTES = 1_000_000
+MAX_CAPTURE_TOTAL_BYTES = 2_000_000
 MAX_OBJECT_ID_URL_LENGTH = 1800
 EXPECTED_SOURCE_SCHEMA_SHA256 = "2d38415a5d7ff8ee1d6eee5123ecb70303904a51afcd7e43ef1500b4cf9e6b0f"
 EXPECTED_SOURCE_ID_SHA256 = "d3cf1ddd67aa002b0a1409cd70096c18e40cb24a3ecb0609603d6b82903ad228"
@@ -343,12 +343,39 @@ def capture_bts_rail_tofc_cofc(storage: StagingStorageResource, *,
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict]] = {}
+
+    def capture(client: httpx.Client, name: str, url: str) -> tuple[bytes, dict]:
+        def reserve(progress) -> None:
+            retained_prior = sum(
+                path.stat().st_size
+                for path in capture_root.iterdir()
+                if path.is_file()
+                and path.name.endswith((".body", ".wire"))
+                and path.name not in {f"{name}.body", f"{name}.wire"}
+            )
+            if (
+                retained_prior
+                + progress.wire_bytes_retained
+                + progress.decoded_bytes_retained
+                + progress.reserve_bytes
+                > MAX_CAPTURE_TOTAL_BYTES
+            ):
+                raise ValueError("source_capture_exceeds_scratch_budget")
+
+        return capture_get(
+            client,
+            url,
+            capture_root,
+            name,
+            max_bytes=MAX_BODY_BYTES,
+            reserve=reserve,
+        )
+
     current_capture_name = "ids_seed"
     current_capture_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/bts-rail-tofc-cofc-draft"}) as client:
-            seed_body, seed_receipt = capture_get(client,
-                current_capture_url, capture_root, current_capture_name, max_bytes=MAX_BODY_BYTES)
+            seed_body, seed_receipt = capture(client, current_capture_name, current_capture_url)
             captures["ids_seed"] = (seed_body, seed_receipt)
             seed = json.loads(seed_body).get("objectIds")
             if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
@@ -356,7 +383,7 @@ def capture_bts_rail_tofc_cofc(storage: StagingStorageResource, *,
             total_captured_bytes = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
             for name, url in _source_metadata_urls():
                 current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+                body, receipt = capture(client, name, url)
                 captures[name] = (body, receipt)
                 total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
                 if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
@@ -365,14 +392,14 @@ def capture_bts_rail_tofc_cofc(storage: StagingStorageResource, *,
             _pagination_mode, page_plan = _page_plan(seed, layer_before)
             for name, url, _page_ids in page_plan:
                 current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+                body, receipt = capture(client, name, url)
                 captures[name] = (body, receipt)
                 total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
                 if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
                     raise ValueError("source_capture_exceeds_scratch_budget")
             for name, url in _source_after_urls():
                 current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+                body, receipt = capture(client, name, url)
                 captures[name] = (body, receipt)
                 total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
                 if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
@@ -410,18 +437,35 @@ def capture_bts_rail_tofc_cofc(storage: StagingStorageResource, *,
     parquet = _parquet_bytes(fields, features)
     native_path = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {native_path:{"bytes":len(parquet),"sha256":_sha(parquet)}}
+    portal_doc = json.loads(captures["portal_item"][0])
+    service_doc = json.loads(captures["service_before"][0])
+    layer_doc = json.loads(captures["layer_before"][0])
+    vintage_evidence = {
+        "portal_description": portal_doc.get("description"),
+        "portal_item_created_epoch_ms": portal_doc.get("created"),
+        "portal_item_modified_epoch_ms": portal_doc.get("modified"),
+        "service_editing_info": service_doc.get("editingInfo"),
+        "layer_editing_info": layer_doc.get("editingInfo"),
+        "release_date_selected": None,
+        "freshness_accepted": False,
+        "assessment": (
+            "Portal description dates and ArcGIS item/service/layer editing metadata are "
+            "preserved separately; none is treated as an independently verified source release date."
+        ),
+    }
     manifest = {
         "schema_version":1,"approved":False,"title":LAYER_NAME,
         "description":"BTS NTAD Intermodal Freight Facilities Rail TOFC/COFC point layer. Schema, ID, freshness and release approvals remain pending.",
         "publisher":PUBLISHER,"agency":"Department of Transportation","source_url":LAYER_URL,
         "license":"https://www.usa.gov/publicdomain/label/1.0/","source_modified":None,"date_issued":None,
-        "date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
+        "date_modified":None,"source_vintage_evidence":vintage_evidence,
+        "processor":"HIFLD Next","code_commit":identity["code_commit"],
         "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,
             "role":"producer_publication","canonical_url":f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json" if name.startswith("portal") else LAYER_URL,
             "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],
             "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
             "license":"https://www.usa.gov/publicdomain/label/1.0/","attribution":"BTS NTAD; producer metadata states U.S. public domain; rights review remains pending.",
-            "release_date":None,"release_date_unknown_reason":"ArcGIS modified timestamp is not a source release date."}
+            "release_date":None,"release_date_unknown_reason":"Portal description and ArcGIS item/service/layer editing timestamps are retained separately; none is independently verified as a source release date."}
             for name,(_,receipt) in sorted(captures.items())],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
             "feature_layer_id":LAYER_ID,"source_fields":"all thirteen source fields retained with declared source types",
@@ -434,6 +478,7 @@ def capture_bts_rail_tofc_cofc(storage: StagingStorageResource, *,
     }
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"official_layer_name":LAYER_NAME,"arcgis_item_id":ITEM_ID,"source_relationship":"BTS-maintained NTAD Rail TOFC/COFC layer",
+        "source_vintage_evidence":vintage_evidence,
         "physical_mapping_approved":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
     version = content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
     prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,version)

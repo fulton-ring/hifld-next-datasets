@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "inventory_id": "data-quality-assessment-areas-usace-ienc",
+  "title": "Data Quality Assessment Areas (USACE IENC)",
+  "agency": "U.S. Army Corps of Engineers",
+  "publisher": "USACE IENC",
+  "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DATA_QUALITY_AREA/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DATA_QUALITY_AREA/MapServer/64",
+  "historical_crosswalk": {
+    "issue": 52,
+    "historical_archive_equivalence": "Not established. The archive identified by the issue was not recovered or compared to the current service layer.",
+    "source_edition": null,
+    "source_release_date": null,
+    "rights_status": "Pending review."
+  },
+  "observed": {
+    "capture_window_start": "2026-10-21T18:46:54.712095Z",
+    "capture_window_end": "2026-10-21T18:47:00.293077Z",
+    "capture_request_count": 11,
+    "raw_body_wire_receipt_artifacts_excluding_manifest": 34,
+    "layer_id": 64,
+    "layer_name": "DATA_QUALITY_AREA",
+    "service_copyright": "USACE IENC",
+    "description": "An area within which a uniform assessment of the quality of the data exists. Distinction: accuracy of data; survey reliability.",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "feature_count": 109,
+    "native_OBJECTID": "Unique integer IDs 1 through 109",
+    "native_OBJECTID_canonical_sha256": "48fccd04da436522cf72f812c80502ce29d6cb0dd192b706bbb9ce53b1ce4b95",
+    "distinct_Feature_ID_count": 109,
+    "source_vertex_count": 260816,
+    "valid_geometry_count": 109,
+    "empty_geometry_count": 0,
+    "invalid_geometry_count": 0,
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "name": "SHAPE",
+        "type": "esriFieldTypeGeometry"
+      },
+      {
+        "name": "Category_of_Zone_Confidence",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Technique_of_Sounding_Measurement",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Date",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Indication",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Feature_ID",
+        "type": "esriFieldTypeString",
+        "length": 254
+      }
+    ],
+    "layer_metadata_hasZ_declared": null,
+    "layer_metadata_hasM_declared": null,
+    "requested_returnZ": true,
+    "requested_returnM": true,
+    "observed_coordinate_dimensions": [
+      2
+    ]
+  },
+  "capture_policy": "The complete observed layer was captured once with before/after service, layer, count, and ID checks. Decoded bodies, HTTP wire bodies, receipts, timestamps, and hashes are retained under /workspace/work/52-evidence/capture-20261021/.",
+  "candidate_policy": "All declared attributes and native IDs are retained. Geometry coordinates are preserved in source order as WKB in GeoParquet at the declared source CRS. No reprojection or repair is applied. GeoPackage and PMTiles are unsupported pending approved contracts.",
+  "acceptance": {
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "historical_baseline_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false
+  }
+}
