@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
 from dagster_hifld.assets.bts_ferry_routes import ferry_routes_source_integrity_job, ferry_routes_source_integrity_schedule
 from dagster_hifld.assets.epa_regions import epa_regions_draft_job, epa_regions_draft_schedule
 from dagster_hifld.assets.epa_large_scale import (
@@ -1004,6 +1005,7 @@ defs = Definitions(
         fuds_program_division_boundaries_complete,
     ],
     jobs=[
+        holocene_source_integrity_job,
         ferry_routes_source_integrity_job,
         epa_large_scale_source_integrity_job,
         epa_regions_draft_job,
@@ -1100,6 +1102,7 @@ defs = Definitions(
         ferc_historical_reconstruction_job,
     ],
     schedules=[
+        holocene_source_integrity_schedule,
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
         epa_regions_draft_schedule,

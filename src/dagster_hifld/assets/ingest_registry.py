@@ -4,6 +4,7 @@ Keep source-specific ingest assets explicit. Downstream catalog/publish/check
 assets are derived automatically from this registry.
 """
 
+from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
@@ -115,6 +116,7 @@ from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 
 hifld_ingest_assets = [
+    smithsonian_holocene_volcanoes,
     bts_ferry_routes,
     fdic_locations_official,
     fema_regions_official,
