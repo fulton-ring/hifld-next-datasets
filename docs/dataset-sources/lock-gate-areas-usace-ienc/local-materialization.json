@@ -1,6 +1,8 @@
 {
  "schema_version": 1,
- "git_head": "4d6dc0bf63b78d76f3c2dd2208dedc0728babfeb",
+ "git_head_at_capture": "4d6dc0bf63b78d76f3c2dd2208dedc0728babfeb",
+ "pr_head_after_provenance_commit": "671a5179d00b2f14eb275113c61e8eb1cbb18275",
+ "pipeline_code_unchanged_between_heads": true,
  "git_working_tree_clean": true,
  "dagster_home": "/tmp/dagster-home-148",
  "staging_dir": "/tmp/hifld-staging-148",
