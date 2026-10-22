@@ -152,6 +152,8 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     if result is None:
         raise ValueError("capture_result_missing")
     body, wire = body_path.read_bytes(), wire_path.read_bytes()
+    if result.error_code == "reserve_error":
+        raise ValueError("source_capture_budget_exceeded")
     if (not result.complete or result.status_code != 200 or final_url != url
         or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
         or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import unittest
+from unittest.mock import patch
 
 import pyarrow.parquet as pq
 import shapely
@@ -15,6 +16,7 @@ from dagster_hifld.sources.usace_lakes import (
     EXPECTED_FIELD_DECLARATIONS,
     _arrow_type,
     _parquet_bytes,
+    _fetch_retry,
     _sha,
     _canonical,
 )
@@ -46,3 +48,9 @@ class UsaceLakesSourceTest(unittest.TestCase):
     def test_attribute_schema_is_native_and_ordered(self) -> None:
         names = [field["name"] for field in EXPECTED_FIELD_DECLARATIONS]
         self.assertEqual(names, ["OBJECTID", "SHAPE", "Object_Name", "Information", "Source_Date", "Source_Indication", "Scale_Minimum", "Source_Dataset", "Feature_ID"])
+
+    def test_local_capture_budget_failure_is_not_retried(self) -> None:
+        with patch("dagster_hifld.sources.usace_lakes._fetch", side_effect=ValueError("source_capture_budget_exceeded")) as fetch:
+            with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                _fetch_retry(None, "https://example.invalid", __import__("pathlib").Path("/tmp"), "page_000", [0])
+        fetch.assert_called_once()
