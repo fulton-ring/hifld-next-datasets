@@ -1,0 +1,194 @@
+{
+ "schema_version": 1,
+ "git_head": "4d6dc0bf63b78d76f3c2dd2208dedc0728babfeb",
+ "git_working_tree_clean": true,
+ "dagster_home": "/tmp/dagster-home-148",
+ "staging_dir": "/tmp/hifld-staging-148",
+ "published_dir": "/tmp/hifld-published-148",
+ "capture_directory": "/tmp/hifld-native-reconstruction/148/captures/3a7f6225-75f2-4af4-956a-7db123790635-64bdfd3bb0814537806cc35b3a469c21",
+ "capture_completed_at": "2026-10-22T02:49:07.423413+00:00",
+ "capture_manifest_complete": true,
+ "capture_manifest_sha256": "a0a3f3dcef19a1634a675cbb094ced0694ec3cc0456fa227363233fa08e97445",
+ "captured_request_count": 12,
+ "raw_body_wire_receipt_artifact_count": 36,
+ "source_feature_count": 94,
+ "source_id_sha256": "0e23b6e4dfbf50733e1b02554bf2e094265eaa4482c886717fbfb47cd042c0e2",
+ "source_record_sha256": "d4bdbc39a0857e00a62460ab2b64162a8850c4835c7a234313c0e12e6a31dcf1",
+ "source_geometry_sha256": "aed206fac00c1fc7a2e753e96abb24241200c6bd0f03a0372dda226671683bfa",
+ "source_schema_sha256": "1c15259a627ba5a989d34c88f147216630867d88713a984aea385d6034d18992",
+ "source_vertex_count": 840,
+ "valid_geometry_count": 94,
+ "empty_geometry_count": 0,
+ "invalid_geometry_count": 0,
+ "feature_id_distinct_count": 94,
+ "feature_id_duplicate_rows": 0,
+ "source_run_id": "3a7f6225-75f2-4af4-956a-7db123790635",
+ "source_run_success": true,
+ "repeat_ingest_run_id": "9fb72486-5ff5-4270-b8eb-d43d5678eee8",
+ "repeat_ingest_run_success": true,
+ "catalog_run_id": "fcb1b685-206a-45ad-bf67-d68db0ab4d2b",
+ "catalog_run_success": true,
+ "candidate_version": "v1.0.0-495dafe43bbc646333c8deae5dfd591c",
+ "candidate_prefix": "lock-gate-areas-usace-ienc/lock-gate-areas-usace-ienc/v1.0.0-495dafe43bbc646333c8deae5dfd591c",
+ "candidate_identity": "4d6dc0bf63b78d76f3c2dd2208dedc0728babfeb",
+ "geoparquet_sha256": "0ee38d35c0d14a998cc20cb18ac93513493217c7eacafc6be92b9b692e47f81c",
+ "geoparquet_bytes": 17796,
+ "geoparquet_rows": 94,
+ "geoparquet_physical_types": {
+  "OBJECTID": "int64",
+  "Category_of_Gate": "string",
+  "Horizontal_Clearance": "string",
+  "Vertical_Clearance": "string",
+  "Object_Name": "string",
+  "Information": "string",
+  "Scale_Minimum": "int32",
+  "Source_Date": "string",
+  "Source_Indication": "string",
+  "Source_Dataset": "string",
+  "Feature_ID": "string",
+  "geometry": "binary"
+ },
+ "geometry_crs": {
+  "authority": "EPSG",
+  "code": 4326
+ },
+ "geometry_types": [
+  "Polygon"
+ ],
+ "catalog_quality": {
+  "bounds": [
+   -95.16790829999997,
+   31.480922000000078,
+   -79.52972469999997,
+   41.56979650000005
+  ],
+  "catalog_mode": "native_geoparquet_full_population",
+  "columns_hash": "d35fa1f67db2da2ead34130c706f5214a66739b6db5a69b8e2b00a526dd16334",
+  "crs_source": "explicit_PROJJSON",
+  "empty_geometry_count": 0,
+  "feature_count": 94,
+  "geometry_type": "Polygon",
+  "invalid_geometry_count": 0,
+  "native_crs": {
+   "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+   "coordinate_system": {
+    "axis": [
+     {
+      "abbreviation": "Lat",
+      "direction": "north",
+      "name": "Geodetic latitude",
+      "unit": "degree"
+     },
+     {
+      "abbreviation": "Lon",
+      "direction": "east",
+      "name": "Geodetic longitude",
+      "unit": "degree"
+     }
+    ],
+    "subtype": "ellipsoidal"
+   },
+   "datum": {
+    "ellipsoid": {
+     "inverse_flattening": 298.257223563,
+     "name": "WGS 84",
+     "semi_major_axis": 6378137
+    },
+    "name": "World Geodetic System 1984",
+    "type": "GeodeticReferenceFrame"
+   },
+   "id": {
+    "authority": "EPSG",
+    "code": 4326
+   },
+   "name": "WGS 84",
+   "type": "GeographicCRS"
+  },
+  "native_geo_metadata": {
+   "crs": {
+    "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+    "coordinate_system": {
+     "axis": [
+      {
+       "abbreviation": "Lat",
+       "direction": "north",
+       "name": "Geodetic latitude",
+       "unit": "degree"
+      },
+      {
+       "abbreviation": "Lon",
+       "direction": "east",
+       "name": "Geodetic longitude",
+       "unit": "degree"
+      }
+     ],
+     "subtype": "ellipsoidal"
+    },
+    "datum": {
+     "ellipsoid": {
+      "inverse_flattening": 298.257223563,
+      "name": "WGS 84",
+      "semi_major_axis": 6378137
+     },
+     "id": {
+      "authority": "EPSG",
+      "code": 6326
+     },
+     "name": "World Geodetic System 1984",
+     "type": "GeodeticReferenceFrame"
+    },
+    "id": {
+     "authority": "EPSG",
+     "code": 4326
+    },
+    "name": "WGS 84",
+    "type": "GeographicCRS"
+   },
+   "encoding": "WKB",
+   "geometry_types": [
+    "MultiPolygon",
+    "Polygon"
+   ]
+  },
+  "native_geometry_column": "geometry",
+  "null_geometry_count": 0,
+  "originalArrowSchema": "OBJECTID: int64\nCategory_of_Gate: string\nHorizontal_Clearance: string\nVertical_Clearance: string\nObject_Name: string\nInformation: string\nScale_Minimum: int32\nSource_Date: string\nSource_Indication: string\nSource_Dataset: string\nFeature_ID: string\ngeometry: binary\n-- schema metadata --\ngeo: '{\"columns\":{\"geometry\":{\"crs\":{\"$schema\":\"https://proj.org/schemas/' + 648",
+  "population_quality_scope": "all_rows",
+  "quality_check_passed": true,
+  "sampled_bytes": 28547,
+  "sampled_feature_count": 94,
+  "spatial_status": "spatial",
+  "unparseable_geometry_count": 0,
+  "version": "v1"
+ },
+ "verify_refusal_run_id": "233528c5-c11e-4259-9c9c-9043b2983295",
+ "verify_refusal_success": false,
+ "verify_refusal_reason": "dagster_hifld.release_approval.ReleaseApprovalError: missing_independent_release_approval_registry",
+ "approval_registry_empty": true,
+ "published_inventory_unchanged": true,
+ "published_fixture": "/tmp/hifld-published-148/other-accepted-dataset/marker.json",
+ "sensor_discovery": {
+  "iter_staged_version_paths_found": [
+   "lock-gate-areas-usace-ienc/lock-gate-areas-usace-ienc/v1.0.0-495dafe43bbc646333c8deae5dfd591c"
+  ]
+ },
+ "focused_tests": {
+  "command": "uv run python -m unittest tests.test_usace_lock_gate_areas_source",
+  "result": "42 tests OK"
+ },
+ "source_item_succession_accepted": false,
+ "source_release_accepted": false,
+ "source_freshness_accepted": false,
+ "schema_contract_accepted": false,
+ "id_contract_accepted": false,
+ "coverage_accepted": false,
+ "rights_accepted": false,
+ "attribution_accepted": false,
+ "release_accepted": false,
+ "schedule": "STOPPED",
+ "production_publication": false,
+ "open_follow_up": [
+  "Historical HIFLD baseline comparison",
+  "DataLumos archive cross-check (anonymous access currently denied)"
+ ]
+}

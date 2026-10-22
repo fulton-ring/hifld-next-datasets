@@ -1,0 +1,291 @@
+{
+ "schema_version": 1,
+ "inventory_id": "lock-gate-areas-usace-ienc",
+ "title": "Lock Gate Areas (USACE IENC)",
+ "agency": "U.S. Army Corps of Engineers",
+ "publisher": "USACE Army Geospatial Center (IENC); the parent IENC item is cataloged by USDOT BTS",
+ "crosswalk": {
+  "doi": "10.3886/E241367V1",
+  "url": "https://doi.org/10.3886/E241367V1",
+  "hifld_inventory_row": "lock-gate-areas-usace-ienc, Lock Gate Areas (USACE IENC)",
+  "archive_url": "https://www.datalumos.org/datalumos/project/239502/version/V1/view",
+  "archive_source_modified": "2025-04-08",
+  "archive_role": "Historical HIFLD/DataLumos copy; the 2025-04-08 inventory modification date is not a current producer release date.",
+  "historical_id_and_geometry_match": "Not established; the DataLumos V1 page returned HTTP 403 (Cloudflare interstitial) to anonymous access on 2026-10-22, so no historical file bytes were recovered in this run."
+ },
+ "source_relationship": "The current public USDOT BTS IENC PDF item 7ec34864c8804468a9cf52d437fe4b6c is owned by USDOT_BTS, describes USACE/AGC bi-monthly IENC updates, and links the master geodatabase and the official IENC Feature Classes service. The exact LOCK_GATE_AREA layer (MapServer layer 78) is published by the USACE IENC service. The prior BTS map-service item 3607d485a9854d6fa458bf507058ceae used by an earlier IENC draft no longer resolves anonymously; this reconstruction binds to the current item and asserts no succession. Historical HIFLD/DataLumos continuity is unestablished.",
+ "bts_item": {
+  "id": "7ec34864c8804468a9cf52d437fe4b6c",
+  "owner": "USDOT_BTS",
+  "title": "Inland Electronic Navigational Charts",
+  "type": "PDF",
+  "access": "public",
+  "url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
+  "description_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+  "claims": "USACE/AGC bi-monthly IENC updates; links official Feature Classes service and master file geodatabase; warns chart-derived data may contain inaccuracies.",
+  "created": 1789069983000,
+  "item_modified": 1792524621000,
+  "item_modified_is_release_date": false,
+  "observed_at": "2026-10-22T02:49:01.124743+00:00",
+  "public_item_metadata_sha256": "b9856372c4c0e034d4e830e73a17bdb54ec444747589ceeb6a8d4b20dd20bb6d"
+ },
+ "official_landing": "https://ienccloud.us/",
+ "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+ "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer",
+ "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78",
+ "master_geodatabase_url": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+ "observed": {
+  "layer_id": 78,
+  "layer_name": "LOCK_GATE_AREA",
+  "geometry_type": "esriGeometryPolygon",
+  "native_crs": "EPSG:4326",
+  "feature_count": 94,
+  "native_OBJECTID": "94 integer IDs, 1 through 94",
+  "native_OBJECTID_sha256_canonical_json": "0e23b6e4dfbf50733e1b02554bf2e094265eaa4482c886717fbfb47cd042c0e2",
+  "fields": [
+   {
+    "name": "OBJECTID",
+    "type": "esriFieldTypeOID"
+   },
+   {
+    "name": "SHAPE",
+    "type": "esriFieldTypeGeometry"
+   },
+   {
+    "name": "Category_of_Gate",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Horizontal_Clearance",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Vertical_Clearance",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Object_Name",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Information",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Scale_Minimum",
+    "type": "esriFieldTypeInteger"
+   },
+   {
+    "name": "Source_Date",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Source_Indication",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Source_Dataset",
+    "type": "esriFieldTypeString",
+    "length": 254
+   },
+   {
+    "name": "Feature_ID",
+    "type": "esriFieldTypeString",
+    "length": 254
+   }
+  ],
+  "layer_extent": {
+   "xmin": -95.16790829999997,
+   "ymin": 31.480922000000078,
+   "xmax": -79.52972469999997,
+   "ymax": 41.56979650000005,
+   "spatialReference": {
+    "wkid": 4326,
+    "latestWkid": 4326,
+    "xyTolerance": 8.983152841195215e-09,
+    "zTolerance": 0.001,
+    "mTolerance": 0.001,
+    "falseX": -400,
+    "falseY": -400,
+    "xyUnits": 999999999.9999999,
+    "falseZ": -100000,
+    "zUnits": 10000,
+    "falseM": -100000,
+    "mUnits": 10000
+   }
+  },
+  "source_release_date": null,
+  "release_date_unknown_reason": "The layer declares no source edition or release date. Per-feature Source_Date values (e.g. 20140805) are retained as attributes, not interpreted as dataset release dates. BTS describes parent IENC updates as bi-monthly; that cadence does not date this layer snapshot.",
+  "native_feature_id_duplicate_count": 0,
+  "native_feature_id_distinct_count": 94,
+  "native_feature_id_null_count": 0,
+  "observation_date": "2026-10-22",
+  "source_record_sha256": "d4bdbc39a0857e00a62460ab2b64162a8850c4835c7a234313c0e12e6a31dcf1",
+  "source_geometry_sha256": "aed206fac00c1fc7a2e753e96abb24241200c6bd0f03a0372dda226671683bfa",
+  "source_schema_sha256": "1c15259a627ba5a989d34c88f147216630867d88713a984aea385d6034d18992",
+  "source_vertex_count": 840
+ },
+ "capture_policy": "Retain decoded ESRI JSON response bodies, exact HTTP wire bodies, request receipts, native IDs, field declarations, attributes, rings and coordinate order. Candidate GeoParquet preserves declared source field types and native EPSG:4326 geometry without reprojection or repair.",
+ "completeness_policy": "Check source directory and layer identity, all declared field names/types, CRS representations, pinned layer extent, independent count/ID rosters before and after extraction, all explicit-ID pages, native attribute types, geometry structure/ordinates/validity and complete feature ID roster. Quarantine incomplete captures and drift.",
+ "coverage_scope": "Complete observed IENC LOCK_GATE_AREA chart feature class for inland navigation coverage. Not a national census of lock gates or all navigable-waterway structures.",
+ "proposed_contract": {
+  "status": "Draft only; maintainer approval required.",
+  "native_identifier": "OBJECTID integer, unchanged; Feature_ID string, unchanged including source duplicates or nulls if any.",
+  "attributes": "Preserve all 11 non-geometry source attributes and values; no silent drop or mapping.",
+  "geometry": "Polygon in EPSG:4326, all source rings and coordinates unchanged.",
+  "unexpected_source_drift": "Quarantine and request maintainer review."
+ },
+ "approval": {
+  "historical_baseline_and_continuity": false,
+  "source_release_and_freshness": false,
+  "schema_contract": false,
+  "id_contract": false,
+  "coverage": false,
+  "rights": false,
+  "attribution": false,
+  "release": false,
+  "bts_item_succession_continuity": false,
+  "production_publication": false
+ },
+ "capture_evidence": {
+  "captured_at": "2026-10-22T02:49:07.423413+00:00",
+  "complete": true,
+  "capture_directory": "/tmp/hifld-native-reconstruction/148/captures/3a7f6225-75f2-4af4-956a-7db123790635-64bdfd3bb0814537806cc35b3a469c21",
+  "capture_manifest_sha256": "a0a3f3dcef19a1634a675cbb094ced0694ec3cc0456fa227363233fa08e97445",
+  "request_count": 12,
+  "raw_body_wire_receipt_artifacts": 36,
+  "source_id_sha256": "0e23b6e4dfbf50733e1b02554bf2e094265eaa4482c886717fbfb47cd042c0e2",
+  "source_record_sha256": "d4bdbc39a0857e00a62460ab2b64162a8850c4835c7a234313c0e12e6a31dcf1",
+  "source_geometry_sha256": "aed206fac00c1fc7a2e753e96abb24241200c6bd0f03a0372dda226671683bfa",
+  "source_schema_sha256": "1c15259a627ba5a989d34c88f147216630867d88713a984aea385d6034d18992",
+  "source_capture_sha256": "cb5d6c8dcbce9769922e8e9708440e528869501a673d30b56604f62c18670126",
+  "artifacts": {
+   "bts_item": {
+    "request_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+    "http_status": 200,
+    "body_bytes": 5579,
+    "body_sha256": "b9856372c4c0e034d4e830e73a17bdb54ec444747589ceeb6a8d4b20dd20bb6d",
+    "wire_bytes": 5579,
+    "wire_sha256": "b9856372c4c0e034d4e830e73a17bdb54ec444747589ceeb6a8d4b20dd20bb6d",
+    "observed_at": "2026-10-22T02:49:01.124743+00:00"
+   },
+   "count_after": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78/query?where=1%3D1&returnCountOnly=true&f=json",
+    "http_status": 200,
+    "body_bytes": 12,
+    "body_sha256": "21aae3d4367373789b32d80199b47832baf41ddc8a6e042cb5a61c03b3e3ff35",
+    "wire_bytes": 12,
+    "wire_sha256": "21aae3d4367373789b32d80199b47832baf41ddc8a6e042cb5a61c03b3e3ff35",
+    "observed_at": "2026-10-22T02:49:06.077431+00:00"
+   },
+   "count_before": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78/query?where=1%3D1&returnCountOnly=true&f=json",
+    "http_status": 200,
+    "body_bytes": 12,
+    "body_sha256": "21aae3d4367373789b32d80199b47832baf41ddc8a6e042cb5a61c03b3e3ff35",
+    "wire_bytes": 12,
+    "wire_sha256": "21aae3d4367373789b32d80199b47832baf41ddc8a6e042cb5a61c03b3e3ff35",
+    "observed_at": "2026-10-22T02:49:03.450019+00:00"
+   },
+   "ids_after": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "http_status": 200,
+    "body_bytes": 319,
+    "body_sha256": "7e45d48c9c0cfb57e3aa1909e9b60f0ec7b1f107eb259f2cd8d978210667c26b",
+    "wire_bytes": 319,
+    "wire_sha256": "7e45d48c9c0cfb57e3aa1909e9b60f0ec7b1f107eb259f2cd8d978210667c26b",
+    "observed_at": "2026-10-22T02:49:06.645716+00:00"
+   },
+   "ids_before": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "http_status": 200,
+    "body_bytes": 319,
+    "body_sha256": "7e45d48c9c0cfb57e3aa1909e9b60f0ec7b1f107eb259f2cd8d978210667c26b",
+    "wire_bytes": 319,
+    "wire_sha256": "7e45d48c9c0cfb57e3aa1909e9b60f0ec7b1f107eb259f2cd8d978210667c26b",
+    "observed_at": "2026-10-22T02:49:04.266583+00:00"
+   },
+   "ids_seed": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78/query?where=1%3D1&returnIdsOnly=true&f=json",
+    "http_status": 200,
+    "body_bytes": 319,
+    "body_sha256": "7e45d48c9c0cfb57e3aa1909e9b60f0ec7b1f107eb259f2cd8d978210667c26b",
+    "wire_bytes": 319,
+    "wire_sha256": "7e45d48c9c0cfb57e3aa1909e9b60f0ec7b1f107eb259f2cd8d978210667c26b",
+    "observed_at": "2026-10-22T02:48:59.897419+00:00"
+   },
+   "layer_after": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78?f=pjson",
+    "http_status": 200,
+    "body_bytes": 7138,
+    "body_sha256": "1305a78698d90e4312d2af351499b72c7be791c8593d3cda9f725056b7561adb",
+    "wire_bytes": 7138,
+    "wire_sha256": "1305a78698d90e4312d2af351499b72c7be791c8593d3cda9f725056b7561adb",
+    "observed_at": "2026-10-22T02:49:05.515446+00:00"
+   },
+   "layer_before": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78?f=pjson",
+    "http_status": 200,
+    "body_bytes": 7138,
+    "body_sha256": "1305a78698d90e4312d2af351499b72c7be791c8593d3cda9f725056b7561adb",
+    "wire_bytes": 7138,
+    "wire_sha256": "1305a78698d90e4312d2af351499b72c7be791c8593d3cda9f725056b7561adb",
+    "observed_at": "2026-10-22T02:49:02.887036+00:00"
+   },
+   "page_000": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer/78/query?objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%2C10%2C11%2C12%2C13%2C14%2C15%2C16%2C17%2C18%2C19%2C20%2C21%2C22%2C23%2C24%2C25%2C26%2C27%2C28%2C29%2C30%2C31%2C32%2C33%2C34%2C35%2C36%2C37%2C38%2C39%2C40%2C41%2C42%2C43%2C44%2C45%2C46%2C47%2C48%2C49%2C50%2C51%2C52%2C53%2C54%2C55%2C56%2C57%2C58%2C59%2C60%2C61%2C62%2C63%2C64%2C65%2C66%2C67%2C68%2C69%2C70%2C71%2C72%2C73%2C74%2C75%2C76%2C77%2C78%2C79%2C80%2C81%2C82%2C83%2C84%2C85%2C86%2C87%2C88%2C89%2C90%2C91%2C92%2C93%2C94&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json",
+    "http_status": 200,
+    "body_bytes": 69156,
+    "body_sha256": "d81a3fa6fba3f56283f2e90161771e687a203b071721f49296f3bdbba8c4184a",
+    "wire_bytes": 69156,
+    "wire_sha256": "d81a3fa6fba3f56283f2e90161771e687a203b071721f49296f3bdbba8c4184a",
+    "observed_at": "2026-10-22T02:49:04.835448+00:00"
+   },
+   "service_after": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer?f=pjson",
+    "http_status": 200,
+    "body_bytes": 5203,
+    "body_sha256": "a2993e1106df92e14e69f875f65793829f502fff370b2eb4e973b289283ee085",
+    "wire_bytes": 5203,
+    "wire_sha256": "a2993e1106df92e14e69f875f65793829f502fff370b2eb4e973b289283ee085",
+    "observed_at": "2026-10-22T02:49:07.214886+00:00"
+   },
+   "service_before": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LOCK_GATE_AREA/MapServer?f=pjson",
+    "http_status": 200,
+    "body_bytes": 5203,
+    "body_sha256": "a2993e1106df92e14e69f875f65793829f502fff370b2eb4e973b289283ee085",
+    "wire_bytes": 5203,
+    "wire_sha256": "a2993e1106df92e14e69f875f65793829f502fff370b2eb4e973b289283ee085",
+    "observed_at": "2026-10-22T02:49:02.326191+00:00"
+   },
+   "service_directory": {
+    "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+    "http_status": 200,
+    "body_bytes": 8518,
+    "body_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb",
+    "wire_bytes": 8518,
+    "wire_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb",
+    "observed_at": "2026-10-22T02:49:01.763281+00:00"
+   }
+  }
+ },
+ "materialization_evidence": "docs/dataset-sources/lock-gate-areas-usace-ienc/local-materialization.json",
+ "official_layer_item": "USACE IENC Feature Classes service LOCK_GATE_AREA MapServer layer 78",
+ "archive_denial_observation": {
+  "url": "https://www.datalumos.org/datalumos/project/239502/version/V1/view",
+  "observed_at": "2026-10-22",
+  "http_status": 403,
+  "note": "Cloudflare interstitial; anonymous historical cross-check blocked, same as the sibling USACE IENC dataset observations."
+ },
+ "prior_bts_item": "3607d485a9854d6fa458bf507058ceae (no longer resolves anonymously; no succession asserted)",
+ "prior_capture_evidence": null,
+ "candidate_identity": "4d6dc0bf63b78d76f3c2dd2208dedc0728babfeb"
+}
