@@ -299,6 +299,12 @@ from dagster_hifld.assets.locks_usace_ienc import (
     locks_usace_ienc_draft_schedule,
 )
 
+from dagster_hifld.assets.lock_basins_usace_ienc import (
+    lock_basins_usace_ienc_complete,
+    lock_basins_usace_ienc_draft_job,
+    lock_basins_usace_ienc_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -1022,6 +1028,7 @@ defs = Definitions(
         nces_public_schools_complete,
         coastlines_usace_ienc_complete,
         locks_usace_ienc_complete,
+        lock_basins_usace_ienc_complete,
         usace_airport_area_complete,
         usace_airport_area_quality,
         usace_airport_area_release,
@@ -1121,6 +1128,7 @@ defs = Definitions(
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
         locks_usace_ienc_draft_job,
+        lock_basins_usace_ienc_draft_job,
         arc_regions_draft_job,
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
@@ -1232,6 +1240,7 @@ defs = Definitions(
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
         locks_usace_ienc_draft_schedule,
+        lock_basins_usace_ienc_draft_schedule,
         arc_regions_draft_schedule,
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
