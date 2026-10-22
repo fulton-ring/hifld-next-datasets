@@ -4,10 +4,13 @@ Keep source-specific ingest assets explicit. Downstream catalog/publish/check
 assets are derived automatically from this registry.
 """
 
+from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.usgs import usgs_aquifers
+from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
+from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
@@ -56,6 +59,7 @@ from dagster_hifld.assets.secondary_school_districts import census_secondary_sch
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
+from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
@@ -89,6 +93,9 @@ from dagster_hifld.assets.census_county_subdivisions import census_county_subdiv
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
 from dagster_hifld.assets.floodwalls_usace_ienc import floodwalls_usace_ienc
+from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
+    harbor_facility_locations_usace_ienc,
+)
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
@@ -111,8 +118,10 @@ from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
+from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 
 hifld_ingest_assets = [
+    smithsonian_holocene_volcanoes,
     bts_ferry_routes,
     fdic_locations_official,
     fema_regions_official,
@@ -128,12 +137,15 @@ hifld_ingest_assets = [
     usgs_crushed_stone_preservation,
     nces_colleges_universities,
     usgs_aquifers,
+    usgs_ems_stations,
+    noaa_historical_tsunami_events,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
     census_bureau_block_groups,
     census_bureau_tracts,
     usace_pontoon_areas_usace_ienc,
+    usace_hulke_areas_usace_ienc,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
@@ -179,6 +191,7 @@ hifld_ingest_assets = [
     eia_power_plants_historical,
     epa_frs_eia_860_power_generation_facilities_by_source,
     usace_fuds_projects_points,
+    usace_fuds_program_district_boundaries,
     epa_small_scale_regions,
     nces_private_schools_2023_24,
     nces_public_schools,
@@ -201,6 +214,7 @@ hifld_ingest_assets = [
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
     floodwalls_usace_ienc,
+    harbor_facility_locations_usace_ienc,
     ferrous_metal_processing_plants_usgs,
     ferrous_metal_mines_candidate,
     courthouses_usgs,

@@ -15,6 +15,11 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
+from dagster_hifld.assets.historical_tsunami_events import (
+    tsunami_events_draft_job,
+    tsunami_events_draft_schedule,
+)
 from dagster_hifld.assets.bts_ferry_routes import ferry_routes_source_integrity_job, ferry_routes_source_integrity_schedule
 from dagster_hifld.assets.epa_regions import epa_regions_draft_job, epa_regions_draft_schedule
 from dagster_hifld.assets.epa_large_scale import (
@@ -124,6 +129,10 @@ from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
 )
+from dagster_hifld.assets.fuds_district_boundaries import (
+    fuds_district_boundaries_draft_schedule,
+    usace_fuds_program_district_boundaries_complete,
+)
 from dagster_hifld.assets.epa_small_scale import (
     epa_small_scale_source_integrity_job,
     epa_small_scale_source_integrity_schedule,
@@ -158,6 +167,11 @@ from dagster_hifld.assets.noaa import (
     noaa_eez_draft_weekly_schedule,
     noaa_territorial_draft_refresh_job,
     noaa_territorial_draft_weekly_schedule,
+)
+
+from dagster_hifld.assets.ems_stations import (
+    usgs_ems_stations_draft_refresh_job,
+    usgs_ems_stations_draft_refresh_schedule,
 )
 
 from dagster_hifld.assets.noaa_current_dart import (
@@ -276,6 +290,12 @@ from dagster_hifld.assets.floodwalls_usace_ienc import (
     floodwalls_usace_ienc_complete,
     floodwalls_usace_ienc_draft_job,
     floodwalls_usace_ienc_draft_schedule,
+)
+
+from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
+    harbor_facility_locations_usace_ienc_complete,
+    harbor_facility_locations_usace_ienc_draft_job,
+    harbor_facility_locations_usace_ienc_draft_schedule,
 )
 
 from dagster_hifld.assets.usace_data_coverage_areas import (
@@ -403,6 +423,11 @@ from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_hulke_areas import (
+    usace_hulke_areas_complete,
+    usace_hulke_areas_draft_job,
+    usace_hulke_areas_draft_schedule,
 )
 
 from dagster_hifld.assets.usace_airport_area import (
@@ -920,6 +945,7 @@ defs = Definitions(
     assets=[*hifld_dataset_assets, epa_disaster_debris_recovery_data],
     asset_checks=[
         *hifld_asset_checks,
+        usace_fuds_program_district_boundaries_complete,
         epa_disaster_debris_complete,
         arc_regions_full_quality,
         eia_power_plants_complete,
@@ -940,6 +966,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
         floodwalls_usace_ienc_complete,
+        harbor_facility_locations_usace_ienc_complete,
         usace_administrative_areas_complete,
         usace_navigation_marks_areas_complete,
         puerto_rico_subbarrios_source_complete,
@@ -952,6 +979,7 @@ defs = Definitions(
         us_county_boundaries_source_complete,
         us_state_boundaries_source_complete,
         usace_pontoon_areas_complete,
+        usace_hulke_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
         proposed_critical_habitat_complete,
@@ -1000,6 +1028,7 @@ defs = Definitions(
         fuds_program_division_boundaries_complete,
     ],
     jobs=[
+        holocene_source_integrity_job,
         ferry_routes_source_integrity_job,
         epa_large_scale_source_integrity_job,
         epa_regions_draft_job,
@@ -1010,6 +1039,7 @@ defs = Definitions(
         epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
+        tsunami_events_draft_job,
         census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
         courthouses_draft_job,
@@ -1018,6 +1048,7 @@ defs = Definitions(
         noaa_territorial_draft_refresh_job,
         noaa_contiguous_draft_refresh_job,
         noaa_dart_draft_refresh_job,
+        usgs_ems_stations_draft_refresh_job,
         usace_pylon_areas_draft_job,
         hf_areas_usace_ienc_draft_job,
         pylon_locations_draft_refresh_job,
@@ -1029,11 +1060,13 @@ defs = Definitions(
         usace_dam_lines_draft_job,
         usace_obstruction_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
+        harbor_facility_locations_usace_ienc_draft_job,
         usace_administrative_areas_draft_job,
         usace_navigation_marks_areas_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
         usace_pontoon_areas_draft_job,
+        usace_hulke_areas_draft_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
@@ -1096,6 +1129,7 @@ defs = Definitions(
         ferc_historical_reconstruction_job,
     ],
     schedules=[
+        holocene_source_integrity_schedule,
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
         epa_regions_draft_schedule,
@@ -1118,6 +1152,7 @@ defs = Definitions(
         noaa_territorial_draft_weekly_schedule,
         noaa_contiguous_draft_refresh_schedule,
         noaa_dart_draft_refresh_schedule,
+        usgs_ems_stations_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
         distance_marks_draft_refresh_schedule,
         recommended_tracks_draft_schedule,
@@ -1127,6 +1162,7 @@ defs = Definitions(
         usace_dam_lines_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
+        harbor_facility_locations_usace_ienc_draft_schedule,
         usace_administrative_areas_draft_schedule,
         usace_navigation_marks_areas_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
@@ -1137,6 +1173,7 @@ defs = Definitions(
         us_state_boundaries_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
+        usace_hulke_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
@@ -1197,6 +1234,8 @@ defs = Definitions(
         fema_regions_draft_schedule,
         ferc_historical_integrity_schedule,
         fuds_division_draft_schedule,
+        fuds_district_boundaries_draft_schedule,
+        tsunami_events_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
