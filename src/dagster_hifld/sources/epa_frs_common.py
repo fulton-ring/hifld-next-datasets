@@ -75,11 +75,14 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
                 *, max_bytes: int = 128 * 1024 * 1024,
                 max_wire_block_bytes: int | None = None,
                 include_observed_wire: bool = False,
-                reserve: Callable[[CaptureProgress], None] | None = None) -> tuple[bytes, dict[str, object]]:
+                reserve: Callable[[CaptureProgress], None] | None = None,
+                before_retain: Callable[[str, bytes], None] | None = None) -> tuple[bytes, dict[str, object]]:
     """Persist complete GET decoded and wire bodies plus a hash-pinned receipt.
 
     Incomplete/status-failed responses and mid-stream HTTP errors still leave
-    bounded body/wire evidence and a receipt before this helper raises.
+    bounded body/wire evidence and a receipt before this helper raises. When
+    supplied, ``before_retain`` runs before each block is written, so an adapter
+    can refuse an oversized delivered block without exceeding its disk budget.
     """
     capture_root.mkdir(parents=True, exist_ok=True)
     wire_path, body_path = capture_root / f"{name}.wire", capture_root / f"{name}.body"
@@ -91,6 +94,8 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
 
     def retain(path: Path, digest, data: bytes, kind: str) -> None:
         nonlocal wire_size, body_size
+        if before_retain is not None:
+            before_retain(kind, data)
         with path.open("ab") as stream:
             stream.write(data)
         if kind == "wire":
