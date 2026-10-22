@@ -170,6 +170,11 @@ from dagster_hifld.assets.usace_pylon_areas import (
     usace_pylon_areas_complete,
     usace_pylon_areas_draft_job,
 )
+from dagster_hifld.assets.hf_areas_usace_ienc import (
+    hf_areas_usace_ienc_draft_schedule,
+    hf_areas_usace_ienc_complete,
+    hf_areas_usace_ienc_draft_job,
+)
 
 from dagster_hifld.assets.principal_ports import (
     principal_ports_source_complete,
@@ -930,6 +935,7 @@ defs = Definitions(
         quaternary_fault_lines_population_complete,
         courthouses_population_complete,
         usace_pylon_areas_complete,
+        hf_areas_usace_ienc_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
@@ -1013,6 +1019,7 @@ defs = Definitions(
         noaa_contiguous_draft_refresh_job,
         noaa_dart_draft_refresh_job,
         usace_pylon_areas_draft_job,
+        hf_areas_usace_ienc_draft_job,
         pylon_locations_draft_refresh_job,
         distance_marks_draft_refresh_job,
         recommended_tracks_draft_job,
@@ -1105,6 +1112,7 @@ defs = Definitions(
         census_block_groups_draft_schedule,
         census_tracts_draft_schedule,
         usace_pylon_areas_draft_schedule,
+        hf_areas_usace_ienc_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
         noaa_territorial_draft_weekly_schedule,
