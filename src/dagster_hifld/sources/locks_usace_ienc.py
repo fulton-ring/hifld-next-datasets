@@ -1032,9 +1032,9 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"]=canonical(receipt)
         for redirect in receipt.get("redirects",[]):
-            prefix=redirect["artifact_prefix"]
+            redirect_prefix=redirect["artifact_prefix"]
             for suffix in ("body","wire","receipt.json"):
-                outputs[f"raw/{prefix}.{suffix}"]=(root/f"{prefix}.{suffix}").read_bytes()
+                outputs[f"raw/{redirect_prefix}.{suffix}"]=(root/f"{redirect_prefix}.{suffix}").read_bytes()
         receipt_map[name]=receipt
     fingerprint=digest(canonical(identity));state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     descriptors={name:{"bytes":len(body),"sha256":digest(body)} for name,body in outputs.items()}
