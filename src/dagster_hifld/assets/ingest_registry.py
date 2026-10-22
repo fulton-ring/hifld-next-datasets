@@ -69,6 +69,7 @@ from dagster_hifld.assets.nces_public_schools import nces_public_schools
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_daymark_locations import usace_daymark_locations_usace_ienc
 from dagster_hifld.assets.usace_dynamic_buoys import usace_dynamic_buoys_usace_ienc
+from dagster_hifld.assets.usace_lateral_buoys import usace_lateral_buoys_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
 from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
@@ -193,6 +194,7 @@ hifld_ingest_assets = [
     usace_pile_locations_usace_ienc,
     usace_daymark_locations_usace_ienc,
     usace_dynamic_buoys_usace_ienc,
+    usace_lateral_buoys_usace_ienc,
     usace_pipeline_areas_usace_ienc,
     usace_data_quality_areas_usace_ienc,
     usace_dumping_ground_areas_usace_ienc,
