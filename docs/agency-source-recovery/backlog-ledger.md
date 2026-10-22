@@ -2,7 +2,7 @@
 
 This ledger tracks all 415 dataset inventory issues in `fulton-ring/hifld-next-datasets` (#2–416), plus shared verification #417. Machine-readable evidence, exact heads, review scopes, run IDs and unresolved decisions are in `backlog-ledger.json`. Earlier PR search counts are historical snapshots, not current open-PR counts. Issue #417 remains open; dataset issues remain open despite source PRs auto-merging by ancestry, and no production data was published.
 
-### Latest verified checkpoint — 2026-10-22 00:18 UTC
+### Latest verified checkpoint — 2026-10-22 00:30 UTC
 
 All 415 unique inventory rows are retained; no fresh global issue or open-PR census was performed. Named current main is `0435135912f3b4001b5527bae2566bc91bd14a61` (tree `1303c6370ab3f00e000b15d462520d00022ee18a`) with 103 registered schedules reported STOPPED. This checkpoint records 78 candidate pipelines integrated this stretch from a starting count of 25; schedule count and code integration do not imply source feasibility, rights, acceptance, release readiness or publication.
 
@@ -10,11 +10,13 @@ All 415 unique inventory rows are retained; no fresh global issue or open-PR cen
 | --- | --- | --- |
 | PR #661 | #82, #84 and #85 integrated at `89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57`; 93 schedules STOPPED. | Comments 6328387678, 6328388359 and 6328389019 record pending source/release decisions. |
 | PR #663 | #87, #95 and #96 integrated at `19296429e1c29f5ad1d6b7384e66dfce6add7ca0`; 96 schedules STOPPED. | Comments 6328788040, 6328788681 and 6328789373 record issue updates; acceptance remains pending. |
-| PR #664 | #86 and #88 integrated at `11d796bb8bcc90d9504c4d971c0c8a78e703791d`; 98 schedules STOPPED. | #86 remains synthetic-only after official archive retrieval returned 404/403; comment 6328978081. #88 comment 6328978571 records pending decisions. |
+| PR #664 | #86 and #88 integrated at `11d796bb8bcc90d9504c4d971c0c8a78e703791d`; 98 schedules STOPPED. | #86 official historical USGS package access was recovered; PR #660 current head is `0a332d2e400a94ce8ab7b0c370f69de232c77248`, integrated draft code remains acceptance-gated, and public comment 6328978081 records the resolved access blocker. #88 comment 6328978571 records pending decisions. |
 | PR #665 | #92 and #93 integrated at `c951561345efbf8857620c9dcc336ab6b9558f2e`; 100 schedules STOPPED. | Comments 6329165183 and 6329165655; source and release decisions remain open. |
 | PR #670 | #91, #94 and #110 integrated at `0435135912f3b4001b5527bae2566bc91bd14a61` (tree `1303c6370ab3f00e000b15d462520d00022ee18a`); 103 schedules STOPPED. | Source heads `066f3dff4c50fbe0037f493c83864b7ae41cb0c5`, `3f13d2e5c2c0c0fa5660fd8275bc824b5af5375c` and `c3063f805ba5eda97dd825808a978299cf61c830`; comments 6329449205, 6329449751 and 6329450265. Source, CRS/scope, rights and release decisions remain pending. |
 
-Issue #80's earlier PR #656 integration remains on current main; original PR #469 is a separate association. The integration of draft code for #86–#96 and #110 does not accept the source, baseline, schema/ID mapping, rights or release contract. No issue closure, source/release acceptance, schedule activation or production publication is claimed.
+For #86, PR #660 is now at head `0a332d2e400a94ce8ab7b0c370f69de232c77248` with source identity `07badea7be2b69c279528dd10b583da7c548e84e`. The exact 6,269-byte Wayback-preserved USGS package contains 24 original records and 9 DBF fields; official FGDC specifies NAD83 geographic coordinates (EPSG:4269). Public issue comment 6328978081 confirms archive access was recovered. Native values are preserved. The proposed 0.001-degree bound describes observed coordinate deltas only and is not an approved equivalence or repair rule. Independent source/catalog/post-cache and populated three-object gate checks passed; actual source quality remained true, while an isolated synthetic copy exercised false-quality rejection. Source, baseline, mapping/schema, CRS, rights, contract and release acceptance remain pending.
+
+Issue #80's earlier PR #656 integration remains on current main; original PR #469 is a separate association. The integration of draft code for #86–#96 and #110 does not itself accept the source, baseline, schema/ID mapping, rights or release contract. No issue closure, source/release acceptance, schedule activation or production publication is claimed.
 
 | Open decision / public draft | Current named fact |
 | --- | --- |

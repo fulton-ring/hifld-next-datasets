@@ -12,7 +12,7 @@
     ],
     "live_issue_states_verified": "Named updates only; no fresh global issue-state census. Dataset issue rows remain acceptance-gated where stated in the latest named checkpoint.",
     "pr_search": "Historical 2026-10-20 search snapshot only; do not report its 114 records or old issue association counts as current.",
-    "durable_local_runtime_evidence": "not present after cloud replacement; do not infer historical evidence absent from GitHub comments/PR bodies",
+    "durable_local_runtime_evidence": "Some older local evidence packets may be unavailable after cloud replacement; fresh named verification evidence, including the recovered #86 source and lifecycle checks, currently exists in retained local work. The older replacement note is not a claim that current named evidence is absent. Local verification does not imply source, rights, contract or release acceptance.",
     "issue_states": "All 415 inventory issue records remain in the ledger; live states were individually verified on 2026-10-20, with named issues refreshed in the 2026-10-21 and 2026-10-22 checkpoints. No global 415-issue refresh is claimed for this checkpoint.",
     "prs_returned": "114 historical PR search records; not current open count",
     "issue_fetches": 415,
@@ -5542,19 +5542,21 @@
       "dataset_id": "ferrous-metal-mines",
       "title": "Ferrous Metal Mines",
       "issue_url": "https://github.com/fulton-ring/hifld-next-datasets/issues/86",
-      "inventory_source_status": "unverified",
-      "inventory_implementation_status": "needs_source_verification",
+      "inventory_source_status": "official_historical_bytes_and_FGDC_verified_pending_acceptance",
+      "inventory_implementation_status": "draft_pipeline_implemented_unaccepted",
       "live_issue_state": "open",
       "current_pr": 660,
-      "reviewed_head": null,
+      "reviewed_head": "0a332d2e400a94ce8ab7b0c370f69de232c77248",
       "evidence_refs": [
-        "PR #664 integration is present on main 11d796bb8bcc90d9504c4d971c0c8a78e703791d; issue comment 6328978081 records pending dataset decisions. Current named main 0435135912f3b4001b5527bae2566bc91bd14a61 includes this integration.",
-        "PR #664 registration-only integration was root-reviewed; synthetic capture remains distinct from a verified real source."
+        "Public PR #660 is currently at exact source head 0a332d2e400a94ce8ab7b0c370f69de232c77248 (source identity 07badea7be2b69c279528dd10b583da7c548e84e). The earlier PR head 697265b715dcda2c86051bff5dbef886318c1a56 is historical.",
+        "Exact 6,269-byte Wayback-preserved official USGS package contains 24 original records and 9 DBF fields; official FGDC metadata identifies NAD83 geographic coordinates (EPSG:4269). Public issue comment 6328978081 explicitly records that source access was recovered and the access blocker resolved.",
+        "The capture preserves native source records and coordinate values. Observed DBF/SHP deltas are documented with a proposed 0.001-degree sanity bound only; this is not producer-approved equivalence or a repair rule. Actual source/catalog/post-cache verification and populated three-object gates passed independent review. Actual source quality remained true; a separate explicit synthetic false-quality copy exercised the rejection gate without modifying the candidate.",
+        "Code is integrated through PR #664 at main 11d796bb8bcc90d9504c4d971c0c8a78e703791d. Source identity and bytes are verified, while historical baseline, mapping/schema acceptance, rights, contract and release decisions remain pending."
       ],
-      "blocker_type": "external_source_access_and_provenance",
-      "live_issue_updated_at": "2026-10-19T02:00:59Z",
+      "blocker_type": "acceptance_decisions_pending",
+      "live_issue_updated_at": "2026-10-21T23:37:24Z",
       "live_issue_created_at": "2026-10-19T02:00:59Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 5,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
@@ -5563,10 +5565,12 @@
           "title": "Draft: ferrous-metal-mines preserved-capture pipeline (#86)",
           "state": "open",
           "head_branch": "codex/cloud-dataset-86",
-          "head_sha": "697265b715dcda2c86051bff5dbef886318c1a56",
+          "head_sha": "0a332d2e400a94ce8ab7b0c370f69de232c77248",
           "base_branch": "codex/cloud-verification-417",
           "draft": true,
-          "checks": [
+          "association_method": "explicit_issue_reference_and_branch",
+          "historical_prior_head": "697265b715dcda2c86051bff5dbef886318c1a56",
+          "historical_prior_head_checks": [
             {
               "name": "build-only",
               "conclusion": "success"
@@ -5575,16 +5579,16 @@
               "name": "publish",
               "conclusion": "skipped"
             }
-          ],
-          "association_method": "explicit_issue_reference_and_branch"
+          ]
         }
       ],
-      "status": "draft_pipeline_integrated_source_access_still_blocked",
-      "status_note": "The synthetic-only draft associated with PR #660 was integrated through PR #664; the prior official archive requests returned 404/403. This does not establish real source bytes, lineage, coverage, rights or historical fidelity. Issue comment 6328978081 records the pending decision. Current main is 0435135912f3b4001b5527bae2566bc91bd14a61; source and release acceptance remain false.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "PR #660 is currently at exact source head 0a332d2e400a94ce8ab7b0c370f69de232c77248 (source identity 07badea7be2b69c279528dd10b583da7c548e84e); prior head 697265b715dcda2c86051bff5dbef886318c1a56 is historical. The exact 6,269-byte Wayback-preserved official USGS package contains 24 original records and 9 DBF fields; official FGDC metadata specifies NAD83 geographic coordinates (EPSG:4269). Public issue comment 6328978081 records that historical package access was recovered and resolves the former access blocker. Native source records and coordinates are preserved. Observed DBF/SHP deltas are documented with 0.001 degrees as a proposed sanity bound only, not producer-approved equivalence or a repair instruction. Actual source/catalog/post-cache verification and populated three-object gates passed independent review; actual source quality remained true, while a separate explicit synthetic false-quality copy exercised the gate without changing the candidate. Code is integrated through PR #664 at main 11d796bb8bcc90d9504c4d971c0c8a78e703791d. Source bytes and FGDC metadata are verified; source, baseline, mapping, schema, CRS, rights, contract and release acceptance remain false/pending.",
       "current_pr_candidates": [
         660
       ],
-      "current_activity": "Synthetic-only draft code is integrated; original-source access and source decision remain unresolved."
+      "current_activity": "Verified historical official USGS source bytes are captured and draft code is integrated; source, baseline, mapping/schema, CRS, rights, contract and release decisions remain pending.",
+      "current_head": "0a332d2e400a94ce8ab7b0c370f69de232c77248"
     },
     {
       "issue": 87,
@@ -15021,7 +15025,7 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-22T00:18:00Z",
+    "recorded_at": "2026-10-22T00:30:00Z",
     "source": "Named root integration checkpoints and published issue/PR facts; no new global issue or open-PR census.",
     "main_latest": "0435135912f3b4001b5527bae2566bc91bd14a61",
     "main_tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
@@ -15111,7 +15115,7 @@
     ],
     "native_or_followup_work": {
       "80": "Draft code integrated through PR #656; source PR #469 remains distinct; acceptance decisions pending.",
-      "86": "Synthetic-only pipeline integrated through PR #664; official archive access (404/403) remains unresolved; no source acceptance.",
+      "86": "PR #660 current head 0a332d2e400a94ce8ab7b0c370f69de232c77248; exact historical official USGS archive and FGDC source metadata verified. Former access blocker resolved per public comment 6328978081. Code integrated through PR #664; source/baseline/mapping/schema/rights/contract/release acceptance remains pending.",
       "87": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
       "88": "Draft pipeline integrated through PR #664; source and release decisions remain pending.",
       "91": "Draft source code head 066f3dff4c50fbe0037f493c83864b7ae41cb0c5 integrated through PR #670; source/release acceptance remains pending.",
@@ -16691,7 +16695,7 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-22T00:18:00Z",
+    "recorded_at": "2026-10-22T00:30:00Z",
     "source": "Named root integration checkpoints and published issue/PR facts; no new global issue or open-PR census.",
     "main_latest": "0435135912f3b4001b5527bae2566bc91bd14a61",
     "main_tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
@@ -16781,7 +16785,7 @@
     ],
     "native_or_followup_work": {
       "80": "Draft code integrated through PR #656; source PR #469 remains distinct; acceptance decisions pending.",
-      "86": "Synthetic-only pipeline integrated through PR #664; official archive access (404/403) remains unresolved; no source acceptance.",
+      "86": "PR #660 current head 0a332d2e400a94ce8ab7b0c370f69de232c77248; exact historical official USGS archive and FGDC source metadata verified. Former access blocker resolved per public comment 6328978081. Code integrated through PR #664; source/baseline/mapping/schema/rights/contract/release acceptance remains pending.",
       "87": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
       "88": "Draft pipeline integrated through PR #664; source and release decisions remain pending.",
       "91": "Draft source code head 066f3dff4c50fbe0037f493c83864b7ae41cb0c5 integrated through PR #670; source/release acceptance remains pending.",
