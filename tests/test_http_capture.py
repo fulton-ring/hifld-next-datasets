@@ -28,7 +28,8 @@ class DeliveredStream(httpx.SyncByteStream):
 
 class HTTPCaptureTests(unittest.TestCase):
     def capture(self, blocks, *, headers=None, error=None, reserve=None, wire_cap=8*DECODE_BLOCK_BYTES,
-                decoded_cap=8*DECODE_BLOCK_BYTES, status=200, wire_sink=None, decoded_sink=None):
+                decoded_cap=8*DECODE_BLOCK_BYTES, max_wire_block_bytes=None, status=200,
+                wire_sink=None, decoded_sink=None):
         wire, decoded, reservations = bytearray(), bytearray(), []
         stream = DeliveredStream(blocks, error)
 
@@ -40,6 +41,7 @@ class HTTPCaptureTests(unittest.TestCase):
         transport = httpx.MockTransport(lambda request: httpx.Response(status, headers=headers, stream=stream))
         with httpx.Client(transport=transport) as client, client.stream('GET', 'https://source.example.invalid/data') as response:
             result = capture_http_response(response, max_wire_bytes=wire_cap, max_decoded_bytes=decoded_cap,
+                max_wire_block_bytes=max_wire_block_bytes,
                 reserve=budget, retain_wire=wire.extend if wire_sink is None else wire_sink,
                 retain_decoded=decoded.extend if decoded_sink is None else decoded_sink)
         return result, bytes(wire), bytes(decoded), reservations, stream
@@ -208,6 +210,48 @@ class HTTPCaptureTests(unittest.TestCase):
         self.assertEqual(r.pending_decoded, wire)
         self.assertEqual(r.decoded_bytes_retained, 0)
         self.assertEqual(r.decoded_bytes_produced, len(wire))
+
+    def test_transport_block_over_cap_is_accounted_but_never_retained(self):
+        block = b'x' * 65
+        r, wire, body, reservations, _ = self.capture([block], max_wire_block_bytes=64)
+        self.assertFalse(r.complete)
+        self.assertEqual(r.error_code, 'wire_block_limit_exceeded')
+        self.assertEqual(r.wire_bytes_received, len(block))
+        self.assertEqual(r.received_wire_sha256, hashlib.sha256(block).hexdigest())
+        self.assertEqual(r.wire_bytes_retained, 0)
+        self.assertEqual(r.wire_sha256, hashlib.sha256(b'').hexdigest())
+        self.assertEqual(r.pending_wire, block)
+        self.assertEqual(wire, b'')
+        self.assertEqual(body, b'')
+        self.assertEqual(len(reservations), 1)  # pre-read reservation only
+
+    def test_cumulative_wire_limit_refuses_current_block_before_retention_when_capped(self):
+        blocks = [b'abc', b'def']
+        r, wire, body, _, _ = self.capture(blocks, wire_cap=5, max_wire_block_bytes=4)
+        self.assertFalse(r.complete)
+        self.assertEqual(r.error_code, 'wire_limit_exceeded')
+        self.assertEqual(r.wire_bytes_received, 6)
+        self.assertEqual(r.received_wire_sha256, hashlib.sha256(b'abcdef').hexdigest())
+        self.assertEqual(r.wire_bytes_retained, 3)
+        self.assertEqual(r.wire_sha256, hashlib.sha256(b'abc').hexdigest())
+        self.assertEqual(r.pending_wire, b'def')
+        self.assertEqual(wire, b'abc')
+        self.assertEqual(body, b'abc')
+
+    def test_actual_block_reservation_refusal_precedes_both_sinks(self):
+        def reserve(progress, _stream):
+            if progress.phase == 'wire_block' and progress.reserve_bytes == len(block):
+                raise OSError('actual block does not fit disk/aggregate reserve')
+        block = b'bounded block'
+        r, wire, body, _, _ = self.capture([block], reserve=reserve,
+            max_wire_block_bytes=len(block))
+        self.assertFalse(r.complete)
+        self.assertEqual(r.error_code, 'reserve_error')
+        self.assertEqual(r.wire_bytes_received, len(block))
+        self.assertEqual(r.wire_bytes_retained, 0)
+        self.assertEqual(r.pending_wire, block)
+        self.assertEqual(wire, b'')
+        self.assertEqual(body, b'')
 
     def test_already_decoded_response_cannot_claim_wire_capture(self):
         response = httpx.Response(200, content=b'already read')
