@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_job, bts_ferry_terminals_draft_refresh_schedule
 from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
 from dagster_hifld.assets.historical_tsunami_events import (
     tsunami_events_draft_job,
@@ -192,6 +193,11 @@ from dagster_hifld.assets.usace_pylon_areas import (
     usace_pylon_areas_draft_schedule,
     usace_pylon_areas_complete,
     usace_pylon_areas_draft_job,
+)
+from dagster_hifld.assets.hf_areas_usace_ienc import (
+    hf_areas_usace_ienc_draft_schedule,
+    hf_areas_usace_ienc_complete,
+    hf_areas_usace_ienc_draft_job,
 )
 
 from dagster_hifld.assets.principal_ports import (
@@ -968,6 +974,7 @@ defs = Definitions(
         quaternary_fault_lines_population_complete,
         courthouses_population_complete,
         usace_pylon_areas_complete,
+        hf_areas_usace_ienc_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
@@ -1034,6 +1041,7 @@ defs = Definitions(
         fuds_program_division_boundaries_complete,
     ],
     jobs=[
+        bts_ferry_terminals_draft_refresh_job,
         holocene_source_integrity_job,
         ferry_routes_source_integrity_job,
         epa_large_scale_source_integrity_job,
@@ -1056,6 +1064,7 @@ defs = Definitions(
         noaa_dart_draft_refresh_job,
         usgs_ems_stations_draft_refresh_job,
         usace_pylon_areas_draft_job,
+        hf_areas_usace_ienc_draft_job,
         pylon_locations_draft_refresh_job,
         distance_marks_draft_refresh_job,
         recommended_tracks_draft_job,
@@ -1134,6 +1143,7 @@ defs = Definitions(
         ferc_historical_reconstruction_job,
     ],
     schedules=[
+        bts_ferry_terminals_draft_refresh_schedule,
         holocene_source_integrity_schedule,
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
@@ -1153,6 +1163,7 @@ defs = Definitions(
         census_block_groups_draft_schedule,
         census_tracts_draft_schedule,
         usace_pylon_areas_draft_schedule,
+        hf_areas_usace_ienc_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
         noaa_territorial_draft_weekly_schedule,

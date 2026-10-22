@@ -98,6 +98,7 @@ from dagster_hifld.assets.floodwalls_usace_ienc import floodwalls_usace_ienc
 from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
     harbor_facility_locations_usace_ienc,
 )
+from dagster_hifld.assets.hf_areas_usace_ienc import hf_areas_usace_ienc_candidate
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
@@ -121,8 +122,10 @@ from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
+from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 
 hifld_ingest_assets = [
+    bts_ferry_terminals,
     smithsonian_holocene_volcanoes,
     bts_ferry_routes,
     fdic_locations_official,
@@ -219,6 +222,7 @@ hifld_ingest_assets = [
     usace_floating_docks_usace_ienc,
     floodwalls_usace_ienc,
     harbor_facility_locations_usace_ienc,
+    hf_areas_usace_ienc_candidate,
     ferrous_metal_processing_plants_usgs,
     ferrous_metal_mines_candidate,
     courthouses_usgs,
