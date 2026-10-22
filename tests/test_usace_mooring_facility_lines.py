@@ -97,6 +97,29 @@ class UsaceMooringFacilityLinesTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"retained_capture_request_identity_mismatch:features"):
                     source._read_replay(root)
 
+    def test_sealed_oversized_replay_body_is_rejected_before_artifact_reads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/"capture";root.mkdir();self._capture_directory(root)
+            oversized=b"x"*(source.PAGE_MAX_BYTES+1)
+            (root/"features.body").write_bytes(oversized)
+            (root/"features.wire").write_bytes(oversized)
+            receipt=json.loads((root/"features.receipt.json").read_bytes())
+            receipt.update(bytes=len(oversized),sha256=source._sha(oversized),
+                           wire_bytes=len(oversized),wire_sha256=source._sha(oversized),
+                           content_length=len(oversized))
+            (root/"features.receipt.json").write_bytes(_canonical(receipt)+b"\n")
+            manifest=json.loads((root/"capture_manifest.json").read_bytes())
+            manifest["receipts"]["features"]=receipt
+            manifest["artifact_roster"]=capture_roster_digests(root,exclude={"capture_manifest.json"})
+            (root/"capture_manifest.json").write_bytes(_canonical(manifest)+b"\n")
+
+            bounded_read=source._bounded_capture_read
+            with patch.object(source,"_bounded_capture_read",wraps=bounded_read) as read:
+                with self.assertRaisesRegex(ValueError,r"retained_capture_file_size_exceeded:features\.(?:body|wire)"):
+                    source._read_replay(root)
+            self.assertEqual(read.call_count,1)
+            self.assertEqual(read.call_args.args[2],"capture_manifest.json")
+
     def test_live_contract_fields_ids_coordinates_and_attributes_are_complete(self):
         captures={name:(_canonical(doc),{"status":200}) for name,doc in self._documents().items()}
         fields,features,audit=source._validate(captures)

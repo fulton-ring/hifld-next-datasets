@@ -4,7 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import shutil
+import stat
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +45,8 @@ EXPECTED_IDS = [1]
 EXPECTED_ID_SHA256 = "080a9ed428559ef602668b4c00f114f1a11c3f6b02a435f0bdc154578e4d7f22"
 PAGE_MAX_BYTES = 1_000_000
 CAPTURE_MAX_BYTES = 4_000_000
+CAPTURE_MANIFEST_MAX_BYTES = 256_000
+CAPTURE_RECEIPT_MAX_BYTES = 64_000
 EXPECTED_EXTENT = {"xmin":-86.83390689999999,"ymin":36.17757910000006,
                    "xmax":-86.83350899999994,"ymax":36.179755700000044}
 EXPECTED_CAPTURE_NAMES = {"bts_item","service_directory","service_before","layer_before","count_before",
@@ -103,6 +107,96 @@ def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
+def _open_capture_file(path: Path, label: str):
+    """Open one retained file without following links and require a regular file."""
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise ValueError("retained_capture_file_open_failed:" + label) from exc
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("retained_capture_nonregular_file:" + label)
+        return os.fdopen(fd, "rb"), before
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _capture_file_limit(name: str) -> int:
+    if name == "capture_manifest.json":
+        return CAPTURE_MANIFEST_MAX_BYTES
+    if name.endswith(".body") or name.endswith(".wire"):
+        return PAGE_MAX_BYTES
+    if name.endswith(".receipt.json"):
+        return CAPTURE_RECEIPT_MAX_BYTES
+    raise ValueError("retained_capture_unexpected_file:" + name)
+
+
+def _bounded_capture_read(path: Path, limit: int, label: str) -> bytes:
+    """Read at most a declared cap, checking the opened inode before and after."""
+    stream, before = _open_capture_file(path, label)
+    with stream:
+        if before.st_size > limit:
+            raise ValueError("retained_capture_file_size_exceeded:" + label)
+        data = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+        if (len(data) > limit or len(data) != before.st_size
+                or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+            raise ValueError("retained_capture_file_changed_or_oversized:" + label)
+    return data
+
+
+def _bounded_capture_roster(root: Path, expected_files: set[str]) -> dict[str, dict[str, object]]:
+    """Preflight the complete replay budget, then hash artifacts with bounded reads."""
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError("retained_capture_roster_root_invalid")
+    entries = {}
+    total = 0
+    for entry in root.iterdir():
+        info = entry.lstat()
+        if entry.is_symlink() or not stat.S_ISREG(info.st_mode):
+            raise ValueError("retained_capture_nonregular_path:" + entry.name)
+        limit = _capture_file_limit(entry.name)
+        if info.st_size > limit:
+            raise ValueError("retained_capture_file_size_exceeded:" + entry.name)
+        entries[entry.name] = info
+        total += info.st_size
+        if total > CAPTURE_MAX_BYTES:
+            raise ValueError("retained_capture_total_size_exceeded")
+    if set(entries) != expected_files:
+        raise ValueError("capture_roster_mismatch")
+
+    result = {}
+    consumed = entries["capture_manifest.json"].st_size
+    for name in sorted(expected_files - {"capture_manifest.json"}):
+        stream, before = _open_capture_file(root / name, name)
+        limit = _capture_file_limit(name)
+        digest = hashlib.sha256()
+        size = 0
+        with stream:
+            if before.st_size > limit:
+                raise ValueError("retained_capture_file_size_exceeded:" + name)
+            while True:
+                block = stream.read(min(64 * 1024, limit + 1 - size))
+                if not block:
+                    break
+                size += len(block)
+                consumed += len(block)
+                if size > limit or consumed > CAPTURE_MAX_BYTES:
+                    raise ValueError("retained_capture_total_size_exceeded")
+                digest.update(block)
+            after = os.fstat(stream.fileno())
+            if (size != before.st_size
+                    or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                    != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+                raise ValueError("retained_capture_file_changed_or_oversized:" + name)
+        result[name] = {"bytes": size, "sha256": digest.hexdigest()}
+    return result
+
+
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
@@ -134,9 +228,10 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[byt
 def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     body_path, wire_path, receipt_path = (root / f"{name}.body", root / f"{name}.wire",
                                           root / f"{name}.receipt.json")
-    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
-        raise ValueError("retained_capture_symlink_rejected")
-    body, wire, receipt = body_path.read_bytes(), wire_path.read_bytes(), json.loads(receipt_path.read_bytes())
+    body = _bounded_capture_read(body_path, PAGE_MAX_BYTES, f"{name}.body")
+    wire = _bounded_capture_read(wire_path, PAGE_MAX_BYTES, f"{name}.wire")
+    receipt_body = _bounded_capture_read(receipt_path, CAPTURE_RECEIPT_MAX_BYTES, f"{name}.receipt.json")
+    receipt = json.loads(receipt_body)
     if (receipt.get("complete_body") is not True or receipt.get("status") != 200
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
             or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
@@ -153,9 +248,7 @@ def _validate_capture_request_identity(name: str, receipt: dict, expected_url: s
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
+    manifest = json.loads(_bounded_capture_read(manifest_path, CAPTURE_MANIFEST_MAX_BYTES, "capture_manifest.json"))
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
     roster = manifest.get("artifact_roster")
@@ -163,8 +256,13 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         raise ValueError("retained_capture_roster_missing")
     if set(manifest["receipts"]) != EXPECTED_CAPTURE_NAMES:
         raise ValueError("retained_capture_name_roster_changed")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
+    expected_files = {"capture_manifest.json"} | {
+        f"{name}.{suffix}" for name in EXPECTED_CAPTURE_NAMES for suffix in ("body", "wire", "receipt.json")
+    }
+    if set(roster) != expected_files - {"capture_manifest.json"}:
+        raise ValueError("retained_capture_roster_changed")
+    validate_capture_roster(root, expected_files)
+    if roster != _bounded_capture_roster(root, expected_files):
         raise ValueError("retained_capture_artifact_digest_mismatch")
     expected_urls = dict(_capture_urls(EXPECTED_IDS))
     captures = {}
