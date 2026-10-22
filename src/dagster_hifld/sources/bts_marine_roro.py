@@ -36,8 +36,8 @@ DATASET_SLUG = "intermodal-freight-facilities-marine-roll-on-roll-off"
 FILE_SLUG = DATASET_SLUG
 PUBLISHER = "U.S. Department of Transportation, Bureau of Transportation Statistics (USDOT_BTS)"
 PAGE_SIZE = 1000
-MAX_BODY_BYTES = 8_000_000
-MAX_CAPTURE_TOTAL_BYTES = 480_000_000
+MAX_BODY_BYTES = 1_000_000
+MAX_CAPTURE_TOTAL_BYTES = 2_000_000
 MAX_OBJECT_ID_URL_LENGTH = 1800
 EXPECTED_SOURCE_SCHEMA_SHA256 = "8080a33e136b55a194e8786dae203069fd44c02f6bb4ca8501db5a893c495972"
 EXPECTED_SOURCE_ID_SHA256 = "865f85261b03d18843adc4a68e28bb003422ff44d6d6f6f8b8f3835eb126e5a3"
@@ -343,12 +343,24 @@ def capture_bts_marine_roro(storage: StagingStorageResource, *,
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict]] = {}
+
+    def capture(client: httpx.Client, name: str, url: str) -> tuple[bytes, dict]:
+        def reserve(progress) -> None:
+            retained_prior = sum(
+                path.stat().st_size
+                for path in capture_root.iterdir()
+                if path.is_file() and path.name.endswith((".body", ".wire"))
+                and path.name not in {f"{name}.body", f"{name}.wire"}
+            )
+            if retained_prior + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > MAX_CAPTURE_TOTAL_BYTES:
+                raise ValueError("source_capture_exceeds_scratch_budget")
+        return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES, reserve=reserve)
+
     current_capture_name = "ids_seed"
     current_capture_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/bts-marine-roro-draft"}) as client:
-            seed_body, seed_receipt = capture_get(client,
-                current_capture_url, capture_root, current_capture_name, max_bytes=MAX_BODY_BYTES)
+            seed_body, seed_receipt = capture(client, current_capture_name, current_capture_url)
             captures["ids_seed"] = (seed_body, seed_receipt)
             seed = json.loads(seed_body).get("objectIds")
             if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
@@ -356,7 +368,7 @@ def capture_bts_marine_roro(storage: StagingStorageResource, *,
             total_captured_bytes = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
             for name, url in _source_metadata_urls():
                 current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+                body, receipt = capture(client, name, url)
                 captures[name] = (body, receipt)
                 total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
                 if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
@@ -365,14 +377,14 @@ def capture_bts_marine_roro(storage: StagingStorageResource, *,
             _pagination_mode, page_plan = _page_plan(seed, layer_before)
             for name, url, _page_ids in page_plan:
                 current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+                body, receipt = capture(client, name, url)
                 captures[name] = (body, receipt)
                 total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
                 if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
                     raise ValueError("source_capture_exceeds_scratch_budget")
             for name, url in _source_after_urls():
                 current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+                body, receipt = capture(client, name, url)
                 captures[name] = (body, receipt)
                 total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
                 if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:

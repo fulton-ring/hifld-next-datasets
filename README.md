@@ -6,7 +6,7 @@ High-level flow:
 
 1. **Ingest** — One asset per dataset file (e.g. `amtrak-stations/amtrak-stations`); downloads from source URLs and stages raw geodata under the versioned path below.
 2. **Catalog** — Partitioned by **version**; reads staged data, writes `metadata/quality_manifest.json` and `metadata/data_dictionary.json`.
-3. **Publish** — Partitioned by the same version; converts and copies to the published bucket, promotes metadata, and publishes Portolan/STAC discovery metadata and the SQLite catalog.
+3. **Publish** — Partitioned by the staged candidate; prepares formats and release metadata, verifies independent approval, and copies to the semantic release version before publishing Portolan/STAC discovery metadata and the SQLite catalog.
 
 The historical Dataset API integration and export-seeding CLI are retired.
 See [the retirement note](docs/legacy-retirement.md) for the removed interfaces,
@@ -18,7 +18,39 @@ verification, and compatibility retained for existing source data.
 
 Example: `gs://<staging-bucket>/amtrak-stations/amtrak-stations/v20260407T204046Z/shapefile/...`
 
-**Version IDs** are time-based UTC slugs derived from the Dagster run’s create timestamp: `vYYYYMMDDTHHMMSSZ` (see `download.build_version_id`).
+**Candidate IDs** identify staged work. Existing ingests use UTC run timestamps or source/code fingerprints. They are not published release numbers.
+
+**Published versions** come from the standard STAC `version` field in
+`{dataset}/{file}/{candidate}/collection.json`. There is no fallback to the
+candidate partition or a draft manifest's supplied version.
+
+After generating formats and comparison evidence, materialize
+`publish/release_metadata` for the candidate with Dagster configuration:
+
+```yaml
+ops:
+  publish__release_metadata:
+    config:
+      version: "v1.5.0"
+```
+
+This prepares a STAC Collection with `version: "1.5.0"`, an ID ending in
+`v1.5.0`, and final asset URLs. It writes staging only. To override the version,
+rerun this preparation with the desired version; it regenerates the collection
+and version-dependent style URLs. Do not edit only the Collection's version and
+leave its ID or URLs pointing at the old release. The Python helper is
+`prepare_staged_release(request, staging, published, staged_version=...)`.
+
+Independent release approval must pin the complete staged inventory, including
+`collection.json`, and its exact destination inventory under
+`{dataset}/{file}/v1.5.0/`. Changing metadata or files requires fresh approval.
+`publish/verify` and `publish/promote` continue to select the candidate partition,
+but use the approved STAC version for publication. Promotion preserves evidence
+bytes, refuses conflicting published files and permits identical retries.
+The terminal catalog asset uses the same release version and the existing
+separately approved immutable catalog plan. Existing historical releases are
+not renamed. Version selection is explicit; no heuristic automatically decides
+compatibility or grants publication acceptance.
 
 **Partitions** — Each `(dataset_slug, file_slug)` pair has its own `DynamicPartitionsDefinition`. Partition keys are version strings. The `version_discovery_sensor` scans staging for versions that have geodata but lack `metadata/quality_manifest.json`, registers the partition, and requests a catalog materialization (for pairs known to the code).
 
