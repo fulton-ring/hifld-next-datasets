@@ -25,6 +25,8 @@ from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import national_transit_map_routes as source
 
+_HTTPX_CLIENT = httpx.Client
+
 
 def _canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
@@ -113,7 +115,7 @@ def _fixture_factory():
             body = _canonical(result)
             return httpx.Response(200, content=body, request=request,
                                   headers={"content-length": str(len(body))})
-        return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
+        return _HTTPX_CLIENT(transport=httpx.MockTransport(handler), follow_redirects=False)
 
     return factory, fields, features, schema_sha, ids_sha
 
