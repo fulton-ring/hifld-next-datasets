@@ -31,6 +31,7 @@ from dagster_hifld.assets.arc_regions import arc_regions
 from dagster_hifld.assets.red_cross_headquarters import red_cross_headquarters
 from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facilities
 from dagster_hifld.assets.bts import bts_amtrak_stations
+from dagster_hifld.assets.bts_rail_tofc_cofc import bts_intermodal_freight_rail_tofc_cofc
 from dagster_hifld.assets.bts_marine_roro import bts_intermodal_freight_marine_roll_on_roll_off
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
@@ -119,6 +120,7 @@ from dagster_hifld.assets.electric_retail_service_territories import electric_re
 from dagster_hifld.assets.epa_eez import epa_eez
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
+from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_truck
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
@@ -160,6 +162,7 @@ hifld_ingest_assets = [
     faa_airspace_boundaries,
     faa_aviation_facilities,
     bts_amtrak_stations,
+    bts_intermodal_freight_rail_tofc_cofc,
     bts_intermodal_freight_marine_roll_on_roll_off,
     bts_alternative_fueling_stations,
     dhs_hifld_above_ground_lng_storage_facilities,
@@ -237,4 +240,5 @@ hifld_ingest_assets = [
     epa_facilities_labels,
     epa_frs_toxic_release_inventory,
     epa_frs_toxic_substances_control_act_tsca,
+    bts_intermodal_freight_air_to_truck,
 ]
