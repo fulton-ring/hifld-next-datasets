@@ -95,5 +95,6 @@ usace_lakes_draft_schedule = ScheduleDefinition(
     job=usace_lakes_draft_job,
     cron_schedule="0 8 1,15 * *",
     execution_timezone="America/New_York",
+    run_config={"ops": {usace_lakes_usace_ienc.op.name: {"config": {"max_capture_bytes": 80_000_000}}}},
     default_status=DefaultScheduleStatus.STOPPED,
 )

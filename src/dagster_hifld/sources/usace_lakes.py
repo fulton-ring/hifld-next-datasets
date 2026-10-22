@@ -471,7 +471,7 @@ def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root=requested/(version+"-"+uuid4().hex)
     else:
-        root=Path("/tmp/hifld-native-reconstruction/116/captures")/(version+"-"+uuid4().hex)
+        root=Path("/tmp/hifld-native-reconstruction/131/captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
