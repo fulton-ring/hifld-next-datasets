@@ -2,6 +2,7 @@ import json
 import httpx
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -70,6 +71,28 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
             self.assertEqual((root / "oversize.wire").stat().st_size, 0)
             self.assertEqual((root / "oversize.body").stat().st_size, 0)
             self.assertFalse(json.loads((root / "oversize.receipt.json").read_bytes())["complete_body"])
+
+    def test_free_space_floor_is_rechecked_before_next_stream_block(self):
+        class SplitStream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b"first"
+                yield b"blocked"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"; root.mkdir()
+            def handler(request):
+                return httpx.Response(200, stream=SplitStream(), headers={"content-length": "12"}, request=request)
+            high = source.MIN_FREE_BYTES + 2_000_000
+            free = [high] * 5 + [source.MIN_FREE_BYTES + 1]
+            with patch.object(source.shutil, "disk_usage", side_effect=lambda _path: SimpleNamespace(free=free.pop(0))):
+                with httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False) as client:
+                    with self.assertRaisesRegex(ValueError, "incomplete_source_capture:space"):
+                        source._capture(client, "https://example.invalid/test", root, "space")
+            self.assertEqual((root / "space.wire").read_bytes(), b"first")
+            self.assertEqual((root / "space.body").read_bytes(), b"first")
+            receipt = json.loads((root / "space.receipt.json").read_bytes())
+            self.assertFalse(receipt["complete_body"])
+            self.assertEqual(receipt["wire_bytes"], 5)
 
     def test_z_m_dimensions_are_validated_and_preserved_in_wkb(self):
         docs = self._documents()

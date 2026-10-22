@@ -155,12 +155,16 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[byt
 
     def reserve(progress: CaptureProgress) -> None:
         retained = retained_size()
+        if shutil.disk_usage(root).free < MIN_FREE_BYTES + progress.reserve_bytes:
+            raise ValueError("disk_floor_before_capture_read")
         if (progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > PAGE_MAX_BYTES
                 or retained + progress.reserve_bytes > CAPTURE_MAX_BYTES):
             raise ValueError("source_capture_budget_exceeded_before_read")
 
     def before_retain(kind: str, data: bytes) -> None:
         retained = retained_size()
+        if shutil.disk_usage(root).free < MIN_FREE_BYTES + len(data):
+            raise ValueError("disk_floor_before_capture_persist")
         proposed = retained + len(data)
         if proposed > CAPTURE_MAX_BYTES:
             raise ValueError("source_capture_budget_exceeded_before_persist")
@@ -605,12 +609,12 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
                 "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL, "license": None,
                 "source_modified": None, "date_issued": None, "date_modified": None, "processor": "HIFLD Next",
                 "code_commit": identity["code_commit"], "inputs": inputs,
-                "transformations": [{"operation": "Esri JSON Point to GeoParquet WKB candidate; source XY ordinates preserved",
+                "transformations": [{"operation": "Esri JSON Point to GeoParquet WKB candidate; every returned XY/Z/M ordinate is preserved",
                                      "parameters": {"feature_count": EXPECTED_COUNT, "source_fields": "all declared non-geometry fields retained in source order and declared types",
                                                     "source_ids": "OBJECTID and Feature_ID preserved unchanged", "source_crs": "EPSG:4326", "source_geometry": "Every advertised and observed XY/Z/M ordinate is preserved without projection or coordinate repair",
                                                     "raw_evidence": "complete decoded response and wire bytes retained with checksummed receipts", "candidate_status": "unapproved"}}],
                 "lineage": "BTS NTAD IENC item 7ec34864c8804468a9cf52d437fe4b6c identifies the IENC program, states that USACE/Army Geospatial Center updates it twice monthly, and links this official USACE IENC Feature Classes service and master file geodatabase. This candidate is exactly the MOORING_FACILITY_POINT service layer 17; its observed 9772 features cover inland waterway mooring facilities and are not represented as national coverage. The DataLumos item 239578 (HIFLD archive inventory entry mooring-facility-locations-usace-ienc-2) is the historical archive fallback, not the maintained feed.",
-                "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "All declared source attributes and IDs are typed and retained; the 2D source point ordinates are stored as WKB with source EPSG:4326. Candidate remains unapproved pending compatibility and release decisions.",
+                "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "All declared source attributes and IDs are typed and retained; every returned point ordinate is stored as dimension-aware WKB with source EPSG:4326. Candidate remains unapproved pending compatibility and release decisions.",
                                                                                            "objects": [{"path": f"geoparquet/{FILE_SLUG}.parquet", "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
                 "unsupported_output_formats": {"geopackage": "No approved format-specific delivery contract exists.",
                                                "pmtiles": "No approved display/generalization policy exists for this navigation feature class."}}
