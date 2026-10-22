@@ -8,7 +8,10 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.national_inventory_of_dams import (
-    DATASET_SLUG, FILE_SLUG, capture_national_inventory_of_dams,
+    DATASET_SLUG, FILE_SLUG,
+)
+from dagster_hifld.sources.national_inventory_of_dams_native import (
+    capture_national_inventory_of_dams_native,
 )
 
 
@@ -21,14 +24,14 @@ class NationalInventoryOfDamsConfig(Config):
     group_name="usace",
     compute_kind="http",
     description=(
-        "Direct USACE National Inventory of Dams producer layer 0 draft. Preserves all "
-        "81 producer fields, source OBJECTID and native EPSG:4269 point geometry. NID "
+        "Direct USACE National Inventory of Dams producer layer 0 native FileGDB draft. "
+        "Preserves all 80 data attributes, source OBJECTID and native EPSG:4269 Point Z WKB. NID "
         "contains only qualifying inventory records and USACE says the inventory remains incomplete."
     ),
 )
 def national_inventory_of_dams_ingest(context, config: NationalInventoryOfDamsConfig,
                                       staging_storage: StagingStorageResource) -> dict:
-    result = capture_national_inventory_of_dams(
+    result = capture_national_inventory_of_dams_native(
         staging_storage, version=build_version_id(context),
         capture_directory=config.capture_directory or None,
     )
