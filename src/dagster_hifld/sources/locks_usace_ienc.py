@@ -923,6 +923,16 @@ def _write_outputs(storage: StagingStorageResource, prefix: str, outputs: dict[s
     return descriptors
 
 
+def _attach_redirect_artifacts(outputs: dict[str,bytes], root: Path,
+                               captures: dict[str,tuple[bytes,dict]]) -> None:
+    """Add redirect receipts under raw/ without changing the candidate key prefix."""
+    for _name,(_body,receipt) in captures.items():
+        for redirect in receipt.get("redirects",[]):
+            redirect_prefix=redirect["artifact_prefix"]
+            for suffix in ("body","wire","receipt.json"):
+                outputs[f"raw/{redirect_prefix}.{suffix}"]=(root/f"{redirect_prefix}.{suffix}").read_bytes()
+
+
 def capture_locks_usace_ienc(storage: StagingStorageResource, *,
                              capture_directory: str | None = None,
                              resume_completed_replica_from: str | None = None) -> dict[str,object]:
@@ -1031,11 +1041,8 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         outputs[f"raw/{name}.body"]=body
         outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"]=canonical(receipt)
-        for redirect in receipt.get("redirects",[]):
-            redirect_prefix=redirect["artifact_prefix"]
-            for suffix in ("body","wire","receipt.json"):
-                outputs[f"raw/{redirect_prefix}.{suffix}"]=(root/f"{redirect_prefix}.{suffix}").read_bytes()
         receipt_map[name]=receipt
+    _attach_redirect_artifacts(outputs,root,captures)
     fingerprint=digest(canonical(identity));state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     descriptors={name:{"bytes":len(body),"sha256":digest(body)} for name,body in outputs.items()}
     if storage.object_snapshot(state_key) is not None:

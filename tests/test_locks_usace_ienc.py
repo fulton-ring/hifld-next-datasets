@@ -58,6 +58,24 @@ class LocksUsaceIencTests(unittest.TestCase):
         self.assertNotIn("private-signature", projected)
         self.assertEqual(source.urlsplit(signed).path, source.urlsplit(projected).path)
 
+    def test_redirect_receipts_stay_under_raw_without_overwriting_candidate_prefix(self):
+        candidate_key = source.candidate_prefix(source.DATASET_SLUG, source.FILE_SLUG, "vfixture")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            redirect = {"artifact_prefix": "archive.redirect_01"}
+            for suffix, body in (("body", b"redirect"), ("wire", b"redirect"),
+                                 ("receipt.json", b'{"status":302}')):
+                (root / f"archive.redirect_01.{suffix}").write_bytes(body)
+            outputs = {"geoparquet/locks-usace-ienc.parquet": b"candidate"}
+            source._attach_redirect_artifacts(
+                outputs, root, {"archive": (b"archive", {"redirects": [redirect]})})
+            self.assertEqual(candidate_key,
+                source.candidate_prefix(source.DATASET_SLUG, source.FILE_SLUG, "vfixture"))
+            self.assertEqual(outputs["geoparquet/locks-usace-ienc.parquet"], b"candidate")
+            self.assertEqual(outputs["raw/archive.redirect_01.body"], b"redirect")
+            self.assertEqual(outputs["raw/archive.redirect_01.wire"], b"redirect")
+            self.assertEqual(outputs["raw/archive.redirect_01.receipt.json"], b'{"status":302}')
+
     def test_registered_draft_asset_and_blocked_acceptance(self):
         self.assertIn(locks_usace_ienc, hifld_ingest_assets)
         self.assertEqual(locks_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
