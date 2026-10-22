@@ -407,7 +407,8 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
                 if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4326:
                     raise ValueError("source_page_crs_drift")
                 page_ids=[row.get("attributes",{}).get("OBJECTID") for row in rows if isinstance(row,dict)]
-                if sorted(page_ids) != expected or len(set(page_ids)) != len(expected):
+                if (len(page_ids) != len(rows) or any(type(value) is not int for value in page_ids)
+                        or sorted(page_ids) != expected or len(set(page_ids)) != len(expected)):
                     raise ValueError("source_page_id_slice_mismatch")
                 features.extend(rows)
             layer_after=get(client,"layer_after",_metadata_url("layer_after"))
@@ -417,6 +418,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             ids_after=ids_after_doc.get("objectIds")
         if (layer_after != layer or service_after != service or count_after != count
                 or ids_after_doc.get("objectIdFieldName") != "OBJECTID" or not isinstance(ids_after,list)
+                or any(type(value) is not int for value in ids_after)
                 or sorted(ids_after) != seed or len(ids_after) != count or len(set(ids_after)) != count):
             raise ValueError("source_changed_during_capture")
         names=[field["name"] for field in fields]
@@ -440,7 +442,8 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
                     invalid_geometry_count += 1
             got.append(attrs.get("OBJECTID"))
             geometry_repr.append([attrs.get("OBJECTID"),geom])
-        if (len(features)!=count or sorted(got)!=seed or len(set(got))!=count):
+        if (len(features)!=count or any(type(value) is not int for value in got)
+                or sorted(got)!=seed or len(set(got))!=count):
             raise ValueError("source_population_incomplete")
         features.sort(key=lambda x:x["attributes"]["OBJECTID"])
         if offline is not None and set(captures) != set(offline["captures"]):

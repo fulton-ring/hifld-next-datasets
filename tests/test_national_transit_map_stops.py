@@ -4,6 +4,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -54,9 +55,9 @@ class NationalTransitMapStopsTests(unittest.TestCase):
         portal={"id":source.ITEM_ID,"owner":"USDOT_BTS","orgId":"xOi1kZaI0eWDREZv",
                 "title":source.LAYER_NAME,"type":"Feature Service","url":source.SERVICE_URL,
                 "access":"public","description":source.DESCRIPTION,"modified":1792186548000}
-        ids={"objectIdFieldName":"OBJECTID","objectIds":[101,102]}
+        ids={"objectIdFieldName":"OBJECTID","objectIds":[1,2]}
         rows=[]
-        for oid,x,y,z in ((101,-73.0,42.0,17.5),(102,-122.0,47.0,18.5)):
+        for oid,x,y,z in ((1,-73.0,42.0,17.5),(2,-122.0,47.0,18.5)):
             attributes={field["name"]:None for field in fields}
             attributes.update({"OBJECTID":oid,"ntd_id":"n-"+str(oid),"feed_id":"feed-A",
                                "stop_id":"stop-"+str(oid),"stop_name":"Station "+str(oid),
@@ -110,8 +111,8 @@ class NationalTransitMapStopsTests(unittest.TestCase):
                 "metadata/candidate_ready.json",f"geoparquet/{source.DATASET_SLUG}.parquet")
             table=pq.read_table(native)
             self.assertEqual(table.column_names,[field["name"] for field in fields]+["geometry"])
-            self.assertEqual(table["OBJECTID"].to_pylist(),[101,102])
-            self.assertEqual(table["stop_id"].to_pylist(),["stop-101","stop-102"])
+            self.assertEqual(table["OBJECTID"].to_pylist(),[1,2])
+            self.assertEqual(table["stop_id"].to_pylist(),["stop-1","stop-2"])
             self.assertEqual(table["geometry"].to_pylist(),[
                 source._point_wkb(rows[0]["geometry"],True,False),
                 source._point_wkb(rows[1]["geometry"],True,False)])
@@ -121,6 +122,41 @@ class NationalTransitMapStopsTests(unittest.TestCase):
                 "metadata/candidate_ready.json","metadata/source_manifest.json")))
             self.assertFalse(manifest["historical_equivalence_accepted"])
             self.assertFalse(manifest["rights_accepted"])
+
+            # Python considers bool/float numerically equal to the pinned int
+            # IDs, and Arrow int64 can coerce 1.0. Reject both before staging.
+            valid_bodies=deepcopy(bodies)
+            valid_bodies["ids_before"]=deepcopy(bodies["ids_before"])
+            valid_bodies["ids_after"]=deepcopy(bodies["ids_after"])
+            variants=(
+                ("ids_after", lambda value: value.update(objectIds=[1.0,2]), "source_changed_during_capture"),
+                ("ids_after", lambda value: value.update(objectIds=[True,2]), "source_changed_during_capture"),
+                ("page_000", lambda value: value["features"][0]["attributes"].update(OBJECTID=1.0), "source_page_id_slice_mismatch"),
+                ("page_000", lambda value: value["features"][0]["attributes"].update(OBJECTID=True), "source_page_id_slice_mismatch"),
+            )
+            for index,(name,mutate,reason) in enumerate(variants):
+                with self.subTest(name=name, invalid_id=index):
+                    bodies.clear()
+                    bodies.update(deepcopy(valid_bodies))
+                    mutate(bodies[name])
+                    case_root=tmp/f"invalid-id-{index}"
+                    case_root.mkdir()
+                    case_storage=StagingStorageResource(local_dir=str(case_root/"staging"),use_local=True,
+                                                        backend="local",prefix="")
+                    with patch.object(source,"EXPECTED_COUNT",2), patch.object(source,"PAGE_SIZE",2), \
+                         patch.object(source,"capture_get",side_effect=fake_capture), \
+                         patch.object(source.httpx,"Client"), \
+                         patch.object(source.shutil,"disk_usage",return_value=SimpleNamespace(free=1_000_000_000)), \
+                         patch.object(source,"processing_identity",return_value={
+                             "code_identity_scheme":"test","working_tree_status":"unknown",
+                             "code_commit":"test","files":{}}), \
+                         patch.object(source,"validate_construction_code_identity"), \
+                         self.assertRaisesRegex(ValueError,reason):
+                        source.capture_national_transit_map_stops(
+                            case_storage,version=f"synthetic-invalid-{index}",
+                            capture_directory=str(case_root/"capture"))
+            bodies.clear()
+            bodies.update(valid_bodies)
 
 
 if __name__ == "__main__":
