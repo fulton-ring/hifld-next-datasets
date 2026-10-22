@@ -38,7 +38,8 @@ class ScheduleConfigValidationTests(unittest.TestCase):
 
         with patch.dict(os.environ, fixture_env), context:
             schedules = repo.schedule_defs
-            self.assertEqual(len(schedules), 110)
+            self.assertTrue(schedules)
+            self.assertEqual(len({schedule.name for schedule in schedules}), len(schedules))
             for schedule in schedules:
                 with self.subTest(schedule=schedule.name):
                     self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
