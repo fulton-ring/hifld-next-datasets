@@ -10,6 +10,7 @@ from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
+from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
@@ -200,6 +201,7 @@ hifld_ingest_assets = [
     eia_power_plants_historical,
     epa_frs_eia_860_power_generation_facilities_by_source,
     fuds_irm_property_point_ingest,
+    national_inventory_of_dams_ingest,
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
     epa_small_scale_regions,
