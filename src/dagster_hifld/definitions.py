@@ -16,6 +16,10 @@ from dagster import (
 
 from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
+from dagster_hifld.assets.historical_tsunami_events import (
+    tsunami_events_draft_job,
+    tsunami_events_draft_schedule,
+)
 from dagster_hifld.assets.bts_ferry_routes import ferry_routes_source_integrity_job, ferry_routes_source_integrity_schedule
 from dagster_hifld.assets.epa_regions import epa_regions_draft_job, epa_regions_draft_schedule
 from dagster_hifld.assets.epa_large_scale import (
@@ -1016,6 +1020,7 @@ defs = Definitions(
         epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
+        tsunami_events_draft_job,
         census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
         courthouses_draft_job,
@@ -1205,6 +1210,7 @@ defs = Definitions(
         ferc_historical_integrity_schedule,
         fuds_division_draft_schedule,
         fuds_district_boundaries_draft_schedule,
+        tsunami_events_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

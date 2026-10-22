@@ -114,6 +114,7 @@ from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
+from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 
 hifld_ingest_assets = [
     smithsonian_holocene_volcanoes,
@@ -133,6 +134,7 @@ hifld_ingest_assets = [
     nces_colleges_universities,
     usgs_aquifers,
     usgs_ems_stations,
+    noaa_historical_tsunami_events,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
