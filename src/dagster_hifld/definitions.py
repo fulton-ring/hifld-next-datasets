@@ -317,6 +317,12 @@ from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
     harbor_facility_locations_usace_ienc_draft_schedule,
 )
 
+from dagster_hifld.assets.mooring_facility_locations_usace_ienc import (
+    mooring_facility_locations_usace_ienc_complete,
+    mooring_facility_locations_usace_ienc_draft_job,
+    mooring_facility_locations_usace_ienc_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_data_coverage_areas import (
     usace_data_coverage_areas_complete,
     usace_data_coverage_areas_draft_job,
@@ -990,6 +996,7 @@ defs = Definitions(
         usace_obstruction_lines_complete,
         floodwalls_usace_ienc_complete,
         harbor_facility_locations_usace_ienc_complete,
+        mooring_facility_locations_usace_ienc_complete,
         usace_administrative_areas_complete,
         usace_navigation_marks_areas_complete,
         puerto_rico_subbarrios_source_complete,
@@ -1087,6 +1094,7 @@ defs = Definitions(
         usace_obstruction_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
         harbor_facility_locations_usace_ienc_draft_job,
+        mooring_facility_locations_usace_ienc_draft_job,
         usace_administrative_areas_draft_job,
         usace_navigation_marks_areas_draft_job,
         secondary_school_districts_draft_refresh_job,
@@ -1193,6 +1201,7 @@ defs = Definitions(
         usace_obstruction_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
         harbor_facility_locations_usace_ienc_draft_schedule,
+        mooring_facility_locations_usace_ienc_draft_schedule,
         usace_administrative_areas_draft_schedule,
         usace_navigation_marks_areas_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
