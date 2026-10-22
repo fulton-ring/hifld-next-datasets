@@ -1131,9 +1131,12 @@ def capture_national_inventory_of_dams_native(
             "processing_identity": identity,
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "capture_receipts": {name: _safe_receipt(legacy._strict_json(
-                _read_bounded(capture_root / f"{name}.receipt.json", MAX_NATIVE_RECEIPT_BYTES)))
-                for name in native_manifest["response_names"]},
+            # The generic cache helper's capture_receipts schema points to
+            # raw/{name}.body/.wire/.receipt.json. Native source bodies instead
+            # use a sealed manifest and are fully revalidated above on every
+            # replay; the staged archive/metadata objects are verified by their
+            # immutable descriptors below and by verify_cached_candidate.
+            "capture_receipts": {},
             "objects": descriptors,
         }
         seal_ready_candidate(storage, state_key, version_key, fingerprint, payload)
