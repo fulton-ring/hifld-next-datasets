@@ -359,6 +359,11 @@ from dagster_hifld.assets.usace_pile_locations import (
     usace_pile_locations_draft_job,
     usace_pile_locations_draft_schedule,
 )
+from dagster_hifld.assets.usace_lock_traffic_signal_stations import (
+    usace_lock_traffic_signal_stations_complete,
+    usace_lock_traffic_signal_stations_draft_job,
+    usace_lock_traffic_signal_stations_draft_schedule,
+)
 
 from dagster_hifld.assets.usace_daymark_locations import (
     usace_daymark_locations_complete,
@@ -1007,6 +1012,7 @@ defs = Definitions(
         bsee_ocs_platforms_complete,
         proposed_critical_habitat_complete,
         usace_pile_locations_complete,
+        usace_lock_traffic_signal_stations_complete,
         usace_daymark_locations_complete,
         usace_dynamic_buoys_complete,
         usace_pipeline_areas_complete,
@@ -1103,6 +1109,7 @@ defs = Definitions(
         bsee_ocs_platforms_draft_job,
         proposed_critical_habitat_draft_job,
         usace_pile_locations_draft_job,
+        usace_lock_traffic_signal_stations_draft_job,
         usace_daymark_locations_draft_job,
         usace_dynamic_buoys_draft_job,
         usace_pipeline_areas_draft_job,
@@ -1215,6 +1222,7 @@ defs = Definitions(
         bsee_ocs_platforms_draft_schedule,
         proposed_critical_habitat_draft_schedule,
         usace_pile_locations_draft_schedule,
+        usace_lock_traffic_signal_stations_draft_schedule,
         usace_daymark_locations_draft_schedule,
         usace_dynamic_buoys_draft_schedule,
         usace_pipeline_areas_draft_schedule,
