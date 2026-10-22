@@ -305,7 +305,8 @@ def validate_native_table(table: pa.Table, metadata: dict, expected_oids: list[i
     return table, audit
 
 
-def _validate_service_bundle(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict, list[int], bytes, dict]:
+def _validate_service_bundle(captures: dict[str, tuple[bytes, dict]], *,
+                             expected_replica_name: str | None = None) -> tuple[dict, dict, list[int], bytes, dict]:
     required={"metadata_before","count_before","ids_before","create_replica","result_head","archive","metadata_after","count_after","ids_after"}
     if not required <= captures.keys():
         raise LocksQuarantineError("capture_roster_missing_required_inputs")
@@ -379,7 +380,10 @@ def _validate_service_bundle(captures: dict[str, tuple[bytes, dict]]) -> tuple[d
         raise LocksQuarantineError("replica_result_head_failed_or_size_invalid")
     archive=captures["archive"][0]
     gdb_root,zip_info=_safe_gdb_archive(archive)
-    if job.get("replicaName") != create.get("replicaName"):
+    submitted_name=expected_replica_name or create.get("replicaName")
+    if (not isinstance(submitted_name,str) or not submitted_name.startswith("hifld_locks_151_")
+            or create.get("replicaName") not in (None,submitted_name)
+            or job.get("replicaName")!=submitted_name):
         raise LocksQuarantineError("replica_name_response_mismatch")
     if head_length != str(len(archive)):
         raise LocksQuarantineError("replica_archive_length_header_mismatch")
@@ -691,7 +695,7 @@ def _load_partial_completed_replica(root: Path) -> tuple[dict[str,tuple[bytes,di
     ids=_validate_count_ids(_strict_json(receipts["count_before"][0],"count_before"),
         _strict_json(receipts["ids_before"][0],"ids_before"),"before")
     create=_strict_json(receipts["create_replica"][0],"create_replica")
-    if create.get("replicaName")!=params["replicaName"]:
+    if create.get("replicaName") not in (None,params["replicaName"]):
         raise LocksQuarantineError("resume_replica_name_drift")
     status_url=_validate_url(create.get("statusUrl"),path_prefix="/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Locks/FeatureServer/jobs/")
     job=None
@@ -953,7 +957,8 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
             _preserve_failed_capture(storage,root,exc)
             raise
     try:
-        before,job_info,ids,snapshot,schema_projection=_validate_service_bundle(captures)
+        before,job_info,ids,snapshot,schema_projection=_validate_service_bundle(
+            captures,expected_replica_name=cap_manifest["create_replica_request"]["parameters"]["replicaName"])
         archive_receipt=captures["archive"][1]
         if archive_receipt.get("bytes")!=len(snapshot) or digest(snapshot)!=archive_receipt.get("sha256"):
             raise LocksQuarantineError("archive_response_receipt_drift")

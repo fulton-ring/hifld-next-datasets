@@ -113,8 +113,8 @@ class LocksUsaceIencTests(unittest.TestCase):
         count = {"count": 234}
         ids = {"objectIds": source.EXPECTED_OIDS}
         job = {"status": "Completed", "recordCount": 234, "resultUrl": result_url,
-               "replicaName": "replica"}
-        create = {"statusUrl": status_url, "replicaName": "replica"}
+               "replicaName": "hifld_locks_151_fixture"}
+        create = {"statusUrl": status_url, "replicaName": "hifld_locks_151_fixture"}
         docs = {
             "metadata_before": (schema, "GET", source.LAYER_URL + "?f=json"),
             "count_before": (count, "GET", source.LAYER_URL + "/query?" + source.urlencode(
@@ -167,7 +167,8 @@ class LocksUsaceIencTests(unittest.TestCase):
             (sealed / "capture_manifest.json").write_text("{}")
             with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=500_000_000)), \
                  patch.object(source, "_capture_manifest", return_value={"sealed": True}) as validate_manifest, \
-                 patch.object(source, "_load_capture", return_value=({}, {"sealed": True})) as load_capture, \
+                 patch.object(source, "_load_capture", return_value=({}, {"create_replica_request": {
+                     "parameters": {"replicaName": "hifld_locks_151_test"}}})) as load_capture, \
                  patch.object(source, "_capture_live") as live, \
                  patch.object(source, "_validate_service_bundle", side_effect=source.LocksQuarantineError("fixture-stop")), \
                  patch.object(source, "_preserve_failed_capture"):
@@ -264,7 +265,7 @@ class LocksUsaceIencTests(unittest.TestCase):
                     {"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                 "ids_before": ({"objectIds": source.EXPECTED_OIDS}, "GET", source.LAYER_URL + "/query?" + source.urlencode(
                     {"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                "create_replica": ({"statusUrl": status_url, "replicaName": params["replicaName"]},
+                "create_replica": ({"statusUrl": status_url},
                     "POST", source.CREATE_REPLICA_URL),
                 "poll_01": ({"status": "Completed", "recordCount": 234, "resultUrl": result_url,
                     "replicaName": params["replicaName"]}, "GET", status_url + "?f=json"),
@@ -326,7 +327,8 @@ class LocksUsaceIencTests(unittest.TestCase):
                 resumed, manifest = source._capture_live(resumed_root, resume_from=root)
             self.assertFalse(any(request.method == "POST" for request in requests))
             self.assertIn("continued_completed_replica", manifest)
-            self.assertEqual(source._validate_service_bundle(resumed)[3], archive)
+            self.assertEqual(source._validate_service_bundle(
+                resumed, expected_replica_name=params["replicaName"])[3], archive)
             (root / "poll_01.body").write_bytes(b"tampered")
             with self.assertRaisesRegex(source.LocksQuarantineError, "resume_replica_receipt_integrity_failure:poll_01"):
                 source._load_partial_completed_replica(root)
