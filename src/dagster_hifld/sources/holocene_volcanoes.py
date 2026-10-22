@@ -347,12 +347,15 @@ def original_context(storage,version,fingerprint,captures,identity,manifest,*,cr
         key=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{n}.body"
         if item['body_key']!=key:raise CollegeQuarantineError('invalid_original_raw_key')
         original[n]=(bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES),item['receipt'])
-    a,_=inspect_captures(original);b,_=inspect_captures(captures)
-    if not a.equals(b,check_metadata=True):raise CollegeQuarantineError('original_source_population_drift')
-    old=payload['manifest'];obj=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
+    a,original_audit=inspect_captures(original);b,_=inspect_captures(captures)
+    if not a.drop(['id']).equals(b.drop(['id']),check_metadata=True):raise CollegeQuarantineError('original_source_population_drift')
+    # The first construction is immutable: use its input receipts and output
+    # pin when validating its manifest, even if a later retrieval regenerated
+    # every unstable Feature.id.
+    old=payload['manifest'];obj=old['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
     expected=manifest_for(original,identity,{k:obj[k]for k in('bytes','sha256')})
     if encode({k:v for k,v in old.items()if k!='code_commit'})!=encode({k:v for k,v in expected.items()if k!='code_commit'}):raise CollegeQuarantineError('original_manifest_context_drift')
-    validate_release_provenance(old);validate_output_policy(old);validate_construction_code_identity(Path(__file__).parents[3],old['code_commit'],identity['files']);return original,old
+    validate_release_provenance(old);validate_output_policy(old);validate_construction_code_identity(Path(__file__).parents[3],old['code_commit'],identity['files']);return original,old,a,original_audit
 
 
 def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cached=False):
@@ -382,7 +385,7 @@ def stage_holocene(storage,*,capture_dir=None):
             temp=Path(temporary);(temp/'geoparquet').mkdir();path=temp/'geoparquet'/f'{SLUG}.parquet';pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table)
             manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)})
             if root.exists()or state_present(storage,version):
-                try:captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest)
+                try:captures,manifest,table,audit=original_context(storage,version,fingerprint,captures,identity,manifest)
                 except Exception as exc:
                     try:record_observed_loss(storage,version,fingerprint,type(exc).__name__)
                     except Exception as write:raise IncidentWriteError('incident_failure_candidate_preserved')from write
@@ -394,6 +397,8 @@ def stage_holocene(storage,*,capture_dir=None):
                     except Exception as exc:
                         q=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q);raise CollegeQuarantineError('invalid_cache_moved_intact:'+str(q))from exc
                     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True}
+                path.unlink()
+                pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table)
             for n,b in source_payloads(captures,identity,audit,manifest).items():write_private(temp,n,b)
             ready={'approved':False,'version':version,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));validate_candidate(temp,table,identity,captures,audit,manifest,version)
             captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,create=True)

@@ -2,6 +2,8 @@
 import copy
 import json
 import os
+import re
+import shutil
 import stat
 import struct
 import tempfile
@@ -110,5 +112,36 @@ class HoloceneCompleteSourceTests(unittest.TestCase):
         self.assertNotEqual(a['observed_source_id_roster_sha256'],a['after_source_id_roster_sha256'])
         with tempfile.TemporaryDirectory()as d:
             p=Path(d);(p/'geoparquet').mkdir();pq.write_table(f.parquet_table(t),p/'geoparquet'/f'{f.SLUG}.parquet',compression='zstd');f.validate_output(p,t)
+
+    def test_cache_reuses_first_context_when_only_unstable_ids_change(self):
+        captured=Path(os.environ['HOLOCENE_TEST_CAPTURE_DIR'])
+        with tempfile.TemporaryDirectory()as d:
+            root=Path(d);variant=root/'variant-capture';shutil.copytree(captured,variant)
+            for name,label in [('wfs_all','first'),('wfs_all_after','second')]:
+                body_path=variant/(name+'.body');body=body_path.read_bytes();index=0
+                def replace_id(match):
+                    nonlocal index
+                    value=f'synthetic-{label}-{index:04d}'.encode();index+=1
+                    return match.group(1)+b'"'+value+b'"'
+                mutated=re.sub(rb'("id"\s*:\s*)"(?:\\.|[^"\\])*"',replace_id,body)
+                self.assertEqual(index,1214)
+                body_path.write_bytes(mutated)
+                receipt_path=variant/(name+'.receipt.json');receipt=json.loads(receipt_path.read_text(encoding='utf-8'))
+                receipt['sha256']=f.digest(mutated);receipt['bytes']=len(mutated)
+                receipt_path.write_text(json.dumps(receipt,sort_keys=True,separators=(',',':'))+'\n',encoding='utf-8')
+
+            storage=StagingStorageResource(use_local=True,local_dir=str(root/'staging'),prefix='',backend='local')
+            first=f.stage_holocene(storage,capture_dir=captured)
+            candidate=Path(storage.local_dir)/first['dataset_slug']/first['file_slug']/first['version']
+            before={str(p.relative_to(candidate)):f.sha256_file(p)for p in candidate.rglob('*')if p.is_file()}
+            state=Path(storage.local_dir)/f.construction_record_key(first['version'])
+            state_hash=f.sha256_file(state)
+            second=f.stage_holocene(storage,capture_dir=variant)
+            after={str(p.relative_to(candidate)):f.sha256_file(p)for p in candidate.rglob('*')if p.is_file()}
+            self.assertFalse(first['reused']);self.assertTrue(second['reused']);self.assertEqual(first['version'],second['version'])
+            self.assertEqual(before,after);self.assertEqual(f.sha256_file(state),state_hash)
+            self.assertEqual(len(list((Path(storage.local_dir)/'_quarantine'/f.SLUG).glob('**/*'))),0)
+            cached=json.loads((candidate/'metadata'/'holocene_source_audit.json').read_text(encoding='utf-8'))
+            self.assertEqual(cached['all_original_feature_ids'],f.inspect_captures({n:((captured/(n+'.body')).read_bytes(),f.strict_json((captured/(n+'.receipt.json')).read_bytes()))for n in f.URLS})[1]['all_original_feature_ids'])
 
 if __name__=='__main__':unittest.main()
