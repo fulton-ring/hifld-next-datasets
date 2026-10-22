@@ -100,6 +100,7 @@ from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
     harbor_facility_locations_usace_ienc,
 )
 from dagster_hifld.assets.hf_areas_usace_ienc import hf_areas_usace_ienc_candidate
+from dagster_hifld.assets.usace_lock_gate_areas import usace_lock_gate_areas_usace_ienc
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
@@ -226,6 +227,7 @@ hifld_ingest_assets = [
     floodwalls_usace_ienc,
     harbor_facility_locations_usace_ienc,
     hf_areas_usace_ienc_candidate,
+    usace_lock_gate_areas_usace_ienc,
     ferrous_metal_processing_plants_usgs,
     ferrous_metal_mines_candidate,
     courthouses_usgs,
