@@ -4,6 +4,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -152,6 +153,21 @@ class NativeNidTests(unittest.TestCase):
             (root / "sample.body").write_bytes(b"tampered")
             with self.assertRaisesRegex(ValueError, "digest_mismatch"):
                 native._read_native_capture(root)
+
+    def test_stale_zip_member_crc_is_rejected_before_gdal(self):
+        payload = b"unique-crc-payload-for-regression"
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "dam-export.zip"
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
+                output.writestr("NID.gdb/member.dat", payload)
+            raw = archive.read_bytes()
+            offset = raw.index(payload)
+            damaged = raw[:offset] + bytes([payload[0] ^ 1]) + raw[offset + 1:]
+            archive.write_bytes(damaged)
+            with patch.object(native.pyogrio, "read_info") as read_info:
+                with self.assertRaisesRegex(ValueError, "member_crc_or_stream_invalid"):
+                    native._inspect_archive(archive, 1, [1], {})
+            read_info.assert_not_called()
 
 
 if __name__ == "__main__":

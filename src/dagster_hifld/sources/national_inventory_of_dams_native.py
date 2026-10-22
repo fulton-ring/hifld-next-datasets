@@ -17,6 +17,7 @@ import stat
 import struct
 import time
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Mapping
@@ -54,6 +55,7 @@ MAX_NATIVE_CAPTURE_BYTES = 32_000_000
 MAX_NATIVE_MANIFEST_BYTES = 2_000_000
 MAX_NATIVE_RECEIPT_BYTES = 64_000
 MAX_NATIVE_ZIP_MEMBERS = 256
+MAX_NATIVE_ZIP_CRC_CHUNK_BYTES = 1_000_000
 MAX_NATIVE_EXPANDED_BYTES = 80_000_000
 MAX_NATIVE_MEMBER_BYTES = 70_000_000
 MAX_NATIVE_BATCH_ROWS = 256
@@ -458,6 +460,31 @@ def _inspect_archive(archive_path: Path, expected_count: int, expected_ids: list
             if (not files or expanded > MAX_NATIVE_EXPANDED_BYTES
                     or max(entry.file_size for entry in files) > MAX_NATIVE_MEMBER_BYTES):
                 raise ValueError("usace_nid_native_zip_expanded_size_exceeded")
+            actual_expanded = 0
+            for entry in entries:
+                if entry.is_dir() and entry.file_size != 0:
+                    raise ValueError("usace_nid_native_zip_directory_payload_invalid")
+                actual_member = 0
+                try:
+                    with zf.open(entry, "r") as member:
+                        while True:
+                            block = member.read(MAX_NATIVE_ZIP_CRC_CHUNK_BYTES)
+                            if not block:
+                                break
+                            actual_member += len(block)
+                            if (actual_member > entry.file_size
+                                    or actual_member > MAX_NATIVE_MEMBER_BYTES):
+                                raise ValueError("usace_nid_native_zip_member_actual_size_exceeded")
+                            if not entry.is_dir():
+                                actual_expanded += len(block)
+                                if actual_expanded > MAX_NATIVE_EXPANDED_BYTES:
+                                    raise ValueError("usace_nid_native_zip_actual_expansion_exceeded")
+                except (zipfile.BadZipFile, EOFError, RuntimeError, OSError, zlib.error) as exc:
+                    raise ValueError("usace_nid_native_zip_member_crc_or_stream_invalid") from exc
+                if actual_member != entry.file_size:
+                    raise ValueError("usace_nid_native_zip_member_size_mismatch")
+            if actual_expanded != expanded:
+                raise ValueError("usace_nid_native_zip_expansion_mismatch")
             roots = {PurePosixPath(entry.filename).parts[0] for entry in files}
             if len(roots) != 1 or not next(iter(roots)).endswith(".gdb"):
                 raise ValueError("usace_nid_native_zip_filegdb_missing")
@@ -478,6 +505,8 @@ def _inspect_archive(archive_path: Path, expected_count: int, expected_ids: list
         "archive_sha256": _sha(archive_path.read_bytes()),
         "archive_member_count": len(entries),
         "archive_declared_expanded_bytes": expanded,
+        "archive_actual_expanded_bytes_crc_checked": actual_expanded,
+        "archive_members_crc_checked": len(entries),
         "archive_member_names": names,
         "source_release_date": None,
         "release_date_unknown_reason": "USACE does not expose a verified release date; retrieval and service metadata times are not release dates.",
