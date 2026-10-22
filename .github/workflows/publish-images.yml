@@ -14,6 +14,7 @@ on:
       - "helm/**"
       - "scripts/**"
       - "src/**"
+      - "tests/**"
   push:
     branches:
       - main
@@ -28,6 +29,7 @@ on:
       - "helm/**"
       - "scripts/**"
       - "src/**"
+      - "tests/**"
 
 permissions:
   contents: read
@@ -55,9 +57,18 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: false
+          load: true
           tags: ${{ steps.image.outputs.image }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+      - name: Validate stopped schedule configs in the built image
+        run: |
+          set -euo pipefail
+          docker run --rm --network none \
+            --volume "$GITHUB_WORKSPACE/tests:/app/tests:ro" \
+            --entrypoint /opt/venv/bin/python \
+            "${{ steps.image.outputs.image }}:${{ github.sha }}" \
+            -m unittest tests.test_schedule_config_validation
 
   publish:
     if: github.event_name != 'pull_request'
