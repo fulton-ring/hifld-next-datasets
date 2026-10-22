@@ -18,7 +18,7 @@ import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from uuid import uuid4
 
 import httpx
@@ -187,6 +187,15 @@ def _validate_url(url: object, *, path_prefix: str) -> str:
             or p.username or p.password or p.query or p.fragment or not p.path.startswith(path_prefix)):
         raise LocksQuarantineError("source_result_url_outside_official_service")
     return url
+
+
+def _public_observed_url(value: str) -> str:
+    """Keep redirect provenance useful without copying signed download credentials."""
+    parsed=urlsplit(value)
+    safe_query=[(key,item) for key,item in parse_qsl(parsed.query,keep_blank_values=True)
+                if key.casefold() not in {"sv","st","se","sr","sp"}
+                and not re.search(r"token|secret|signature|credential|password|api.?key|^sig$|^key$",key,re.IGNORECASE)]
+    return urlunsplit((parsed.scheme,parsed.netloc,parsed.path,urlencode(safe_query),""))
 
 
 def _field_declaration(fields: object) -> list[dict]:
@@ -996,7 +1005,7 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         "code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],
         "inputs":[{"input_id":name,"producer":"U.S. Army Corps of Engineers, Navigation Data Center",
             "host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":receipt["url"],
-            "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],
+            "retrieval_url":receipt["url"],"observed_final_url":_public_observed_url(receipt["final_url"]),
             "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],
             "bytes":receipt["bytes"],"sha256":receipt["sha256"],"wire_bytes":receipt["wire_bytes"],
             "wire_sha256":receipt["wire_sha256"],"license":"Publicly available without use restrictions per ArcGIS item; national-scale mapping caveat; acceptance pending.",

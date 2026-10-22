@@ -49,6 +49,15 @@ def _table(*, blob_null=False, oid_shift=0, rows=source.EXPECTED_COUNT):
 
 
 class LocksUsaceIencTests(unittest.TestCase):
+    def test_signed_redirect_query_is_removed_from_public_provenance(self):
+        signed = ("https://stg-arcgisazurecdataprod7.az.arcgis.com/export/file.zip?"
+                  "sv=2024-01-01&st=start&se=end&sr=b&sp=r&sig=private-signature&format=zip")
+        projected = source._public_observed_url(signed)
+        self.assertEqual(projected,
+            "https://stg-arcgisazurecdataprod7.az.arcgis.com/export/file.zip?format=zip")
+        self.assertNotIn("private-signature", projected)
+        self.assertEqual(source.urlsplit(signed).path, source.urlsplit(projected).path)
+
     def test_registered_draft_asset_and_blocked_acceptance(self):
         self.assertIn(locks_usace_ienc, hifld_ingest_assets)
         self.assertEqual(locks_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
