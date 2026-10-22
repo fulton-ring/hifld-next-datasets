@@ -11,9 +11,13 @@ from unittest.mock import patch
 import pyarrow.parquet as pq
 import shapely
 import httpx
-from dagster import DagsterInstance, materialize
+from dagster import DagsterInstance, DefaultScheduleStatus, build_schedule_context, materialize
 
 from dagster_hifld.assets.catalog import publish_catalog
+from dagster_hifld.assets.epa_icis_wastewater import (
+    epa_icis_wastewater_draft_schedule,
+    epa_icis_wastewater_treatment_plants,
+)
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_icis_wastewater as source
@@ -151,6 +155,15 @@ class EpaIcisWastewaterTests(unittest.TestCase):
                 layer[dimension]=False
 
     def test_capture_budget_bounds_and_prewrite_response_overshoot_refusal(self):
+        self.assertEqual(source.MAX_CAPTURE_BYTES, 96_000_000)
+        self.assertEqual(epa_icis_wastewater_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
+        schedule_request = epa_icis_wastewater_draft_schedule.evaluate_tick(
+            build_schedule_context()
+        ).run_requests[0]
+        self.assertEqual(
+            schedule_request.run_config["ops"][epa_icis_wastewater_treatment_plants.op.name]["config"]["max_capture_bytes"],
+            96_000_000,
+        )
         source._validate_capture_limits(1_000_000, 100_000)
         for total, response in ((0, 1), (source.MAX_CAPTURE_BYTES + 1, 1), (10, 0), (10, source.MAX_RESPONSE_BYTES + 1), (10, 11)):
             with self.subTest(total=total, response=response), self.assertRaises(ValueError):
