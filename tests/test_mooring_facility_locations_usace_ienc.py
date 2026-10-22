@@ -1,4 +1,5 @@
 import json
+import httpx
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,7 @@ from dagster_hifld.assets.mooring_facility_locations_usace_ienc import (
     mooring_facility_locations_usace_ienc_complete, mooring_facility_locations_usace_ienc_draft_schedule,
     mooring_facility_locations_usace_ienc,
 )
+from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import _canonical
 
@@ -19,6 +21,9 @@ from dagster_hifld.sources.epa_frs_common import _canonical
 class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
     def test_registered_asset_and_stopped_refresh_gate(self):
         self.assertIn(mooring_facility_locations_usace_ienc, hifld_ingest_assets)
+        resolved = defs.resolve_job_def("mooring_facility_locations_usace_ienc_draft_refresh")
+        self.assertEqual(resolved.asset_layer.executable_asset_keys,
+                         {mooring_facility_locations_usace_ienc.key})
         self.assertEqual(mooring_facility_locations_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
         passed = mooring_facility_locations_usace_ienc_complete({"feature_count": 9772, "source_population_complete": True})
         self.assertTrue(passed.passed)
@@ -29,6 +34,62 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
             with self.assertRaisesRegex(ValueError, "unsafe_capture_version"):
                 source.capture_mooring_facility_locations_usace_ienc(storage, version="../outside")
+
+    def test_code_identity_is_checked_before_staging_or_source_io(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            staging = Path(tmp) / "stage"
+            storage = StagingStorageResource(local_dir=str(staging))
+            with patch.object(source, "validate_construction_code_identity", side_effect=ValueError("identity")):
+                with self.assertRaisesRegex(ValueError, "identity"):
+                    source.capture_mooring_facility_locations_usace_ienc(storage, version="draft")
+            self.assertFalse(staging.exists())
+
+    def test_replay_preflights_oversized_artifact_before_opening_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"; root.mkdir(); self._capture_directory(root)
+            (root / "page_000.wire").write_bytes(b"x" * (source.PAGE_MAX_BYTES + 1))
+            opened = []
+            original = source._open_capture_file
+            def track(path, label):
+                opened.append(label)
+                return original(path, label)
+            with patch.object(source, "_open_capture_file", side_effect=track):
+                with self.assertRaisesRegex(ValueError, "retained_capture_file_size_exceeded:page_000.wire"):
+                    source._read_replay(root)
+            self.assertEqual(opened, ["capture_manifest.json"])
+
+    def test_oversized_delivered_http_block_is_not_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"; root.mkdir()
+            def handler(request):
+                return httpx.Response(200, content=b"x" * (1_048_576 + 1), request=request)
+            with patch.object(source, "PAGE_MAX_BYTES", 1_048_576), patch.object(source, "CAPTURE_MAX_BYTES", 4_000_000):
+                with httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False) as client:
+                    with self.assertRaisesRegex(ValueError, "incomplete_source_capture:oversize"):
+                        source._capture(client, "https://example.invalid/test", root, "oversize")
+            self.assertEqual((root / "oversize.wire").stat().st_size, 0)
+            self.assertEqual((root / "oversize.body").stat().st_size, 0)
+            self.assertFalse(json.loads((root / "oversize.receipt.json").read_bytes())["complete_body"])
+
+    def test_z_m_dimensions_are_validated_and_preserved_in_wkb(self):
+        docs = self._documents()
+        docs["layer_before"]["hasZ"] = True
+        docs["layer_before"]["hasM"] = True
+        docs["layer_after"]["hasZ"] = True
+        docs["layer_after"]["hasM"] = True
+        for page_name in source._page_names():
+            for feature in docs[page_name]["features"]:
+                feature["geometry"].update(z=12.5, m=7.25)
+        captures = {name: (_canonical(doc), {"status": 200}) for name, doc in docs.items()}
+        _fields, features, audit = source._validate(captures)
+        self.assertTrue(audit["source_has_z"])
+        self.assertTrue(audit["source_has_m"])
+        self.assertEqual(source._esri_point_wkb(features[0]["geometry"]),
+                         __import__("struct").pack("<BI4d", 1, 3001, features[0]["geometry"]["x"],
+                                                   features[0]["geometry"]["y"], 12.5, 7.25))
+        docs["page_000"]["features"][0]["geometry"].pop("z")
+        with self.assertRaisesRegex(ValueError, "source_geometry_dimension_metadata_drift:feature"):
+            source._validate({name: (_canonical(doc), {"status": 200}) for name, doc in docs.items()})
 
     def _documents(self):
         service = {"mapName": "MOORING_FACILITY_POINT", "copyrightText": "USACE IENC",

@@ -4,10 +4,13 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import shutil
+import stat
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -18,7 +21,7 @@ from pyproj import CRS
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import CaptureProgress
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
@@ -43,6 +46,9 @@ EXPECTED_ID_SHA256 = "c03246396967c330211e871aaa5d14cbcdf0a997ef2e6b0f0f89a2b921
 PAGE_SIZE = 2000
 PAGE_MAX_BYTES = 8_000_000
 CAPTURE_MAX_BYTES = 320_000_000
+CAPTURE_MANIFEST_MAX_BYTES = 1_000_000
+CAPTURE_RECEIPT_MAX_BYTES = 64_000
+MIN_FREE_BYTES = 300_000_000
 EXPECTED_EXTENT = {"xmin": -96.39449399999995, "ymin": 30.280838000000074,
                    "xmax": -79.47969589999997, "ymax": 45.02776800000004}
 EXPECTED_FIELD_DECLARATIONS = [
@@ -138,20 +144,124 @@ def _capture_urls(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire") for path in root.glob(suffix)
-                   if path.is_file())
-    if retained + 2 * PAGE_MAX_BYTES > CAPTURE_MAX_BYTES:
+    def retained_size() -> int:
+        total = 0
+        for path in root.iterdir():
+            info = path.lstat()
+            if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+                raise ValueError("source_capture_nonregular_path:" + path.name)
+            total += info.st_size
+        return total
+
+    def reserve(progress: CaptureProgress) -> None:
+        retained = retained_size()
+        if (progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > PAGE_MAX_BYTES
+                or retained + progress.reserve_bytes > CAPTURE_MAX_BYTES):
+            raise ValueError("source_capture_budget_exceeded_before_read")
+
+    def before_retain(kind: str, data: bytes) -> None:
+        retained = retained_size()
+        proposed = retained + len(data)
+        if proposed > CAPTURE_MAX_BYTES:
+            raise ValueError("source_capture_budget_exceeded_before_persist")
+        if kind in {"wire", "body"} and len(data) > PAGE_MAX_BYTES:
+            raise ValueError("source_capture_page_limit_exceeded_before_persist")
+
+    if shutil.disk_usage(root).free < MIN_FREE_BYTES:
+        raise ValueError("disk_floor_before_source_read")
+    if retained_size() + 2 * PAGE_MAX_BYTES + CAPTURE_RECEIPT_MAX_BYTES > CAPTURE_MAX_BYTES:
         raise ValueError("source_capture_budget_exceeded_before_request")
-    body, receipt = capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+    body, receipt = capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES,
+                                reserve=reserve, before_retain=before_retain)
     return body, receipt
+
+
+def _open_capture_file(path: Path, label: str):
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise ValueError("retained_capture_file_open_failed:" + label) from exc
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("retained_capture_nonregular_file:" + label)
+        return os.fdopen(fd, "rb"), before
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _capture_file_limit(name: str) -> int:
+    if name == "capture_manifest.json":
+        return CAPTURE_MANIFEST_MAX_BYTES
+    if name.endswith(".body") or name.endswith(".wire"):
+        return PAGE_MAX_BYTES
+    if name.endswith(".receipt.json"):
+        return CAPTURE_RECEIPT_MAX_BYTES
+    raise ValueError("retained_capture_unexpected_file:" + name)
+
+
+def _bounded_capture_read(path: Path, limit: int, label: str) -> bytes:
+    stream, before = _open_capture_file(path, label)
+    with stream:
+        if before.st_size > limit:
+            raise ValueError("retained_capture_file_size_exceeded:" + label)
+        data = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+        ident = lambda stat_result: (stat_result.st_dev, stat_result.st_ino, stat_result.st_size,
+                                     stat_result.st_mtime_ns, stat_result.st_ctime_ns)
+        if len(data) > limit or len(data) != before.st_size or ident(before) != ident(after):
+            raise ValueError("retained_capture_file_changed_or_oversized:" + label)
+    return data
+
+
+def _bounded_capture_roster(root: Path, expected_files: set[str]) -> dict[str, dict]:
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError("retained_capture_roster_root_invalid")
+    entries = {}
+    total = 0
+    for entry in root.iterdir():
+        info = entry.lstat()
+        if entry.is_symlink() or not stat.S_ISREG(info.st_mode):
+            raise ValueError("retained_capture_nonregular_path:" + entry.name)
+        if info.st_size > _capture_file_limit(entry.name):
+            raise ValueError("retained_capture_file_size_exceeded:" + entry.name)
+        entries[entry.name] = info
+        total += info.st_size
+        if total > CAPTURE_MAX_BYTES:
+            raise ValueError("retained_capture_total_size_exceeded")
+    if set(entries) != expected_files:
+        raise ValueError("capture_roster_mismatch")
+    result = {}
+    for name in sorted(expected_files - {"capture_manifest.json"}):
+        stream, before = _open_capture_file(root / name, name)
+        digest = hashlib.sha256()
+        size = 0
+        limit = _capture_file_limit(name)
+        with stream:
+            while True:
+                block = stream.read(min(64 * 1024, limit + 1 - size))
+                if not block:
+                    break
+                size += len(block)
+                if size > limit:
+                    raise ValueError("retained_capture_file_size_exceeded:" + name)
+                digest.update(block)
+            after = os.fstat(stream.fileno())
+            ident = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+            if size != before.st_size or ident(before) != ident(after):
+                raise ValueError("retained_capture_file_changed_or_oversized:" + name)
+        result[name] = {"bytes": size, "sha256": digest.hexdigest()}
+    return result
 
 
 def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     body_path, wire_path, receipt_path = (root / f"{name}.body", root / f"{name}.wire",
                                           root / f"{name}.receipt.json")
-    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
-        raise ValueError("retained_capture_symlink_rejected")
-    body, wire, receipt = body_path.read_bytes(), wire_path.read_bytes(), json.loads(receipt_path.read_bytes())
+    body = _bounded_capture_read(body_path, PAGE_MAX_BYTES, name + ".body")
+    wire = _bounded_capture_read(wire_path, PAGE_MAX_BYTES, name + ".wire")
+    receipt = json.loads(_bounded_capture_read(receipt_path, CAPTURE_RECEIPT_MAX_BYTES, name + ".receipt.json"))
     if (receipt.get("complete_body") is not True or receipt.get("status") != 200
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
             or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
@@ -168,9 +278,7 @@ def _validate_capture_request_identity(name: str, receipt: dict, expected_url: s
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
+    manifest = json.loads(_bounded_capture_read(manifest_path, CAPTURE_MANIFEST_MAX_BYTES, "capture_manifest.json"))
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
     roster = manifest.get("artifact_roster")
@@ -178,8 +286,11 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         raise ValueError("retained_capture_roster_missing")
     if set(manifest["receipts"]) != {name for name, _url in _capture_urls(EXPECTED_IDS)}:
         raise ValueError("retained_capture_name_roster_changed")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
+    expected_files = set(roster) | {"capture_manifest.json"}
+    if set(roster) != {f"{name}.{suffix}" for name, _url in _capture_urls(EXPECTED_IDS)
+                       for suffix in ("body", "wire", "receipt.json")}:
+        raise ValueError("retained_capture_roster_changed")
+    if roster != _bounded_capture_roster(root, expected_files):
         raise ValueError("retained_capture_artifact_digest_mismatch")
     expected_urls = dict(_capture_urls(EXPECTED_IDS))
     captures = {}
@@ -226,8 +337,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
-    # ArcGIS does not declare hasZ/hasM on this layer. Every retained source
-    # vertex is checked below to be exactly XY; no ordinate is discarded.
+    declared_z = layer.get("hasZ")
+    declared_m = layer.get("hasM")
+    for dimension_name, dimension_value in (("hasZ", declared_z), ("hasM", declared_m)):
+        if dimension_value is not None and type(dimension_value) is not bool:
+            raise ValueError("source_geometry_dimension_metadata_drift:" + dimension_name)
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_changed_during_capture")
     if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
@@ -256,6 +370,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     expected_attrs = [field["name"] for field in ATTRIBUTE_FIELDS]
     ids = []
     coordinate_values = []
+    dimensions: set[tuple[bool, bool]] = set()
     for feature in features:
         attrs, geometry = feature.get("attributes"), feature.get("geometry")
         if not isinstance(attrs, dict) or set(attrs) != set(expected_attrs) or len(attrs) != len(expected_attrs):
@@ -275,16 +390,21 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if oid not in EXPECTED_IDS:
             raise ValueError("source_oid_roster_drift")
         ids.append(oid)
-        if not isinstance(geometry, dict) or set(geometry) - {"x", "y", "spatialReference"}:
+        if not isinstance(geometry, dict) or set(geometry) - {"x", "y", "z", "m", "spatialReference"}:
             raise ValueError("source_point_geometry_structure_drift")
         if "spatialReference" in geometry:
             _validate_spatial_reference(geometry["spatialReference"], "source_feature_geometry")
         if any(key not in geometry for key in ("x", "y")):
             raise ValueError("source_point_coordinates_missing")
-        point = (geometry["x"], geometry["y"])
+        has_z, has_m = "z" in geometry, "m" in geometry
+        if ((declared_z is not None and has_z != declared_z)
+                or (declared_m is not None and has_m != declared_m)):
+            raise ValueError("source_geometry_dimension_metadata_drift:feature")
+        dimensions.add((has_z, has_m))
+        point = tuple(geometry[key] for key in ("x", "y", *(('z',) if has_z else ()), *(('m',) if has_m else ())))
         if any(type(coord) not in (float, int) or not math.isfinite(coord) for coord in point):
             raise ValueError("source_xy_ordinate_contract_drift")
-        longitude, latitude = point
+        longitude, latitude = point[:2]
         if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
             raise ValueError("source_coordinate_range_drift")
         if not (EXPECTED_EXTENT["xmin"] <= longitude <= EXPECTED_EXTENT["xmax"]
@@ -293,9 +413,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         coordinate_values.append((longitude, latitude))
     if sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT:
         raise ValueError("source_feature_ID_population_drift")
+    if len(dimensions) != 1:
+        raise ValueError("source_geometry_dimensions_inconsistent")
+    has_z, has_m = next(iter(dimensions))
     observed_extent = {
-        "xmin": min(x for x, _ in coordinate_values), "ymin": min(y for _, y in coordinate_values),
-        "xmax": max(x for x, _ in coordinate_values), "ymax": max(y for _, y in coordinate_values),
+        "xmin": min(point[0] for point in coordinate_values), "ymin": min(point[1] for point in coordinate_values),
+        "xmax": max(point[0] for point in coordinate_values), "ymax": max(point[1] for point in coordinate_values),
     }
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
     audit = {
@@ -305,12 +428,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "source_geometry_sha256": _sha(_canonical([[row["attributes"]["OBJECTID"], row["geometry"]]
                                                    for row in features])),
         "source_geometry_type": "esriGeometryPoint", "source_wkid": 4326, "source_vertex_count": len(coordinate_values),
+        "source_has_z": has_z, "source_has_m": has_m,
         "source_extent": layer["extent"], "source_vertex_bounds": observed_extent,
         "source_coverage_scope": "Complete current MOORING_FACILITY_POINT feature class returned by the official "
                                  "IENC service; observed central/eastern-US inland waterway coverage only, not "
                                  "national coverage.",
         "drift_guard": "Exact BTS item/service link, advertised service/layer identity, declared field roster/types, "
-                       "every present layer/page/feature wkid, latestWkid and WKT/WKT2 CRS representation, count, "
+                       "every present layer/page/feature wkid, latestWkid and WKT/WKT2 CRS representation, declared and observed Z/M dimensions, count, "
                        "before/after IDs, per-page feature completeness, complete returned attributes and XY "
                        "ordinates, geographic coordinate ranges, and every observed point against the declared "
                        "layer coverage extent are checked.",
@@ -319,7 +443,14 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
 
 
 def _esri_point_wkb(geometry: dict) -> bytes:
-    return struct.pack("<BIdd", 1, 1, float(geometry["x"]), float(geometry["y"]))
+    has_z, has_m = "z" in geometry, "m" in geometry
+    geometry_type = 1 + (1000 if has_z and not has_m else 2000 if has_m and not has_z else 3000 if has_z and has_m else 0)
+    ordinates = [geometry["x"], geometry["y"]]
+    if has_z:
+        ordinates.append(geometry["z"])
+    if has_m:
+        ordinates.append(geometry["m"])
+    return struct.pack("<BI" + "d" * len(ordinates), 1, geometry_type, *map(float, ordinates))
 
 
 def _arrow_type(field: dict) -> pa.DataType:
@@ -340,8 +471,10 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
            "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
                                                                      {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
            "id": {"authority": "EPSG", "code": 4326}}
+    sample_geometry = features[0]["geometry"]
+    suffix = " ZM" if "z" in sample_geometry and "m" in sample_geometry else " Z" if "z" in sample_geometry else " M" if "m" in sample_geometry else ""
     metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
-                                    "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": crs}}})}
+                                    "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point" + suffix], "crs": crs}}})}
     import io
     sink = io.BytesIO()
     pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
@@ -368,6 +501,10 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
     if (not isinstance(version, str) or not version or version in {".", ".."}
             or Path(version).name != version or "/" in version or "\\" in version):
         raise ValueError("unsafe_capture_version")
+    identity = processing_identity(Path(__file__).parents[3])
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
+    )
     staging = Path(storage.local_dir).absolute()
     if ".." in staging.parts or any(path.is_symlink() for path in (staging, *staging.parents)):
         raise ValueError("unsafe_local_staging_root")
@@ -413,7 +550,9 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
             retained = {}
             for path in sorted(root.glob("*.receipt.json")):
                 try:
-                    retained[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+                    retained[path.name.removesuffix(".receipt.json")] = json.loads(
+                        _bounded_capture_read(path, CAPTURE_RECEIPT_MAX_BYTES, path.name)
+                    )
                 except (OSError, ValueError):
                     retained[path.name] = {"receipt_readback_failed": True}
             (root / "capture_manifest.json").write_bytes(_canonical({"captured_at": datetime.now(timezone.utc).isoformat(),
@@ -422,16 +561,16 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
             if captures:
                 quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures, type(exc).__name__)
             raise
+        artifact_names = {f"{name}.{suffix}" for name in captures for suffix in ("body", "wire", "receipt.json")}
         (root / "capture_manifest.json").write_bytes(_canonical({"captured_at": datetime.now(timezone.utc).isoformat(),
                                                                  "complete": True,
                                                                  "source_feature_count": audit["source_feature_count"],
                                                                  "source_record_sha256": audit["source_record_sha256"],
                                                                  "source_schema_sha256": audit["source_schema_sha256"],
                                                                  "receipts": {name: receipt for name, (_b, receipt) in sorted(captures.items())},
-                                                                 "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
+                                                                 "artifact_roster": _bounded_capture_roster(root, artifact_names)}) + b"\n")
         captures = _read_replay(root)
     fields, features, audit = _validate(captures)
-    identity = processing_identity(Path(__file__).parents[3])
     evidence = _capture_identity(captures, root)
     capture_sha = _sha(_canonical(evidence))
     record_body = _canonical([row["attributes"] for row in features])
@@ -468,7 +607,7 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
                 "code_commit": identity["code_commit"], "inputs": inputs,
                 "transformations": [{"operation": "Esri JSON Point to GeoParquet WKB candidate; source XY ordinates preserved",
                                      "parameters": {"feature_count": EXPECTED_COUNT, "source_fields": "all declared non-geometry fields retained in source order and declared types",
-                                                    "source_ids": "OBJECTID and Feature_ID preserved unchanged", "source_crs": "EPSG:4326", "source_geometry": "2D point ordinates exactly as captured; no projection or coordinate repair",
+                                                    "source_ids": "OBJECTID and Feature_ID preserved unchanged", "source_crs": "EPSG:4326", "source_geometry": "Every advertised and observed XY/Z/M ordinate is preserved without projection or coordinate repair",
                                                     "raw_evidence": "complete decoded response and wire bytes retained with checksummed receipts", "candidate_status": "unapproved"}}],
                 "lineage": "BTS NTAD IENC item 7ec34864c8804468a9cf52d437fe4b6c identifies the IENC program, states that USACE/Army Geospatial Center updates it twice monthly, and links this official USACE IENC Feature Classes service and master file geodatabase. This candidate is exactly the MOORING_FACILITY_POINT service layer 17; its observed 9772 features cover inland waterway mooring facilities and are not represented as national coverage. The DataLumos item 239578 (HIFLD archive inventory entry mooring-facility-locations-usace-ienc-2) is the historical archive fallback, not the maintained feed.",
                 "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "All declared source attributes and IDs are typed and retained; the 2D source point ordinates are stored as WKB with source EPSG:4326. Candidate remains unapproved pending compatibility and release decisions.",
@@ -540,9 +679,6 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
                                                                     "source_record_sha256": audit["source_record_sha256"],
                                                                     "source_schema_sha256": audit["source_schema_sha256"],
                                                                     "capture_receipts": receipts, "objects": descriptors})
-    validate_construction_code_identity(
-        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
-    )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": EXPECTED_COUNT,
             "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
             "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
