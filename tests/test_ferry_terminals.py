@@ -97,7 +97,7 @@ class FerryTerminalsTests(TestCase):
             ('quality',lambda root,out:write_catalog_metadata(self.storage,s.SLUG,s.SLUG,out['version'],{'quality_check_passed':True,'feature_count':1},json.loads((root/'metadata/data_dictionary.json').read_bytes())),'cached_catalog_metadata_drift:quality'),
             ('dictionary',lambda root,out:write_catalog_metadata(self.storage,s.SLUG,s.SLUG,out['version'],json.loads((root/'metadata/quality_manifest.json').read_bytes()),{'name':s.SLUG,'columns':[]}),'cached_catalog_metadata_drift:dictionary'),
             ('missing_provenance',lambda root,out:(root/'metadata/resolved_provenance.json').unlink(),'cached_catalog_metadata_drift:provenance'),
-            ('tampered_snapshot',lambda root,out:(root/'metadata/source/quality_manifest.json').write_bytes(b'{}'),'cached_catalog_source_snapshot_differs'),
+            ('tampered_snapshot',lambda root,out:(root/'metadata/source/quality_manifest.json').write_bytes(b'{}'),'cached_catalog_source_snapshot_differs:source_quality'),
         )
         for label,mutate,reason in cases:
             with self.subTest(label):

@@ -537,14 +537,11 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
             raise FerryQuarantineError('cached_catalog_source_snapshot_differs')
         # Optional pre-catalog source metadata snapshots are all-or-none and
         # must agree with the canonical catalog values when present.
-        has_source_dictionary = snapshot_paths['source_dictionary'].exists()
-        has_source_quality = snapshot_paths['source_quality'].exists()
-        if has_source_dictionary != has_source_quality:
-            raise FerryQuarantineError('cached_catalog_source_snapshot_incomplete')
-        if has_source_dictionary:
-            if (snapshot_paths['source_dictionary'].read_bytes() != canonical['dictionary']
-                    or snapshot_paths['source_quality'].read_bytes() != canonical['quality']):
-                raise FerryQuarantineError('cached_catalog_source_snapshot_differs')
+        for name, expected in (('source_dictionary', canonical['dictionary']),
+                               ('source_quality', canonical['quality'])):
+            path = snapshot_paths[name]
+            if path.exists() and path.read_bytes() != expected:
+                raise FerryQuarantineError(f'cached_catalog_source_snapshot_differs:{name}')
 
 
 @contextmanager
