@@ -34,6 +34,21 @@ class NativeNidTests(unittest.TestCase):
             self.assertFalse(alias.exists())
             self.assertEqual(archive.read_bytes(), b"immutable archive bytes")
 
+    def test_receipt_provenance_uses_observed_values_and_redacts_signed_query(self):
+        receipt = {
+            "url": "https://geospatial.sec.usace.army.mil/export/result?token=private-value",
+            "observed_at": "2026-10-22T04:00:00Z", "status": 200,
+            "bytes": 23, "sha256": "a" * 64,
+        }
+        item = native._input_provenance("native_archive", receipt)
+        self.assertEqual(item["retrieved_at"], receipt["observed_at"])
+        self.assertEqual(item["bytes"], receipt["bytes"])
+        self.assertEqual(item["sha256"], receipt["sha256"])
+        self.assertEqual(item["http_status"], 200)
+        self.assertEqual(item["retrieval_url"], "https://geospatial.sec.usace.army.mil/export/result")
+        self.assertTrue(item["retrieval_query_redacted"])
+        self.assertNotIn("private-value", json.dumps(item))
+
     def _arrow_fixture(self):
         fields = [pa.field("OBJECTID", pa.int64(), nullable=False)]
         arrays = [pa.array([101, 102], type=pa.int64())]

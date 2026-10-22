@@ -892,6 +892,35 @@ def _safe_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
     return safe
 
 
+def _input_provenance(name: str, receipt: Mapping[str, object]) -> dict[str, object]:
+    """Adapt a captured response receipt to the shared provenance contract safely."""
+    raw_url = str(receipt.get("url", ""))
+    parsed = urlsplit(raw_url)
+    if parsed.scheme != "https" or not parsed.hostname or not parsed.path:
+        raise ValueError("usace_nid_native_receipt_url_invalid:" + name)
+    retrieval_url = parsed._replace(query="", fragment="").geturl()
+    canonical_url = SERVICE_URL if name.startswith(("service_", "replica_", "native_archive")) else LAYER_URL
+    return {
+        "input_id": name,
+        "producer": PUBLISHER,
+        "host": parsed.hostname,
+        "role": "producer_publication",
+        "canonical_url": canonical_url,
+        "retrieval_url": retrieval_url,
+        "retrieval_query_redacted": bool(parsed.query),
+        "retrieved_at": receipt.get("observed_at"),
+        "http_status": receipt.get("status"),
+        "bytes": receipt.get("bytes"),
+        "sha256": receipt.get("sha256"),
+        "license": "pending_rights_review",
+        "attribution": "USACE attribution and terms review pending.",
+        "release_date": None,
+        "release_date_unknown_reason": (
+            "The producer response does not establish a dataset release date; retrieval time is not a release date."
+        ),
+    }
+
+
 def _native_stage_outputs(root: Path, bodies: Mapping[str, bytes], manifest: Mapping[str, object],
                           candidate: bytes, audit: Mapping[str, object], identity: Mapping[str, object],
                           version_key: str) -> dict[str, bytes]:
@@ -950,13 +979,9 @@ def _native_stage_outputs(root: Path, bodies: Mapping[str, bytes], manifest: Map
         "date_modified": None,
         "processor": "HIFLD Next",
         "code_commit": identity["code_commit"],
-        "inputs": [
-            {"input_id": name, "producer": PUBLISHER,
-             "canonical_url": SERVICE_URL if name.startswith("service_") else LAYER_URL,
-             **receipts[name], "license": "pending_rights_review",
-             "attribution": "USACE attribution and terms review pending."}
-            for name in sorted(receipts)
-        ],
+        "inputs": [_input_provenance(name, legacy._strict_json(
+            _read_bounded(root / f"{name}.receipt.json", MAX_NATIVE_RECEIPT_BYTES)))
+                   for name in sorted(receipts)],
         "transformations": [{
             "operation": "Native USACE FileGDB to GeoParquet WKB",
             "parameters": {
