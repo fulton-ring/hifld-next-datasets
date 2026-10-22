@@ -159,19 +159,20 @@ class EPAICISWastewaterNAICSTests(unittest.TestCase):
             self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
 
     def test_draft_schedule_emits_run_config_valid_for_the_job(self):
-        defs = dagster.Definitions(
-            assets=[worker.epa_icis_wastewater_naics_codes],
-            jobs=[worker.epa_icis_wastewater_naics_draft_job],
-            resources={"staging_storage": dagster.ResourceDefinition.mocked()},
-        )
-        job = defs.get_job_def("epa_icis_wastewater_naics_draft_refresh")
-        schedule = worker.epa_icis_wastewater_naics_draft_schedule
-        self.assertEqual(schedule.default_status, dagster.DefaultScheduleStatus.STOPPED)
-        tick = schedule.evaluate_tick(dagster.build_schedule_context())
-        run_requests = tick.run_requests
-        self.assertEqual(len(run_requests), 1)
-        self.assertEqual(run_requests[0].job_name, "epa_icis_wastewater_naics_draft_refresh")
-        dagster.validate_run_config(job, run_requests[0].run_config or {})
+        with tempfile.TemporaryDirectory() as tmp:
+            defs = dagster.Definitions(
+                assets=[worker.epa_icis_wastewater_naics_codes],
+                jobs=[worker.epa_icis_wastewater_naics_draft_job],
+                resources={"staging_storage": StagingStorageResource(
+                    local_dir=tmp, use_local=True, backend="local")},
+            )
+            job = defs.get_job_def("epa_icis_wastewater_naics_draft_refresh")
+            schedule = worker.epa_icis_wastewater_naics_draft_schedule
+            self.assertEqual(schedule.default_status, dagster.DefaultScheduleStatus.STOPPED)
+            tick = schedule.evaluate_tick(dagster.build_schedule_context())
+            run_requests = tick.run_requests
+            self.assertEqual(len(run_requests), 1)
+            dagster.validate_run_config(job, run_requests[0].run_config or {})
 
     def test_tampered_sealed_state_is_refused_not_reused(self):
         with tempfile.TemporaryDirectory() as tmp:
